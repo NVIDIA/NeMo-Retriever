@@ -860,13 +860,14 @@ async def submit_job_v2(
         original_source_id = source_ids[0] if source_ids else "unknown_source.pdf"
         original_source_name = source_names[0] if source_names else "unknown_source.pdf"
 
-
         # Track page count for all PDFs (used for both splitting logic and metadata)
         pdf_page_count_cache = None
         submission_items: List[Tuple[str, MessageWrapper]] = []
+
         subjob_ids: List[str] = []
         subjob_descriptors: List[Dict[str, Any]] = []
         parent_metadata: Dict[str, Any] = {}
+        submission_items: List[Tuple[str, MessageWrapper]] = []
         try:
             parent_uuid = uuid.UUID(parent_job_id)
         except ValueError:
@@ -994,6 +995,7 @@ async def submit_job_v2(
                     "end": end,
                 }
 
+                logger.debug(f"Preparing chunk submission for {file_path} and duration {duration}")
                 subjob_id, subjob_wrapper = _prepare_chunk_submission(
                     job_spec_dict,
                     chunk,
@@ -1006,7 +1008,6 @@ async def submit_job_v2(
                 )
 
                 submission_items.append((subjob_id, subjob_wrapper))
-                # raise ValueError(subjob_wrapper)
                 subjob_ids.append(subjob_id)
                 subjob_descriptors.append(
                     {
@@ -1018,6 +1019,8 @@ async def submit_job_v2(
                     }
                 )
 
+            logger.error(f"Removing uploaded file {upload_path}")
+            os.remove(upload_path)
         if submission_items:
             burst_size, pause_ms, jitter_ms = _get_submit_burst_params()
             await _submit_subjobs_in_bursts(
