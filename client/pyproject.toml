@@ -43,6 +43,9 @@ milvus = [
 minio = [
     "minio>=7.2.15",
 ]
+neo4j = [
+    "neo4j>=5.0",
+]
 
 
 [project.urls]
