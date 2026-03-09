@@ -21,7 +21,7 @@ Optional flags:
 After this completes, query via DuckDBEngine:
 
     from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
-    engine = DuckDBEngine(database="./spider2.duckdb")
+    engine = DuckDBEngine({"database": "./spider2.duckdb"})
     rows = engine.execute("SELECT * FROM Airlines.flights LIMIT 5")
 """
 
@@ -69,6 +69,7 @@ def _clone_spider2(target_dir: Path) -> None:
 def _load_data(spider2_lite_dir: Path, db_path: Path, overwrite: bool) -> dict:
     try:
         from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
+        from nemo_retriever.structured_data.spider2_loader import load_spider2_lite
     except ImportError:
         print(
             "\n[error] Could not import nemo_retriever. Install the package first:\n\n"
@@ -92,9 +93,9 @@ def _load_data(spider2_lite_dir: Path, db_path: Path, overwrite: bool) -> dict:
     print(f"\n[ddb ] {action} data from {spider2_lite_dir}")
     print(f"[ddb ] Database → {db_path}\n")
 
-    engine = DuckDBEngine(database=str(db_path))
+    engine = DuckDBEngine({"database": str(db_path)})
     try:
-        summary = engine.load_spider2_lite(spider2_lite_dir, overwrite=overwrite)
+        summary = load_spider2_lite(engine, spider2_lite_dir, overwrite=overwrite)
     finally:
         engine.close()
 
