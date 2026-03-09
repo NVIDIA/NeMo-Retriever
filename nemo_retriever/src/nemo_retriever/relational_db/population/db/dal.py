@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 
 import pandas as pd
-from infra.Neo4jConnection import get_neo4j_conn
+from vector_store.neo4j_store import get_neo4j_conn
 
 logger = logging.getLogger(__name__)
 

@@ -1,13 +1,11 @@
 import sys
 import pendulum
 import pandas as pd
+from structured_data import DuckDBEngine
 
 
 def create_dataframe(settings):
-    duckdb_connector = DuckDB(settings["connection_properties"])
-    c = get_connection_object_by_id(
-        settings["account_id"], settings["connection_id"]
-    )
+    duckdb_connector = DuckDBEngine(settings["connection_properties"])
     queries = duckdb_connector.get_queries(
         settings["data_interval_start"], settings["data_interval_end"]
     )
