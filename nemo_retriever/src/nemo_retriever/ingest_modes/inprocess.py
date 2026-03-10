@@ -50,6 +50,7 @@ except Exception as e:  # pragma: no cover
 from ..image.load import SUPPORTED_IMAGE_EXTENSIONS
 from ..utils.convert import SUPPORTED_EXTENSIONS, convert_to_pdf_bytes
 from ..ingestor import Ingestor
+from ..vector_store.neo4j_store import get_neo4j_conn
 from ..params import ASRParams
 from ..params import AudioChunkParams
 from ..params import EmbedParams
@@ -1860,7 +1861,7 @@ class InProcessIngestor(Ingestor):
     def extract_structured(
         self,
         params: StructuredExtractParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "InProcessIngestor":
         """Step 1 — Reflect DB schema / parse SQL files → write graph nodes to Neo4j."""
         pass
@@ -1868,7 +1869,7 @@ class InProcessIngestor(Ingestor):
     def populate_structured_semantic_layer(
         self,
         params: StructuredSemanticLayerParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "InProcessIngestor":
         """Step 2 — Map global business terms/attributes to graph entities."""
         pass
@@ -1876,7 +1877,7 @@ class InProcessIngestor(Ingestor):
     def detect_structured_pii(
         self,
         params: StructuredPIIParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "InProcessIngestor":
         """Step 3 — Tag Column nodes with PII type via regex and optional LLM."""
         pass
@@ -1884,7 +1885,7 @@ class InProcessIngestor(Ingestor):
     def populate_structured_usage_weights(
         self,
         params: StructuredUsageWeightsParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "InProcessIngestor":
         """Step 4 — Derive usage weights from query log files."""
         pass
@@ -1892,7 +1893,7 @@ class InProcessIngestor(Ingestor):
     def generate_structured_descriptions(
         self,
         params: StructuredDescriptionParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "InProcessIngestor":
         """Step 5 — LLM-generate natural-language descriptions for all node types."""
         pass
@@ -1900,7 +1901,7 @@ class InProcessIngestor(Ingestor):
     def fetch_structured(
         self,
         params: StructuredFetchParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "pd.DataFrame | None":
         """Step 6 — Fetch entity descriptions from Neo4j into a DataFrame.
 
@@ -1915,6 +1916,9 @@ class InProcessIngestor(Ingestor):
     ) -> Any:
         """Orchestrate the full 8-step structured ingestion pipeline.
 
+        Acquires the shared Neo4jConnectionManager once via get_neo4j_conn() and
+        passes it to every step so no step creates its own connection.
+
         Runs the following steps in order:
         1. extract_structured
         2. populate_structured_semantic_layer
@@ -1925,13 +1929,15 @@ class InProcessIngestor(Ingestor):
         7. embed             ← receives the DataFrame from step 6
         8. vdb_upload        ← receives the embedded DataFrame from step 7
         """
-        self.extract_structured(params=params)
-        self.populate_structured_semantic_layer()
-        self.detect_structured_pii()
-        self.populate_structured_usage_weights()
-        self.generate_structured_descriptions()
+        neo4j_conn = get_neo4j_conn()
 
-        df = self.fetch_structured()
+        self.extract_structured(params=params, neo4j_conn=neo4j_conn)
+        self.populate_structured_semantic_layer(neo4j_conn=neo4j_conn)
+        self.detect_structured_pii(neo4j_conn=neo4j_conn)
+        self.populate_structured_usage_weights(neo4j_conn=neo4j_conn)
+        self.generate_structured_descriptions(neo4j_conn=neo4j_conn)
+
+        df = self.fetch_structured(neo4j_conn=neo4j_conn)
 
         if df is not None:
             # Collect the embed + vdb_upload tasks registered by the caller

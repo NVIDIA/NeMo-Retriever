@@ -224,74 +224,74 @@ class ingestor:
     def extract_structured(
         self,
         params: StructuredExtractParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 1 — Reflect DB schema / parse SQL files → write graph nodes to Neo4j.
 
         Uses SQLAlchemy reflection and/or SQL file parsing to produce
         Database, Schema, Table, Column, View and Query nodes together with
         their relationships.
+        ``neo4j_conn`` is the shared Neo4jConnectionManager from neo4j_store.py.
         """
-        _ = _merge_params(params, kwargs)
         self._not_implemented("extract_structured")
 
     def populate_structured_semantic_layer(
         self,
         params: StructuredSemanticLayerParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 2 — Map global business terms/attributes to graph entities.
 
         Auto-creates Term/Attribute nodes and MAPS_TO_TABLE / MAPS_TO_COLUMN
         relationships for entities that are not already covered by the
         semantic-layer definition.
+        ``neo4j_conn`` is the shared Neo4jConnectionManager from neo4j_store.py.
         """
-        _ = _merge_params(params, kwargs)
         self._not_implemented("populate_structured_semantic_layer")
 
     def detect_structured_pii(
         self,
         params: StructuredPIIParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 3 — Tag Column nodes with PII type via regex and optional LLM.
 
         Writes a ``pii_type`` property and a HAS_PII_TYPE relationship onto
         each Column node that matches a known PII pattern.
+        ``neo4j_conn`` is the shared Neo4jConnectionManager from neo4j_store.py.
         """
-        _ = _merge_params(params, kwargs)
         self._not_implemented("detect_structured_pii")
 
     def populate_structured_usage_weights(
         self,
         params: StructuredUsageWeightsParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 4 — Derive usage weights from query log files.
 
         Parses SQL query logs, computes Table/Column co-occurrence frequencies,
         and writes ``usage_weight`` float properties back onto the graph nodes.
+        ``neo4j_conn`` is the shared Neo4jConnectionManager from neo4j_store.py.
         """
-        _ = _merge_params(params, kwargs)
         self._not_implemented("populate_structured_usage_weights")
 
     def generate_structured_descriptions(
         self,
         params: StructuredDescriptionParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 5 — LLM-generate natural-language descriptions for all node types.
 
         Descriptions are written back to Neo4j as a ``description`` property
         on Database, Schema, Table, Column, View and Query nodes.
+        ``neo4j_conn`` is the shared Neo4jConnectionManager from neo4j_store.py.
         """
-        _ = _merge_params(params, kwargs)
         self._not_implemented("generate_structured_descriptions")
 
     def fetch_structured(
         self,
         params: StructuredFetchParams | None = None,
-        **kwargs: Any,
+        neo4j_conn: Any = None,
     ) -> Any:
         """Step 6 — Fetch entity descriptions from Neo4j into a DataFrame.
 
@@ -299,8 +299,8 @@ class ingestor:
         ``_embed_modality`` = ``"text"``, and ``metadata`` (JSON blob with
         entity_type, entity_name, node_id).  No embedding is computed here;
         the returned DataFrame is passed directly to the embed step.
+        ``neo4j_conn`` is the shared Neo4jConnectionManager from neo4j_store.py.
         """
-        _ = _merge_params(params, kwargs)
         self._not_implemented("fetch_structured")
 
     def ingest_structured(

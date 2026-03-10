@@ -17,7 +17,6 @@ from .models import IngestExecuteParams
 from .models import IngestorCreateParams
 from .models import LanceDbParams
 from .models import ModelRuntimeParams
-from .models import Neo4jConnectionParams
 from .models import OcrParams
 from .models import PageElementsParams
 from .models import PdfSplitParams
@@ -50,7 +49,6 @@ __all__ = [
     "IngestorCreateParams",
     "LanceDbParams",
     "ModelRuntimeParams",
-    "Neo4jConnectionParams",
     "OcrParams",
     "PageElementsParams",
     "PdfSplitParams",
