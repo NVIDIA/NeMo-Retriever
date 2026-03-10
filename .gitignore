@@ -260,3 +260,5 @@ models/
 .env
 
 nemo_retriever/run_results/
+
+nemo_retriever/PIPELINE_FLOW.md
