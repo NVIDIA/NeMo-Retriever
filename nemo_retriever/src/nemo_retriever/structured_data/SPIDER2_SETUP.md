@@ -85,7 +85,7 @@ python nemo_retriever/src/nemo_retriever/structured_data/setup_spider2.py \
 ```python
 from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
 
-engine = DuckDBEngine(database="./spider2.duckdb")
+engine = DuckDBEngine({"database": "./spider2.duckdb"})
 print(engine.list_schemas())             # ['Airlines', 'Baseball', 'chinook', ...]
 print(engine.schema_tables("Airlines"))  # ['flights', 'airports_data', ...]
 engine.close()
@@ -100,7 +100,7 @@ Each Spider2-lite database is a schema. Reference tables as `<Schema>.<table>`:
 ```python
 from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
 
-engine = DuckDBEngine(database="./spider2.duckdb")
+engine = DuckDBEngine({"database": "./spider2.duckdb"})
 
 # Direct SQL
 rows = engine.execute("SELECT * FROM Airlines.flights LIMIT 5")

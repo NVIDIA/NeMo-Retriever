@@ -21,10 +21,10 @@ Example
 
 from __future__ import annotations
 
-from ast import Tuple
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -99,6 +99,10 @@ class DuckDBEngine:
         df = self.execute("SELECT DISTINCT catalog_name FROM information_schema.schemata")
         return df["catalog_name"].tolist()
 
+    def list_schemas(self) -> List[str]:
+        """Return all catalog/schema names (alias for list_databases)."""
+        return self.list_databases()
+
     def list_db_schemas(self, db: str) -> List[str]:
         """Return schema names within *db*."""
         df = self.execute(
@@ -106,6 +110,15 @@ class DuckDBEngine:
             f"WHERE catalog_name = '{db}'"
         )
         return df["schema_name"].tolist()
+
+    def schema_tables(self, catalog_or_schema: str) -> List[str]:
+        """Return table names in the given catalog (e.g. Spider2 schema name like 'Airlines')."""
+        df = self.execute(
+            "SELECT DISTINCT table_name FROM information_schema.tables "
+            "WHERE table_catalog = ? OR table_schema = ? ORDER BY table_name",
+            [catalog_or_schema, catalog_or_schema],
+        )
+        return df["table_name"].tolist()
 
     def get_tables(self) -> pd.DataFrame:
         """Return all tables from information_schema as a DataFrame."""
