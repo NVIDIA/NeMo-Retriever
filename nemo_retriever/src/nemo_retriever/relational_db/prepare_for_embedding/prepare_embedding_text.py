@@ -119,10 +119,9 @@ def generate_embeddings_for_tables_and_columns(
 def query_neo4j_tables_for_embedding() -> List[dict]:
     """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
     neo4j_conn = get_neo4j_conn()
-    query = """MATCH (d:db)-[:schema]->(s:schema)-[:schema]->(t:table) WHERE coalesce(t.info_embedded, FALSE)=FALSE
+    query = """MATCH (d:db)-[:schema]->(s:schema)-[:schema]->(t:table)
                MATCH (t)-[:schema]->(c:column)
                WITH d, s, t, collect("{name: " + c.name +", data_type: " + c.data_type + ", description: " + coalesce(c.description, 'null') +"}") as columns
-               SET t.info_embedded = TRUE
                RETURN collect({text: "db_name: " + d.name + ", schema_name: " + s.name + ", table_name: " + t.name +
                ", table_description: " + coalesce(t.description, 'null') + ", columns: " + apoc.text.join(columns, ' '),
                name: t.name, label: labels(t)[0], id: t.id}) as docs
