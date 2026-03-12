@@ -52,13 +52,13 @@ uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu13
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
 
-3. Run the pipeline on the [multimodal_test PDF](../data/multimodal_test.pdf)
+## Run the pipeline
 
-This test PDF contains text, tables, charts, and images. Additional test data resides [here](../data/).
+The [test PDF]((../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
 > **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
 
-In this procedure, you run the end‑to‑end NeMo Retriever Library pipeline to ingest a collection of test PDFs:
+### Ingest a test pdf
 ```python
 from nemo_retriever import create_ingestor
 from pathlib import Path
@@ -85,6 +85,7 @@ ray_dataset = ingestor.ingest()
 chunks = ray_dataset.get_dataset().take_all()
 ```
 
+### Inspect extracts
 You can inspect how recall accuracy optimized text chunks for various content types were extracted into text representations:
 ```python
 # page 1 raw text:
@@ -102,7 +103,7 @@ You can inspect how recall accuracy optimized text chunks for various content ty
 
 Since the ingestion job automatically populated a lancedb table with all these chunks, you can use queries to retrieve semantically relevant chunks for feeding directly into an LLM:
 
-4. Run a recall query and generate an answer using an LLM
+### Run a recall query
 
 ```python
 from nemo_retriever.retriever import Retriever
@@ -131,6 +132,7 @@ hits = retriever.query(query)
 {'text': '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.614684820175171}
 ```
 
+###  Generate a query answer using an LLM
 The above retrieval results are often feedable directly to an LLM for answer generation.
 
 To do so, first install the openai client and set your [build.nvidia.com](https://build.nvidia.com/) API key:
@@ -171,7 +173,7 @@ Answer:
 Cat is the animal whose activity (jumping onto a laptop) matches the location of the typos, so the cat is responsible for the typos in the documents.
 ```
 
-5. Ingest other types of content:
+### Ingest other types of content:
 
 For PowerPoint and Docx files, ensure libeoffice is installed by your system's package manager.
 
@@ -214,7 +216,7 @@ ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 chunks = ingestor.ingest()
 ```
 
-7. Explore Different Pipeline Options:
+### Explore Different Pipeline Options:
 
 You can use the [Nemotron RAG VL Embedder](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2)
 
