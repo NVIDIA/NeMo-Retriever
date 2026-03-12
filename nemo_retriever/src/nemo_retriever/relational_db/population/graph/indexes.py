@@ -8,7 +8,7 @@ def add_indices():
     parameters = {}
 
     # if len(index_names) == 0:
-    query_create = """CREATE CONSTRAINT constraint_on_connection_id_and_account IF NOT EXISTS FOR (n: connection)
+    query_create = """CREATE CONSTRAINT constraint_on_connection_id_and_account IF NOT EXISTS FOR (n: Connection)
                     REQUIRE (n.id, n.account_id) IS UNIQUE """
     conn.query_write(query_create, parameters)
 

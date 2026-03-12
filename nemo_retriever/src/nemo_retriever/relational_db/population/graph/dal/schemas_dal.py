@@ -41,7 +41,7 @@ def get_schemas_ids_and_names(
     db_id: str = None, include_deleted: bool = False
 ):
     db_filter = " {id:$db_id}" if db_id else ""
-    query = f"""MATCH(db:db{db_filter})-[:schema]->(s:schema|temp_schema)
+    query = f"""MATCH(db:Db{db_filter})-[:CONTAINS]->(s:Schema|TempSchema)
                 {"" if include_deleted else "WHERE coalesce(s.deleted, false) = false"}
                 RETURN s.name as schema_name, s.id as schema_id
             """
@@ -59,9 +59,9 @@ def get_schemas_ids_and_names(
 
 def get_schema_columns(db_name, schema_name, include_deleted: bool = False):
     # Use c_id alias: "id" is reserved in Cypher
-    query = f"""MATCH (d:db{{name:$db_name}})-[:schema]->
-                (s:schema{{name:$schema_name}})-[:schema]->
-                (t:table)-[:schema]->(c:column)
+    query = f"""MATCH (d:Db{{name:$db_name}})-[:CONTAINS]->
+                (s:Schema{{name:$schema_name}})-[:CONTAINS]->
+                (t:Table)-[:CONTAINS]->(c:Column)
                 {"" if include_deleted else " WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and coalesce(c.deleted, false) = false "}
                 WITH d.name as database, s.name as schema, t.name as table_name,
                 c.name as column_name, c.id as c_id, c.data_type as data_type, c.ordinal_position as ordinal_position,
@@ -83,9 +83,9 @@ def get_schema_columns(db_name, schema_name, include_deleted: bool = False):
 
 def get_schema_tables(db_name, schema_name, include_deleted: bool = False):
     # Use t_id alias: "id" is reserved in Cypher
-    query = f"""MATCH (d:db{{name:$db_name}})-[:schema]->
-                (s:schema{{name:$schema_name}})-[:schema]->
-                (t:table)
+    query = f"""MATCH (d:Db{{name:$db_name}})-[:CONTAINS]->
+                (s:Schema{{name:$schema_name}})-[:CONTAINS]->
+                (t:Table)
                 {"" if include_deleted else " WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false "}
                 WITH d.name as database, s.name as schema, t.name as table_name, t.id as t_id,
                 t.table_type as table_type, t.row_count as row_count, t.size as size,
@@ -107,10 +107,10 @@ def get_schema_tables(db_name, schema_name, include_deleted: bool = False):
 
 def get_db_ids_and_names(connection_id=None):
     if connection_id:
-        query = """match (c:connection {id: $conn_id})-[:connecting]->(db:db) 
+        query = """match (c:Connection {id: $conn_id})-[:CONNECTING]->(db:Db) 
                    return collect({id: db.id, name:db.name}) as dbs"""
     else:
-        query = """match (db:db) 
+        query = """match (db:Db) 
                    return collect({id: db.id, name:db.name}) as dbs"""
     return conn.query_read_only(
         query=query, parameters={"conn_id": connection_id}
@@ -142,7 +142,7 @@ def add_schemas_edge(edge, created):
             yield node as v2
             set v2.created = case when coalesce(v2.deleted, false) = false then coalesce(v2.created, $created) else $created end
             set v2.deleted = false
-            MERGE (v1)-[r:schema]->(v2)
+            MERGE (v1)-[r:CONTAINS]->(v2)
             SET r = $optional_edge_props
             """
 
@@ -165,7 +165,7 @@ def add_schemas_edge(edge, created):
 
 
 def delete_old_fks(last_seen):
-    query = """ OPTIONAL MATCH (:column)-[old_fk:fk]->(:column)
+    query = """ OPTIONAL MATCH (:Column)-[old_fk:FOREIGN_KEY]->(:Column)
                 WHERE old_fk.last_seen<>$last_seen
                 DELETE old_fk
             """
@@ -178,9 +178,9 @@ def delete_old_fks(last_seen):
 def add_fks(fks_df, last_seen):
     # pk_database_name	pk_schema_name	pk_table_name	pk_column_name	fk_database_name	fk_schema_name	fk_table_name	fk_column_name
     query = """UNWIND $fks_dict as fkd
-               MATCH (t1:table{name: fkd.pk_table_name, schema_name: fkd.pk_schema_name, db_name: fkd.pk_database_name})-[:schema]->(col1:column{name: fkd.pk_column_name})
-               MATCH (t2:table{name: fkd.fk_table_name, schema_name: fkd.fk_schema_name, db_name: fkd.fk_database_name})-[:schema]->(col2:column{name: fkd.fk_column_name})
-               MERGE (col1)-[:fk {last_seen: $last_seen}]->(col2)"""
+               MATCH (t1:Table{name: fkd.pk_table_name, schema_name: fkd.pk_schema_name, db_name: fkd.pk_database_name})-[:CONTAINS]->(col1:Column{name: fkd.pk_column_name})
+               MATCH (t2:Table{name: fkd.fk_table_name, schema_name: fkd.fk_schema_name, db_name: fkd.fk_database_name})-[:CONTAINS]->(col2:Column{name: fkd.fk_column_name})
+               MERGE (col1)-[:FOREIGN_KEY {last_seen: $last_seen}]->(col2)"""
     conn.query_write(
         query=query,
         parameters={
@@ -191,7 +191,7 @@ def add_fks(fks_df, last_seen):
 
 
 def reset_pks():
-    query = """MATCH (t:table)
+    query = """MATCH (t:Table)
                SET t.pk = NULL"""
     conn.query_write(query=query, parameters={})
 
@@ -199,7 +199,7 @@ def reset_pks():
 def add_pks(pks_df):
     # database_name	schema_name	table_name	column_name
     query = """UNWIND $pks_dict as pkd
-               MATCH (t:table{name: pkd.table_name, schema_name: pkd.schema_name, db_name: pkd.database_name})-[:schema]->(col:column{name: pkd.column_name})
+               MATCH (t:Table{name: pkd.table_name, schema_name: pkd.schema_name, db_name: pkd.database_name})-[:CONTAINS]->(col:Column{name: pkd.column_name})
                SET t.pk = CASE WHEN t.pk is NULL THEN [col.name] ELSE t.pk + [col.name] END"""
     conn.query_write(
         query=query,
@@ -228,7 +228,7 @@ def merge_schema_edges(edges, from_label, to_label):
                             UNWIND $edges as edge
                             MATCH (v:{from_label} {{id:edge.vid}})
                             MATCH (u:{to_label} {{id:edge.uid}})
-                            CALL apoc.merge.relationship(v, "schema", {{}}, edge.props, u, {{}})
+                            CALL apoc.merge.relationship(v, "CONTAINS", {{}}, edge.props, u, {{}})
                             YIELD rel RETURN rel
                         """
     conn.query_write(

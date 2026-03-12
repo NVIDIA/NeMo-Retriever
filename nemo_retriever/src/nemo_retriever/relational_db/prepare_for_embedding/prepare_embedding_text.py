@@ -8,8 +8,8 @@ from nemo_retriever.relational_db.neo4j_connection import get_neo4j_conn
 def query_neo4j_tables_for_embedding() -> List[dict]:
     """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
     neo4j_conn = get_neo4j_conn()
-    query = """MATCH (d:db)-[:schema]->(s:schema)-[:schema]->(t:table)
-               MATCH (t)-[:schema]->(c:column)
+    query = """MATCH (d:Db)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)
+               MATCH (t)-[:CONTAINS]->(c:Column)
                WITH d, s, t, collect("{name: " + c.name +", data_type: " + c.data_type + ", description: " + coalesce(c.description, 'null') +"}") as columns
                RETURN collect({text: "db_name: " + d.name + ", schema_name: " + s.name + ", table_name: " + t.name +
                ", table_description: " + coalesce(t.description, 'null') + ", columns: " + apoc.text.join(columns, ' '),

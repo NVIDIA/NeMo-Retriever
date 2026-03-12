@@ -18,8 +18,8 @@ conn = get_neo4j_conn()
 def db_exists(db_node):
     db_name = db_node.get_name()
     query = """
-    MATCH (n:db{name: $db_name})
-    OPTIONAL MATCH (n)-[r]-(v) WHERE NOT v:connection
+    MATCH (n:Db{name: $db_name})
+    OPTIONAL MATCH (n)-[r]-(v) WHERE NOT v:Connection
     RETURN n.id AS id, count(r) AS nbrs
     """
     result_data = conn.query_read_only(
@@ -48,7 +48,7 @@ def update_node_property(label, node_id, update_properties):
 
 
 def delete_schema(schema_node_id, deleted_time=datetime.now()):
-    query = """MATCH (n:schema {id: $schema_node_id})-[:schema]->(t:table)-[:schema]->(c:column)
+    query = """MATCH (n:Schema {id: $schema_node_id})-[:CONTAINS]->(t:Table)-[:CONTAINS]->(c:Column)
                SET n.deleted = True
                SET n.deleted_time = $deleted_time
                SET t.deleted = True
@@ -89,7 +89,7 @@ def add_schemas_edge_batch(edges, created):
             yield node as v2
             set v2.created = case when coalesce(v2.deleted, false) = false then coalesce(v2.created, $created) else $created end
             set v2.deleted = false
-            MERGE (v1)-[r:schema]->(v2)
+            MERGE (v1)-[r:CONTAINS]->(v2)
             SET r = e.optional_edge_props
             """
 
@@ -389,15 +389,15 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
 
 def get_tables_columns(db_id, schema):
     if db_id is None:
-        query = """MATCH(db:db)-[:schema]->(s:schema{name:$schema})-[:schema]->
-                    (t:table)-[:schema]->(c:column)
+        query = """MATCH(db:Db)-[:CONTAINS]->(s:Schema{name:$schema})-[:CONTAINS]->
+                    (t:Table)-[:CONTAINS]->(c:Column)
                     WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and
                         coalesce(c.deleted, false) = false 
                     RETURN t.name as table_name, c.name as col_name 
                 """
     else:
-        query = """MATCH(db:db{id:$db_id})-[:schema]->(s:schema{name:$schema})-[:schema]->
-                    (t:table)-[:schema]->(c:column)
+        query = """MATCH(db:Db{id:$db_id})-[:CONTAINS]->(s:Schema{name:$schema})-[:CONTAINS]->
+                    (t:Table)-[:CONTAINS]->(c:Column)
                     WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and
                         coalesce(c.deleted, false) = false 
                     RETURN t.name as table_name, c.name as col_name 
@@ -416,7 +416,7 @@ def get_tables_columns(db_id, schema):
 
 
 def delete_table(table_id, deleted_time=datetime.now()):
-    query = """ MATCH (n:table {id: $table_id})-[:schema]->(c:column)
+    query = """ MATCH (n:Table {id: $table_id})-[:CONTAINS]->(c:Column)
                 SET n.deleted = True
                 SET n.deleted_time = $deleted_time
                 SET c.deleted = True
@@ -465,7 +465,7 @@ def update_properties_in_graph(item_id, node_label, new_parameters):
 
 def delete_columns_batch(column_ids, deleted_time=datetime.now()):
     query = """UNWIND $column_ids as column_id
-               MATCH (c:column {id: column_id}) 
+               MATCH (c:Column {id: column_id}) 
                SET c.deleted = True 
                SET c.deleted_time = $deleted_time
             """
@@ -479,7 +479,7 @@ def delete_columns_batch(column_ids, deleted_time=datetime.now()):
 
 
 def delete_column(column_id, deleted_time=datetime.now()):
-    query = """MATCH (c:column {id: $column_id}) 
+    query = """MATCH (c:Column {id: $column_id}) 
                SET c.deleted = True 
                SET c.deleted_time = $deleted_time
             """

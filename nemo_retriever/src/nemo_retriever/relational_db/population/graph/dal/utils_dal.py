@@ -196,8 +196,8 @@ def get_node_parent_owner_by_id(node_id, label: str = None):
             'match(n)<-[:term_of]-(bt:term)
             return bt.owner_id as owner_id',
 
-            n:column,
-            'match(n)<-[:schema]-(t:table)
+            n:Column,
+            'match(n)<-[:CONTAINS]-(t:Table)
             return t.owner_id as owner_id',
 
             n:field,

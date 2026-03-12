@@ -1,17 +1,17 @@
 class Labels:
-    COMMAND = "command"
-    OPERATOR = "operator"
-    FUNCTION = "function"
-    CONSTANT = "constant"
-    ALIAS = "alias"
-    SQL = "sql"
-    COLUMN = "column"
-    TEMP_COLUMN = "temp_column"
-    TABLE = "table"
-    TEMP_TABLE = "temp_table"
-    SCHEMA = "schema"
-    TEMP_SCHEMA = "temp_schema"
-    DB = "db"
+    COMMAND = "Command"
+    OPERATOR = "Operator"
+    FUNCTION = "Function"
+    CONSTANT = "Constant"
+    ALIAS = "Alias"
+    SQL = "Sql"
+    COLUMN = "Column"
+    TEMP_COLUMN = "TempColumn"
+    TABLE = "Table"
+    TEMP_TABLE = "TempTable"
+    SCHEMA = "Schema"
+    TEMP_SCHEMA = "TempSchema"
+    DB = "Db"
    
 
     LIST_OF_ALL = [
@@ -49,11 +49,7 @@ class Props:
 entities_without_owners = []
 
 # Relationship types for owner traversal (used by get_node_parent_owner_by_id).
-data_relationships = ["schema"]
-
-
-
-
+data_relationships = ["CONTAINS"]
 
 
 def label_to_type(label: str) -> str:
