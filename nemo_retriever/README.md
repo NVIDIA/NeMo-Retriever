@@ -54,7 +54,7 @@ This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library 
 
 ## Run the pipeline
 
-The [test PDF]((../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
+The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
 > **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
 
