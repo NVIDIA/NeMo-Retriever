@@ -69,7 +69,8 @@ ingestor = (
   ingestor.files(documents)
   .extract()
   .embed()
-  .vdb_upload()                                                                                                                                                                                         )
+  .vdb_upload()
+)
 
 # results are returned as a ray dataset and inspectable as chunks
 ray_dataset = ingestor.ingest()
@@ -163,11 +164,43 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 5. Ingest other types of content:
 
-```python
+For PowerPoint and Docx files, ensure libeoffice is installed by your system's package manager.
 
+For example, with apt-get on Ubuntu:
+```bash
+sudo apt install -y libreoffice
 ```
 
-Audio and Video
+```python
+# docx and pptx files
+documents = [str(Path(f"../data/*{ext}")) for ext in [".pptx", ".docx"]]
+ingestor = (
+  ingestor.files(documents)
+  .extract()
+)
+
+# html and text files
+documents = [str(Path(f"../data/*{ext}")) for ext in [".txt", ".html"]]
+ingestor = (
+  ingestor.files(documents)
+  .extract()
+  .split(max_tokens=5) #1024 by default, set low here to demonstrate chunking
+)
+
+```
+For audio and video files, ensure ffmpeg is installed by your system's package manager.
+
+For example, with apt-get on Ubuntu:
+```bash
+sudo apt install -y ffmpeg
+```
+
+```python
+ingestor = create_ingestor(run_mode="inprocess")
+ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
+
+chunks = ingestor.ingest()
+```
 
 7. Explore alternate pipeline configuration options:
 VL Embedder
