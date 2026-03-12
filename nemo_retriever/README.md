@@ -56,15 +56,60 @@ This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library 
 
 3. Run the pipeline on PDFs
 
-In this procedure, you run the end‑to‑end NeMo Retriever Library pipeline to ingest a collection of test PDFs.
+In this procedure, you run the end‑to‑end NeMo Retriever Library pipeline to ingest a collection of test PDFs:
+```python
+from nemo_retriever import create_ingestor
+from pathlib import Path
 
-Run the batch pipeline script and point it at the directory that contains your PDFs using the following command.
-
-```bash
-python test_examples/default_pipeline.py
+documents = [str(Path("../data/test.pdf"))]
+ingestor = create_ingestor(run_mode="batch")
+ingestor = (
+  ingestor.files(documents)                                                                                                                                                                               .extract()                                                                                                                                                                                              .embed()                                                                                                                                                                                                .vdb_upload()                                                                                                                                                                                         )
+ray_dataset = ingestor.ingest()
+chunks = ray_dataset.get_dataset().take_all()
 ```
 
+You can inspect how recall accuracy optimized text chunks for various content types were extracted into text representations:
+```
+# page 1 raw text:
+>>> chunks[0]["text"]
+'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose. It contains some \r\nheadings and some placeholder text to fill the space. The text is not important and contains \r\nno real value, but it is useful for testing. Below, we will have some simple tables and charts \r\nthat we can use to confirm Ingest is working as expected.\r\nTable 1\r\nThis table describes some animals, and some activities they might be doing in specific \r\nlocations.\r\nAnimal Activity Place\r\nGira@e Driving a car At the beach\r\nLion Putting on sunscreen At the park\r\nCat Jumping onto a laptop In a home o@ice\r\nDog Chasing a squirrel In the front yard\r\nChart 1\r\nThis chart shows some gadgets, and some very fictitious costs.'
+
+# a table from the first page
+>>> chunks[1]["text"]
+'| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |'
+
+# a chart from the first page
+>>> chunks[2]["text"]
+'Chart 1\nThis chart shows some gadgets, and some very fictitious costs.\nGadgets and their cost\n$160.00\n$140.00\n$120.00\n$100.00\nDollars\n$80.00\n$60.00\n$40.00\n$20.00\n$-\nPowerdrill\nBluetooth speaker\nMinifridge\nPremium desk fan\nHammer\nCost'
+```
+
+Since the ingestion job automatically populated a lancedb table with all these chunks, you can use queries to retrieve semantically relevant chunks for feeding directly into an LLM:
+
 4. Run a recall query and generate an answer using an LLM
+
+```
+from nemo_retriever.retriever import Retriever
+
+# uses 
+retriever = Retriever()
+
+hits = retriever.query("What animal is likely responsible for the typos in my document?")
+```
+```
+# retrieved text from the first page
+>>> hits[0]
+{'text': 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose. It contains some \r\nheadings and some placeholder text to fill the space. The text is not important and contains \r\nno real value, but it is useful for testing. Below, we will have some simple tables and charts \r\nthat we can use to confirm Ingest is working as expected.\r\nTable 1\r\nThis table describes some animals, and some activities they might be doing in specific \r\nlocations.\r\nAnimal Activity Place\r\nGira@e Driving a car At the beach\r\nLion Putting on sunscreen At the park\r\nCat Jumping onto a laptop In a home o@ice\r\nDog Chasing a squirrel In the front yard\r\nChart 1\r\nThis chart shows some gadgets, and some very fictitious costs.', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.5822279453277588}
+
+# retrieved text of the table from the first page
+>>> hits[1]
+{'text': '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.614684820175171}
+```
+
+The above retrieval results are often feedable directly to an LLM for answer generation:
+```
+
+```
 
 5. Ingest other types of content:
 
