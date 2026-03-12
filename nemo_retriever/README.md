@@ -10,8 +10,6 @@ You’ll set up a CUDA 13–compatible environment, install the library and its 
 
 ## Prerequisites
 
-> **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
-
 Before starting, make sure your system meets the following requirements:
 
 - The host is running CUDA 13.x so that `libcudart.so.13` is available.
@@ -54,9 +52,11 @@ uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu13
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
 
-3. Run the pipeline on the [multimodal_test PDF](../data/multimodal_test.pdf), which contains text, tables, charts, and images.
+3. Run the pipeline on the [multimodal_test PDF](../data/multimodal_test.pdf)
 
-Note: The examples below are tested with [example files from this repositry](../data/).
+This test PDF contains text, tables, charts, and images. Additional test data resides [here](../data/).
+
+> **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
 
 In this procedure, you run the end‑to‑end NeMo Retriever Library pipeline to ingest a collection of test PDFs:
 ```python
