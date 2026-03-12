@@ -175,7 +175,7 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 ### Ingest other types of content:
 
-For PowerPoint and Docx files, ensure libeoffice is installed by your system's package manager.
+For PowerPoint and Docx files, ensure libeoffice is installed by your system's package manager. This is required to make their pages renderable as images for our [page-elements content classifier](https://huggingface.co/nvidia/nemotron-page-elements-v3).
 
 For example, with apt-get on Ubuntu:
 ```bash
@@ -193,7 +193,15 @@ ingestor = (
   ingestor.files(documents + images)
   .extract()
 )
+```
 
+*Note:* the `split()` task uses a tokenizer to split texts by a max_token length
+
+PDF text is split at the page level.
+
+HTML and .txt files have no natural page delimiters, so they almost always need to be paired with the `.split()` task.
+
+```python
 # html and text files - include a split task to prevent texts from exceeding the embedder's max sequence length
 documents = [str(Path(f"../data/*{ext}")) for ext in [".txt", ".html"]]
 ingestor = (
@@ -202,6 +210,7 @@ ingestor = (
   .split(max_tokens=5) #1024 by default, set low here to demonstrate chunking
 )
 ```
+
 For audio and video files, ensure ffmpeg is installed by your system's package manager.
 
 For example, with apt-get on Ubuntu:
