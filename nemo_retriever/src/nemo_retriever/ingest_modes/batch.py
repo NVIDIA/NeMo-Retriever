@@ -295,6 +295,9 @@ class BatchIngestor(Ingestor):
         This does not run extraction yet; it records configuration so the batch
         executor can build a concrete pipeline later.
 
+        If all input files have a ``.txt`` extension, the pipeline automatically
+        delegates to :meth:`extract_txt` with default :class:`TextChunkParams`.
+
         Resource-tuning kwargs (auto-detected from available resources if omitted):
 
         - ``pdf_split_batch_size``: Batch size for PDF split stage (default 1).
@@ -307,6 +310,13 @@ class BatchIngestor(Ingestor):
         - ``page_elements_cpus_per_actor``: CPUs reserved per page-elements actor (default 1).
         - ``ocr_cpus_per_actor``: CPUs reserved per OCR actor (default 1).
         """
+
+        if self._input_documents and all(f.lower().endswith(".txt") for f in self._input_documents):
+            txt_params = TextChunkParams(
+                max_tokens=kwargs.pop("max_tokens", 1024),
+                overlap_tokens=kwargs.pop("overlap_tokens", 0),
+            )
+            return self.extract_txt(params=txt_params)
 
         resolved = _coerce_params(params, ExtractParams, kwargs)
         if (
@@ -345,7 +355,8 @@ class BatchIngestor(Ingestor):
         # 1700x2200) gives enough detail while reducing extraction time and
         # memory usage by ~30-40% vs 300 DPI.
         kwargs.setdefault("dpi", 200)
-
+        kwargs.setdefault("image_format", "jpeg")
+        kwargs.setdefault("jpeg_quality", 100)
         self._pipeline_type = "pdf"
         self._tasks.append(("extract", dict(kwargs)))
 
@@ -656,6 +667,27 @@ class BatchIngestor(Ingestor):
         # Downstream detection stages (page elements, OCR, table/chart/infographic).
         self._append_detection_stages(kwargs)
 
+        return self
+
+    def split(self, params: TextChunkParams | None = None, **kwargs: Any) -> "BatchIngestor":
+        """
+        Re-chunk the ``text`` column by token count (post-extraction transform).
+
+        Adds a ``map_batches(TextChunkActor, ...)`` stage to the Ray Dataset so
+        already-extracted text is re-chunked before embedding.
+        """
+        from nemo_retriever.txt.ray_data import TextChunkActor
+
+        resolved = _coerce_params(params, TextChunkParams, kwargs)
+        self._tasks.append(("split", resolved.model_dump(mode="python")))
+
+        self._rd_dataset = self._rd_dataset.map_batches(
+            TextChunkActor,
+            batch_size=4,
+            batch_format="pandas",
+            num_cpus=1,
+            fn_constructor_kwargs={"params": resolved},
+        )
         return self
 
     def extract_txt(self, params: TextChunkParams | None = None, **kwargs: Any) -> "BatchIngestor":

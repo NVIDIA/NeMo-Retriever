@@ -1001,7 +1001,12 @@ class InProcessIngestor(Ingestor):
         # NOTE: `kwargs` passed to `.extract()` are intended primarily for PDF extraction
         # (e.g. `extract_text`, `dpi`, etc). Downstream model stages do NOT necessarily
         # accept the same keyword arguments. Keep per-stage kwargs isolated.
-
+        if self._input_documents and all(f.lower().endswith(".txt") for f in self._input_documents):
+            txt_params = TextChunkParams()
+            return self.extract_txt(params=txt_params)
+        if self._input_documents and all(f.lower().endswith(".html") for f in self._input_documents):
+            html_params = HtmlChunkParams()
+            return self.extract_html(params=html_params)
         resolved = _coerce_params(params, ExtractParams, kwargs)
         if (
             any(
@@ -1267,6 +1272,21 @@ class InProcessIngestor(Ingestor):
         self._append_detection_tasks(kwargs, use_nemotron_parse_only=use_nemotron_parse_only)
         return self
 
+    def split(self, params: TextChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
+        """
+        Re-chunk the ``text`` column by token count (post-extraction transform).
+
+        Appends :func:`~nemo_retriever.txt.split.split_df` as a GPU-category
+        task so it runs in sequence after extraction and before embedding.
+        """
+        from nemo_retriever.txt.split import split_df
+
+        resolved = _coerce_params(params, TextChunkParams, kwargs)
+        split_kwargs = resolved.model_dump(mode="python")
+        split_kwargs.pop("encoding", None)
+        self._tasks.append((split_df, split_kwargs))
+        return self
+
     def extract_txt(self, params: TextChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
         """
         Configure txt ingestion: tokenizer-based chunking only (no PDF extraction).
@@ -1274,9 +1294,13 @@ class InProcessIngestor(Ingestor):
         Use with .files("*.txt").extract_txt(...).embed().vdb_upload().ingest().
         Do not call .extract() when using .extract_txt().
         """
+        from nemo_retriever.txt.ray_data import TxtSplitActor
+
         self._pipeline_type = "txt"
         resolved = _coerce_params(params, TextChunkParams, kwargs)
         self._extract_txt_kwargs = resolved.model_dump(mode="python")
+        text_split = TxtSplitActor(params=TextChunkParams(**self._extract_txt_kwargs))
+        self._tasks.append((text_split, {}))
         return self
 
     def extract_html(self, params: HtmlChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1286,9 +1310,15 @@ class InProcessIngestor(Ingestor):
         Use with .files("*.html").extract_html(...).embed().vdb_upload().ingest().
         Do not call .extract() when using .extract_html().
         """
+        from nemo_retriever.html.ray_data import HtmlSplitActor
+
         self._pipeline_type = "html"
         resolved = _coerce_params(params, HtmlChunkParams, kwargs)
         self._extract_html_kwargs = resolved.model_dump(mode="python")
+        html_split = HtmlSplitActor(
+            params=HtmlChunkParams(**self._extract_html_kwargs),
+        )
+        self._tasks.append((html_split, {}))
         return self
 
     def extract_audio(
