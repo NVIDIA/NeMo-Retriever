@@ -5,41 +5,16 @@ import pandas as pd
 
 from nemo_retriever.relational_db.population.graph.model.reserved_words import Labels
 from nemo_retriever.relational_db.neo4j_connection import get_neo4j_conn
-from nemo_retriever.relational_db.infra.PostgresConnection import get_postgres_conn
-from nemo_retriever.relational_db.ai_services.config import (
-    get_embeddings_client,
-    get_azure_embeddings_client,
-)
-from nemo_retriever.relational_db.features import Feature, is_feature_enabled
-from langchain_community.vectorstores import PGVector
-from langchain_core.documents import Document
 
 
 # Keep backward compatibility
 # azure_embeddings = get_azure_embeddings_client()
 
-# Lazy so importing this module does not block on Neo4j connection (avoids "stuck" import).
-_conn = None
-
-def _get_conn():
-    global _conn
-    if _conn is None:
-        _conn = get_neo4j_conn()
-    return _conn
-
-
-# Backward compatibility: code that used `conn` still works (e.g. query_neo4j_tables_for_embedding).
-# We assign on first use so the module can load without connecting to Neo4j.
-def __getattr__(name: str):
-    if name == "conn":
-        return _get_conn()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 
-
-def get_conn_credentials(account_id):
-    conn_creds = conn.get_connection()
+def get_conn_credentials():
+    conn_creds = get_neo4j_conn().get_connection()
     url = conn_creds._Neo4jConnection__uri
     username = conn_creds._Neo4jConnection__username
     password = conn_creds._Neo4jConnection__password
@@ -48,28 +23,27 @@ def get_conn_credentials(account_id):
 
 
 
-def generate_embeddings_for_node_names_and_descriptions(account_id, list_of_labels):
-    embeddings = get_embeddings(account_id)
+def generate_embeddings_for_node_names_and_descriptions(list_of_labels):
+    neo4j_conn = get_neo4j_conn()
+    embeddings = get_embeddings()
     if embeddings is None:
         return
 
-    account_simple_str = account_id.replace("-", "_")
-    collection_name = f"{account_simple_str}_nodes_vector_store"
     docs = []
     for label in list_of_labels:
         if label == Labels.ATTR:
-            query = """MATCH (term:term {account_id:$account_id})-[:term_of]->(attr:attribute {account_id:$account_id} WHERE coalesce(attr.embedded, FALSE)=FALSE)
-                       WITH term, attr, CASE WHEN attr.description is null THEN "term_description: " + term.description ELSE attr.description END as description  
+            query = """MATCH (term:term)-[:term_of]->(attr:attribute WHERE coalesce(attr.embedded, FALSE)=FALSE)
+                       WITH term, attr, CASE WHEN attr.description is null THEN "term_description: " + term.description ELSE attr.description END as description
                        SET attr.embedded = TRUE
-                       RETURN collect({text: "term_name: " + term.name + ", attribute_name: " + attr.name + ", description: " + coalesce(description, 'null'), 
-                       name: attr.name, label: labels(attr)[0], id: attr.id, account_id: $account_id}) AS docs
+                       RETURN collect({text: "term_name: " + term.name + ", attribute_name: " + attr.name + ", description: " + coalesce(description, 'null'),
+                       name: attr.name, label: labels(attr)[0], id: attr.id}) AS docs
                     """
         else:
-            query = f"""MATCH (n:{label} {{account_id:$account_id}} WHERE coalesce(n.recommended, FALSE)=FALSE AND coalesce(n.embedded, FALSE)=FALSE)
+            query = f"""MATCH (n:{label} WHERE coalesce(n.recommended, FALSE)=FALSE AND coalesce(n.embedded, FALSE)=FALSE)
                         SET n.embedded = TRUE
-                        RETURN collect({{text: "name: " + n.name + ", description: " + coalesce(n.description, 'null'), name: n.name, label: labels(n)[0], id: n.id, account_id: $account_id}}) AS docs
+                        RETURN collect({{text: "name: " + n.name + ", description: " + coalesce(n.description, 'null'), name: n.name, label: labels(n)[0], id: n.id}}) AS docs
                     """
-        result = conn.query_write(query, parameters={"account_id": account_id})
+        result = neo4j_conn.query_write(query, parameters={})
         if len(result) > 0:
             result = result[0]["docs"]
             docs.extend(
@@ -79,7 +53,6 @@ def generate_embeddings_for_node_names_and_descriptions(account_id, list_of_labe
                         metadata={
                             "id": item["id"],
                             "label": item["label"],
-                            "account_id": item["account_id"],
                             "name": item["name"],
                         },
                     )
@@ -90,7 +63,6 @@ def generate_embeddings_for_node_names_and_descriptions(account_id, list_of_labe
 
 
 def generate_embeddings_for_tables_and_columns(
-    account_id: str,
     *,
     return_dataframe_for_embed: bool = False,
 ):
@@ -99,35 +71,33 @@ def generate_embeddings_for_tables_and_columns(
     either LangChain Document list (default) or a DataFrame ready for nemo_retriever
     .embed() when return_dataframe_for_embed=True.
 
-    When return_dataframe_for_embed=False: requires get_embeddings(account_id);
+    When return_dataframe_for_embed=False: requires get_embeddings();
     returns list of Document or None (if no embeddings client).
     When return_dataframe_for_embed=True: does not use get_embeddings; returns
     pd.DataFrame with columns text, path, page_number, metadata for feeding into
     embed_neo4j_tables_dataframe or nemo_retriever's embed pipeline.
     """
+    neo4j_conn = get_neo4j_conn()
     if not return_dataframe_for_embed:
-        embeddings = get_embeddings(account_id)
+        embeddings = get_embeddings()
         if embeddings is None:
             return None
 
-    account_simple_str = account_id.replace("-", "_")
-    collection_name = f"{account_simple_str}_tables_info_vector_store"
-
-    query = """MATCH (d:db{account_id:$account_id})-[:schema]->(s:schema {account_id:$account_id})-[:schema]->(t:table {account_id:$account_id} WHERE coalesce(t.info_embedded, FALSE)=FALSE)-[:schema]->(c:column)
+    query = """MATCH (d:db)-[:schema]->(s:schema)-[:schema]->(t:table WHERE coalesce(t.info_embedded, FALSE)=FALSE)-[:schema]->(c:column)
                WITH d, s, t, collect("{name: " + c.name +", data_type: " + c.data_type + ", description: " + coalesce(c.description, 'null') +"}") as columns
                SET t.info_embedded = TRUE
                RETURN collect({text: "db_name: " + d.name + ", schema_name: " + s.name + ", table_name: " + t.name +
                ", table_description: " + coalesce(t.description, 'null') + ", columns: " + apoc.text.join(columns, ' '),
-               name: t.name, label: labels(t)[0], id: t.id, account_id: $account_id}) as docs
+               name: t.name, label: labels(t)[0], id: t.id}) as docs
             """
-    result = conn.query_write(query, parameters={"account_id": account_id})
+    result = neo4j_conn.query_write(query, parameters={})
     if len(result) == 0:
         items: List[dict] = []
     else:
         items = result[0].get("docs") or []
 
     if return_dataframe_for_embed:
-        return neo4j_tables_result_to_embedding_dataframe(items, account_id)
+        return neo4j_tables_result_to_embedding_dataframe(items)
 
     docs = [
         Document(
@@ -135,7 +105,6 @@ def generate_embeddings_for_tables_and_columns(
             metadata={
                 "id": item["id"],
                 "label": item["label"],
-                "account_id": item["account_id"],
                 "name": item["name"],
             },
         )
@@ -147,17 +116,18 @@ def generate_embeddings_for_tables_and_columns(
 
 
 
-def query_neo4j_tables_for_embedding(account_id: str) -> List[dict]:
+def query_neo4j_tables_for_embedding() -> List[dict]:
     """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
-    query = """MATCH (d:db{account_id:$account_id})-[:schema]->(s:schema {account_id:$account_id})-[:schema]->(t:table {account_id:$account_id}) WHERE coalesce(t.info_embedded, FALSE)=FALSE
+    neo4j_conn = get_neo4j_conn()
+    query = """MATCH (d:db)-[:schema]->(s:schema)-[:schema]->(t:table) WHERE coalesce(t.info_embedded, FALSE)=FALSE
                MATCH (t)-[:schema]->(c:column)
                WITH d, s, t, collect("{name: " + c.name +", data_type: " + c.data_type + ", description: " + coalesce(c.description, 'null') +"}") as columns
                SET t.info_embedded = TRUE
                RETURN collect({text: "db_name: " + d.name + ", schema_name: " + s.name + ", table_name: " + t.name +
                ", table_description: " + coalesce(t.description, 'null') + ", columns: " + apoc.text.join(columns, ' '),
-               name: t.name, label: labels(t)[0], id: t.id, account_id: $account_id}) as docs
+               name: t.name, label: labels(t)[0], id: t.id}) as docs
             """
-    result = conn.query_write(query, parameters={"account_id": account_id})
+    result = neo4j_conn.query_write(query, parameters={})
     if not result:
         return []
     return result[0].get("docs") or []
@@ -165,22 +135,23 @@ def query_neo4j_tables_for_embedding(account_id: str) -> List[dict]:
 
 def neo4j_tables_result_to_embedding_dataframe(
     neo4j_docs: List[dict],
-    account_id: str,
     *,
     text_key: str = "text",
     id_key: str = "id",
     label_key: str = "label",
     name_key: str = "name",
+    embed_modality: str = "text",
 ) -> pd.DataFrame:
     """
     Build a DataFrame from Neo4j table/column query results for use with
     nemo_retriever's embed_text_main_text_embed (same as InProcessIngestor.embed()).
 
-    Each row has: text, path, page_number, metadata (id, label, account_id, name, source_path).
-    No _embed_modality column: embed will use embed_modality from kwargs (default "text").
+    Each row has: text, _embed_modality, path, page_number, metadata
+    (id, label, name, source_path) — matching the format produced by the
+    unstructured pipeline so run_pipeline_tasks_on_df works without changes.
     """
     if not neo4j_docs:
-        return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
+        return pd.DataFrame(columns=["text", "_embed_modality", "path", "page_number", "metadata"])
 
     rows = []
     for item in neo4j_docs:
@@ -188,15 +159,15 @@ def neo4j_tables_result_to_embedding_dataframe(
         node_id = item.get(id_key)
         label = item.get(label_key, "")
         name = item.get(name_key, "")
-        path = f"neo4j:{account_id}:{node_id}" if node_id is not None else f"neo4j:{account_id}"
+        path = f"neo4j:{node_id}" if node_id is not None else "neo4j:unknown"
         rows.append({
             "text": text,
+            "_embed_modality": embed_modality,
             "path": path,
             "page_number": -1,
             "metadata": {
                 "id": node_id,
                 "label": label,
-                "account_id": item.get("account_id", account_id),
                 "name": name,
                 "source_path": path,
             },
@@ -289,7 +260,7 @@ def embed_neo4j_tables_with_retriever(
 
     Example:
         from nemo_retriever.params import EmbedParams
-        df = generate_embeddings_for_tables_and_columns(account_id, return_dataframe_for_embed=True)
+        df = generate_embeddings_for_tables_and_columns(return_dataframe_for_embed=True)
         df_embedded = embed_neo4j_tables_with_retriever(
             df, EmbedParams(embedding_endpoint="http://localhost:8012/v1")
         )
@@ -303,4 +274,12 @@ def embed_neo4j_tables_with_retriever(
     return embed_text_main_text_embed(df, **embed_kwargs)
 
 
+def fetch_relational_db_for_embedding() -> List[dict]:
+    """Collect all docs to embed from the relational DB graph.
 
+    Each source function returns a list of doc dicts; results are unioned here.
+    Add future fetch calls below and extend `all_docs` accordingly.
+    """
+    all_docs: List[dict] = []
+    all_docs.extend(query_neo4j_tables_for_embedding())
+    return all_docs

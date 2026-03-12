@@ -1908,10 +1908,19 @@ class InProcessIngestor(Ingestor):
     ) -> "pd.DataFrame | None":
         """Step 6 — Fetch entity descriptions from Neo4j into a DataFrame.
 
-        Returns a DataFrame with columns: text, _embed_modality, metadata.
-        The result is consumed directly by the embed step in ingest_structured().
+        Returns a DataFrame with columns: text, _embed_modality, path,
+        page_number, metadata — matching the unstructured pipeline format so
+        run_pipeline_tasks_on_df (embed + vdb_upload) works unchanged.
         """
-        pass
+        from ..relational_db.prepare_for_embedding.prepare_embedding_text import (
+            fetch_relational_db_for_embedding,
+            neo4j_tables_result_to_embedding_dataframe,
+        )
+
+        docs = fetch_relational_db_for_embedding()
+        if not docs:
+            return None
+        return neo4j_tables_result_to_embedding_dataframe(docs)
 
     def ingest_structured(
         self,
