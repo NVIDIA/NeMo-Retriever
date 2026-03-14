@@ -261,6 +261,32 @@ ray_dataset = ingestor.ingest()
 chunks = ray_dataset.get_dataset().take_all()
 ```
 
+## Run without a local GPU, on build.nvidia.com or self hosted NIMs
+
+For build.nvidia.com hosted inference, make sure you have NVIDIA_API_KEY set as an environment variable. 
+
+```python
+ingestor = (
+  ingestor.files(documents)
+  .extract(
+    # for self hosted NIMs, your URLs will depend on your NIM container DNS settings
+    page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
+    graphic_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1",
+    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
+    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
+  )
+  .embed(
+    embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",
+    model_name="nvidia/llama-nemotron-embed-1b-v2",
+    embed_modality="text",
+  )
+  .vdb_upload()
+)
+
+ray_dataset = ingestor.ingest()
+chunks = ray_dataset.get_dataset().take_all()
+```
+
 ## Ray cluster setup
 
 NeMo Retriever Library uses Ray Data for distributed ingestion and benchmarking. [NeMo Ray run guide](https://docs.nvidia.com/nemo/run/latest/guides/ray.html)
