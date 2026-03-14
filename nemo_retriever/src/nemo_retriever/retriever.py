@@ -56,8 +56,7 @@ class Retriever:
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
     reranker_model_name: Optional[str] = "nvidia/llama-nemotron-rerank-1b-v2"
-    """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2').
-    Set to None to skip reranking (default)."""
+    """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2')."""
     reranker_endpoint: Optional[str] = None
     """Base URL of a vLLM / NIM /rerank endpoint.  Takes priority over local model."""
     reranker_api_key: str = ""
@@ -190,7 +189,7 @@ class Retriever:
 
             cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
             self._reranker_model = NemotronRerankV2(
-                model_name=self.reranker_model_name if self.reranker else None,
+                model_name=self.reranker_model_name,
                 device=self.local_hf_device,
                 hf_cache_dir=cache_dir,
             )
@@ -215,7 +214,7 @@ class Retriever:
                     hits,
                     model=model,
                     invoke_url=reranker_endpoint,
-                    model_name=str(self.reranker),
+                    model_name=str(self.reranker_model_name),
                     api_key=(self.reranker_api_key or "").strip(),
                     max_length=int(self.reranker_max_length),
                     batch_size=int(self.reranker_batch_size),
@@ -288,9 +287,6 @@ class Retriever:
         )
 
         if self.reranker:
-            assert self.top_k * self.reranker_refine_factor == len(
-                results[0]
-            ), "top_k must be at least 1/4 of the number of retrieved hits for reranking to work properly."
             results = self._rerank_results(query_texts, results)
 
         return results
