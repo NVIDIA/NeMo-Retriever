@@ -41,7 +41,7 @@ The following diagram shows the NeMo Retriever Library pipeline.
 
 ## What is NeMo Retriever Library?
 
-The NeMo Retriever Library is a library and microservice framework designed to perform the following functions::
+The NeMo Retriever Library is a library and microservice framework designed to perform the following functions:
 
 - Accept a job specification that contains a document payload and a set of ingestion tasks to perform on that payload.
 - Store the result of each job to retrieve later. The result is a dictionary that contains a list of metadata that describes the objects extracted from the base document, and processing annotations and timing/trace data.
