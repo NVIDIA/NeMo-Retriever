@@ -245,7 +245,27 @@ ensures that no further processing is attempted on a failed message, maintaining
 
 ### Adding a New Stage or Module
 
-#### TODO(Devin): Add details about adding a new stage or module once we have router node functionality in place.
+New stages and modules follow the project's pipeline architecture. At a high level, each stage is a self-contained
+processing unit that receives a `ControlMessage`, performs its work, and returns the modified message. When adding
+a new stage:
+
+1. **Create the module** under `src/nv_ingest/stages/` following the existing directory structure. Your module should
+   mirror the pattern used by existing stages (e.g., `pdf_extractor`, `chart_extractor`).
+
+2. **Use the standard decorators** to integrate with the pipeline:
+   - `@filter_by_task` to ensure the stage only processes messages containing the relevant task type
+   - `@nv_ingest_node_failure_context_manager` to handle errors consistently
+   - `@traceable` for tracing and timing instrumentation
+
+3. **Register the stage** in the pipeline configuration so it can be discovered and wired into the processing graph.
+
+4. **Add unit tests** under `tests/` in a path that mirrors the module location (see
+   [Common Practices for Writing Unit Tests](#common-practices-for-writing-unit-tests) below).
+
+5. **Update documentation** to describe the new stage's purpose, inputs, outputs, and any configuration parameters.
+
+> **Note:** The router node functionality is still being finalized. This section will be expanded with more details
+> on dynamic routing and stage registration once that work is complete. See [#16](https://github.com/NVIDIA/nv-ingest/issues/16) for tracking.
 
 ### Common Practices for Writing Unit Tests
 
