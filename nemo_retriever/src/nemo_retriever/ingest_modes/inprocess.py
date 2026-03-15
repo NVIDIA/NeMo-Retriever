@@ -1939,7 +1939,7 @@ class InProcessIngestor(Ingestor):
         5. generate_structured_descriptions
         6. fetch_structured  → DataFrame
         7. embed             ← receives the DataFrame from step 6
-        8. vdb_upload        ← receives the embedded DataFrame from step 7
+        8. vdb_upload        ← receives the embedded DataFrame from step 7 (table "nv-ingest-structured")
         """
         neo4j_conn = get_neo4j_conn()
 
@@ -1952,11 +1952,13 @@ class InProcessIngestor(Ingestor):
         df = self.fetch_structured(neo4j_conn=neo4j_conn)
 
         if df is not None:
-            # Collect the embed + vdb_upload tasks registered by the caller
-            # via the builder chain (e.g. .embed(...).vdb_upload(...)).
             per_doc_tasks, post_tasks = self.get_pipeline_tasks()
-            # Thread the fetched DataFrame through those tasks sequentially:
-            # embed computes vector embeddings, vdb_upload writes them to LanceDB.
+            # Pass structured table name to upload: structured path writes to "nv-ingest-structured".
+            _STRUCTURED_TABLE = "nv-ingest-structured"
+            post_tasks = [
+                (fn, {**kwargs, "table_name": _STRUCTURED_TABLE} if fn is upload_embeddings_to_lancedb_inprocess else kwargs)
+                for fn, kwargs in post_tasks
+            ]
             result, _ = run_pipeline_tasks_on_df(df, per_doc_tasks, post_tasks)
             return result
         return None
