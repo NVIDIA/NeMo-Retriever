@@ -111,7 +111,7 @@ To interact from the host, you'll need a Python environment that has the client 
 ```
 uv venv --python 3.12 nv-ingest-dev
 source nv-ingest-dev/bin/activate
-uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2
+uv pip install nv-ingest==26.3.0 nv-ingest-api==26.3.0 nv-ingest-client==26.3.0
 ```
 
 !!! tip

@@ -30,7 +30,7 @@ Use the following procedure to prepare your environment.
     ```
        uv venv --python 3.12 nvingest && \
          source nvingest/bin/activate && \
-         uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2
+         uv pip install nv-ingest==26.3.0 nv-ingest-api==26.3.0 nv-ingest-client==26.3.0
     ```
 
     By default, the pipeline uses **LanceDB** as the vector database (no extra package required). To use **Milvus** (e.g. milvus-lite) instead, also install `milvus-lite==2.4.12` and pass `milvus_uri="milvus.db"` in `vdb_upload`. For details, see [Data Upload](data-store.md).
