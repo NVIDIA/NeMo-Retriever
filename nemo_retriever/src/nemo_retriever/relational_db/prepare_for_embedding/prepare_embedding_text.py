@@ -10,9 +10,11 @@ def query_neo4j_tables_for_embedding() -> List[dict]:
     neo4j_conn = get_neo4j_conn()
     query = """MATCH (d:Db)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)
                MATCH (t)-[:CONTAINS]->(c:Column)
-               WITH d, s, t, collect("{name: " + c.name +", data_type: " + c.data_type + ", description: " + coalesce(c.description, 'null') +"}") as columns
+               WITH d, s, t, collect("{name: " + c.name + ", data_type: " + c.data_type +
+                 CASE WHEN c.description IS NOT NULL AND trim(c.description) <> '' THEN ", description: " + c.description ELSE "" END + "}") as columns
                RETURN collect({text: "db_name: " + d.name + ", schema_name: " + s.name + ", table_name: " + t.name +
-               ", table_description: " + coalesce(t.description, 'null') + ", columns: " + apoc.text.join(columns, ' '),
+                 CASE WHEN t.description IS NOT NULL AND trim(t.description) <> '' THEN ", table_description: " + t.description ELSE "" END +
+                 ", columns: " + apoc.text.join(columns, ' '),
                name: t.name, label: labels(t)[0], id: t.id}) as docs
             """
     result = neo4j_conn.query_write(query, parameters={})
