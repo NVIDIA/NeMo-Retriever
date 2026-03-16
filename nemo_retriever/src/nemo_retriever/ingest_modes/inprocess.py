@@ -61,7 +61,7 @@ from ..params import HtmlChunkParams
 from ..params import IngestExecuteParams
 from ..params import StructuredDescriptionParams
 from ..params import StructuredExtractParams
-from ..params import StructuredPIIParams
+
 from ..params import StructuredSemanticLayerParams
 from ..params import StructuredUsageWeightsParams
 from ..params import TextChunkParams
@@ -1858,15 +1858,24 @@ class InProcessIngestor(Ingestor):
     # Structured (database) ingestion — placeholder implementations
     # ------------------------------------------------------------------
 
-    def extract_structured(
+    def pull_structured_db_entities(
         self,
         params: StructuredExtractParams | None = None,
+    ) -> dict:
+        """Step 1 — Pull schema entities from the relational DB into a data dict."""
+        from ..relational_db.extract_data import extract_relational_db_data
+
+        return extract_relational_db_data(params=params)
+
+    def store_structured_in_neo4j(
+        self,
+        data: dict,
         neo4j_conn: Any = None,
     ) -> "InProcessIngestor":
-        """Step 1 — Reflect DB schema / parse SQL files → write graph nodes to Neo4j."""
-        from ..relational_db.extract_data import extract_relational_db
+        """Step 2 — Write the extracted data dict as graph nodes into Neo4j."""
+        from ..relational_db.extract_data import store_relational_db_in_neo4j
 
-        extract_relational_db(neo4j_conn=neo4j_conn, params=params)
+        store_relational_db_in_neo4j(data=data, neo4j_conn=neo4j_conn)
         return self
 
     def populate_structured_semantic_layer(
@@ -1875,14 +1884,6 @@ class InProcessIngestor(Ingestor):
         neo4j_conn: Any = None,
     ) -> "InProcessIngestor":
         """Step 2 — Map global business terms/attributes to graph entities."""
-        pass
-
-    def detect_structured_pii(
-        self,
-        params: StructuredPIIParams | None = None,
-        neo4j_conn: Any = None,
-    ) -> "InProcessIngestor":
-        """Step 3 — Tag Column nodes with PII type via regex and optional LLM."""
         pass
 
     def populate_structured_usage_weights(
@@ -1901,7 +1902,7 @@ class InProcessIngestor(Ingestor):
         """Step 5 — LLM-generate natural-language descriptions for all node types."""
         pass
 
-    def fetch_structured(
+    def get_structured_metadata_for_embedding(
         self,
         params: StructuredFetchParams | None = None,
         neo4j_conn: Any = None,
@@ -1932,24 +1933,26 @@ class InProcessIngestor(Ingestor):
         passes it to every step so no step creates its own connection.
 
         Runs the following steps in order:
-        1. extract_structured
+        1. pull_structured_db_entities      → pull schema entities from the DB
+        2. store_structured_in_neo4j → write entities as graph nodes to Neo4j
         2. populate_structured_semantic_layer
-        3. detect_structured_pii
+
         4. populate_structured_usage_weights
         5. generate_structured_descriptions
-        6. fetch_structured  → DataFrame
+        6. get_structured_metadata_for_embedding  → DataFrame
         7. embed             ← receives the DataFrame from step 6
         8. vdb_upload        ← receives the embedded DataFrame from step 7 (table "nv-ingest-structured")
         """
         neo4j_conn = get_neo4j_conn()
 
-        self.extract_structured(params=params, neo4j_conn=neo4j_conn)
+        data = self.pull_structured_db_entities(params=params)
+        self.store_structured_in_neo4j(data=data, neo4j_conn=neo4j_conn)
+
         self.populate_structured_semantic_layer(neo4j_conn=neo4j_conn)
-        self.detect_structured_pii(neo4j_conn=neo4j_conn)
         self.populate_structured_usage_weights(neo4j_conn=neo4j_conn)
         self.generate_structured_descriptions(neo4j_conn=neo4j_conn)
 
-        df = self.fetch_structured(neo4j_conn=neo4j_conn)
+        df = self.get_structured_metadata_for_embedding(neo4j_conn=neo4j_conn)
 
         if df is not None:
             per_doc_tasks, post_tasks = self.get_pipeline_tasks()

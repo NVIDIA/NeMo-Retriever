@@ -54,27 +54,36 @@ def data_for_populate_structured(settings):
     return data
 
 
-def extract_relational_db(neo4j_conn=None, params=None):
-    """Build data and run populate_structured_data.
+def extract_relational_db_data(params=None):
+    """Step 1 — Pull schema entities from the relational DB into a data dict.
 
     Args:
-        neo4j_conn: Active Neo4j connection (from get_neo4j_conn(), passed from the
-            orchestrating ingest step; created internally if not provided).
-        params: StructuredExtractParams instance.  When provided,
+        params: StructuredExtractParams instance. When provided,
             ``params.db_connection_string`` overrides the default database path.
+
+    Returns:
+        data dict with keys: tables, columns, views, pks, fks.
     """
-    import logging
-    from nemo_retriever.relational_db.population.populate_data import populate_structured_data
-
-    logger = logging.getLogger(__name__)
-
     db_path = (
         params.db_connection_string
         if params is not None and params.db_connection_string is not None
         else "./spider2.duckdb"
     )
     settings = {"connection_properties": {"database": db_path}}
-    data = data_for_populate_structured(settings)
+    return data_for_populate_structured(settings)
+
+
+def store_relational_db_in_neo4j(data, neo4j_conn=None):
+    """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
+
+    Args:
+        data:       Data dict returned by extract_relational_db_data().
+        neo4j_conn: Active Neo4jConnectionManager instance (unused directly here;
+                    populate_structured_data uses its own DAL connection, but
+                    accepted for API consistency with the other ingest steps).
+    """
+    from nemo_retriever.relational_db.population.populate_data import populate_structured_data
+
     populate_structured_data(
         data,
         num_workers=4,

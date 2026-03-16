@@ -30,7 +30,7 @@ from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import RunMode
 from nemo_retriever.params import StructuredDescriptionParams
 from nemo_retriever.params import StructuredExtractParams
-from nemo_retriever.params import StructuredPIIParams
+
 from nemo_retriever.params import StructuredSemanticLayerParams
 from nemo_retriever.params import StructuredUsageWeightsParams
 from nemo_retriever.params import VdbUploadParams
@@ -322,49 +322,45 @@ class ingestor:
 
 
     # ------------------------------------------------------------------
-    # Structured (database) ingestion — 8-step pipeline
+    # Structured (database) ingestion pipeline
     # ------------------------------------------------------------------
 
-    def extract_structured(
+    def pull_structured_db_entities(
         self,
         params: StructuredExtractParams | None = None,
+    ) -> dict:
+        """Step 1 — Pull schema entities from the relational DB into a data dict.
+
+        Reads tables, columns, views, PKs and FKs from the source database
+        (e.g. DuckDB) and returns them as a plain dict for the next step.
+        """
+        self._not_implemented("pull_structured_db_entities")
+
+    def store_structured_in_neo4j(
+        self,
+        data: dict,
         neo4j_conn: Any = None,
     ) -> "ingestor":
-        """Step 1 — Reflect DB schema / parse SQL files → write graph nodes to Neo4j.
+        """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
 
-        Uses SQLAlchemy reflection and/or SQL file parsing to produce
-        Database, Schema, Table, Column, View and Query nodes together with
-        their relationships.
+        Creates Database, Schema, Table, Column, View and FK/PK relationship
+        nodes from the dict returned by pull_structured_db_entities().
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
-        self._not_implemented("extract_structured")
+        self._not_implemented("store_structured_in_neo4j")
 
     def populate_structured_semantic_layer(
         self,
         params: StructuredSemanticLayerParams | None = None,
         neo4j_conn: Any = None,
     ) -> "ingestor":
-        """Step 2 — Map global business terms/attributes to graph entities.
+        """Step 3 — Map global business terms/attributes to graph entities.
 
         Auto-creates Term/Attribute nodes and MAPS_TO_TABLE / MAPS_TO_COLUMN
-        relationships for entities that are not already covered by the
-        semantic-layer definition.
+        relationships for entities not already covered by the semantic-layer.
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
         self._not_implemented("populate_structured_semantic_layer")
-
-    def detect_structured_pii(
-        self,
-        params: StructuredPIIParams | None = None,
-        neo4j_conn: Any = None,
-    ) -> "ingestor":
-        """Step 3 — Tag Column nodes with PII type via regex and optional LLM.
-
-        Writes a ``pii_type`` property and a HAS_PII_TYPE relationship onto
-        each Column node that matches a known PII pattern.
-        ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
-        """
-        self._not_implemented("detect_structured_pii")
 
     def populate_structured_usage_weights(
         self,
@@ -392,34 +388,32 @@ class ingestor:
         """
         self._not_implemented("generate_structured_descriptions")
 
-    def fetch_structured(
+    def get_structured_metadata_for_embedding(
         self,
-        params: StructuredFetchParams | None = None,
         neo4j_conn: Any = None,
     ) -> Any:
-        """Step 6 — Fetch entity descriptions from Neo4j into a DataFrame.
+        """Step 6 — Fetch entity descriptions from Neo4j into an embedding-ready DataFrame.
 
-        Builds a pandas DataFrame with columns ``text`` (the description),
-        ``_embed_modality`` = ``"text"``, and ``metadata`` (JSON blob with
-        entity_type, entity_name, node_id).  No embedding is computed here;
-        the returned DataFrame is passed directly to the embed step.
+        Returns a pandas DataFrame with columns: text, _embed_modality, path,
+        page_number, metadata — matching the unstructured pipeline format so
+        run_pipeline_tasks_on_df (embed + vdb_upload) works unchanged.
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
-        self._not_implemented("fetch_structured")
+        self._not_implemented("get_structured_metadata_for_embedding")
 
     def ingest_structured(
         self,
         params: StructuredExtractParams | None = None,
     ) -> Any:
-        """Orchestrate the full 8-step structured ingestion pipeline.
+        """Orchestrate the full structured ingestion pipeline.
 
         Runs the following steps in order:
-        1. extract_structured
-        2. populate_structured_semantic_layer
-        3. detect_structured_pii
+        1. pull_structured_db_entities      → pull schema entities from the DB
+        2. store_structured_in_neo4j        → write entities as graph nodes to Neo4j
+        3. populate_structured_semantic_layer
         4. populate_structured_usage_weights
         5. generate_structured_descriptions
-        6. fetch_structured
+        6. get_structured_metadata_for_embedding → DataFrame
         7. embed
         8. vdb_upload
         """
