@@ -101,6 +101,6 @@ def get_neo4j_conn() -> Neo4jConnection:
             os.environ["NEO4J_USERNAME"],
             os.environ["NEO4J_PASSWORD"],
         )
-        logger.info("Verify Connectivity for default Neo4j")
+        logger.info("Verify connectivity for Neo4j")
         _conn.verify_connectivity()
     return _conn

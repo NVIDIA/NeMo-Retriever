@@ -33,8 +33,6 @@ def populate_structured_data(data, num_workers, dialect):
     tables_df = data["tables"]
     columns_df = data["columns"]
 
-    temp_schema_creation_flag = True
-
     unique_databases = tables_df.database.unique()
     for database in unique_databases:
         sub_tables_df = tables_df.loc[tables_df["database"] == database]
@@ -44,12 +42,8 @@ def populate_structured_data(data, num_workers, dialect):
             sub_tables_df,
             sub_columns_df,
             num_workers,
-            temp_schema_creation_flag,
         )
         all_schemas.update(schemas)
-        temp_schema_creation_flag = (
-            False if temp_schema_creation_flag else temp_schema_creation_flag
-        )
 
     if "fks" in data:
         populate_fks(fks=data["fks"])
@@ -59,15 +53,9 @@ def populate_structured_data(data, num_workers, dialect):
     return []
 
 
-def populate_db(
-    tables_df, columns_df, num_workers, temp_schema_creation_flag=True
-):
+def populate_db(tables_df, columns_df, num_workers):
     added_or_modified_tables = []
-    schemas, db_node = schemas_parser.parse_df(
-        tables_df,
-        columns_df,
-        temp_schema_creation_flag=temp_schema_creation_flag,
-    )
+    schemas, db_node = schemas_parser.parse_df(tables_df, columns_df)
     existing_db_id, loaded = db_exists(db_node)
 
     latest_timestamp = datetime.now(timezone.utc).replace(microsecond=0)

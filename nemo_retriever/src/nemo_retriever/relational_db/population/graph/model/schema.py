@@ -10,7 +10,6 @@ pd.options.mode.chained_assignment = None
 
 logger = logging.getLogger("schema.py")
 
-TEMP_SCHEMA_NAME = "temporary_schema"
 
 
 class Schema:

@@ -11,7 +11,6 @@ from nemo_retriever.relational_db.population.graph.utils import chunks
 from nemo_retriever.relational_db.population.graph.model.reserved_words import Labels, label_to_type
 from nemo_retriever.relational_db.population.graph.dal.schemas_dal import load_schema_from_graph, add_schemas_edge
 
-from nemo_retriever.relational_db.population.graph.model.schema import TEMP_SCHEMA_NAME
 conn = get_neo4j_conn()
 
 

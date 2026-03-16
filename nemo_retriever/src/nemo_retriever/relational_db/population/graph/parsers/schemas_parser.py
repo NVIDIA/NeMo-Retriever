@@ -2,15 +2,13 @@ from datetime import datetime
 
 from nemo_retriever.relational_db.population.graph.model.reserved_words import Labels
 from nemo_retriever.relational_db.population.graph.model.node import Node
-from nemo_retriever.relational_db.population.graph.model.schema import Schema, TEMP_SCHEMA_NAME
+from nemo_retriever.relational_db.population.graph.model.schema import Schema
 import logging
 
 logger = logging.getLogger("schemas_parser.py")
 
 
-def parse_df(
-    tables_df, columns_df, db_node=None, temp_schema_creation_flag=True
-):
+def parse_df(tables_df, columns_df, db_node=None):
     """
     Every schema manager assumes a single database in the input file
     :param filename: a csv file with the following columns:
@@ -29,12 +27,6 @@ def parse_df(
 
     unique_schema_names = tables_df.schema.unique()
     schemas = {}
-
-    # create schema for temporary tables
-    if temp_schema_creation_flag:
-        schema = Schema(db_node)
-        schema.create_schema_node(TEMP_SCHEMA_NAME, is_temp=True)
-        schemas.update({TEMP_SCHEMA_NAME: schema})
 
     for schema_name in unique_schema_names:
         schema_tables_df = tables_df.loc[tables_df["schema"] == schema_name]
