@@ -1,4 +1,12 @@
 import os
+
+# Load .env from current working directory so LLM_API_KEY, LLM_INVOKE_URL are set (run from repo root)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from sqlalchemy import create_engine, inspect
 from deepagents import create_deep_agent
@@ -13,9 +21,11 @@ _deep_agent = None
 
 
 def _make_llm() -> ChatNVIDIA:
+    # Prefer LLM_API_KEY; fall back to NVIDIA_API_KEY (used by LangChain NVIDIA docs)
+    api_key = os.environ.get("LLM_API_KEY")
     return ChatNVIDIA(
         base_url=os.environ.get("LLM_INVOKE_URL"),
-        api_key=os.environ.get("LLM_API_KEY"),
+        api_key=api_key,
         model=os.environ.get("LLM_MODEL", "meta/llama-3.1-70b-instruct"),
     )
 
@@ -331,7 +341,13 @@ def get_sql_tool_response(question: str):
     return _invoke_agent_with_prompt(agent, prompt, base_dir)
 
 
-def get_sql_tool_response_top_k(question: str, top_k: int = 15):
+def get_sql_tool_response_top_k(
+    question: str,
+    top_k: int = 15,
+    *,
+    lancedb_uri: str | None = None,
+    lancedb_table: str | None = None,
+):
     """Like get_sql_tool_response, but first retrieves the top_k most relevant
     tables from LanceDB and injects them into the prompt. Since the full schema
     context is already in the prompt, no DB tools are needed — the LLM generates
@@ -341,8 +357,8 @@ def get_sql_tool_response_top_k(question: str, top_k: int = 15):
     from nemo_retriever.retriever import Retriever
 
     retriever = Retriever(
-        lancedb_uri=os.environ.get("LANCEDB_URI", "lancedb"),
-        lancedb_table=os.environ.get("LANCEDB_TABLE", "nv-ingest"),
+        lancedb_uri=lancedb_uri or os.environ.get("LANCEDB_URI", "lancedb"),
+        lancedb_table=lancedb_table or os.environ.get("LANCEDB_TABLE", "nv-ingest"),
         top_k=top_k,
     )
     hits = retriever.query(question)

@@ -86,6 +86,7 @@ dependencies = [
   "langchain-nvidia-ai-endpoints>=0.3.0",
   "langchain-community>=0.3.0",
   "deepagents>=0.1.0",
+  "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
