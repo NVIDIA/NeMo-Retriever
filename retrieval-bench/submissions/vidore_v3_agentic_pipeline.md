@@ -11,9 +11,9 @@
   <!-- <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache--2.0-green.svg" alt="License"></a> -->
 </p>
 
-<p align="center">
+<p align="left">
   <strong>NeMo Retriever's agentic retrieval pipeline</strong> is a generic implementation of an agentic system composed of an LLM agent with access to tools for retrieving content (images, text) using an embedding model and for selecting and reranking the top-k most relevant content among the retrieved pieces of information. It was developed by NVIDIA NeMo Retriever team. <br>
-    In this page we describe the agentic retrieval pipeline and also its results for a high-quality pipeline benchmark on visual document retrieval: ViDoRe V3.
+    In this page, we describe the agentic retrieval pipeline and also its results for a high-quality pipeline benchmark on visual document retrieval: ViDoRe V3.
 </p>
 
 
