@@ -12,7 +12,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 The NeMo Retriever Library 26.03 release adds new hardware and software support, and other improvements.
 
-To upgrade the Helm Charts for this version, refer to [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0-RC1/helm/README.md).
+To upgrade the Helm Charts for this version, refer to [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/README.md).
 
 Updates and enhancements in the 26.03 release include the following:
 
