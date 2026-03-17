@@ -54,6 +54,7 @@ active:
         remote_port: 8000
     values:  # inline Helm values
       nimOperator.rerankqa.enabled: true
+      nimOperator.llama_3_2_nv_rerankqa_1b_v2.enabled: true
 
   # Runtime configuration
   sparse: false  # Use sparse embeddings (Milvus only)
