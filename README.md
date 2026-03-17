@@ -73,120 +73,35 @@ For production-level performance and scalability, we recommend that you deploy t
 
 ## Library Quickstart
 
-For small-scale workloads, such as workloads of fewer than 100 PDFs, you can use our library setup. Library set up works with HuggingFace models on local GPUs or with NIMs hosted on build.nvidia.com.
+For small-scale workloads, such as workloads of fewer than 100 PDFs, you can use our library setup which works with HuggingFace models on local GPUs or with NIMs hosted on build.nvidia.com.
 
-The Library only setup requires:
-
-- Linux operating systems (Ubuntu 22.04 or later recommended)
-- Python 3.12
-- We strongly advise using an isolated Python virtual env with [uv](https://docs.astral.sh/uv/getting-started/installation/).
-
-### Step 1: Prepare Your Environment
-
-Create a fresh Python environment to install nv-ingest and dependencies.
-
-```shell
-uv venv --python 3.12 nvingest && \
-  source nvingest/bin/activate && \
-  uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2 milvus-lite==2.4.12
+After [following the installation steps](nemo_retriever), you can start ingesting content like with the following snippet:
 ```
+from nemo_retriever import create_ingestor
+from nemo_retriever.io import to_markdown, to_markdown_by_page
+from pathlib import Path
 
-Set your NVIDIA_API_KEY. If you don't have a key, you can get one on [build.nvidia.com](https://org.ngc.nvidia.com/setup/api-keys). For instructions, refer to [Generate Your NGC Keys](docs/docs/extraction/ngc-api-key.md).
+documents = [str(Path("../data/multimodal_test.pdf"))]
+ingestor = create_ingestor(run_mode="batch")
 
-```
-export NVIDIA_API_KEY=nvapi-...
-```
+# ingestion tasks are chainable and defined lazily
+ingestor = (
+  ingestor.files(documents)
+  .extract(
+    # below are the default values, but content types can be controlled
+    extract_text=True,
+    extract_charts=True,
+    extract_tables=True,
+    extract_infographics=True
+  )
+  .embed()
+  .vdb_upload()
+)
 
-### Step 2: Ingest Documents
-
-You can submit jobs programmatically in Python.
-
-To confirm that you have activated your Python environment, run `which python` and confirm that you see `nvingest` in the result. You can do this before any python command that you run.
-
-```
-which python
-/home/dev/projects/nv-ingest/nvingest/bin/python
-```
-
-If you have a very high number of CPUs, and see the process hang without progress, we recommend that you use `taskset` to limit the number of CPUs visible to the process. Use the following code.
-
-```
-taskset -c 0-3 python your_ingestion_script.py
-```
-
-On a 4 CPU core low end laptop, the following code should take about 10 seconds.
-
-```python
-import time
-
-from nv_ingest.framework.orchestration.ray.util.pipeline.pipeline_runners import run_pipeline
-from nv_ingest_client.client import Ingestor, NvIngestClient
-from nv_ingest_api.util.message_brokers.simple_message_broker import SimpleClient
-from nv_ingest_client.util.process_json_files import ingest_json_results_to_blob
-
-def main():
-    # Start the pipeline subprocess for library mode
-    run_pipeline(block=False, disable_dynamic_scaling=True, run_in_subprocess=True)
-
-    client = NvIngestClient(
-        message_client_allocator=SimpleClient,
-        message_client_port=7671,
-        message_client_hostname="localhost",
-    )
-
-    # gpu_cagra accelerated indexing is not available in milvus-lite
-    # Provide a filename for milvus_uri to use milvus-lite
-    milvus_uri = "milvus.db"
-    collection_name = "test"
-    sparse = False
-
-    # do content extraction from files
-    ingestor = (
-        Ingestor(client=client)
-        .files("data/multimodal_test.pdf")
-        .extract(
-            extract_text=True,
-            extract_tables=True,
-            extract_charts=True,
-            extract_images=True,
-            table_output_format="markdown",
-            extract_infographics=True,
-            # extract_method="nemotron_parse", #Slower, but maximally accurate, especially for PDFs with pages that are scanned images
-            text_depth="page",
-        )
-        .embed()
-        .vdb_upload(
-            collection_name=collection_name,
-            milvus_uri=milvus_uri,
-            sparse=sparse,
-            # for llama-3.2 embedder, use 1024 for e5-v5
-            dense_dim=2048,
-        )
-    )
-
-    print("Starting ingestion..")
-    t0 = time.time()
-
-    # Return both successes and failures
-    # Use for large batches where you want successful chunks/pages to be committed, while collecting detailed diagnostics for failures.
-    results, failures = ingestor.ingest(show_progress=True, return_failures=True)
-
-    # Return only successes
-    # results = ingestor.ingest(show_progress=True)
-
-    t1 = time.time()
-    print(f"Total time: {t1 - t0} seconds")
-
-    # results blob is directly inspectable
-    if results:
-        print(ingest_json_results_to_blob(results[0]))
-
-    # (optional) Review any failures that were returned
-    if failures:
-        print(f"There were {len(failures)} failures. Sample: {failures[0]}")
-
-if __name__ == "__main__":
-    main()
+# ingestor.ingest() actually executes the pipeline
+# results are returned as a ray dataset and inspectable as chunks
+ray_dataset = ingestor.ingest()
+chunks = ray_dataset.get_dataset().take_all()
 ```
 
 You can see the extracted text that represents the content of the ingested test document.
