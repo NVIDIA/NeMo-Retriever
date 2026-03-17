@@ -4,13 +4,11 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
+    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.   
 
-    
+## 26.03 Release Notes (26.1.3)
 
-## 26.03 Release Notes (in progress)
-
-The NeMo Retriever Library 26.03 release adds new hardware and software support, and other improvements.
+The NeMo Retriever Library version 26.03 introduces expanded hardware and software support, along with several other enhancements.
 
 To upgrade the Helm Charts for this version, refer to [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/README.md).
 
@@ -18,9 +16,9 @@ Updates and enhancements in the 26.03 release include the following:
 
 - NV-Ingest github repo renamed to NeMo-Retriever 
 - NeMo Retriever Extraction pipeline renamed to NeMo Retriever Library
-- NeMo Retriever Library now support two deployment options:
-- Load Hugging Face models locally on your GPU.
-- Use locally deployed NeMo Retriever NIM endpoints for embedding and OCR.
+- NeMo Retriever Library now support two deployment options ?
+  - Load Hugging Face models locally on your GPU.
+  - Use locally deployed NeMo Retriever NIM endpoints for embedding and OCR.
 - Note on Air-gapped support 
 - Added support for RTX4500 Pro Blackwell SKU 
 - Added support for llama-nemotron-embed-vl-v2 ?
@@ -30,6 +28,7 @@ NeMo Retriever Library currently does not support image captioning via VLM. It w
 
 ## Release Notes for Previous Versions
 
+| [26.1.2](https://docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes-nv-ingest/)
 | [26.1.1](https://docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes-nv-ingest/)
 | [25.9.0](https://docs.nvidia.com/nemo/retriever/25.9.0/extraction/releasenotes-nv-ingest/) 
 | [25.6.3](https://docs.nvidia.com/nemo/retriever/25.6.3/extraction/releasenotes-nv-ingest/) 
