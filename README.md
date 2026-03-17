@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 For the latest stable release:
 
-Use the latest release/* branch (for example, release/26.1.2) from the branch dropdown.
+Use the latest release/* branch (for example, release/26.03) from the branch dropdown.
 
 See the corresponding NeMo Retriever Library documentation at https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/
 
@@ -20,11 +20,7 @@ to find, contextualize, and extract text, tables, charts and infographics that y
 > [!Note]
 > NeMo Retriever extraction is also known as NVIDIA Ingest and nv-ingest.
 
-NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. From there, NeMo Retriever Library can optionally manage computation of embeddings for the extracted content, and optionally manage storing into a vector database [Milvus](https://milvus.io/).
-
-> [!Note]
-> Cached and Deplot are deprecated. Instead, NeMo Retriever extraction now uses the yolox-graphic-elements NIM. With this change, you should now be able to run NeMo Retriever Extraction on a single 24GB A10G or better GPU. If you want to use the old pipeline, with Cached and Deplot, use the [NeMo Retriever Extraction 24.12.1 release](https://github.com/NVIDIA/nv-ingest/tree/24.12.1).
-
+NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. From there, NeMo Retriever Library manages computaiton of embeddings for the extracted content as well as storing them in a vector database [Milvus](https://milvus.io/).
 
 The following diagram shows the NeMo Retriever Library pipeline.
 
@@ -45,31 +41,11 @@ The NeMo Retriever Library is a library and microservice framework designed to p
 
 - Accept a job specification that contains a document payload and a set of ingestion tasks to perform on that payload.
 - Store the result of each job to retrieve later. The result is a dictionary that contains a list of metadata that describes the objects extracted from the base document, and processing annotations and timing/trace data.
-- Support multiple methods of extraction for each document type to balance trade-offs between throughput and accuracy. For example, for .pdf documents, extraction is performed by using pdfium, [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), Unstructured.io, and Adobe Content Extraction Services.
+- Support multiple methods of extraction for each document type to balance trade-offs between throughput and accuracy. For example, for .pdf documents, extraction can be performeded using pdfium, [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), Unstructured.io, and Adobe Content Extraction Services.
 - Support various types of before and after processing operations, including text splitting and chunking, transform and filtering, embedding generation, and image offloading to storage.
 
 
-NeMo Retriever Extraction supports the following file types:
-
-- `avi` (early access)
-- `bmp`
-- `docx`
-- `html` (converted to markdown format)
-- `jpeg`
-- `json` (treated as text)
-- `md` (treated as text)
-- `mkv` (early access)
-- `mov` (early access)
-- `mp3`
-- `mp4` (early access)
-- `pdf`
-- `png`
-- `pptx`
-- `sh` (treated as text)
-- `tiff`
-- `txt`
-- `wav`
-
+NeMo Retriever Extraction supports PDFs, docx/pptx, HTML, text files, as well as audio and video files. You can find a complete list [here](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
 ### What NeMo Retriever Library Isn't
 
@@ -92,16 +68,16 @@ For more information, refer to the [NeMo Retriever Library documentation](https:
 
 ## Prerequisites
 
-For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Docker Compose or Kubernetes ([helm charts](helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
+For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Kubernetes ([helm charts](helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
 
 
-## Library Mode Quickstart
+## Library Quickstart
 
-For small-scale workloads, such as workloads of fewer than 100 PDFs, you can use library mode setup. Library mode set up depends on NIMs that are already self-hosted, or, by default, NIMs that are hosted on build.nvidia.com.
+For small-scale workloads, such as workloads of fewer than 100 PDFs, you can use our library setup. Library set up works with HuggingFace models on local GPUs or with NIMs hosted on build.nvidia.com.
 
-Library mode deployment of nv-ingest requires:
+The Library only setup requires:
 
-- Linux operating systems (Ubuntu 22.04 or later recommended) or MacOS
+- Linux operating systems (Ubuntu 22.04 or later recommended)
 - Python 3.12
 - We strongly advise using an isolated Python virtual env with [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
