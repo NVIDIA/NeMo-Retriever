@@ -4,14 +4,11 @@
 
     NeMo Retriever Library is also known as NVIDIA Ingest.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 In addition, you can use library mode, which is intended for the following cases:
 
 - Local development
 - Experimentation and testing
 - Small-scale workloads, such as workloads of fewer than 100 documents
-
 
 By default, library mode depends on NIMs that are hosted on build.nvidia.com. 
 In library mode you launch the main pipeline service directly within a Python process, 
@@ -22,7 +19,6 @@ To get started using library mode, you need the following:
 - Linux operating systems (Ubuntu 22.04 or later recommended) or MacOS
 - Python 3.12
 - We strongly advise using an isolated Python virtual env with [uv](https://docs.astral.sh/uv/getting-started/installation/).
-
 
 
 ## Step 1: Prepare Your Environment
