@@ -36,7 +36,7 @@ In your terminal, run the following commands from any location.
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple nemo-retriever==26.3.0rc2 nv-ingest-client==26.3.0rc2 nv-ingest==26.3.0rc2 nv-ingest-api==26.3.0rc2
+uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
 ```
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
 
