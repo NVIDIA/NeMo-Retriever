@@ -4,6 +4,6 @@
 
 """Structured data module: SQL over local data files via DuckDB."""
 
-from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
+from nemo_retriever.relational_db.db_setup.duckdb_engine import DuckDBEngine
 
 __all__ = ["DuckDBEngine"]

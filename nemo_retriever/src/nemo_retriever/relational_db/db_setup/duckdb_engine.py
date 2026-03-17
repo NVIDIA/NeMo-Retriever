@@ -12,7 +12,7 @@ Example
 -------
 ::
 
-    from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
+    from nemo_retriever.relational_db.db_setup.duckdb_engine import DuckDBEngine
 
     engine = DuckDBEngine({"database": "./spider2.duckdb"})
     rows = engine.execute("SELECT * FROM Airlines.flights LIMIT 5")

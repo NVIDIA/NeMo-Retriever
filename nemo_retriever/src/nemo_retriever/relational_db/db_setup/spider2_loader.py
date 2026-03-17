@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 import pandas as pd
 
 if TYPE_CHECKING:
-    from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
+    from nemo_retriever.relational_db.db_setup.duckdb_engine import DuckDBEngine
 
 logger = logging.getLogger(__name__)
 

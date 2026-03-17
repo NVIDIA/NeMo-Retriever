@@ -11,16 +11,16 @@ Each database in spider2-lite becomes a DuckDB schema, so you can query:
 
 Run once per machine (from the repo root):
 
-    python3 nemo_retriever/src/nemo_retriever/structured_data/setup_spider2.py
+    python3 nemo_retriever/src/nemo_retriever/relational_db/db_setup/setup_spider2.py
 
 Optional flags:
 
-    python3 nemo_retriever/src/nemo_retriever/structured_data/setup_spider2.py \\
+    python3 nemo_retriever/src/nemo_retriever/relational_db/db_setup/setup_spider2.py \\
         --spider2-dir ~/my_spider2 --db ./my.duckdb --overwrite
 
 After this completes, query via DuckDBEngine:
 
-    from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
+    from nemo_retriever.relational_db.db_setup.duckdb_engine import DuckDBEngine
     engine = DuckDBEngine({"database": "./spider2.duckdb"})
     rows = engine.execute("SELECT * FROM Airlines.flights LIMIT 5")
 """
@@ -68,8 +68,8 @@ def _clone_spider2(target_dir: Path) -> None:
 
 def _load_data(spider2_lite_dir: Path, db_path: Path, overwrite: bool) -> dict:
     try:
-        from nemo_retriever.structured_data.duckdb_engine import DuckDBEngine
-        from nemo_retriever.structured_data.spider2_loader import load_spider2_lite
+        from nemo_retriever.relational_db.db_setup.duckdb_engine import DuckDBEngine
+        from nemo_retriever.relational_db.db_setup.spider2_loader import load_spider2_lite
     except ImportError:
         print(
             "\n[error] Could not import nemo_retriever. Install the package first:\n\n"
