@@ -9,9 +9,10 @@ Supports remote (Parakeet/Riva gRPC) or local (HuggingFace nvidia/parakeet-ctc-1
 When audio_endpoints are both null/empty, uses local model; otherwise uses remote client.
 
 Consumes chunk rows (path, bytes, source_path, duration, chunk_index, metadata)
-and produces rows with text (transcript) for downstream embed/VDB. When
-``segment_audio=True`` and the remote Parakeet client returns sentence segments,
-one input chunk can fan out into multiple transcript rows carrying timing metadata.
+and produces rows with text (transcript) for downstream embed/VDB. For now,
+``segment_audio=True`` only fans out rows when using a hosted/remote Parakeet
+client, because the local Hugging Face Parakeet model does not emit
+punctuation-aware transcripts that can be segmented into sentences.
 """
 
 from __future__ import annotations
