@@ -12,6 +12,10 @@ Before you install the Helm charts, be sure you meet the hardware and software p
 The [Nvidia nim-operator](https://docs.nvidia.com/nim-operator/latest/install.html) must also be installed and configured in your cluster to ensure that
 the Nvidia NIMs are properly deployed.
 
+## Air-Gapped Deployment (Kubernetes)
+
+For deploying in an air-gapped environment (no internet or NGC registry access), refer to the [NVIDIA NIM Operator documentation on Air-Gapped Environments](https://docs.nvidia.com/nim-operator/latest/air-gap.html), which explains how to deploy NIMs in such environments.
+
 ## Initial Environment Setup
 
 1. Create your namespace by running the following code.
