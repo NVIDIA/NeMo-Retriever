@@ -5,6 +5,10 @@ build-backend = "setuptools.build_meta"
 [tool.uv]
 managed = true
 package = true
+# fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
+override-dependencies = [
+  "fastparquet>=2024.11.0,<2026",
+]
 
 [project]
 name = "nemo-retriever"
