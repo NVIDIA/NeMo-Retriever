@@ -10,9 +10,10 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
 ## Core and Advanced Pipeline Features
 
 The NeMo Retriever Library core pipeline features run on a single A10G or better GPU. 
+
 The core pipeline features include the following:
 
-- llama3.2-nv-embedqa-1b-v2 — Embedding model for converting text chunks into vectors.
+- llama-nemotron-embed-1b-v2 — Embedding model for converting text chunks into vectors.
 - nemotron-page-elements-v3 — Detects and classifies images on a page as a table, chart or infographic.
 - nemotron-table-structure-v1 — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. 
 - nemotron-graphic-elements-v1 — Detects graphic elements within chart images such as titles, legends, axes, and numerical values. 
