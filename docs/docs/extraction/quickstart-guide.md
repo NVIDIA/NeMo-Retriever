@@ -137,7 +137,8 @@ From this prompt, you can run the CLI and Python examples.
 
 Because many service URIs default to localhost, running inside the runtime container also requires that you specify URIs manually so that services can communicate across containers on the internal Docker network. When using Milvus, see the example following for how to set the `milvus_uri`. With the default LanceDB backend, no extra URI configuration is needed.
 
-## Step 2: Ingest Documents
+## Step 3: Ingest Documents
+>>>>>>> 4075ae94 (Kheiss/5970976 (#1652))
 
 You can submit jobs programmatically in Python or using the [CLI](nv-ingest_cli.md).
 
