@@ -8,7 +8,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Iterable, Sequence
 
 from nemo_retriever.retriever import Retriever
 
@@ -106,7 +106,9 @@ def build_qrels_by_query_id(
     return dict(qrels)
 
 
-def load_beir_dataset(loader: str, *, dataset_name: str, split: str = "test", query_language: str | None = None) -> BeirDataset:
+def load_beir_dataset(
+    loader: str, *, dataset_name: str, split: str = "test", query_language: str | None = None
+) -> BeirDataset:
     """Load a BEIR-style dataset for evaluation."""
     loader_name = str(loader).strip().lower()
     if loader_name != "vidore_hf":
@@ -201,10 +203,7 @@ def build_beir_run_from_hits(
             seen_doc_ids.add(doc_id)
             ordered_doc_ids.append(doc_id)
 
-        ranked_scores = {
-            doc_id: float(len(ordered_doc_ids) - rank)
-            for rank, doc_id in enumerate(ordered_doc_ids)
-        }
+        ranked_scores = {doc_id: float(len(ordered_doc_ids) - rank) for rank, doc_id in enumerate(ordered_doc_ids)}
         run[str(query_id)] = ranked_scores
 
     return run
@@ -260,10 +259,7 @@ def compute_beir_metrics(
             aggregates[f"recall@{k}"].append(recall_at_k)
             aggregates[f"ndcg@{k}"].append(ndcg_at_k)
 
-    return {
-        metric_name: sum(values) / float(len(values))
-        for metric_name, values in sorted(aggregates.items())
-    }
+    return {metric_name: sum(values) / float(len(values)) for metric_name, values in sorted(aggregates.items())}
 
 
 def evaluate_lancedb_beir(
