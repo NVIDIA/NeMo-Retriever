@@ -12,7 +12,6 @@ The NeMo Retriever Library 26.01 release adds new hardware and software support,
 
 To upgrade the Helm Charts for this version, refer to [NV-Ingest Helm Charts](https://github.com/NVIDIA/nv-ingest/blob/release/26.1.2/helm/README.md).
 
-
 ### Highlights 
 
 This release contains the following key changes:
@@ -63,7 +62,7 @@ The following are the known issues for NeMo Retriever Library:
 - NeMo Retriever Library now supports two deployment options:  
     - A new no-container, pip-installable in-process library for development (available on PyPI)  
     - Existing production-ready Helm chart with NIMs  
-- Added documentation notes on Air-gapped deployment support for both Helm (Kubernetes) and Docker Compose  
+- Added documentation notes on Air-gapped deployment support for both Helm (Kubernetes) and Docker Compose    
 - Added documentation notes on OpenShift support  
 - Added support for RTX4500 Pro Blackwell SKU  
 - Added support for llama-nemotron-embed-vl-v2 in text and text+image modes  
