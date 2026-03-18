@@ -5,8 +5,8 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 !!! note
 
     NeMo Retriever Library is also known as NVIDIA Ingest.
-
-## Release 26.01 (26.1.2)
+    
+## 26.03 Release Notes (26.3.0)
 
 The NeMo Retriever Library 26.01 release adds new hardware and software support, and other improvements.
 
