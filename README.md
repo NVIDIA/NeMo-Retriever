@@ -141,70 +141,43 @@ dict_keys(['multimodal_test.pdf'])
 To query for relevant snippets of the ingested content, and use them with an LLM to generate answers, use the following code.
 
 ```python
-import os
+from nemo_retriever.retriever import Retriever
 from openai import OpenAI
-from nv_ingest_client.util.milvus import nvingest_retrieval
+import os
 
-milvus_uri = "milvus.db"
-collection_name = "test"
-sparse = False
+retriever = Retriever()
 
-queries = ["Which animal is responsible for the typos?"]
+query = "Given their activities, which animal is responsible for the typos in my documents?"
 
-retrieved_docs = nvingest_retrieval(
-    queries,
-    collection_name,
-    milvus_uri=milvus_uri,
-    hybrid=sparse,
-    top_k=1,
-)
+# you can also submit a list with retriever.queries[...]
+hits = retriever.query(query)
 
-# simple generation example
-extract = retrieved_docs[0][0]["entity"]["text"]
 client = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key=os.environ["NVIDIA_API_KEY"],
+  base_url = "https://integrate.api.nvidia.com/v1",
+  api_key = os.environ.get("NVIDIA_API_KEY")
 )
 
-prompt = f"Using the following content: {extract}\n\n Answer the user query: {queries[0]}"
-print(f"Prompt: {prompt}")
+hit_texts = [hit["text"] for hit in hits]
+prompt = f"""
+Given the following retrieved documents, answer the question: {query}
+
+Documents:
+{hit_texts}
+"""
+
 completion = client.chat.completions.create(
-    model="nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
-    messages=[{"role": "user", "content": prompt}],
+  model="nvidia/nemotron-3-super-120b-a12b",
+  messages=[{"role":"user","content":prompt}],
+  stream=False
 )
-response = completion.choices[0].message.content
 
-print(f"Answer: {response}")
+answer = completion.choices[0].message.content
+print(answer)
 ```
 
+Answer:
 ```shell
-Prompt: Using the following content: Table 1
-| This table describes some animals, and some activities they might be doing in specific locations. | This table describes some animals, and some activities they might be doing in specific locations. | This table describes some animals, and some activities they might be doing in specific locations. |
-| Animal | Activity | Place |
-| Giraffe | Driving a car | At the beach |
-| Lion | Putting on sunscreen | At the park |
-| Cat | Jumping onto a laptop | In a home office |
-| Dog | Chasing a squirrel | In the front yard |
-
- Answer the user query: Which animal is responsible for the typos?
-Answer: A clever query!
-
-Based on the provided Table 1, I'd make an educated inference to answer your question. Since the activities listed are quite unconventional for the respective animals (e.g., a giraffe driving a car, a lion putting on sunscreen), it's likely that the table is using humor or hypothetical scenarios.
-
-Given this context, the question "Which animal is responsible for the typos?" is probably a tongue-in-cheek inquiry, as there's no direct information in the table about typos or typing activities.
-
-However, if we were to make a playful connection, we could look for an animal that's:
-
-1. Typically found in a setting where typing might occur (e.g., an office).
-2. Engaging in an activity that could potentially lead to typos (e.g., interacting with a typing device).
-
-Based on these loose criteria, I'd jokingly point to:
-
-**Cat** as the potential culprit, since it's:
-        * Located "In a home office"
-        * Engaged in "Jumping onto a laptop", which could theoretically lead to accidental keystrokes or typos if the cat were to start "walking" on the keyboard!
-
-Please keep in mind that this response is purely humorous and interpretative, as the table doesn't explicitly mention typos or provide a straightforward answer to the question.
+Cat is the animal whose activity (jumping onto a laptop) matches the location of the typos, so the cat is responsible for the typos in the documents.
 ```
 
 > [!TIP]
