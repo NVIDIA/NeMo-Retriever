@@ -26,55 +26,13 @@ The following diagram shows the NeMo Retriever Library pipeline.
 
 ![Pipeline Overview](https://docs.nvidia.com/nemo/retriever/extraction/images/overview-extraction.png)
 
-## Table of Contents
-1. [NeMo Retriever Library](#nemo-retriever-library)
-2. [Prerequisites](#prerequisites)
-3. [Quickstart](#library-mode-quickstart)
-4. [Benchmarking](#benchmarking)
-5. [GitHub Repository Structure](#github-repository-structure)
-6. [Notices](#notices)
-
-
-## What is NeMo Retriever Library?
-
-The NeMo Retriever Library is a library and microservice framework designed to perform the following functions::
-
-- Accept a job specification that contains a document payload and a set of ingestion tasks to perform on that payload.
-- Store the result of each job to retrieve later. The result is a dictionary that contains a list of metadata that describes the objects extracted from the base document, and processing annotations and timing/trace data.
-- Support multiple methods of extraction for each document type to balance trade-offs between throughput and accuracy. For example, for .pdf documents, extraction can be performeded using pdfium, [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), Unstructured.io, and Adobe Content Extraction Services.
-- Support various types of before and after processing operations, including text splitting and chunking, transform and filtering, embedding generation, and image offloading to storage.
-
-
-NeMo Retriever Extraction supports PDFs, docx/pptx, HTML, text files, as well as audio and video files. You can find a complete list [here](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
-
-### What NeMo Retriever Library Isn't
-
-NeMo Retriever Library does not do the following:
-
-- Run a static pipeline or fixed set of operations on every submitted document.
-- Act as a wrapper for any specific document parsing library.
-
-
-For more information, refer to the [NeMo Retriever Library documentation](https://docs.nvidia.com/nemo/retriever/extraction/overview/).
-
-## Documentation Resources
-
-- **[Official Documentation](https://docs.nvidia.com/nemo/retriever/extraction/)** - Complete user guides, API references, and deployment instructions
-- **[Getting Started Guide](https://docs.nvidia.com/nemo/retriever/extraction/overview/)** - Overview and prerequisites for production deployments
-- **[Benchmarking Guide](https://docs.nvidia.com/nemo/retriever/extraction/benchmarking/)** - Performance testing and recall evaluation framework
-- **[MIG Deployment](https://docs.nvidia.com/nemo/retriever/extraction/mig-benchmarking/)** - Multi-Instance GPU configurations for Kubernetes
-- **[API Documentation](https://docs.nvidia.com/nemo/retriever/extraction/api/)** - Python client and API reference
-
-
-## Prerequisites
-
 For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Kubernetes ([helm charts](helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
 
 *Note*:
 Along with the recent repo name change, we're phasing out the nv-ingest APIs and simplifying the dependencies. You can follow this work and see the forward looking API via the [nemo_retriever](nemo_retriever) library subfolder.
 
 
-## Typical Library Use
+## Typical Use
 
 For small-scale workloads, such as workloads of fewer than 100 PDFs, you can use our in development library setup which works with HuggingFace models on local GPUs or with NIMs hosted on build.nvidia.com.
 
@@ -188,6 +146,13 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 >
 > Please also checkout our [demo using a retrieval pipeline on build.nvidia.com](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag) to query over document content pre-extracted w/ NVIDIA Ingest.
 
+## Documentation Resources
+
+- **[Official Documentation](https://docs.nvidia.com/nemo/retriever/extraction/)** - Complete user guides, API references, and deployment instructions
+- **[Getting Started Guide](https://docs.nvidia.com/nemo/retriever/extraction/overview/)** - Overview and prerequisites for production deployments
+- **[Benchmarking Guide](https://docs.nvidia.com/nemo/retriever/extraction/benchmarking/)** - Performance testing and recall evaluation framework
+- **[MIG Deployment](https://docs.nvidia.com/nemo/retriever/extraction/mig-benchmarking/)** - Multi-Instance GPU configurations for Kubernetes
+- **[API Documentation](https://docs.nvidia.com/nemo/retriever/extraction/api/)** - Python client and API reference
 
 ## Notices
 
