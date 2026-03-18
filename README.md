@@ -186,69 +186,6 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 > Please also checkout our [demo using a retrieval pipeline on build.nvidia.com](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag) to query over document content pre-extracted w/ NVIDIA Ingest.
 
 
-## Benchmarking
-
-nv-ingest includes a comprehensive testing framework for benchmarking performance and evaluating retrieval accuracy.
-
-### Quick Start
-
-```bash
-cd tools/harness
-
-uv sync
-
-# Run end-to-end benchmark
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
-
-# Evaluate retrieval accuracy
-uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767
-```
-
-### Available Benchmarks
-
-- **End-to-End Performance** - Measure ingestion throughput, latency, and resource utilization
-- **Retrieval Accuracy** - Evaluate recall@k metrics against ground truth datasets
-- **MIG Benchmarking** - Test performance with NVIDIA Multi-Instance GPU (MIG) configurations
-
-### Documentation
-
-- **[Testing Framework Guide](https://docs.nvidia.com/nemo/retriever/extraction/benchmarking/)** - Complete guide to benchmarking and testing nv-ingest (same as `tools/harness/README.md`)
-- **[MIG Benchmarking](https://docs.nvidia.com/nemo/retriever/extraction/mig-benchmarking/)** - GPU partitioning for multi-tenant deployments on Kubernetes/Helm
-
-### Benchmark Datasets
-
-- **bo767** - 767 PDF documents with ground truth for recall evaluation
-- **bo20** - 20 PDF documents for quick validation
-- **single** - singular multimodal pdf for quick validation
-- **earnings** - earnings reports ppt and pdf dataset
--- **financebench** - financial data
-- **Custom datasets** - Use your own datasets with the testing framework
-
-For more information, see the [benchmarking documentation](https://docs.nvidia.com/nemo/retriever/extraction/benchmarking/).
-
-
-## GitHub Repository Structure
-
-The following is a description of the folders in the GitHub repository.
-
-- [.devcontainer](https://github.com/NVIDIA/nv-ingest/tree/main/.devcontainer) — VSCode containers for local development
-- [.github](https://github.com/NVIDIA/nv-ingest/tree/main/.github) — GitHub repo configuration files
-- [api](https://github.com/NVIDIA/nv-ingest/tree/main/api) — Core API logic shared across python modules
-- [ci](https://github.com/NVIDIA/nv-ingest/tree/main/ci) — Scripts used to build the nv-ingest container and other packages
-- [client](https://github.com/NVIDIA/nv-ingest/tree/main/client) — Readme, examples, and source code for the nv-ingest-cli utility
-- [config](https://github.com/NVIDIA/nv-ingest/tree/main/config) — Various .yaml files defining configuration for OTEL, Prometheus
-- [data](https://github.com/NVIDIA/nv-ingest/tree/main/data) — Sample PDFs for testing
-- [deploy](https://github.com/NVIDIA/nv-ingest/tree/main/deploy) — Brev.dev-hosted launchable
-- [docker](https://github.com/NVIDIA/nv-ingest/tree/main/docker) — Scripts used by the nv-ingest docker container
-- [docs](https://github.com/NVIDIA/nv-ingest/tree/main/docs/docs) — Documentation for NV Ingest
-- [evaluation](https://github.com/NVIDIA/nv-ingest/tree/main/evaluation) — Notebooks that demonstrate how to test recall accuracy
-- [examples](https://github.com/NVIDIA/nv-ingest/tree/main/examples) — Notebooks, scripts, and tutorial content
-- [helm](https://github.com/NVIDIA/nv-ingest/tree/main/helm) — Documentation for deploying nv-ingest to a Kubernetes cluster via Helm chart
-- [skaffold](https://github.com/NVIDIA/nv-ingest/tree/main/skaffold) — Skaffold configuration
-- [src](https://github.com/NVIDIA/nv-ingest/tree/main/src) — Source code for the nv-ingest pipelines and service
-- [tests](https://github.com/NVIDIA/nv-ingest/tree/main/tests) — Unit tests for nv-ingest
-
-
 ## Notices
 
 ### Third Party License Notice:
