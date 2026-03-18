@@ -17,6 +17,10 @@ spec:
       storageClass: {{ .Values.nimOperator.ocr.storage.pvc.storageClass }}
       size: {{ .Values.nimOperator.ocr.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.ocr.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.ocr.nodeSelector | nindent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.ocr.tolerations | nindent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
