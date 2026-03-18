@@ -90,6 +90,7 @@ dev = [
 
 [project.scripts]
 retriever = "nemo_retriever.__main__:main"
+retriever-harness = "nemo_retriever.harness:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "nemo_retriever.version.get_build_version"}

@@ -374,3 +374,33 @@ To stop and remove both stacks use the following command.
 docker compose -p retriever-gpu0 down
 docker compose -p retriever-gpu1 down
 ```
+
+## ViDoRe Harness Sweep
+
+The harness includes BEIR-style ViDoRe dataset presets in `nemo_retriever/harness/test_configs.yaml` and a ready-made sweep definition in `nemo_retriever/harness/vidore_sweep.yaml`.
+
+The ViDoRe harness datasets are configured to:
+
+- read PDFs from `/datasets/nv-ingest/vidore_v3_corpus_pdf/...`
+- ingest with `embed_modality: text_image`
+- embed at `embed_granularity: page`
+- enable `extract_page_as_image: true` and `extract_infographics: true`
+- evaluate with BEIR-style `ndcg` and `recall` metrics
+
+To preview the sweep without running it:
+
+```bash
+cd /raid/cjarrett/nv-ingest/nemo_retriever
+source ../.retriever/bin/activate
+retriever-harness sweep --runs-config harness/vidore_sweep.yaml --dry-run
+```
+
+To run the full ViDoRe sweep:
+
+```bash
+cd /raid/cjarrett/nv-ingest/nemo_retriever
+source ../.retriever/bin/activate
+retriever-harness sweep --runs-config harness/vidore_sweep.yaml
+```
+
+The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.

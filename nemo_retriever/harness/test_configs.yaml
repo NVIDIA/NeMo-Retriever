@@ -112,7 +112,7 @@ datasets:
     recall_adapter: financebench_json
 
   vidore_v3_computer_science:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_computer_science
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_computer_science
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -128,7 +128,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_energy:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_energy
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_energy
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -144,7 +144,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_finance_en:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_finance_en
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_finance_en
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -160,7 +160,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_finance_fr:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_finance_fr
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_finance_fr
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -176,7 +176,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_hr:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_hr
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_hr
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -192,7 +192,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_industrial:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_industrial
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_industrial
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -208,7 +208,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_pharmaceuticals:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_pharmaceuticals
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_pharmaceuticals
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -224,7 +224,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_physics:
-    path: /raid/cjarrett/nv-ingest/data/vidore_v3_corpus_pdf/vidore_v3_physics
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_physics
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
