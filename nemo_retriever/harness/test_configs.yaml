@@ -54,7 +54,7 @@ presets:
 
 datasets:
   bo20:
-    path: /datasets/nv-ingest/bo20
+    path: /home/jdyer/datasets/bo20
     query_csv: null
     input_type: pdf
     recall_required: false

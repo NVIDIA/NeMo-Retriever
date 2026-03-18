@@ -1,0 +1,2982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harness Portal — NVIDIA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+  <style>
+    :root {
+      --nv-green: #76b900;
+      --nv-green-dark: #5a8a00;
+      --nv-green-light: #8fd400;
+      --nv-bg: #0e0e0e;
+      --nv-sidebar: #141414;
+      --nv-header: #161616;
+      --nv-card: #1a1a1a;
+      --nv-border: #262626;
+      --nv-text: #e0e0e0;
+      --nv-text-muted: #888;
+      --nv-text-dim: #555;
+      --nv-row-even: #161616;
+      --nv-row-odd: #1c1c1c;
+      --nv-row-hover: #242424;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--nv-bg);
+      color: var(--nv-text);
+      overflow: hidden;
+    }
+    .mono { font-family: 'JetBrains Mono', 'Consolas', monospace; }
+
+    /* ---- Layout ---- */
+    .app-layout { display: flex; height: 100vh; width: 100vw; }
+    .sidebar {
+      width: 250px; min-width: 250px; background: var(--nv-sidebar);
+      border-right: 1px solid var(--nv-border);
+      display: flex; flex-direction: column;
+    }
+    .sidebar-logo {
+      padding: 20px; display: flex; align-items: center; gap: 14px;
+      border-bottom: 1px solid var(--nv-border);
+    }
+    .sidebar-logo h1 { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.2; }
+    .sidebar-logo p { font-size: 11px; color: var(--nv-text-muted); line-height: 1.3; }
+    .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+    .sidebar-section-label {
+      padding: 10px 20px 6px; font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.08em; font-weight: 600; color: var(--nv-text-dim);
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+      cursor: pointer; color: var(--nv-text-muted); transition: all 0.15s ease;
+      border-left: 3px solid transparent; font-size: 14px; font-weight: 500; user-select: none;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.03); color: var(--nv-text); }
+    .nav-item.active {
+      background: rgba(118,185,0,0.06); color: var(--nv-green);
+      border-left-color: var(--nv-green);
+    }
+    .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .badge svg { width: 12px; height: 12px; flex-shrink: 0; }
+    .sidebar-bottom { padding: 16px 20px; border-top: 1px solid var(--nv-border); }
+    .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .header {
+      min-height: 56px; border-bottom: 1px solid var(--nv-border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; background: var(--nv-header); gap: 16px;
+    }
+    .main-content { flex: 1; overflow-y: auto; padding: 24px; }
+    .footer {
+      min-height: 36px; border-top: 1px solid var(--nv-border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; background: var(--nv-header); font-size: 12px; color: var(--nv-text-dim);
+    }
+
+    /* ---- Table ---- */
+    .runs-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+    .runs-table thead th {
+      padding: 10px 16px; text-align: left; font-weight: 600; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.05em; color: var(--nv-text-muted);
+      border-bottom: 1px solid var(--nv-border); background: var(--nv-card);
+      position: sticky; top: 0; z-index: 1;
+    }
+    .runs-table tbody tr:nth-child(even) { background: var(--nv-row-even); }
+    .runs-table tbody tr:nth-child(odd) { background: var(--nv-row-odd); }
+    .runs-table tbody tr:hover { background: var(--nv-row-hover); cursor: pointer; }
+    .runs-table tbody tr { transition: background 0.1s ease; }
+    .runs-table td { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+
+    /* ---- Components ---- */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 100px; font-size: 11px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em;
+    }
+    .badge-pass { background: rgba(118,185,0,0.12); color: #76b900; }
+    .badge-fail { background: rgba(255,80,80,0.12); color: #ff5050; }
+    .badge-na { background: rgba(255,255,255,0.05); color: #666; }
+    .badge-pending { background: rgba(255,255,255,0.06); color: #888; }
+    .badge-running { background: rgba(252,211,77,0.12); color: #fcd34d; }
+    .badge-manual { background: rgba(100,180,255,0.12); color: #64b4ff; }
+    .badge-scheduled { background: rgba(168,130,255,0.12); color: #a882ff; }
+    .badge-github { background: rgba(255,255,255,0.08); color: #e0e0e0; }
+    .badge-cron { background: rgba(168,130,255,0.12); color: #a882ff; }
+    .badge-github-type { background: rgba(255,255,255,0.08); color: #e0e0e0; }
+    .badge-enabled { background: rgba(118,185,0,0.12); color: #76b900; }
+    .badge-disabled { background: rgba(255,80,80,0.08); color: #888; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-radius: 8px; font-size: 13px;
+      font-weight: 600; cursor: pointer; border: none;
+      transition: all 0.15s ease; font-family: inherit; text-decoration: none;
+    }
+    .btn-primary { background: var(--nv-green); color: #000; }
+    .btn-primary:hover { background: var(--nv-green-light); }
+    .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
+    .btn-secondary { background: rgba(255,255,255,0.06); color: var(--nv-text); border: 1px solid var(--nv-border); }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .btn-ghost { background: transparent; color: var(--nv-text-muted); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.06); color: var(--nv-text); }
+    .btn-icon { padding: 8px; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; gap: 5px; }
+    .input, .select {
+      background: var(--nv-bg); border: 1px solid var(--nv-border);
+      color: var(--nv-text); padding: 8px 12px; border-radius: 8px;
+      font-size: 13px; font-family: inherit; outline: none; transition: border-color 0.15s;
+    }
+    .input:focus, .select:focus { border-color: var(--nv-green); box-shadow: 0 0 0 1px rgba(118,185,0,0.3); }
+    .input::placeholder { color: var(--nv-text-dim); }
+    .card { background: var(--nv-card); border: 1px solid var(--nv-border); border-radius: 12px; overflow: hidden; }
+    .tag {
+      display: inline-flex; padding: 2px 10px; border-radius: 100px;
+      font-size: 11px; font-weight: 500;
+      background: rgba(118,185,0,0.1); color: var(--nv-green); border: 1px solid rgba(118,185,0,0.2);
+    }
+    .section-title {
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--nv-text-muted); font-weight: 600; margin-bottom: 12px;
+      padding-bottom: 8px; border-bottom: 1px solid var(--nv-border);
+    }
+    .toggle {
+      position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; background: #333; border-radius: 10px;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: ""; position: absolute; width: 16px; height: 16px;
+      left: 2px; bottom: 2px; background: #888; border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--nv-green); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(16px); background: #fff; }
+
+    /* ---- Modal ---- */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center; padding: 32px;
+    }
+    .modal-content {
+      background: var(--nv-card); border: 1px solid var(--nv-border);
+      border-radius: 16px; width: 100%; max-width: 840px;
+      max-height: calc(100vh - 64px); display: flex; flex-direction: column;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+    }
+    .modal-head {
+      padding: 20px 24px; border-bottom: 1px solid var(--nv-border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-body { flex: 1; overflow-y: auto; padding: 24px; }
+    .modal-foot {
+      padding: 16px 24px; border-top: 1px solid var(--nv-border);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+
+    /* ---- Detail grid ---- */
+    .detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .detail-item {
+      padding: 12px 16px; background: rgba(255,255,255,0.02);
+      border-radius: 8px; border: 1px solid rgba(255,255,255,0.04);
+    }
+    .detail-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--nv-text-muted); margin-bottom: 4px; font-weight: 500;
+    }
+    .detail-value { font-size: 14px; color: #fff; font-weight: 500; }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .metric-card {
+      padding: 16px; text-align: center; background: rgba(255,255,255,0.02);
+      border-radius: 8px; border: 1px solid rgba(255,255,255,0.04);
+    }
+    .metric-value { font-size: 22px; font-weight: 700; color: var(--nv-green); }
+    .metric-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--nv-text-muted); margin-top: 4px; font-weight: 500;
+    }
+
+    /* ---- Misc ---- */
+    .spinner {
+      border: 2px solid #333; border-top-color: var(--nv-green); border-radius: 50%;
+      width: 16px; height: 16px; animation: spin 0.7s linear infinite; display: inline-block;
+    }
+    .spinner-lg { width: 32px; height: 32px; border-width: 3px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+    @media (max-width: 900px) {
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useMemo } = React;
+
+/* ===== Icons ===== */
+const svgProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" };
+
+function IconDatabase() {
+  return <svg {...svgProps}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
+}
+function IconActivity() {
+  return <svg {...svgProps}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+}
+function IconPlay() {
+  return <svg {...svgProps}><polygon points="5 3 19 12 5 21 5 3"/></svg>;
+}
+function IconDownload() {
+  return <svg {...svgProps}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+}
+function IconRefresh() {
+  return <svg {...svgProps}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
+}
+function IconX() {
+  return <svg {...svgProps}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+}
+function IconFile() {
+  return <svg {...svgProps}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+}
+function IconPackage() {
+  return <svg {...svgProps}><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
+}
+function IconSearch() {
+  return <svg {...svgProps}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+}
+function IconServer() {
+  return <svg {...svgProps}><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>;
+}
+function IconEdit() {
+  return <svg {...svgProps}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+}
+function IconTrash() {
+  return <svg {...svgProps}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
+}
+function IconPlus() {
+  return <svg {...svgProps}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+}
+function IconCalendar() {
+  return <svg {...svgProps}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+}
+function IconGithub() {
+  return <svg {...svgProps} viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>;
+}
+function IconFolder() {
+  return <svg {...svgProps}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>;
+}
+function IconSliders() {
+  return <svg {...svgProps}><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>;
+}
+function IconChart() {
+  return <svg {...svgProps}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
+}
+function IconBell() {
+  return <svg {...svgProps}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
+}
+function IconCheck() {
+  return <svg {...svgProps}><polyline points="20 6 9 17 4 12"/></svg>;
+}
+function IconAlertTriangle() {
+  return <svg {...svgProps}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+}
+function IconExternalLink() {
+  return <svg {...svgProps}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>;
+}
+
+/* ===== Utilities ===== */
+function fmt(val, decimals = 2) {
+  if (val === null || val === undefined) return "\u2014";
+  return typeof val === "number" ? val.toFixed(decimals) : String(val);
+}
+
+function fmtTs(ts) {
+  if (!ts) return "\u2014";
+  if (/^\d{8}_\d{6}_UTC$/.test(ts)) {
+    const y = ts.slice(0,4), mo = ts.slice(4,6), d = ts.slice(6,8);
+    const h = ts.slice(9,11), mi = ts.slice(11,13), s = ts.slice(13,15);
+    return `${y}-${mo}-${d} ${h}:${mi}:${s} UTC`;
+  }
+  try { return new Date(ts).toLocaleString(); } catch { return ts; }
+}
+
+/* ===== Commit Link ===== */
+function CommitLink({ sha, repoUrl, truncate = 10, style = {} }) {
+  if (!sha) return <span style={style}>{"\u2014"}</span>;
+  const display = truncate ? sha.slice(0, truncate) : sha;
+  if (repoUrl) {
+    const href = `${repoUrl}/commit/${sha}`;
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="mono"
+        title={`View commit ${sha} on GitHub`}
+        style={{fontSize:'12px',color:'var(--nv-green)',textDecoration:'none',borderBottom:'1px dashed var(--nv-green)',cursor:'pointer',...style}}
+        onClick={e => e.stopPropagation()}>
+        {display}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          style={{width:'10px',height:'10px',marginLeft:'3px',verticalAlign:'middle',opacity:0.6}}>
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+    );
+  }
+  return <span className="mono" style={{fontSize:'12px',color:'var(--nv-green)',...style}}>{display}</span>;
+}
+
+/* ===== Pagination ===== */
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250];
+
+function usePagination(data, defaultPageSize = 25) {
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  useEffect(() => { if (page !== safePage) setPage(safePage); }, [page, safePage]);
+  const pageData = data.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  return {
+    page: safePage, setPage, pageSize, setPageSize: (s) => { setPageSize(s); setPage(0); },
+    totalPages, pageData, totalItems: data.length,
+  };
+}
+
+function Pagination({ page, totalPages, totalItems, pageSize, onPageChange, onPageSizeChange }) {
+  if (totalItems === 0) return null;
+  const start = page * pageSize + 1;
+  const end = Math.min((page + 1) * pageSize, totalItems);
+  return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 16px',borderTop:'1px solid var(--nv-border)',fontSize:'12px',color:'var(--nv-text-muted)',flexWrap:'wrap',gap:'8px'}}>
+      <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <span>Rows per page:</span>
+        <select className="select" value={pageSize} onChange={e=>onPageSizeChange(parseInt(e.target.value,10))}
+          style={{padding:'3px 8px',fontSize:'12px',minWidth:'60px',borderRadius:'6px'}}>
+          {PAGE_SIZE_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <span>{start}–{end} of {totalItems}</span>
+      <div style={{display:'flex',alignItems:'center',gap:'2px'}}>
+        <button className="btn btn-ghost btn-sm btn-icon" disabled={page===0} onClick={()=>onPageChange(0)}
+          style={{padding:'4px 6px',opacity:page===0?0.3:1}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{width:'14px',height:'14px'}}>
+            <polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>
+          </svg>
+        </button>
+        <button className="btn btn-ghost btn-sm btn-icon" disabled={page===0} onClick={()=>onPageChange(page-1)}
+          style={{padding:'4px 6px',opacity:page===0?0.3:1}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{width:'14px',height:'14px'}}>
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <span style={{padding:'0 8px',fontSize:'12px',color:'var(--nv-text-muted)'}}>
+          Page {page+1} of {totalPages}
+        </span>
+        <button className="btn btn-ghost btn-sm btn-icon" disabled={page>=totalPages-1} onClick={()=>onPageChange(page+1)}
+          style={{padding:'4px 6px',opacity:page>=totalPages-1?0.3:1}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{width:'14px',height:'14px'}}>
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+        <button className="btn btn-ghost btn-sm btn-icon" disabled={page>=totalPages-1} onClick={()=>onPageChange(totalPages-1)}
+          style={{padding:'4px 6px',opacity:page>=totalPages-1?0.3:1}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{width:'14px',height:'14px'}}>
+            <polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Badges ===== */
+function StatusBadge({ success }) {
+  if (success === 1) return <span className="badge badge-pass">{"\u25CF"} Pass</span>;
+  if (success === 0) return <span className="badge badge-fail">{"\u25CF"} Fail</span>;
+  return <span className="badge badge-na">{"\u25CF"} N/A</span>;
+}
+
+function JobStatusBadge({ status }) {
+  const cls = { pending:"badge-pending", running:"badge-running", completed:"badge-pass", failed:"badge-fail", error:"badge-fail", cancelled:"badge-na" };
+  return <span className={`badge ${cls[status] || "badge-na"}`}>{status}</span>;
+}
+
+function TriggerSourceBadge({ source }) {
+  if (!source) return <span className="badge badge-na">—</span>;
+  const map = {
+    manual: { cls: "badge-manual", label: "Manual" },
+    scheduled: { cls: "badge-scheduled", label: "Scheduled" },
+    github_push: { cls: "badge-github", label: "GitHub" },
+  };
+  const info = map[source] || { cls: "badge-na", label: source };
+  return <span className={`badge ${info.cls}`}>{info.label}</span>;
+}
+
+function ScheduleTypeBadge({ type }) {
+  if (type === "github_push") return <span className="badge badge-github-type"><IconGithub /> GitHub</span>;
+  return <span className="badge badge-cron"><IconCalendar /> Cron</span>;
+}
+
+/* ===== Sidebar ===== */
+function Sidebar({ activeView, onNavigate, alertBadgeCount, githubRepoUrl }) {
+  const [versionInfo, setVersionInfo] = useState(null);
+  useEffect(() => {
+    fetch('/api/version').then(r => r.json()).then(setVersionInfo).catch(() => {});
+  }, []);
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <img src="/static/nvidia-logo.svg" alt="NVIDIA" style={{height:'24px',width:'auto'}} />
+      </div>
+      <nav className="sidebar-nav">
+        <div className="sidebar-section-label">Views</div>
+        <div className={`nav-item ${activeView==='runs'?'active':''}`} onClick={()=>onNavigate('runs')}>
+          <IconDatabase /><span>Runs</span>
+        </div>
+        <div className={`nav-item ${activeView==='analytics'?'active':''}`} onClick={()=>onNavigate('analytics')}>
+          <IconChart /><span>Analytics</span>
+        </div>
+        <div className={`nav-item ${activeView==='datasets'?'active':''}`} onClick={()=>onNavigate('datasets')}>
+          <IconFolder /><span>Datasets</span>
+        </div>
+        <div className={`nav-item ${activeView==='presets'?'active':''}`} onClick={()=>onNavigate('presets')}>
+          <IconSliders /><span>Presets</span>
+        </div>
+        <div className={`nav-item ${activeView==='runners'?'active':''}`} onClick={()=>onNavigate('runners')}>
+          <IconServer /><span>Runners</span>
+        </div>
+        <div className={`nav-item ${activeView==='scheduling'?'active':''}`} onClick={()=>onNavigate('scheduling')}>
+          <IconCalendar /><span>Scheduling</span>
+        </div>
+        <div className="sidebar-section-label">Monitoring</div>
+        <div className={`nav-item ${activeView==='alerts'?'active':''}`} onClick={()=>onNavigate('alerts')}>
+          <IconBell /><span>Alerts</span>
+          {typeof alertBadgeCount === 'number' && alertBadgeCount > 0 && (
+            <span style={{marginLeft:'auto',background:'#ff5050',color:'#fff',fontSize:'10px',fontWeight:700,padding:'1px 7px',borderRadius:'100px',lineHeight:'16px'}}>{alertBadgeCount}</span>
+          )}
+        </div>
+      </nav>
+      <div className="sidebar-bottom">
+        <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginBottom:'4px'}}>nemo_retriever harness</div>
+        {versionInfo && (
+          <div style={{fontSize:'10px',color:'var(--nv-text-dim)',lineHeight:'1.5',fontFamily:'var(--font-mono)'}}>
+            <span style={{color:'var(--nv-green)',fontWeight:600}}>{versionInfo.version}</span>
+            {versionInfo.git_sha && versionInfo.git_sha !== 'unknown' && (
+              githubRepoUrl ? (
+                <a href={`${githubRepoUrl}/commit/${versionInfo.git_sha}`} target="_blank" rel="noopener noreferrer"
+                  style={{marginLeft:'6px',opacity:0.7,color:'var(--nv-green)',textDecoration:'none',borderBottom:'1px dashed var(--nv-green)'}}
+                  title={`View commit ${versionInfo.git_sha} on GitHub`}
+                  onClick={e=>e.stopPropagation()}>({versionInfo.git_sha})</a>
+              ) : (
+                <span style={{marginLeft:'6px',opacity:0.6}} title={`Git SHA: ${versionInfo.git_sha}`}>({versionInfo.git_sha})</span>
+              )
+            )}
+            {versionInfo.build_date && versionInfo.build_date !== 'unknown' && (
+              <div style={{opacity:0.5,marginTop:'1px'}}>{versionInfo.build_date}</div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ===== Header ===== */
+function Header({ title, children }) {
+  return (
+    <div className="header">
+      <h2 style={{fontSize:'16px',fontWeight:600,color:'#fff'}}>{title}</h2>
+      <div style={{display:'flex',alignItems:'center',gap:'8px'}}>{children}</div>
+    </div>
+  );
+}
+
+/* ===== Footer ===== */
+function Footer({ children }) {
+  return <div className="footer">{children}</div>;
+}
+
+/* ===== Runs View ===== */
+function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, filterCommit, setFilterCommit, onRefresh, onSelectRun, onTrigger, jobs, githubRepoUrl }) {
+  const activeJobs = (jobs || []).filter(j => j.status==="running" || j.status==="pending");
+  const pg = usePagination(runs, 25);
+  return (
+    <>
+      {activeJobs.length > 0 && (
+        <div style={{marginBottom:'20px'}}>
+          <div className="section-title" style={{marginBottom:'8px'}}>Active Jobs</div>
+          <div className="card" style={{padding:'0'}}>
+            {activeJobs.map(j => (
+              <div key={j.id} style={{
+                display:'flex',alignItems:'center',justifyContent:'space-between',
+                padding:'10px 16px',borderBottom:'1px solid var(--nv-border)',
+              }}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <JobStatusBadge status={j.status} />
+                  {j.status==="running" && <span className="spinner"></span>}
+                  <span style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{j.dataset}</span>
+                  {j.preset && <span style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{j.preset}</span>}
+                  <TriggerSourceBadge source={j.trigger_source} />
+                  {j.assigned_runner_id && <span style={{color:'var(--nv-text-dim)',fontSize:'11px'}}>Runner #{j.assigned_runner_id}</span>}
+                </div>
+                <span className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)'}}>{j.id}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
+        <button className="btn btn-primary" onClick={onTrigger}><IconPlay /> Trigger Run</button>
+        <div style={{display:'flex',gap:'12px',alignItems:'center',flexWrap:'wrap'}}>
+          <select value={filterDataset} onChange={e=>setFilterDataset(e.target.value)} className="select" style={{minWidth:'200px'}}>
+            <option value="">All datasets</option>
+            {datasets.map(d=><option key={d} value={d}>{d}</option>)}
+          </select>
+          <div style={{position:'relative'}}>
+            <input type="text" placeholder="Filter by commit\u2026" value={filterCommit}
+              onChange={e=>setFilterCommit(e.target.value)} className="input" style={{minWidth:'220px',paddingLeft:'34px'}} />
+            <span style={{position:'absolute',left:'10px',top:'50%',transform:'translateY(-50%)',color:'var(--nv-text-dim)',width:'16px',height:'16px'}}><IconSearch /></span>
+          </div>
+          <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
+        </div>
+      </div>
+      <div className="card">
+        <div style={{overflowX:'auto'}}>
+          <table className="runs-table">
+            <thead>
+              <tr>
+                <th>Status</th><th>Source</th><th>Timestamp</th><th>Host</th><th>Commit</th><th>Dataset</th>
+                <th>Preset</th><th style={{textAlign:'right'}}>Pages</th>
+                <th style={{textAlign:'right'}}>PPS</th><th style={{textAlign:'right'}}>Recall@5</th>
+                <th style={{textAlign:'right'}}>Ingest (s)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="11" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading runs…</div>
+                </td></tr>
+              ) : runs.length === 0 ? (
+                <tr><td colSpan="11" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div style={{marginBottom:'8px',fontSize:'15px'}}>No runs found</div>
+                  <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>
+                    Trigger a run or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness backfill</code> to import existing results.
+                  </div>
+                </td></tr>
+              ) : pg.pageData.map(run => (
+                <tr key={run.id} onClick={()=>onSelectRun(run.id)} style={run.success===0 ? {background:'rgba(255,60,60,0.04)'} : undefined}>
+                  <td>
+                    <StatusBadge success={run.success} />
+                    {run.failure_reason && <div style={{fontSize:'11px',color:'#ff5050',marginTop:'2px',maxWidth:'140px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={run.failure_reason}>{run.failure_reason}</div>}
+                  </td>
+                  <td><TriggerSourceBadge source={run.trigger_source} /></td>
+                  <td style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap'}}>{fmtTs(run.timestamp)}</td>
+                  <td style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap',fontSize:'12px'}}>{run.hostname || "\u2014"}</td>
+                  <td><CommitLink sha={run.git_commit} repoUrl={githubRepoUrl} /></td>
+                  <td style={{color:'#fff',fontWeight:500}}>{run.dataset}</td>
+                  <td style={{color:'var(--nv-text-muted)'}}>{run.preset || "\u2014"}</td>
+                  <td style={{textAlign:'right'}}>{fmt(run.pages,0)}</td>
+                  <td style={{textAlign:'right',color:'#fff',fontWeight:500}}>{fmt(run.pages_per_sec)}</td>
+                  <td style={{textAlign:'right',color:'var(--nv-green)',fontWeight:600}}>{fmt(run.recall_5,3)}</td>
+                  <td style={{textAlign:'right'}}>{fmt(run.ingest_secs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
+          pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+      </div>
+    </>
+  );
+}
+
+/* ===== Datasets View ===== */
+function DatasetsView({ managedDatasets, yamlDatasets, loading, onRefresh }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editDataset, setEditDataset] = useState(null);
+  const pg = usePagination(managedDatasets, 25);
+
+  function handleCreate() { setEditDataset(null); setShowForm(true); }
+  function handleEdit(ds) { setEditDataset(ds); setShowForm(true); }
+  async function handleDelete(id, name) {
+    if (!confirm(`Delete dataset "${name}"? This cannot be undone.`)) return;
+    try {
+      await fetch(`/api/managed-datasets/${id}`, { method: "DELETE" });
+      onRefresh();
+    } catch {}
+  }
+
+  return (
+    <>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
+        <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Add Dataset</button>
+        <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
+      </div>
+
+      {/* Managed Datasets */}
+      <div style={{marginBottom:'28px'}}>
+        <div className="section-title" style={{marginBottom:'10px'}}>Managed Datasets</div>
+        <div className="card">
+          <div style={{overflowX:'auto'}}>
+            <table className="runs-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Path</th><th>Input Type</th><th>Query CSV</th>
+                  <th>Recall</th><th>Match Mode</th><th>Adapter</th><th>Description</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="9" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                    <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading datasets…</div>
+                  </td></tr>
+                ) : managedDatasets.length === 0 ? (
+                  <tr><td colSpan="9" style={{textAlign:'center',padding:'40px',color:'var(--nv-text-muted)'}}>
+                    <div style={{marginBottom:'8px',fontSize:'15px'}}>No managed datasets</div>
+                    <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Click "Add Dataset" to register one.</div>
+                  </td></tr>
+                ) : pg.pageData.map(ds => (
+                  <tr key={ds.id}>
+                    <td style={{color:'#fff',fontWeight:600}}>{ds.name}</td>
+                    <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'250px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.path}>{ds.path}</td>
+                    <td><span className="badge badge-na">{ds.input_type}</span></td>
+                    <td className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.query_csv||''}>{ds.query_csv || "\u2014"}</td>
+                    <td>{ds.recall_required ? <span className="badge badge-pass">Yes</span> : <span className="badge badge-na">No</span>}</td>
+                    <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_match_mode || "\u2014"}</td>
+                    <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_adapter || "\u2014"}</td>
+                    <td style={{color:'var(--nv-text-muted)',fontSize:'12px',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.description||''}>{ds.description || "\u2014"}</td>
+                    <td>
+                      <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                        <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(ds)} title="Edit"><IconEdit /> Edit</button>
+                        <button className="btn btn-sm" onClick={()=>handleDelete(ds.id,ds.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
+            pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+        </div>
+      </div>
+
+      {/* YAML Datasets (read-only) */}
+      {yamlDatasets.length > 0 && (
+        <div>
+          <div className="section-title" style={{marginBottom:'10px'}}>Config File Datasets <span style={{fontSize:'10px',color:'var(--nv-text-dim)',fontWeight:400}}>(read-only, from test_configs.yaml)</span></div>
+          <div className="card">
+            <div style={{overflowX:'auto'}}>
+              <table className="runs-table">
+                <thead>
+                  <tr><th>Name</th><th>Source</th></tr>
+                </thead>
+                <tbody>
+                  {yamlDatasets.map(name => (
+                    <tr key={name}>
+                      <td style={{color:'#fff',fontWeight:500}}>{name}</td>
+                      <td style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>test_configs.yaml</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <DatasetFormModal
+          dataset={editDataset}
+          onClose={()=>setShowForm(false)}
+          onSaved={()=>{setShowForm(false);onRefresh();}}
+        />
+      )}
+    </>
+  );
+}
+
+function DatasetFormModal({ dataset, onClose, onSaved }) {
+  const isEdit = !!dataset;
+  const [form, setForm] = useState({
+    name: dataset?.name || "",
+    path: dataset?.path || "",
+    query_csv: dataset?.query_csv || "",
+    input_type: dataset?.input_type || "pdf",
+    recall_required: dataset?.recall_required || false,
+    recall_match_mode: dataset?.recall_match_mode || "pdf_page",
+    recall_adapter: dataset?.recall_adapter || "none",
+    description: dataset?.description || "",
+    tags: (dataset?.tags || []).join(", "),
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function set(field, val) { setForm(f=>({...f,[field]:val})); }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.path.trim()) return;
+    setSaving(true);
+    setError("");
+    const payload = {
+      ...form,
+      query_csv: form.query_csv || null,
+      description: form.description || null,
+      tags: form.tags ? form.tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+    };
+    try {
+      const url = isEdit ? `/api/managed-datasets/${dataset.id}` : "/api/managed-datasets";
+      const method = isEdit ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method, headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(()=>({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit ? "Edit Dataset" : "Add Dataset"}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px',maxHeight:'60vh',overflowY:'auto'}}>
+            {error && (
+              <div style={{padding:'10px 14px',borderRadius:'8px',background:'rgba(255,50,50,0.08)',border:'1px solid rgba(255,50,50,0.2)',color:'#ff5050',fontSize:'13px'}}>{error}</div>
+            )}
+            <div>
+              <label style={labelStyle}>Name *</label>
+              <input className="input" style={{width:'100%'}} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="e.g. bo20" required />
+            </div>
+            <div>
+              <label style={labelStyle}>Dataset Path *</label>
+              <input className="input" style={{width:'100%'}} value={form.path} onChange={e=>set('path',e.target.value)} placeholder="/path/to/dataset" required />
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+              <div>
+                <label style={labelStyle}>Input Type</label>
+                <select className="select" style={{width:'100%'}} value={form.input_type} onChange={e=>set('input_type',e.target.value)}>
+                  <option value="pdf">pdf</option>
+                  <option value="image">image</option>
+                  <option value="text">text</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Query CSV</label>
+                <input className="input" style={{width:'100%'}} value={form.query_csv} onChange={e=>set('query_csv',e.target.value)} placeholder="path/to/query.csv (optional)" />
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px'}}>
+              <div>
+                <label style={labelStyle}>Recall Required</label>
+                <label style={{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer',fontSize:'13px',color:'#fff'}}>
+                  <input type="checkbox" checked={form.recall_required} onChange={e=>set('recall_required',e.target.checked)} />
+                  {form.recall_required ? "Yes" : "No"}
+                </label>
+              </div>
+              <div>
+                <label style={labelStyle}>Match Mode</label>
+                <select className="select" style={{width:'100%'}} value={form.recall_match_mode} onChange={e=>set('recall_match_mode',e.target.value)}>
+                  <option value="pdf_page">pdf_page</option>
+                  <option value="pdf_only">pdf_only</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Recall Adapter</label>
+                <select className="select" style={{width:'100%'}} value={form.recall_adapter} onChange={e=>set('recall_adapter',e.target.value)}>
+                  <option value="none">none</option>
+                  <option value="page_plus_one">page_plus_one</option>
+                  <option value="financebench_json">financebench_json</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Description</label>
+              <input className="input" style={{width:'100%'}} value={form.description} onChange={e=>set('description',e.target.value)} placeholder="Optional description" />
+            </div>
+            <div>
+              <label style={labelStyle}>Tags</label>
+              <input className="input" style={{width:'100%'}} value={form.tags} onChange={e=>set('tags',e.target.value)} placeholder="Comma-separated tags" />
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={saving||!form.name.trim()||!form.path.trim()} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit ? "Update Dataset" : "Add Dataset"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Presets View ===== */
+const TUNING_FIELDS = [
+  { key:"pdf_extract_workers", label:"PDF Extract Workers", type:"int" },
+  { key:"pdf_extract_num_cpus", label:"PDF Extract CPUs", type:"float" },
+  { key:"pdf_extract_batch_size", label:"PDF Extract Batch", type:"int" },
+  { key:"pdf_split_batch_size", label:"PDF Split Batch", type:"int" },
+  { key:"page_elements_workers", label:"Page Elements Workers", type:"int" },
+  { key:"page_elements_batch_size", label:"Page Elements Batch", type:"int" },
+  { key:"page_elements_cpus_per_actor", label:"Page Elements CPUs/Actor", type:"float" },
+  { key:"gpu_page_elements", label:"GPU Page Elements", type:"float" },
+  { key:"ocr_workers", label:"OCR Workers", type:"int" },
+  { key:"ocr_batch_size", label:"OCR Batch", type:"int" },
+  { key:"ocr_cpus_per_actor", label:"OCR CPUs/Actor", type:"float" },
+  { key:"gpu_ocr", label:"GPU OCR", type:"float" },
+  { key:"embed_workers", label:"Embed Workers", type:"int" },
+  { key:"embed_batch_size", label:"Embed Batch", type:"int" },
+  { key:"embed_cpus_per_actor", label:"Embed CPUs/Actor", type:"float" },
+  { key:"gpu_embed", label:"GPU Embed", type:"float" },
+];
+
+const TUNING_GROUPS = [
+  { label:"PDF Extract", fields: TUNING_FIELDS.filter(f=>f.key.startsWith("pdf_")) },
+  { label:"Page Elements", fields: TUNING_FIELDS.filter(f=>f.key.includes("page_elements")) },
+  { label:"OCR", fields: TUNING_FIELDS.filter(f=>f.key.includes("ocr")) },
+  { label:"Embed", fields: TUNING_FIELDS.filter(f=>f.key.includes("embed")) },
+];
+
+function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editPreset, setEditPreset] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const pg = usePagination(managedPresets, 25);
+
+  function handleCreate() { setEditPreset(null); setShowForm(true); }
+  function handleEdit(p) { setEditPreset(p); setShowForm(true); }
+  async function handleDelete(id, name) {
+    if (!confirm(`Delete preset "${name}"? This cannot be undone.`)) return;
+    try {
+      await fetch(`/api/managed-presets/${id}`, { method: "DELETE" });
+      onRefresh();
+    } catch {}
+  }
+
+  return (
+    <>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
+        <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Add Preset</button>
+        <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
+      </div>
+
+      <div style={{marginBottom:'28px'}}>
+        <div className="section-title" style={{marginBottom:'10px'}}>Managed Presets</div>
+        <div className="card">
+          <div style={{overflowX:'auto'}}>
+            <table className="runs-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Description</th><th style={{textAlign:'right'}}>Fields</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="4" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                    <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading presets…</div>
+                  </td></tr>
+                ) : managedPresets.length === 0 ? (
+                  <tr><td colSpan="4" style={{textAlign:'center',padding:'40px',color:'var(--nv-text-muted)'}}>
+                    <div style={{marginBottom:'8px',fontSize:'15px'}}>No managed presets</div>
+                    <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Click "Add Preset" to create one.</div>
+                  </td></tr>
+                ) : pg.pageData.map(p => {
+                  const cfg = typeof p.config === 'object' ? p.config : {};
+                  const fieldCount = Object.keys(cfg).length;
+                  const isExpanded = expandedId === p.id;
+                  return (
+                    <React.Fragment key={p.id}>
+                      <tr>
+                        <td>
+                          <span style={{color:'#fff',fontWeight:600,cursor:'pointer'}} onClick={()=>setExpandedId(isExpanded?null:p.id)}>
+                            <span style={{display:'inline-block',transform:isExpanded?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s',marginRight:'6px',fontSize:'10px'}}>{"\u25B6"}</span>
+                            {p.name}
+                          </span>
+                        </td>
+                        <td style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{p.description || "\u2014"}</td>
+                        <td style={{textAlign:'right'}}><span className="badge badge-na">{fieldCount} params</span></td>
+                        <td>
+                          <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                            <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(p)} title="Edit"><IconEdit /> Edit</button>
+                            <button className="btn btn-sm" onClick={()=>handleDelete(p.id,p.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr><td colSpan="4" style={{padding:'0 16px 16px',background:'rgba(255,255,255,0.01)'}}>
+                          <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:'8px 16px',fontSize:'12px',padding:'12px',borderRadius:'8px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
+                            {TUNING_FIELDS.map(f => (
+                              <div key={f.key} style={{display:'flex',justifyContent:'space-between',gap:'8px'}}>
+                                <span style={{color:'var(--nv-text-dim)'}}>{f.label}</span>
+                                <span className="mono" style={{color:cfg[f.key]!=null?'var(--nv-green)':'var(--nv-text-dim)',fontWeight:cfg[f.key]!=null?600:400}}>{cfg[f.key] != null ? cfg[f.key] : "\u2014"}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td></tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
+            pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+        </div>
+      </div>
+
+      {yamlPresets.length > 0 && (
+        <div>
+          <div className="section-title" style={{marginBottom:'10px'}}>Config File Presets <span style={{fontSize:'10px',color:'var(--nv-text-dim)',fontWeight:400}}>(read-only, from test_configs.yaml)</span></div>
+          <div className="card">
+            <div style={{overflowX:'auto'}}>
+              <table className="runs-table">
+                <thead><tr><th>Name</th><th>Source</th></tr></thead>
+                <tbody>
+                  {yamlPresets.map(name => (
+                    <tr key={name}>
+                      <td style={{color:'#fff',fontWeight:500}}>{name}</td>
+                      <td style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>test_configs.yaml</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <PresetFormModal
+          preset={editPreset}
+          onClose={()=>setShowForm(false)}
+          onSaved={()=>{setShowForm(false);onRefresh();}}
+        />
+      )}
+    </>
+  );
+}
+
+function PresetFormModal({ preset, onClose, onSaved }) {
+  const isEdit = !!preset;
+  const existingConfig = (isEdit && typeof preset.config === 'object') ? preset.config : {};
+  const [name, setName] = useState(preset?.name || "");
+  const [description, setDescription] = useState(preset?.description || "");
+  const [tags, setTags] = useState((preset?.tags || []).join(", "));
+  const [config, setConfig] = useState(() => {
+    const c = {};
+    TUNING_FIELDS.forEach(f => { c[f.key] = existingConfig[f.key] != null ? String(existingConfig[f.key]) : ""; });
+    return c;
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function setField(key, val) { setConfig(c=>({...c,[key]:val})); }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    setError("");
+    const parsedConfig = {};
+    TUNING_FIELDS.forEach(f => {
+      const raw = config[f.key];
+      if (raw !== "" && raw != null) {
+        parsedConfig[f.key] = f.type === "int" ? parseInt(raw, 10) : parseFloat(raw);
+      }
+    });
+    const payload = {
+      name: name.trim(),
+      description: description || null,
+      config: parsedConfig,
+      tags: tags ? tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+    };
+    try {
+      const url = isEdit ? `/api/managed-presets/${preset.id}` : "/api/managed-presets";
+      const method = isEdit ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method, headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(()=>({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const labelStyle = {display:'block',fontSize:'11px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.04em'};
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'640px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit ? "Edit Preset" : "Create Preset"}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px',maxHeight:'65vh',overflowY:'auto'}}>
+            {error && (
+              <div style={{padding:'10px 14px',borderRadius:'8px',background:'rgba(255,50,50,0.08)',border:'1px solid rgba(255,50,50,0.2)',color:'#ff5050',fontSize:'13px'}}>{error}</div>
+            )}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+              <div>
+                <label style={labelStyle}>Name *</label>
+                <input className="input" style={{width:'100%'}} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. single_gpu" required />
+              </div>
+              <div>
+                <label style={labelStyle}>Description</label>
+                <input className="input" style={{width:'100%'}} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional description" />
+              </div>
+            </div>
+
+            {TUNING_GROUPS.map(g => (
+              <div key={g.label}>
+                <div style={{fontSize:'12px',fontWeight:600,color:'var(--nv-green)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.05em'}}>{g.label}</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))',gap:'8px'}}>
+                  {g.fields.map(f => (
+                    <div key={f.key}>
+                      <label style={{...labelStyle,fontSize:'10px'}}>{f.label}</label>
+                      <input className="input" style={{width:'100%',fontSize:'13px'}} type="number" step={f.type==='float'?'any':'1'} value={config[f.key]} onChange={e=>setField(f.key,e.target.value)} placeholder="\u2014" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div>
+              <label style={labelStyle}>Tags</label>
+              <input className="input" style={{width:'100%'}} value={tags} onChange={e=>setTags(e.target.value)} placeholder="Comma-separated tags" />
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={saving||!name.trim()} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit ? "Update Preset" : "Create Preset"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Run Detail Modal ===== */
+function RunDetailModal({ run, onClose, githubRepoUrl }) {
+  if (!run) return null;
+  const [showRaw, setShowRaw] = useState(false);
+  const raw = run.raw_json && typeof run.raw_json === 'object' && Object.keys(run.raw_json).length > 0 ? run.raw_json : run;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <div style={{display:'flex',alignItems:'center',gap:'14px'}}>
+            <StatusBadge success={run.success} />
+            <div>
+              <h2 style={{fontSize:'18px',fontWeight:700,color:'#fff'}}>Run #{run.id}</h2>
+              <span style={{fontSize:'13px',color:'var(--nv-green)'}}>{run.dataset}</span>
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <div className="modal-body">
+          {/* Failure Banner */}
+          {run.failure_reason && (
+            <div style={{
+              marginBottom:'24px',padding:'16px 20px',borderRadius:'10px',
+              background:'rgba(255,60,60,0.08)',border:'1px solid rgba(255,60,60,0.25)',
+            }}>
+              <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px'}}>
+                <span style={{fontSize:'20px'}}>&#x26A0;</span>
+                <span style={{fontSize:'15px',fontWeight:700,color:'#ff5050'}}>Run Failed</span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'140px 1fr',gap:'6px 12px',fontSize:'13px'}}>
+                <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Failure Reason</span>
+                <span className="mono" style={{color:'#ff5050',fontWeight:600}}>{run.failure_reason}</span>
+                <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Return Code</span>
+                <span className="mono" style={{color:'#fff'}}>{run.return_code ?? "\u2014"}</span>
+                {(() => {
+                  const rj = run.raw_json || {};
+                  const tc = rj.test_config || {};
+                  const rm = rj.run_metadata || {};
+                  const arts = rj.artifacts || {};
+                  return <>
+                    <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Dataset</span>
+                    <span style={{color:'#fff'}}>{tc.dataset_label || run.dataset || "\u2014"} ({tc.input_type || "\u2014"})</span>
+                    <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Preset</span>
+                    <span style={{color:'#fff'}}>{tc.preset || run.preset || "\u2014"}</span>
+                    <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Host</span>
+                    <span style={{color:'#fff'}}>{rm.host || run.hostname || "\u2014"}</span>
+                    <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>GPU</span>
+                    <span style={{color:'#fff'}}>{rm.gpu_type ? `${rm.gpu_type} (x${rm.gpu_count || '?'})` : "\u2014"}</span>
+                    <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Recall Required</span>
+                    <span style={{color:'#fff'}}>{tc.recall_required ? "Yes" : "No"}</span>
+                    <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Embed Model</span>
+                    <span className="mono" style={{color:'var(--nv-text-muted)',fontSize:'11px',wordBreak:'break-all'}}>{tc.embed_model_name || "\u2014"}</span>
+                    {arts.command_file && <>
+                      <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Command File</span>
+                      <span className="mono" style={{color:'var(--nv-text-muted)',fontSize:'11px',wordBreak:'break-all'}}>{arts.command_file}</span>
+                    </>}
+                    {arts.runtime_metrics_dir && <>
+                      <span style={{color:'rgba(255,255,255,0.5)',fontWeight:500}}>Metrics Dir</span>
+                      <span className="mono" style={{color:'var(--nv-text-muted)',fontSize:'11px',wordBreak:'break-all'}}>{arts.runtime_metrics_dir}</span>
+                    </>}
+                  </>;
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Overview */}
+          <div style={{marginBottom:'28px'}}>
+            <div className="section-title">Overview</div>
+            <div className="detail-grid">
+              <div className="detail-item">
+                <div className="detail-label">Timestamp</div>
+                <div className="detail-value">{fmtTs(run.timestamp)}</div>
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">Git Commit</div>
+                <div className="detail-value"><CommitLink sha={run.git_commit} repoUrl={githubRepoUrl} truncate={0} style={{fontSize:'13px'}} /></div>
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">Dataset</div>
+                <div className="detail-value">{run.dataset}</div>
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">Preset</div>
+                <div className="detail-value">{run.preset || "\u2014"}</div>
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">Hostname</div>
+                <div className="detail-value">{run.hostname || "\u2014"}</div>
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">GPU Type</div>
+                <div className="detail-value">{run.gpu_type || "\u2014"}</div>
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">Trigger Source</div>
+                <div className="detail-value"><TriggerSourceBadge source={run.trigger_source} /></div>
+              </div>
+              {run.schedule_id && (
+                <div className="detail-item">
+                  <div className="detail-label">Schedule ID</div>
+                  <div className="detail-value">#{run.schedule_id}</div>
+                </div>
+              )}
+              <div className="detail-item">
+                <div className="detail-label">Status</div>
+                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  <StatusBadge success={run.success} />
+                  {run.failure_reason && <span style={{fontSize:'12px',color:'#ff5050'}}>{run.failure_reason}</span>}
+                </div>
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">Artifact Directory</div>
+                <div className="detail-value mono" style={{fontSize:'11px',wordBreak:'break-all',color:'var(--nv-text-muted)'}}>{run.artifact_dir || "\u2014"}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Metrics */}
+          <div style={{marginBottom:'28px'}}>
+            <div className="section-title">Performance Metrics</div>
+            <div className="metric-grid">
+              <div className="metric-card">
+                <div className="metric-value">{fmt(run.pages_per_sec)}</div>
+                <div className="metric-label">Pages / sec</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-value">{fmt(run.recall_5,3)}</div>
+                <div className="metric-label">Recall@5</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-value" style={{color:'#fff'}}>{fmt(run.ingest_secs)}s</div>
+                <div className="metric-label">Ingest Time</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-value" style={{color:'#fff'}}>{fmt(run.pages,0)} / {fmt(run.files,0)}</div>
+                <div className="metric-label">Pages / Files</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tags */}
+          {run.tags && run.tags.length > 0 && (
+            <div style={{marginBottom:'28px'}}>
+              <div className="section-title">Tags</div>
+              <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                {run.tags.map((t,i) => <span key={i} className="tag">{t}</span>)}
+              </div>
+            </div>
+          )}
+
+          {/* Raw JSON */}
+          <div>
+            <div className="section-title"
+              style={{cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center',gap:'8px'}}
+              onClick={()=>setShowRaw(!showRaw)}
+            >
+              <span style={{transform:showRaw?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s',display:'inline-block',fontSize:'10px'}}>{"\u25B6"}</span>
+              Raw JSON
+            </div>
+            {showRaw && (
+              <pre className="mono" style={{
+                fontSize:'12px',padding:'16px',borderRadius:'8px',
+                background:'var(--nv-bg)',border:'1px solid var(--nv-border)',
+                color:'var(--nv-text-muted)',maxHeight:'300px',overflow:'auto',
+                whiteSpace:'pre-wrap',wordBreak:'break-all',
+              }}>
+                {JSON.stringify(raw,null,2)}
+              </pre>
+            )}
+          </div>
+        </div>
+
+        <div className="modal-foot">
+          <a href={`/api/runs/${run.id}/download/json`} download className="btn btn-secondary">
+            <IconFile /> Download JSON
+          </a>
+          <a href={`/api/runs/${run.id}/download/zip`} download className="btn btn-primary">
+            <IconPackage /> Download Artifacts ZIP
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Runner Status Dot ===== */
+function RunnerStatusDot({ status }) {
+  const colors = { online:'#76b900', offline:'#555', busy:'#fcd34d' };
+  const color = colors[status] || colors.offline;
+  return (
+    <span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}>
+      <span style={{width:'8px',height:'8px',borderRadius:'50%',background:color,display:'inline-block',boxShadow:status==='online'?'0 0 6px rgba(118,185,0,0.5)':'none'}}></span>
+      <span style={{fontSize:'12px',color,textTransform:'capitalize',fontWeight:500}}>{status||'unknown'}</span>
+    </span>
+  );
+}
+
+/* ===== Runners View ===== */
+function RunnersView({ runners, loading, onRefresh }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editRunner, setEditRunner] = useState(null);
+  const pg = usePagination(runners, 25);
+
+  function handleCreate() { setEditRunner(null); setShowForm(true); }
+  function handleEdit(runner) { setEditRunner(runner); setShowForm(true); }
+  async function handleDelete(id, name) {
+    if (!confirm(`Delete runner "${name}"?`)) return;
+    try {
+      await fetch(`/api/runners/${id}`, { method:"DELETE" });
+      onRefresh();
+    } catch {}
+  }
+
+  return (
+    <>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
+        <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Register Runner</button>
+        <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
+      </div>
+      <div className="card">
+        <div style={{overflowX:'auto'}}>
+          <table className="runs-table">
+            <thead>
+              <tr>
+                <th>Status</th><th>Name</th><th>Hostname</th><th>GPU Type</th>
+                <th style={{textAlign:'right'}}>GPUs</th><th style={{textAlign:'right'}}>CPUs</th>
+                <th style={{textAlign:'right'}}>Memory (GB)</th><th>Last Heartbeat</th><th>Tags</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="10" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading runners…</div>
+                </td></tr>
+              ) : runners.length === 0 ? (
+                <tr><td colSpan="10" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div style={{marginBottom:'8px',fontSize:'15px'}}>No runners registered</div>
+                  <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>
+                    Register a runner manually or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness runner start --manager-url &lt;portal-url&gt;</code>
+                  </div>
+                </td></tr>
+              ) : pg.pageData.map(r => (
+                <tr key={r.id} style={{cursor:'default'}}>
+                  <td><RunnerStatusDot status={r.status} /></td>
+                  <td style={{color:'#fff',fontWeight:500}}>{r.name}</td>
+                  <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{r.hostname || "\u2014"}</td>
+                  <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{r.gpu_type || "\u2014"}</td>
+                  <td style={{textAlign:'right'}}>{r.gpu_count ?? "\u2014"}</td>
+                  <td style={{textAlign:'right'}}>{r.cpu_count ?? "\u2014"}</td>
+                  <td style={{textAlign:'right'}}>{r.memory_gb != null ? r.memory_gb.toFixed(1) : "\u2014"}</td>
+                  <td style={{color:'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{fmtTs(r.last_heartbeat)}</td>
+                  <td>{(r.tags||[]).map((t,i)=><span key={i} className="tag" style={{marginRight:'4px'}}>{t}</span>)}</td>
+                  <td>
+                    <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                      <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(r)} title="Edit"><IconEdit /> Edit</button>
+                      <button className="btn btn-sm" onClick={()=>handleDelete(r.id,r.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
+          pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+      </div>
+      {showForm && <RunnerFormModal runner={editRunner} onClose={()=>setShowForm(false)} onSaved={()=>{setShowForm(false);onRefresh();}} />}
+    </>
+  );
+}
+
+/* ===== Runner Form Modal (Create / Edit) ===== */
+function RunnerFormModal({ runner, onClose, onSaved }) {
+  const isEdit = !!runner;
+  const [form, setForm] = useState({
+    name: runner?.name || "",
+    hostname: runner?.hostname || "",
+    url: runner?.url || "",
+    gpu_type: runner?.gpu_type || "",
+    gpu_count: runner?.gpu_count ?? "",
+    cpu_count: runner?.cpu_count ?? "",
+    memory_gb: runner?.memory_gb ?? "",
+    status: runner?.status || "online",
+    tags: (runner?.tags || []).join(", "),
+  });
+  const [saving, setSaving] = useState(false);
+
+  function set(field, val) { setForm(f=>({...f,[field]:val})); }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        hostname: form.hostname.trim() || null,
+        url: form.url.trim() || null,
+        gpu_type: form.gpu_type.trim() || null,
+        gpu_count: form.gpu_count !== "" ? parseInt(form.gpu_count,10) : null,
+        cpu_count: form.cpu_count !== "" ? parseInt(form.cpu_count,10) : null,
+        memory_gb: form.memory_gb !== "" ? parseFloat(form.memory_gb) : null,
+        status: form.status,
+        tags: form.tags ? form.tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+      };
+      const url = isEdit ? `/api/runners/${runner.id}` : "/api/runners";
+      const res = await fetch(url, {
+        method: isEdit ? "PUT" : "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      onSaved();
+    } catch (err) {
+      alert("Failed to save runner: " + err.message);
+    } finally { setSaving(false); }
+  }
+
+  const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'520px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit ? "Edit Runner" : "Register Runner"}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'14px'}}>
+            <div>
+              <label style={labelStyle}>Name *</label>
+              <input className="input" style={{width:'100%'}} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="e.g. gpu-worker-01" required />
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
+              <div>
+                <label style={labelStyle}>Hostname</label>
+                <input className="input" style={{width:'100%'}} value={form.hostname} onChange={e=>set('hostname',e.target.value)} placeholder="e.g. dgx-station-3" />
+              </div>
+              <div>
+                <label style={labelStyle}>URL</label>
+                <input className="input" style={{width:'100%'}} value={form.url} onChange={e=>set('url',e.target.value)} placeholder="http://host:port" />
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:'14px'}}>
+              <div>
+                <label style={labelStyle}>GPU Type</label>
+                <input className="input" style={{width:'100%'}} value={form.gpu_type} onChange={e=>set('gpu_type',e.target.value)} placeholder="e.g. NVIDIA A100-SXM4-80GB" />
+              </div>
+              <div>
+                <label style={labelStyle}>GPU Count</label>
+                <input className="input" style={{width:'100%'}} type="number" min="0" value={form.gpu_count} onChange={e=>set('gpu_count',e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <label style={labelStyle}>CPU Count</label>
+                <input className="input" style={{width:'100%'}} type="number" min="0" value={form.cpu_count} onChange={e=>set('cpu_count',e.target.value)} placeholder="0" />
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
+              <div>
+                <label style={labelStyle}>Memory (GB)</label>
+                <input className="input" style={{width:'100%'}} type="number" min="0" step="0.1" value={form.memory_gb} onChange={e=>set('memory_gb',e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <label style={labelStyle}>Status</label>
+                <select className="select" style={{width:'100%'}} value={form.status} onChange={e=>set('status',e.target.value)}>
+                  <option value="online">Online</option>
+                  <option value="offline">Offline</option>
+                  <option value="busy">Busy</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Tags (comma-separated)</label>
+              <input className="input" style={{width:'100%'}} value={form.tags} onChange={e=>set('tags',e.target.value)} placeholder="e.g. production, gpu-cluster" />
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={saving||!form.name.trim()} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit ? "Update Runner" : "Register Runner"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Scheduling View ===== */
+function fmtRelative(isoStr) {
+  if (!isoStr) return null;
+  const target = new Date(isoStr);
+  const now = new Date();
+  let diff = Math.round((target - now) / 1000);
+  if (diff < 0) return "now";
+  if (diff < 60) return `${diff}s`;
+  const mins = Math.floor(diff / 60); diff %= 60;
+  if (mins < 60) return `${mins}m ${diff}s`;
+  const hrs = Math.floor(mins / 60); const rm = mins % 60;
+  if (hrs < 24) return `${hrs}h ${rm}m`;
+  const days = Math.floor(hrs / 24); const rh = hrs % 24;
+  return `${days}d ${rh}h`;
+}
+
+function fmtIsoShort(isoStr) {
+  if (!isoStr) return "\u2014";
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZoneName:'short'});
+  } catch { return isoStr; }
+}
+
+function SchedulingView({ schedules, loading, onRefresh, runners }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editSchedule, setEditSchedule] = useState(null);
+  const [upcoming, setUpcoming] = useState([]);
+  const pg = usePagination(schedules, 25);
+
+  useEffect(() => {
+    fetch("/api/schedules/upcoming?count=10").then(r=>r.json()).then(setUpcoming).catch(()=>{});
+  }, [schedules]);
+
+  function handleCreate() { setEditSchedule(null); setShowForm(true); }
+  function handleEdit(sched) { setEditSchedule(sched); setShowForm(true); }
+
+  async function handleDelete(id, name) {
+    if (!confirm(`Delete schedule "${name}"?`)) return;
+    try {
+      await fetch(`/api/schedules/${id}`, { method: "DELETE" });
+      onRefresh();
+    } catch {}
+  }
+
+  async function handleToggle(sched) {
+    try {
+      await fetch(`/api/schedules/${sched.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !sched.enabled }),
+      });
+      onRefresh();
+    } catch {}
+  }
+
+  async function handleTriggerNow(id) {
+    try {
+      const res = await fetch(`/api/schedules/${id}/trigger`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      onRefresh();
+    } catch (err) {
+      alert("Failed to trigger schedule: " + err.message);
+    }
+  }
+
+  function requirementsText(s) {
+    const parts = [];
+    if (s.min_gpu_count) parts.push(`${s.min_gpu_count} GPU`);
+    if (s.gpu_type_pattern) parts.push(s.gpu_type_pattern);
+    if (s.min_cpu_count) parts.push(`${s.min_cpu_count} CPU`);
+    if (s.min_memory_gb) parts.push(`${s.min_memory_gb} GB RAM`);
+    return parts.length > 0 ? parts.join(", ") : "\u2014";
+  }
+
+  return (
+    <>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
+        <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Create Schedule</button>
+        <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
+      </div>
+
+      {upcoming.length > 0 && (
+        <div style={{marginBottom:'20px'}}>
+          <div className="section-title" style={{marginBottom:'8px'}}>Upcoming Queue</div>
+          <div className="card" style={{padding:0}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:0}}>
+              {upcoming.map((u, i) => (
+                <div key={i} style={{
+                  display:'flex',alignItems:'center',gap:'12px',
+                  padding:'10px 16px',borderBottom:'1px solid var(--nv-border)',borderRight:'1px solid var(--nv-border)',
+                }}>
+                  <div style={{
+                    minWidth:'28px',height:'28px',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:'12px',fontWeight:700,
+                    background: i === 0 ? 'var(--nv-green)' : 'rgba(255,255,255,0.06)',
+                    color: i === 0 ? '#000' : 'var(--nv-text-muted)',
+                  }}>{i + 1}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                      <span style={{color:'#fff',fontWeight:500,fontSize:'13px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                        {u.schedule_name || `Schedule #${u.schedule_id}`}
+                      </span>
+                      {u.pending_jobs > 0 && (
+                        <span style={{
+                          fontSize:'10px',fontWeight:600,padding:'1px 6px',borderRadius:'100px',lineHeight:'16px',
+                          background: u.pending_jobs >= 3 ? 'rgba(255,80,80,0.15)' : 'rgba(255,200,50,0.15)',
+                          color: u.pending_jobs >= 3 ? '#ff5050' : '#fcd34d',
+                        }}>{u.pending_jobs} queued</span>
+                      )}
+                    </div>
+                    <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'1px'}}>
+                      {u.dataset}{u.preset ? ` / ${u.preset}` : ''}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontSize:'12px',color:'var(--nv-green)',fontWeight:600}}>{fmtRelative(u.fire_at)}</div>
+                    <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'1px'}}>{fmtIsoShort(u.fire_at)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div style={{overflowX:'auto'}}>
+          <table className="runs-table">
+            <thead>
+              <tr>
+                <th style={{width:'60px'}}>Enabled</th>
+                <th>Name</th><th>Type</th><th>Dataset</th>
+                <th>Cron / Branch</th><th>Next Run</th><th style={{textAlign:'center'}}>Pending</th><th>Requirements</th>
+                <th>Last Triggered</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="10" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading schedules…</div>
+                </td></tr>
+              ) : schedules.length === 0 ? (
+                <tr><td colSpan="10" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div style={{marginBottom:'8px',fontSize:'15px'}}>No schedules configured</div>
+                  <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Create a schedule to automatically run benchmarks on a cron schedule or GitHub push event.</div>
+                </td></tr>
+              ) : pg.pageData.map(s => (
+                <tr key={s.id} style={{cursor:'default'}}>
+                  <td>
+                    <label className="toggle">
+                      <input type="checkbox" checked={s.enabled} onChange={()=>handleToggle(s)} />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </td>
+                  <td>
+                    <div style={{color:'#fff',fontWeight:500}}>{s.name}</div>
+                    {s.description && <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px'}}>{s.description}</div>}
+                  </td>
+                  <td><ScheduleTypeBadge type={s.trigger_type} /></td>
+                  <td style={{color:'var(--nv-text-muted)'}}>{s.dataset}{s.preset ? ` / ${s.preset}` : ''}</td>
+                  <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>
+                    {s.trigger_type === 'cron' ? (s.cron_expression || "\u2014") : `${s.github_repo || ''}:${s.github_branch || 'main'}`}
+                  </td>
+                  <td style={{fontSize:'12px',whiteSpace:'nowrap'}}>
+                    {s.next_run_at ? (
+                      <div>
+                        <span style={{color:'var(--nv-green)',fontWeight:600}}>{fmtRelative(s.next_run_at)}</span>
+                        <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'1px'}}>{fmtIsoShort(s.next_run_at)}</div>
+                      </div>
+                    ) : (
+                      <span style={{color:'var(--nv-text-dim)'}}>{s.trigger_type === 'cron' ? (s.enabled ? "\u2014" : "disabled") : "on push"}</span>
+                    )}
+                  </td>
+                  <td style={{textAlign:'center'}}>
+                    {s.pending_jobs > 0 ? (
+                      <span style={{
+                        display:'inline-block',fontSize:'11px',fontWeight:700,padding:'2px 8px',borderRadius:'100px',
+                        background: s.pending_jobs >= 3 ? 'rgba(255,80,80,0.15)' : 'rgba(255,200,50,0.15)',
+                        color: s.pending_jobs >= 3 ? '#ff5050' : '#fcd34d',
+                      }}>{s.pending_jobs}</span>
+                    ) : (
+                      <span style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>0</span>
+                    )}
+                  </td>
+                  <td style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>{requirementsText(s)}</td>
+                  <td style={{color:'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{fmtTs(s.last_triggered_at)}</td>
+                  <td>
+                    <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                      <button className="btn btn-secondary btn-sm" onClick={()=>handleTriggerNow(s.id)} title="Trigger Now"><IconPlay /> Run</button>
+                      <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(s)} title="Edit"><IconEdit /> Edit</button>
+                      <button className="btn btn-sm" onClick={()=>handleDelete(s.id,s.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
+          pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+      </div>
+      {showForm && (
+        <ScheduleFormModal
+          schedule={editSchedule}
+          runners={runners}
+          onClose={()=>setShowForm(false)}
+          onSaved={()=>{setShowForm(false);onRefresh();}}
+        />
+      )}
+    </>
+  );
+}
+
+/* ===== Schedule Form Modal ===== */
+function ScheduleFormModal({ schedule, runners, onClose, onSaved }) {
+  const isEdit = !!schedule;
+  const [datasets, setDatasets] = useState([]);
+  const [presets, setPresets] = useState([]);
+  const [form, setForm] = useState({
+    name: schedule?.name || "",
+    description: schedule?.description || "",
+    dataset: schedule?.dataset || "",
+    preset: schedule?.preset || "",
+    config: schedule?.config || "",
+    trigger_type: schedule?.trigger_type || "cron",
+    cron_expression: schedule?.cron_expression || "",
+    github_repo: schedule?.github_repo || "",
+    github_branch: schedule?.github_branch || "main",
+    min_gpu_count: schedule?.min_gpu_count ?? "",
+    gpu_type_pattern: schedule?.gpu_type_pattern || "",
+    min_cpu_count: schedule?.min_cpu_count ?? "",
+    min_memory_gb: schedule?.min_memory_gb ?? "",
+    preferred_runner_id: schedule?.preferred_runner_id ?? "",
+    enabled: schedule?.enabled ?? true,
+    tags: (schedule?.tags || []).join(", "),
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/config").then(r=>r.json()).then(cfg => {
+      setDatasets(cfg.datasets || []);
+      setPresets(cfg.presets || []);
+      if (!form.dataset && cfg.datasets?.length) setForm(f=>({...f, dataset: cfg.datasets[0]}));
+    });
+  }, []);
+
+  function set(field, val) { setForm(f=>({...f,[field]:val})); }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.dataset) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        dataset: form.dataset,
+        preset: form.preset || null,
+        config: form.config.trim() || null,
+        trigger_type: form.trigger_type,
+        cron_expression: form.trigger_type === "cron" ? form.cron_expression.trim() || null : null,
+        github_repo: form.trigger_type === "github_push" ? form.github_repo.trim() || null : null,
+        github_branch: form.trigger_type === "github_push" ? form.github_branch.trim() || "main" : null,
+        min_gpu_count: form.min_gpu_count !== "" ? parseInt(form.min_gpu_count, 10) : null,
+        gpu_type_pattern: form.gpu_type_pattern.trim() || null,
+        min_cpu_count: form.min_cpu_count !== "" ? parseInt(form.min_cpu_count, 10) : null,
+        min_memory_gb: form.min_memory_gb !== "" ? parseFloat(form.min_memory_gb) : null,
+        preferred_runner_id: form.preferred_runner_id !== "" ? parseInt(form.preferred_runner_id, 10) : null,
+        enabled: form.enabled,
+        tags: form.tags ? form.tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+      };
+      const url = isEdit ? `/api/schedules/${schedule.id}` : "/api/schedules";
+      const res = await fetch(url, {
+        method: isEdit ? "PUT" : "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      onSaved();
+    } catch (err) {
+      alert("Failed to save schedule: " + err.message);
+    } finally { setSaving(false); }
+  }
+
+  const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
+  const helpStyle = {fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px'};
+  const onlineRunners = (runners || []).filter(r => r.status === 'online');
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'640px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit ? "Edit Schedule" : "Create Schedule"}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:'16px'}}>
+            {/* Basic Info */}
+            <div>
+              <label style={labelStyle}>Name *</label>
+              <input className="input" style={{width:'100%'}} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="e.g. Nightly A100 Benchmark" required />
+            </div>
+            <div>
+              <label style={labelStyle}>Description</label>
+              <input className="input" style={{width:'100%'}} value={form.description} onChange={e=>set('description',e.target.value)} placeholder="Optional description" />
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
+              <div>
+                <label style={labelStyle}>Dataset *</label>
+                <select className="select" style={{width:'100%'}} value={form.dataset} onChange={e=>set('dataset',e.target.value)}>
+                  <option value="">Select dataset…</option>
+                  {datasets.map(d=><option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Preset</label>
+                <select className="select" style={{width:'100%'}} value={form.preset} onChange={e=>set('preset',e.target.value)}>
+                  <option value="">Default</option>
+                  {presets.map(p=><option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Trigger Type */}
+            <div>
+              <label style={labelStyle}>Trigger Type</label>
+              <div style={{display:'flex',gap:'8px'}}>
+                <button type="button" className={`btn ${form.trigger_type==='cron'?'btn-primary':'btn-secondary'}`} style={{flex:1,justifyContent:'center'}}
+                  onClick={()=>set('trigger_type','cron')}><IconCalendar /> Cron Schedule</button>
+                <button type="button" className={`btn ${form.trigger_type==='github_push'?'btn-primary':'btn-secondary'}`} style={{flex:1,justifyContent:'center'}}
+                  onClick={()=>set('trigger_type','github_push')}><IconGithub /> GitHub Push</button>
+              </div>
+            </div>
+
+            {form.trigger_type === 'cron' && (
+              <div>
+                <label style={labelStyle}>Cron Expression</label>
+                <input className="input mono" style={{width:'100%'}} value={form.cron_expression} onChange={e=>set('cron_expression',e.target.value)} placeholder="0 2 * * *" />
+                <div style={helpStyle}>Format: minute hour day month day_of_week — e.g. "0 2 * * *" = daily at 2:00 AM</div>
+              </div>
+            )}
+
+            {form.trigger_type === 'github_push' && (
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:'14px'}}>
+                <div>
+                  <label style={labelStyle}>GitHub Repository</label>
+                  <input className="input" style={{width:'100%'}} value={form.github_repo} onChange={e=>set('github_repo',e.target.value)} placeholder="NVIDIA/nemo-retriever" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Branch</label>
+                  <input className="input" style={{width:'100%'}} value={form.github_branch} onChange={e=>set('github_branch',e.target.value)} placeholder="main" />
+                </div>
+              </div>
+            )}
+
+            {/* Runner Requirements */}
+            <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
+              <div style={{...labelStyle,marginBottom:'12px',fontSize:'13px',fontWeight:600}}>Runner Requirements</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'14px'}}>
+                <div>
+                  <label style={labelStyle}>Min GPUs</label>
+                  <input className="input" style={{width:'100%'}} type="number" min="0" value={form.min_gpu_count} onChange={e=>set('min_gpu_count',e.target.value)} placeholder="Any" />
+                </div>
+                <div>
+                  <label style={labelStyle}>GPU Type</label>
+                  <input className="input" style={{width:'100%'}} value={form.gpu_type_pattern} onChange={e=>set('gpu_type_pattern',e.target.value)} placeholder="e.g. A100" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Min CPUs</label>
+                  <input className="input" style={{width:'100%'}} type="number" min="0" value={form.min_cpu_count} onChange={e=>set('min_cpu_count',e.target.value)} placeholder="Any" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Min Memory (GB)</label>
+                  <input className="input" style={{width:'100%'}} type="number" min="0" step="0.1" value={form.min_memory_gb} onChange={e=>set('min_memory_gb',e.target.value)} placeholder="Any" />
+                </div>
+              </div>
+            </div>
+
+            {/* Preferred Runner */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
+              <div>
+                <label style={labelStyle}>Preferred Runner</label>
+                <select className="select" style={{width:'100%'}} value={form.preferred_runner_id} onChange={e=>set('preferred_runner_id',e.target.value)}>
+                  <option value="">Auto-select</option>
+                  {onlineRunners.map(r=><option key={r.id} value={r.id}>{r.name} ({r.hostname || 'unknown'})</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Tags (comma-separated)</label>
+                <input className="input" style={{width:'100%'}} value={form.tags} onChange={e=>set('tags',e.target.value)} placeholder="e.g. nightly, regression" />
+              </div>
+            </div>
+
+            {/* Enabled Toggle */}
+            <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <label className="toggle">
+                <input type="checkbox" checked={form.enabled} onChange={e=>set('enabled',e.target.checked)} />
+                <span className="toggle-slider"></span>
+              </label>
+              <span style={{fontSize:'14px',color:'var(--nv-text)'}}>Schedule is {form.enabled ? 'enabled' : 'disabled'}</span>
+            </div>
+          </div>
+
+          <div className="modal-foot">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={saving||!form.name.trim()||!form.dataset} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit ? "Update Schedule" : "Create Schedule"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Alerts View ===== */
+const METRIC_LABELS = { pages_per_sec:"Pages / sec", recall_5:"Recall@5", ingest_secs:"Ingest Time (s)", pages:"Pages", files:"Files" };
+const OPERATOR_LABELS = { "<":"less than", "<=":"at most", ">":"greater than", ">=":"at least", "==":"equal to", "!=":"not equal to" };
+
+function AlertsView({ alertRules, alertEvents, alertRulesLoading, alertEventsLoading, onRefresh, onSelectRun, githubRepoUrl }) {
+  const [tab, setTab] = useState("events");
+  const [showForm, setShowForm] = useState(false);
+  const [editRule, setEditRule] = useState(null);
+  const [filterRule, setFilterRule] = useState("");
+  const [filterAck, setFilterAck] = useState("unack");
+  const pgRules = usePagination(alertRules, 25);
+
+  function handleCreateRule() { setEditRule(null); setShowForm(true); }
+  function handleEditRule(r) { setEditRule(r); setShowForm(true); }
+  async function handleDeleteRule(id, name) {
+    if (!confirm(`Delete alert rule "${name}"? This cannot be undone.`)) return;
+    try { await fetch(`/api/alert-rules/${id}`, { method:"DELETE" }); onRefresh(); } catch {}
+  }
+  async function handleToggleRule(rule) {
+    try {
+      await fetch(`/api/alert-rules/${rule.id}`, {
+        method:"PUT", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ enabled: !rule.enabled }),
+      });
+      onRefresh();
+    } catch {}
+  }
+  async function handleAcknowledge(eventId) {
+    try { await fetch(`/api/alert-events/${eventId}/acknowledge`, { method:"POST" }); onRefresh(); } catch {}
+  }
+  async function handleAcknowledgeAll() {
+    if (!confirm("Acknowledge all unread alerts?")) return;
+    try { await fetch("/api/alert-events/acknowledge-all", { method:"POST" }); onRefresh(); } catch {}
+  }
+
+  const filteredEvents = useMemo(() => {
+    return alertEvents.filter(e => {
+      if (filterRule && e.rule_id !== parseInt(filterRule)) return false;
+      if (filterAck === "unack" && e.acknowledged) return false;
+      if (filterAck === "ack" && !e.acknowledged) return false;
+      return true;
+    });
+  }, [alertEvents, filterRule, filterAck]);
+  const pgEvents = usePagination(filteredEvents, 25);
+
+  const ruleMap = useMemo(() => {
+    const m = {};
+    alertRules.forEach(r => { m[r.id] = r; });
+    return m;
+  }, [alertRules]);
+
+  const unackCount = alertEvents.filter(e => !e.acknowledged).length;
+
+  const labelStyle = {display:'block',fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.05em'};
+
+  return (
+    <>
+      {/* Tab toggle */}
+      <div style={{display:'flex',gap:'8px',marginBottom:'20px',alignItems:'center'}}>
+        <div style={{display:'flex',gap:'2px',background:'var(--nv-bg)',borderRadius:'8px',padding:'2px',border:'1px solid var(--nv-border)'}}>
+          {[{k:'events',l:'Alert History'},{k:'rules',l:'Alert Rules'}].map(t=>(
+            <button key={t.k} className="btn btn-sm" onClick={()=>setTab(t.k)}
+              style={{borderRadius:'6px',padding:'6px 18px',fontSize:'13px',
+                background:tab===t.k?'var(--nv-green)':'transparent',
+                color:tab===t.k?'#000':'var(--nv-text-muted)',
+                fontWeight:tab===t.k?700:500,border:'none'}}>
+              {t.l}
+              {t.k==='events' && unackCount > 0 && (
+                <span style={{marginLeft:'6px',background:tab===t.k?'rgba(0,0,0,0.2)':'#ff5050',color:tab===t.k?'#000':'#fff',
+                  fontSize:'10px',fontWeight:700,padding:'1px 6px',borderRadius:'100px'}}>{unackCount}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div style={{flex:1}}></div>
+        <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
+      </div>
+
+      {/* Events Tab */}
+      {tab === "events" && (
+        <>
+          <div style={{display:'flex',gap:'12px',alignItems:'flex-end',marginBottom:'16px',flexWrap:'wrap'}}>
+            <div>
+              <div style={labelStyle}>Rule</div>
+              <select className="select" value={filterRule} onChange={e=>setFilterRule(e.target.value)} style={{minWidth:'180px'}}>
+                <option value="">All rules</option>
+                {alertRules.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={labelStyle}>Status</div>
+              <select className="select" value={filterAck} onChange={e=>setFilterAck(e.target.value)} style={{minWidth:'130px'}}>
+                <option value="all">All</option>
+                <option value="unack">Unacknowledged</option>
+                <option value="ack">Acknowledged</option>
+              </select>
+            </div>
+            <div style={{flex:1}}></div>
+            {unackCount > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={handleAcknowledgeAll}>
+                <IconCheck /> Acknowledge All ({unackCount})
+              </button>
+            )}
+          </div>
+
+          <div className="card">
+            <div style={{overflowX:'auto'}}>
+              <table className="runs-table">
+                <thead>
+                  <tr>
+                    <th style={{width:'40px'}}></th>
+                    <th>Alert</th><th>Metric</th><th>Value</th>
+                    <th>Threshold</th><th>Dataset</th><th>Commit</th>
+                    <th>Host</th><th>Time</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertEventsLoading ? (
+                    <tr><td colSpan="10" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                      <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading alerts…</div>
+                    </td></tr>
+                  ) : filteredEvents.length === 0 ? (
+                    <tr><td colSpan="10" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                      <div style={{marginBottom:'8px',fontSize:'15px'}}>{filterAck==='unack'?'No unacknowledged alerts':'No alerts found'}</div>
+                      <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Alerts are generated when a run metric violates a rule threshold.</div>
+                    </td></tr>
+                  ) : pgEvents.pageData.map(ev => {
+                    const rule = ruleMap[ev.rule_id];
+                    return (
+                      <tr key={ev.id} style={{background:!ev.acknowledged?'rgba(255,60,60,0.04)':'inherit',cursor:'default'}}>
+                        <td>
+                          {!ev.acknowledged
+                            ? <span style={{display:'inline-block',width:'8px',height:'8px',borderRadius:'50%',background:'#ff5050',boxShadow:'0 0 6px rgba(255,80,80,0.5)'}}></span>
+                            : <span style={{display:'inline-block',width:'8px',height:'8px',borderRadius:'50%',background:'#333'}}></span>}
+                        </td>
+                        <td>
+                          <div style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{rule?.name || `Rule #${ev.rule_id}`}</div>
+                          <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px',maxWidth:'220px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ev.message}>{ev.message}</div>
+                        </td>
+                        <td><span className="badge badge-na">{METRIC_LABELS[ev.metric]||ev.metric}</span></td>
+                        <td className="mono" style={{color:'#ff5050',fontWeight:600,fontSize:'13px'}}>{ev.metric_value != null ? ev.metric_value.toFixed(4) : "\u2014"}</td>
+                        <td className="mono" style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{ev.operator} {ev.threshold}</td>
+                        <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ev.dataset || "\u2014"}</td>
+                        <td>
+                          <CommitLink sha={ev.git_commit} repoUrl={githubRepoUrl} />
+                        </td>
+                        <td style={{color:'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{ev.hostname||"\u2014"}</td>
+                        <td style={{color:'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{fmtTs(ev.created_at)}</td>
+                        <td>
+                          <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                            <button className="btn btn-secondary btn-sm" onClick={()=>onSelectRun(ev.run_id)} title="View Run">
+                              <IconExternalLink /> Run #{ev.run_id}
+                            </button>
+                            {!ev.acknowledged && (
+                              <button className="btn btn-sm" onClick={()=>handleAcknowledge(ev.id)} title="Acknowledge"
+                                style={{background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.2)'}}>
+                                <IconCheck />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={pgEvents.page} totalPages={pgEvents.totalPages} totalItems={pgEvents.totalItems}
+              pageSize={pgEvents.pageSize} onPageChange={pgEvents.setPage} onPageSizeChange={pgEvents.setPageSize} />
+          </div>
+        </>
+      )}
+
+      {/* Rules Tab */}
+      {tab === "rules" && (
+        <>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+            <button className="btn btn-primary" onClick={handleCreateRule}><IconPlus /> Create Alert Rule</button>
+          </div>
+
+          <div className="card">
+            <div style={{overflowX:'auto'}}>
+              <table className="runs-table">
+                <thead>
+                  <tr>
+                    <th style={{width:'60px'}}>Enabled</th>
+                    <th>Name</th><th>Condition</th><th>Scope</th>
+                    <th>Created</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertRulesLoading ? (
+                    <tr><td colSpan="6" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                      <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading rules…</div>
+                    </td></tr>
+                  ) : alertRules.length === 0 ? (
+                    <tr><td colSpan="6" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                      <div style={{marginBottom:'8px',fontSize:'15px'}}>No alert rules defined</div>
+                      <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Create a rule to get notified when a metric goes out of range.</div>
+                    </td></tr>
+                  ) : pgRules.pageData.map(r => (
+                    <tr key={r.id} style={{cursor:'default'}}>
+                      <td>
+                        <label className="toggle">
+                          <input type="checkbox" checked={r.enabled} onChange={()=>handleToggleRule(r)} />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </td>
+                      <td>
+                        <div style={{color:'#fff',fontWeight:500}}>{r.name}</div>
+                        {r.description && <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px'}}>{r.description}</div>}
+                      </td>
+                      <td>
+                        <span style={{display:'inline-flex',alignItems:'center',gap:'6px',fontSize:'13px'}}>
+                          <span className="badge badge-na">{METRIC_LABELS[r.metric]||r.metric}</span>
+                          <span style={{color:'var(--nv-text-muted)',fontWeight:600}}>{r.operator}</span>
+                          <span className="mono" style={{color:'var(--nv-green)',fontWeight:600}}>{r.threshold}</span>
+                        </span>
+                      </td>
+                      <td style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>
+                        {r.dataset_filter || r.preset_filter
+                          ? [r.dataset_filter && `Dataset: ${r.dataset_filter}`, r.preset_filter && `Preset: ${r.preset_filter}`].filter(Boolean).join(", ")
+                          : "All runs"}
+                      </td>
+                      <td style={{color:'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{fmtTs(r.created_at)}</td>
+                      <td>
+                        <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={()=>handleEditRule(r)} title="Edit"><IconEdit /> Edit</button>
+                          <button className="btn btn-sm" onClick={()=>handleDeleteRule(r.id,r.name)} title="Delete"
+                            style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={pgRules.page} totalPages={pgRules.totalPages} totalItems={pgRules.totalItems}
+              pageSize={pgRules.pageSize} onPageChange={pgRules.setPage} onPageSizeChange={pgRules.setPageSize} />
+          </div>
+        </>
+      )}
+
+      {showForm && (
+        <AlertRuleFormModal
+          rule={editRule}
+          onClose={()=>setShowForm(false)}
+          onSaved={()=>{setShowForm(false);onRefresh();}}
+        />
+      )}
+    </>
+  );
+}
+
+function AlertRuleFormModal({ rule, onClose, onSaved }) {
+  const isEdit = !!rule;
+  const [metrics, setMetrics] = useState([]);
+  const [operators, setOperators] = useState([]);
+  const [datasets, setDatasets] = useState([]);
+  const [presets, setPresets] = useState([]);
+  const [form, setForm] = useState({
+    name: rule?.name || "",
+    description: rule?.description || "",
+    metric: rule?.metric || "pages_per_sec",
+    operator: rule?.operator || "<",
+    threshold: rule?.threshold ?? "",
+    dataset_filter: rule?.dataset_filter || "",
+    preset_filter: rule?.preset_filter || "",
+    enabled: rule?.enabled ?? true,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/alert-metrics").then(r=>r.json()).then(d=>{
+      setMetrics(d.metrics||[]);
+      setOperators(d.operators||[]);
+    }).catch(()=>{});
+    fetch("/api/config").then(r=>r.json()).then(cfg=>{
+      setDatasets(cfg.datasets||[]);
+      setPresets(cfg.presets||[]);
+    }).catch(()=>{});
+  }, []);
+
+  function set(k,v) { setForm(f=>({...f,[k]:v})); }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.name.trim() || form.threshold === "") return;
+    setSaving(true);
+    setError("");
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      metric: form.metric,
+      operator: form.operator,
+      threshold: parseFloat(form.threshold),
+      dataset_filter: form.dataset_filter || null,
+      preset_filter: form.preset_filter || null,
+      enabled: form.enabled,
+    };
+    try {
+      const url = isEdit ? `/api/alert-rules/${rule.id}` : "/api/alert-rules";
+      const method = isEdit ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.detail||`HTTP ${res.status}`); }
+      onSaved();
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
+  }
+
+  const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'540px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit?"Edit Alert Rule":"Create Alert Rule"}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px',maxHeight:'65vh',overflowY:'auto'}}>
+            {error && (
+              <div style={{padding:'10px 14px',borderRadius:'8px',background:'rgba(255,50,50,0.08)',border:'1px solid rgba(255,50,50,0.2)',color:'#ff5050',fontSize:'13px'}}>{error}</div>
+            )}
+            <div>
+              <label style={labelStyle}>Rule Name *</label>
+              <input className="input" style={{width:'100%'}} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="e.g. PPS regression threshold" required />
+            </div>
+            <div>
+              <label style={labelStyle}>Description</label>
+              <input className="input" style={{width:'100%'}} value={form.description} onChange={e=>set('description',e.target.value)} placeholder="Optional description" />
+            </div>
+
+            {/* Condition */}
+            <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
+              <div style={{fontSize:'13px',fontWeight:600,color:'var(--nv-green)',marginBottom:'12px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Condition</div>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'14px',color:'#fff',padding:'12px 16px',background:'var(--nv-bg)',borderRadius:'8px',border:'1px solid var(--nv-border)'}}>
+                <span style={{color:'var(--nv-text-muted)'}}>Alert when</span>
+                <select className="select" value={form.metric} onChange={e=>set('metric',e.target.value)} style={{minWidth:'130px'}}>
+                  {metrics.map(m=><option key={m} value={m}>{METRIC_LABELS[m]||m}</option>)}
+                </select>
+                <span style={{color:'var(--nv-text-muted)'}}>is</span>
+                <select className="select" value={form.operator} onChange={e=>set('operator',e.target.value)} style={{minWidth:'80px'}}>
+                  {operators.map(op=><option key={op} value={op}>{op} ({OPERATOR_LABELS[op]||op})</option>)}
+                </select>
+                <input className="input mono" type="number" step="any" style={{width:'100px',textAlign:'center'}} value={form.threshold} onChange={e=>set('threshold',e.target.value)} placeholder="0" required />
+              </div>
+              <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'6px',paddingLeft:'4px'}}>
+                Example: Alert when Pages / sec is {"<"} 50 — fires if a run's pages/sec drops below 50.
+              </div>
+            </div>
+
+            {/* Scope */}
+            <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
+              <div style={{fontSize:'13px',fontWeight:600,color:'var(--nv-green)',marginBottom:'12px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Scope (optional filters)</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+                <div>
+                  <label style={labelStyle}>Dataset</label>
+                  <select className="select" style={{width:'100%'}} value={form.dataset_filter} onChange={e=>set('dataset_filter',e.target.value)}>
+                    <option value="">All datasets</option>
+                    {datasets.map(d=><option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Preset</label>
+                  <select className="select" style={{width:'100%'}} value={form.preset_filter} onChange={e=>set('preset_filter',e.target.value)}>
+                    <option value="">All presets</option>
+                    {presets.map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Enabled */}
+            <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <label className="toggle">
+                <input type="checkbox" checked={form.enabled} onChange={e=>set('enabled',e.target.checked)} />
+                <span className="toggle-slider"></span>
+              </label>
+              <span style={{fontSize:'14px',color:'var(--nv-text)'}}>Rule is {form.enabled?'enabled':'disabled'}</span>
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={saving||!form.name.trim()||form.threshold===""} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit?"Update Rule":"Create Rule"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Analytics View ===== */
+const ANALYTICS_METRICS = [
+  { key: "pages_per_sec", label: "Pages / sec" },
+  { key: "recall_5", label: "Recall@5" },
+  { key: "ingest_secs", label: "Ingest Time (s)" },
+  { key: "pages", label: "Pages" },
+  { key: "files", label: "Files" },
+];
+
+const CHART_COLORS = [
+  '#76b900','#64b4ff','#a882ff','#fcd34d','#ff5050',
+  '#ff8c00','#00d4aa','#ff69b4','#4ecdc4','#95e1d3',
+  '#f38181','#aa96da','#45b7d1','#96ceb4','#dfe6e9',
+];
+
+function parseRunTimestamp(ts) {
+  if (!ts) return null;
+  if (/^\d{8}_\d{6}_UTC$/.test(ts)) {
+    return new Date(Date.UTC(+ts.slice(0,4), +ts.slice(4,6)-1, +ts.slice(6,8), +ts.slice(9,11), +ts.slice(11,13), +ts.slice(13,15)));
+  }
+  try { return new Date(ts); } catch { return null; }
+}
+
+function AnalyticsView({ runs, datasets, loading, onRefresh }) {
+  const canvasRef = React.useRef(null);
+  const chartRef = React.useRef(null);
+
+  const [chartType, setChartType] = useState("line");
+  const [yMetric, setYMetric] = useState("pages_per_sec");
+  const [xMetric, setXMetric] = useState("pages");
+  const [groupBy, setGroupBy] = useState("dataset");
+  const [filterDataset, setFilterDataset] = useState("");
+  const [filterPreset, setFilterPreset] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const allDatasets = useMemo(() => [...new Set(runs.map(r => r.dataset).filter(Boolean))].sort(), [runs]);
+  const allPresets = useMemo(() => [...new Set(runs.map(r => r.preset).filter(Boolean))].sort(), [runs]);
+
+  const filteredRuns = useMemo(() => {
+    return runs.filter(r => {
+      if (filterDataset && r.dataset !== filterDataset) return false;
+      if (filterPreset && r.preset !== filterPreset) return false;
+      if (filterStatus === "pass" && r.success !== 1) return false;
+      if (filterStatus === "fail" && r.success !== 0) return false;
+      if (dateFrom || dateTo) {
+        const d = parseRunTimestamp(r.timestamp);
+        if (!d) return false;
+        if (dateFrom && d < new Date(dateFrom + "T00:00:00Z")) return false;
+        if (dateTo && d > new Date(dateTo + "T23:59:59Z")) return false;
+      }
+      return true;
+    });
+  }, [runs, filterDataset, filterPreset, filterStatus, dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
+    if (filteredRuns.length === 0) return;
+
+    const yKey = yMetric;
+
+    if (chartType === "line" || chartType === "scatter") {
+      const groups = {};
+      filteredRuns.forEach(r => {
+        const group = r[groupBy] || "unknown";
+        if (!groups[group]) groups[group] = [];
+        const yVal = r[yKey];
+        if (yVal == null) return;
+        if (chartType === "line") {
+          const date = parseRunTimestamp(r.timestamp);
+          if (date) groups[group].push({ x: date, y: yVal, _run: r });
+        } else {
+          const xVal = r[xMetric];
+          if (xVal != null) groups[group].push({ x: xVal, y: yVal, _run: r });
+        }
+      });
+
+      const chartDatasets = Object.entries(groups).map(([name, points], i) => ({
+        label: name,
+        data: points.sort((a, b) => (a.x instanceof Date ? a.x.getTime() - b.x.getTime() : a.x - b.x)),
+        borderColor: CHART_COLORS[i % CHART_COLORS.length],
+        backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + '40',
+        pointBackgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+        tension: 0.3,
+        pointRadius: 5,
+        pointHoverRadius: 8,
+        fill: false,
+        borderWidth: 2,
+      }));
+
+      const yLabel = (ANALYTICS_METRICS.find(m => m.key === yMetric) || {}).label || yMetric;
+      const xLabel = chartType === "line" ? "Date" : (ANALYTICS_METRICS.find(m => m.key === xMetric) || {}).label || xMetric;
+
+      chartRef.current = new Chart(canvasRef.current, {
+        type: chartType === "line" ? "line" : "scatter",
+        data: { datasets: chartDatasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 400 },
+          interaction: { mode: 'nearest', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { color: '#e0e0e0', font: { family: 'Inter', size: 12 }, usePointStyle: true, pointStyle: 'circle', padding: 16 } },
+            tooltip: {
+              backgroundColor: '#1e1e1e', titleColor: '#fff', bodyColor: '#ccc',
+              borderColor: '#333', borderWidth: 1, padding: 12,
+              titleFont: { family: 'Inter', weight: '600' },
+              bodyFont: { family: 'JetBrains Mono', size: 12 },
+              callbacks: {
+                title: (items) => {
+                  const r = items[0]?.raw?._run;
+                  return r ? `Run #${r.id} — ${r.dataset}` : '';
+                },
+                label: (ctx) => {
+                  const lines = [`  ${ctx.dataset.label}`];
+                  lines.push(`  ${yLabel}: ${ctx.parsed.y?.toFixed(3)}`);
+                  if (chartType === "line") {
+                    lines.push(`  Date: ${new Date(ctx.parsed.x).toLocaleString()}`);
+                  } else {
+                    lines.push(`  ${xLabel}: ${ctx.parsed.x?.toFixed(3)}`);
+                  }
+                  const r = ctx.raw?._run;
+                  if (r?.preset) lines.push(`  Preset: ${r.preset}`);
+                  if (r?.hostname) lines.push(`  Host: ${r.hostname}`);
+                  return lines;
+                },
+              },
+            },
+          },
+          scales: {
+            x: chartType === "line" ? {
+              type: 'time',
+              time: { tooltipFormat: 'MMM d, yyyy HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d', week: 'MMM d', month: 'MMM yyyy' } },
+              ticks: { color: '#888', font: { size: 11 }, maxRotation: 45 },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              title: { display: true, text: 'Date', color: '#888', font: { size: 12 } },
+            } : {
+              type: 'linear',
+              ticks: { color: '#888', font: { size: 11 } },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              title: { display: true, text: xLabel, color: '#888', font: { size: 12 } },
+            },
+            y: {
+              ticks: { color: '#888', font: { size: 11 } },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              title: { display: true, text: yLabel, color: '#888', font: { size: 12 } },
+            },
+          },
+        },
+      });
+    } else if (chartType === "bar") {
+      const groups = {};
+      filteredRuns.forEach(r => {
+        const group = r[groupBy] || "unknown";
+        if (!groups[group]) groups[group] = [];
+        const val = r[yKey];
+        if (val != null) groups[group].push(val);
+      });
+      const labels = Object.keys(groups).sort();
+      const avgData = labels.map(l => { const v = groups[l]; return v.reduce((a,b)=>a+b,0)/v.length; });
+      const minData = labels.map(l => Math.min(...groups[l]));
+      const maxData = labels.map(l => Math.max(...groups[l]));
+      const yLabel = (ANALYTICS_METRICS.find(m => m.key === yMetric) || {}).label || yMetric;
+
+      chartRef.current = new Chart(canvasRef.current, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: `Avg ${yLabel}`, data: avgData, backgroundColor: labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length] + 'cc'), borderColor: labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length]), borderWidth: 1, borderRadius: 4 },
+            { label: `Min`, data: minData, backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderRadius: 4 },
+            { label: `Max`, data: maxData, backgroundColor: 'rgba(118,185,0,0.15)', borderColor: 'rgba(118,185,0,0.4)', borderWidth: 1, borderRadius: 4 },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 400 },
+          plugins: {
+            legend: { position: 'top', labels: { color: '#e0e0e0', font: { family: 'Inter', size: 12 }, padding: 16 } },
+            tooltip: { backgroundColor: '#1e1e1e', titleColor: '#fff', bodyColor: '#ccc', borderColor: '#333', borderWidth: 1, bodyFont: { family: 'JetBrains Mono', size: 12 } },
+          },
+          scales: {
+            x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            y: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' }, title: { display: true, text: yLabel, color: '#888', font: { size: 12 } } },
+          },
+        },
+      });
+    }
+
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+  }, [filteredRuns, chartType, yMetric, xMetric, groupBy]);
+
+  const stats = useMemo(() => {
+    const vals = filteredRuns.map(r => r[yMetric]).filter(v => v != null);
+    if (!vals.length) return null;
+    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const sorted = [...vals].sort((a,b)=>a-b);
+    const median = sorted.length%2===0 ? (sorted[sorted.length/2-1]+sorted[sorted.length/2])/2 : sorted[Math.floor(sorted.length/2)];
+    const stddev = Math.sqrt(vals.reduce((sum,v)=>sum+Math.pow(v-avg,2),0)/vals.length);
+    return { count: vals.length, avg, min: sorted[0], max: sorted[sorted.length-1], median, stddev };
+  }, [filteredRuns, yMetric]);
+
+  const labelStyle = {display:'block',fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.05em'};
+  const yLabel = (ANALYTICS_METRICS.find(m=>m.key===yMetric)||{}).label || yMetric;
+
+  return (
+    <>
+      {/* Controls */}
+      <div className="card" style={{padding:'16px 20px',marginBottom:'20px'}}>
+        <div style={{display:'flex',gap:'16px',alignItems:'flex-end',flexWrap:'wrap'}}>
+          {/* Chart Type */}
+          <div>
+            <div style={labelStyle}>Chart Type</div>
+            <div style={{display:'flex',gap:'2px',background:'var(--nv-bg)',borderRadius:'8px',padding:'2px',border:'1px solid var(--nv-border)'}}>
+              {[{k:'line',l:'Line'},{k:'scatter',l:'Scatter'},{k:'bar',l:'Bar'}].map(t=>(
+                <button key={t.k} className="btn btn-sm" onClick={()=>setChartType(t.k)}
+                  style={{borderRadius:'6px',padding:'5px 14px',fontSize:'12px',
+                    background:chartType===t.k?'var(--nv-green)':'transparent',
+                    color:chartType===t.k?'#000':'var(--nv-text-muted)',
+                    fontWeight:chartType===t.k?700:500,border:'none'}}>
+                  {t.l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Y Axis */}
+          <div>
+            <div style={labelStyle}>Y Axis</div>
+            <select className="select" value={yMetric} onChange={e=>setYMetric(e.target.value)} style={{minWidth:'140px'}}>
+              {ANALYTICS_METRICS.map(m=><option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </div>
+
+          {/* X Axis (scatter only) */}
+          {chartType === "scatter" && (
+            <div>
+              <div style={labelStyle}>X Axis</div>
+              <select className="select" value={xMetric} onChange={e=>setXMetric(e.target.value)} style={{minWidth:'140px'}}>
+                {ANALYTICS_METRICS.filter(m=>m.key!==yMetric).map(m=><option key={m.key} value={m.key}>{m.label}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Group By */}
+          <div>
+            <div style={labelStyle}>Group By</div>
+            <select className="select" value={groupBy} onChange={e=>setGroupBy(e.target.value)} style={{minWidth:'110px'}}>
+              <option value="dataset">Dataset</option>
+              <option value="preset">Preset</option>
+              <option value="hostname">Host</option>
+              <option value="gpu_type">GPU Type</option>
+            </select>
+          </div>
+
+          <div style={{flex:'1 0 0',minWidth:'40px'}}></div>
+          <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
+        </div>
+
+        {/* Filters row */}
+        <div style={{display:'flex',gap:'12px',alignItems:'flex-end',flexWrap:'wrap',marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--nv-border)'}}>
+          <div>
+            <div style={labelStyle}>Dataset</div>
+            <select className="select" value={filterDataset} onChange={e=>setFilterDataset(e.target.value)} style={{minWidth:'150px'}}>
+              <option value="">All datasets</option>
+              {allDatasets.map(d=><option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>Preset</div>
+            <select className="select" value={filterPreset} onChange={e=>setFilterPreset(e.target.value)} style={{minWidth:'130px'}}>
+              <option value="">All presets</option>
+              {allPresets.map(p=><option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>Status</div>
+            <select className="select" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{minWidth:'100px'}}>
+              <option value="all">All</option>
+              <option value="pass">Pass only</option>
+              <option value="fail">Fail only</option>
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>From</div>
+            <input type="date" className="input" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{minWidth:'140px',colorScheme:'dark'}} />
+          </div>
+          <div>
+            <div style={labelStyle}>To</div>
+            <input type="date" className="input" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{minWidth:'140px',colorScheme:'dark'}} />
+          </div>
+          {(filterDataset||filterPreset||filterStatus!=='all'||dateFrom||dateTo) && (
+            <button className="btn btn-ghost btn-sm" onClick={()=>{setFilterDataset('');setFilterPreset('');setFilterStatus('all');setDateFrom('');setDateTo('');}}
+              style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap'}}>
+              <IconX /> Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="card" style={{padding:'20px',marginBottom:'20px'}}>
+        <div style={{position:'relative',height:'450px'}}>
+          {loading ? (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',flexDirection:'column',gap:'12px',color:'var(--nv-text-muted)'}}>
+              <div className="spinner spinner-lg"></div><div>Loading data…</div>
+            </div>
+          ) : filteredRuns.length === 0 ? (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',flexDirection:'column',gap:'8px',color:'var(--nv-text-muted)'}}>
+              <IconChart />
+              <div style={{fontSize:'15px'}}>No data matching filters</div>
+              <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Adjust filters or trigger some runs to see analytics.</div>
+            </div>
+          ) : (
+            <canvas ref={canvasRef}></canvas>
+          )}
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      {stats && (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(6, 1fr)',gap:'12px'}}>
+          <div className="metric-card">
+            <div className="metric-value" style={{fontSize:'20px',color:'#fff'}}>{stats.count}</div>
+            <div className="metric-label">Runs</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-value" style={{fontSize:'20px'}}>{stats.avg.toFixed(2)}</div>
+            <div className="metric-label">Avg {yLabel}</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-value" style={{fontSize:'20px'}}>{stats.median.toFixed(2)}</div>
+            <div className="metric-label">Median</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-value" style={{fontSize:'20px',color:'#64b4ff'}}>{stats.min.toFixed(2)}</div>
+            <div className="metric-label">Min</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-value" style={{fontSize:'20px',color:'#fcd34d'}}>{stats.max.toFixed(2)}</div>
+            <div className="metric-label">Max</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-value" style={{fontSize:'20px',color:'var(--nv-text-muted)'}}>{stats.stddev.toFixed(2)}</div>
+            <div className="metric-label">Std Dev</div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ===== Trigger Modal ===== */
+function TriggerModal({ onClose, onTriggered }) {
+  const [datasets, setDatasets] = useState([]);
+  const [presets, setPresets] = useState([]);
+  const [runners, setRunners] = useState([]);
+  const [dataset, setDataset] = useState("");
+  const [preset, setPreset] = useState("");
+  const [runnerId, setRunnerId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/config").then(r=>r.json()).then(cfg => {
+      setDatasets(cfg.datasets || []);
+      setPresets(cfg.presets || []);
+      if (cfg.datasets?.length) setDataset(cfg.datasets[0]);
+      if (cfg.presets?.length) setPreset(cfg.presets[0]);
+    });
+    fetch("/api/runners").then(r=>r.json()).then(setRunners).catch(()=>{});
+  }, []);
+
+  const onlineRunners = runners.filter(r => r.status === "online");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!dataset) return;
+    setSubmitting(true);
+    try {
+      const payload = { dataset, preset: preset || null, runner_id: runnerId ? parseInt(runnerId, 10) : null };
+      const res = await fetch("/api/runs/trigger", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      onTriggered(data);
+      onClose();
+    } catch (err) {
+      alert("Failed to trigger run: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'460px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>Trigger New Run</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px'}}>
+            <div>
+              <label style={labelStyle}>Dataset</label>
+              <select value={dataset} onChange={e=>setDataset(e.target.value)} className="select" style={{width:'100%'}}>
+                {datasets.map(d=><option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Preset</label>
+              <select value={preset} onChange={e=>setPreset(e.target.value)} className="select" style={{width:'100%'}}>
+                {presets.map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Runner</label>
+              <select value={runnerId} onChange={e=>setRunnerId(e.target.value)} className="select" style={{width:'100%'}}>
+                <option value="">Any available runner</option>
+                {onlineRunners.map(r=><option key={r.id} value={r.id}>{r.name} ({r.hostname || 'unknown'}) — {r.gpu_type || 'no GPU'} x{r.gpu_count||0}</option>)}
+              </select>
+              <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px'}}>
+                {onlineRunners.length === 0
+                  ? "No runners online. The job will wait until a runner becomes available."
+                  : `${onlineRunners.length} runner${onlineRunners.length!==1?'s':''} online`}
+              </div>
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={submitting||!dataset} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : "Start Run"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ===== App ===== */
+function App() {
+  const [activeView, setActiveView] = useState("runs");
+  const [runs, setRuns] = useState([]);
+  const [datasets, setDatasets] = useState([]);
+  const [filterDataset, setFilterDataset] = useState("");
+  const [filterCommit, setFilterCommit] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [selectedRun, setSelectedRun] = useState(null);
+  const [showTrigger, setShowTrigger] = useState(false);
+  const [jobs, setJobs] = useState([]);
+  const [runners, setRunners] = useState([]);
+  const [runnersLoading, setRunnersLoading] = useState(true);
+  const [schedules, setSchedules] = useState([]);
+  const [schedulesLoading, setSchedulesLoading] = useState(true);
+  const [managedDatasets, setManagedDatasets] = useState([]);
+  const [managedDatasetsLoading, setManagedDatasetsLoading] = useState(true);
+  const [yamlDatasets, setYamlDatasets] = useState([]);
+  const [managedPresets, setManagedPresets] = useState([]);
+  const [managedPresetsLoading, setManagedPresetsLoading] = useState(true);
+  const [yamlPresets, setYamlPresets] = useState([]);
+  const [alertRules, setAlertRules] = useState([]);
+  const [alertRulesLoading, setAlertRulesLoading] = useState(true);
+  const [alertEvents, setAlertEvents] = useState([]);
+  const [alertEventsLoading, setAlertEventsLoading] = useState(true);
+  const [githubRepoUrl, setGithubRepoUrl] = useState("");
+
+  const fetchRuns = useCallback(async () => {
+    setLoading(prev => runs.length === 0 ? true : prev);
+    const params = new URLSearchParams();
+    if (filterDataset) params.set("dataset", filterDataset);
+    if (filterCommit) params.set("commit", filterCommit);
+    params.set("limit", "200");
+    try {
+      const res = await fetch(`/api/runs?${params}`);
+      setRuns(await res.json());
+    } finally { setLoading(false); }
+  }, [filterDataset, filterCommit, runs.length]);
+
+  const fetchDatasets = useCallback(async () => {
+    const res = await fetch("/api/datasets");
+    setDatasets(await res.json());
+    try {
+      const cfg = await (await fetch("/api/config")).json();
+      if (cfg.github_repo_url) setGithubRepoUrl(cfg.github_repo_url);
+    } catch {}
+  }, []);
+
+  const fetchManagedDatasets = useCallback(async () => {
+    setManagedDatasetsLoading(prev => managedDatasets.length === 0 ? true : prev);
+    try {
+      const [mRes, cRes] = await Promise.all([
+        fetch("/api/managed-datasets"),
+        fetch("/api/config"),
+      ]);
+      const managed = await mRes.json();
+      const config = await cRes.json();
+      setManagedDatasets(managed);
+      const managedNames = new Set(managed.map(d => d.name));
+      setYamlDatasets((config.datasets || []).filter(n => !managedNames.has(n)));
+    } catch {}
+    finally { setManagedDatasetsLoading(false); }
+  }, [managedDatasets.length]);
+
+  const fetchManagedPresets = useCallback(async () => {
+    setManagedPresetsLoading(prev => managedPresets.length === 0 ? true : prev);
+    try {
+      const [mRes, cRes] = await Promise.all([
+        fetch("/api/managed-presets"),
+        fetch("/api/config"),
+      ]);
+      const managed = await mRes.json();
+      const config = await cRes.json();
+      setManagedPresets(managed);
+      const managedNames = new Set(managed.map(p => p.name));
+      setYamlPresets((config.presets || []).filter(n => !managedNames.has(n)));
+    } catch {}
+    finally { setManagedPresetsLoading(false); }
+  }, [managedPresets.length]);
+
+  const fetchJobs = useCallback(async () => {
+    try { const res = await fetch("/api/jobs"); setJobs(await res.json()); } catch {}
+  }, []);
+
+  const fetchRunners = useCallback(async () => {
+    setRunnersLoading(prev => runners.length === 0 ? true : prev);
+    try { const res = await fetch("/api/runners"); setRunners(await res.json()); } catch {}
+    finally { setRunnersLoading(false); }
+  }, [runners.length]);
+
+  const fetchSchedules = useCallback(async () => {
+    setSchedulesLoading(prev => schedules.length === 0 ? true : prev);
+    try { const res = await fetch("/api/schedules"); setSchedules(await res.json()); } catch {}
+    finally { setSchedulesLoading(false); }
+  }, [schedules.length]);
+
+  const fetchAlertRules = useCallback(async () => {
+    setAlertRulesLoading(prev => alertRules.length === 0 ? true : prev);
+    try { const res = await fetch("/api/alert-rules"); setAlertRules(await res.json()); } catch {}
+    finally { setAlertRulesLoading(false); }
+  }, [alertRules.length]);
+
+  const fetchAlertEvents = useCallback(async () => {
+    setAlertEventsLoading(prev => alertEvents.length === 0 ? true : prev);
+    try { const res = await fetch("/api/alert-events?limit=500"); setAlertEvents(await res.json()); } catch {}
+    finally { setAlertEventsLoading(false); }
+  }, [alertEvents.length]);
+
+  useEffect(() => { fetchRuns(); fetchDatasets(); fetchJobs(); fetchRunners(); fetchSchedules(); fetchManagedDatasets(); fetchManagedPresets(); fetchAlertRules(); fetchAlertEvents(); }, [fetchRuns, fetchDatasets, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchAlertRules, fetchAlertEvents]);
+
+  // Auto-refresh the active view every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchJobs();
+      fetchAlertEvents();
+      if (activeView === "runs")       { fetchRuns(); }
+      if (activeView === "datasets")   { fetchManagedDatasets(); }
+      if (activeView === "presets")    { fetchManagedPresets(); }
+      if (activeView === "runners")    { fetchRunners(); }
+      if (activeView === "scheduling") { fetchSchedules(); }
+      if (activeView === "alerts")     { fetchAlertRules(); fetchAlertEvents(); }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [activeView, fetchRuns, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchAlertRules, fetchAlertEvents]);
+
+  // Fast polling (3s) when jobs are actively running
+  useEffect(() => {
+    const hasActive = jobs.some(j => j.status==="running" || j.status==="pending");
+    if (!hasActive) return;
+    const interval = setInterval(() => { fetchJobs(); fetchRuns(); }, 3000);
+    return () => clearInterval(interval);
+  }, [jobs, fetchJobs, fetchRuns]);
+
+  async function openDetail(id) {
+    try {
+      const res = await fetch(`/api/runs/${id}`);
+      setSelectedRun(await res.json());
+    } catch {}
+  }
+
+  const viewTitles = { runs: "Runs", analytics: "Analytics", datasets: "Datasets", presets: "Presets", runners: "Runners", scheduling: "Scheduling", alerts: "Alerts" };
+
+  const activeJobCount = jobs.filter(j => j.status==="running" || j.status==="pending").length;
+
+  const footerText = useMemo(() => {
+    if (activeView === "runs") {
+      const base = loading ? "Loading\u2026" : `${runs.length} run${runs.length!==1?'s':''} found`;
+      return activeJobCount > 0 ? `${base} \u00B7 ${activeJobCount} job${activeJobCount!==1?'s':''} active` : base;
+    }
+    if (activeView === "analytics") {
+      return loading ? "Loading\u2026" : `${runs.length} run${runs.length!==1?'s':''} available for analysis`;
+    }
+    if (activeView === "datasets") {
+      const total = managedDatasets.length + yamlDatasets.length;
+      return managedDatasetsLoading ? "Loading\u2026" : `${total} dataset${total!==1?'s':''} (${managedDatasets.length} managed, ${yamlDatasets.length} from config)`;
+    }
+    if (activeView === "presets") {
+      const total = managedPresets.length + yamlPresets.length;
+      return managedPresetsLoading ? "Loading\u2026" : `${total} preset${total!==1?'s':''} (${managedPresets.length} managed, ${yamlPresets.length} from config)`;
+    }
+    if (activeView === "runners") return runnersLoading ? "Loading\u2026" : `${runners.length} runner${runners.length!==1?'s':''} registered`;
+    if (activeView === "scheduling") return schedulesLoading ? "Loading\u2026" : `${schedules.length} schedule${schedules.length!==1?'s':''} configured`;
+    if (activeView === "alerts") {
+      const unack = alertEvents.filter(e=>!e.acknowledged).length;
+      return alertEventsLoading ? "Loading\u2026" : `${alertRules.length} rule${alertRules.length!==1?'s':''}, ${alertEvents.length} event${alertEvents.length!==1?'s':''} (${unack} unacknowledged)`;
+    }
+    return "";
+  }, [activeView, runs.length, activeJobCount, managedDatasets.length, yamlDatasets.length, managedPresets.length, yamlPresets.length, runners.length, schedules.length, alertRules.length, alertEvents.length, alertEvents, loading, managedDatasetsLoading, managedPresetsLoading, runnersLoading, schedulesLoading, alertRulesLoading, alertEventsLoading]);
+
+  return (
+    <div className="app-layout">
+      <Sidebar activeView={activeView} onNavigate={setActiveView} alertBadgeCount={alertEvents.filter(e=>!e.acknowledged).length} githubRepoUrl={githubRepoUrl} />
+      <div className="main-wrapper">
+        <Header title={viewTitles[activeView] || "Portal"}>
+          {activeView==="runs" && (
+            <button className="btn btn-ghost btn-icon" onClick={()=>{fetchRuns();fetchJobs();}} title="Refresh"><IconRefresh /></button>
+          )}
+          {activeView==="analytics" && (
+            <button className="btn btn-ghost btn-icon" onClick={fetchRuns} title="Refresh"><IconRefresh /></button>
+          )}
+          {activeView==="datasets" && (
+            <button className="btn btn-ghost btn-icon" onClick={fetchManagedDatasets} title="Refresh"><IconRefresh /></button>
+          )}
+          {activeView==="presets" && (
+            <button className="btn btn-ghost btn-icon" onClick={fetchManagedPresets} title="Refresh"><IconRefresh /></button>
+          )}
+          {activeView==="runners" && (
+            <button className="btn btn-ghost btn-icon" onClick={fetchRunners} title="Refresh"><IconRefresh /></button>
+          )}
+          {activeView==="scheduling" && (
+            <button className="btn btn-ghost btn-icon" onClick={fetchSchedules} title="Refresh"><IconRefresh /></button>
+          )}
+          {activeView==="alerts" && (
+            <button className="btn btn-ghost btn-icon" onClick={()=>{fetchAlertRules();fetchAlertEvents();}} title="Refresh"><IconRefresh /></button>
+          )}
+        </Header>
+        <div className="main-content">
+          {activeView==="runs" && (
+            <RunsView runs={runs} datasets={datasets} loading={loading}
+              filterDataset={filterDataset} setFilterDataset={setFilterDataset}
+              filterCommit={filterCommit} setFilterCommit={setFilterCommit}
+              onRefresh={()=>{fetchRuns();fetchJobs();}} onSelectRun={openDetail}
+              onTrigger={()=>setShowTrigger(true)} jobs={jobs} githubRepoUrl={githubRepoUrl} />
+          )}
+          {activeView==="analytics" && (
+            <AnalyticsView runs={runs} datasets={datasets} loading={loading} onRefresh={fetchRuns} />
+          )}
+          {activeView==="datasets" && (
+            <DatasetsView managedDatasets={managedDatasets} yamlDatasets={yamlDatasets}
+              loading={managedDatasetsLoading} onRefresh={fetchManagedDatasets} />
+          )}
+          {activeView==="presets" && (
+            <PresetsView managedPresets={managedPresets} yamlPresets={yamlPresets}
+              loading={managedPresetsLoading} onRefresh={fetchManagedPresets} />
+          )}
+          {activeView==="runners" && <RunnersView runners={runners} loading={runnersLoading} onRefresh={fetchRunners} />}
+          {activeView==="scheduling" && <SchedulingView schedules={schedules} loading={schedulesLoading} onRefresh={fetchSchedules} runners={runners} />}
+          {activeView==="alerts" && (
+            <AlertsView alertRules={alertRules} alertEvents={alertEvents}
+              alertRulesLoading={alertRulesLoading} alertEventsLoading={alertEventsLoading}
+              onRefresh={()=>{fetchAlertRules();fetchAlertEvents();}}
+              onSelectRun={openDetail} githubRepoUrl={githubRepoUrl} />
+          )}
+        </div>
+        <Footer>
+          <span>{footerText}</span>
+          <span>Harness Portal</span>
+        </Footer>
+      </div>
+      {selectedRun && <RunDetailModal run={selectedRun} onClose={()=>setSelectedRun(null)} githubRepoUrl={githubRepoUrl} />}
+      {showTrigger && <TriggerModal onClose={()=>setShowTrigger(false)} onTriggered={()=>{fetchJobs();setTimeout(fetchJobs,1000);}} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

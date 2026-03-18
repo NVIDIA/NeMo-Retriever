@@ -42,26 +42,31 @@ from nemo_retriever.utils.input_files import resolve_input_files
 ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
-def _collect_gpu_metadata() -> tuple[int | None, str | None]:
+def _collect_gpu_metadata() -> tuple[int | None, str | None, str | None]:
+    """Return ``(gpu_count, cuda_driver_version, gpu_name)``."""
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+            ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
             check=False,
             capture_output=True,
             text=True,
         )
     except OSError:
-        return None, None
+        return None, None, None
 
     output_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     combined_output = f"{result.stdout}\n{result.stderr}"
     if "No devices were found" in combined_output:
-        return 0, None
+        return 0, None, None
     if result.returncode != 0:
-        return None, None
+        return None, None, None
     if not output_lines:
-        return 0, None
-    return len(output_lines), output_lines[0]
+        return 0, None, None
+
+    parts = [p.strip() for p in output_lines[0].split(",", 1)]
+    gpu_name = parts[0] if parts else None
+    driver = parts[1].strip() if len(parts) > 1 else None
+    return len(output_lines), driver, gpu_name
 
 
 def _collect_run_metadata() -> dict[str, Any]:
@@ -81,13 +86,24 @@ def _collect_run_metadata() -> dict[str, Any]:
     except metadata.PackageNotFoundError:
         ray_version = "unknown"
 
-    gpu_count, cuda_driver = _collect_gpu_metadata()
+    gpu_count, cuda_driver, gpu_type = _collect_gpu_metadata()
+
+    try:
+        import psutil
+
+        memory_gb = round(psutil.virtual_memory().total / (1024**3), 1)
+    except Exception:
+        memory_gb = None
+
     return {
         "host": host,
         "gpu_count": gpu_count,
+        "gpu_type": gpu_type,
         "cuda_driver": cuda_driver,
         "ray_version": ray_version,
         "python_version": python_version,
+        "cpu_count": os.cpu_count(),
+        "memory_gb": memory_gb,
     }
 
 
@@ -136,6 +152,7 @@ def _resolve_summary_metrics(
     cfg: HarnessConfig,
     metrics_payload: dict[str, Any],
     runtime_summary: dict[str, Any] | None,
+    subprocess_elapsed_secs: float | None = None,
 ) -> dict[str, Any]:
     summary_metrics: dict[str, Any] = {
         "pages": metrics_payload.get("pages"),
@@ -165,6 +182,11 @@ def _resolve_summary_metrics(
             total_pages += page_count
         if counted_any:
             summary_metrics["pages"] = total_pages
+
+    # Use subprocess wall-clock time as fallback when the stream parser
+    # couldn't extract the ingest time (e.g. print_run_summary was skipped).
+    if summary_metrics["ingest_secs"] is None and subprocess_elapsed_secs is not None and subprocess_elapsed_secs > 0:
+        summary_metrics["ingest_secs"] = subprocess_elapsed_secs
 
     if summary_metrics["pages_per_sec_ingest"] is None:
         pages = summary_metrics.get("pages")
@@ -277,6 +299,89 @@ def _evaluate_run_outcome(
     return 0, "", True
 
 
+_FAIL_SEPARATOR = "\u2500" * 72
+
+
+def _print_failure_report(
+    result: dict[str, Any],
+    command_text: str,
+    artifact_dir: Path,
+    tail_lines: list[str],
+) -> None:
+    """Pretty-print a detailed failure report so the root cause is easy to find."""
+    reason = result.get("failure_reason") or "unknown"
+    rc = result.get("return_code", "?")
+    cfg = result.get("test_config", {})
+    meta = result.get("run_metadata", {})
+
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+    RESET = "\033[0m"
+
+    lines: list[str] = []
+    lines.append("")
+    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
+    lines.append(f"{RED}{BOLD}  RUN FAILED  {RESET}")
+    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
+    lines.append("")
+
+    lines.append(f"  {BOLD}Failure Reason :{RESET}  {RED}{reason}{RESET}")
+    lines.append(f"  {BOLD}Return Code    :{RESET}  {rc}")
+    lines.append("")
+
+    lines.append(f"  {CYAN}{BOLD}Test Configuration{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    lines.append(f"  Dataset        :  {cfg.get('dataset_label', '\u2014')}")
+    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', '\u2014')}")
+    lines.append(f"  Preset         :  {cfg.get('preset', '\u2014')}")
+    lines.append(f"  Input Type     :  {cfg.get('input_type', '\u2014')}")
+    lines.append(f"  Recall Required:  {cfg.get('recall_required', False)}")
+    lines.append(f"  Hybrid         :  {cfg.get('hybrid', False)}")
+    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', '\u2014')}")
+    lines.append("")
+
+    lines.append(f"  {CYAN}{BOLD}Host Information{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    lines.append(f"  Hostname       :  {meta.get('host', '\u2014')}")
+    lines.append(f"  GPU            :  {meta.get('gpu_type', '\u2014')} (x{meta.get('gpu_count', '?')})")
+    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', '\u2014')}")
+    lines.append(f"  Python         :  {meta.get('python_version', '\u2014')}")
+    lines.append(f"  CPU / Memory   :  {meta.get('cpu_count', '?')} cores / {meta.get('memory_gb', '?')} GB")
+    lines.append("")
+
+    lines.append(f"  {CYAN}{BOLD}Artifacts{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    lines.append(f"  Artifact Dir   :  {artifact_dir.resolve()}")
+    lines.append(f"  Results JSON   :  {artifact_dir.resolve() / 'results.json'}")
+    lines.append(f"  Command File   :  {artifact_dir.resolve() / 'command.txt'}")
+    lines.append("")
+
+    lines.append(f"  {CYAN}{BOLD}Command{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    # Wrap long commands for readability
+    if len(command_text) > 120:
+        lines.append(f"  {DIM}{command_text[:120]}...{RESET}")
+        lines.append(f"  {DIM}(full command in {artifact_dir.resolve() / 'command.txt'}){RESET}")
+    else:
+        lines.append(f"  {DIM}{command_text}{RESET}")
+    lines.append("")
+
+    if tail_lines:
+        lines.append(f"  {YELLOW}{BOLD}Last {len(tail_lines)} Lines of Output{RESET}")
+        lines.append(f"  {DIM}{'-' * 40}{RESET}")
+        for tl in tail_lines:
+            lines.append(f"  {DIM}|{RESET} {tl}")
+        lines.append("")
+
+    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
+    lines.append("")
+
+    typer.echo("\n".join(lines), err=True)
+
+
 def _read_json_if_exists(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
@@ -359,8 +464,12 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
     typer.echo(f"\n=== Running {run_id} ===")
     typer.echo(command_text)
 
+    import time as _time
+
     metrics = StreamMetrics()
+    _wall_start = _time.perf_counter()
     process_rc = _run_subprocess_with_tty(cmd, metrics)
+    subprocess_elapsed_secs = round(_time.perf_counter() - _wall_start, 2)
     run_metadata = _collect_run_metadata()
     runtime_summary_path = runtime_dir / f"{run_id}.runtime.summary.json"
     runtime_summary = _read_json_if_exists(runtime_summary_path)
@@ -385,7 +494,7 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
         "pages_per_sec_ingest": metrics.pages_per_sec_ingest,
         **recall_metrics_normalized,
     }
-    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary)
+    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary, subprocess_elapsed_secs)
 
     result_payload: dict[str, Any] = {
         "timestamp": now_timestr(),
@@ -434,6 +543,17 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
         result_payload["tags"] = list(tags)
 
     write_json(artifact_dir / "results.json", result_payload)
+
+    try:
+        from nemo_retriever.harness.history import record_run as _record_history
+
+        _record_history(result_payload, artifact_dir)
+    except Exception:
+        pass
+
+    if failure_reason:
+        _print_failure_report(result_payload, command_text, artifact_dir, metrics.tail_lines)
+
     return result_payload
 
 

@@ -72,6 +72,8 @@ dependencies = [
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
+  "apscheduler>=3.10",
+  "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]

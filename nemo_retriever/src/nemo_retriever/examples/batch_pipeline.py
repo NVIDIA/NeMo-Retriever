@@ -754,67 +754,71 @@ def main(
                 logger.error(f"Exiting with code 1 due to {error_count} error rows in ingest results.")
                 raise typer.Exit(code=1)
 
-        # ---------------------------------------------------------------------------
-        # Recall calculation
-        # ---------------------------------------------------------------------------
-        query_csv = Path(query_csv)
-        if not query_csv.exists():
-            logger.warning(f"Query CSV not found at {query_csv}; skipping recall evaluation.")
-            return
-
-        db = _lancedb().connect(lancedb_uri)
-        table = None
-        open_err: Optional[Exception] = None
-        for _ in range(3):
-            try:
-                table = db.open_table(LANCEDB_TABLE)
-                open_err = None
-                break
-            except Exception as e:
-                open_err = e
-                # Create table if missing, then retry open.
-                _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
-                time.sleep(2)
-        if table is None:
-            raise RuntimeError(
-                f"Recall stage requires LanceDB table {LANCEDB_TABLE!r} at {lancedb_uri!r}, " f"but it was not found."
-            ) from open_err
-        try:
-            if int(table.count_rows()) == 0:
-                logger.warning(f"LanceDB table {LANCEDB_TABLE!r} exists but is empty; skipping recall evaluation.")
-                return
-        except Exception:
-            pass
-
-        _recall_model = resolve_embed_model(str(embed_model_name))
-
-        cfg = RecallConfig(
-            lancedb_uri=str(lancedb_uri),
-            lancedb_table=str(LANCEDB_TABLE),
-            embedding_model=_recall_model,
-            embedding_http_endpoint=embed_invoke_url,
-            embedding_api_key=embed_remote_api_key or "",
-            top_k=10,
-            ks=(1, 5, 10),
-            hybrid=hybrid,
-            match_mode=recall_match_mode,
-            reranker=reranker_model_name if reranker else None,
-        )
-
-        # Capture recall only times.
-        recall_start = time.perf_counter()
-        _df_query, _gold, _raw_hits, _retrieved_keys, metrics = retrieve_and_score(query_csv=query_csv, cfg=cfg)
-        recall_total_time = time.perf_counter() - recall_start
-
-        total_time = time.perf_counter() - ingest_start
-
-        # This processing has nothing to do with processing or performance so we exclude
-        # it from the runtimes. Just getting row counts for metrics ...
+        # Count rows (= unique source documents) while Ray is still up.
         num_rows = ingest_results.groupby("source_id").count().count()
 
+        # ---------------------------------------------------------------------------
+        # Recall calculation (optional — requires a query CSV)
+        # ---------------------------------------------------------------------------
+        recall_total_time = 0.0
+        recall_metrics: dict[str, float] = {}
+
+        query_csv = Path(query_csv)
+        _skip_recall = False
+        if not query_csv.exists():
+            logger.warning(f"Query CSV not found at {query_csv}; skipping recall evaluation.")
+            _skip_recall = True
+
+        if not _skip_recall:
+            db = _lancedb().connect(lancedb_uri)
+            table = None
+            open_err: Optional[Exception] = None
+            for _ in range(3):
+                try:
+                    table = db.open_table(LANCEDB_TABLE)
+                    open_err = None
+                    break
+                except Exception as e:
+                    open_err = e
+                    _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
+                    time.sleep(2)
+            if table is None:
+                raise RuntimeError(
+                    f"Recall stage requires LanceDB table {LANCEDB_TABLE!r} at {lancedb_uri!r}, "
+                    f"but it was not found."
+                ) from open_err
+            try:
+                if int(table.count_rows()) == 0:
+                    logger.warning(f"LanceDB table {LANCEDB_TABLE!r} exists but is empty; skipping recall evaluation.")
+                    _skip_recall = True
+            except Exception:
+                pass
+
+        if not _skip_recall:
+            _recall_model = resolve_embed_model(str(embed_model_name))
+
+            cfg = RecallConfig(
+                lancedb_uri=str(lancedb_uri),
+                lancedb_table=str(LANCEDB_TABLE),
+                embedding_model=_recall_model,
+                embedding_http_endpoint=embed_invoke_url,
+                embedding_api_key=embed_remote_api_key or "",
+                top_k=10,
+                ks=(1, 5, 10),
+                hybrid=hybrid,
+                match_mode=recall_match_mode,
+                reranker=reranker_model_name if reranker else None,
+            )
+
+            recall_start = time.perf_counter()
+            _df_query, _gold, _raw_hits, _retrieved_keys, recall_metrics = retrieve_and_score(
+                query_csv=query_csv, cfg=cfg
+            )
+            recall_total_time = time.perf_counter() - recall_start
+
+        total_time = time.perf_counter() - ingest_start
         ray.shutdown()
 
-        # Print runtimes for easy user viewing at end
         print_run_summary(
             num_rows,
             input_path,
@@ -826,7 +830,7 @@ def main(
             ray_dataset_download_time,
             lancedb_write_time,
             recall_total_time,
-            metrics,
+            recall_metrics,
         )
 
     finally:

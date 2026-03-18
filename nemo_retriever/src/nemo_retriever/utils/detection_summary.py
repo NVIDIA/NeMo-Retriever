@@ -216,14 +216,19 @@ def print_run_summary(
     ingest_only_total_time: float,
     ray_dataset_download_total_time: float,
     lancedb_write_total_time: float,
-    recall_total_time: float,
-    recall_metrics: Dict[str, float],
+    recall_total_time: float = 0.0,
+    recall_metrics: Optional[Dict[str, float]] = None,
 ) -> None:
-    ingest_only_pps = processed_pages / ingest_only_total_time
-    ingest_and_lancedb_write_pps = processed_pages / (ingest_only_total_time + lancedb_write_total_time)
-    recall_qps = processed_pages / recall_total_time
-    total_pps = processed_pages / total_time
+    if recall_metrics is None:
+        recall_metrics = {}
+    pages = processed_pages if processed_pages is not None else 0
     utc_now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    ingest_only_pps = pages / ingest_only_total_time if ingest_only_total_time > 0 else 0
+    ingest_write_denom = ingest_only_total_time + lancedb_write_total_time
+    ingest_and_lancedb_write_pps = pages / ingest_write_denom if ingest_write_denom > 0 else 0
+    recall_qps = pages / recall_total_time if recall_total_time > 0 else 0
+    total_pps = pages / total_time if total_time > 0 else 0
 
     print(f"===== Run Summary - {utc_now} UTC =====")
 
@@ -234,18 +239,23 @@ def print_run_summary(
     print(f"\tLancedb Table: {lancedb_table_name}")
 
     print("Runtimes:")
-    print(f"\tTotal pages processed: {processed_pages} from {input_path}")
+    print(f"\tTotal pages processed: {pages} from {input_path}")
     print(f"\tIngestion only time: {_fmt_time(ingest_only_total_time)}")
     print(f"\tRay dataset download time: {_fmt_time(ray_dataset_download_total_time)}")
     print(f"\tLanceDB Write Time: {_fmt_time(lancedb_write_total_time)}")
-    print(f"\tRecall time: {_fmt_time(recall_total_time)}")
+    if recall_total_time > 0:
+        print(f"\tRecall time: {_fmt_time(recall_total_time)}")
 
     print("PPS:")
     print(f"\tIngestion only PPS: {ingest_only_pps:.2f}")
     print(f"\tIngestion + LanceDB Write PPS: {ingest_and_lancedb_write_pps:.2f}")
-    print(f"\tRecall QPS: {recall_qps:.2f}")
-    print(f"\tTotal - Processed: {processed_pages} pages in {_fmt_time(total_time)} @ {total_pps:.2f} PPS")
+    if recall_total_time > 0:
+        print(f"\tRecall QPS: {recall_qps:.2f}")
+    print(f"\tTotal - Processed: {pages} pages in {_fmt_time(total_time)} @ {total_pps:.2f} PPS")
 
-    print("Recall metrics:")
-    for k, v in recall_metrics.items():
-        print(f"  {k}: {v:.4f}")
+    if recall_metrics:
+        print("Recall metrics:")
+        for k, v in recall_metrics.items():
+            print(f"  {k}: {v:.4f}")
+    else:
+        print("Recall metrics: skipped (no query CSV configured)")
