@@ -100,8 +100,7 @@ def main(
     embed_modality: str = typer.Option(
         "text",
         "--embed-modality",
-        help="Default embedding modality for all element types: "
-        "'text', 'image', or 'text_image' ('image_text' is also accepted).",
+        help="Default embedding modality for all element types: 'text', 'image', or 'text_image'.",
     ),
     text_elements_modality: Optional[str] = typer.Option(
         None,

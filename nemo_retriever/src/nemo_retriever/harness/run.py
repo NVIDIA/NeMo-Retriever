@@ -107,8 +107,6 @@ def _normalize_tags(tags: list[str] | None) -> list[str]:
 
 def _normalize_recall_metric_key(key: str) -> str:
     metric = str(key).strip().lower()
-    if metric.startswith("recall@"):
-        return "recall_" + metric.split("@", 1)[1]
     return metric.replace("@", "_").replace("-", "_")
 
 
@@ -142,6 +140,7 @@ def _resolve_summary_metrics(
         "ingest_secs": metrics_payload.get("ingest_secs"),
         "pages_per_sec_ingest": metrics_payload.get("pages_per_sec_ingest"),
         "recall_5": metrics_payload.get("recall_5"),
+        "ndcg_10": metrics_payload.get("ndcg_10"),
     }
 
     if summary_metrics["pages"] is None and isinstance(runtime_summary, dict):
@@ -188,7 +187,7 @@ def _resolve_lancedb_uri(cfg: HarnessConfig, artifact_dir: Path) -> str:
     return str(p)
 
 
-def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path]:
+def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if cfg.write_detection_file:
@@ -196,11 +195,7 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     else:
         # Keep detection summary out of top-level artifacts unless explicitly requested.
         detection_summary_file = runtime_dir / ".detection_summary.json"
-    query_csv = prepare_recall_query_file(
-        query_csv=Path(cfg.query_csv) if cfg.query_csv else None,
-        recall_adapter=cfg.recall_adapter,
-        output_dir=runtime_dir,
-    )
+    effective_query_csv: Path | None = None
 
     cmd = [
         sys.executable,
@@ -209,11 +204,8 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         str(Path(cfg.dataset_dir).resolve()),
         "--input-type",
         cfg.input_type,
-        "--query-csv",
-        str(query_csv),
-        "--recall-match-mode",
-        cfg.recall_match_mode,
-        "--no-recall-details",
+        "--evaluation-mode",
+        cfg.evaluation_mode,
         "--pdf-extract-tasks",
         str(cfg.pdf_extract_workers),
         "--pdf-extract-cpus-per-task",
@@ -248,6 +240,10 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         str(cfg.gpu_embed),
         "--embed-model-name",
         cfg.embed_model_name,
+        "--embed-modality",
+        cfg.embed_modality,
+        "--embed-granularity",
+        cfg.embed_granularity,
         "--runtime-metrics-dir",
         str(runtime_dir),
         "--runtime-metrics-prefix",
@@ -258,21 +254,61 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         _resolve_lancedb_uri(cfg, artifact_dir),
     ]
 
+    if cfg.evaluation_mode == "beir":
+        cmd += [
+            "--beir-loader",
+            str(cfg.beir_loader),
+            "--beir-dataset-name",
+            str(cfg.beir_dataset_name or cfg.dataset_label),
+            "--beir-split",
+            cfg.beir_split,
+            "--beir-doc-id-field",
+            cfg.beir_doc_id_field,
+        ]
+        if cfg.beir_query_language:
+            cmd += ["--beir-query-language", cfg.beir_query_language]
+        for k in cfg.beir_ks:
+            cmd += ["--beir-k", str(int(k))]
+    else:
+        effective_query_csv = prepare_recall_query_file(
+            query_csv=Path(cfg.query_csv) if cfg.query_csv else None,
+            recall_adapter=cfg.recall_adapter,
+            output_dir=runtime_dir,
+        )
+        cmd += [
+            "--query-csv",
+            str(effective_query_csv),
+            "--recall-match-mode",
+            cfg.recall_match_mode,
+            "--no-recall-details",
+        ]
+
+    cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
+    if cfg.extract_infographics:
+        cmd += ["--extract-infographics"]
+    if cfg.embed_modality:
+        cmd += ["--structured-elements-modality", cfg.embed_modality]
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
     if cfg.hybrid:
         cmd += ["--hybrid"]
 
-    return cmd, runtime_dir, detection_summary_file, query_csv
+    return cmd, runtime_dir, detection_summary_file, effective_query_csv
 
 
 def _evaluate_run_outcome(
-    process_rc: int, recall_required: bool, recall_metrics: dict[str, float]
+    process_rc: int,
+    evaluation_mode: str,
+    recall_required: bool,
+    recall_metrics: dict[str, float],
+    evaluation_metrics: dict[str, float] | None = None,
 ) -> tuple[int, str, bool]:
     if process_rc != 0:
         reason = f"subprocess_exit_{process_rc}"
         return process_rc, reason, False
-    if recall_required and not recall_metrics:
+    if evaluation_mode == "beir" and not (evaluation_metrics or {}):
+        return 97, "missing_beir_metrics", False
+    if evaluation_mode == "recall" and recall_required and not recall_metrics:
         return 98, "missing_recall_metrics", False
     return 0, "", True
 
@@ -371,11 +407,16 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
     recall_metrics_normalized: dict[str, float] = {}
     for key, val in metrics.recall_metrics.items():
         recall_metrics_normalized[_normalize_recall_metric_key(key)] = val
+    evaluation_metrics_normalized: dict[str, float] = {}
+    for key, val in metrics.evaluation_metrics.items():
+        evaluation_metrics_normalized[_normalize_recall_metric_key(key)] = val
 
     effective_rc, failure_reason, success = _evaluate_run_outcome(
         process_rc=process_rc,
+        evaluation_mode=cfg.evaluation_mode,
         recall_required=bool(cfg.recall_required),
         recall_metrics=metrics.recall_metrics,
+        evaluation_metrics=metrics.evaluation_metrics,
     )
 
     metrics_payload = {
@@ -384,6 +425,7 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
         "ingest_secs": metrics.ingest_secs,
         "pages_per_sec_ingest": metrics.pages_per_sec_ingest,
         **recall_metrics_normalized,
+        **evaluation_metrics_normalized,
     }
     summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary)
 
@@ -398,14 +440,25 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "dataset_dir": cfg.dataset_dir,
             "preset": cfg.preset,
             "query_csv": cfg.query_csv,
-            "effective_query_csv": str(effective_query_csv),
+            "effective_query_csv": str(effective_query_csv) if effective_query_csv is not None else None,
             "input_type": cfg.input_type,
             "recall_required": cfg.recall_required,
             "recall_match_mode": cfg.recall_match_mode,
             "recall_adapter": cfg.recall_adapter,
+            "evaluation_mode": cfg.evaluation_mode,
+            "beir_loader": cfg.beir_loader,
+            "beir_dataset_name": cfg.beir_dataset_name,
+            "beir_split": cfg.beir_split,
+            "beir_query_language": cfg.beir_query_language,
+            "beir_doc_id_field": cfg.beir_doc_id_field,
+            "beir_ks": list(cfg.beir_ks),
             "ray_address": cfg.ray_address,
             "hybrid": cfg.hybrid,
             "embed_model_name": cfg.embed_model_name,
+            "embed_modality": cfg.embed_modality,
+            "embed_granularity": cfg.embed_granularity,
+            "extract_page_as_image": cfg.extract_page_as_image,
+            "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
             "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
             "tuning": {field: getattr(cfg, field) for field in sorted(TUNING_FIELDS)},
@@ -418,6 +471,7 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "rows_processed": metrics.rows_processed,
             "rows_per_sec_ingest": metrics.rows_per_sec_ingest,
             **recall_metrics_normalized,
+            **evaluation_metrics_normalized,
         },
         "summary_metrics": summary_metrics,
         "run_metadata": run_metadata,

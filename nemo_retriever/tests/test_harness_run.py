@@ -13,21 +13,28 @@ RUNNER = CliRunner()
 
 
 def test_evaluate_run_outcome_passes_when_process_succeeds_and_recall_present() -> None:
-    rc, reason, success = _evaluate_run_outcome(0, True, {"recall@5": 0.9})
+    rc, reason, success = _evaluate_run_outcome(0, "recall", True, {"recall@5": 0.9})
     assert rc == 0
     assert reason == ""
     assert success is True
 
 
 def test_evaluate_run_outcome_fails_when_recall_required_and_missing() -> None:
-    rc, reason, success = _evaluate_run_outcome(0, True, {})
+    rc, reason, success = _evaluate_run_outcome(0, "recall", True, {})
     assert rc == 98
     assert reason == "missing_recall_metrics"
     assert success is False
 
 
+def test_evaluate_run_outcome_fails_when_beir_metrics_missing() -> None:
+    rc, reason, success = _evaluate_run_outcome(0, "beir", False, {}, {})
+    assert rc == 97
+    assert reason == "missing_beir_metrics"
+    assert success is False
+
+
 def test_evaluate_run_outcome_uses_subprocess_error_code() -> None:
-    rc, reason, success = _evaluate_run_outcome(2, True, {"recall@5": 0.9})
+    rc, reason, success = _evaluate_run_outcome(2, "recall", True, {"recall@5": 0.9})
     assert rc == 2
     assert reason == "subprocess_exit_2"
     assert success is False
@@ -53,6 +60,8 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     )
     cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--detection-summary-file" in cmd
+    assert "--evaluation-mode" in cmd
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "recall"
     assert "--recall-match-mode" in cmd
     assert "pdf_page" in cmd
     assert "--pdf-extract-tasks" in cmd
@@ -63,6 +72,12 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert "--page-elements-gpus-per-actor" in cmd
     assert "--ocr-gpus-per-actor" in cmd
     assert "--embed-gpus-per-actor" in cmd
+    assert "--embed-modality" in cmd
+    assert "text" in cmd
+    assert "--embed-granularity" in cmd
+    assert "element" in cmd
+    assert "--extract-page-as-image" in cmd
+    assert "--no-extract-page-as-image" not in cmd
     assert "--pdf-extract-workers" not in cmd
     assert "--pdf-extract-num-cpus" not in cmd
     assert "--page-elements-workers" not in cmd
@@ -74,6 +89,33 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert detection_file.parent == runtime_dir
     assert detection_file.name == ".detection_summary.json"
     assert effective_query_csv == query_csv
+
+
+def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="vidore_v3_computer_science",
+        preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="vidore_hf",
+        beir_dataset_name="vidore_v3_computer_science",
+        query_csv=None,
+        recall_required=False,
+    )
+
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--evaluation-mode" in cmd
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
+    assert "--beir-loader" in cmd
+    assert cmd[cmd.index("--beir-loader") + 1] == "vidore_hf"
+    assert "--beir-dataset-name" in cmd
+    assert "--beir-k" in cmd
+    assert "--query-csv" not in cmd
+    assert "--recall-match-mode" not in cmd
+    assert effective_query_csv is None
 
 
 def test_build_command_uses_top_level_detection_file_when_enabled(tmp_path: Path) -> None:
@@ -94,6 +136,35 @@ def test_build_command_uses_top_level_detection_file_when_enabled(tmp_path: Path
     assert detection_file.parent == tmp_path
     assert detection_file.name == "detection_summary.json"
     assert effective_query_csv == query_csv
+
+
+def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="earnings",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        embed_modality="text_image",
+        embed_granularity="element",
+        extract_page_as_image=False,
+        extract_infographics=True,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--no-extract-page-as-image" in cmd
+    assert "--extract-page-as-image" not in cmd
+    assert "--extract-infographics" in cmd
+    assert "--embed-modality" in cmd
+    assert cmd[cmd.index("--embed-modality") + 1] == "text_image"
+    assert "--embed-granularity" in cmd
+    assert cmd[cmd.index("--embed-granularity") + 1] == "element"
+    assert "--structured-elements-modality" in cmd
+    assert cmd[cmd.index("--structured-elements-modality") + 1] == "text_image"
 
 
 def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
@@ -365,9 +436,20 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "recall_required": cfg.recall_required,
             "recall_match_mode": cfg.recall_match_mode,
             "recall_adapter": cfg.recall_adapter,
+            "evaluation_mode": cfg.evaluation_mode,
+            "beir_loader": cfg.beir_loader,
+            "beir_dataset_name": cfg.beir_dataset_name,
+            "beir_split": cfg.beir_split,
+            "beir_query_language": cfg.beir_query_language,
+            "beir_doc_id_field": cfg.beir_doc_id_field,
+            "beir_ks": list(cfg.beir_ks),
             "ray_address": cfg.ray_address,
             "hybrid": cfg.hybrid,
             "embed_model_name": cfg.embed_model_name,
+            "embed_modality": cfg.embed_modality,
+            "embed_granularity": cfg.embed_granularity,
+            "extract_page_as_image": cfg.extract_page_as_image,
+            "extract_infographics": cfg.extract_infographics,
             "write_detection_file": True,
             "lancedb_uri": str((artifact_dir / "lancedb").resolve()),
             "tuning": {field: getattr(cfg, field) for field in sorted(harness_run.TUNING_FIELDS)},
@@ -386,6 +468,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "ingest_secs": 12.5,
             "pages_per_sec_ingest": None,
             "recall_5": 0.9,
+            "ndcg_10": None,
         },
         "run_metadata": {
             "host": "builder-01",
@@ -463,6 +546,7 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
         "ingest_secs": 12.0,
         "pages_per_sec_ingest": None,
         "recall_5": None,
+        "ndcg_10": None,
     }
     assert "detection_summary_file" not in result["artifacts"]
 
@@ -496,6 +580,7 @@ def test_resolve_summary_metrics_falls_back_to_dataset_page_count(monkeypatch, t
         "ingest_secs": 5.0,
         "pages_per_sec_ingest": 2.0,
         "recall_5": 0.75,
+        "ndcg_10": None,
     }
 
 
