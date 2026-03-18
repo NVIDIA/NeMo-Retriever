@@ -143,6 +143,47 @@ def test_inprocess_audio_pipeline_with_mocked_asr(tmp_path: Path):
 
 
 @pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+def test_inprocess_audio_pipeline_with_mocked_segmented_asr(tmp_path: Path):
+    """Inprocess audio pipeline can fan out punctuation-delimited Parakeet segments into multiple rows."""
+    wav = tmp_path / "small.wav"
+    _make_small_wav(wav, duration_sec=0.5)
+
+    from nemo_retriever.ingest_modes.inprocess import InProcessIngestor
+
+    mock_client = MagicMock()
+    mock_client.infer.return_value = (
+        [
+            {"start": 0.0, "end": 0.2, "text": "First sentence."},
+            {"start": 0.2, "end": 0.5, "text": "Second sentence!"},
+        ],
+        "First sentence. Second sentence!",
+    )
+
+    with patch("nemo_retriever.audio.asr_actor._get_client", return_value=mock_client):
+        ingestor = (
+            InProcessIngestor(documents=[])
+            .files([str(wav)])
+            .extract_audio(
+                params=AudioChunkParams(split_type="size", split_interval=500_000),
+                asr_params=ASRParams(audio_endpoints=("localhost:50051", None), segment_audio=True),
+            )
+        )
+        results = ingestor.ingest()
+
+    assert results is not None
+    assert isinstance(results, list)
+    assert len(results) >= 1
+    df = results[0]
+    assert isinstance(df, pd.DataFrame)
+    assert df["text"].tolist() == ["First sentence.", "Second sentence!"]
+    assert df["metadata"].iloc[0]["segment_index"] == 0
+    assert df["metadata"].iloc[0]["segment_count"] == 2
+    assert df["metadata"].iloc[1]["segment_index"] == 1
+    assert df["metadata"].iloc[1]["segment_start"] == 0.2
+    assert df["metadata"].iloc[1]["segment_end"] == 0.5
+
+
+@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
 def test_inprocess_audio_pipeline_local_asr_mocked(tmp_path: Path):
     """Inprocess with audio_endpoints=(None, None) uses local ASR; mock ParakeetCTC1B1ASR so no real model."""
     wav = tmp_path / "small.wav"
