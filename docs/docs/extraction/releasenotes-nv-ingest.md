@@ -19,7 +19,7 @@ Highlights for the 26.03 release include:
 - NeMo Retriever Library now supports two deployment options:  
     - A new no-container, pip-installable in-process library for development (available on PyPI)  
     - Existing production-ready Helm chart with NIMs  
-- Added documentation notes on Air-gapped deployment support  
+- Added documentation notes on Air-gapped deployment support for both Helm (Kubernetes) and Docker Compose  
 - Added documentation notes on OpenShift support  
 - Added support for RTX4500 Pro Blackwell SKU  
 - Added support for llama-nemotron-embed-vl-v2 in text and text+image modes  
