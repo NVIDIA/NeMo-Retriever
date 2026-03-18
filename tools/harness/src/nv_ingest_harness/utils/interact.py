@@ -95,6 +95,60 @@ def embed_info(
     return DEFAULT_MODEL, DEFAULT_DIMENSION
 
 
+def reranker_info(
+    hostname: str = "localhost",
+    port: int = 8015,
+    max_retries: int = 5,
+    initial_backoff: float = 1.0,
+    backoff_multiplier: float = 2.0,
+    request_timeout: float = 2.0,
+) -> str:
+    """Get reranker model name from the reranker service.
+
+    Queries the reranker NIM at hostname:port (default localhost:8015) GET /v1/models
+    with retry logic and exponential backoff, same pattern as embed_info.
+
+    Args:
+        hostname: Host for the reranker service (default: "localhost").
+        port: Port for the reranker service (default: 8015).
+        max_retries: Maximum number of retry attempts (default: 5).
+        initial_backoff: Initial backoff time in seconds (default: 1.0).
+        backoff_multiplier: Multiplier for exponential backoff (default: 2.0).
+        request_timeout: Timeout for each request in seconds (default: 2.0).
+
+    Returns:
+        Model name string from the service, or a default if unavailable after retries.
+    """
+    DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
+    url = f"http://{hostname}:{port}/v1/models"
+
+    for attempt in range(max_retries):
+        should_retry = False
+
+        try:
+            with urllib.request.urlopen(url, timeout=request_timeout) as response:
+                if response.status != 200:
+                    should_retry = True
+                else:
+                    data = json.loads(response.read().decode("utf-8"))
+                    if data.get("data") and len(data["data"]) > 0:
+                        model_name = data["data"][0].get("id")
+                        if model_name:
+                            return model_name
+                    should_retry = True
+
+        except Exception:
+            should_retry = True
+
+        if should_retry:
+            if attempt == max_retries - 1:
+                return DEFAULT_MODEL
+            backoff_time = initial_backoff * (backoff_multiplier**attempt)
+            time.sleep(backoff_time)
+
+    return DEFAULT_MODEL
+
+
 def clean_spill(path: str):
     """Clean up temporary spill directories by removing all subdirectories.
 
