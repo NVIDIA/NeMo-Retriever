@@ -10,6 +10,7 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
 ## Core and Advanced Pipeline Features
 
 The NeMo Retriever Library core pipeline features run on a single A10G or better GPU. 
+
 The core pipeline features include the following:
 
 - llama-nemotron-embed-1b-v2 — Embedding model for converting text chunks into vectors.
