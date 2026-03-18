@@ -340,6 +340,75 @@ def test_execute_runs_does_not_write_sweep_results_file(monkeypatch, tmp_path: P
     assert not (session_dir / "sweep_results.json").exists()
 
 
+def test_sweep_command_uses_top_level_preset_from_runs_config(monkeypatch, tmp_path: Path) -> None:
+    runs_path = tmp_path / "vidore_sweep.yaml"
+    runs_path.write_text(
+        "\n".join(
+            [
+                "preset: dgx_8gpu",
+                "runs:",
+                "  - name: vidore_v3_hr_dgx_8gpu",
+                "    dataset: vidore_v3_hr",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    session_dir = tmp_path / "sweep_session"
+    session_dir.mkdir()
+    summary_path = session_dir / "session_summary.json"
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        harness_run,
+        "execute_runs",
+        lambda **kwargs: (
+            captured.update(kwargs)
+            or (
+                session_dir,
+                [
+                    {
+                        "run_name": "vidore_v3_hr_dgx_8gpu",
+                        "dataset": "vidore_v3_hr",
+                        "preset": "dgx_8gpu",
+                        "artifact_dir": str((session_dir / "vidore_v3_hr_dgx_8gpu").resolve()),
+                        "success": True,
+                        "return_code": 0,
+                        "failure_reason": None,
+                        "metrics": {"ndcg_10": 0.4, "recall_5": 0.3},
+                    }
+                ],
+            )
+        ),
+    )
+    monkeypatch.setattr(harness_run, "write_session_summary", lambda *_args, **_kwargs: summary_path)
+
+    result = RUNNER.invoke(harness_app, ["sweep", "--runs-config", str(runs_path)])
+
+    assert result.exit_code == 0
+    assert captured["preset_override"] == "dgx_8gpu"
+
+
+def test_sweep_command_dry_run_prints_resolved_top_level_preset(tmp_path: Path) -> None:
+    runs_path = tmp_path / "vidore_sweep.yaml"
+    runs_path.write_text(
+        "\n".join(
+            [
+                "preset: dgx_8gpu",
+                "runs:",
+                "  - name: vidore_v3_hr_dgx_8gpu",
+                "    dataset: vidore_v3_hr",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = RUNNER.invoke(harness_app, ["sweep", "--runs-config", str(runs_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "preset=dgx_8gpu" in result.output
+
+
 def test_collect_run_metadata_falls_back_without_gpu_or_ray(monkeypatch) -> None:
     def _raise_package_not_found(_name: str) -> str:
         raise harness_run.metadata.PackageNotFoundError()

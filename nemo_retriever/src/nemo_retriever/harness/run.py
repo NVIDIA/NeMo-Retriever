@@ -33,7 +33,7 @@ from nemo_retriever.harness.config import (
     HarnessConfig,
     TUNING_FIELDS,
     load_harness_config,
-    load_runs_config,
+    load_nightly_config,
 )
 from nemo_retriever.harness.parsers import StreamMetrics
 from nemo_retriever.harness.recall_adapters import prepare_recall_query_file
@@ -603,14 +603,17 @@ def sweep_command(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print run plan without executing."),
 ) -> None:
     normalized_tags = _normalize_tags(tag)
-    runs = load_runs_config(runs_config)
+    sweep_cfg = load_nightly_config(runs_config)
+    runs = sweep_cfg["runs"]
+    resolved_preset = preset or sweep_cfg.get("preset")
     if dry_run:
         typer.echo("Sweep dry run:")
         for idx, run in enumerate(runs):
             tag_text = f" tags={normalized_tags}" if normalized_tags else ""
+            run_preset = run.get("preset") if run.get("preset") is not None else resolved_preset
             plan_line = (
                 f"  {idx + 1:03d}: name={run.get('name')} "
-                f"dataset={run.get('dataset')} preset={run.get('preset')}{tag_text}"
+                f"dataset={run.get('dataset')} preset={run_preset}{tag_text}"
             )
             typer.echo(plan_line)
         raise typer.Exit(code=0)
@@ -619,7 +622,7 @@ def sweep_command(
         runs=runs,
         config_file=config,
         session_prefix=session_prefix,
-        preset_override=preset,
+        preset_override=resolved_preset,
         tags=normalized_tags,
     )
     summary_path = write_session_summary(
