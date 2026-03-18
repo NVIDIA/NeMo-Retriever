@@ -59,7 +59,7 @@ The following are the known issues for NeMo Retriever Library:
 - The Page Elements NIM (`nemoretriever-page-elements-v3:1.7.0`) may intermittently fail during inference under high-concurrency workloads. This happens when Triton’s dynamic batching combines requests that exceed the model’s maximum batch size, a situation more commonly seen in multi-GPU setups or large ingestion runs. In these cases, extraction fails for the impacted documents. A correction is planned for `nemoretriever-page-elements-v3:1.7.1`.
 - NV-Ingest GitHub repo renamed to NeMo-Retriever  
 - NeMo Retriever Extraction pipeline renamed to NeMo Retriever Library  
-- NeMo Retriever Library now supports two deployment options:  
+- NeMo Retriever Library now supports two deployment options: 
     - A new no-container, pip-installable in-process library for development (available on PyPI)  
     - Existing production-ready Helm chart with NIMs  
 - Added documentation notes on Air-gapped deployment support for both Helm (Kubernetes) and Docker Compose    
@@ -68,8 +68,7 @@ The following are the known issues for NeMo Retriever Library:
 - Added support for llama-nemotron-embed-vl-v2 in text and text+image modes  
 - New extract methods `pdfium_hybrid` and `ocr` target scanned PDFs to improve text and layout extraction from image-based pages  
 - VLM-based image caption enhancements:  
-    - Infographics can be captioned  
-    - Reasoning mode is configurable  
+   - Infographics can be captioned  
 - Enabled hybrid search with Lancedb  
 - Added retrieval_bench subfolder with generalizable agentic retrieval pipeline  
 - The project now uses UV as the primary environment and package manager instead of Conda, resulting in faster installs and simpler dependency handling  
