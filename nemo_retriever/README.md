@@ -10,11 +10,7 @@ You’ll set up a CUDA 13–compatible environment, install the library and its 
 
 ## Prerequisites
 
-<<<<<<< HEAD
-Before you start, make sure your system meets the following requirements:
-=======
 Before starting, make sure your system meets the following requirements:
->>>>>>> 15b2bc05 (Updating the nemo_retriever quickstart README (#1632))
 
 - The host is running CUDA 13.x so that `libcudart.so.13` is available.
 - Your GPUs are visible to the system and compatible with CUDA 13.x.
@@ -99,7 +95,6 @@ You can inspect how recall accuracy optimized text chunks for various content ty
 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose...'
 
 # markdown formatted table from the first page
->>> chunks[1]["text"]
 '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |'
 
 # a chart from the first page
@@ -213,19 +208,16 @@ ingestor = (
 ```
 
 *Note:* the `split()` task uses a tokenizer to split texts by a max_token length
-
-<<<<<<< HEAD
 ### Render results as markdown
 
 If you want a readable markdown view of extracted results, pass the full in-process result list
 to `nemo_retriever.io.to_markdown`. The helper now returns a `dict[str, str]` keyed by input
 filename, where each value is the document collapsed into one markdown string without per-page
 headers, so both single-document and multi-document runs follow the same contract.
-=======
+
 PDF text is split at the page level.
 
 HTML and .txt files have no natural page delimiters, so they almost always need to be paired with the `.split()` task.
->>>>>>> 15b2bc05 (Updating the nemo_retriever quickstart README (#1632))
 
 ```python
 # html and text files - include a split task to prevent texts from exceeding the embedder's max sequence length
@@ -235,7 +227,6 @@ ingestor = (
   .extract()
   .split(max_tokens=5) #1024 by default, set low here to demonstrate chunking
 )
-<<<<<<< HEAD
 results = ingestor.ingest()
 markdown_docs = to_markdown(results)
 print(markdown_docs["multimodal_test.pdf"])
@@ -243,11 +234,7 @@ print(markdown_docs["multimodal_test.pdf"])
 
 Use `to_markdown_by_page(results)` when you want a nested
 `dict[str, dict[int, str]]` instead, where each filename maps to its per-page markdown strings.
-=======
-```
-
 For audio and video files, ensure ffmpeg is installed by your system's package manager.
->>>>>>> 15b2bc05 (Updating the nemo_retriever quickstart README (#1632))
 
 For example, with apt-get on Ubuntu:
 ```bash
