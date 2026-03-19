@@ -179,6 +179,10 @@ _MIGRATIONS = [
     "ALTER TABLE runners ADD COLUMN memory_gb REAL",
     "ALTER TABLE jobs ADD COLUMN dataset_path TEXT",
     "ALTER TABLE jobs ADD COLUMN dataset_overrides TEXT",
+    "ALTER TABLE jobs ADD COLUMN git_commit TEXT",
+    "ALTER TABLE jobs ADD COLUMN git_ref TEXT",
+    "ALTER TABLE jobs ADD COLUMN log_tail TEXT",
+    "ALTER TABLE jobs ADD COLUMN rejected_runners TEXT",
 ]
 
 CREATE_INDEX_SQL = """
@@ -625,13 +629,49 @@ def _deserialize_runner_row(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[str, Any]:
-    """Insert a new runner and return its record."""
+    """Register a runner, reusing an existing record if one matches by hostname.
+
+    If a runner with the same ``hostname`` already exists, its metadata is
+    updated and the existing record (with its original ID) is returned.  This
+    makes registration idempotent so runners survive portal restarts without
+    creating duplicate entries.
+    """
     conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
     try:
         now = _now_iso()
-        row = {
+        hostname = data.get("hostname")
+
+        existing = None
+        if hostname:
+            existing = conn.execute("SELECT * FROM runners WHERE hostname = ?", (hostname,)).fetchone()
+
+        if existing:
+            runner_id = existing["id"]
+            conn.execute(
+                "UPDATE runners SET name=?, url=?, gpu_type=?, gpu_count=?, cpu_count=?,"
+                " memory_gb=?, status=?, last_heartbeat=?, tags=?, metadata=? WHERE id=?",
+                (
+                    data.get("name", existing["name"]),
+                    data.get("url", existing["url"]),
+                    data.get("gpu_type", existing["gpu_type"]),
+                    data.get("gpu_count", existing["gpu_count"]),
+                    data.get("cpu_count", existing["cpu_count"]),
+                    data.get("memory_gb", existing["memory_gb"]),
+                    data.get("status", "online"),
+                    now,
+                    json.dumps(data["tags"]) if data.get("tags") else existing["tags"],
+                    json.dumps(data["metadata"]) if data.get("metadata") else existing["metadata"],
+                    runner_id,
+                ),
+            )
+            conn.commit()
+            row = conn.execute("SELECT * FROM runners WHERE id = ?", (runner_id,)).fetchone()
+            return _deserialize_runner_row(dict(row))
+
+        row_data = {
             "name": data.get("name", "unnamed"),
-            "hostname": data.get("hostname"),
+            "hostname": hostname,
             "url": data.get("url"),
             "gpu_type": data.get("gpu_type"),
             "gpu_count": data.get("gpu_count"),
@@ -643,11 +683,11 @@ def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[st
             "tags": json.dumps(data["tags"]) if data.get("tags") else None,
             "metadata": json.dumps(data["metadata"]) if data.get("metadata") else None,
         }
-        columns = ", ".join(row.keys())
-        placeholders = ", ".join("?" * len(row))
-        cursor = conn.execute(f"INSERT INTO runners ({columns}) VALUES ({placeholders})", list(row.values()))
+        columns = ", ".join(row_data.keys())
+        placeholders = ", ".join("?" * len(row_data))
+        cursor = conn.execute(f"INSERT INTO runners ({columns}) VALUES ({placeholders})", list(row_data.values()))
         conn.commit()
-        result = dict(row)
+        result = dict(row_data)
         result["id"] = cursor.lastrowid or 0
         return _deserialize_runner_row(result)
     finally:
@@ -889,6 +929,20 @@ def _deserialize_job_row(d: dict[str, Any]) -> dict[str, Any]:
             d["dataset_overrides"] = json.loads(d["dataset_overrides"])
         except (json.JSONDecodeError, TypeError):
             d["dataset_overrides"] = None
+    if d.get("log_tail"):
+        try:
+            d["log_tail"] = json.loads(d["log_tail"])
+        except (json.JSONDecodeError, TypeError):
+            d["log_tail"] = []
+    else:
+        d["log_tail"] = []
+    if d.get("rejected_runners"):
+        try:
+            d["rejected_runners"] = json.loads(d["rejected_runners"])
+        except (json.JSONDecodeError, TypeError):
+            d["rejected_runners"] = []
+    else:
+        d["rejected_runners"] = []
     return d
 
 
@@ -909,6 +963,8 @@ def create_job(data: dict[str, Any], db_path: str | None = None) -> dict[str, An
             "config": data.get("config"),
             "assigned_runner_id": data.get("assigned_runner_id"),
             "status": data.get("status", "pending"),
+            "git_commit": data.get("git_commit"),
+            "git_ref": data.get("git_ref"),
             "created_at": _now_iso(),
             "started_at": None,
             "completed_at": None,
@@ -973,7 +1029,12 @@ def runner_has_running_job(runner_id: int, db_path: str | None = None) -> bool:
 
 
 def get_pending_jobs_for_runner(runner_id: int, db_path: str | None = None) -> list[dict[str, Any]]:
-    """Return pending jobs for this runner, but only if it has no running job."""
+    """Return pending jobs for this runner, but only if it has no running job.
+
+    Jobs whose ``rejected_runners`` list contains *runner_id* are excluded so
+    that runners do not repeatedly pick up jobs they cannot execute (e.g. due
+    to a missing dataset).
+    """
     if runner_has_running_job(runner_id, db_path):
         return []
     conn = _connect(db_path)
@@ -985,7 +1046,15 @@ def get_pending_jobs_for_runner(runner_id: int, db_path: str | None = None) -> l
             "ORDER BY (assigned_runner_id IS NULL) ASC, created_at ASC",
             (runner_id,),
         ).fetchall()
-        return [_deserialize_job_row(dict(r)) for r in rows]
+        results = []
+        runner_id_str = str(runner_id)
+        for r in rows:
+            job = _deserialize_job_row(dict(r))
+            rejected = job.get("rejected_runners") or []
+            if runner_id_str in [str(rid) for rid in rejected]:
+                continue
+            results.append(job)
+        return results
     finally:
         conn.close()
 
@@ -1065,11 +1134,131 @@ def cancel_job(job_id: str, reason: str = "Cancelled due to backlog limit", db_p
         conn.close()
 
 
+def request_job_cancel(job_id: str, db_path: str | None = None) -> bool:
+    """Request cancellation of a pending or running job.
+
+    Pending jobs are cancelled immediately.  Running jobs are transitioned to
+    ``cancelling`` so the runner can pick up the signal on the next heartbeat.
+    """
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if row is None:
+            return False
+        status = row[0]
+        if status == "pending":
+            conn.execute(
+                "UPDATE jobs SET status = 'cancelled', completed_at = ?, error = ? WHERE id = ?",
+                (_now_iso(), "Cancelled by user", job_id),
+            )
+            conn.commit()
+            return True
+        if status == "running":
+            conn.execute("UPDATE jobs SET status = 'cancelling' WHERE id = ?", (job_id,))
+            conn.commit()
+            return True
+        return False
+    finally:
+        conn.close()
+
+
+def update_job_log(job_id: str, log_tail: list[str], db_path: str | None = None) -> None:
+    """Store the latest log tail for a running job."""
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE jobs SET log_tail = ? WHERE id = ?",
+            (json.dumps(log_tail[-500:]), job_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_job_log(job_id: str, db_path: str | None = None) -> list[str]:
+    """Return the stored log tail for a job."""
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT log_tail FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return []
+    finally:
+        conn.close()
+
+
 def update_job_status(job_id: str, status: str, error: str | None = None, db_path: str | None = None) -> None:
     conn = _connect(db_path)
     try:
         conn.execute("UPDATE jobs SET status = ?, error = ? WHERE id = ?", (status, error, job_id))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def reject_job_by_runner(
+    job_id: str,
+    runner_id: int,
+    reason: str = "Runner cannot execute this job",
+    db_path: str | None = None,
+) -> bool:
+    """Mark a job as rejected by a specific runner.
+
+    The runner ID is appended to the ``rejected_runners`` JSON list and the
+    ``assigned_runner_id`` is cleared so that another runner may pick up the
+    job.  Returns ``True`` if the update was applied.
+    """
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT rejected_runners FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if row is None:
+            return False
+        existing: list[int] = []
+        if row[0]:
+            try:
+                existing = json.loads(row[0])
+            except (json.JSONDecodeError, TypeError):
+                existing = []
+        if runner_id not in existing:
+            existing.append(runner_id)
+        conn.execute(
+            "UPDATE jobs SET rejected_runners = ?, assigned_runner_id = NULL WHERE id = ?",
+            (json.dumps(existing), job_id),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def get_or_create_system_alert_rule(
+    name: str,
+    description: str | None = None,
+    db_path: str | None = None,
+) -> dict[str, Any]:
+    """Return a system-level alert rule, creating it if it doesn't exist.
+
+    System rules use ``metric='system'`` and are used for operational alerts
+    (e.g. missing datasets) rather than run-metric threshold alerts.
+    """
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT * FROM alert_rules WHERE name = ? AND metric = 'system'", (name,)).fetchone()
+        if row:
+            return _deserialize_alert_rule(row)
+        now = _now_iso()
+        conn.execute(
+            "INSERT INTO alert_rules (name,description,metric,operator,threshold,enabled,created_at,updated_at)"
+            " VALUES (?,?,'system','!=',0,1,?,?)",
+            (name, description or name, now, now),
+        )
+        conn.commit()
+        new_row = conn.execute("SELECT * FROM alert_rules WHERE name = ? AND metric = 'system'", (name,)).fetchone()
+        return _deserialize_alert_rule(new_row)
     finally:
         conn.close()
 
@@ -1084,6 +1273,7 @@ VALID_ALERT_METRICS = [
     "ingest_secs",
     "pages",
     "files",
+    "system",
 ]
 VALID_ALERT_OPERATORS = ["<", "<=", ">", ">=", "==", "!="]
 

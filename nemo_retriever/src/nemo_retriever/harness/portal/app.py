@@ -343,6 +343,22 @@ async def get_config():
     }
 
 
+@app.get("/api/yaml-config")
+async def get_yaml_config():
+    """Return the full dataset and preset definitions from test_configs.yaml."""
+    try:
+        from nemo_retriever.harness.config import DEFAULT_TEST_CONFIG_PATH, _read_yaml_mapping
+
+        cfg = _read_yaml_mapping(DEFAULT_TEST_CONFIG_PATH)
+        return {
+            "datasets": cfg.get("datasets") or {},
+            "presets": cfg.get("presets") or {},
+            "active": cfg.get("active") or {},
+        }
+    except Exception:
+        return {"datasets": {}, "presets": {}, "active": {}}
+
+
 # ---------------------------------------------------------------------------
 # Managed Dataset CRUD
 # ---------------------------------------------------------------------------
@@ -465,7 +481,18 @@ def _resolve_dataset_config(dataset_name: str) -> tuple[str | None, dict[str, An
         cfg = _read_yaml_mapping(DEFAULT_TEST_CONFIG_PATH)
         ds_cfg = (cfg.get("datasets") or {}).get(dataset_name)
         if ds_cfg and isinstance(ds_cfg, dict) and ds_cfg.get("path"):
-            return str(ds_cfg["path"]), None
+            yaml_overrides: dict[str, Any] = {"dataset_dir": str(ds_cfg["path"])}
+            if ds_cfg.get("query_csv"):
+                yaml_overrides["query_csv"] = str(ds_cfg["query_csv"])
+            if ds_cfg.get("input_type"):
+                yaml_overrides["input_type"] = str(ds_cfg["input_type"])
+            if ds_cfg.get("recall_required") is not None:
+                yaml_overrides["recall_required"] = ds_cfg["recall_required"]
+            if ds_cfg.get("recall_match_mode"):
+                yaml_overrides["recall_match_mode"] = str(ds_cfg["recall_match_mode"])
+            if ds_cfg.get("recall_adapter"):
+                yaml_overrides["recall_adapter"] = str(ds_cfg["recall_adapter"])
+            return str(ds_cfg["path"]), yaml_overrides
     except Exception:
         pass
     return None, None
@@ -509,17 +536,90 @@ async def claim_job(job_id: str):
     return {"ok": True}
 
 
+@app.post("/api/jobs/{job_id}/cancel")
+async def cancel_job_endpoint(job_id: str):
+    """Request cancellation of a pending or running job."""
+    if not history.request_job_cancel(job_id):
+        raise HTTPException(status_code=409, detail="Job cannot be cancelled (not pending or running)")
+    return {"ok": True}
+
+
+@app.post("/api/jobs/{job_id}/reject")
+async def reject_job_endpoint(job_id: str, req: JobRejectRequest):
+    """A runner reports it cannot execute this job (e.g. missing dataset).
+
+    The runner is added to the job's rejected list so it won't be offered
+    again, and a system alert is created so the operator can resolve the issue.
+    """
+    job = history.get_job_by_id(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    history.reject_job_by_runner(job_id, req.runner_id, reason=req.reason)
+
+    runner = history.get_runner_by_id(req.runner_id)
+    runner_label = (
+        (runner.get("name") or runner.get("hostname") or f"#{req.runner_id}") if runner else f"#{req.runner_id}"
+    )
+    dataset_label = job.get("dataset", "unknown")
+    dataset_path = job.get("dataset_path") or "N/A"
+
+    try:
+        rule = history.get_or_create_system_alert_rule(
+            "Dataset Not Found on Runner",
+            description="Fired when a runner cannot find a configured dataset directory on its filesystem.",
+        )
+        history.create_alert_event(
+            {
+                "rule_id": rule["id"],
+                "run_id": 0,
+                "metric": "system",
+                "metric_value": None,
+                "threshold": 0,
+                "operator": "!=",
+                "message": f'Dataset "{dataset_label}" (path: {dataset_path}) not found on runner {runner_label}',
+                "git_commit": job.get("git_commit"),
+                "dataset": dataset_label,
+                "hostname": runner.get("hostname") if runner else None,
+            }
+        )
+        logger.warning(
+            "Runner %s rejected job %s — dataset '%s' not found at %s",
+            runner_label,
+            job_id,
+            dataset_label,
+            dataset_path,
+        )
+    except Exception as exc:
+        logger.error("Failed to create alert for rejected job %s: %s", job_id, exc)
+
+    return {"ok": True}
+
+
+@app.get("/api/jobs/{job_id}/logs")
+async def get_job_logs(job_id: str):
+    """Return the stored log tail for a job."""
+    job = history.get_job_by_id(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job_id": job_id, "status": job.get("status"), "log_tail": job.get("log_tail", [])}
+
+
 @app.post("/api/jobs/{job_id}/complete")
 async def complete_job_endpoint(job_id: str, req: JobCompleteRequest):
-    history.complete_job(
-        job_id,
-        success=req.success,
-        result=req.result,
-        error=req.error,
-    )
+    job_before = history.get_job_by_id(job_id)
+    was_cancelling = job_before and job_before.get("status") == "cancelling"
+
+    if was_cancelling and not req.success:
+        history.complete_job(job_id, success=False, result=req.result, error=req.error or "Cancelled by user")
+        history.update_job_status(job_id, "cancelled", error=req.error or "Cancelled by user")
+    else:
+        history.complete_job(job_id, success=req.success, result=req.result, error=req.error)
 
     job = history.get_job_by_id(job_id)
-    _record_run_from_job(job, req.success, req.result, req.error)
+    effective_success = req.success and not was_cancelling
+    effective_error = req.error or ("Cancelled by user" if was_cancelling else None)
+    _record_run_from_job(job, effective_success, req.result, effective_error)
 
     return {"ok": True}
 
@@ -621,17 +721,39 @@ async def delete_runner_endpoint(runner_id: int):
     return {"ok": True}
 
 
+class JobRejectRequest(BaseModel):
+    runner_id: int
+    reason: str = "Dataset not found on runner"
+
+
+class HeartbeatRequest(BaseModel):
+    current_job_id: str | None = None
+    log_tail: list[str] | None = None
+
+
 @app.post("/api/runners/{runner_id}/heartbeat")
-async def runner_heartbeat(runner_id: int):
+async def runner_heartbeat(runner_id: int, req: HeartbeatRequest | None = None):
     if not history.heartbeat_runner(runner_id):
         raise HTTPException(status_code=404, detail="Runner not found")
+
+    cancel_job_id: str | None = None
+
+    if req and req.current_job_id:
+        if req.log_tail:
+            history.update_job_log(req.current_job_id, req.log_tail)
+        current_job = history.get_job_by_id(req.current_job_id)
+        if current_job and current_job.get("status") == "cancelling":
+            cancel_job_id = req.current_job_id
+
     jobs = history.get_pending_jobs_for_runner(runner_id)
+    next_job = None
     if jobs:
         job = jobs[0]
         if job.get("assigned_runner_id") is None:
             history.assign_job_to_runner(job["id"], runner_id)
-        return {"ok": True, "job": job}
-    return {"ok": True, "job": None}
+        next_job = job
+
+    return {"ok": True, "job": next_job, "cancel_job_id": cancel_job_id}
 
 
 @app.get("/api/runners/{runner_id}/work")

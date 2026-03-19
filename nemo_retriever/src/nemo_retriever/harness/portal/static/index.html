@@ -109,6 +109,7 @@
     .badge-na { background: rgba(255,255,255,0.05); color: #666; }
     .badge-pending { background: rgba(255,255,255,0.06); color: #888; }
     .badge-running { background: rgba(252,211,77,0.12); color: #fcd34d; }
+    .badge-cancel { background: rgba(255,160,50,0.12); color: #ffa032; }
     .badge-manual { background: rgba(100,180,255,0.12); color: #64b4ff; }
     .badge-scheduled { background: rgba(168,130,255,0.12); color: #a882ff; }
     .badge-github { background: rgba(255,255,255,0.08); color: #e0e0e0; }
@@ -186,6 +187,16 @@
       padding: 16px 24px; border-top: 1px solid var(--nv-border);
       display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     }
+
+    /* ---- Log viewer ---- */
+    .log-viewer {
+      background: #0d0d0d; border: 1px solid var(--nv-border); border-radius: 6px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px;
+      line-height: 1.5; color: #ccc; padding: 12px; overflow: auto;
+      max-height: 60vh; white-space: pre-wrap; word-break: break-all;
+    }
+    .log-viewer .log-line { padding: 1px 0; }
+    .log-viewer .log-line:hover { background: rgba(255,255,255,0.03); }
 
     /* ---- Detail grid ---- */
     .detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
@@ -268,6 +279,12 @@ function IconEdit() {
 }
 function IconTrash() {
   return <svg {...svgProps}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
+}
+function IconStop() {
+  return <svg {...svgProps}><rect x="4" y="4" width="16" height="16" rx="2"/></svg>;
+}
+function IconTerminal() {
+  return <svg {...svgProps}><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
 }
 function IconPlus() {
   return <svg {...svgProps}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -409,7 +426,7 @@ function StatusBadge({ success }) {
 }
 
 function JobStatusBadge({ status }) {
-  const cls = { pending:"badge-pending", running:"badge-running", completed:"badge-pass", failed:"badge-fail", error:"badge-fail", cancelled:"badge-na" };
+  const cls = { pending:"badge-pending", running:"badge-running", completed:"badge-pass", failed:"badge-fail", error:"badge-fail", cancelled:"badge-na", cancelling:"badge-cancel" };
   return <span className={`badge ${cls[status] || "badge-na"}`}>{status}</span>;
 }
 
@@ -509,9 +526,18 @@ function Footer({ children }) {
 }
 
 /* ===== Runs View ===== */
-function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, filterCommit, setFilterCommit, onRefresh, onSelectRun, onTrigger, jobs, githubRepoUrl }) {
-  const activeJobs = (jobs || []).filter(j => j.status==="running" || j.status==="pending");
+function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, filterCommit, setFilterCommit, onRefresh, onSelectRun, onTrigger, jobs, githubRepoUrl, onViewLogs }) {
+  const activeJobs = (jobs || []).filter(j => j.status==="running" || j.status==="pending" || j.status==="cancelling");
   const pg = usePagination(runs, 25);
+
+  const handleCancel = async (jobId) => {
+    if (!confirm("Cancel this job?")) return;
+    try {
+      await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+      onRefresh();
+    } catch (e) { console.error(e); }
+  };
+
   return (
     <>
       {activeJobs.length > 0 && (
@@ -525,13 +551,27 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
               }}>
                 <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
                   <JobStatusBadge status={j.status} />
-                  {j.status==="running" && <span className="spinner"></span>}
+                  {(j.status==="running" || j.status==="cancelling") && <span className="spinner"></span>}
                   <span style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{j.dataset}</span>
                   {j.preset && <span style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{j.preset}</span>}
                   <TriggerSourceBadge source={j.trigger_source} />
                   {j.assigned_runner_id && <span style={{color:'var(--nv-text-dim)',fontSize:'11px'}}>Runner #{j.assigned_runner_id}</span>}
                 </div>
-                <span className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)'}}>{j.id}</span>
+                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  {(j.status==="running" || j.status==="cancelling") && (
+                    <button className="btn btn-secondary" style={{fontSize:'11px',padding:'3px 8px'}}
+                      onClick={() => onViewLogs && onViewLogs(j.id)} title="View Logs">
+                      <IconTerminal /> Logs
+                    </button>
+                  )}
+                  {(j.status==="pending" || j.status==="running") && (
+                    <button className="btn" style={{fontSize:'11px',padding:'3px 8px',background:'rgba(255,80,80,0.12)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}
+                      onClick={() => handleCancel(j.id)} title="Cancel Job">
+                      <IconStop /> Cancel
+                    </button>
+                  )}
+                  <span className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)'}}>{j.id}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -608,6 +648,7 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
 function DatasetsView({ managedDatasets, yamlDatasets, loading, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [editDataset, setEditDataset] = useState(null);
+  const [viewYamlDs, setViewYamlDs] = useState(null);
   const pg = usePagination(managedDatasets, 25);
 
   function handleCreate() { setEditDataset(null); setShowForm(true); }
@@ -683,13 +724,24 @@ function DatasetsView({ managedDatasets, yamlDatasets, loading, onRefresh }) {
             <div style={{overflowX:'auto'}}>
               <table className="runs-table">
                 <thead>
-                  <tr><th>Name</th><th>Source</th></tr>
+                  <tr>
+                    <th>Name</th><th>Path</th><th>Input Type</th><th>Query CSV</th>
+                    <th>Recall</th><th>Match Mode</th><th>Adapter</th><th>Actions</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {yamlDatasets.map(name => (
-                    <tr key={name}>
-                      <td style={{color:'#fff',fontWeight:500}}>{name}</td>
-                      <td style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>test_configs.yaml</td>
+                  {yamlDatasets.map(ds => (
+                    <tr key={ds.name}>
+                      <td style={{color:'#fff',fontWeight:600}}>{ds.name}</td>
+                      <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'250px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.path||''}>{ds.path || "\u2014"}</td>
+                      <td><span className="badge badge-na">{ds.input_type || "pdf"}</span></td>
+                      <td className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.query_csv||''}>{ds.query_csv || "\u2014"}</td>
+                      <td>{ds.recall_required ? <span className="badge badge-pass">Yes</span> : <span className="badge badge-na">No</span>}</td>
+                      <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_match_mode || "\u2014"}</td>
+                      <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_adapter || "\u2014"}</td>
+                      <td>
+                        <button className="btn btn-secondary btn-sm" onClick={()=>setViewYamlDs(ds)} title="View details"><IconExternalLink /> View</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -705,6 +757,10 @@ function DatasetsView({ managedDatasets, yamlDatasets, loading, onRefresh }) {
           onClose={()=>setShowForm(false)}
           onSaved={()=>{setShowForm(false);onRefresh();}}
         />
+      )}
+
+      {viewYamlDs && (
+        <YamlDatasetDetailModal dataset={viewYamlDs} onClose={()=>setViewYamlDs(null)} />
       )}
     </>
   );
@@ -839,6 +895,44 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
   );
 }
 
+function YamlDatasetDetailModal({ dataset, onClose }) {
+  const labelStyle = {fontSize:'11px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'};
+  const valueStyle = {fontSize:'13px',color:'#fff',fontFamily:"'JetBrains Mono', monospace",wordBreak:'break-all'};
+  const fields = [
+    { label: "Name", value: dataset.name },
+    { label: "Path", value: dataset.path },
+    { label: "Input Type", value: dataset.input_type || "pdf" },
+    { label: "Query CSV", value: dataset.query_csv },
+    { label: "Recall Required", value: dataset.recall_required ? "Yes" : "No" },
+    { label: "Recall Match Mode", value: dataset.recall_match_mode },
+    { label: "Recall Adapter", value: dataset.recall_adapter },
+  ];
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'540px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>
+            Dataset: {dataset.name}
+            <span style={{marginLeft:'10px',fontSize:'10px',fontWeight:500,color:'var(--nv-text-dim)',background:'var(--nv-bg)',padding:'3px 8px',borderRadius:'4px',border:'1px solid var(--nv-border)',verticalAlign:'middle'}}>YAML — read only</span>
+          </h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px',maxHeight:'60vh',overflowY:'auto'}}>
+          {fields.map(f => (
+            <div key={f.label}>
+              <div style={labelStyle}>{f.label}</div>
+              <div style={valueStyle}>{f.value || "\u2014"}</div>
+            </div>
+          ))}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-secondary" onClick={onClose} style={{flex:1,justifyContent:'center'}}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===== Presets View ===== */
 const TUNING_FIELDS = [
   { key:"pdf_extract_workers", label:"PDF Extract Workers", type:"int" },
@@ -870,6 +964,7 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [editPreset, setEditPreset] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [viewYamlPreset, setViewYamlPreset] = useState(null);
   const pg = usePagination(managedPresets, 25);
 
   function handleCreate() { setEditPreset(null); setShowForm(true); }
@@ -960,14 +1055,21 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
           <div className="card">
             <div style={{overflowX:'auto'}}>
               <table className="runs-table">
-                <thead><tr><th>Name</th><th>Source</th></tr></thead>
+                <thead><tr><th>Name</th><th style={{textAlign:'right'}}>Fields</th><th>Actions</th></tr></thead>
                 <tbody>
-                  {yamlPresets.map(name => (
-                    <tr key={name}>
-                      <td style={{color:'#fff',fontWeight:500}}>{name}</td>
-                      <td style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>test_configs.yaml</td>
-                    </tr>
-                  ))}
+                  {yamlPresets.map(p => {
+                    const cfg = typeof p.config === 'object' ? p.config : {};
+                    const fieldCount = Object.keys(cfg).length;
+                    return (
+                      <tr key={p.name}>
+                        <td style={{color:'#fff',fontWeight:600}}>{p.name}</td>
+                        <td style={{textAlign:'right'}}><span className="badge badge-na">{fieldCount} params</span></td>
+                        <td>
+                          <button className="btn btn-secondary btn-sm" onClick={()=>setViewYamlPreset(p)} title="View details"><IconExternalLink /> View</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -981,6 +1083,10 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
           onClose={()=>setShowForm(false)}
           onSaved={()=>{setShowForm(false);onRefresh();}}
         />
+      )}
+
+      {viewYamlPreset && (
+        <YamlPresetDetailModal preset={viewYamlPreset} onClose={()=>setViewYamlPreset(null)} />
       )}
     </>
   );
@@ -1090,6 +1196,58 @@ function PresetFormModal({ preset, onClose, onSaved }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function YamlPresetDetailModal({ preset, onClose }) {
+  const cfg = typeof preset.config === 'object' ? preset.config : {};
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'640px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>
+            Preset: {preset.name}
+            <span style={{marginLeft:'10px',fontSize:'10px',fontWeight:500,color:'var(--nv-text-dim)',background:'var(--nv-bg)',padding:'3px 8px',borderRadius:'4px',border:'1px solid var(--nv-border)',verticalAlign:'middle'}}>YAML — read only</span>
+          </h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <div style={{padding:'24px',maxHeight:'65vh',overflowY:'auto'}}>
+          {TUNING_GROUPS.map(g => {
+            const groupFields = g.fields.filter(f => cfg[f.key] != null);
+            if (groupFields.length === 0) return null;
+            return (
+              <div key={g.label} style={{marginBottom:'20px'}}>
+                <div style={{fontSize:'12px',fontWeight:600,color:'var(--nv-green)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'0.05em'}}>{g.label}</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:'10px 20px'}}>
+                  {g.fields.map(f => (
+                    <div key={f.key} style={{display:'flex',justifyContent:'space-between',gap:'8px',padding:'6px 10px',borderRadius:'6px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
+                      <span style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>{f.label}</span>
+                      <span className="mono" style={{fontSize:'13px',color:cfg[f.key]!=null?'var(--nv-green)':'var(--nv-text-dim)',fontWeight:cfg[f.key]!=null?600:400}}>{cfg[f.key] != null ? cfg[f.key] : "\u2014"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {Object.keys(cfg).filter(k => !TUNING_FIELDS.some(f=>f.key===k)).length > 0 && (
+            <div style={{marginBottom:'20px'}}>
+              <div style={{fontSize:'12px',fontWeight:600,color:'var(--nv-text-muted)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Other Parameters</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:'10px 20px'}}>
+                {Object.entries(cfg).filter(([k])=>!TUNING_FIELDS.some(f=>f.key===k)).map(([k,v]) => (
+                  <div key={k} style={{display:'flex',justifyContent:'space-between',gap:'8px',padding:'6px 10px',borderRadius:'6px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
+                    <span style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>{k}</span>
+                    <span className="mono" style={{fontSize:'13px',color:'var(--nv-green)',fontWeight:600}}>{String(v)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-secondary" onClick={onClose} style={{flex:1,justifyContent:'center'}}>Close</button>
+        </div>
       </div>
     </div>
   );
@@ -1903,7 +2061,7 @@ function ScheduleFormModal({ schedule, runners, onClose, onSaved }) {
 }
 
 /* ===== Alerts View ===== */
-const METRIC_LABELS = { pages_per_sec:"Pages / sec", recall_5:"Recall@5", ingest_secs:"Ingest Time (s)", pages:"Pages", files:"Files" };
+const METRIC_LABELS = { pages_per_sec:"Pages / sec", recall_5:"Recall@5", ingest_secs:"Ingest Time (s)", pages:"Pages", files:"Files", system:"System" };
 const OPERATOR_LABELS = { "<":"less than", "<=":"at most", ">":"greater than", ">=":"at least", "==":"equal to", "!=":"not equal to" };
 
 function AlertsView({ alertRules, alertEvents, alertRulesLoading, alertEventsLoading, onRefresh, onSelectRun, githubRepoUrl }) {
@@ -2042,8 +2200,8 @@ function AlertsView({ alertRules, alertEvents, alertRulesLoading, alertEventsLoa
                           <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px',maxWidth:'220px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ev.message}>{ev.message}</div>
                         </td>
                         <td><span className="badge badge-na">{METRIC_LABELS[ev.metric]||ev.metric}</span></td>
-                        <td className="mono" style={{color:'#ff5050',fontWeight:600,fontSize:'13px'}}>{ev.metric_value != null ? ev.metric_value.toFixed(4) : "\u2014"}</td>
-                        <td className="mono" style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{ev.operator} {ev.threshold}</td>
+                        <td className="mono" style={{color:'#ff5050',fontWeight:600,fontSize:'13px'}}>{ev.metric === "system" ? "\u2014" : (ev.metric_value != null ? ev.metric_value.toFixed(4) : "\u2014")}</td>
+                        <td className="mono" style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{ev.metric === "system" ? "\u2014" : `${ev.operator} ${ev.threshold}`}</td>
                         <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ev.dataset || "\u2014"}</td>
                         <td>
                           <CommitLink sha={ev.git_commit} repoUrl={githubRepoUrl} />
@@ -2052,9 +2210,13 @@ function AlertsView({ alertRules, alertEvents, alertRulesLoading, alertEventsLoa
                         <td style={{color:'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{fmtTs(ev.created_at)}</td>
                         <td>
                           <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
-                            <button className="btn btn-secondary btn-sm" onClick={()=>onSelectRun(ev.run_id)} title="View Run">
-                              <IconExternalLink /> Run #{ev.run_id}
-                            </button>
+                            {ev.run_id && ev.run_id !== 0 ? (
+                              <button className="btn btn-secondary btn-sm" onClick={()=>onSelectRun(ev.run_id)} title="View Run">
+                                <IconExternalLink /> Run #{ev.run_id}
+                              </button>
+                            ) : (
+                              <span className="badge badge-na" style={{fontSize:'11px'}}>System</span>
+                            )}
                             {!ev.acknowledged && (
                               <button className="btn btn-sm" onClick={()=>handleAcknowledge(ev.id)} title="Acknowledge"
                                 style={{background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.2)'}}>
@@ -2241,7 +2403,7 @@ function AlertRuleFormModal({ rule, onClose, onSaved }) {
               <div style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'14px',color:'#fff',padding:'12px 16px',background:'var(--nv-bg)',borderRadius:'8px',border:'1px solid var(--nv-border)'}}>
                 <span style={{color:'var(--nv-text-muted)'}}>Alert when</span>
                 <select className="select" value={form.metric} onChange={e=>set('metric',e.target.value)} style={{minWidth:'130px'}}>
-                  {metrics.map(m=><option key={m} value={m}>{METRIC_LABELS[m]||m}</option>)}
+                  {metrics.filter(m=>m!=='system').map(m=><option key={m} value={m}>{METRIC_LABELS[m]||m}</option>)}
                 </select>
                 <span style={{color:'var(--nv-text-muted)'}}>is</span>
                 <select className="select" value={form.operator} onChange={e=>set('operator',e.target.value)} style={{minWidth:'80px'}}>
@@ -2651,6 +2813,95 @@ function AnalyticsView({ runs, datasets, loading, onRefresh }) {
   );
 }
 
+/* ===== Log Viewer Modal ===== */
+function LogViewerModal({ jobId, onClose }) {
+  const [logData, setLogData] = useState({ log_tail: [], status: null });
+  const [autoScroll, setAutoScroll] = useState(true);
+  const logRef = useRef(null);
+
+  const fetchLogs = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      const resp = await fetch(`/api/jobs/${jobId}/logs`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setLogData(data);
+      }
+    } catch (e) { console.error(e); }
+  }, [jobId]);
+
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  useEffect(() => {
+    const isActive = logData.status === "running" || logData.status === "cancelling";
+    if (!isActive) return;
+    const iv = setInterval(fetchLogs, 3000);
+    return () => clearInterval(iv);
+  }, [fetchLogs, logData.status]);
+
+  useEffect(() => {
+    if (autoScroll && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logData.log_tail, autoScroll]);
+
+  const handleCancel = async () => {
+    if (!confirm("Cancel this job?")) return;
+    try {
+      await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+      fetchLogs();
+    } catch (e) { console.error(e); }
+  };
+
+  const isActive = logData.status === "running" || logData.status === "cancelling";
+  const lines = logData.log_tail || [];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{width:'900px',maxWidth:'95vw'}} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+            <h2 style={{margin:0,fontSize:'16px',color:'#fff'}}>Job Logs</h2>
+            <span className="mono" style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>{jobId}</span>
+            {logData.status && <JobStatusBadge status={logData.status} />}
+            {isActive && <span className="spinner"></span>}
+          </div>
+          <button className="btn-ghost" onClick={onClose}><IconX /></button>
+        </div>
+        <div className="modal-body" style={{padding:'16px'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
+            <span style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>{lines.length} line{lines.length!==1?'s':''}</span>
+            <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+              <label style={{display:'flex',alignItems:'center',gap:'4px',fontSize:'12px',color:'var(--nv-text-muted)',cursor:'pointer'}}>
+                <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} /> Auto-scroll
+              </label>
+              <button className="btn btn-secondary" style={{fontSize:'11px',padding:'3px 8px'}} onClick={fetchLogs}>
+                <IconRefresh /> Refresh
+              </button>
+            </div>
+          </div>
+          <div className="log-viewer" ref={logRef}>
+            {lines.length === 0 ? (
+              <div style={{color:'var(--nv-text-dim)',fontStyle:'italic'}}>
+                {isActive ? "Waiting for log output..." : "No log output available."}
+              </div>
+            ) : (
+              lines.map((line, i) => <div key={i} className="log-line">{line}</div>)
+            )}
+          </div>
+        </div>
+        <div className="modal-foot">
+          {(logData.status === "running" || logData.status === "pending") && (
+            <button className="btn" style={{background:'rgba(255,80,80,0.12)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}
+              onClick={handleCancel}><IconStop /> Cancel Job</button>
+          )}
+          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===== Trigger Modal ===== */
 function TriggerModal({ onClose, onTriggered }) {
   const [datasets, setDatasets] = useState([]);
@@ -2751,6 +3002,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [selectedRun, setSelectedRun] = useState(null);
   const [showTrigger, setShowTrigger] = useState(false);
+  const [logViewerJobId, setLogViewerJobId] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [runners, setRunners] = useState([]);
   const [runnersLoading, setRunnersLoading] = useState(true);
@@ -2792,15 +3044,19 @@ function App() {
   const fetchManagedDatasets = useCallback(async () => {
     setManagedDatasetsLoading(prev => managedDatasets.length === 0 ? true : prev);
     try {
-      const [mRes, cRes] = await Promise.all([
+      const [mRes, cRes, yRes] = await Promise.all([
         fetch("/api/managed-datasets"),
         fetch("/api/config"),
+        fetch("/api/yaml-config"),
       ]);
       const managed = await mRes.json();
       const config = await cRes.json();
+      const yamlCfg = await yRes.json();
       setManagedDatasets(managed);
       const managedNames = new Set(managed.map(d => d.name));
-      setYamlDatasets((config.datasets || []).filter(n => !managedNames.has(n)));
+      const yamlDsNames = (config.datasets || []).filter(n => !managedNames.has(n));
+      const yamlDsMap = yamlCfg.datasets || {};
+      setYamlDatasets(yamlDsNames.map(n => ({ name: n, ...(yamlDsMap[n] || {}) })));
     } catch {}
     finally { setManagedDatasetsLoading(false); }
   }, [managedDatasets.length]);
@@ -2808,15 +3064,19 @@ function App() {
   const fetchManagedPresets = useCallback(async () => {
     setManagedPresetsLoading(prev => managedPresets.length === 0 ? true : prev);
     try {
-      const [mRes, cRes] = await Promise.all([
+      const [mRes, cRes, yRes] = await Promise.all([
         fetch("/api/managed-presets"),
         fetch("/api/config"),
+        fetch("/api/yaml-config"),
       ]);
       const managed = await mRes.json();
       const config = await cRes.json();
+      const yamlCfg = await yRes.json();
       setManagedPresets(managed);
       const managedNames = new Set(managed.map(p => p.name));
-      setYamlPresets((config.presets || []).filter(n => !managedNames.has(n)));
+      const yamlPNames = (config.presets || []).filter(n => !managedNames.has(n));
+      const yamlPMap = yamlCfg.presets || {};
+      setYamlPresets(yamlPNames.map(n => ({ name: n, config: yamlPMap[n] || {} })));
     } catch {}
     finally { setManagedPresetsLoading(false); }
   }, [managedPresets.length]);
@@ -2868,7 +3128,7 @@ function App() {
 
   // Fast polling (3s) when jobs are actively running
   useEffect(() => {
-    const hasActive = jobs.some(j => j.status==="running" || j.status==="pending");
+    const hasActive = jobs.some(j => j.status==="running" || j.status==="pending" || j.status==="cancelling");
     if (!hasActive) return;
     const interval = setInterval(() => { fetchJobs(); fetchRuns(); }, 3000);
     return () => clearInterval(interval);
@@ -2883,7 +3143,7 @@ function App() {
 
   const viewTitles = { runs: "Runs", analytics: "Analytics", datasets: "Datasets", presets: "Presets", runners: "Runners", scheduling: "Scheduling", alerts: "Alerts" };
 
-  const activeJobCount = jobs.filter(j => j.status==="running" || j.status==="pending").length;
+  const activeJobCount = jobs.filter(j => j.status==="running" || j.status==="pending" || j.status==="cancelling").length;
 
   const footerText = useMemo(() => {
     if (activeView === "runs") {
@@ -2943,7 +3203,8 @@ function App() {
               filterDataset={filterDataset} setFilterDataset={setFilterDataset}
               filterCommit={filterCommit} setFilterCommit={setFilterCommit}
               onRefresh={()=>{fetchRuns();fetchJobs();}} onSelectRun={openDetail}
-              onTrigger={()=>setShowTrigger(true)} jobs={jobs} githubRepoUrl={githubRepoUrl} />
+              onTrigger={()=>setShowTrigger(true)} jobs={jobs} githubRepoUrl={githubRepoUrl}
+              onViewLogs={setLogViewerJobId} />
           )}
           {activeView==="analytics" && (
             <AnalyticsView runs={runs} datasets={datasets} loading={loading} onRefresh={fetchRuns} />
@@ -2972,6 +3233,7 @@ function App() {
       </div>
       {selectedRun && <RunDetailModal run={selectedRun} onClose={()=>setSelectedRun(null)} githubRepoUrl={githubRepoUrl} />}
       {showTrigger && <TriggerModal onClose={()=>setShowTrigger(false)} onTriggered={()=>{fetchJobs();setTimeout(fetchJobs,1000);}} />}
+      {logViewerJobId && <LogViewerModal jobId={logViewerJobId} onClose={()=>setLogViewerJobId(null)} />}
     </div>
   );
 }

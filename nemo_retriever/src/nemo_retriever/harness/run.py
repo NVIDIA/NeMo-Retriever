@@ -456,7 +456,13 @@ def _run_subprocess_with_tty(cmd: list[str], metrics: StreamMetrics) -> int:
         os.close(master_fd)
 
 
-def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[str] | None = None) -> dict[str, Any]:
+def _run_single(
+    cfg: HarnessConfig,
+    artifact_dir: Path,
+    run_id: str,
+    tags: list[str] | None = None,
+    skip_local_history: bool = False,
+) -> dict[str, Any]:
     cmd, runtime_dir, detection_summary_file, effective_query_csv = _build_command(cfg, artifact_dir, run_id)
     command_text = " ".join(shlex.quote(token) for token in cmd)
     (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
@@ -544,12 +550,13 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
 
     write_json(artifact_dir / "results.json", result_payload)
 
-    try:
-        from nemo_retriever.harness.history import record_run as _record_history
+    if not skip_local_history:
+        try:
+            from nemo_retriever.harness.history import record_run as _record_history
 
-        _record_history(result_payload, artifact_dir)
-    except Exception:
-        pass
+            _record_history(result_payload, artifact_dir)
+        except Exception:
+            pass
 
     if failure_reason:
         _print_failure_report(result_payload, command_text, artifact_dir, metrics.tail_lines)
@@ -568,6 +575,7 @@ def _run_entry(
     cli_overrides: list[str] | None = None,
     recall_required: bool | None = None,
     tags: list[str] | None = None,
+    skip_local_history: bool = False,
 ) -> dict[str, Any]:
     cfg = load_harness_config(
         config_file=config_file,
@@ -587,20 +595,10 @@ def _run_entry(
 
     resolved_run_name = run_name or cfg.dataset_label
     normalized_tags = _normalize_tags(tags)
-    result = _run_single(cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags)
-    run_result = {
-        "run_name": resolved_run_name,
-        "dataset": cfg.dataset_label,
-        "preset": cfg.preset,
-        "artifact_dir": str(artifact_dir.resolve()),
-        "success": bool(result["success"]),
-        "return_code": int(result["return_code"]),
-        "failure_reason": result.get("failure_reason"),
-        "metrics": dict(result.get("summary_metrics", result.get("metrics", {}))),
-    }
-    if normalized_tags:
-        run_result["tags"] = normalized_tags
-    return run_result
+    result = _run_single(
+        cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags, skip_local_history=skip_local_history
+    )
+    return result
 
 
 def execute_runs(
@@ -653,9 +651,10 @@ def run_command(
         recall_required=recall_required,
         tags=tag,
     )
+    artifact_display = (result.get("artifacts") or {}).get("runtime_metrics_dir", "N/A")
     typer.echo(
         f"\nResult: {'PASS' if result['success'] else 'FAIL'} | "
-        f"return_code={result['return_code']} | artifact_dir={result['artifact_dir']}"
+        f"return_code={result['return_code']} | artifacts={artifact_display}"
     )
     raise typer.Exit(code=0 if result["success"] else 1)
 

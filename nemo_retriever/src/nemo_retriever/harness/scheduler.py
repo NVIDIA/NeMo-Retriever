@@ -83,7 +83,18 @@ def _resolve_dataset_config(dataset_name: str) -> tuple[str | None, dict[str, An
         cfg = _read_yaml_mapping(DEFAULT_TEST_CONFIG_PATH)
         ds_cfg = (cfg.get("datasets") or {}).get(dataset_name)
         if ds_cfg and isinstance(ds_cfg, dict) and ds_cfg.get("path"):
-            return str(ds_cfg["path"]), None
+            yaml_overrides: dict[str, Any] = {"dataset_dir": str(ds_cfg["path"])}
+            if ds_cfg.get("query_csv"):
+                yaml_overrides["query_csv"] = str(ds_cfg["query_csv"])
+            if ds_cfg.get("input_type"):
+                yaml_overrides["input_type"] = str(ds_cfg["input_type"])
+            if ds_cfg.get("recall_required") is not None:
+                yaml_overrides["recall_required"] = ds_cfg["recall_required"]
+            if ds_cfg.get("recall_match_mode"):
+                yaml_overrides["recall_match_mode"] = str(ds_cfg["recall_match_mode"])
+            if ds_cfg.get("recall_adapter"):
+                yaml_overrides["recall_adapter"] = str(ds_cfg["recall_adapter"])
+            return str(ds_cfg["path"]), yaml_overrides
     except Exception:
         pass
     return None, None
@@ -108,7 +119,12 @@ def _enforce_backlog_limit(schedule_id: int) -> None:
         )
 
 
-def _dispatch_schedule(schedule: dict[str, Any], trigger_source: str = "scheduled") -> dict[str, Any] | None:
+def _dispatch_schedule(
+    schedule: dict[str, Any],
+    trigger_source: str = "scheduled",
+    git_commit: str | None = None,
+    git_ref: str | None = None,
+) -> dict[str, Any] | None:
     """Create a pending job for a schedule.
 
     If a preferred runner or resource requirements are specified, attempt to
@@ -140,6 +156,8 @@ def _dispatch_schedule(schedule: dict[str, Any], trigger_source: str = "schedule
         "preset": schedule.get("preset"),
         "config": schedule.get("config"),
         "assigned_runner_id": runner["id"] if runner else None,
+        "git_commit": git_commit,
+        "git_ref": git_ref,
         "tags": schedule.get("tags") or [],
     }
 
@@ -211,7 +229,7 @@ def _github_poll() -> None:
 
         logger.info("New commit on %s/%s: %s (was %s)", repo, branch, sha[:12], (last_sha or "none")[:12])
         history.update_schedule(sched["id"], {"github_last_sha": sha})
-        _dispatch_schedule(sched, trigger_source="github_push")
+        _dispatch_schedule(sched, trigger_source="github_push", git_commit=sha, git_ref=branch)
 
 
 def _git_ls_remote(repo: str, branch: str) -> str | None:
@@ -357,7 +375,7 @@ def handle_github_webhook(repo: str, branch: str, commit_sha: str) -> list[dict[
             continue
 
         history.update_schedule(sched["id"], {"github_last_sha": commit_sha})
-        job = _dispatch_schedule(sched, trigger_source="github_push")
+        job = _dispatch_schedule(sched, trigger_source="github_push", git_commit=commit_sha, git_ref=branch)
         if job:
             dispatched.append(job)
 
