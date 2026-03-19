@@ -296,7 +296,7 @@ class AgenticRetrievalPipeline(BasePipeline):
     @dataset_name.setter
     def dataset_name(self, value: str):
         self._dataset_name = value
-        
+
     # -----------------------------------------------------------------------
     # Async query loop
     # -----------------------------------------------------------------------
@@ -533,7 +533,7 @@ class AgenticRetrievalPipeline(BasePipeline):
     # -----------------------------------------------------------------------
     # Main entry point
     # -----------------------------------------------------------------------
-    
+
     def index(
         self, corpus_ids: List[str], corpus_images: List[Any], corpus_texts: List[str], dataset_name: str = None
     ) -> None:
