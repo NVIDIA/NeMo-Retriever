@@ -80,12 +80,21 @@ g. When core services have fully started, `nvidia-smi` should show processes lik
 
 h. Run the command `docker ps`. You should see output similar to the following. Confirm that the status of the containers is `Up`.
 
+    ```text
+    CONTAINER ID   IMAGE                                              COMMAND   CREATED       STATUS       PORTS     NAMES
+    <id>           <your runtime image>                               ...       ...           Up ...       ...       nemo-retriever-ms-runtime-1
+    ...
     ```
-    CONTAINER ID  IMAGE                                            COMMAND                 CREATED         STATUS                  PORTS            NAMES
-uv venv --python 3.12 nv-ingest-dev
-source nv-ingest-dev/bin/activate
-uv pip install nv-ingest==26.3.0 nv-ingest-api==26.3.0 nv-ingest-client==26.3.0
-```
+
+!!! tip
+
+    To use the Python client on the **host** (outside Docker), install the published packages (versions must match your deployment), for example:
+
+    ```bash
+    uv venv --python 3.12 nv-ingest-dev
+    source nv-ingest-dev/bin/activate
+    uv pip install nv-ingest==26.3.0 nv-ingest-api==26.3.0 nv-ingest-client==26.3.0
+    ```
 
 !!! tip
 
@@ -124,6 +133,12 @@ The following examples demonstrate how to extract text, charts, tables, and imag
 
 ### In Python
 
+!!! note "Python packages: remote client vs in-process library"
+
+    **`nv_ingest_client` (this section)** — Use `Ingestor` and `NvIngestClient` from `nv_ingest_client.client` to drive a **running** NeMo Retriever / nv-ingest deployment (message broker or REST). This is the supported client API today.
+
+    **`nemo_retriever` (library mode)** — For an **in-process** pipeline (Ray, GPU models, etc.), use `create_ingestor` and `Retriever` from the `nemo_retriever` package. There is **no** `nemo_retriever.client` submodule yet; do not import `Ingestor` from `nemo_retriever`. See [NeMo Retriever Library quick start](quickstart-library-mode.md).
+
 !!! tip
 
     For more Python examples, refer to [NeMo Retriever Library: Python Client Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
@@ -131,9 +146,9 @@ The following examples demonstrate how to extract text, charts, tables, and imag
 <a id="ingest_python_example"></a>
 ```python
 import logging, os, time
-from nemo_retriever.client import Ingestor, NemoRetrieverClient
-from nemo_retriever.util.process_json_files import ingest_json_results_to_blob
-client = NemoRetrieverClient(                                                                         
+from nv_ingest_client.client import Ingestor, NvIngestClient
+from nv_ingest_client.util.process_json_files import ingest_json_results_to_blob
+client = NvIngestClient(                                                                         
     message_client_port=7670,                                                               
     message_client_hostname="localhost"        
 )                                                                 
@@ -288,47 +303,47 @@ None of PyTorch, TensorFlow >= 2.0, or Flax have been found. Models won't be ava
 [nltk_data]     dev/lib/python3.10/site-
 [nltk_data]     packages/llama_index/core/_static/nltk_cache...
 [nltk_data]   Package punkt_tab is already up-to-date!
-INFO:nemo_retriever.cli:Processing 1 documents.
-INFO:nemo_retriever.cli:Output will be written to: ./processed_docs
+INFO:nv_ingest_client.nv_ingest_cli:Processing 1 documents.
+INFO:nv_ingest_client.nv_ingest_cli:Output will be written to: ./processed_docs
 Processing files: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:02<00:00,  2.34s/file, pages_per_sec=1.28]
-INFO:nemo_retriever.cli.util.processing:message_broker_task_source: Avg: 2.39 ms, Median: 2.39 ms, Total Time: 2.39 ms, Total % of Trace Computation: 0.06%
-INFO:nemo_retriever.cli.util.processing:broker_source_network_in: Avg: 9.51 ms, Median: 9.51 ms, Total Time: 9.51 ms, Total % of Trace Computation: 0.25%
-INFO:nemo_retriever.cli.util.processing:job_counter: Avg: 1.47 ms, Median: 1.47 ms, Total Time: 1.47 ms, Total % of Trace Computation: 0.04%
-INFO:nemo_retriever.cli.util.processing:job_counter_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:metadata_injection: Avg: 3.52 ms, Median: 3.52 ms, Total Time: 3.52 ms, Total % of Trace Computation: 0.09%
-INFO:nemo_retriever.cli.util.processing:metadata_injection_channel_in: Avg: 0.16 ms, Median: 0.16 ms, Total Time: 0.16 ms, Total % of Trace Computation: 0.00%
-INFO:nemo_retriever.cli.util.processing:pdf_content_extractor: Avg: 475.64 ms, Median: 163.77 ms, Total Time: 2378.21 ms, Total % of Trace Computation: 62.73%
-INFO:nemo_retriever.cli.util.processing:pdf_content_extractor_channel_in: Avg: 0.31 ms, Median: 0.31 ms, Total Time: 0.31 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:image_content_extractor: Avg: 0.67 ms, Median: 0.67 ms, Total Time: 0.67 ms, Total % of Trace Computation: 0.02%
-INFO:nemo_retriever.cli.util.processing:image_content_extractor_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:docx_content_extractor: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:docx_content_extractor_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:pptx_content_extractor: Avg: 0.68 ms, Median: 0.68 ms, Total Time: 0.68 ms, Total % of Trace Computation: 0.02%
-INFO:nemo_retriever.cli.util.processing:pptx_content_extractor_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:audio_data_extraction: Avg: 1.08 ms, Median: 1.08 ms, Total Time: 1.08 ms, Total % of Trace Computation: 0.03%
-INFO:nemo_retriever.cli.util.processing:audio_data_extraction_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:dedup_images: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:dedup_images_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:filter_images: Avg: 0.59 ms, Median: 0.59 ms, Total Time: 0.59 ms, Total % of Trace Computation: 0.02%
-INFO:nemo_retriever.cli.util.processing:filter_images_channel_in: Avg: 0.57 ms, Median: 0.57 ms, Total Time: 0.57 ms, Total % of Trace Computation: 0.02%
-INFO:nemo_retriever.cli.util.processing:table_data_extraction: Avg: 240.75 ms, Median: 240.75 ms, Total Time: 481.49 ms, Total % of Trace Computation: 12.70%
-INFO:nemo_retriever.cli.util.processing:table_data_extraction_channel_in: Avg: 0.38 ms, Median: 0.38 ms, Total Time: 0.38 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:chart_data_extraction: Avg: 300.54 ms, Median: 299.94 ms, Total Time: 901.62 ms, Total % of Trace Computation: 23.78%
-INFO:nemo_retriever.cli.util.processing:chart_data_extraction_channel_in: Avg: 0.23 ms, Median: 0.23 ms, Total Time: 0.23 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:infographic_data_extraction: Avg: 0.77 ms, Median: 0.77 ms, Total Time: 0.77 ms, Total % of Trace Computation: 0.02%
-INFO:nemo_retriever.cli.util.processing:infographic_data_extraction_channel_in: Avg: 0.25 ms, Median: 0.25 ms, Total Time: 0.25 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:caption_ext: Avg: 0.55 ms, Median: 0.55 ms, Total Time: 0.55 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:caption_ext_channel_in: Avg: 0.51 ms, Median: 0.51 ms, Total Time: 0.51 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:embed_text: Avg: 1.21 ms, Median: 1.21 ms, Total Time: 1.21 ms, Total % of Trace Computation: 0.03%
-INFO:nemo_retriever.cli.util.processing:embed_text_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:store_embedding_minio: Avg: 0.32 ms, Median: 0.32 ms, Total Time: 0.32 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:store_embedding_minio_channel_in: Avg: 1.18 ms, Median: 1.18 ms, Total Time: 1.18 ms, Total % of Trace Computation: 0.03%
-INFO:nemo_retriever.cli.util.processing:message_broker_task_sink_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
-INFO:nemo_retriever.cli.util.processing:No unresolved time detected. Trace times account for the entire elapsed duration.
-INFO:nemo_retriever.cli.util.processing:Processed 1 files in 2.34 seconds.
-INFO:nemo_retriever.cli.util.processing:Total pages processed: 3
-INFO:nemo_retriever.cli.util.processing:Throughput (Pages/sec): 1.28
-INFO:nemo_retriever.cli.util.processing:Throughput (Files/sec): 0.43
+INFO:nv_ingest_client.util.processing:message_broker_task_source: Avg: 2.39 ms, Median: 2.39 ms, Total Time: 2.39 ms, Total % of Trace Computation: 0.06%
+INFO:nv_ingest_client.util.processing:broker_source_network_in: Avg: 9.51 ms, Median: 9.51 ms, Total Time: 9.51 ms, Total % of Trace Computation: 0.25%
+INFO:nv_ingest_client.util.processing:job_counter: Avg: 1.47 ms, Median: 1.47 ms, Total Time: 1.47 ms, Total % of Trace Computation: 0.04%
+INFO:nv_ingest_client.util.processing:job_counter_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:metadata_injection: Avg: 3.52 ms, Median: 3.52 ms, Total Time: 3.52 ms, Total % of Trace Computation: 0.09%
+INFO:nv_ingest_client.util.processing:metadata_injection_channel_in: Avg: 0.16 ms, Median: 0.16 ms, Total Time: 0.16 ms, Total % of Trace Computation: 0.00%
+INFO:nv_ingest_client.util.processing:pdf_content_extractor: Avg: 475.64 ms, Median: 163.77 ms, Total Time: 2378.21 ms, Total % of Trace Computation: 62.73%
+INFO:nv_ingest_client.util.processing:pdf_content_extractor_channel_in: Avg: 0.31 ms, Median: 0.31 ms, Total Time: 0.31 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:image_content_extractor: Avg: 0.67 ms, Median: 0.67 ms, Total Time: 0.67 ms, Total % of Trace Computation: 0.02%
+INFO:nv_ingest_client.util.processing:image_content_extractor_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:docx_content_extractor: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:docx_content_extractor_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:pptx_content_extractor: Avg: 0.68 ms, Median: 0.68 ms, Total Time: 0.68 ms, Total % of Trace Computation: 0.02%
+INFO:nv_ingest_client.util.processing:pptx_content_extractor_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:audio_data_extraction: Avg: 1.08 ms, Median: 1.08 ms, Total Time: 1.08 ms, Total % of Trace Computation: 0.03%
+INFO:nv_ingest_client.util.processing:audio_data_extraction_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:dedup_images: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:dedup_images_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:filter_images: Avg: 0.59 ms, Median: 0.59 ms, Total Time: 0.59 ms, Total % of Trace Computation: 0.02%
+INFO:nv_ingest_client.util.processing:filter_images_channel_in: Avg: 0.57 ms, Median: 0.57 ms, Total Time: 0.57 ms, Total % of Trace Computation: 0.02%
+INFO:nv_ingest_client.util.processing:table_data_extraction: Avg: 240.75 ms, Median: 240.75 ms, Total Time: 481.49 ms, Total % of Trace Computation: 12.70%
+INFO:nv_ingest_client.util.processing:table_data_extraction_channel_in: Avg: 0.38 ms, Median: 0.38 ms, Total Time: 0.38 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:chart_data_extraction: Avg: 300.54 ms, Median: 299.94 ms, Total Time: 901.62 ms, Total % of Trace Computation: 23.78%
+INFO:nv_ingest_client.util.processing:chart_data_extraction_channel_in: Avg: 0.23 ms, Median: 0.23 ms, Total Time: 0.23 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:infographic_data_extraction: Avg: 0.77 ms, Median: 0.77 ms, Total Time: 0.77 ms, Total % of Trace Computation: 0.02%
+INFO:nv_ingest_client.util.processing:infographic_data_extraction_channel_in: Avg: 0.25 ms, Median: 0.25 ms, Total Time: 0.25 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:caption_ext: Avg: 0.55 ms, Median: 0.55 ms, Total Time: 0.55 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:caption_ext_channel_in: Avg: 0.51 ms, Median: 0.51 ms, Total Time: 0.51 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:embed_text: Avg: 1.21 ms, Median: 1.21 ms, Total Time: 1.21 ms, Total % of Trace Computation: 0.03%
+INFO:nv_ingest_client.util.processing:embed_text_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:store_embedding_minio: Avg: 0.32 ms, Median: 0.32 ms, Total Time: 0.32 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:store_embedding_minio_channel_in: Avg: 1.18 ms, Median: 1.18 ms, Total Time: 1.18 ms, Total % of Trace Computation: 0.03%
+INFO:nv_ingest_client.util.processing:message_broker_task_sink_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
+INFO:nv_ingest_client.util.processing:No unresolved time detected. Trace times account for the entire elapsed duration.
+INFO:nv_ingest_client.util.processing:Processed 1 files in 2.34 seconds.
+INFO:nv_ingest_client.util.processing:Total pages processed: 3
+INFO:nv_ingest_client.util.processing:Throughput (Pages/sec): 1.28
+INFO:nv_ingest_client.util.processing:Throughput (Files/sec): 0.43
 ```
 
 ## Step 3: Inspecting and Consuming Results
