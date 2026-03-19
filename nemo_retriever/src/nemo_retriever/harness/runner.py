@@ -805,7 +805,6 @@ def runner_start_command(
                     logger.info("Ray address updated from portal: %s", _runner_ray_address or "local")
 
             if hb_resp and "run_code_ref" in hb_resp:
-                global _runner_run_code_ref  # noqa: PLW0603
                 new_ref = hb_resp["run_code_ref"]
                 if new_ref != _runner_run_code_ref:
                     _runner_run_code_ref = new_ref

@@ -5156,7 +5156,8 @@ function SettingsView() {
       const data = await res.json();
       setGitInfo(data);
       if (data.available && data.remotes?.length) {
-        setDeployRemote(data.remotes[0].name);
+        const nvidiaR = data.remotes.find(r => r.url && (r.url.includes("NVIDIA/") || r.url.includes("nvidia/")));
+        setDeployRemote(nvidiaR ? nvidiaR.name : data.remotes[0].name);
       }
       if (data.available && data.current_branch) {
         setDeployBranch(data.current_branch);

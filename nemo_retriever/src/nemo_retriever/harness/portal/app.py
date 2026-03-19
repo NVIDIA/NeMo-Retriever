@@ -2131,6 +2131,10 @@ async def get_git_info():
                 seen.add(parts[0])
                 remotes.append({"name": parts[0], "url": parts[1]})
 
+        nvidia_remote_name, _ = _detect_nvidia_remote()
+        if nvidia_remote_name:
+            remotes.sort(key=lambda r: (0 if r["name"] == nvidia_remote_name else 1, r["name"]))
+
         try:
             _git_run("fetch", "--all", "--prune", cwd=repo_root, timeout=15)
         except Exception:
@@ -2187,7 +2191,7 @@ async def get_git_info():
 
 class DeployRequest(BaseModel):
     branch: str = "main"
-    remote: str = "origin"
+    remote: str = ""
 
 
 @app.post("/api/settings/deploy")
@@ -2211,6 +2215,10 @@ async def deploy_latest(req: DeployRequest):
         repo_root = _git_run("rev-parse", "--show-toplevel")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Git not available: {exc}")
+
+    if not req.remote:
+        nvidia_name, _ = _detect_nvidia_remote()
+        req.remote = nvidia_name or "origin"
 
     log_lines: list[str] = []
 
