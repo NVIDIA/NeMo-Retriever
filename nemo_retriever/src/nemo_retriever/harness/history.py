@@ -210,6 +210,7 @@ _MIGRATIONS = [
     "ALTER TABLE runners ADD COLUMN ray_address TEXT",
     "ALTER TABLE runs ADD COLUMN execution_commit TEXT",
     "ALTER TABLE runs ADD COLUMN num_gpus INTEGER",
+    "ALTER TABLE presets ADD COLUMN overrides TEXT",
 ]
 
 RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
@@ -447,6 +448,13 @@ def _deserialize_preset_row(row: sqlite3.Row) -> dict[str, Any]:
             d["tags"] = []
     else:
         d["tags"] = []
+    if d.get("overrides"):
+        try:
+            d["overrides"] = json.loads(d["overrides"])
+        except (json.JSONDecodeError, TypeError):
+            d["overrides"] = {}
+    else:
+        d["overrides"] = {}
     return d
 
 
@@ -457,10 +465,12 @@ def create_preset(data: dict[str, Any], db_path: str | None = None) -> dict[str,
         config = data.get("config", {})
         config_json = json.dumps(config) if isinstance(config, dict) else config
         tags = json.dumps(data.get("tags") or [])
+        overrides = data.get("overrides", {})
+        overrides_json = json.dumps(overrides) if isinstance(overrides, dict) else overrides
         conn.execute(
-            "INSERT INTO presets (name, description, config, tags, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (data["name"], data.get("description"), config_json, tags, now, now),
+            "INSERT INTO presets (name, description, config, tags, overrides, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (data["name"], data.get("description"), config_json, tags, overrides_json, now, now),
         )
         conn.commit()
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -507,6 +517,10 @@ def update_preset(preset_id: int, data: dict[str, Any], db_path: str | None = No
         if "tags" in data:
             sets.append("tags = ?")
             vals.append(json.dumps(data["tags"] if isinstance(data["tags"], list) else []))
+        if "overrides" in data:
+            sets.append("overrides = ?")
+            ovr = data["overrides"]
+            vals.append(json.dumps(ovr) if isinstance(ovr, dict) else ovr)
         if not sets:
             return get_preset_by_id(preset_id, db_path)
         sets.append("updated_at = ?")
@@ -536,6 +550,44 @@ def get_preset_names(db_path: str | None = None) -> list[str]:
         return [row[0] for row in rows]
     finally:
         conn.close()
+
+
+def get_preset_by_name(name: str, db_path: str | None = None) -> dict[str, Any] | None:
+    """Look up a managed preset by its unique name."""
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT * FROM presets WHERE name = ?", (name,)).fetchone()
+        return _deserialize_preset_row(row) if row else None
+    finally:
+        conn.close()
+
+
+def import_yaml_presets(yaml_presets: dict[str, dict[str, Any]], db_path: str | None = None) -> int:
+    """Import presets from the YAML config into the managed presets table.
+
+    Only presets whose name does not already exist are inserted.
+    Returns the number of newly imported presets.
+    """
+    imported = 0
+    for name, cfg in yaml_presets.items():
+        if not isinstance(cfg, dict):
+            continue
+        existing = get_preset_by_name(name, db_path)
+        if existing:
+            continue
+        data = {
+            "name": name,
+            "config": cfg,
+            "description": "Imported from test_configs.yaml",
+            "overrides": {},
+        }
+        try:
+            create_preset(data, db_path)
+            imported += 1
+        except Exception:
+            pass
+    return imported
 
 
 # ---------------------------------------------------------------------------

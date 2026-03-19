@@ -138,6 +138,7 @@ async def _runner_health_check_loop():
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     _import_yaml_datasets_on_startup()
+    _import_yaml_presets_on_startup()
     _seed_default_run_code_ref()
     sched_module.start_scheduler()
     global _runner_health_task
@@ -174,6 +175,21 @@ def _import_yaml_datasets_on_startup() -> None:
                 logger.info("Imported %d YAML dataset(s) into managed datasets", count)
     except Exception as exc:
         logger.warning("Failed to import YAML datasets on startup: %s", exc)
+
+
+def _import_yaml_presets_on_startup() -> None:
+    """Seed the managed presets table with entries from test_configs.yaml."""
+    try:
+        from nemo_retriever.harness.config import DEFAULT_TEST_CONFIG_PATH, _read_yaml_mapping
+
+        cfg = _read_yaml_mapping(DEFAULT_TEST_CONFIG_PATH)
+        yaml_presets = cfg.get("presets") or {}
+        if yaml_presets:
+            count = history.import_yaml_presets(yaml_presets)
+            if count:
+                logger.info("Imported %d YAML preset(s) into managed presets", count)
+    except Exception as exc:
+        logger.warning("Failed to import YAML presets on startup: %s", exc)
 
 
 app = FastAPI(title="Harness Portal", docs_url="/api/docs", redoc_url=None, lifespan=_lifespan)
@@ -282,6 +298,7 @@ class PresetCreateRequest(BaseModel):
     description: str | None = None
     config: dict[str, Any] = {}
     tags: list[str] | None = None
+    overrides: dict[str, Any] = {}
 
 
 class PresetUpdateRequest(BaseModel):
@@ -289,6 +306,7 @@ class PresetUpdateRequest(BaseModel):
     description: str | None = None
     config: dict[str, Any] | None = None
     tags: list[str] | None = None
+    overrides: dict[str, Any] | None = None
 
 
 class DatasetCreateRequest(BaseModel):
@@ -1372,15 +1390,38 @@ def _resolve_dataset_config(dataset_name: str) -> tuple[str | None, dict[str, An
     return None, None
 
 
+def _resolve_preset_overrides(preset_name: str | None) -> dict[str, Any]:
+    """Look up a managed preset and return its config + overrides merged together.
+
+    The managed preset's tuning config fields and custom overrides are combined
+    into a single dict that can be merged into job overrides / sweep_overrides.
+    """
+    if not preset_name:
+        return {}
+    managed = history.get_preset_by_name(preset_name)
+    if not managed:
+        return {}
+    result: dict[str, Any] = {}
+    cfg = managed.get("config")
+    if isinstance(cfg, dict):
+        result.update(cfg)
+    ovr = managed.get("overrides")
+    if isinstance(ovr, dict):
+        result.update(ovr)
+    return result
+
+
 @app.post("/api/runs/trigger", response_model=TriggerResponse)
 async def trigger_run(req: TriggerRequest):
     dataset_path, dataset_overrides = _resolve_dataset_config(req.dataset)
+    preset_overrides = _resolve_preset_overrides(req.preset)
+    merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
     job = history.create_job(
         {
             "trigger_source": "manual",
             "dataset": req.dataset,
             "dataset_path": dataset_path,
-            "dataset_overrides": dataset_overrides,
+            "dataset_overrides": merged_overrides if merged_overrides else None,
             "preset": req.preset,
             "config": req.config,
             "assigned_runner_id": req.runner_id,

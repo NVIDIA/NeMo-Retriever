@@ -111,6 +111,23 @@ def _resolve_dataset_config(dataset_name: str) -> tuple[str | None, dict[str, An
     return None, None
 
 
+def _resolve_preset_overrides(preset_name: str | None) -> dict[str, Any]:
+    """Look up a managed preset and return its config + overrides merged together."""
+    if not preset_name:
+        return {}
+    managed = history.get_preset_by_name(preset_name)
+    if not managed:
+        return {}
+    result: dict[str, Any] = {}
+    cfg = managed.get("config")
+    if isinstance(cfg, dict):
+        result.update(cfg)
+    ovr = managed.get("overrides")
+    if isinstance(ovr, dict):
+        result.update(ovr)
+    return result
+
+
 MAX_PENDING_PER_SCHEDULE = 3
 
 
@@ -158,13 +175,15 @@ def _dispatch_schedule(
     )
 
     dataset_path, dataset_overrides = _resolve_dataset_config(schedule.get("dataset", ""))
+    preset_overrides = _resolve_preset_overrides(schedule.get("preset"))
+    merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
 
     job_data: dict[str, Any] = {
         "schedule_id": schedule["id"],
         "trigger_source": trigger_source,
         "dataset": schedule["dataset"],
         "dataset_path": dataset_path,
-        "dataset_overrides": dataset_overrides,
+        "dataset_overrides": merged_overrides if merged_overrides else None,
         "preset": schedule.get("preset"),
         "config": schedule.get("config"),
         "assigned_runner_id": runner["id"] if runner else None,

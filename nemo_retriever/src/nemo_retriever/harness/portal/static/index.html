@@ -1145,8 +1145,8 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [editPreset, setEditPreset] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
-  const [viewYamlPreset, setViewYamlPreset] = useState(null);
-  const pg = usePagination(managedPresets, 25);
+  const allPresets = managedPresets;
+  const pg = usePagination(allPresets, 25);
 
   function handleCreate() { setEditPreset(null); setShowForm(true); }
   function handleEdit(p) { setEditPreset(p); setShowForm(true); }
@@ -1165,98 +1165,85 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
         <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
       </div>
 
-      <div style={{marginBottom:'28px'}}>
-        <div className="section-title" style={{marginBottom:'10px'}}>Managed Presets</div>
-        <div className="card">
-          <div style={{overflowX:'auto'}}>
-            <table className="runs-table">
-              <thead>
-                <tr>
-                  <th>Name</th><th>Description</th><th style={{textAlign:'right'}}>Fields</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="4" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
-                    <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading presets…</div>
-                  </td></tr>
-                ) : managedPresets.length === 0 ? (
-                  <tr><td colSpan="4" style={{textAlign:'center',padding:'40px',color:'var(--nv-text-muted)'}}>
-                    <div style={{marginBottom:'8px',fontSize:'15px'}}>No managed presets</div>
-                    <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Click "Add Preset" to create one.</div>
-                  </td></tr>
-                ) : pg.pageData.map(p => {
-                  const cfg = typeof p.config === 'object' ? p.config : {};
-                  const fieldCount = Object.keys(cfg).length;
-                  const isExpanded = expandedId === p.id;
-                  return (
-                    <React.Fragment key={p.id}>
-                      <tr>
-                        <td>
-                          <span style={{color:'#fff',fontWeight:600,cursor:'pointer'}} onClick={()=>setExpandedId(isExpanded?null:p.id)}>
-                            <span style={{display:'inline-block',transform:isExpanded?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s',marginRight:'6px',fontSize:'10px'}}>{"\u25B6"}</span>
-                            {p.name}
-                          </span>
-                        </td>
-                        <td style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{p.description || "\u2014"}</td>
-                        <td style={{textAlign:'right'}}><span className="badge badge-na">{fieldCount} params</span></td>
-                        <td>
-                          <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
-                            <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(p)} title="Edit"><IconEdit /> Edit</button>
-                            <button className="btn btn-sm" onClick={()=>handleDelete(p.id,p.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+      <div className="card">
+        <div style={{overflowX:'auto'}}>
+          <table className="runs-table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Description</th><th style={{textAlign:'right'}}>Fields</th><th style={{textAlign:'right'}}>Overrides</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="5" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading presets…</div>
+                </td></tr>
+              ) : allPresets.length === 0 ? (
+                <tr><td colSpan="5" style={{textAlign:'center',padding:'40px',color:'var(--nv-text-muted)'}}>
+                  <div style={{marginBottom:'8px',fontSize:'15px'}}>No presets configured</div>
+                  <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Click "Add Preset" to create one, or presets from test_configs.yaml will be imported on portal startup.</div>
+                </td></tr>
+              ) : pg.pageData.map(p => {
+                const cfg = typeof p.config === 'object' ? p.config : {};
+                const ovr = typeof p.overrides === 'object' ? p.overrides : {};
+                const fieldCount = Object.keys(cfg).length;
+                const overrideCount = Object.keys(ovr).length;
+                const isExpanded = expandedId === p.id;
+                return (
+                  <React.Fragment key={p.id}>
+                    <tr>
+                      <td>
+                        <span style={{color:'#fff',fontWeight:600,cursor:'pointer'}} onClick={()=>setExpandedId(isExpanded?null:p.id)}>
+                          <span style={{display:'inline-block',transform:isExpanded?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s',marginRight:'6px',fontSize:'10px'}}>{"\u25B6"}</span>
+                          {p.name}
+                        </span>
+                      </td>
+                      <td style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{p.description || "\u2014"}</td>
+                      <td style={{textAlign:'right'}}><span className="badge badge-na">{fieldCount} params</span></td>
+                      <td style={{textAlign:'right'}}>
+                        {overrideCount > 0 ? <span className="badge" style={{background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.25)'}}>{overrideCount} override{overrideCount!==1?'s':''}</span> : <span style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>{"\u2014"}</span>}
+                      </td>
+                      <td>
+                        <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(p)} title="Edit"><IconEdit /> Edit</button>
+                          <button className="btn btn-sm" onClick={()=>handleDelete(p.id,p.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr><td colSpan="5" style={{padding:'0 16px 16px',background:'rgba(255,255,255,0.01)'}}>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:'8px 16px',fontSize:'12px',padding:'12px',borderRadius:'8px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
+                          {TUNING_FIELDS.map(f => (
+                            <div key={f.key} style={{display:'flex',justifyContent:'space-between',gap:'8px'}}>
+                              <span style={{color:'var(--nv-text-dim)'}}>{f.label}</span>
+                              <span className="mono" style={{color:cfg[f.key]!=null?'var(--nv-green)':'var(--nv-text-dim)',fontWeight:cfg[f.key]!=null?600:400}}>{cfg[f.key] != null ? cfg[f.key] : "\u2014"}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {overrideCount > 0 && (
+                          <div style={{marginTop:'10px',padding:'12px',borderRadius:'8px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
+                            <div style={{fontSize:'11px',fontWeight:600,color:'var(--nv-green)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'8px'}}>Custom Overrides</div>
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:'6px 16px',fontSize:'12px'}}>
+                              {Object.entries(ovr).map(([k, v]) => (
+                                <div key={k} style={{display:'flex',justifyContent:'space-between',gap:'8px'}}>
+                                  <span style={{color:'var(--nv-text-dim)'}}>{k}</span>
+                                  <span className="mono" style={{color:'var(--nv-green)',fontWeight:600}}>{String(v)}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr><td colSpan="4" style={{padding:'0 16px 16px',background:'rgba(255,255,255,0.01)'}}>
-                          <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:'8px 16px',fontSize:'12px',padding:'12px',borderRadius:'8px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
-                            {TUNING_FIELDS.map(f => (
-                              <div key={f.key} style={{display:'flex',justifyContent:'space-between',gap:'8px'}}>
-                                <span style={{color:'var(--nv-text-dim)'}}>{f.label}</span>
-                                <span className="mono" style={{color:cfg[f.key]!=null?'var(--nv-green)':'var(--nv-text-dim)',fontWeight:cfg[f.key]!=null?600:400}}>{cfg[f.key] != null ? cfg[f.key] : "\u2014"}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </td></tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
-            pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+                        )}
+                      </td></tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+        <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
+          pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
       </div>
-
-      {yamlPresets.length > 0 && (
-        <div>
-          <div className="section-title" style={{marginBottom:'10px'}}>Config File Presets <span style={{fontSize:'10px',color:'var(--nv-text-dim)',fontWeight:400}}>(read-only, from test_configs.yaml)</span></div>
-          <div className="card">
-            <div style={{overflowX:'auto'}}>
-              <table className="runs-table">
-                <thead><tr><th>Name</th><th style={{textAlign:'right'}}>Fields</th><th>Actions</th></tr></thead>
-                <tbody>
-                  {yamlPresets.map(p => {
-                    const cfg = typeof p.config === 'object' ? p.config : {};
-                    const fieldCount = Object.keys(cfg).length;
-                    return (
-                      <tr key={p.name}>
-                        <td style={{color:'#fff',fontWeight:600}}>{p.name}</td>
-                        <td style={{textAlign:'right'}}><span className="badge badge-na">{fieldCount} params</span></td>
-                        <td>
-                          <button className="btn btn-secondary btn-sm" onClick={()=>setViewYamlPreset(p)} title="View details"><IconExternalLink /> View</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showForm && (
         <PresetFormModal
@@ -1265,10 +1252,6 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
           onSaved={()=>{setShowForm(false);onRefresh();}}
         />
       )}
-
-      {viewYamlPreset && (
-        <YamlPresetDetailModal preset={viewYamlPreset} onClose={()=>setViewYamlPreset(null)} />
-      )}
     </>
   );
 }
@@ -1276,6 +1259,7 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
 function PresetFormModal({ preset, onClose, onSaved }) {
   const isEdit = !!preset;
   const existingConfig = (isEdit && typeof preset.config === 'object') ? preset.config : {};
+  const existingOverrides = (isEdit && typeof preset.overrides === 'object') ? preset.overrides : {};
   const [name, setName] = useState(preset?.name || "");
   const [description, setDescription] = useState(preset?.description || "");
   const [tags, setTags] = useState((preset?.tags || []).join(", "));
@@ -1284,10 +1268,19 @@ function PresetFormModal({ preset, onClose, onSaved }) {
     TUNING_FIELDS.forEach(f => { c[f.key] = existingConfig[f.key] != null ? String(existingConfig[f.key]) : ""; });
     return c;
   });
+  const [overrides, setOverrides] = useState(() => {
+    return Object.entries(existingOverrides).map(([k, v]) => ({ key: k, value: String(v) }));
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   function setField(key, val) { setConfig(c=>({...c,[key]:val})); }
+
+  function addOverride() { setOverrides(prev => [...prev, { key: "", value: "" }]); }
+  function removeOverride(idx) { setOverrides(prev => prev.filter((_, i) => i !== idx)); }
+  function updateOverride(idx, field, val) {
+    setOverrides(prev => prev.map((o, i) => i === idx ? { ...o, [field]: val } : o));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -1301,11 +1294,22 @@ function PresetFormModal({ preset, onClose, onSaved }) {
         parsedConfig[f.key] = f.type === "int" ? parseInt(raw, 10) : parseFloat(raw);
       }
     });
+    const parsedOverrides = {};
+    overrides.forEach(o => {
+      const k = o.key.trim();
+      if (!k) return;
+      const v = o.value.trim();
+      if (v === "true") parsedOverrides[k] = true;
+      else if (v === "false") parsedOverrides[k] = false;
+      else if (v !== "" && !isNaN(Number(v))) parsedOverrides[k] = Number(v);
+      else parsedOverrides[k] = v;
+    });
     const payload = {
       name: name.trim(),
       description: description || null,
       config: parsedConfig,
       tags: tags ? tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+      overrides: parsedOverrides,
     };
     try {
       const url = isEdit ? `/api/managed-presets/${preset.id}` : "/api/managed-presets";
@@ -1330,7 +1334,7 @@ function PresetFormModal({ preset, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{maxWidth:'640px'}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-content" style={{maxWidth:'700px'}} onClick={e=>e.stopPropagation()}>
         <div className="modal-head">
           <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit ? "Edit Preset" : "Create Preset"}</h2>
           <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
@@ -1366,6 +1370,37 @@ function PresetFormModal({ preset, onClose, onSaved }) {
             ))}
 
             <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+                <div style={{fontSize:'12px',fontWeight:600,color:'var(--nv-green)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Custom Overrides</div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={addOverride} style={{fontSize:'11px'}}>
+                  <IconPlus /> Add Override
+                </button>
+              </div>
+              <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginBottom:'8px'}}>
+                Arbitrary key=value pairs passed as --override arguments at runtime
+              </div>
+              {overrides.length === 0 ? (
+                <div style={{padding:'12px',textAlign:'center',color:'var(--nv-text-dim)',fontSize:'12px',border:'1px dashed var(--nv-border)',borderRadius:'8px'}}>
+                  No custom overrides configured
+                </div>
+              ) : (
+                <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+                  {overrides.map((o, idx) => (
+                    <div key={idx} style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                      <input className="input" style={{flex:1,fontSize:'13px'}} value={o.key} onChange={e=>updateOverride(idx,'key',e.target.value)} placeholder="key (e.g. embed_modality)" />
+                      <span style={{color:'var(--nv-text-dim)',fontSize:'13px'}}>=</span>
+                      <input className="input" style={{flex:1,fontSize:'13px'}} value={o.value} onChange={e=>updateOverride(idx,'value',e.target.value)} placeholder="value (e.g. text_image)" />
+                      <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={()=>removeOverride(idx)}
+                        style={{color:'#ff5050',flexShrink:0}} title="Remove">
+                        <IconTrash />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
               <label style={labelStyle}>Tags</label>
               <input className="input" style={{width:'100%'}} value={tags} onChange={e=>setTags(e.target.value)} placeholder="Comma-separated tags" />
             </div>
@@ -1377,58 +1412,6 @@ function PresetFormModal({ preset, onClose, onSaved }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-function YamlPresetDetailModal({ preset, onClose }) {
-  const cfg = typeof preset.config === 'object' ? preset.config : {};
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{maxWidth:'640px'}} onClick={e=>e.stopPropagation()}>
-        <div className="modal-head">
-          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>
-            Preset: {preset.name}
-            <span style={{marginLeft:'10px',fontSize:'10px',fontWeight:500,color:'var(--nv-text-dim)',background:'var(--nv-bg)',padding:'3px 8px',borderRadius:'4px',border:'1px solid var(--nv-border)',verticalAlign:'middle'}}>YAML — read only</span>
-          </h2>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
-        </div>
-        <div style={{padding:'24px',maxHeight:'65vh',overflowY:'auto'}}>
-          {TUNING_GROUPS.map(g => {
-            const groupFields = g.fields.filter(f => cfg[f.key] != null);
-            if (groupFields.length === 0) return null;
-            return (
-              <div key={g.label} style={{marginBottom:'20px'}}>
-                <div style={{fontSize:'12px',fontWeight:600,color:'var(--nv-green)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'0.05em'}}>{g.label}</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:'10px 20px'}}>
-                  {g.fields.map(f => (
-                    <div key={f.key} style={{display:'flex',justifyContent:'space-between',gap:'8px',padding:'6px 10px',borderRadius:'6px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
-                      <span style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>{f.label}</span>
-                      <span className="mono" style={{fontSize:'13px',color:cfg[f.key]!=null?'var(--nv-green)':'var(--nv-text-dim)',fontWeight:cfg[f.key]!=null?600:400}}>{cfg[f.key] != null ? cfg[f.key] : "\u2014"}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {Object.keys(cfg).filter(k => !TUNING_FIELDS.some(f=>f.key===k)).length > 0 && (
-            <div style={{marginBottom:'20px'}}>
-              <div style={{fontSize:'12px',fontWeight:600,color:'var(--nv-text-muted)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Other Parameters</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:'10px 20px'}}>
-                {Object.entries(cfg).filter(([k])=>!TUNING_FIELDS.some(f=>f.key===k)).map(([k,v]) => (
-                  <div key={k} style={{display:'flex',justifyContent:'space-between',gap:'8px',padding:'6px 10px',borderRadius:'6px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
-                    <span style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>{k}</span>
-                    <span className="mono" style={{fontSize:'13px',color:'var(--nv-green)',fontWeight:600}}>{String(v)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-secondary" onClick={onClose} style={{flex:1,justifyContent:'center'}}>Close</button>
-        </div>
       </div>
     </div>
   );
@@ -5948,8 +5931,7 @@ function App() {
       return managedDatasetsLoading ? "Loading\u2026" : `${managedDatasets.length} dataset${managedDatasets.length!==1?'s':''} configured`;
     }
     if (activeView === "presets") {
-      const total = managedPresets.length + yamlPresets.length;
-      return managedPresetsLoading ? "Loading\u2026" : `${total} preset${total!==1?'s':''} (${managedPresets.length} managed, ${yamlPresets.length} from config)`;
+      return managedPresetsLoading ? "Loading\u2026" : `${managedPresets.length} preset${managedPresets.length!==1?'s':''} configured`;
     }
     if (activeView === "runners") return runnersLoading ? "Loading\u2026" : `${runners.length} runner${runners.length!==1?'s':''} registered`;
     if (activeView === "scheduling") return schedulesLoading ? "Loading\u2026" : `${schedules.length} schedule${schedules.length!==1?'s':''} configured`;
