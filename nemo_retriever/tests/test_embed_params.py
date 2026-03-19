@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Unit tests for EmbedParams._normalize_modality and IMAGE_MODALITIES constant.
+Unit tests for EmbedParams modality validation and IMAGE_MODALITIES constant.
 """
 
 import warnings
@@ -13,16 +13,14 @@ import pytest
 from nemo_retriever.params.models import EmbedParams, IMAGE_MODALITIES
 
 
-def test_normalize_modality_image_text_to_text_image():
-    """'image_text' is normalized to 'text_image' on all three modality fields."""
-    params = EmbedParams(
-        embed_modality="image_text",
-        text_elements_modality="image_text",
-        structured_elements_modality="image_text",
-    )
-    assert params.embed_modality == "text_image"
-    assert params.text_elements_modality == "text_image"
-    assert params.structured_elements_modality == "text_image"
+def test_image_text_alias_is_rejected():
+    """'image_text' should be rejected so users must pass the canonical 'text_image'."""
+    with pytest.raises(ValueError, match="text_image"):
+        EmbedParams(
+            embed_modality="image_text",
+            text_elements_modality="image_text",
+            structured_elements_modality="image_text",
+        )
 
 
 @pytest.mark.parametrize(
@@ -35,7 +33,7 @@ def test_normalize_modality_image_text_to_text_image():
     ],
 )
 def test_normalize_modality_passthrough(value, expected):
-    """Values other than 'image_text' pass through unchanged."""
+    """Allowed modality values pass through unchanged."""
     kwargs = {}
     if value is not None:
         kwargs["embed_modality"] = value
@@ -51,8 +49,8 @@ def test_normalize_modality_passthrough(value, expected):
 
 
 def test_image_modalities_constant():
-    """IMAGE_MODALITIES is a frozenset containing the three image-related modalities."""
-    assert IMAGE_MODALITIES == {"image", "text_image", "image_text"}
+    """IMAGE_MODALITIES contains only canonical image-bearing modalities."""
+    assert IMAGE_MODALITIES == {"image", "text_image"}
     assert isinstance(IMAGE_MODALITIES, frozenset)
 
 

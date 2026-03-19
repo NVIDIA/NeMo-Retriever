@@ -34,6 +34,7 @@ def test_summary_command_accepts_session_dir_and_prints_tags(tmp_path: Path) -> 
                         "pages": 3181,
                         "pages_per_sec_ingest": 12.5,
                         "recall_5": 0.9,
+                        "ndcg_10": 0.8,
                     },
                     "artifact_dir": "/tmp/jp20_single",
                     "tags": ["nightly", "candidate"],
@@ -49,6 +50,7 @@ def test_summary_command_accepts_session_dir_and_prints_tags(tmp_path: Path) -> 
     assert "jp20_single" in result.output
     assert "nightly,candidate" in result.output
     assert "recall_5" in result.output
+    assert "ndcg_10" in result.output
 
 
 def test_compare_command_prints_deltas_and_missing_runs(tmp_path: Path) -> None:
@@ -84,7 +86,7 @@ def test_compare_command_prints_deltas_and_missing_runs(tmp_path: Path) -> None:
                 {
                     "run_name": "jp20_single",
                     "success": False,
-                    "metrics": {"pages_per_sec_ingest": 12.0, "recall_5": 0.8},
+                    "metrics": {"pages_per_sec_ingest": 12.0, "recall_5": 0.8, "ndcg_10": 0.6},
                     "artifact_dir": "/tmp/jp20_right",
                 }
             ],
@@ -96,6 +98,7 @@ def test_compare_command_prints_deltas_and_missing_runs(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "delta_pps" in result.output
     assert "delta_recall_5" in result.output
+    assert "delta_ndcg_10" in result.output
     assert "bo20_single" in result.output
     assert "MISSING" in result.output
     assert "jp20_single" in result.output
