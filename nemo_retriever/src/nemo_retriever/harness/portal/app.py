@@ -52,35 +52,61 @@ GITHUB_WEBHOOK_SECRET = os.environ.get("RETRIEVER_HARNESS_GITHUB_SECRET", "")
 GITHUB_REPO_URL_OVERRIDE = os.environ.get("RETRIEVER_HARNESS_GITHUB_REPO_URL", "")
 
 
+def _url_to_github_web(raw_url: str) -> str:
+    """Convert a git remote URL to a GitHub web URL, or return empty string."""
+    m = re.match(r"git@github\.com:(.+?)(?:\.git)?$", raw_url)
+    if m:
+        return f"https://github.com/{m.group(1)}"
+    m = re.match(r"https?://github\.com/(.+?)(?:\.git)?$", raw_url)
+    if m:
+        return f"https://github.com/{m.group(1)}"
+    return ""
+
+
 @lru_cache(maxsize=1)
-def _detect_github_repo_url() -> str:
-    """Derive the GitHub web URL from the git remote origin, or use the env override."""
-    if GITHUB_REPO_URL_OVERRIDE:
-        return GITHUB_REPO_URL_OVERRIDE.rstrip("/")
+def _detect_nvidia_remote() -> tuple[str, str]:
+    """Find the git remote that points to the official NVIDIA repo.
+
+    Returns (remote_name, github_web_url).  Falls back to any available
+    remote if no NVIDIA remote is found.
+    """
     try:
-        out = subprocess.check_output(
-            ["git", "remote", "get-url", "nvidia"],
+        raw = subprocess.check_output(
+            ["git", "remote", "-v"],
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=5,
         ).strip()
     except Exception:
-        try:
-            out = subprocess.check_output(
-                ["git", "remote", "get-url", "origin"],
-                stderr=subprocess.DEVNULL,
-                text=True,
-                timeout=5,
-            ).strip()
-        except Exception:
-            return ""
-    m = re.match(r"git@github\.com:(.+?)(?:\.git)?$", out)
-    if m:
-        return f"https://github.com/{m.group(1)}"
-    m = re.match(r"https?://github\.com/(.+?)(?:\.git)?$", out)
-    if m:
-        return f"https://github.com/{m.group(1)}"
-    return ""
+        return ("", "")
+
+    remotes: list[tuple[str, str]] = []
+    for line in raw.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and "(fetch)" in line:
+            remotes.append((parts[0], parts[1]))
+
+    for name, url in remotes:
+        if "NVIDIA/" in url or "nvidia/" in url:
+            return (name, _url_to_github_web(url))
+
+    for preferred in ("nvidia", "upstream", "origin"):
+        for name, url in remotes:
+            if name == preferred:
+                return (name, _url_to_github_web(url))
+
+    if remotes:
+        return (remotes[0][0], _url_to_github_web(remotes[0][1]))
+    return ("", "")
+
+
+@lru_cache(maxsize=1)
+def _detect_github_repo_url() -> str:
+    """Return the GitHub web URL for the official NVIDIA remote."""
+    if GITHUB_REPO_URL_OVERRIDE:
+        return GITHUB_REPO_URL_OVERRIDE.rstrip("/")
+    _, url = _detect_nvidia_remote()
+    return url
 
 
 _runner_health_task: asyncio.Task | None = None
@@ -95,14 +121,16 @@ async def _runner_health_check_loop():
             for runner in newly_offline:
                 hostname = runner.get("hostname") or runner.get("name") or f"Runner #{runner['id']}"
                 logger.warning("Runner %s (id=%s) went offline — missed heartbeats", hostname, runner["id"])
-                history.create_system_alert_event({
-                    "metric": "runner_status",
-                    "metric_value": 0,
-                    "threshold": 0,
-                    "operator": "system",
-                    "message": f"Runner '{hostname}' is offline — missed {history.RUNNER_MISSED_HEARTBEATS_THRESHOLD} consecutive heartbeats",
-                    "hostname": hostname,
-                })
+                history.create_system_alert_event(
+                    {
+                        "metric": "runner_status",
+                        "metric_value": 0,
+                        "threshold": 0,
+                        "operator": "system",
+                        "message": f"Runner '{hostname}' is offline — missed {history.RUNNER_MISSED_HEARTBEATS_THRESHOLD} consecutive heartbeats",
+                        "hostname": hostname,
+                    }
+                )
         except Exception:
             logger.exception("Error in runner health check loop")
 
@@ -110,6 +138,7 @@ async def _runner_health_check_loop():
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     _import_yaml_datasets_on_startup()
+    _seed_default_run_code_ref()
     sched_module.start_scheduler()
     global _runner_health_task
     _runner_health_task = asyncio.create_task(_runner_health_check_loop())
@@ -117,6 +146,19 @@ async def _lifespan(app: FastAPI):
     if _runner_health_task:
         _runner_health_task.cancel()
     sched_module.stop_scheduler()
+
+
+def _seed_default_run_code_ref() -> None:
+    """Set run_code_ref default based on the detected NVIDIA remote if not already explicitly saved."""
+    nvidia_remote, _ = _detect_nvidia_remote()
+    if not nvidia_remote:
+        return
+    default_ref = f"{nvidia_remote}/main"
+    current = history.get_portal_setting("run_code_ref")
+    if current is None or current in ("upstream/main", "origin/main", "nvidia/main"):
+        if current != default_ref:
+            history.set_portal_setting("run_code_ref", default_ref)
+            logger.info("Auto-configured run_code_ref to %s", default_ref)
 
 
 def _import_yaml_datasets_on_startup() -> None:
@@ -231,6 +273,7 @@ class JobCompleteRequest(BaseModel):
     success: bool
     result: dict[str, Any] | None = None
     error: str | None = None
+    execution_commit: str | None = None
 
 
 class PresetCreateRequest(BaseModel):
@@ -504,8 +547,7 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
             metadata = hit.get("metadata")
             if metadata and isinstance(metadata, dict):
                 entry["metadata"] = {
-                    k: v for k, v in metadata.items()
-                    if isinstance(v, (str, int, float, bool, type(None)))
+                    k: v for k, v in metadata.items() if isinstance(v, (str, int, float, bool, type(None)))
                 }
             elif isinstance(metadata, str):
                 entry["metadata"] = metadata
@@ -615,13 +657,15 @@ async def list_playground_sessions():
         if d.is_dir():
             files = [f.name for f in d.iterdir() if f.is_file()]
             total_bytes = sum(f.stat().st_size for f in d.iterdir() if f.is_file())
-            sessions.append({
-                "session_id": d.name,
-                "files": files,
-                "file_count": len(files),
-                "total_bytes": total_bytes,
-                "path": str(d),
-            })
+            sessions.append(
+                {
+                    "session_id": d.name,
+                    "files": files,
+                    "file_count": len(files),
+                    "total_bytes": total_bytes,
+                    "path": str(d),
+                }
+            )
     return sessions
 
 
@@ -722,7 +766,15 @@ _AVAILABLE_MODELS = [
         "category": "Document AI",
         "description": "Detects chart elements: axis titles/labels, legends, markers, value labels.",
         "input_type": "image",
-        "output_classes": ["chart_title", "x_axis_title", "y_axis_title", "legend_title", "legend_label", "marker_label", "value_label"],
+        "output_classes": [
+            "chart_title",
+            "x_axis_title",
+            "y_axis_title",
+            "legend_title",
+            "legend_label",
+            "marker_label",
+            "value_label",
+        ],
     },
     {
         "id": "nvidia/NVIDIA-Nemotron-Parse-v1.2",
@@ -778,12 +830,14 @@ async def test_embed_model(req: EmbedTestRequest):
         results = []
         for i, text in enumerate(req.texts):
             vec = vecs[i].tolist()
-            results.append({
-                "text": text,
-                "embedding_dim": len(vec),
-                "embedding_preview": vec[:8],
-                "embedding_norm": round(sum(v * v for v in vec) ** 0.5, 6),
-            })
+            results.append(
+                {
+                    "text": text,
+                    "embedding_dim": len(vec),
+                    "embedding_preview": vec[:8],
+                    "embedding_norm": round(sum(v * v for v in vec) ** 0.5, 6),
+                }
+            )
 
         return {
             "model_id": req.model_id,
@@ -826,17 +880,22 @@ async def test_rerank_model(req: RerankTestRequest):
 
         t1 = _time.perf_counter()
         scores = reranker.score(
-            req.query, req.documents, max_length=req.max_length, batch_size=req.batch_size,
+            req.query,
+            req.documents,
+            max_length=req.max_length,
+            batch_size=req.batch_size,
         )
         score_time = _time.perf_counter() - t1
 
         results = []
         for i, (doc, score) in enumerate(zip(req.documents, scores)):
-            results.append({
-                "rank": i + 1,
-                "document": doc,
-                "score": round(float(score), 4),
-            })
+            results.append(
+                {
+                    "rank": i + 1,
+                    "document": doc,
+                    "score": round(float(score), 4),
+                }
+            )
         results.sort(key=lambda x: x["score"], reverse=True)
         for i, r in enumerate(results):
             r["rank"] = i + 1
@@ -986,19 +1045,29 @@ async def test_detect_model(req: DetectTestRequest):
 
         if req.model_id == "page_element_v3":
             from nemo_retriever.model.local.nemotron_page_elements_v3 import NemotronPageElementsV3
+
             model = NemotronPageElementsV3()
             label_names = ["table", "chart", "title", "infographic", "text", "header_footer"]
         elif req.model_id == "table_structure_v1":
             from nemo_retriever.model.local.nemotron_table_structure_v1 import NemotronTableStructureV1
+
             model = NemotronTableStructureV1()
             label_names = ["cell", "merged_cell", "row", "column"]
         elif req.model_id == "graphic_elements_v1":
             from nemo_retriever.model.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
+
             model = NemotronGraphicElementsV1()
             label_names = [
-                "chart_title", "x_axis_title", "y_axis_title", "x_tick_label",
-                "y_tick_label", "legend_title", "legend_label", "marker_label",
-                "value_label", "other_label",
+                "chart_title",
+                "x_axis_title",
+                "y_axis_title",
+                "x_tick_label",
+                "y_tick_label",
+                "legend_title",
+                "legend_label",
+                "marker_label",
+                "value_label",
+                "other_label",
             ]
         else:
             raise HTTPException(status_code=400, detail=f"Unknown detection model: {req.model_id}")
@@ -1025,15 +1094,24 @@ async def test_detect_model(req: DetectTestRequest):
         scores_np = scores_t.cpu().numpy() if hasattr(scores_t, "cpu") else np.array(scores_t)
 
         CLASS_COLORS = [
-            (118, 185, 0), (100, 180, 255), (255, 140, 0), (187, 134, 252),
-            (255, 80, 80), (0, 212, 170), (252, 211, 77), (255, 105, 180),
-            (0, 191, 255), (144, 238, 144),
+            (118, 185, 0),
+            (100, 180, 255),
+            (255, 140, 0),
+            (187, 134, 252),
+            (255, 80, 80),
+            (0, 212, 170),
+            (252, 211, 77),
+            (255, 105, 180),
+            (0, 191, 255),
+            (144, 238, 144),
         ]
 
         draw_img = pil_img.copy()
         draw = ImageDraw.Draw(draw_img)
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(12, min(orig_h, orig_w) // 60))
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(12, min(orig_h, orig_w) // 60)
+            )
         except Exception:
             font = ImageFont.load_default()
 
@@ -1057,12 +1135,14 @@ async def test_detect_model(req: DetectTestRequest):
             draw.rectangle([text_bbox[0] - 2, text_bbox[1] - 2, text_bbox[2] + 2, text_bbox[3] + 2], fill=color)
             draw.text((x1, y1), txt, fill=(0, 0, 0), font=font)
 
-            detections.append({
-                "label": label_str,
-                "score": round(score, 4),
-                "box": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
-                "box_normalized": [round(float(box[j]), 4) for j in range(4)],
-            })
+            detections.append(
+                {
+                    "label": label_str,
+                    "score": round(score, 4),
+                    "box": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
+                    "box_normalized": [round(float(box[j]), 4) for j in range(4)],
+                }
+            )
 
         detections.sort(key=lambda d: d["score"], reverse=True)
 
@@ -1086,6 +1166,7 @@ async def test_detect_model(req: DetectTestRequest):
         raise
     except Exception as exc:
         import traceback
+
         logger.error("Detection model error: %s\n%s", exc, traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -1328,7 +1409,12 @@ async def diagnose_job(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.get("status") != "pending":
-        return {"job_id": job_id, "status": job["status"], "reasons": [], "summary": f"Job is {job['status']}, not pending."}
+        return {
+            "job_id": job_id,
+            "status": job["status"],
+            "reasons": [],
+            "summary": f"Job is {job['status']}, not pending.",
+        }
 
     runners = history.get_runners()
     reasons: list[dict[str, Any]] = []
@@ -1354,7 +1440,9 @@ async def diagnose_job(job_id: str):
             blockers.append(f"Job is assigned to runner #{assigned_id}, not this runner")
 
         if allowed_runner_ids is not None and rid not in allowed_runner_ids:
-            blockers.append(f"Dataset '{dataset_name}' restricts eligible runners — this runner is not in the allowed list")
+            blockers.append(
+                f"Dataset '{dataset_name}' restricts eligible runners — this runner is not in the allowed list"
+            )
 
         if str(rid) in rejected_set:
             blockers.append("Runner previously rejected this job (e.g. missing dataset on disk)")
@@ -1369,13 +1457,15 @@ async def diagnose_job(job_id: str):
         if not blockers:
             eligible_count += 1
 
-        reasons.append({
-            "runner_id": rid,
-            "runner_name": rname,
-            "status": r.get("status", "unknown"),
-            "eligible": len(blockers) == 0,
-            "blockers": blockers,
-        })
+        reasons.append(
+            {
+                "runner_id": rid,
+                "runner_name": rname,
+                "status": r.get("status", "unknown"),
+                "eligible": len(blockers) == 0,
+                "blockers": blockers,
+            }
+        )
 
     if not runners:
         summary = "No runners are registered with the portal."
@@ -1496,7 +1586,7 @@ async def complete_job_endpoint(job_id: str, req: JobCompleteRequest):
     job = history.get_job_by_id(job_id)
     effective_success = req.success and not was_cancelling
     effective_error = req.error or ("Cancelled by user" if was_cancelling else None)
-    _record_run_from_job(job, effective_success, req.result, effective_error)
+    _record_run_from_job(job, effective_success, req.result, effective_error, execution_commit=req.execution_commit)
 
     return {"ok": True}
 
@@ -1506,6 +1596,7 @@ def _record_run_from_job(
     success: bool,
     result: dict[str, Any] | None,
     error: str | None,
+    execution_commit: str | None = None,
 ) -> None:
     """Create a run record in the runs table from a completed job.
 
@@ -1547,6 +1638,7 @@ def _record_run_from_job(
             artifact_dir=artifact_dir,
             trigger_source=trigger_source,
             schedule_id=schedule_id,
+            execution_commit=execution_commit,
         )
         if run_row_id:
             run_row = history.get_run_by_id(run_row_id)
@@ -1647,6 +1739,7 @@ async def runner_heartbeat(runner_id: int, req: HeartbeatRequest | None = None):
     runner_record = history.get_runner_by_id(runner_id)
     update_to = runner_record.get("pending_update_commit") if runner_record else None
     ray_addr = runner_record.get("ray_address") if runner_record else None
+    run_code_ref = history.get_portal_setting("run_code_ref") or "upstream/main"
 
     return {
         "ok": True,
@@ -1655,6 +1748,7 @@ async def runner_heartbeat(runner_id: int, req: HeartbeatRequest | None = None):
         "status": runner_status,
         "update_to_commit": update_to,
         "ray_address": ray_addr,
+        "run_code_ref": run_code_ref,
     }
 
 
@@ -1679,19 +1773,21 @@ async def runner_update_complete(runner_id: int, req: RunnerUpdateCompleteReques
     history.clear_pending_update(runner_id)
 
     try:
-        history.create_alert_event({
-            "rule_id": None,
-            "run_id": None,
-            "metric": "runner_update",
-            "metric_value": None,
-            "threshold": 0,
-            "operator": "info",
-            "message": f"Runner '{rname}' (#{runner_id}) restarted with updated code: {prev_short} → {new_short}",
-            "git_commit": req.new_commit,
-            "dataset": None,
-            "preset": None,
-            "hostname": runner.get("hostname"),
-        })
+        history.create_alert_event(
+            {
+                "rule_id": None,
+                "run_id": None,
+                "metric": "runner_update",
+                "metric_value": None,
+                "threshold": 0,
+                "operator": "info",
+                "message": f"Runner '{rname}' (#{runner_id}) restarted with updated code: {prev_short} → {new_short}",
+                "git_commit": req.new_commit,
+                "dataset": None,
+                "preset": None,
+                "hostname": runner.get("hostname"),
+            }
+        )
     except Exception as exc:
         logger.warning("Failed to create alert event for runner update: %s", exc)
 
@@ -1983,6 +2079,36 @@ def _git_run(*args: str, cwd: str | None = None, timeout: int = 30) -> str:
     ).strip()
 
 
+# ---------------------------------------------------------------------------
+# Portal settings (key/value config)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/portal-settings")
+async def get_portal_settings():
+    settings = history.get_all_portal_settings()
+    nvidia_remote, nvidia_url = _detect_nvidia_remote()
+    settings["_nvidia_remote_name"] = nvidia_remote
+    settings["_nvidia_remote_url"] = nvidia_url
+    return settings
+
+
+class PortalSettingsUpdateRequest(BaseModel):
+    run_code_ref: str | None = None
+
+
+@app.put("/api/portal-settings")
+async def update_portal_settings(req: PortalSettingsUpdateRequest):
+    if req.run_code_ref is not None:
+        history.set_portal_setting("run_code_ref", req.run_code_ref)
+    return history.get_all_portal_settings()
+
+
+# ---------------------------------------------------------------------------
+# Settings — Git info & deploy
+# ---------------------------------------------------------------------------
+
+
 @app.get("/api/settings/git-info")
 async def get_git_info():
     """Return information about the current git state of the portal codebase."""
@@ -2029,17 +2155,19 @@ async def get_git_info():
 
         is_dirty = bool(_git_run("status", "--porcelain", cwd=repo_root))
 
-        last_commits_raw = _git_run(
-            "log", "--oneline", "-10", "--format=%H|%h|%s|%ci", cwd=repo_root
-        )
+        last_commits_raw = _git_run("log", "--oneline", "-10", "--format=%H|%h|%s|%ci", cwd=repo_root)
         recent_commits: list[dict[str, str]] = []
         for line in last_commits_raw.splitlines():
             parts = line.split("|", 3)
             if len(parts) == 4:
-                recent_commits.append({
-                    "sha": parts[0], "short_sha": parts[1],
-                    "message": parts[2], "date": parts[3],
-                })
+                recent_commits.append(
+                    {
+                        "sha": parts[0],
+                        "short_sha": parts[1],
+                        "message": parts[2],
+                        "date": parts[3],
+                    }
+                )
 
         return {
             "available": True,
@@ -2128,6 +2256,7 @@ async def deploy_latest(req: DeployRequest):
 
     def _restart_after_delay():
         import time
+
         time.sleep(2)
         logger.info("Restarting portal process after deploy…")
         try:

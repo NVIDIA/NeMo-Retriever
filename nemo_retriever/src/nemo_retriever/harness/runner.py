@@ -101,8 +101,11 @@ def _git_checkout_commit(commit: str, ref: str | None = None) -> str | None:
         prev = None
 
     try:
+        if "/" in commit and not commit.startswith("origin/"):
+            remote_name = commit.split("/")[0]
+            _run_git("fetch", remote_name, "--prune", check=False)
         _run_git("fetch", "--all", "--prune", check=False)
-        logger.info("Checking out commit %s in %s", commit[:12], repo_root)
+        logger.info("Checking out %s in %s", commit, repo_root)
         _run_git("checkout", commit)
         actual = _run_git("rev-parse", "HEAD").stdout.strip()
         logger.info("HEAD is now at %s", actual[:12])
@@ -160,10 +163,13 @@ def _read_and_clear_update_marker() -> dict[str, Any] | None:
 def _report_update_to_portal(base_url: str, runner_id: int, marker: dict[str, Any]) -> None:
     """Notify the portal that this runner restarted after a code update."""
     try:
-        _post_json(f"{base_url}/api/runners/{runner_id}/update-complete", {
-            "previous_commit": marker.get("previous_commit"),
-            "new_commit": marker.get("new_commit"),
-        })
+        _post_json(
+            f"{base_url}/api/runners/{runner_id}/update-complete",
+            {
+                "previous_commit": marker.get("previous_commit"),
+                "new_commit": marker.get("new_commit"),
+            },
+        )
         logger.info(
             "Reported successful update to portal: %s → %s",
             (marker.get("previous_commit") or "?")[:12],
@@ -185,7 +191,13 @@ def _self_update_and_restart(commit: str, base_url: str, runner_id: int, reg_pay
 
     def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=300, env=env, **kwargs,
+            cmd,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env=env,
+            **kwargs,
         )
 
     previous_commit = _get_current_git_commit() or "unknown"
@@ -302,6 +314,7 @@ class _JobTracker:
 
 _job_tracker = _JobTracker()
 _runner_ray_address: str | None = None
+_runner_run_code_ref: str | None = None
 
 
 class _TeeWriter:
@@ -382,7 +395,7 @@ def _download_playground_files(base_url: str, job: dict[str, Any]) -> str | None
     dataset_name = job.get("dataset") or ""
     if not dataset_name.startswith("playground_"):
         return None
-    session_id = dataset_name[len("playground_"):]
+    session_id = dataset_name[len("playground_") :]
     if not session_id:
         return None
 
@@ -407,6 +420,7 @@ def _download_playground_files(base_url: str, job: dict[str, Any]) -> str | None
     local_dir.mkdir(parents=True, exist_ok=True)
     try:
         import io
+
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             zf.extractall(local_dir)
         logger.info("Extracted %d files to %s", len(list(local_dir.iterdir())), local_dir)
@@ -462,7 +476,11 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     git_ref = job.get("git_ref")
     prev_head: str | None = None
 
-    if not git_commit and job.get("trigger_source") == "scheduled":
+    if not git_commit and _runner_run_code_ref:
+        git_commit = _runner_run_code_ref
+        git_ref = _runner_run_code_ref.split("/")[-1] if "/" in _runner_run_code_ref else _runner_run_code_ref
+        logger.info("Job %s — using portal run_code_ref: %s", job_id, _runner_run_code_ref)
+    elif not git_commit and job.get("trigger_source") == "scheduled":
         git_commit = "origin/main"
         git_ref = "main"
         logger.info("Job %s is scheduled — will pull latest main before running", job_id)
@@ -470,6 +488,8 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     if git_commit:
         logger.info("Job %s requests commit %s (ref=%s) — pulling latest code", job_id, git_commit[:12], git_ref)
         prev_head = _git_checkout_commit(git_commit, git_ref)
+
+    execution_commit = _get_current_git_commit()
 
     dataset_value = job.get("dataset_path") or job["dataset"]
     overrides = job.get("dataset_overrides") or {}
@@ -519,12 +539,20 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
         if _job_tracker.is_cancel_requested():
             _post_json(
                 f"{base_url}/api/jobs/{job_id}/complete",
-                {"success": False, "error": "Cancelled by user", "result": result},
+                {
+                    "success": False,
+                    "error": "Cancelled by user",
+                    "result": result,
+                    "execution_commit": execution_commit,
+                },
             )
             logger.info("Job %s cancelled by user", job_id)
         else:
             success = bool(result.get("success"))
-            _post_json(f"{base_url}/api/jobs/{job_id}/complete", {"success": success, "result": result})
+            _post_json(
+                f"{base_url}/api/jobs/{job_id}/complete",
+                {"success": success, "result": result, "execution_commit": execution_commit},
+            )
             logger.info("Job %s completed (success=%s)", job_id, success)
     except Exception as exc:
         tb = traceback.format_exc()
@@ -533,7 +561,10 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
             error_msg = f"{exc}\n\n{tb}"
             if _job_tracker.is_cancel_requested():
                 error_msg = "Cancelled by user"
-            _post_json(f"{base_url}/api/jobs/{job_id}/complete", {"success": False, "error": error_msg})
+            _post_json(
+                f"{base_url}/api/jobs/{job_id}/complete",
+                {"success": False, "error": error_msg, "execution_commit": execution_commit},
+            )
         except Exception:
             pass
     finally:
@@ -592,7 +623,8 @@ def runner_start_command(
     heartbeat_interval: int = typer.Option(30, "--heartbeat-interval", help="Heartbeat interval in seconds."),
     tag: list[str] = typer.Option([], "--tag", help="Runner tags. Repeatable."),
     ray_address: str | None = typer.Option(
-        None, "--ray-address",
+        None,
+        "--ray-address",
         help="Ray cluster address for this runner (e.g. 'auto', 'ray://host:10001'). Omit for local Ray.",
     ),
 ) -> None:
@@ -622,7 +654,9 @@ def runner_start_command(
 
     if manager_url:
         base_url = manager_url.rstrip("/")
-        reg_payload = _build_registration_payload(runner_name, meta, tag or [], heartbeat_interval, ray_address=ray_address)
+        reg_payload = _build_registration_payload(
+            runner_name, meta, tag or [], heartbeat_interval, ray_address=ray_address
+        )
         typer.echo(f"\nRegistering with {base_url} ...")
         runner_id = _register_with_portal(base_url, reg_payload)
         if runner_id is not None:
@@ -708,6 +742,13 @@ def runner_start_command(
                 if portal_ray_addr != _runner_ray_address:
                     _runner_ray_address = portal_ray_addr
                     logger.info("Ray address updated from portal: %s", _runner_ray_address or "local")
+
+            if hb_resp and "run_code_ref" in hb_resp:
+                global _runner_run_code_ref  # noqa: PLW0603
+                new_ref = hb_resp["run_code_ref"]
+                if new_ref != _runner_run_code_ref:
+                    _runner_run_code_ref = new_ref
+                    logger.info("Run code ref updated from portal: %s", _runner_run_code_ref)
 
             update_commit = hb_resp.get("update_to_commit") if hb_resp else None
             if update_commit:

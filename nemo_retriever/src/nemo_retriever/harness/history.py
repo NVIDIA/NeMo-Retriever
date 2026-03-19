@@ -180,6 +180,13 @@ CREATE TABLE IF NOT EXISTS alert_events (
 );
 """
 
+CREATE_PORTAL_SETTINGS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS portal_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
 _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN hostname TEXT",
     "ALTER TABLE runs ADD COLUMN gpu_type TEXT",
@@ -201,6 +208,7 @@ _MIGRATIONS = [
     "ALTER TABLE runners ADD COLUMN git_commit TEXT",
     "ALTER TABLE runners ADD COLUMN pending_update_commit TEXT",
     "ALTER TABLE runners ADD COLUMN ray_address TEXT",
+    "ALTER TABLE runs ADD COLUMN execution_commit TEXT",
 ]
 
 RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
@@ -228,6 +236,7 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
     conn.execute(CREATE_JOBS_TABLE_SQL)
     conn.execute(CREATE_ALERT_RULES_TABLE_SQL)
     conn.execute(CREATE_ALERT_EVENTS_TABLE_SQL)
+    conn.execute(CREATE_PORTAL_SETTINGS_TABLE_SQL)
     conn.execute(CREATE_INDEX_SQL)
     for stmt in _MIGRATIONS:
         try:
@@ -262,6 +271,7 @@ def record_run(
     *,
     trigger_source: str | None = None,
     schedule_id: int | None = None,
+    execution_commit: str | None = None,
 ) -> int:
     """Insert a single run result into the history database. Returns the row id."""
     conn = _connect(db_path)
@@ -294,6 +304,7 @@ def record_run(
             "schedule_id": schedule_id,
             "ray_cluster_mode": run_meta.get("ray_cluster_mode"),
             "ray_dashboard_url": run_meta.get("ray_dashboard_url"),
+            "execution_commit": execution_commit,
         }
 
         columns = ", ".join(row.keys())
@@ -323,7 +334,7 @@ def get_runs(
             " failure_reason, pages, ingest_secs, pages_per_sec, recall_1, recall_5,"
             " recall_10, files, tags,"
             " artifact_dir, hostname, gpu_type, trigger_source, schedule_id,"
-            " ray_cluster_mode, ray_dashboard_url"
+            " ray_cluster_mode, ray_dashboard_url, execution_commit"
             " FROM runs WHERE 1=1"
         )
         params: list[Any] = []
@@ -590,9 +601,7 @@ def get_all_datasets(db_path: str | None = None) -> list[dict[str, Any]]:
         rows = conn.execute("SELECT * FROM datasets ORDER BY name").fetchall()
         datasets = [_deserialize_dataset_row(r) for r in rows]
         for ds in datasets:
-            rids = conn.execute(
-                "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (ds["id"],)
-            ).fetchall()
+            rids = conn.execute("SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (ds["id"],)).fetchall()
             ds["runner_ids"] = [r[0] for r in rids]
         return datasets
     finally:
@@ -607,9 +616,7 @@ def get_dataset_by_id(dataset_id: int, db_path: str | None = None) -> dict[str, 
         if row is None:
             return None
         ds = _deserialize_dataset_row(row)
-        rids = conn.execute(
-            "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (dataset_id,)
-        ).fetchall()
+        rids = conn.execute("SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (dataset_id,)).fetchall()
         ds["runner_ids"] = [r[0] for r in rids]
         return ds
     finally:
@@ -672,9 +679,7 @@ def get_dataset_by_name(name: str, db_path: str | None = None) -> dict[str, Any]
         if row is None:
             return None
         ds = _deserialize_dataset_row(row)
-        rids = conn.execute(
-            "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (ds["id"],)
-        ).fetchall()
+        rids = conn.execute("SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (ds["id"],)).fetchall()
         ds["runner_ids"] = [r[0] for r in rids]
         return ds
     finally:
@@ -705,9 +710,7 @@ def get_dataset_runner_ids(dataset_id: int, db_path: str | None = None) -> list[
     """Return runner IDs associated with a dataset."""
     conn = _connect(db_path)
     try:
-        rows = conn.execute(
-            "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (dataset_id,)
-        ).fetchall()
+        rows = conn.execute("SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (dataset_id,)).fetchall()
         return [r[0] for r in rows]
     finally:
         conn.close()
@@ -763,7 +766,20 @@ def import_yaml_datasets(yaml_datasets: dict[str, dict[str, Any]], db_path: str 
 # Runner CRUD
 # ---------------------------------------------------------------------------
 
-_RUNNER_SCALAR_FIELDS = ("name", "hostname", "url", "gpu_type", "gpu_count", "cpu_count", "memory_gb", "status", "heartbeat_interval", "git_commit", "pending_update_commit", "ray_address")
+_RUNNER_SCALAR_FIELDS = (
+    "name",
+    "hostname",
+    "url",
+    "gpu_type",
+    "gpu_count",
+    "cpu_count",
+    "memory_gb",
+    "status",
+    "heartbeat_interval",
+    "git_commit",
+    "pending_update_commit",
+    "ray_address",
+)
 
 
 def _deserialize_runner_row(d: dict[str, Any]) -> dict[str, Any]:
@@ -958,12 +974,55 @@ def clear_pending_update(runner_id: int, db_path: str | None = None) -> None:
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Portal settings (key/value store)
+# ---------------------------------------------------------------------------
+
+_PORTAL_SETTINGS_DEFAULTS: dict[str, str] = {
+    "run_code_ref": "nvidia/main",
+}
+
+
+def get_portal_setting(key: str, db_path: str | None = None) -> str | None:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT value FROM portal_settings WHERE key = ?", (key,)).fetchone()
+        if row:
+            return row[0]
+        return _PORTAL_SETTINGS_DEFAULTS.get(key)
+    finally:
+        conn.close()
+
+
+def set_portal_setting(key: str, value: str, db_path: str | None = None) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO portal_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_all_portal_settings(db_path: str | None = None) -> dict[str, str]:
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute("SELECT key, value FROM portal_settings").fetchall()
+        result = dict(_PORTAL_SETTINGS_DEFAULTS)
+        for k, v in rows:
+            result[k] = v
+        return result
+    finally:
+        conn.close()
+
+
 def pause_runner(runner_id: int, db_path: str | None = None) -> bool:
     conn = _connect(db_path)
     try:
-        cursor = conn.execute(
-            "UPDATE runners SET status = 'paused' WHERE id = ?", (runner_id,)
-        )
+        cursor = conn.execute("UPDATE runners SET status = 'paused' WHERE id = ?", (runner_id,))
         conn.commit()
         return cursor.rowcount > 0
     finally:
@@ -973,9 +1032,7 @@ def pause_runner(runner_id: int, db_path: str | None = None) -> bool:
 def resume_runner(runner_id: int, db_path: str | None = None) -> bool:
     conn = _connect(db_path)
     try:
-        cursor = conn.execute(
-            "UPDATE runners SET status = 'online' WHERE id = ?", (runner_id,)
-        )
+        cursor = conn.execute("UPDATE runners SET status = 'online' WHERE id = ?", (runner_id,))
         conn.commit()
         return cursor.rowcount > 0
     finally:
@@ -1007,9 +1064,7 @@ def mark_stale_runners_offline(db_path: str | None = None) -> list[dict[str, Any
                 continue
 
             if (now - last_hb).total_seconds() > timeout_secs:
-                conn.execute(
-                    "UPDATE runners SET status = 'offline' WHERE id = ?", (r["id"],)
-                )
+                conn.execute("UPDATE runners SET status = 'offline' WHERE id = ?", (r["id"],))
                 newly_offline.append(_deserialize_runner_row(r))
 
         if newly_offline:

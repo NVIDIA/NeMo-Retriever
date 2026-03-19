@@ -797,7 +797,7 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
           <table className="runs-table">
             <thead>
               <tr>
-                <th>Status</th><th>Source</th><th>Timestamp</th><th>Host</th><th>Commit</th><th>Dataset</th>
+                <th>Status</th><th>Source</th><th>Timestamp</th><th>Host</th><th>Commit</th><th>Exec Commit</th><th>Dataset</th>
                 <th>Preset</th><th style={{textAlign:'right'}}>Pages</th>
                 <th style={{textAlign:'right'}}>PPS</th><th style={{textAlign:'right'}}>Recall@5</th>
                 <th style={{textAlign:'right'}}>Ingest (s)</th>
@@ -806,11 +806,11 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="12" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                <tr><td colSpan="13" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading runs…</div>
                 </td></tr>
               ) : runs.length === 0 ? (
-                <tr><td colSpan="12" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                <tr><td colSpan="13" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div style={{marginBottom:'8px',fontSize:'15px'}}>No runs found</div>
                   <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>
                     Trigger a run or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness backfill</code> to import existing results.
@@ -831,6 +831,7 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
                     )}
                   </td>
                   <td><CommitLink sha={run.git_commit} repoUrl={githubRepoUrl} /></td>
+                  <td><CommitLink sha={run.execution_commit} repoUrl={githubRepoUrl} /></td>
                   <td style={{color:'#fff',fontWeight:500}}>{run.dataset}</td>
                   <td style={{color:'var(--nv-text-muted)'}}>{run.preset || "\u2014"}</td>
                   <td style={{textAlign:'right'}}>{fmt(run.pages,0)}</td>
@@ -1525,6 +1526,12 @@ function RunDetailModal({ run, onClose, onDelete, githubRepoUrl }) {
                 <div className="detail-label">Git Commit</div>
                 <div className="detail-value"><CommitLink sha={run.git_commit} repoUrl={githubRepoUrl} truncate={0} style={{fontSize:'13px'}} /></div>
               </div>
+              {run.execution_commit && (
+                <div className="detail-item">
+                  <div className="detail-label">Execution Commit</div>
+                  <div className="detail-value"><CommitLink sha={run.execution_commit} repoUrl={githubRepoUrl} truncate={0} style={{fontSize:'13px'}} /></div>
+                </div>
+              )}
               <div className="detail-item">
                 <div className="detail-label">Dataset</div>
                 <div className="detail-value">{run.dataset}</div>
@@ -3244,7 +3251,7 @@ function DataExportSection({ filteredRuns, filterDataset, filterPreset, filterSt
     if (filteredRuns.length === 0) return;
     const fields = ['id','timestamp','dataset','preset','success','hostname','gpu_type',
       'pages_per_sec','recall_1','recall_5','recall_10','ingest_secs','pages','files',
-      'trigger_source','git_commit','ray_cluster_mode','ray_dashboard_url'];
+      'trigger_source','git_commit','execution_commit','ray_cluster_mode','ray_dashboard_url'];
     const header = fields.join(',');
     const rows = filteredRuns.map(r =>
       fields.map(f => {
@@ -5105,6 +5112,42 @@ function SettingsView() {
   const [deployError, setDeployError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [portalSettings, setPortalSettings] = useState({});
+  const [runCodeRefInput, setRunCodeRefInput] = useState("");
+  const [savingRunCodeRef, setSavingRunCodeRef] = useState(false);
+  const [runCodeRefSaved, setRunCodeRefSaved] = useState(false);
+
+  async function fetchPortalSettings() {
+    try {
+      const res = await fetch("/api/portal-settings");
+      const data = await res.json();
+      setPortalSettings(data);
+      setRunCodeRefInput(data.run_code_ref || "upstream/main");
+    } catch (err) {
+      console.error("Failed to fetch portal settings:", err);
+    }
+  }
+
+  async function saveRunCodeRef() {
+    setSavingRunCodeRef(true);
+    setRunCodeRefSaved(false);
+    try {
+      const res = await fetch("/api/portal-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run_code_ref: runCodeRefInput.trim() }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      const data = await res.json();
+      setPortalSettings(data);
+      setRunCodeRefSaved(true);
+      setTimeout(() => setRunCodeRefSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save run code ref:", err);
+    } finally {
+      setSavingRunCodeRef(false);
+    }
+  }
 
   async function fetchGitInfo() {
     setGitLoading(true);
@@ -5125,7 +5168,7 @@ function SettingsView() {
     }
   }
 
-  useEffect(() => { fetchGitInfo(); }, []);
+  useEffect(() => { fetchGitInfo(); fetchPortalSettings(); }, []);
 
   async function handleDeploy() {
     setShowConfirm(false);
@@ -5236,6 +5279,70 @@ function SettingsView() {
             <div className="mono" style={{fontSize:'11px',color:'var(--nv-text-muted)',wordBreak:'break-all'}}>{gitInfo.repo_root}</div>
           </div>
         </div>
+      </div>
+
+      {/* Runner Execution Branch */}
+      <div className="card" style={{padding:'24px',marginBottom:'20px'}}>
+        <div className="section-title" style={{marginBottom:'6px'}}>Runner Execution Branch</div>
+        <div style={{fontSize:'12px',color:'var(--nv-text-dim)',lineHeight:'1.6',marginBottom:'16px'}}>
+          The git ref that runners will <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'1px 5px',borderRadius:'4px'}}>git checkout</code> before executing each job.
+          This separates the runner infrastructure code (synced via Deploy) from the harness pipeline code used for actual runs.
+          Runners receive this value on every heartbeat.
+        </div>
+        {portalSettings._nvidia_remote_name && (
+          <div style={{marginBottom:'14px',padding:'10px 14px',borderRadius:'8px',background:'rgba(118,185,0,0.06)',border:'1px solid rgba(118,185,0,0.15)'}}>
+            <div style={{fontSize:'12px',color:'var(--nv-green)',fontWeight:600,marginBottom:'4px'}}>Detected NVIDIA Remote</div>
+            <div style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>
+              <span className="mono" style={{color:'#fff',fontWeight:600}}>{portalSettings._nvidia_remote_name}</span>
+              {portalSettings._nvidia_remote_url && (
+                <span style={{marginLeft:'8px',color:'var(--nv-text-dim)'}}>→ {portalSettings._nvidia_remote_url}</span>
+              )}
+            </div>
+          </div>
+        )}
+        <div style={{display:'flex',gap:'10px',alignItems:'flex-end'}}>
+          <div style={{flex:1}}>
+            <label style={labelStyle}>Git Ref (remote/branch)</label>
+            <input className="input" style={{width:'100%'}} value={runCodeRefInput}
+              onChange={e => setRunCodeRefInput(e.target.value)}
+              placeholder={portalSettings._nvidia_remote_name ? `e.g. ${portalSettings._nvidia_remote_name}/main` : "e.g. nvidia/main"} />
+          </div>
+          <button className="btn btn-primary" onClick={saveRunCodeRef}
+            disabled={savingRunCodeRef || !runCodeRefInput.trim() || runCodeRefInput.trim() === portalSettings.run_code_ref}
+            style={{whiteSpace:'nowrap'}}>
+            {savingRunCodeRef ? <><span className="spinner" style={{marginRight:'6px'}}></span>Saving…</> : "Save"}
+          </button>
+        </div>
+        {runCodeRefSaved && (
+          <div style={{marginTop:'10px',fontSize:'12px',color:'var(--nv-green)',display:'flex',alignItems:'center',gap:'6px'}}>
+            <IconCheck /> Saved. Runners will pick up the new ref on their next heartbeat.
+          </div>
+        )}
+        {(() => {
+          const nvidiaRemote = portalSettings._nvidia_remote_name;
+          const nvBranches = (gitInfo?.remote_branches || []).filter(b => nvidiaRemote ? b.startsWith(nvidiaRemote + "/") : true);
+          return nvBranches.length > 0 && (
+            <div style={{marginTop:'12px'}}>
+              <div style={{...labelStyle,marginBottom:'8px'}}>
+                Quick Select{nvidiaRemote ? ` (${nvidiaRemote} branches)` : ""}
+              </div>
+              <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                {nvBranches.slice(0, 15).map(b => (
+                  <button key={b} className="btn btn-sm"
+                    onClick={() => setRunCodeRefInput(b)}
+                    style={{
+                      fontSize:'10px',padding:'2px 8px',
+                      background: b === runCodeRefInput ? 'rgba(118,185,0,0.15)' : 'transparent',
+                      color: b === runCodeRefInput ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+                      border: `1px solid ${b === runCodeRefInput ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+                    }}>
+                    {b}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'20px',marginBottom:'20px'}}>
