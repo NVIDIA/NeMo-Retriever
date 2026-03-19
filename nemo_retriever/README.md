@@ -387,19 +387,10 @@ The ViDoRe harness datasets are configured to:
 - enable `extract_page_as_image: true` and `extract_infographics: true`
 - evaluate with BEIR-style `ndcg` and `recall` metrics
 
-To preview the sweep without running it:
-
-```bash
-cd /raid/cjarrett/nv-ingest/nemo_retriever
-source ../.retriever/bin/activate
-retriever-harness sweep --runs-config harness/vidore_sweep.yaml --dry-run
-```
-
 To run the full ViDoRe sweep:
 
 ```bash
-cd /raid/cjarrett/nv-ingest/nemo_retriever
-source ../.retriever/bin/activate
+cd ~/nv-ingest/nemo_retriever
 retriever-harness sweep --runs-config harness/vidore_sweep.yaml
 ```
 
