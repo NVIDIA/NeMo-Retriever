@@ -114,6 +114,16 @@ CREATE TABLE IF NOT EXISTS datasets (
 );
 """
 
+CREATE_DATASET_RUNNERS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS dataset_runners (
+    dataset_id INTEGER NOT NULL,
+    runner_id INTEGER NOT NULL,
+    PRIMARY KEY (dataset_id, runner_id),
+    FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE,
+    FOREIGN KEY (runner_id) REFERENCES runners(id) ON DELETE CASCADE
+);
+"""
+
 CREATE_JOBS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -183,7 +193,14 @@ _MIGRATIONS = [
     "ALTER TABLE jobs ADD COLUMN git_ref TEXT",
     "ALTER TABLE jobs ADD COLUMN log_tail TEXT",
     "ALTER TABLE jobs ADD COLUMN rejected_runners TEXT",
+    "ALTER TABLE runs ADD COLUMN ray_cluster_mode TEXT",
+    "ALTER TABLE runs ADD COLUMN ray_dashboard_url TEXT",
+    "ALTER TABLE runs ADD COLUMN recall_1 REAL",
+    "ALTER TABLE runs ADD COLUMN recall_10 REAL",
+    "ALTER TABLE runners ADD COLUMN heartbeat_interval INTEGER DEFAULT 30",
 ]
+
+RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
 
 CREATE_INDEX_SQL = """
 CREATE INDEX IF NOT EXISTS idx_runs_dataset_ts ON runs(dataset, timestamp);
@@ -203,6 +220,7 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
     conn.execute(CREATE_RUNNERS_TABLE_SQL)
     conn.execute(CREATE_PRESETS_TABLE_SQL)
     conn.execute(CREATE_DATASETS_TABLE_SQL)
+    conn.execute(CREATE_DATASET_RUNNERS_TABLE_SQL)
     conn.execute(CREATE_SCHEDULES_TABLE_SQL)
     conn.execute(CREATE_JOBS_TABLE_SQL)
     conn.execute(CREATE_ALERT_RULES_TABLE_SQL)
@@ -260,7 +278,9 @@ def record_run(
             "pages": _extract_summary_metric(result, "pages"),
             "ingest_secs": _extract_summary_metric(result, "ingest_secs"),
             "pages_per_sec": _extract_summary_metric(result, "pages_per_sec_ingest"),
+            "recall_1": _extract_summary_metric(result, "recall_1"),
             "recall_5": _extract_summary_metric(result, "recall_5"),
+            "recall_10": _extract_summary_metric(result, "recall_10"),
             "files": (result.get("metrics") or {}).get("files"),
             "tags": tags_json,
             "artifact_dir": str(artifact_dir),
@@ -269,6 +289,8 @@ def record_run(
             "gpu_type": run_meta.get("gpu_type"),
             "trigger_source": trigger_source,
             "schedule_id": schedule_id,
+            "ray_cluster_mode": run_meta.get("ray_cluster_mode"),
+            "ray_dashboard_url": run_meta.get("ray_dashboard_url"),
         }
 
         columns = ", ".join(row.keys())
@@ -295,8 +317,10 @@ def get_runs(
     try:
         query = (
             "SELECT id, timestamp, git_commit, dataset, preset, success, return_code,"
-            " failure_reason, pages, ingest_secs, pages_per_sec, recall_5, files, tags,"
-            " artifact_dir, hostname, gpu_type, trigger_source, schedule_id"
+            " failure_reason, pages, ingest_secs, pages_per_sec, recall_1, recall_5,"
+            " recall_10, files, tags,"
+            " artifact_dir, hostname, gpu_type, trigger_source, schedule_id,"
+            " ray_cluster_mode, ray_dashboard_url"
             " FROM runs WHERE 1=1"
         )
         params: list[Any] = []
@@ -348,6 +372,31 @@ def get_run_by_id(run_id: int, db_path: str | None = None) -> dict[str, Any] | N
             except (json.JSONDecodeError, TypeError):
                 pass
         return d
+    finally:
+        conn.close()
+
+
+def delete_run(run_id: int, db_path: str | None = None) -> bool:
+    """Delete a run from the history database. Returns True if the row was deleted."""
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_runs_bulk(run_ids: list[int], db_path: str | None = None) -> int:
+    """Delete multiple runs at once. Returns the number of rows deleted."""
+    if not run_ids:
+        return 0
+    conn = _connect(db_path)
+    try:
+        placeholders = ",".join("?" * len(run_ids))
+        cursor = conn.execute(f"DELETE FROM runs WHERE id IN ({placeholders})", run_ids)
+        conn.commit()
+        return cursor.rowcount
     finally:
         conn.close()
 
@@ -536,7 +585,13 @@ def get_all_datasets(db_path: str | None = None) -> list[dict[str, Any]]:
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute("SELECT * FROM datasets ORDER BY name").fetchall()
-        return [_deserialize_dataset_row(r) for r in rows]
+        datasets = [_deserialize_dataset_row(r) for r in rows]
+        for ds in datasets:
+            rids = conn.execute(
+                "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (ds["id"],)
+            ).fetchall()
+            ds["runner_ids"] = [r[0] for r in rids]
+        return datasets
     finally:
         conn.close()
 
@@ -546,7 +601,14 @@ def get_dataset_by_id(dataset_id: int, db_path: str | None = None) -> dict[str, 
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
-        return _deserialize_dataset_row(row) if row else None
+        if row is None:
+            return None
+        ds = _deserialize_dataset_row(row)
+        rids = conn.execute(
+            "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (dataset_id,)
+        ).fetchall()
+        ds["runner_ids"] = [r[0] for r in rids]
+        return ds
     finally:
         conn.close()
 
@@ -604,16 +666,99 @@ def get_dataset_by_name(name: str, db_path: str | None = None) -> dict[str, Any]
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute("SELECT * FROM datasets WHERE name = ?", (name,)).fetchone()
-        return _deserialize_dataset_row(row) if row else None
+        if row is None:
+            return None
+        ds = _deserialize_dataset_row(row)
+        rids = conn.execute(
+            "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (ds["id"],)
+        ).fetchall()
+        ds["runner_ids"] = [r[0] for r in rids]
+        return ds
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Dataset ↔ Runner associations
+# ---------------------------------------------------------------------------
+
+
+def set_dataset_runners(dataset_id: int, runner_ids: list[int], db_path: str | None = None) -> None:
+    """Replace the set of runners associated with a dataset."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM dataset_runners WHERE dataset_id = ?", (dataset_id,))
+        for rid in runner_ids:
+            conn.execute(
+                "INSERT OR IGNORE INTO dataset_runners (dataset_id, runner_id) VALUES (?, ?)",
+                (dataset_id, rid),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_dataset_runner_ids(dataset_id: int, db_path: str | None = None) -> list[int]:
+    """Return runner IDs associated with a dataset."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT runner_id FROM dataset_runners WHERE dataset_id = ?", (dataset_id,)
+        ).fetchall()
+        return [r[0] for r in rows]
+    finally:
+        conn.close()
+
+
+def get_runner_ids_for_dataset_name(dataset_name: str, db_path: str | None = None) -> list[int] | None:
+    """Return runner IDs that have *dataset_name*, or ``None`` if no restriction.
+
+    If the dataset exists in the managed table but has **no** runners associated,
+    returns an empty list (meaning no runner can run it).  If the dataset is not
+    in the managed table at all, returns ``None`` (no restriction).
+    """
+    ds = get_dataset_by_name(dataset_name, db_path)
+    if ds is None:
+        return None
+    return get_dataset_runner_ids(ds["id"], db_path)
+
+
+def import_yaml_datasets(yaml_datasets: dict[str, dict[str, Any]], db_path: str | None = None) -> int:
+    """Import datasets from the YAML config into the managed datasets table.
+
+    Only datasets whose name does not already exist are inserted.
+    Returns the number of newly imported datasets.
+    """
+    imported = 0
+    for name, cfg in yaml_datasets.items():
+        if not isinstance(cfg, dict):
+            continue
+        existing = get_dataset_by_name(name, db_path)
+        if existing:
+            continue
+        data = {
+            "name": name,
+            "path": cfg.get("path", ""),
+            "query_csv": cfg.get("query_csv"),
+            "input_type": cfg.get("input_type", "pdf"),
+            "recall_required": cfg.get("recall_required", False),
+            "recall_match_mode": cfg.get("recall_match_mode", "pdf_page"),
+            "recall_adapter": cfg.get("recall_adapter", "none"),
+            "description": f"Imported from test_configs.yaml",
+        }
+        try:
+            create_dataset(data, db_path)
+            imported += 1
+        except Exception:
+            pass
+    return imported
 
 
 # ---------------------------------------------------------------------------
 # Runner CRUD
 # ---------------------------------------------------------------------------
 
-_RUNNER_SCALAR_FIELDS = ("name", "hostname", "url", "gpu_type", "gpu_count", "cpu_count", "memory_gb", "status")
+_RUNNER_SCALAR_FIELDS = ("name", "hostname", "url", "gpu_type", "gpu_count", "cpu_count", "memory_gb", "status", "heartbeat_interval")
 
 
 def _deserialize_runner_row(d: dict[str, Any]) -> dict[str, Any]:
@@ -650,7 +795,8 @@ def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[st
             runner_id = existing["id"]
             conn.execute(
                 "UPDATE runners SET name=?, url=?, gpu_type=?, gpu_count=?, cpu_count=?,"
-                " memory_gb=?, status=?, last_heartbeat=?, tags=?, metadata=? WHERE id=?",
+                " memory_gb=?, status=?, last_heartbeat=?, tags=?, metadata=?,"
+                " heartbeat_interval=? WHERE id=?",
                 (
                     data.get("name", existing["name"]),
                     data.get("url", existing["url"]),
@@ -662,6 +808,7 @@ def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[st
                     now,
                     json.dumps(data["tags"]) if data.get("tags") else existing["tags"],
                     json.dumps(data["metadata"]) if data.get("metadata") else existing["metadata"],
+                    data.get("heartbeat_interval", 30),
                     runner_id,
                 ),
             )
@@ -682,6 +829,7 @@ def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[st
             "last_heartbeat": now,
             "tags": json.dumps(data["tags"]) if data.get("tags") else None,
             "metadata": json.dumps(data["metadata"]) if data.get("metadata") else None,
+            "heartbeat_interval": data.get("heartbeat_interval", 30),
         }
         columns = ", ".join(row_data.keys())
         placeholders = ", ".join("?" * len(row_data))
@@ -759,6 +907,75 @@ def heartbeat_runner(runner_id: int, db_path: str | None = None) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def mark_stale_runners_offline(db_path: str | None = None) -> list[dict[str, Any]]:
+    """Mark runners as offline if they missed N heartbeats. Returns newly-offline runners."""
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT * FROM runners WHERE status = 'online' AND last_heartbeat IS NOT NULL"
+        ).fetchall()
+
+        now = datetime.now(timezone.utc)
+        newly_offline: list[dict[str, Any]] = []
+
+        for row in rows:
+            r = dict(row)
+            interval = r.get("heartbeat_interval") or 30
+            timeout_secs = interval * RUNNER_MISSED_HEARTBEATS_THRESHOLD
+
+            try:
+                last_hb = datetime.fromisoformat(r["last_heartbeat"])
+                if last_hb.tzinfo is None:
+                    last_hb = last_hb.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+
+            if (now - last_hb).total_seconds() > timeout_secs:
+                conn.execute(
+                    "UPDATE runners SET status = 'offline' WHERE id = ?", (r["id"],)
+                )
+                newly_offline.append(_deserialize_runner_row(r))
+
+        if newly_offline:
+            conn.commit()
+        return newly_offline
+    finally:
+        conn.close()
+
+
+def create_system_alert_event(data: dict[str, Any], db_path: str | None = None) -> dict[str, Any]:
+    """Create an alert event not tied to a specific run (system-level alert)."""
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO alert_events (rule_id,run_id,metric,metric_value,threshold,"
+            "operator,message,git_commit,dataset,preset,hostname,acknowledged,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?)",
+            (
+                data.get("rule_id", 0),
+                data.get("run_id", 0),
+                data.get("metric", "runner_status"),
+                data.get("metric_value"),
+                data.get("threshold", 0),
+                data.get("operator", "system"),
+                data.get("message"),
+                data.get("git_commit"),
+                data.get("dataset"),
+                data.get("preset"),
+                data.get("hostname"),
+                _now_iso(),
+            ),
+        )
+        conn.commit()
+        event_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM alert_events WHERE id = ?", (event_id,)).fetchone()
+        return dict(row) if row else {"id": event_id}
     finally:
         conn.close()
 
@@ -1269,7 +1486,9 @@ def get_or_create_system_alert_rule(
 
 VALID_ALERT_METRICS = [
     "pages_per_sec",
+    "recall_1",
     "recall_5",
+    "recall_10",
     "ingest_secs",
     "pages",
     "files",

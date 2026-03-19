@@ -209,7 +209,7 @@
       color: var(--nv-text-muted); margin-bottom: 4px; font-weight: 500;
     }
     .detail-value { font-size: 14px; color: #fff; font-weight: 500; }
-    .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
     .metric-card {
       padding: 16px; text-align: center; background: rgba(255,255,255,0.02);
       border-radius: 8px; border: 1px solid rgba(255,255,255,0.04);
@@ -227,12 +227,13 @@
     }
     .spinner-lg { width: 32px; height: 32px; border-width: 3px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse-offline { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #444; }
     @media (max-width: 900px) {
-      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+      .metric-grid { grid-template-columns: repeat(3, 1fr); }
     }
   </style>
 </head>
@@ -255,6 +256,9 @@ function IconPlay() {
 }
 function IconDownload() {
   return <svg {...svgProps}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+}
+function IconUpload() {
+  return <svg {...svgProps}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>;
 }
 function IconRefresh() {
   return <svg {...svgProps}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
@@ -315,6 +319,12 @@ function IconAlertTriangle() {
 }
 function IconExternalLink() {
   return <svg {...svgProps}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>;
+}
+function IconFileText() {
+  return <svg {...svgProps}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
+}
+function IconSettings() {
+  return <svg {...svgProps}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 }
 
 /* ===== Utilities ===== */
@@ -436,6 +446,7 @@ function TriggerSourceBadge({ source }) {
     manual: { cls: "badge-manual", label: "Manual" },
     scheduled: { cls: "badge-scheduled", label: "Scheduled" },
     github_push: { cls: "badge-github", label: "GitHub" },
+    playground: { cls: "badge-manual", label: "Playground" },
   };
   const info = map[source] || { cls: "badge-na", label: source };
   return <span className={`badge ${info.cls}`}>{info.label}</span>;
@@ -465,6 +476,9 @@ function Sidebar({ activeView, onNavigate, alertBadgeCount, githubRepoUrl }) {
         <div className={`nav-item ${activeView==='analytics'?'active':''}`} onClick={()=>onNavigate('analytics')}>
           <IconChart /><span>Analytics</span>
         </div>
+        <div className={`nav-item ${activeView==='reporting'?'active':''}`} onClick={()=>onNavigate('reporting')}>
+          <IconFileText /><span>Reporting</span>
+        </div>
         <div className={`nav-item ${activeView==='datasets'?'active':''}`} onClick={()=>onNavigate('datasets')}>
           <IconFolder /><span>Datasets</span>
         </div>
@@ -483,6 +497,17 @@ function Sidebar({ activeView, onNavigate, alertBadgeCount, githubRepoUrl }) {
           {typeof alertBadgeCount === 'number' && alertBadgeCount > 0 && (
             <span style={{marginLeft:'auto',background:'#ff5050',color:'#fff',fontSize:'10px',fontWeight:700,padding:'1px 7px',borderRadius:'100px',lineHeight:'16px'}}>{alertBadgeCount}</span>
           )}
+        </div>
+        <div className="sidebar-section-label">Playground</div>
+        <div className={`nav-item ${activeView==='ingestion'?'active':''}`} onClick={()=>onNavigate('ingestion')}>
+          <IconUpload /><span>Ingestion</span>
+        </div>
+        <div className={`nav-item ${activeView==='retrieval'?'active':''}`} onClick={()=>onNavigate('retrieval')}>
+          <IconSearch /><span>Retrieval</span>
+        </div>
+        <div className="sidebar-section-label">System</div>
+        <div className={`nav-item ${activeView==='settings'?'active':''}`} onClick={()=>onNavigate('settings')}>
+          <IconSettings /><span>Settings</span>
         </div>
       </nav>
       <div className="sidebar-bottom">
@@ -526,9 +551,15 @@ function Footer({ children }) {
 }
 
 /* ===== Runs View ===== */
-function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, filterCommit, setFilterCommit, onRefresh, onSelectRun, onTrigger, jobs, githubRepoUrl, onViewLogs }) {
+function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, filterCommit, setFilterCommit, onRefresh, onSelectRun, onDeleteRun, onTrigger, jobs, runners, githubRepoUrl, onViewLogs }) {
   const activeJobs = (jobs || []).filter(j => j.status==="running" || j.status==="pending" || j.status==="cancelling");
   const pg = usePagination(runs, 25);
+
+  const runnerMap = useMemo(() => {
+    const m = {};
+    (runners || []).forEach(r => { m[r.id] = r; });
+    return m;
+  }, [runners]);
 
   const handleCancel = async (jobId) => {
     if (!confirm("Cancel this job?")) return;
@@ -549,13 +580,18 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
                 display:'flex',alignItems:'center',justifyContent:'space-between',
                 padding:'10px 16px',borderBottom:'1px solid var(--nv-border)',
               }}>
-                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
                   <JobStatusBadge status={j.status} />
                   {(j.status==="running" || j.status==="cancelling") && <span className="spinner"></span>}
                   <span style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{j.dataset}</span>
                   {j.preset && <span style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{j.preset}</span>}
                   <TriggerSourceBadge source={j.trigger_source} />
-                  {j.assigned_runner_id && <span style={{color:'var(--nv-text-dim)',fontSize:'11px'}}>Runner #{j.assigned_runner_id}</span>}
+                  {j.git_commit && <CommitLink sha={j.git_commit} repoUrl={githubRepoUrl} />}
+                  {j.assigned_runner_id && (() => {
+                    const r = runnerMap[j.assigned_runner_id];
+                    const label = r ? (r.name || r.hostname || `#${j.assigned_runner_id}`) : `Runner #${j.assigned_runner_id}`;
+                    return <span style={{color:'var(--nv-text-dim)',fontSize:'11px',background:'var(--nv-bg)',padding:'2px 6px',borderRadius:'4px',border:'1px solid var(--nv-border)'}}>{label}</span>;
+                  })()}
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                   {(j.status==="running" || j.status==="cancelling") && (
@@ -579,7 +615,22 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
       )}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
-        <button className="btn btn-primary" onClick={onTrigger}><IconPlay /> Trigger Run</button>
+        <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+          <button className="btn btn-primary" onClick={onTrigger}><IconPlay /> Trigger Run</button>
+          {runs.filter(r=>r.success===0).length > 0 && (
+            <button className="btn btn-sm" onClick={async () => {
+              const failedIds = runs.filter(r=>r.success===0).map(r=>r.id);
+              if (!confirm(`Delete ${failedIds.length} failed run${failedIds.length!==1?'s':''}? This cannot be undone.`)) return;
+              try {
+                await fetch("/api/runs/delete-bulk", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({run_ids:failedIds})});
+                onRefresh();
+              } catch {}
+            }} title="Delete all failed runs"
+              style={{background:'rgba(255,80,80,0.08)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.15)',fontSize:'12px'}}>
+              <IconTrash /> Delete All Failed ({runs.filter(r=>r.success===0).length})
+            </button>
+          )}
+        </div>
         <div style={{display:'flex',gap:'12px',alignItems:'center',flexWrap:'wrap'}}>
           <select value={filterDataset} onChange={e=>setFilterDataset(e.target.value)} className="select" style={{minWidth:'200px'}}>
             <option value="">All datasets</option>
@@ -602,15 +653,16 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
                 <th>Preset</th><th style={{textAlign:'right'}}>Pages</th>
                 <th style={{textAlign:'right'}}>PPS</th><th style={{textAlign:'right'}}>Recall@5</th>
                 <th style={{textAlign:'right'}}>Ingest (s)</th>
+                <th style={{width:'40px'}}></th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="11" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                <tr><td colSpan="12" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading runs…</div>
                 </td></tr>
               ) : runs.length === 0 ? (
-                <tr><td colSpan="11" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                <tr><td colSpan="12" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div style={{marginBottom:'8px',fontSize:'15px'}}>No runs found</div>
                   <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>
                     Trigger a run or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness backfill</code> to import existing results.
@@ -624,7 +676,12 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
                   </td>
                   <td><TriggerSourceBadge source={run.trigger_source} /></td>
                   <td style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap'}}>{fmtTs(run.timestamp)}</td>
-                  <td style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap',fontSize:'12px'}}>{run.hostname || "\u2014"}</td>
+                  <td style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap',fontSize:'12px'}}>
+                    {run.hostname || "\u2014"}
+                    {run.ray_cluster_mode === "existing" && (
+                      <span title="Connected to existing Ray cluster" style={{marginLeft:'6px',fontSize:'10px',color:'#64b4ff',background:'rgba(100,180,255,0.1)',padding:'1px 5px',borderRadius:'4px',border:'1px solid rgba(100,180,255,0.2)',whiteSpace:'nowrap'}}>Ray</span>
+                    )}
+                  </td>
                   <td><CommitLink sha={run.git_commit} repoUrl={githubRepoUrl} /></td>
                   <td style={{color:'#fff',fontWeight:500}}>{run.dataset}</td>
                   <td style={{color:'var(--nv-text-muted)'}}>{run.preset || "\u2014"}</td>
@@ -632,6 +689,15 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
                   <td style={{textAlign:'right',color:'#fff',fontWeight:500}}>{fmt(run.pages_per_sec)}</td>
                   <td style={{textAlign:'right',color:'var(--nv-green)',fontWeight:600}}>{fmt(run.recall_5,3)}</td>
                   <td style={{textAlign:'right'}}>{fmt(run.ingest_secs)}</td>
+                  <td onClick={e=>e.stopPropagation()}>
+                    <button className="btn btn-sm btn-icon" onClick={() => {
+                      if (confirm(`Delete run #${run.id}? This cannot be undone.`)) { onDeleteRun && onDeleteRun(run.id); }
+                    }} title="Delete run"
+                      style={{background:'transparent',color:'var(--nv-text-dim)',border:'none',padding:'4px',opacity:0.5,transition:'opacity 0.15s'}}
+                      onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0.5'}>
+                      <IconTrash />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -645,11 +711,16 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
 }
 
 /* ===== Datasets View ===== */
-function DatasetsView({ managedDatasets, yamlDatasets, loading, onRefresh }) {
+function DatasetsView({ managedDatasets, loading, onRefresh, runners }) {
   const [showForm, setShowForm] = useState(false);
   const [editDataset, setEditDataset] = useState(null);
-  const [viewYamlDs, setViewYamlDs] = useState(null);
   const pg = usePagination(managedDatasets, 25);
+
+  const runnerMap = useMemo(() => {
+    const m = {};
+    (runners || []).forEach(r => { m[r.id] = r; });
+    return m;
+  }, [runners]);
 
   function handleCreate() { setEditDataset(null); setShowForm(true); }
   function handleEdit(ds) { setEditDataset(ds); setShowForm(true); }
@@ -661,6 +732,11 @@ function DatasetsView({ managedDatasets, yamlDatasets, loading, onRefresh }) {
     } catch {}
   }
 
+  function runnerLabel(rid) {
+    const r = runnerMap[rid];
+    return r ? (r.name || r.hostname || `#${rid}`) : `#${rid}`;
+  }
+
   return (
     <>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
@@ -668,105 +744,69 @@ function DatasetsView({ managedDatasets, yamlDatasets, loading, onRefresh }) {
         <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
       </div>
 
-      {/* Managed Datasets */}
-      <div style={{marginBottom:'28px'}}>
-        <div className="section-title" style={{marginBottom:'10px'}}>Managed Datasets</div>
-        <div className="card">
-          <div style={{overflowX:'auto'}}>
-            <table className="runs-table">
-              <thead>
-                <tr>
-                  <th>Name</th><th>Path</th><th>Input Type</th><th>Query CSV</th>
-                  <th>Recall</th><th>Match Mode</th><th>Adapter</th><th>Description</th><th>Actions</th>
+      <div className="card">
+        <div style={{overflowX:'auto'}}>
+          <table className="runs-table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Path</th><th>Input Type</th><th>Query CSV</th>
+                <th>Recall</th><th>Runners</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="7" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                  <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading datasets…</div>
+                </td></tr>
+              ) : managedDatasets.length === 0 ? (
+                <tr><td colSpan="7" style={{textAlign:'center',padding:'40px',color:'var(--nv-text-muted)'}}>
+                  <div style={{marginBottom:'8px',fontSize:'15px'}}>No datasets configured</div>
+                  <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Click "Add Dataset" to register one. Datasets from test_configs.yaml are imported automatically on startup.</div>
+                </td></tr>
+              ) : pg.pageData.map(ds => (
+                <tr key={ds.id}>
+                  <td style={{color:'#fff',fontWeight:600}}>{ds.name}</td>
+                  <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'250px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.path}>{ds.path}</td>
+                  <td><span className="badge badge-na">{ds.input_type}</span></td>
+                  <td className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.query_csv||''}>{ds.query_csv || "\u2014"}</td>
+                  <td>{ds.recall_required ? <span className="badge badge-pass">Yes</span> : <span className="badge badge-na">No</span>}</td>
+                  <td style={{fontSize:'12px'}}>
+                    {(ds.runner_ids||[]).length === 0
+                      ? <span style={{color:'var(--nv-text-dim)',fontStyle:'italic'}}>All runners</span>
+                      : <div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>
+                          {(ds.runner_ids||[]).map(rid => (
+                            <span key={rid} className="badge badge-na" style={{fontSize:'10px'}}>{runnerLabel(rid)}</span>
+                          ))}
+                        </div>}
+                  </td>
+                  <td>
+                    <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                      <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(ds)} title="Edit"><IconEdit /> Edit</button>
+                      <button className="btn btn-sm" onClick={()=>handleDelete(ds.id,ds.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="9" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
-                    <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading datasets…</div>
-                  </td></tr>
-                ) : managedDatasets.length === 0 ? (
-                  <tr><td colSpan="9" style={{textAlign:'center',padding:'40px',color:'var(--nv-text-muted)'}}>
-                    <div style={{marginBottom:'8px',fontSize:'15px'}}>No managed datasets</div>
-                    <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Click "Add Dataset" to register one.</div>
-                  </td></tr>
-                ) : pg.pageData.map(ds => (
-                  <tr key={ds.id}>
-                    <td style={{color:'#fff',fontWeight:600}}>{ds.name}</td>
-                    <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'250px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.path}>{ds.path}</td>
-                    <td><span className="badge badge-na">{ds.input_type}</span></td>
-                    <td className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.query_csv||''}>{ds.query_csv || "\u2014"}</td>
-                    <td>{ds.recall_required ? <span className="badge badge-pass">Yes</span> : <span className="badge badge-na">No</span>}</td>
-                    <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_match_mode || "\u2014"}</td>
-                    <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_adapter || "\u2014"}</td>
-                    <td style={{color:'var(--nv-text-muted)',fontSize:'12px',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.description||''}>{ds.description || "\u2014"}</td>
-                    <td>
-                      <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
-                        <button className="btn btn-secondary btn-sm" onClick={()=>handleEdit(ds)} title="Edit"><IconEdit /> Edit</button>
-                        <button className="btn btn-sm" onClick={()=>handleDelete(ds.id,ds.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
-            pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
+              ))}
+            </tbody>
+          </table>
         </div>
+        <Pagination page={pg.page} totalPages={pg.totalPages} totalItems={pg.totalItems}
+          pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
       </div>
-
-      {/* YAML Datasets (read-only) */}
-      {yamlDatasets.length > 0 && (
-        <div>
-          <div className="section-title" style={{marginBottom:'10px'}}>Config File Datasets <span style={{fontSize:'10px',color:'var(--nv-text-dim)',fontWeight:400}}>(read-only, from test_configs.yaml)</span></div>
-          <div className="card">
-            <div style={{overflowX:'auto'}}>
-              <table className="runs-table">
-                <thead>
-                  <tr>
-                    <th>Name</th><th>Path</th><th>Input Type</th><th>Query CSV</th>
-                    <th>Recall</th><th>Match Mode</th><th>Adapter</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {yamlDatasets.map(ds => (
-                    <tr key={ds.name}>
-                      <td style={{color:'#fff',fontWeight:600}}>{ds.name}</td>
-                      <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'250px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.path||''}>{ds.path || "\u2014"}</td>
-                      <td><span className="badge badge-na">{ds.input_type || "pdf"}</span></td>
-                      <td className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.query_csv||''}>{ds.query_csv || "\u2014"}</td>
-                      <td>{ds.recall_required ? <span className="badge badge-pass">Yes</span> : <span className="badge badge-na">No</span>}</td>
-                      <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_match_mode || "\u2014"}</td>
-                      <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ds.recall_adapter || "\u2014"}</td>
-                      <td>
-                        <button className="btn btn-secondary btn-sm" onClick={()=>setViewYamlDs(ds)} title="View details"><IconExternalLink /> View</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showForm && (
         <DatasetFormModal
           dataset={editDataset}
+          runners={runners || []}
           onClose={()=>setShowForm(false)}
           onSaved={()=>{setShowForm(false);onRefresh();}}
         />
-      )}
-
-      {viewYamlDs && (
-        <YamlDatasetDetailModal dataset={viewYamlDs} onClose={()=>setViewYamlDs(null)} />
       )}
     </>
   );
 }
 
-function DatasetFormModal({ dataset, onClose, onSaved }) {
+function DatasetFormModal({ dataset, runners, onClose, onSaved }) {
   const isEdit = !!dataset;
   const [form, setForm] = useState({
     name: dataset?.name || "",
@@ -778,11 +818,19 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
     recall_adapter: dataset?.recall_adapter || "none",
     description: dataset?.description || "",
     tags: (dataset?.tags || []).join(", "),
+    runner_ids: dataset?.runner_ids || [],
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   function set(field, val) { setForm(f=>({...f,[field]:val})); }
+
+  function toggleRunner(rid) {
+    setForm(f => {
+      const cur = f.runner_ids || [];
+      return {...f, runner_ids: cur.includes(rid) ? cur.filter(id=>id!==rid) : [...cur, rid]};
+    });
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -794,6 +842,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
       query_csv: form.query_csv || null,
       description: form.description || null,
       tags: form.tags ? form.tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+      runner_ids: form.runner_ids.length > 0 ? form.runner_ids : [],
     };
     try {
       const url = isEdit ? `/api/managed-datasets/${dataset.id}` : "/api/managed-datasets";
@@ -818,7 +867,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-content" style={{maxWidth:'600px'}} onClick={e=>e.stopPropagation()}>
         <div className="modal-head">
           <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit ? "Edit Dataset" : "Add Dataset"}</h2>
           <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
@@ -836,6 +885,10 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
               <label style={labelStyle}>Dataset Path *</label>
               <input className="input" style={{width:'100%'}} value={form.path} onChange={e=>set('path',e.target.value)} placeholder="/path/to/dataset" required />
             </div>
+            <div>
+              <label style={labelStyle}>Query CSV</label>
+              <input className="input" style={{width:'100%'}} value={form.query_csv} onChange={e=>set('query_csv',e.target.value)} placeholder="/path/to/query_gt.csv (optional)" />
+            </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
               <div>
                 <label style={labelStyle}>Input Type</label>
@@ -846,18 +899,14 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Query CSV</label>
-                <input className="input" style={{width:'100%'}} value={form.query_csv} onChange={e=>set('query_csv',e.target.value)} placeholder="path/to/query.csv (optional)" />
-              </div>
-            </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px'}}>
-              <div>
                 <label style={labelStyle}>Recall Required</label>
-                <label style={{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer',fontSize:'13px',color:'#fff'}}>
+                <label style={{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer',fontSize:'13px',color:'#fff',marginTop:'6px'}}>
                   <input type="checkbox" checked={form.recall_required} onChange={e=>set('recall_required',e.target.checked)} />
                   {form.recall_required ? "Yes" : "No"}
                 </label>
               </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
               <div>
                 <label style={labelStyle}>Match Mode</label>
                 <select className="select" style={{width:'100%'}} value={form.recall_match_mode} onChange={e=>set('recall_match_mode',e.target.value)}>
@@ -874,6 +923,25 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                 </select>
               </div>
             </div>
+            {runners.length > 0 && (
+              <div>
+                <label style={labelStyle}>Available On Runners</label>
+                <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginBottom:'8px'}}>
+                  Select which runners have this dataset. Leave all unchecked to allow any runner.
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:'6px',maxHeight:'140px',overflowY:'auto',
+                  padding:'10px',borderRadius:'8px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
+                  {runners.map(r => (
+                    <label key={r.id} style={{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer',fontSize:'13px',color:'#fff'}}>
+                      <input type="checkbox" checked={(form.runner_ids||[]).includes(r.id)}
+                        onChange={()=>toggleRunner(r.id)} />
+                      <span style={{fontWeight:500}}>{r.name || r.hostname}</span>
+                      <span style={{fontSize:'11px',color:'var(--nv-text-dim)'}}>({r.hostname})</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <label style={labelStyle}>Description</label>
               <input className="input" style={{width:'100%'}} value={form.description} onChange={e=>set('description',e.target.value)} placeholder="Optional description" />
@@ -890,44 +958,6 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-function YamlDatasetDetailModal({ dataset, onClose }) {
-  const labelStyle = {fontSize:'11px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'};
-  const valueStyle = {fontSize:'13px',color:'#fff',fontFamily:"'JetBrains Mono', monospace",wordBreak:'break-all'};
-  const fields = [
-    { label: "Name", value: dataset.name },
-    { label: "Path", value: dataset.path },
-    { label: "Input Type", value: dataset.input_type || "pdf" },
-    { label: "Query CSV", value: dataset.query_csv },
-    { label: "Recall Required", value: dataset.recall_required ? "Yes" : "No" },
-    { label: "Recall Match Mode", value: dataset.recall_match_mode },
-    { label: "Recall Adapter", value: dataset.recall_adapter },
-  ];
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{maxWidth:'540px'}} onClick={e=>e.stopPropagation()}>
-        <div className="modal-head">
-          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>
-            Dataset: {dataset.name}
-            <span style={{marginLeft:'10px',fontSize:'10px',fontWeight:500,color:'var(--nv-text-dim)',background:'var(--nv-bg)',padding:'3px 8px',borderRadius:'4px',border:'1px solid var(--nv-border)',verticalAlign:'middle'}}>YAML — read only</span>
-          </h2>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
-        </div>
-        <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px',maxHeight:'60vh',overflowY:'auto'}}>
-          {fields.map(f => (
-            <div key={f.label}>
-              <div style={labelStyle}>{f.label}</div>
-              <div style={valueStyle}>{f.value || "\u2014"}</div>
-            </div>
-          ))}
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-secondary" onClick={onClose} style={{flex:1,justifyContent:'center'}}>Close</button>
-        </div>
       </div>
     </div>
   );
@@ -1254,10 +1284,24 @@ function YamlPresetDetailModal({ preset, onClose }) {
 }
 
 /* ===== Run Detail Modal ===== */
-function RunDetailModal({ run, onClose, githubRepoUrl }) {
+function RunDetailModal({ run, onClose, onDelete, githubRepoUrl }) {
   if (!run) return null;
   const [showRaw, setShowRaw] = useState(false);
+  const [showCommand, setShowCommand] = useState(false);
+  const [commandText, setCommandText] = useState(null);
+  const [commandLoading, setCommandLoading] = useState(false);
   const raw = run.raw_json && typeof run.raw_json === 'object' && Object.keys(run.raw_json).length > 0 ? run.raw_json : run;
+
+  useEffect(() => {
+    if (showCommand && commandText === null && !commandLoading) {
+      setCommandLoading(true);
+      fetch(`/api/runs/${run.id}/command`)
+        .then(r => r.json())
+        .then(data => setCommandText(data.command || ""))
+        .catch(() => setCommandText(""))
+        .finally(() => setCommandLoading(false));
+    }
+  }, [showCommand, commandText, commandLoading, run.id]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1359,6 +1403,37 @@ function RunDetailModal({ run, onClose, githubRepoUrl }) {
                 </div>
               )}
               <div className="detail-item">
+                <div className="detail-label">Ray Cluster</div>
+                <div className="detail-value" style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  {run.ray_cluster_mode === "existing" ? (
+                    <>
+                      <span className="badge" style={{background:'rgba(100,180,255,0.12)',color:'#64b4ff',border:'1px solid rgba(100,180,255,0.25)'}}>Existing Cluster</span>
+                      {run.ray_dashboard_url && (
+                        <a href={run.ray_dashboard_url} target="_blank" rel="noopener noreferrer"
+                          style={{fontSize:'12px',color:'var(--nv-green)',textDecoration:'underline',cursor:'pointer'}}>
+                          Dashboard
+                        </a>
+                      )}
+                    </>
+                  ) : run.ray_cluster_mode === "local" ? (
+                    <span className="badge badge-na">Local (started by run)</span>
+                  ) : (
+                    <span style={{color:'var(--nv-text-muted)'}}>{"\u2014"}</span>
+                  )}
+                </div>
+              </div>
+              {run.ray_dashboard_url && run.ray_cluster_mode === "existing" && (
+                <div className="detail-item">
+                  <div className="detail-label">Ray Dashboard</div>
+                  <div className="detail-value">
+                    <a href={run.ray_dashboard_url} target="_blank" rel="noopener noreferrer"
+                      className="mono" style={{fontSize:'12px',color:'var(--nv-green)',textDecoration:'underline',wordBreak:'break-all'}}>
+                      {run.ray_dashboard_url}
+                    </a>
+                  </div>
+                </div>
+              )}
+              <div className="detail-item">
                 <div className="detail-label">Status</div>
                 <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                   <StatusBadge success={run.success} />
@@ -1372,6 +1447,39 @@ function RunDetailModal({ run, onClose, githubRepoUrl }) {
             </div>
           </div>
 
+          {/* Command */}
+          <div style={{marginBottom:'28px'}}>
+            <div className="section-title"
+              style={{cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center',gap:'8px'}}
+              onClick={()=>setShowCommand(!showCommand)}
+            >
+              <span style={{transform:showCommand?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s',display:'inline-block',fontSize:'10px'}}>{"\u25B6"}</span>
+              Run Command
+            </div>
+            {showCommand && (
+              commandLoading ? (
+                <div style={{padding:'12px',color:'var(--nv-text-muted)',fontSize:'13px'}}><span className="spinner" style={{marginRight:'8px'}}></span>Loading…</div>
+              ) : commandText ? (
+                <div style={{position:'relative'}}>
+                  <pre className="mono" style={{
+                    fontSize:'12px',padding:'16px',borderRadius:'8px',
+                    background:'var(--nv-bg)',border:'1px solid var(--nv-border)',
+                    color:'var(--nv-green)',maxHeight:'200px',overflow:'auto',
+                    whiteSpace:'pre-wrap',wordBreak:'break-all',lineHeight:'1.6',
+                  }}>{commandText}</pre>
+                  <button className="btn btn-ghost btn-sm"
+                    style={{position:'absolute',top:'8px',right:'8px',fontSize:'11px',color:'var(--nv-text-dim)'}}
+                    onClick={() => { navigator.clipboard.writeText(commandText); }}
+                    title="Copy command">
+                    Copy
+                  </button>
+                </div>
+              ) : (
+                <div style={{padding:'12px',color:'var(--nv-text-dim)',fontSize:'13px',fontStyle:'italic'}}>Command not available (artifact may have been removed)</div>
+              )
+            )}
+          </div>
+
           {/* Metrics */}
           <div style={{marginBottom:'28px'}}>
             <div className="section-title">Performance Metrics</div>
@@ -1381,8 +1489,16 @@ function RunDetailModal({ run, onClose, githubRepoUrl }) {
                 <div className="metric-label">Pages / sec</div>
               </div>
               <div className="metric-card">
+                <div className="metric-value">{fmt(run.recall_1,3)}</div>
+                <div className="metric-label">Recall@1</div>
+              </div>
+              <div className="metric-card">
                 <div className="metric-value">{fmt(run.recall_5,3)}</div>
                 <div className="metric-label">Recall@5</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-value">{fmt(run.recall_10,3)}</div>
+                <div className="metric-label">Recall@10</div>
               </div>
               <div className="metric-card">
                 <div className="metric-value" style={{color:'#fff'}}>{fmt(run.ingest_secs)}s</div>
@@ -1434,6 +1550,15 @@ function RunDetailModal({ run, onClose, githubRepoUrl }) {
           <a href={`/api/runs/${run.id}/download/zip`} download className="btn btn-primary">
             <IconPackage /> Download Artifacts ZIP
           </a>
+          <div style={{flex:1}}></div>
+          {onDelete && (
+            <button className="btn btn-sm" onClick={() => {
+              if (confirm(`Delete run #${run.id}? This cannot be undone.`)) { onDelete(run.id); }
+            }} title="Delete this run"
+              style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}>
+              <IconTrash /> Delete Run
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1442,14 +1567,29 @@ function RunDetailModal({ run, onClose, githubRepoUrl }) {
 
 /* ===== Runner Status Dot ===== */
 function RunnerStatusDot({ status }) {
-  const colors = { online:'#76b900', offline:'#555', busy:'#fcd34d' };
+  const colors = { online:'#76b900', offline:'#ff5050', busy:'#fcd34d' };
   const color = colors[status] || colors.offline;
+  const isOffline = status === 'offline';
   return (
     <span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}>
-      <span style={{width:'8px',height:'8px',borderRadius:'50%',background:color,display:'inline-block',boxShadow:status==='online'?'0 0 6px rgba(118,185,0,0.5)':'none'}}></span>
-      <span style={{fontSize:'12px',color,textTransform:'capitalize',fontWeight:500}}>{status||'unknown'}</span>
+      <span style={{width:'8px',height:'8px',borderRadius:'50%',background:color,display:'inline-block',
+        boxShadow:status==='online'?'0 0 6px rgba(118,185,0,0.5)':isOffline?'0 0 6px rgba(255,80,80,0.4)':'none',
+        animation:isOffline?'pulse-offline 2s ease-in-out infinite':'none'}}></span>
+      <span style={{fontSize:'12px',color,textTransform:'capitalize',fontWeight:isOffline?600:500}}>{status||'unknown'}</span>
     </span>
   );
+}
+
+function timeSince(dateStr) {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(dateStr);
+    const secs = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+    return `${Math.floor(secs / 86400)}d ago`;
+  } catch { return null; }
 }
 
 /* ===== Runners View ===== */
@@ -1496,16 +1636,22 @@ function RunnersView({ runners, loading, onRefresh }) {
                     Register a runner manually or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness runner start --manager-url &lt;portal-url&gt;</code>
                   </div>
                 </td></tr>
-              ) : pg.pageData.map(r => (
-                <tr key={r.id} style={{cursor:'default'}}>
+              ) : pg.pageData.map(r => {
+                const isOffline = r.status === 'offline';
+                const ago = timeSince(r.last_heartbeat);
+                return (
+                <tr key={r.id} style={{cursor:'default',background:isOffline?'rgba(255,80,80,0.04)':'transparent'}}>
                   <td><RunnerStatusDot status={r.status} /></td>
-                  <td style={{color:'#fff',fontWeight:500}}>{r.name}</td>
+                  <td style={{color:isOffline?'#ff8888':'#fff',fontWeight:500}}>{r.name}</td>
                   <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{r.hostname || "\u2014"}</td>
                   <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{r.gpu_type || "\u2014"}</td>
                   <td style={{textAlign:'right'}}>{r.gpu_count ?? "\u2014"}</td>
                   <td style={{textAlign:'right'}}>{r.cpu_count ?? "\u2014"}</td>
                   <td style={{textAlign:'right'}}>{r.memory_gb != null ? r.memory_gb.toFixed(1) : "\u2014"}</td>
-                  <td style={{color:'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{fmtTs(r.last_heartbeat)}</td>
+                  <td style={{color:isOffline?'#ff5050':'var(--nv-text-muted)',fontSize:'12px',whiteSpace:'nowrap'}}>
+                    {fmtTs(r.last_heartbeat)}
+                    {ago && <span style={{marginLeft:'6px',fontSize:'11px',color:isOffline?'#ff8888':'var(--nv-text-dim)'}}>({ago})</span>}
+                  </td>
                   <td>{(r.tags||[]).map((t,i)=><span key={i} className="tag" style={{marginRight:'4px'}}>{t}</span>)}</td>
                   <td>
                     <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
@@ -1514,7 +1660,8 @@ function RunnersView({ runners, loading, onRefresh }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -2061,7 +2208,7 @@ function ScheduleFormModal({ schedule, runners, onClose, onSaved }) {
 }
 
 /* ===== Alerts View ===== */
-const METRIC_LABELS = { pages_per_sec:"Pages / sec", recall_5:"Recall@5", ingest_secs:"Ingest Time (s)", pages:"Pages", files:"Files", system:"System" };
+const METRIC_LABELS = { pages_per_sec:"Pages / sec", recall_1:"Recall@1", recall_5:"Recall@5", recall_10:"Recall@10", ingest_secs:"Ingest Time (s)", pages:"Pages", files:"Files", system:"System", runner_status:"Runner Status" };
 const OPERATOR_LABELS = { "<":"less than", "<=":"at most", ">":"greater than", ">=":"at least", "==":"equal to", "!=":"not equal to" };
 
 function AlertsView({ alertRules, alertEvents, alertRulesLoading, alertEventsLoading, onRefresh, onSelectRun, githubRepoUrl }) {
@@ -2196,12 +2343,12 @@ function AlertsView({ alertRules, alertEvents, alertRulesLoading, alertEventsLoa
                             : <span style={{display:'inline-block',width:'8px',height:'8px',borderRadius:'50%',background:'#333'}}></span>}
                         </td>
                         <td>
-                          <div style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{rule?.name || `Rule #${ev.rule_id}`}</div>
+                          <div style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{rule?.name || (ev.rule_id === 0 ? "System Alert" : `Rule #${ev.rule_id}`)}</div>
                           <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px',maxWidth:'220px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ev.message}>{ev.message}</div>
                         </td>
                         <td><span className="badge badge-na">{METRIC_LABELS[ev.metric]||ev.metric}</span></td>
-                        <td className="mono" style={{color:'#ff5050',fontWeight:600,fontSize:'13px'}}>{ev.metric === "system" ? "\u2014" : (ev.metric_value != null ? ev.metric_value.toFixed(4) : "\u2014")}</td>
-                        <td className="mono" style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{ev.metric === "system" ? "\u2014" : `${ev.operator} ${ev.threshold}`}</td>
+                        <td className="mono" style={{color:'#ff5050',fontWeight:600,fontSize:'13px'}}>{(ev.metric === "system" || ev.operator === "system") ? "\u2014" : (ev.metric_value != null ? ev.metric_value.toFixed(4) : "\u2014")}</td>
+                        <td className="mono" style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{(ev.metric === "system" || ev.operator === "system") ? "\u2014" : `${ev.operator} ${ev.threshold}`}</td>
                         <td style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{ev.dataset || "\u2014"}</td>
                         <td>
                           <CommitLink sha={ev.git_commit} repoUrl={githubRepoUrl} />
@@ -2461,7 +2608,9 @@ function AlertRuleFormModal({ rule, onClose, onSaved }) {
 /* ===== Analytics View ===== */
 const ANALYTICS_METRICS = [
   { key: "pages_per_sec", label: "Pages / sec" },
+  { key: "recall_1", label: "Recall@1" },
   { key: "recall_5", label: "Recall@5" },
+  { key: "recall_10", label: "Recall@10" },
   { key: "ingest_secs", label: "Ingest Time (s)" },
   { key: "pages", label: "Pages" },
   { key: "files", label: "Files" },
@@ -2813,6 +2962,540 @@ function AnalyticsView({ runs, datasets, loading, onRefresh }) {
   );
 }
 
+/* ===== Reporting View ===== */
+
+const REPORT_CHARTS = [
+  { id: "trend_pps", label: "Pages/sec Over Time", metric: "pages_per_sec", type: "line" },
+  { id: "trend_recall5", label: "Recall@5 Over Time", metric: "recall_5", type: "line" },
+  { id: "trend_recall1", label: "Recall@1 Over Time", metric: "recall_1", type: "line" },
+  { id: "trend_recall10", label: "Recall@10 Over Time", metric: "recall_10", type: "line" },
+  { id: "trend_ingest", label: "Ingest Time Over Time", metric: "ingest_secs", type: "line" },
+  { id: "bar_pps", label: "Avg Pages/sec by Dataset", metric: "pages_per_sec", type: "bar" },
+  { id: "bar_recall5", label: "Avg Recall@5 by Dataset", metric: "recall_5", type: "bar" },
+];
+
+function DataExportSection({ filteredRuns, filterDataset, filterPreset, filterStatus, dateFrom, dateTo }) {
+  const [includeRaw, setIncludeRaw] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState("json");
+
+  const buildExportFilename = (ext) => `harness_runs_export_${new Date().toISOString().slice(0,10)}.${ext}`;
+
+  const exportJson = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterDataset) params.set('dataset', filterDataset);
+      if (filterPreset) params.set('preset', filterPreset);
+      if (filterStatus && filterStatus !== 'all') params.set('status', filterStatus);
+      if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
+      params.set('include_raw', includeRaw ? 'true' : 'false');
+
+      const resp = await fetch(`/api/reports/export?${params}`);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = buildExportFilename('json');
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) { console.error('Export failed', e); }
+    setExporting(false);
+  };
+
+  const exportCsv = () => {
+    if (filteredRuns.length === 0) return;
+    const fields = ['id','timestamp','dataset','preset','success','hostname','gpu_type',
+      'pages_per_sec','recall_1','recall_5','recall_10','ingest_secs','pages','files',
+      'trigger_source','git_commit','ray_cluster_mode','ray_dashboard_url'];
+    const header = fields.join(',');
+    const rows = filteredRuns.map(r =>
+      fields.map(f => {
+        const v = r[f];
+        if (v == null) return '';
+        const s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(',')
+    );
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = buildExportFilename('csv');
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const labelStyle = {display:'block',fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.05em'};
+
+  return (
+    <div className="card" style={{padding:'20px',marginBottom:'20px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+        <h3 style={{margin:0,fontSize:'16px',fontWeight:600}}>Data Export</h3>
+        <span style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>{filteredRuns.length} run{filteredRuns.length!==1?'s':''} matching filters</span>
+      </div>
+
+      <div style={{display:'flex',gap:'16px',alignItems:'flex-end',flexWrap:'wrap',marginBottom:'16px'}}>
+        <div>
+          <div style={labelStyle}>Format</div>
+          <div style={{display:'flex',gap:'2px',background:'var(--nv-bg)',borderRadius:'8px',padding:'2px',border:'1px solid var(--nv-border)'}}>
+            {[{k:'json',l:'JSON'},{k:'csv',l:'CSV'}].map(t=>(
+              <button key={t.k} className="btn btn-sm" onClick={()=>setExportFormat(t.k)}
+                style={{borderRadius:'6px',padding:'5px 16px',fontSize:'12px',
+                  background:exportFormat===t.k?'var(--nv-green)':'transparent',
+                  color:exportFormat===t.k?'#000':'var(--nv-text-muted)',
+                  fontWeight:exportFormat===t.k?600:400,border:'none'}}>
+                {t.l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {exportFormat === 'json' && (
+          <label style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'13px',color:'var(--nv-text-muted)',cursor:'pointer'}}>
+            <input type="checkbox" checked={includeRaw} onChange={e=>setIncludeRaw(e.target.checked)}
+              style={{accentColor:'var(--nv-green)'}} />
+            Include full raw result JSON
+          </label>
+        )}
+      </div>
+
+      <div style={{fontSize:'12px',color:'var(--nv-text-dim)',marginBottom:'16px',lineHeight:'1.5'}}>
+        {exportFormat === 'json' ? (
+          <>
+            Exports a structured JSON file containing all matching runs with metadata, metrics, and
+            {includeRaw ? ' full raw result payloads' : ' summary data only'}.
+            Ideal for programmatic analysis with Python, notebooks, or other tools.
+          </>
+        ) : (
+          <>
+            Exports a flat CSV file with key metrics for each matching run.
+            Ideal for spreadsheet analysis, quick reviews, or importing into BI tools.
+          </>
+        )}
+      </div>
+
+      <button className="btn btn-primary" onClick={exportFormat === 'json' ? exportJson : exportCsv}
+        disabled={exporting || filteredRuns.length === 0}>
+        {exporting ? <><div className="spinner" style={{width:14,height:14}}></div> Exporting…</> : <><IconDownload /> Export {exportFormat.toUpperCase()}</>}
+      </button>
+    </div>
+  );
+}
+
+function ReportingView({ runs, datasets, loading }) {
+  const [filterDataset, setFilterDataset] = useState("");
+  const [filterPreset, setFilterPreset] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [selectedCharts, setSelectedCharts] = useState(REPORT_CHARTS.map(c => c.id));
+  const [reportTitle, setReportTitle] = useState("Harness Performance Report");
+  const [generating, setGenerating] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewImages, setPreviewImages] = useState([]);
+  const chartRefs = useRef({});
+  const canvasRefs = useRef({});
+
+  const allDatasets = useMemo(() => [...new Set(runs.map(r => r.dataset).filter(Boolean))].sort(), [runs]);
+  const allPresets = useMemo(() => [...new Set(runs.map(r => r.preset).filter(Boolean))].sort(), [runs]);
+
+  const filteredRuns = useMemo(() => {
+    return runs.filter(r => {
+      if (filterDataset && r.dataset !== filterDataset) return false;
+      if (filterPreset && r.preset !== filterPreset) return false;
+      if (filterStatus === "pass" && r.success !== 1) return false;
+      if (filterStatus === "fail" && r.success !== 0) return false;
+      if (dateFrom || dateTo) {
+        const d = parseRunTimestamp(r.timestamp);
+        if (!d) return false;
+        if (dateFrom && d < new Date(dateFrom + "T00:00:00Z")) return false;
+        if (dateTo && d > new Date(dateTo + "T23:59:59Z")) return false;
+      }
+      return true;
+    });
+  }, [runs, filterDataset, filterPreset, filterStatus, dateFrom, dateTo]);
+
+  const activeCharts = useMemo(() => REPORT_CHARTS.filter(c => selectedCharts.includes(c.id)), [selectedCharts]);
+
+  const toggleChart = (id) => {
+    setSelectedCharts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const summaryStats = useMemo(() => {
+    const out = {};
+    for (const m of ANALYTICS_METRICS) {
+      const vals = filteredRuns.map(r => r[m.key]).filter(v => v != null);
+      if (vals.length === 0) { out[m.key] = null; continue; }
+      const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+      const sorted = [...vals].sort((a,b)=>a-b);
+      out[m.key] = { avg, min: sorted[0], max: sorted[sorted.length-1], count: vals.length };
+    }
+    return out;
+  }, [filteredRuns]);
+
+  const buildChart = useCallback((canvasEl, chartDef) => {
+    if (!canvasEl) return null;
+    const metricLabel = (ANALYTICS_METRICS.find(m => m.key === chartDef.metric) || {}).label || chartDef.metric;
+
+    if (chartDef.type === "line") {
+      const groups = {};
+      filteredRuns.forEach(r => {
+        const group = r.dataset || "unknown";
+        if (!groups[group]) groups[group] = [];
+        const yVal = r[chartDef.metric];
+        if (yVal == null) return;
+        const date = parseRunTimestamp(r.timestamp);
+        if (date) groups[group].push({ x: date, y: yVal });
+      });
+      const chartDatasets = Object.entries(groups).map(([name, points], i) => ({
+        label: name,
+        data: points.sort((a, b) => a.x.getTime() - b.x.getTime()),
+        borderColor: CHART_COLORS[i % CHART_COLORS.length],
+        backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + '40',
+        pointBackgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+        tension: 0.3, pointRadius: 4, fill: false, borderWidth: 2,
+      }));
+      return new Chart(canvasEl, {
+        type: 'line',
+        data: { datasets: chartDatasets },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+          plugins: {
+            legend: { position: 'top', labels: { color: '#333', font: { family: 'Inter', size: 11 }, usePointStyle: true, padding: 12 } },
+            title: { display: true, text: chartDef.label, color: '#222', font: { family: 'Inter', size: 14, weight: '600' }, padding: { bottom: 10 } },
+          },
+          scales: {
+            x: { type: 'time', time: { tooltipFormat: 'MMM d, yyyy HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d' } },
+              ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#eee' }, title: { display: true, text: 'Date', color: '#666' } },
+            y: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#eee' }, title: { display: true, text: metricLabel, color: '#666' } },
+          },
+        },
+      });
+    } else if (chartDef.type === "bar") {
+      const groups = {};
+      filteredRuns.forEach(r => {
+        const group = r.dataset || "unknown";
+        if (!groups[group]) groups[group] = [];
+        const val = r[chartDef.metric];
+        if (val != null) groups[group].push(val);
+      });
+      const labels = Object.keys(groups).sort();
+      const avgData = labels.map(l => { const v = groups[l]; return v.reduce((a,b)=>a+b,0)/v.length; });
+      return new Chart(canvasEl, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: `Avg ${metricLabel}`, data: avgData, backgroundColor: labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length] + 'cc'),
+              borderColor: labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length]), borderWidth: 1, borderRadius: 4 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: chartDef.label, color: '#222', font: { family: 'Inter', size: 14, weight: '600' }, padding: { bottom: 10 } },
+          },
+          scales: {
+            x: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#eee' } },
+            y: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#eee' }, title: { display: true, text: metricLabel, color: '#666' } },
+          },
+        },
+      });
+    }
+    return null;
+  }, [filteredRuns]);
+
+  const generatePreview = useCallback(async () => {
+    setPreviewing(true);
+    setPreviewImages([]);
+    Object.values(chartRefs.current).forEach(c => { if (c) c.destroy(); });
+    chartRefs.current = {};
+    await new Promise(r => setTimeout(r, 100));
+
+    const images = [];
+    for (const chartDef of activeCharts) {
+      const canvas = canvasRefs.current[chartDef.id];
+      if (!canvas) continue;
+      const chart = buildChart(canvas, chartDef);
+      if (chart) {
+        chartRefs.current[chartDef.id] = chart;
+        await new Promise(r => setTimeout(r, 500));
+        images.push({ id: chartDef.id, label: chartDef.label, dataUrl: chart.toBase64Image('image/png', 1) });
+      }
+    }
+    setPreviewImages(images);
+    setPreviewing(false);
+  }, [activeCharts, buildChart]);
+
+  useEffect(() => {
+    return () => { Object.values(chartRefs.current).forEach(c => { if (c) c.destroy(); }); };
+  }, []);
+
+  const downloadSinglePng = (img) => {
+    const a = document.createElement('a');
+    a.href = img.dataUrl;
+    a.download = `${img.id}.png`;
+    a.click();
+  };
+
+  const downloadAllPngs = async () => {
+    if (previewImages.length === 0) return;
+    setGenerating(true);
+    try {
+      const resp = await fetch('/api/reports/bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: previewImages.map(img => ({ filename: `${img.id}.png`, data_url: img.dataUrl })) }),
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `harness_report_${new Date().toISOString().slice(0,10)}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) { console.error('Download failed', e); }
+    setGenerating(false);
+  };
+
+  const downloadSummaryPng = async () => {
+    const w = 1200, h = 800;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = w;
+    offscreen.height = h;
+    const ctx = offscreen.getContext('2d');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#76b900';
+    ctx.fillRect(0, 0, w, 60);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px Inter, sans-serif';
+    ctx.fillText(reportTitle, 24, 40);
+
+    const now = new Date().toLocaleString();
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = '#ffffffcc';
+    ctx.fillText(`Generated: ${now}`, w - 260, 40);
+
+    let y = 80;
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 16px Inter, sans-serif';
+    ctx.fillText('Filters', 24, y);
+    y += 24;
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = '#555';
+    const filters = [];
+    if (filterDataset) filters.push(`Dataset: ${filterDataset}`);
+    if (filterPreset) filters.push(`Preset: ${filterPreset}`);
+    if (filterStatus !== 'all') filters.push(`Status: ${filterStatus}`);
+    if (dateFrom) filters.push(`From: ${dateFrom}`);
+    if (dateTo) filters.push(`To: ${dateTo}`);
+    ctx.fillText(filters.length > 0 ? filters.join('  |  ') : 'None (all runs)', 24, y);
+    y += 30;
+
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 16px Inter, sans-serif';
+    ctx.fillText(`Summary (${filteredRuns.length} runs)`, 24, y);
+    y += 8;
+
+    const metricCols = ANALYTICS_METRICS.filter(m => summaryStats[m.key]);
+    const colW = Math.min(160, (w - 48) / metricCols.length);
+    metricCols.forEach((m, i) => {
+      const s = summaryStats[m.key];
+      const x = 24 + i * colW;
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillRect(x, y, colW - 8, 64);
+      ctx.fillStyle = '#76b900';
+      ctx.font = 'bold 14px Inter, sans-serif';
+      ctx.fillText(s.avg.toFixed(2), x + 8, y + 24);
+      ctx.fillStyle = '#888';
+      ctx.font = '10px Inter, sans-serif';
+      ctx.fillText(`min ${s.min.toFixed(2)} / max ${s.max.toFixed(2)}`, x + 8, y + 42);
+      ctx.fillStyle = '#333';
+      ctx.font = '11px Inter, sans-serif';
+      ctx.fillText(m.label, x + 8, y + 58);
+    });
+    y += 80;
+
+    if (previewImages.length > 0) {
+      const chartW = (w - 48 - 16) / 2;
+      const chartH = Math.min(250, (h - y - 40) / Math.ceil(previewImages.length / 2));
+      for (let i = 0; i < previewImages.length; i++) {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const px = 24 + col * (chartW + 16);
+        const py = y + row * (chartH + 12);
+        if (py + chartH > h - 10) break;
+        const img = new Image();
+        img.src = previewImages[i].dataUrl;
+        await new Promise(r => { img.onload = r; img.onerror = r; });
+        ctx.drawImage(img, px, py, chartW, chartH);
+      }
+    }
+
+    const dataUrl = offscreen.toDataURL('image/png', 1);
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `harness_summary_${new Date().toISOString().slice(0,10)}.png`;
+    a.click();
+  };
+
+  const labelStyle = {display:'block',fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.05em'};
+
+  return (
+    <>
+      {/* Report Configuration */}
+      <div className="card" style={{padding:'20px',marginBottom:'20px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+          <h3 style={{margin:0,fontSize:'16px',fontWeight:600}}>Report Configuration</h3>
+        </div>
+
+        <div style={{marginBottom:'16px'}}>
+          <div style={labelStyle}>Report Title</div>
+          <input className="input" value={reportTitle} onChange={e=>setReportTitle(e.target.value)}
+            style={{maxWidth:'400px'}} placeholder="Enter report title" />
+        </div>
+
+        <div style={{display:'flex',gap:'16px',alignItems:'flex-end',flexWrap:'wrap',marginBottom:'16px'}}>
+          <div>
+            <div style={labelStyle}>Dataset</div>
+            <select className="select" value={filterDataset} onChange={e=>setFilterDataset(e.target.value)} style={{minWidth:'140px'}}>
+              <option value="">All Datasets</option>
+              {allDatasets.map(d=><option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>Preset</div>
+            <select className="select" value={filterPreset} onChange={e=>setFilterPreset(e.target.value)} style={{minWidth:'130px'}}>
+              <option value="">All Presets</option>
+              {allPresets.map(p=><option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>Status</div>
+            <select className="select" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{minWidth:'100px'}}>
+              <option value="all">All</option>
+              <option value="pass">Pass only</option>
+              <option value="fail">Fail only</option>
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>From</div>
+            <input type="date" className="input" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{minWidth:'140px',colorScheme:'dark'}} />
+          </div>
+          <div>
+            <div style={labelStyle}>To</div>
+            <input type="date" className="input" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{minWidth:'140px',colorScheme:'dark'}} />
+          </div>
+        </div>
+
+        <div style={{marginBottom:'16px'}}>
+          <div style={labelStyle}>Charts to Include</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+            {REPORT_CHARTS.map(c => (
+              <label key={c.id} style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'13px',color:'var(--nv-text-muted)',
+                cursor:'pointer',padding:'6px 12px',borderRadius:'6px',border:'1px solid var(--nv-border)',
+                background:selectedCharts.includes(c.id)?'rgba(118,185,0,0.1)':'transparent'}}>
+                <input type="checkbox" checked={selectedCharts.includes(c.id)} onChange={()=>toggleChart(c.id)}
+                  style={{accentColor:'var(--nv-green)'}} />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{display:'flex',gap:'8px',borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
+          <button className="btn btn-primary" onClick={generatePreview} disabled={previewing || activeCharts.length === 0 || filteredRuns.length === 0}>
+            {previewing ? <><div className="spinner" style={{width:14,height:14}}></div> Generating…</> : <><IconChart /> Generate Preview</>}
+          </button>
+          <button className="btn btn-ghost" onClick={downloadSummaryPng} disabled={previewImages.length === 0}>
+            <IconDownload /> Summary PNG
+          </button>
+          <button className="btn btn-ghost" onClick={downloadAllPngs} disabled={previewImages.length === 0 || generating}>
+            {generating ? <><div className="spinner" style={{width:14,height:14}}></div> Packaging…</> : <><IconDownload /> Download All (ZIP)</>}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="card" style={{padding:'16px 20px',marginBottom:'20px'}}>
+        <h3 style={{margin:'0 0 12px 0',fontSize:'14px',fontWeight:600,color:'var(--nv-text-muted)'}}>
+          Report Summary — {filteredRuns.length} runs
+        </h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(150px, 1fr))',gap:'10px'}}>
+          {ANALYTICS_METRICS.map(m => {
+            const s = summaryStats[m.key];
+            if (!s) return (
+              <div key={m.key} className="metric-card" style={{opacity:0.5}}>
+                <div className="metric-value" style={{fontSize:'16px'}}>—</div>
+                <div className="metric-label">{m.label}</div>
+              </div>
+            );
+            return (
+              <div key={m.key} className="metric-card">
+                <div className="metric-value" style={{fontSize:'18px'}}>{s.avg.toFixed(2)}</div>
+                <div className="metric-label">{m.label} (avg)</div>
+                <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'4px'}}>
+                  min {s.min.toFixed(2)} · max {s.max.toFixed(2)} · {s.count} pts
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Data Export */}
+      <DataExportSection filteredRuns={filteredRuns} filterDataset={filterDataset} filterPreset={filterPreset}
+        filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} />
+
+      {/* Offscreen render area for chart generation */}
+      <div style={{position:'absolute',left:'-9999px',top:0,width:'800px'}}>
+        {activeCharts.map(c => (
+          <div key={c.id} style={{width:'800px',height:'400px',background:'#fff'}}>
+            <canvas ref={el => { canvasRefs.current[c.id] = el; }} width={800} height={400}></canvas>
+          </div>
+        ))}
+      </div>
+
+      {/* Preview */}
+      {previewImages.length > 0 && (
+        <div style={{marginBottom:'20px'}}>
+          <h3 style={{fontSize:'16px',fontWeight:600,marginBottom:'12px'}}>Preview</h3>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(380px, 1fr))',gap:'16px'}}>
+            {previewImages.map(img => (
+              <div key={img.id} className="card" style={{padding:'12px',overflow:'hidden'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+                  <span style={{fontSize:'13px',fontWeight:600,color:'var(--nv-text-muted)'}}>{img.label}</span>
+                  <button className="btn btn-ghost btn-sm" onClick={()=>downloadSinglePng(img)} title="Download PNG">
+                    <IconDownload />
+                  </button>
+                </div>
+                <img src={img.dataUrl} alt={img.label} style={{width:'100%',borderRadius:'6px',background:'#fff'}} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {filteredRuns.length === 0 && !loading && (
+        <div className="card" style={{padding:'40px',textAlign:'center'}}>
+          <div style={{color:'var(--nv-text-muted)',fontSize:'15px'}}>No runs match the current filters</div>
+          <div style={{color:'var(--nv-text-dim)',fontSize:'12px',marginTop:'8px'}}>Adjust filters or trigger some runs first.</div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ===== Log Viewer Modal ===== */
 function LogViewerModal({ jobId, onClose }) {
   const [logData, setLogData] = useState({ log_tail: [], status: null });
@@ -2858,7 +3541,7 @@ function LogViewerModal({ jobId, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{width:'900px',maxWidth:'95vw'}} onClick={e => e.stopPropagation()}>
+      <div className="modal-content" style={{maxWidth:'900px'}} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
             <h2 style={{margin:0,fontSize:'16px',color:'#fff'}}>Job Logs</h2>
@@ -2866,7 +3549,7 @@ function LogViewerModal({ jobId, onClose }) {
             {logData.status && <JobStatusBadge status={logData.status} />}
             {isActive && <span className="spinner"></span>}
           </div>
-          <button className="btn-ghost" onClick={onClose}><IconX /></button>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
         </div>
         <div className="modal-body" style={{padding:'16px'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
@@ -2992,6 +3675,889 @@ function TriggerModal({ onClose, onTriggered }) {
   );
 }
 
+/* ===== Ingestion Playground View ===== */
+function IngestionView({ jobs, onViewLogs }) {
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [presets, setPresets] = useState([]);
+  const [runners, setRunners] = useState([]);
+  const [preset, setPreset] = useState("");
+  const [runnerId, setRunnerId] = useState("");
+  const [inputType, setInputType] = useState("pdf");
+  const [triggering, setTriggering] = useState(false);
+  const [triggered, setTriggered] = useState(null);
+  const [error, setError] = useState("");
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/config").then(r => r.json()).then(cfg => {
+      setPresets(cfg.presets || []);
+      if (cfg.presets?.length) setPreset(cfg.presets[0]);
+    }).catch(() => {});
+    fetch("/api/runners").then(r => r.json()).then(setRunners).catch(() => {});
+    fetchSessions();
+  }, []);
+
+  async function fetchSessions() {
+    setSessionsLoading(true);
+    try {
+      const res = await fetch("/api/playground/sessions");
+      setSessions(await res.json());
+    } catch {} finally { setSessionsLoading(false); }
+  }
+
+  function handleFileChange(e) {
+    setFiles(Array.from(e.target.files || []));
+    setUploadResult(null);
+    setTriggered(null);
+    setError("");
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropped = Array.from(e.dataTransfer.files || []);
+    if (dropped.length) {
+      setFiles(dropped);
+      setUploadResult(null);
+      setTriggered(null);
+      setError("");
+    }
+  }
+
+  async function handleUpload() {
+    if (files.length === 0) return;
+    setUploading(true);
+    setError("");
+    setTriggered(null);
+    try {
+      const fd = new FormData();
+      files.forEach(f => fd.append("files", f));
+      const res = await fetch("/api/playground/upload", { method: "POST", body: fd });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      const result = await res.json();
+      setUploadResult(result);
+      fetchSessions();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleTrigger() {
+    if (!uploadResult) return;
+    setTriggering(true);
+    setError("");
+    try {
+      const payload = {
+        session_id: uploadResult.session_id,
+        preset: preset || null,
+        runner_id: runnerId ? parseInt(runnerId, 10) : null,
+        input_type: inputType,
+      };
+      const res = await fetch("/api/playground/ingest", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      setTriggered(await res.json());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTriggering(false);
+    }
+  }
+
+  async function handleDeleteSession(sessionId) {
+    if (!confirm("Delete this upload session and its files?")) return;
+    try {
+      await fetch(`/api/playground/sessions/${sessionId}`, { method: "DELETE" });
+      fetchSessions();
+      if (uploadResult && uploadResult.session_id === sessionId) {
+        setUploadResult(null);
+        setTriggered(null);
+      }
+    } catch {}
+  }
+
+  function formatBytes(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+    return (b / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  const onlineRunners = runners.filter(r => r.status === "online");
+  const playgroundJobs = (jobs || []).filter(j => j.trigger_source === "playground" && (j.status === "running" || j.status === "pending" || j.status === "cancelling"));
+  const labelStyle = {display:'block',fontSize:'11px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'6px'};
+
+  return (
+    <>
+      {/* Active playground jobs */}
+      {playgroundJobs.length > 0 && (
+        <div style={{marginBottom:'20px'}}>
+          <div className="section-title" style={{marginBottom:'8px'}}>Active Ingestion Jobs</div>
+          <div className="card" style={{padding:'0'}}>
+            {playgroundJobs.map(j => (
+              <div key={j.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 16px',borderBottom:'1px solid var(--nv-border)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <JobStatusBadge status={j.status} />
+                  {(j.status==="running" || j.status==="cancelling") && <span className="spinner"></span>}
+                  <span style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{j.dataset}</span>
+                  {j.preset && <span style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{j.preset}</span>}
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  {(j.status==="running" || j.status==="cancelling") && onViewLogs && (
+                    <button className="btn btn-secondary" style={{fontSize:'11px',padding:'3px 8px'}}
+                      onClick={() => onViewLogs(j.id)} title="View Logs">
+                      <IconTerminal /> Logs
+                    </button>
+                  )}
+                  <span className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)'}}>{j.id}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'20px',marginBottom:'20px'}}>
+        {/* Upload Card */}
+        <div className="card" style={{padding:'24px'}}>
+          <div className="section-title" style={{marginBottom:'14px'}}>Upload Documents</div>
+          <div
+            onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={handleDrop}
+            style={{
+              border:'2px dashed var(--nv-border)',borderRadius:'12px',padding:'32px 20px',
+              textAlign:'center',cursor:'pointer',transition:'border-color 0.2s',
+              background:'rgba(255,255,255,0.02)',marginBottom:'16px',
+            }}
+            onClick={() => document.getElementById('pg-file-input')?.click()}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--nv-green)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--nv-border)'}
+          >
+            <input type="file" id="pg-file-input" multiple style={{display:'none'}} onChange={handleFileChange}
+              accept=".pdf,.txt,.html,.doc,.docx,.pptx,.png,.jpg,.jpeg,.bmp,.tiff,.svg" />
+            <div style={{fontSize:'36px',marginBottom:'10px',opacity:0.3}}><IconUpload /></div>
+            <div style={{fontSize:'14px',color:'var(--nv-text-muted)',fontWeight:500}}>
+              {files.length > 0
+                ? `${files.length} file${files.length !== 1 ? 's' : ''} selected (${formatBytes(files.reduce((s,f) => s+f.size, 0))})`
+                : "Drop files here or click to browse"}
+            </div>
+            <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'6px'}}>
+              PDF, TXT, HTML, DOC, DOCX, PPTX, Images
+            </div>
+          </div>
+
+          {files.length > 0 && (
+            <div style={{marginBottom:'16px',maxHeight:'120px',overflowY:'auto',fontSize:'12px'}}>
+              {files.map((f, i) => (
+                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--nv-border)',color:'var(--nv-text-muted)'}}>
+                  <span className="mono" style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'250px'}}>{f.name}</span>
+                  <span style={{color:'var(--nv-text-dim)',whiteSpace:'nowrap',marginLeft:'12px'}}>{formatBytes(f.size)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button className="btn btn-primary" onClick={handleUpload}
+            disabled={uploading || files.length === 0}
+            style={{width:'100%',justifyContent:'center'}}>
+            {uploading ? <><span className="spinner" style={{marginRight:'8px'}}></span>Uploading…</> : <><IconUpload /> Upload Files</>}
+          </button>
+
+          {uploadResult && (
+            <div style={{marginTop:'14px',padding:'12px',borderRadius:'8px',background:'rgba(118,185,0,0.08)',border:'1px solid rgba(118,185,0,0.2)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px'}}>
+                <IconCheck />
+                <span style={{fontSize:'13px',fontWeight:600,color:'var(--nv-green)'}}>
+                  {uploadResult.file_count} file{uploadResult.file_count !== 1 ? 's' : ''} uploaded
+                </span>
+              </div>
+              <div className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',wordBreak:'break-all'}}>
+                Session: {uploadResult.session_id}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Run Configuration Card */}
+        <div className="card" style={{padding:'24px'}}>
+          <div className="section-title" style={{marginBottom:'14px'}}>Run Configuration</div>
+          <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+            <div>
+              <label style={labelStyle}>Input Type</label>
+              <select className="select" style={{width:'100%'}} value={inputType} onChange={e => setInputType(e.target.value)}>
+                <option value="pdf">PDF</option>
+                <option value="image">Image</option>
+                <option value="text">Text</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Preset</label>
+              <select className="select" style={{width:'100%'}} value={preset} onChange={e => setPreset(e.target.value)}>
+                <option value="">Default</option>
+                {presets.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Runner</label>
+              <select className="select" style={{width:'100%'}} value={runnerId} onChange={e => setRunnerId(e.target.value)}>
+                <option value="">Any available runner</option>
+                {onlineRunners.map(r => <option key={r.id} value={r.id}>{r.name || r.hostname} — {r.gpu_type || 'no GPU'} x{r.gpu_count || 0}</option>)}
+              </select>
+              <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px'}}>
+                {onlineRunners.length === 0
+                  ? "No runners online — job will queue until one is available."
+                  : `${onlineRunners.length} runner${onlineRunners.length !== 1 ? 's' : ''} online`}
+              </div>
+            </div>
+
+            <button className="btn btn-primary" onClick={handleTrigger}
+              disabled={triggering || !uploadResult}
+              style={{width:'100%',justifyContent:'center',marginTop:'8px'}}>
+              {triggering ? <><span className="spinner" style={{marginRight:'8px'}}></span>Starting…</> : <><IconPlay /> Start Ingestion</>}
+            </button>
+
+            {!uploadResult && (
+              <div style={{fontSize:'12px',color:'var(--nv-text-dim)',textAlign:'center',fontStyle:'italic'}}>
+                Upload documents first to enable ingestion.
+              </div>
+            )}
+
+            {triggered && (
+              <div style={{padding:'12px',borderRadius:'8px',background:'rgba(118,185,0,0.08)',border:'1px solid rgba(118,185,0,0.2)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px'}}>
+                  <IconCheck />
+                  <span style={{fontSize:'13px',fontWeight:600,color:'var(--nv-green)'}}>Ingestion job queued</span>
+                </div>
+                <div style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>
+                  Job <span className="mono" style={{color:'#fff'}}>{triggered.job_id}</span> — {triggered.file_count} file{triggered.file_count !== 1 ? 's' : ''}
+                </div>
+                <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px'}}>
+                  The job will be picked up by a runner on its next heartbeat. Check the Runs view for results.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{marginBottom:'16px',padding:'12px 16px',borderRadius:'8px',background:'rgba(255,50,50,0.08)',border:'1px solid rgba(255,50,50,0.2)',color:'#ff5050',fontSize:'13px'}}>
+          {error}
+        </div>
+      )}
+
+      {/* Upload History */}
+      <div className="card">
+        <div style={{padding:'16px 20px',borderBottom:'1px solid var(--nv-border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div className="section-title" style={{margin:0}}>Upload Sessions</div>
+          <button className="btn btn-secondary btn-icon btn-sm" onClick={fetchSessions} title="Refresh"><IconRefresh /></button>
+        </div>
+        {sessionsLoading ? (
+          <div style={{padding:'40px',textAlign:'center',color:'var(--nv-text-muted)'}}>
+            <span className="spinner spinner-lg" style={{display:'block',margin:'0 auto 12px'}}></span>Loading…
+          </div>
+        ) : sessions.length === 0 ? (
+          <div style={{padding:'40px',textAlign:'center',color:'var(--nv-text-muted)',fontSize:'13px'}}>
+            No upload sessions yet. Upload documents above to get started.
+          </div>
+        ) : (
+          <div style={{overflowX:'auto'}}>
+            <table className="runs-table">
+              <thead>
+                <tr><th>Session ID</th><th>Files</th><th>Size</th><th>Path</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {sessions.map(s => (
+                  <tr key={s.session_id}>
+                    <td className="mono" style={{fontSize:'12px',color:'#fff',fontWeight:500}}>{s.session_id}</td>
+                    <td style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>
+                      {s.file_count} file{s.file_count !== 1 ? 's' : ''}
+                      <span style={{color:'var(--nv-text-dim)',fontSize:'11px',marginLeft:'6px'}}>
+                        ({s.files.slice(0, 3).join(", ")}{s.files.length > 3 ? `, +${s.files.length - 3} more` : ""})
+                      </span>
+                    </td>
+                    <td style={{fontSize:'12px',color:'var(--nv-text-muted)',whiteSpace:'nowrap'}}>{formatBytes(s.total_bytes)}</td>
+                    <td className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'250px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={s.path}>{s.path}</td>
+                    <td>
+                      <div style={{display:'flex',gap:'6px'}}>
+                        <button className="btn btn-primary btn-sm" onClick={() => {
+                          setUploadResult({ session_id: s.session_id, file_count: s.file_count, files: s.files, total_bytes: s.total_bytes });
+                          setTriggered(null);
+                          setError("");
+                        }} title="Use this session for a new ingestion run">
+                          <IconPlay /> Use
+                        </button>
+                        <button className="btn btn-sm" onClick={() => handleDeleteSession(s.session_id)}
+                          style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}
+                          title="Delete session"><IconTrash /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ===== Retrieval Playground View ===== */
+function RetrievalView({ runs }) {
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [lanceInfo, setLanceInfo] = useState(null);
+  const [lanceLoading, setLanceLoading] = useState(false);
+  const [queryText, setQueryText] = useState("");
+  const [topK, setTopK] = useState(10);
+  const [results, setResults] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState("");
+  const [expandedRow, setExpandedRow] = useState(null);
+
+  const successRuns = useMemo(() => (runs || []).filter(r => r.success === 1), [runs]);
+
+  useEffect(() => {
+    if (!selectedRunId) { setLanceInfo(null); setResults(null); return; }
+    setLanceLoading(true);
+    setLanceInfo(null);
+    setResults(null);
+    setError("");
+    fetch(`/api/runs/${selectedRunId}/lancedb-info`)
+      .then(r => r.json())
+      .then(setLanceInfo)
+      .catch(e => setError(e.message))
+      .finally(() => setLanceLoading(false));
+  }, [selectedRunId]);
+
+  async function handleSearch(e) {
+    e && e.preventDefault();
+    if (!queryText.trim() || !selectedRunId) return;
+    setSearching(true);
+    setError("");
+    setExpandedRow(null);
+    try {
+      const res = await fetch(`/api/runs/${selectedRunId}/retrieval`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ query: queryText.trim(), top_k: topK }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      setResults(await res.json());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  const labelStyle = {display:'block',fontSize:'11px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'6px'};
+
+  return (
+    <>
+      {/* Run Selector */}
+      <div className="card" style={{padding:'20px',marginBottom:'20px'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:'16px',alignItems:'end'}}>
+          <div>
+            <label style={labelStyle}>Select a Run</label>
+            <select className="select" style={{width:'100%'}} value={selectedRunId}
+              onChange={e => setSelectedRunId(e.target.value)}>
+              <option value="">— Choose a successful run —</option>
+              {successRuns.map(r => (
+                <option key={r.id} value={r.id}>
+                  Run #{r.id} — {r.dataset} ({r.preset || "default"}) — {r.hostname || "unknown"} — {fmtTs(r.timestamp)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {lanceLoading && <span className="spinner"></span>}
+        </div>
+
+        {lanceInfo && (
+          <div style={{marginTop:'14px',display:'flex',gap:'16px',alignItems:'center',flexWrap:'wrap'}}>
+            {lanceInfo.available ? (
+              <>
+                <span className="badge badge-pass" style={{fontSize:'11px'}}>LanceDB Available</span>
+                <span style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>
+                  {lanceInfo.row_count.toLocaleString()} rows in <span className="mono">{lanceInfo.table}</span>
+                </span>
+                <span className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'400px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={lanceInfo.uri}>
+                  {lanceInfo.uri}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="badge badge-fail" style={{fontSize:'11px'}}>LanceDB Not Available</span>
+                {lanceInfo.error && <span style={{fontSize:'12px',color:'#ff5050'}}>{lanceInfo.error}</span>}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Query Input */}
+      {lanceInfo && lanceInfo.available && (
+        <div className="card" style={{padding:'20px',marginBottom:'20px'}}>
+          <form onSubmit={handleSearch}>
+            <label style={labelStyle}>Retrieval Query</label>
+            <div style={{display:'flex',gap:'12px',alignItems:'stretch'}}>
+              <input className="input" style={{flex:1,fontSize:'14px'}} value={queryText}
+                onChange={e => setQueryText(e.target.value)}
+                placeholder="Enter a natural language query to search the ingested documents…"
+                disabled={searching} />
+              <div style={{display:'flex',flexDirection:'column',gap:'2px',minWidth:'80px'}}>
+                <label style={{fontSize:'10px',color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.04em'}}>Top K</label>
+                <input type="number" className="input" min="1" max="100" value={topK}
+                  onChange={e => setTopK(Math.max(1, Math.min(100, parseInt(e.target.value) || 10)))}
+                  style={{width:'80px',textAlign:'center'}} />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={searching || !queryText.trim()}
+                style={{height:'auto',minHeight:'42px',paddingLeft:'20px',paddingRight:'20px'}}>
+                {searching ? <><span className="spinner" style={{marginRight:'8px'}}></span>Searching…</> : <><IconSearch /> Search</>}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div style={{marginBottom:'16px',padding:'12px 16px',borderRadius:'8px',background:'rgba(255,50,50,0.08)',border:'1px solid rgba(255,50,50,0.2)',color:'#ff5050',fontSize:'13px'}}>
+          {error}
+        </div>
+      )}
+
+      {/* Results */}
+      {results && (
+        <div className="card">
+          <div style={{padding:'16px 20px',borderBottom:'1px solid var(--nv-border)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'8px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <span style={{fontSize:'15px',fontWeight:600,color:'#fff'}}>{results.result_count} result{results.result_count !== 1 ? 's' : ''}</span>
+              <span style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>for "{results.query}"</span>
+            </div>
+            <div style={{display:'flex',gap:'12px',alignItems:'center',fontSize:'12px',color:'var(--nv-text-dim)'}}>
+              <span>Top K: {results.top_k}</span>
+              <span className="mono">{results.embed_model}</span>
+            </div>
+          </div>
+          {results.results.length === 0 ? (
+            <div style={{padding:'40px',textAlign:'center',color:'var(--nv-text-muted)',fontSize:'14px'}}>
+              No results found for this query.
+            </div>
+          ) : (
+            <div style={{overflowX:'auto'}}>
+              <table className="runs-table">
+                <thead>
+                  <tr>
+                    <th style={{width:'40px'}}>#</th>
+                    <th>Source</th>
+                    <th style={{width:'60px'}}>Page</th>
+                    <th style={{width:'90px',textAlign:'right'}}>Distance</th>
+                    <th>Text Preview</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.results.map((hit, idx) => {
+                    const isExpanded = expandedRow === idx;
+                    return React.createElement(React.Fragment, {key: idx},
+                      React.createElement("tr", {
+                        style: {cursor: 'pointer'},
+                        onClick: () => setExpandedRow(isExpanded ? null : idx),
+                      },
+                        React.createElement("td", {style:{color:'var(--nv-text-dim)',fontSize:'12px',fontWeight:600}}, idx + 1),
+                        React.createElement("td", {className:"mono", style:{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}, title:hit.source||''}, hit.source || "\u2014"),
+                        React.createElement("td", {style:{textAlign:'center',fontSize:'12px',color:'#fff',fontWeight:500}}, hit.page_number != null ? hit.page_number : "\u2014"),
+                        React.createElement("td", {style:{textAlign:'right',fontFamily:"'JetBrains Mono', monospace",fontSize:'12px',color: typeof hit._distance === 'number' ? (hit._distance < 0.5 ? 'var(--nv-green)' : hit._distance < 1.0 ? '#ffb84d' : '#ff5050') : 'var(--nv-text-muted)'}},
+                          typeof hit._distance === 'number' ? hit._distance.toFixed(4) : "\u2014"
+                        ),
+                        React.createElement("td", {style:{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'400px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}, title: hit.text||''},
+                          hit.text ? (hit.text.length > 120 ? hit.text.slice(0, 120) + "\u2026" : hit.text) : "\u2014"
+                        ),
+                      ),
+                      isExpanded && React.createElement("tr", null,
+                        React.createElement("td", {colSpan: 5, style:{padding:0,background:'var(--nv-bg)'}},
+                          React.createElement("div", {style:{padding:'16px 20px',borderTop:'1px solid var(--nv-border)',borderBottom:'1px solid var(--nv-border)'}},
+                            React.createElement("div", {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'16px'}},
+                              React.createElement("div", null,
+                                React.createElement("div", {style:{fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'}}, "Source"),
+                                React.createElement("div", {className:"mono",style:{fontSize:'12px',color:'#fff',wordBreak:'break-all'}}, hit.source || "\u2014"),
+                              ),
+                              React.createElement("div", {style:{display:'flex',gap:'24px'}},
+                                React.createElement("div", null,
+                                  React.createElement("div", {style:{fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'}}, "Page"),
+                                  React.createElement("div", {style:{fontSize:'13px',color:'#fff',fontWeight:600}}, hit.page_number != null ? hit.page_number : "\u2014"),
+                                ),
+                                React.createElement("div", null,
+                                  React.createElement("div", {style:{fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'}}, "Distance"),
+                                  React.createElement("div", {className:"mono",style:{fontSize:'13px',color:'var(--nv-green)',fontWeight:600}}, typeof hit._distance === 'number' ? hit._distance.toFixed(6) : "\u2014"),
+                                ),
+                              ),
+                            ),
+                            React.createElement("div", null,
+                              React.createElement("div", {style:{fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'6px'}}, "Full Text"),
+                              React.createElement("div", {style:{
+                                fontSize:'13px',color:'#fff',lineHeight:'1.7',fontFamily:"'Inter', sans-serif",
+                                padding:'14px',borderRadius:'8px',background:'rgba(255,255,255,0.03)',border:'1px solid var(--nv-border)',
+                                maxHeight:'300px',overflowY:'auto',whiteSpace:'pre-wrap',wordBreak:'break-word',
+                              }}, hit.text || "\u2014"),
+                            ),
+                            hit.metadata && typeof hit.metadata === 'object' && Object.keys(hit.metadata).length > 0 && (
+                              React.createElement("div", {style:{marginTop:'14px'}},
+                                React.createElement("div", {style:{fontSize:'10px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'6px'}}, "Metadata"),
+                                React.createElement("div", {style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))',gap:'6px'}},
+                                  Object.entries(hit.metadata).map(([k, v]) =>
+                                    React.createElement("div", {key: k, style:{fontSize:'11px'}},
+                                      React.createElement("span", {style:{color:'var(--nv-text-dim)'}}, k + ": "),
+                                      React.createElement("span", {className:"mono",style:{color:'var(--nv-text-muted)'}}, String(v)),
+                                    )
+                                  )
+                                ),
+                              )
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!selectedRunId && (
+        <div className="card" style={{padding:'60px 40px',textAlign:'center'}}>
+          <div style={{fontSize:'48px',marginBottom:'16px',opacity:0.3}}>&#128269;</div>
+          <div style={{fontSize:'16px',fontWeight:600,color:'#fff',marginBottom:'8px'}}>Retrieval Playground</div>
+          <div style={{fontSize:'13px',color:'var(--nv-text-muted)',maxWidth:'460px',margin:'0 auto',lineHeight:'1.6'}}>
+            Select a successful run above to load its LanceDB database, then enter natural language queries
+            to test retrieval against the ingested documents.
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ===== Settings View ===== */
+function SettingsView() {
+  const [gitInfo, setGitInfo] = useState(null);
+  const [gitLoading, setGitLoading] = useState(true);
+  const [deployBranch, setDeployBranch] = useState("main");
+  const [deployRemote, setDeployRemote] = useState("origin");
+  const [deploying, setDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState(null);
+  const [deployError, setDeployError] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+
+  async function fetchGitInfo() {
+    setGitLoading(true);
+    try {
+      const res = await fetch("/api/settings/git-info");
+      const data = await res.json();
+      setGitInfo(data);
+      if (data.available && data.remotes?.length) {
+        setDeployRemote(data.remotes[0].name);
+      }
+      if (data.available && data.current_branch) {
+        setDeployBranch(data.current_branch);
+      }
+    } catch (err) {
+      setGitInfo({ available: false, error: err.message });
+    } finally {
+      setGitLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchGitInfo(); }, []);
+
+  async function handleDeploy() {
+    setShowConfirm(false);
+    setDeploying(true);
+    setDeployResult(null);
+    setDeployError("");
+    try {
+      const res = await fetch("/api/settings/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch: deployBranch, remote: deployRemote }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setDeployResult(data);
+      setReconnecting(true);
+      pollForRestart();
+    } catch (err) {
+      setDeployError(err.message);
+    } finally {
+      setDeploying(false);
+    }
+  }
+
+  function pollForRestart() {
+    let attempts = 0;
+    const maxAttempts = 30;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch("/api/version", { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          clearInterval(interval);
+          setReconnecting(false);
+          fetchGitInfo();
+        }
+      } catch {
+        if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          setReconnecting(false);
+          setDeployError("Portal did not come back online within 60 seconds. Check the server manually.");
+        }
+      }
+    }, 2000);
+  }
+
+  const labelStyle = {display:'block',fontSize:'11px',fontWeight:600,color:'var(--nv-text-dim)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'6px'};
+
+  if (gitLoading) {
+    return (
+      <div className="card" style={{padding:'60px',textAlign:'center'}}>
+        <span className="spinner spinner-lg" style={{display:'block',margin:'0 auto 16px'}}></span>
+        <div style={{color:'var(--nv-text-muted)',fontSize:'14px'}}>Loading git information…</div>
+      </div>
+    );
+  }
+
+  if (!gitInfo || !gitInfo.available) {
+    return (
+      <div className="card" style={{padding:'40px',textAlign:'center'}}>
+        <div style={{fontSize:'32px',marginBottom:'12px',opacity:0.3}}>&#x26A0;</div>
+        <div style={{fontSize:'15px',fontWeight:600,color:'#ff5050',marginBottom:'8px'}}>Git Not Available</div>
+        <div style={{fontSize:'13px',color:'var(--nv-text-muted)'}}>{gitInfo?.error || "Unable to detect a git repository."}</div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Reconnecting overlay */}
+      {reconnecting && (
+        <div style={{
+          position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:9999,
+          background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:'20px',
+        }}>
+          <span className="spinner spinner-lg"></span>
+          <div style={{fontSize:'18px',fontWeight:600,color:'#fff'}}>Portal is restarting…</div>
+          <div style={{fontSize:'13px',color:'var(--nv-text-muted)',maxWidth:'400px',textAlign:'center',lineHeight:'1.6'}}>
+            The portal is pulling the latest code and restarting. This page will automatically reconnect when the server is back online.
+          </div>
+        </div>
+      )}
+
+      {/* Current State */}
+      <div className="card" style={{padding:'24px',marginBottom:'20px'}}>
+        <div className="section-title" style={{marginBottom:'16px'}}>Current Portal State</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))',gap:'16px'}}>
+          <div>
+            <div style={labelStyle}>Branch</div>
+            <div style={{fontSize:'14px',color:'#fff',fontWeight:600}}>{gitInfo.current_branch}</div>
+          </div>
+          <div>
+            <div style={labelStyle}>Commit</div>
+            <div className="mono" style={{fontSize:'13px',color:'var(--nv-green)'}}>{gitInfo.current_short_sha}</div>
+            <div className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px',wordBreak:'break-all'}}>{gitInfo.current_sha}</div>
+          </div>
+          <div>
+            <div style={labelStyle}>Working Directory</div>
+            <div style={{fontSize:'13px',color:gitInfo.is_dirty ? '#ffb84d' : 'var(--nv-green)',fontWeight:500}}>
+              {gitInfo.is_dirty ? "Uncommitted changes" : "Clean"}
+            </div>
+          </div>
+          <div>
+            <div style={labelStyle}>Repository</div>
+            <div className="mono" style={{fontSize:'11px',color:'var(--nv-text-muted)',wordBreak:'break-all'}}>{gitInfo.repo_root}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'20px',marginBottom:'20px'}}>
+        {/* Deploy Card */}
+        <div className="card" style={{padding:'24px'}}>
+          <div className="section-title" style={{marginBottom:'16px'}}>Deploy Latest Code</div>
+          <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+            <div>
+              <label style={labelStyle}>Remote</label>
+              <select className="select" style={{width:'100%'}} value={deployRemote} onChange={e => setDeployRemote(e.target.value)}>
+                {(gitInfo.remotes || []).map(r => (
+                  <option key={r.name} value={r.name}>{r.name} ({r.url})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Branch</label>
+              <div style={{display:'flex',gap:'8px'}}>
+                <input className="input" style={{flex:1}} value={deployBranch}
+                  onChange={e => setDeployBranch(e.target.value)}
+                  placeholder="e.g. main" />
+              </div>
+              {gitInfo.remote_branches?.length > 0 && (
+                <div style={{marginTop:'8px',display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                  {gitInfo.remote_branches.slice(0, 10).map(b => {
+                    const short = b.replace(/^[^/]+\//, "");
+                    return (
+                      <button key={b} className="btn btn-sm"
+                        onClick={() => setDeployBranch(short)}
+                        style={{
+                          fontSize:'10px',padding:'2px 8px',
+                          background: short === deployBranch ? 'rgba(118,185,0,0.15)' : 'transparent',
+                          color: short === deployBranch ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+                          border: `1px solid ${short === deployBranch ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+                        }}>
+                        {short}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowConfirm(true)}
+              disabled={deploying || !deployBranch.trim()}
+              style={{width:'100%',justifyContent:'center',marginTop:'4px'}}>
+              {deploying ? <><span className="spinner" style={{marginRight:'8px'}}></span>Deploying…</> : <><IconDownload /> Deploy & Restart</>}
+            </button>
+            <div style={{fontSize:'11px',color:'var(--nv-text-dim)',lineHeight:'1.5'}}>
+              This will pull the latest code from <span className="mono" style={{color:'var(--nv-text-muted)'}}>{deployRemote}/{deployBranch}</span>, then restart the portal web server.
+              The page will automatically reconnect.
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Commits Card */}
+        <div className="card" style={{padding:'24px'}}>
+          <div className="section-title" style={{marginBottom:'16px'}}>Recent Commits</div>
+          <div style={{display:'flex',flexDirection:'column',gap:'0'}}>
+            {(gitInfo.recent_commits || []).map((c, i) => (
+              <div key={c.sha} style={{
+                display:'flex',gap:'10px',alignItems:'flex-start',padding:'8px 0',
+                borderBottom: i < gitInfo.recent_commits.length - 1 ? '1px solid var(--nv-border)' : 'none',
+              }}>
+                <span className="mono" style={{
+                  fontSize:'11px',fontWeight:600,whiteSpace:'nowrap',
+                  color: i === 0 ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+                }}>{c.short_sha}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'12px',color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.message}</div>
+                  <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'2px'}}>{c.date}</div>
+                </div>
+              </div>
+            ))}
+            {(!gitInfo.recent_commits || gitInfo.recent_commits.length === 0) && (
+              <div style={{padding:'20px',textAlign:'center',color:'var(--nv-text-dim)',fontSize:'13px'}}>No commit history available</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Remotes */}
+      <div className="card" style={{padding:'24px',marginBottom:'20px'}}>
+        <div className="section-title" style={{marginBottom:'12px'}}>Remotes</div>
+        <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+          {(gitInfo.remotes || []).map(r => (
+            <div key={r.name} style={{display:'flex',alignItems:'center',gap:'12px',padding:'6px 0',borderBottom:'1px solid var(--nv-border)'}}>
+              <span style={{fontSize:'13px',fontWeight:600,color:'#fff',minWidth:'80px'}}>{r.name}</span>
+              <span className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)',wordBreak:'break-all'}}>{r.url}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Deploy Result */}
+      {deployResult && (
+        <div className="card" style={{padding:'20px',marginBottom:'20px',background:'rgba(118,185,0,0.05)',border:'1px solid rgba(118,185,0,0.2)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px'}}>
+            <IconCheck />
+            <span style={{fontSize:'14px',fontWeight:600,color:'var(--nv-green)'}}>{deployResult.message}</span>
+          </div>
+          {deployResult.log && deployResult.log.length > 0 && (
+            <pre className="mono" style={{
+              fontSize:'11px',padding:'12px',borderRadius:'8px',
+              background:'var(--nv-bg)',border:'1px solid var(--nv-border)',
+              color:'var(--nv-text-muted)',maxHeight:'200px',overflow:'auto',
+              whiteSpace:'pre-wrap',wordBreak:'break-all',lineHeight:'1.6',
+            }}>{deployResult.log.join("\n")}</pre>
+          )}
+        </div>
+      )}
+
+      {/* Deploy Error */}
+      {deployError && (
+        <div style={{marginBottom:'16px',padding:'14px 18px',borderRadius:'8px',background:'rgba(255,50,50,0.08)',border:'1px solid rgba(255,50,50,0.2)'}}>
+          <div style={{fontSize:'13px',fontWeight:600,color:'#ff5050',marginBottom:'6px'}}>Deploy Failed</div>
+          <pre className="mono" style={{fontSize:'12px',color:'#ff5050',whiteSpace:'pre-wrap',wordBreak:'break-all',margin:0}}>{deployError}</pre>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirm && (
+        <div className="modal-overlay" onClick={() => setShowConfirm(false)}>
+          <div className="modal-content" style={{maxWidth:'480px'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>Confirm Deploy</h2>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowConfirm(false)} style={{borderRadius:'50%'}}><IconX /></button>
+            </div>
+            <div style={{padding:'24px'}}>
+              <div style={{fontSize:'14px',color:'var(--nv-text-muted)',lineHeight:'1.7',marginBottom:'16px'}}>
+                This will:
+              </div>
+              <ol style={{fontSize:'13px',color:'#fff',lineHeight:'2',paddingLeft:'20px',marginBottom:'20px'}}>
+                <li>Stash any uncommitted local changes</li>
+                <li>Fetch the latest code from <span className="mono" style={{color:'var(--nv-green)'}}>{deployRemote}</span></li>
+                <li>Checkout branch <span className="mono" style={{color:'var(--nv-green)'}}>{deployBranch}</span></li>
+                <li>Restart the portal web server</li>
+              </ol>
+              {gitInfo.is_dirty && (
+                <div style={{padding:'10px 14px',borderRadius:'8px',background:'rgba(255,184,77,0.08)',border:'1px solid rgba(255,184,77,0.25)',color:'#ffb84d',fontSize:'12px',marginBottom:'16px'}}>
+                  <strong>Warning:</strong> You have uncommitted changes. They will be stashed before the deploy.
+                </div>
+              )}
+              <div style={{fontSize:'12px',color:'var(--nv-text-dim)',marginBottom:'4px'}}>
+                The portal will be briefly unavailable during restart. This page will reconnect automatically.
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleDeploy} style={{flex:1,justifyContent:'center'}}>
+                <IconDownload /> Deploy {deployBranch}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ===== App ===== */
 function App() {
   const [activeView, setActiveView] = useState("runs");
@@ -3010,7 +4576,6 @@ function App() {
   const [schedulesLoading, setSchedulesLoading] = useState(true);
   const [managedDatasets, setManagedDatasets] = useState([]);
   const [managedDatasetsLoading, setManagedDatasetsLoading] = useState(true);
-  const [yamlDatasets, setYamlDatasets] = useState([]);
   const [managedPresets, setManagedPresets] = useState([]);
   const [managedPresetsLoading, setManagedPresetsLoading] = useState(true);
   const [yamlPresets, setYamlPresets] = useState([]);
@@ -3044,19 +4609,8 @@ function App() {
   const fetchManagedDatasets = useCallback(async () => {
     setManagedDatasetsLoading(prev => managedDatasets.length === 0 ? true : prev);
     try {
-      const [mRes, cRes, yRes] = await Promise.all([
-        fetch("/api/managed-datasets"),
-        fetch("/api/config"),
-        fetch("/api/yaml-config"),
-      ]);
-      const managed = await mRes.json();
-      const config = await cRes.json();
-      const yamlCfg = await yRes.json();
-      setManagedDatasets(managed);
-      const managedNames = new Set(managed.map(d => d.name));
-      const yamlDsNames = (config.datasets || []).filter(n => !managedNames.has(n));
-      const yamlDsMap = yamlCfg.datasets || {};
-      setYamlDatasets(yamlDsNames.map(n => ({ name: n, ...(yamlDsMap[n] || {}) })));
+      const res = await fetch("/api/managed-datasets");
+      setManagedDatasets(await res.json());
     } catch {}
     finally { setManagedDatasetsLoading(false); }
   }, [managedDatasets.length]);
@@ -3141,7 +4695,15 @@ function App() {
     } catch {}
   }
 
-  const viewTitles = { runs: "Runs", analytics: "Analytics", datasets: "Datasets", presets: "Presets", runners: "Runners", scheduling: "Scheduling", alerts: "Alerts" };
+  async function deleteRun(id) {
+    try {
+      await fetch(`/api/runs/${id}`, { method: "DELETE" });
+      setSelectedRun(null);
+      fetchRuns();
+    } catch {}
+  }
+
+  const viewTitles = { runs: "Runs", analytics: "Analytics", reporting: "Reporting", datasets: "Datasets", presets: "Presets", runners: "Runners", scheduling: "Scheduling", alerts: "Alerts", ingestion: "Ingestion", retrieval: "Retrieval", settings: "Settings" };
 
   const activeJobCount = jobs.filter(j => j.status==="running" || j.status==="pending" || j.status==="cancelling").length;
 
@@ -3154,8 +4716,7 @@ function App() {
       return loading ? "Loading\u2026" : `${runs.length} run${runs.length!==1?'s':''} available for analysis`;
     }
     if (activeView === "datasets") {
-      const total = managedDatasets.length + yamlDatasets.length;
-      return managedDatasetsLoading ? "Loading\u2026" : `${total} dataset${total!==1?'s':''} (${managedDatasets.length} managed, ${yamlDatasets.length} from config)`;
+      return managedDatasetsLoading ? "Loading\u2026" : `${managedDatasets.length} dataset${managedDatasets.length!==1?'s':''} configured`;
     }
     if (activeView === "presets") {
       const total = managedPresets.length + yamlPresets.length;
@@ -3167,8 +4728,21 @@ function App() {
       const unack = alertEvents.filter(e=>!e.acknowledged).length;
       return alertEventsLoading ? "Loading\u2026" : `${alertRules.length} rule${alertRules.length!==1?'s':''}, ${alertEvents.length} event${alertEvents.length!==1?'s':''} (${unack} unacknowledged)`;
     }
+    if (activeView === "settings") {
+      return "Manage portal deployment and system settings";
+    }
+    if (activeView === "ingestion") {
+      return "Upload documents and run custom ingestion jobs";
+    }
+    if (activeView === "retrieval") {
+      const successCount = runs.filter(r => r.success === 1).length;
+      return `Query against LanceDB from ${successCount} successful run${successCount !== 1 ? 's' : ''}`;
+    }
+    if (activeView === "reporting") {
+      return loading ? "Loading\u2026" : `${runs.length} run${runs.length!==1?'s':''} available for reporting`;
+    }
     return "";
-  }, [activeView, runs.length, activeJobCount, managedDatasets.length, yamlDatasets.length, managedPresets.length, yamlPresets.length, runners.length, schedules.length, alertRules.length, alertEvents.length, alertEvents, loading, managedDatasetsLoading, managedPresetsLoading, runnersLoading, schedulesLoading, alertRulesLoading, alertEventsLoading]);
+  }, [activeView, runs.length, activeJobCount, managedDatasets.length, managedPresets.length, yamlPresets.length, runners.length, schedules.length, alertRules.length, alertEvents.length, alertEvents, loading, managedDatasetsLoading, managedPresetsLoading, runnersLoading, schedulesLoading, alertRulesLoading, alertEventsLoading]);
 
   return (
     <div className="app-layout">
@@ -3203,15 +4777,19 @@ function App() {
               filterDataset={filterDataset} setFilterDataset={setFilterDataset}
               filterCommit={filterCommit} setFilterCommit={setFilterCommit}
               onRefresh={()=>{fetchRuns();fetchJobs();}} onSelectRun={openDetail}
-              onTrigger={()=>setShowTrigger(true)} jobs={jobs} githubRepoUrl={githubRepoUrl}
+              onDeleteRun={deleteRun}
+              onTrigger={()=>setShowTrigger(true)} jobs={jobs} runners={runners} githubRepoUrl={githubRepoUrl}
               onViewLogs={setLogViewerJobId} />
           )}
           {activeView==="analytics" && (
             <AnalyticsView runs={runs} datasets={datasets} loading={loading} onRefresh={fetchRuns} />
           )}
+          {activeView==="reporting" && (
+            <ReportingView runs={runs} datasets={datasets} loading={loading} />
+          )}
           {activeView==="datasets" && (
-            <DatasetsView managedDatasets={managedDatasets} yamlDatasets={yamlDatasets}
-              loading={managedDatasetsLoading} onRefresh={fetchManagedDatasets} />
+            <DatasetsView managedDatasets={managedDatasets}
+              loading={managedDatasetsLoading} onRefresh={fetchManagedDatasets} runners={runners} />
           )}
           {activeView==="presets" && (
             <PresetsView managedPresets={managedPresets} yamlPresets={yamlPresets}
@@ -3225,13 +4803,22 @@ function App() {
               onRefresh={()=>{fetchAlertRules();fetchAlertEvents();}}
               onSelectRun={openDetail} githubRepoUrl={githubRepoUrl} />
           )}
+          {activeView==="settings" && (
+            <SettingsView />
+          )}
+          {activeView==="ingestion" && (
+            <IngestionView jobs={jobs} onViewLogs={setLogViewerJobId} />
+          )}
+          {activeView==="retrieval" && (
+            <RetrievalView runs={runs} />
+          )}
         </div>
         <Footer>
           <span>{footerText}</span>
           <span>Harness Portal</span>
         </Footer>
       </div>
-      {selectedRun && <RunDetailModal run={selectedRun} onClose={()=>setSelectedRun(null)} githubRepoUrl={githubRepoUrl} />}
+      {selectedRun && <RunDetailModal run={selectedRun} onClose={()=>setSelectedRun(null)} onDelete={deleteRun} githubRepoUrl={githubRepoUrl} />}
       {showTrigger && <TriggerModal onClose={()=>setShowTrigger(false)} onTriggered={()=>{fetchJobs();setTimeout(fetchJobs,1000);}} />}
       {logViewerJobId && <LogViewerModal jobId={logViewerJobId} onClose={()=>setLogViewerJobId(null)} />}
     </div>

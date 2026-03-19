@@ -364,7 +364,9 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
 # ---------------------------------------------------------------------------
 
 
-def _build_registration_payload(runner_name: str, meta: dict[str, Any], tags: list[str]) -> dict[str, Any]:
+def _build_registration_payload(
+    runner_name: str, meta: dict[str, Any], tags: list[str], heartbeat_interval: int = 30,
+) -> dict[str, Any]:
     """Build the JSON payload used to register (or re-register) with the portal."""
     return {
         "name": runner_name,
@@ -375,6 +377,7 @@ def _build_registration_payload(runner_name: str, meta: dict[str, Any], tags: li
         "memory_gb": meta.get("memory_gb"),
         "status": "online",
         "tags": tags,
+        "heartbeat_interval": heartbeat_interval,
         "metadata": {
             "cuda_driver": meta.get("cuda_driver"),
             "ray_version": meta.get("ray_version"),
@@ -418,7 +421,7 @@ def runner_start_command(
 
     if manager_url:
         base_url = manager_url.rstrip("/")
-        reg_payload = _build_registration_payload(runner_name, meta, tag or [])
+        reg_payload = _build_registration_payload(runner_name, meta, tag or [], heartbeat_interval)
         typer.echo(f"\nRegistering with {base_url} ...")
         runner_id = _register_with_portal(base_url, reg_payload)
         if runner_id is not None:

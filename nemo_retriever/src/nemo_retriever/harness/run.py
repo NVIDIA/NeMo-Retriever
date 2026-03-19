@@ -95,6 +95,18 @@ def _collect_run_metadata() -> dict[str, Any]:
     except Exception:
         memory_gb = None
 
+    ray_dashboard_url: str | None = None
+    try:
+        import ray
+
+        if ray.is_initialized():
+            ctx = ray.get_runtime_context()
+            ray_dashboard_url = getattr(ctx, "dashboard_url", None) or None
+            if not ray_dashboard_url:
+                ray_dashboard_url = os.environ.get("RAY_DASHBOARD_URL") or None
+    except Exception:
+        pass
+
     return {
         "host": host,
         "gpu_count": gpu_count,
@@ -104,7 +116,25 @@ def _collect_run_metadata() -> dict[str, Any]:
         "python_version": python_version,
         "cpu_count": os.cpu_count(),
         "memory_gb": memory_gb,
+        "ray_dashboard_url": ray_dashboard_url,
     }
+
+
+def _derive_ray_dashboard_url(ray_address: str) -> str | None:
+    """Best-effort derivation of the Ray dashboard URL from a cluster address.
+
+    Ray dashboard defaults to port 8265 on the head node.  We attempt to
+    extract the hostname from common address formats (``ray://host:port``,
+    ``host:port``, or ``auto``) and build the dashboard URL.
+    """
+    addr = ray_address.strip()
+    if addr.lower() == "auto":
+        return "http://127.0.0.1:8265"
+    addr = re.sub(r"^ray://", "", addr, flags=re.IGNORECASE)
+    host = addr.split(":")[0] if ":" in addr else addr
+    if not host:
+        return None
+    return f"http://{host}:8265"
 
 
 def _normalize_tags(tags: list[str] | None) -> list[str]:
@@ -477,6 +507,17 @@ def _run_single(
     process_rc = _run_subprocess_with_tty(cmd, metrics)
     subprocess_elapsed_secs = round(_time.perf_counter() - _wall_start, 2)
     run_metadata = _collect_run_metadata()
+
+    ray_addr = cfg.ray_address
+    if ray_addr and ray_addr.lower() != "local":
+        run_metadata["ray_cluster_mode"] = "existing"
+        if not run_metadata.get("ray_dashboard_url"):
+            dashboard = _derive_ray_dashboard_url(ray_addr)
+            if dashboard:
+                run_metadata["ray_dashboard_url"] = dashboard
+    else:
+        run_metadata["ray_cluster_mode"] = "local"
+
     runtime_summary_path = runtime_dir / f"{run_id}.runtime.summary.json"
     runtime_summary = _read_json_if_exists(runtime_summary_path)
     detection_summary = _read_json_if_exists(detection_summary_file)

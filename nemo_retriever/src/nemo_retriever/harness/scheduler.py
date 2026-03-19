@@ -31,18 +31,29 @@ def match_runner(
     min_cpu_count: int | None = None,
     min_memory_gb: float | None = None,
     preferred_runner_id: int | None = None,
+    dataset_name: str | None = None,
 ) -> dict[str, Any] | None:
     """Find the best matching online runner for the given resource requirements."""
     runners = history.get_runners()
     online = [r for r in runners if r.get("status") == "online"]
 
+    allowed_runner_ids: set[int] | None = None
+    if dataset_name:
+        ids = history.get_runner_ids_for_dataset_name(dataset_name)
+        if ids is not None:
+            allowed_runner_ids = set(ids)
+
     if preferred_runner_id:
         for r in online:
             if r["id"] == preferred_runner_id:
+                if allowed_runner_ids is not None and r["id"] not in allowed_runner_ids:
+                    continue
                 return r
 
     candidates = []
     for r in online:
+        if allowed_runner_ids is not None and r["id"] not in allowed_runner_ids:
+            continue
         if min_gpu_count and (r.get("gpu_count") or 0) < min_gpu_count:
             continue
         if gpu_type_pattern and gpu_type_pattern.lower() not in (r.get("gpu_type") or "").lower():
@@ -143,6 +154,7 @@ def _dispatch_schedule(
         min_cpu_count=schedule.get("min_cpu_count"),
         min_memory_gb=schedule.get("min_memory_gb"),
         preferred_runner_id=schedule.get("preferred_runner_id"),
+        dataset_name=schedule.get("dataset"),
     )
 
     dataset_path, dataset_overrides = _resolve_dataset_config(schedule.get("dataset", ""))
