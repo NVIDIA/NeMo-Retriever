@@ -14,6 +14,13 @@ To upgrade the Helm charts for this release, refer to the [NeMo Retriever Librar
 
 Highlights for the 26.03 release include:
 
+- this is a test sentence
+
+this is another test sentence
+
+
+and another test sentence
+
 - NV-Ingest GitHub repo renamed to NeMo-Retriever  
 - NeMo Retriever Extraction pipeline renamed to NeMo Retriever Library  
 - NeMo Retriever Library now supports two deployment options:  
