@@ -180,10 +180,20 @@ _UPDATE_MARKER_FILE = Path("/tmp/.nemo_runner_update_marker")
 
 
 def _write_update_marker(previous_commit: str, new_commit: str) -> None:
-    """Write a marker file so the restarted process knows it came from a portal update."""
+    """Write a marker file so the restarted process knows it came from a portal update.
+
+    Also persists runtime state (ray_address, run_code_ref) that may have been
+    configured via the portal and would otherwise be lost across the restart.
+    """
     try:
         _UPDATE_MARKER_FILE.write_text(
-            json_module.dumps({"previous_commit": previous_commit, "new_commit": new_commit, "ts": time.time()}),
+            json_module.dumps({
+                "previous_commit": previous_commit,
+                "new_commit": new_commit,
+                "ts": time.time(),
+                "ray_address": _runner_ray_address,
+                "run_code_ref": _runner_run_code_ref,
+            }),
         )
     except Exception as exc:
         logger.warning("Failed to write update marker: %s", exc)
@@ -690,6 +700,18 @@ def runner_start_command(
     global _runner_ray_address  # noqa: PLW0603
     _runner_ray_address = _resolve_ray_address(ray_address)
 
+    global _runner_run_code_ref  # noqa: PLW0603
+
+    update_marker = _read_and_clear_update_marker()
+    if update_marker:
+        saved_ray = update_marker.get("ray_address")
+        if saved_ray:
+            _runner_ray_address = saved_ray
+            typer.echo(f"  Ray (restored from update): {_runner_ray_address}")
+        saved_ref = update_marker.get("run_code_ref")
+        if saved_ref:
+            _runner_run_code_ref = saved_ref
+
     runner_id: int | None = None
     base_url: str | None = None
     reg_payload: dict[str, Any] | None = None
@@ -697,13 +719,12 @@ def runner_start_command(
     if manager_url:
         base_url = manager_url.rstrip("/")
         reg_payload = _build_registration_payload(
-            runner_name, meta, tag or [], heartbeat_interval, ray_address=ray_address
+            runner_name, meta, tag or [], heartbeat_interval, ray_address=_runner_ray_address,
         )
         typer.echo(f"\nRegistering with {base_url} ...")
         runner_id = _register_with_portal(base_url, reg_payload)
         if runner_id is not None:
             typer.echo(f"Registered as runner #{runner_id}")
-            update_marker = _read_and_clear_update_marker()
             if update_marker:
                 typer.echo(
                     f"  Restarted after portal-triggered update: "
@@ -713,10 +734,8 @@ def runner_start_command(
                 _report_update_to_portal(base_url, runner_id, update_marker)
         else:
             typer.echo("Warning: Failed to register — will retry on next heartbeat.", err=True)
-            _read_and_clear_update_marker()
     else:
         typer.echo("\nNo --manager-url provided; running in standalone mode.")
-        _read_and_clear_update_marker()
 
     typer.echo(f"\nRunner is active (heartbeat every {heartbeat_interval}s). Press Ctrl+C to stop.\n")
 
