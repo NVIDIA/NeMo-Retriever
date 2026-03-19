@@ -59,10 +59,9 @@ class DenseRetrievalPipeline(BasePipeline):
     def dataset_name(self, value: str):
         self._dataset_name = value
 
-    def index(self, corpus_ids: List[str],
-                    corpus_images: List[Any],
-                    corpus_texts: List[str],
-                    dataset_name: str = None) -> None:
+    def index(
+        self, corpus_ids: List[str], corpus_images: List[Any], corpus_texts: List[str], dataset_name: str = None
+    ) -> None:
         super().index(corpus_ids=corpus_ids, corpus_images=corpus_images, corpus_texts=corpus_texts)
 
         if dataset_name is not None:

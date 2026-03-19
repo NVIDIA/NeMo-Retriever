@@ -199,10 +199,9 @@ def _run_evaluation(
 
     # Cache-only mode: build corpus embeddings and exit without running queries.
     if cache_only:
-        pipeline.index(corpus_ids=corpus_ids,
-                       corpus_images=corpus_images,
-                       corpus_texts=corpus_texts,
-                       dataset_name=dataset_name)
+        pipeline.index(
+            corpus_ids=corpus_ids, corpus_images=corpus_images, corpus_texts=corpus_texts, dataset_name=dataset_name
+        )
         print("Corpus embeddings cached. Exiting (--cache-only).")
         return
 
@@ -225,7 +224,7 @@ def _run_evaluation(
             language=language,
             query_ids_selector=query_ids_selector,
             excluded_ids_by_query=excluded_ids_by_query,
-            metrics=_METRICS
+            metrics=_METRICS,
         )
     except Exception as e:
         print(f"\nError during evaluation: {e}\n")

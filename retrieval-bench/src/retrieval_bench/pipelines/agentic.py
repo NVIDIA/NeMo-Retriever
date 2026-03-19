@@ -534,10 +534,9 @@ class AgenticRetrievalPipeline(BasePipeline):
     # Main entry point
     # -----------------------------------------------------------------------
     
-    def index(self, corpus_ids: List[str],
-                    corpus_images: List[Any],
-                    corpus_texts: List[str],
-                    dataset_name: str = None) -> None:
+    def index(
+        self, corpus_ids: List[str], corpus_images: List[Any], corpus_texts: List[str], dataset_name: str = None
+    ) -> None:
         super().index(corpus_ids=corpus_ids, corpus_images=corpus_images, corpus_texts=corpus_texts)
 
         if dataset_name is not None:
