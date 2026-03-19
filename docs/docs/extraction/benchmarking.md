@@ -1,4 +1,4 @@
-# nv-ingest Integration Testing Framework
+# NV-Ingest Integration Testing Framework
 
 A configurable, dataset-agnostic testing framework for end-to-end validation of nv-ingest pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
 
