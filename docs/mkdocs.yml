@@ -58,7 +58,7 @@ nav:
   - NeMo Retriever: 
     - Overview: 
       - Overview: index.md
-    - NeMo Retriever Library:
+    - NeMo Retriever Extraction:
       - Overview: extraction/overview.md
       - Release Notes: extraction/releasenotes-nv-ingest.md
       - Get Started:
