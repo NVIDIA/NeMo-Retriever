@@ -52,6 +52,43 @@ uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu13
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
 
+## Image Captioning (optional)
+
+NeMo Retriever Library can caption extracted images using a local VLM
+([Nemotron Nano 12B v2 VL](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16)).
+This requires [vLLM](https://github.com/vllm-project/vllm) and
+[mamba-ssm](https://github.com/state-spaces/mamba), which must be installed
+separately because they contain CUDA kernels that must match your torch build.
+
+```bash
+# 1. Install vLLM (--no-deps avoids overwriting the torch+cu130 already installed)
+uv pip install --no-deps vllm>=0.16.0
+
+# 2. Build mamba-ssm from source against your torch (takes a few minutes)
+uv pip install --no-deps --no-build-isolation mamba-ssm>=2.3.1
+```
+
+After installing, add `--caption` and `--caption-device` to your pipeline command:
+
+```bash
+python -m nemo_retriever.examples.inprocess_pipeline \
+  data/multimodal_test.pdf \
+  --caption \
+  --caption-device cuda:1
+```
+
+`--caption-device` places the VLM on a separate GPU so it does not compete with
+the page-elements, OCR, and embedding models. If omitted, a warning is printed
+and the VLM defaults to `cuda:0`.
+
+Supported `--caption-model-name` values:
+
+| Model | Precision | Notes |
+|---|---|---|
+| `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16` (default) | BFloat16 | Works on SM80+ (A100, A10, RTX 3090, ...) |
+| `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8` | FP8 | Works on SM80+ |
+| `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD` | NVFP4 | Requires SM89+ (Ada Lovelace / Hopper) |
+
 ## Run the pipeline
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).

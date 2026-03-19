@@ -20,6 +20,7 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from nemo_retriever.application.modes.factory import create_runmode_ingestor
+from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import TextChunkParams
@@ -176,8 +177,9 @@ class ingestor:
         """Record result persistence configuration (execution TBD)."""
         self._not_implemented("save_to_disk")
 
-    def caption(self) -> "ingestor":
+    def caption(self, params: "CaptionParams | None" = None, **kwargs: Any) -> "ingestor":
         """Record a caption task configuration."""
+        _ = _merge_params(params, kwargs)
         self._not_implemented("caption")
 
     def pdf_split_config(self, pages_per_chunk: int = 32) -> "ingestor":
