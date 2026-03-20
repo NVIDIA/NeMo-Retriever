@@ -49,6 +49,7 @@ def test_create_runmode_ingestor_batch_and_fused(monkeypatch: pytest.MonkeyPatch
         "ray_address": "ray://cluster",
         "ray_log_to_driver": False,
         "debug": False,
+        "allow_no_gpu": False,
     }
     assert fused.kwargs == {
         "documents": ["doc.pdf"],
