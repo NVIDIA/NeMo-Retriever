@@ -415,34 +415,26 @@ def resolve_requested_plan(
 ) -> RequestedPlan:
     available_gpu_count = max(0, int(cluster_resources.available_gpu_count()))
 
-    if available_gpu_count == 0:
-        if not allow_no_gpu:
-            raise ValueError("No GPUs available")
-        return RequestedPlan(
-            embed_initial_actors=1,
-            embed_min_actors=1,
-            embed_max_actors=1,
-            embed_gpus_per_actor=0.0,
-            embed_batch_size=EMBED_BATCH_SIZE,
-            nemotron_parse_initial_actors=1,
-            nemotron_parse_min_actors=1,
-            nemotron_parse_max_actors=1,
-            nemotron_parse_gpus_per_actor=0.0,
-            nemotron_parse_batch_size=NEMOTRON_PARSE_BATCH_SIZE,
-            ocr_initial_actors=1,
-            ocr_min_actors=1,
-            ocr_max_actors=1,
-            ocr_gpus_per_actor=0.0,
-            ocr_batch_size=OCR_BATCH_SIZE,
-            page_elements_initial_actors=1,
-            page_elements_min_actors=1,
-            page_elements_max_actors=1,
-            page_elements_gpus_per_actor=0.0,
-            page_elements_batch_size=PAGE_ELEMENTS_BATCH_SIZE,
-            pdf_extract_batch_size=PDF_EXTRACT_BATCH_SIZE,
-            pdf_extract_cpus_per_task=PDF_EXTRACT_CPUS_PER_TASK,
-            pdf_extract_tasks=PDF_EXTRACT_TASKS,
-        )
+    if available_gpu_count == 0 and not allow_no_gpu:
+        raise ValueError("No GPUs available")
+
+    def _resolve_int_actors(override: Optional[int], default: int, multiply_by_available_num_gpu: bool) -> int:
+        if override is not None and override > 0:
+            return int(override)
+        if available_gpu_count == 0:
+            return 1
+        if multiply_by_available_num_gpu:
+            return int(default * available_gpu_count)
+        return int(default)
+
+    def _resolve_float_actors(override: Optional[float], default: float, multiply_by_available_num_gpu: bool) -> float:
+        if override is not None and override > 0.0:
+            return float(override)
+        if available_gpu_count == 0:
+            return 0.0
+        if multiply_by_available_num_gpu:
+            return float(default * available_gpu_count)
+        return float(default)
 
     def _resolve_int(override: Optional[int], default: int, multiply_by_available_num_gpu: bool) -> int:
         if override is not None and override > 0:
@@ -458,41 +450,41 @@ def resolve_requested_plan(
             return float(default * available_gpu_count)
         return float(default)
 
-    embed_initial_actors = _resolve_int(override_embed_initial_actors, EMBED_INITIAL_ACTORS, True)
-    embed_min_actors = _resolve_int(override_embed_min_actors, EMBED_MIN_ACTORS, True)
-    embed_max_actors = _resolve_int(override_embed_max_actors, EMBED_MAX_ACTORS, True)
-    embed_gpus_per_actor = _resolve_float(override_embed_gpus_per_actor, EMBED_GPUS_PER_ACTOR, False)
+    embed_initial_actors = _resolve_int_actors(override_embed_initial_actors, EMBED_INITIAL_ACTORS, True)
+    embed_min_actors = _resolve_int_actors(override_embed_min_actors, EMBED_MIN_ACTORS, True)
+    embed_max_actors = _resolve_int_actors(override_embed_max_actors, EMBED_MAX_ACTORS, True)
+    embed_gpus_per_actor = _resolve_float_actors(override_embed_gpus_per_actor, EMBED_GPUS_PER_ACTOR, False)
     embed_batch_size = _resolve_int(override_embed_batch_size, EMBED_BATCH_SIZE, False)
 
-    nemotron_parse_initial_actors = _resolve_int(
+    nemotron_parse_initial_actors = _resolve_int_actors(
         override_nemotron_parse_initial_actors, NEMOTRON_PARSE_INITIAL_ACTORS, True
     )
-    nemotron_parse_min_actors = _resolve_int(override_nemotron_parse_min_actors, NEMOTRON_PARSE_MIN_ACTORS, True)
-    nemotron_parse_max_actors = _resolve_int(override_nemotron_parse_max_actors, NEMOTRON_PARSE_MAX_ACTORS, True)
-    nemotron_parse_gpus_per_actor = _resolve_float(
+    nemotron_parse_min_actors = _resolve_int_actors(override_nemotron_parse_min_actors, NEMOTRON_PARSE_MIN_ACTORS, True)
+    nemotron_parse_max_actors = _resolve_int_actors(override_nemotron_parse_max_actors, NEMOTRON_PARSE_MAX_ACTORS, True)
+    nemotron_parse_gpus_per_actor = _resolve_float_actors(
         override_nemotron_parse_gpus_per_actor, NEMOTRON_PARSE_GPUS_PER_ACTOR, False
     )
     nemotron_parse_batch_size = _resolve_int(override_nemotron_parse_batch_size, NEMOTRON_PARSE_BATCH_SIZE, False)
 
-    ocr_initial_actors = _resolve_int(override_ocr_initial_actors, OCR_INITIAL_ACTORS, True)
-    ocr_min_actors = _resolve_int(override_ocr_min_actors, OCR_MIN_ACTORS, True)
-    ocr_max_actors = _resolve_int(override_ocr_max_actors, OCR_MAX_ACTORS, True)
-    ocr_gpus_per_actor = _resolve_float(override_ocr_gpus_per_actor, OCR_GPUS_PER_ACTOR, False)
+    ocr_initial_actors = _resolve_int_actors(override_ocr_initial_actors, OCR_INITIAL_ACTORS, True)
+    ocr_min_actors = _resolve_int_actors(override_ocr_min_actors, OCR_MIN_ACTORS, True)
+    ocr_max_actors = _resolve_int_actors(override_ocr_max_actors, OCR_MAX_ACTORS, True)
+    ocr_gpus_per_actor = _resolve_float_actors(override_ocr_gpus_per_actor, OCR_GPUS_PER_ACTOR, False)
     ocr_batch_size = _resolve_int(override_ocr_batch_size, OCR_BATCH_SIZE, False)
 
-    page_elements_initial_actors = _resolve_int(
+    page_elements_initial_actors = _resolve_int_actors(
         override_page_elements_initial_actors, PAGE_ELEMENTS_INITIAL_ACTORS, True
     )
-    page_elements_min_actors = _resolve_int(override_page_elements_min_actors, PAGE_ELEMENTS_MIN_ACTORS, True)
-    page_elements_max_actors = _resolve_int(override_page_elements_max_actors, PAGE_ELEMENTS_MAX_ACTORS, True)
-    page_elements_gpus_per_actor = _resolve_float(
+    page_elements_min_actors = _resolve_int_actors(override_page_elements_min_actors, PAGE_ELEMENTS_MIN_ACTORS, True)
+    page_elements_max_actors = _resolve_int_actors(override_page_elements_max_actors, PAGE_ELEMENTS_MAX_ACTORS, True)
+    page_elements_gpus_per_actor = _resolve_float_actors(
         override_page_elements_gpus_per_actor, PAGE_ELEMENTS_GPUS_PER_ACTOR, False
     )
     page_elements_batch_size = _resolve_int(override_page_elements_batch_size, PAGE_ELEMENTS_BATCH_SIZE, False)
 
     pdf_extract_batch_size = _resolve_int(override_pdf_extract_batch_size, PDF_EXTRACT_BATCH_SIZE, False)
     pdf_extract_cpus_per_task = _resolve_float(override_pdf_extract_cpus_per_task, PDF_EXTRACT_CPUS_PER_TASK, False)
-    pdf_extract_tasks = _resolve_int(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, True)
+    pdf_extract_tasks = _resolve_int_actors(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, True)
 
     return RequestedPlan(
         embed_initial_actors=embed_initial_actors,
