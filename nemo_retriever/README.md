@@ -48,9 +48,17 @@ Use the CUDA 13.0 wheels from the dedicated index by running the following comma
 
 ```bash
 uv pip uninstall torch torchvision
-uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.9.1 torchvision --torch-backend=cu130
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
+
+3. (Optional) Install vLLM for image captioning
+
+If you want to generate captions for extracted images, install [vLLM](https://docs.vllm.ai/).
+
+```bash
+uv pip install vllm --torch-backend=cu130
+```
 
 ## Run the pipeline
 
@@ -240,6 +248,30 @@ sudo apt install -y ffmpeg
 ```python
 ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
+```
+
+### Caption extracted images
+
+Use `.caption()` to generate text descriptions for extracted images using a local VLM. Requires vLLM (see step 3 above).
+
+```python
+ingestor = (
+  ingestor.files(documents)
+  .extract()
+  .caption()
+  .embed()
+  .vdb_upload()
+)
+```
+
+By default this uses [Nemotron-Nano-12B-VL](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16). You can customize the model and prompt:
+
+```python
+.caption(
+  model_name="nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+  prompt="Describe this image in detail:",
+  context_text_max_chars=1024,  # include surrounding page text as context
+)
 ```
 
 ### Explore Different Pipeline Options:
