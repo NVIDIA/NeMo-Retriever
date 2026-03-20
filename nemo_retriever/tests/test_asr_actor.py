@@ -115,6 +115,83 @@ def test_apply_asr_to_df():
         assert out["text"].iloc[0] == "applied transcript"
 
 
+def test_asr_actor_remote_segment_audio():
+    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.infer.return_value = (
+            [
+                {"start": 0.0, "end": 1.0, "text": "Hello world."},
+                {"start": 1.0, "end": 2.5, "text": "How are you?"},
+            ],
+            "Hello world. How are you?",
+        )
+        mock_get.return_value = mock_client
+
+        params = ASRParams(audio_endpoints=("localhost:50051", None), segment_audio=True)
+        actor = ASRActor(params=params)
+        batch = pd.DataFrame(
+            [
+                {
+                    "path": "/tmp/chunk.wav",
+                    "bytes": b"fake_audio",
+                    "source_path": "/tmp/source.wav",
+                    "duration": 2.5,
+                    "chunk_index": 3,
+                    "metadata": {"source_path": "/tmp/source.wav", "chunk_index": 3, "duration": 2.5},
+                    "page_number": 3,
+                }
+            ]
+        )
+        out = actor(batch)
+
+        assert len(out) == 2
+        assert out["text"].tolist() == ["Hello world.", "How are you?"]
+        assert out["page_number"].tolist() == [3, 3]
+        assert out["chunk_index"].tolist() == [3, 3]
+        assert out["metadata"].iloc[0]["segment_index"] == 0
+        assert out["metadata"].iloc[0]["segment_count"] == 2
+        assert out["metadata"].iloc[0]["segment_start"] == 0.0
+        assert out["metadata"].iloc[0]["segment_end"] == 1.0
+        assert out["metadata"].iloc[1]["segment_index"] == 1
+        assert out["metadata"].iloc[1]["segment_start"] == 1.0
+        assert out["metadata"].iloc[1]["segment_end"] == 2.5
+
+
+def test_apply_asr_to_df_segment_audio():
+    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.infer.return_value = (
+            [
+                {"start": 0.0, "end": 0.4, "text": "First sentence."},
+                {"start": 0.4, "end": 0.8, "text": "Second sentence!"},
+            ],
+            "First sentence. Second sentence!",
+        )
+        mock_get.return_value = mock_client
+
+        batch = pd.DataFrame(
+            [
+                {
+                    "path": "/p",
+                    "bytes": b"x",
+                    "source_path": "/s",
+                    "duration": 0.8,
+                    "chunk_index": 0,
+                    "metadata": {},
+                    "page_number": 0,
+                }
+            ]
+        )
+        out = apply_asr_to_df(
+            batch,
+            asr_params={"audio_endpoints": ("localhost:50051", None), "segment_audio": True},
+        )
+        assert isinstance(out, pd.DataFrame)
+        assert len(out) == 2
+        assert out["text"].tolist() == ["First sentence.", "Second sentence!"]
+        assert out["metadata"].iloc[0]["segment_count"] == 2
+
+
 def test_local_asr_does_not_call_get_client():
     """When audio_endpoints are both null, ASRActor uses local model and does not call _get_client."""
     mock_model = MagicMock()

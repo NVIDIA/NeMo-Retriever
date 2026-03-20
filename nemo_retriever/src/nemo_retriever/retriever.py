@@ -161,7 +161,9 @@ class Retriever:
                     .text(query_texts[i])
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(["text", "metadata", "source", "page_number"])
+                    .select(
+                        ["text", "metadata", "source", "page_number", "pdf_page", "pdf_basename", "source_id", "path"]
+                    )
                     .limit(int(top_k))
                     .rerank(RRFReranker())
                     .to_list()
@@ -171,7 +173,19 @@ class Retriever:
                     table.search(q, vector_column_name=self.vector_column_name)
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(["text", "metadata", "source", "page_number", "_distance"])
+                    .select(
+                        [
+                            "text",
+                            "metadata",
+                            "source",
+                            "page_number",
+                            "_distance",
+                            "pdf_page",
+                            "pdf_basename",
+                            "source_id",
+                            "path",
+                        ]
+                    )
                     .limit(int(top_k))
                     .to_list()
                 )

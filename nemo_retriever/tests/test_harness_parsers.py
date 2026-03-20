@@ -55,3 +55,17 @@ def test_stream_metrics_handles_non_recall_lines_after_recall_block() -> None:
     metrics.consume("Pages processed: 1933\n")
     metrics.consume("  recall@10: 0.9565\n")
     assert metrics.recall_metrics == {"recall@5": 0.9043}
+
+
+def test_parse_stream_text_extracts_beir_metrics_block() -> None:
+    stdout = """
+BEIR metrics:
+  ndcg@10: 0.7421
+  recall@5: 0.6234
+"""
+    metrics = parse_stream_text(stdout)
+    assert metrics.recall_metrics == {}
+    assert metrics.evaluation_metrics == {
+        "ndcg@10": 0.7421,
+        "recall@5": 0.6234,
+    }

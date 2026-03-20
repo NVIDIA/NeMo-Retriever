@@ -1,0 +1,37 @@
+preset: dgx_8gpu
+
+runs:
+  - name: vidore_v3_computer_science_dgx_8gpu
+    dataset: vidore_v3_computer_science
+
+  - name: vidore_v3_energy_dgx_8gpu
+    dataset: vidore_v3_energy
+
+  - name: vidore_v3_finance_en_dgx_8gpu
+    dataset: vidore_v3_finance_en
+
+  - name: vidore_v3_finance_fr_dgx_8gpu
+    dataset: vidore_v3_finance_fr
+
+  - name: vidore_v3_hr_dgx_8gpu
+    dataset: vidore_v3_hr
+
+  - name: vidore_v3_industrial_dgx_8gpu
+    dataset: vidore_v3_industrial
+
+  - name: vidore_v3_pharmaceuticals_dgx_8gpu
+    dataset: vidore_v3_pharmaceuticals
+
+  - name: vidore_v3_physics_dgx_8gpu
+    dataset: vidore_v3_physics
+
+slack:
+  enabled: false
+  title: ViDoRe BEIR Sweep
+  post_artifact_paths: true
+  metric_keys:
+    - pages
+    - ingest_secs
+    - pages_per_sec_ingest
+    - ndcg_10
+    - recall_5

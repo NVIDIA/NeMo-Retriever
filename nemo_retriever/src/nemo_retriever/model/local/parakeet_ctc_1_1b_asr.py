@@ -7,7 +7,7 @@ Local ASR using nvidia/parakeet-ctc-1.1b via Hugging Face Transformers.
 
 Uses AutoModelForCTC + AutoProcessor with batch_decode(skip_special_tokens=True)
 to avoid <pad> tokens in output; falls back to post-processing to strip any remaining.
-Requires transformers>=5. Model expects 16 kHz mono input.
+Requires transformers>=4.57. Model expects 16 kHz mono input.
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ class ParakeetCTC1B1ASR:
     Local ASR using nvidia/parakeet-ctc-1.1b via Hugging Face Transformers.
 
     Uses AutoModelForCTC + AutoProcessor with batch_decode(skip_special_tokens=True)
-    and post-processes to remove any remaining <pad> tokens. Requires transformers>=5.
+    and post-processes to remove any remaining <pad> tokens. Requires transformers>=4.57.
     """
 
     def __init__(

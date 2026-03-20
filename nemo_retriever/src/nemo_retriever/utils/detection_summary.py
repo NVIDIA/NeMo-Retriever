@@ -216,12 +216,14 @@ def print_run_summary(
     ingest_only_total_time: float,
     ray_dataset_download_total_time: float,
     lancedb_write_total_time: float,
-    recall_total_time: float,
-    recall_metrics: Dict[str, float],
+    evaluation_total_time: float,
+    evaluation_metrics: Dict[str, float],
+    *,
+    evaluation_label: str = "Recall",
+    evaluation_count: Optional[int] = None,
 ) -> None:
     ingest_only_pps = processed_pages / ingest_only_total_time
     ingest_and_lancedb_write_pps = processed_pages / (ingest_only_total_time + lancedb_write_total_time)
-    recall_qps = processed_pages / recall_total_time
     total_pps = processed_pages / total_time
     utc_now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -238,14 +240,18 @@ def print_run_summary(
     print(f"\tIngestion only time: {_fmt_time(ingest_only_total_time)}")
     print(f"\tRay dataset download time: {_fmt_time(ray_dataset_download_total_time)}")
     print(f"\tLanceDB Write Time: {_fmt_time(lancedb_write_total_time)}")
-    print(f"\tRecall time: {_fmt_time(recall_total_time)}")
+    print(f"\t{evaluation_label} time: {_fmt_time(evaluation_total_time)}")
 
     print("PPS:")
     print(f"\tIngestion only PPS: {ingest_only_pps:.2f}")
     print(f"\tIngestion + LanceDB Write PPS: {ingest_and_lancedb_write_pps:.2f}")
-    print(f"\tRecall QPS: {recall_qps:.2f}")
+    if evaluation_total_time > 0:
+        eval_count = evaluation_count if evaluation_count is not None else processed_pages
+        if eval_count is not None:
+            evaluation_qps = eval_count / evaluation_total_time
+            print(f"\t{evaluation_label} QPS: {evaluation_qps:.2f}")
     print(f"\tTotal - Processed: {processed_pages} pages in {_fmt_time(total_time)} @ {total_pps:.2f} PPS")
 
-    print("Recall metrics:")
-    for k, v in recall_metrics.items():
+    print(f"{evaluation_label} metrics:")
+    for k, v in evaluation_metrics.items():
         print(f"  {k}: {v:.4f}")
