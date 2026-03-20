@@ -61,42 +61,66 @@ UV_TORCH_BACKEND=cu130 uv pip install torch torchvision
 ## Image Captioning (optional)
 
 NeMo Retriever Library can caption extracted images using a local VLM
-([Nemotron Nano 12B v2 VL](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16)).
-This requires [vLLM](https://github.com/vllm-project/vllm) and
-[mamba-ssm](https://github.com/state-spaces/mamba), which must be installed
-separately because they contain CUDA kernels that must match your torch build.
+([Nemotron Nano 12B v2 VL](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16))
+powered by [vLLM](https://github.com/vllm-project/vllm), or by calling a
+remote VLM endpoint.
+
+### Install vLLM
 
 ```bash
-# Install vLLM (--no-deps prevents overwriting torch, transformers, etc.)
-uv pip install --no-deps vllm>=0.16.0
-
-# Build mamba-ssm from source against your torch (takes a few minutes)
-uv pip install --no-deps --no-build-isolation mamba-ssm>=2.3.1
+uv pip install vllm --extra-index-url https://pypi.ngc.nvidia.com
 ```
 
-> **Note:** `--no-deps` is required because vLLM's dependency solver would
-> downgrade `transformers` and `huggingface-hub` to incompatible versions.
+The NGC index provides cu130 wheels that match the torch build installed above.
 
-After installing, add `--caption` and `--caption-device` to your pipeline command:
+### Local captioning
+
+Add `--caption` to your pipeline command. The VLM model is downloaded from
+Hugging Face on first use and loaded via vLLM for inference.
 
 ```bash
 python -m nemo_retriever.examples.inprocess_pipeline \
   data/multimodal_test.pdf \
-  --caption \
-  --caption-device cuda:1
+  --caption
 ```
 
-`--caption-device` places the VLM on a separate GPU so it does not compete with
-the page-elements, OCR, and embedding models. If omitted, a warning is printed
-and the VLM defaults to `cuda:0`.
+### Remote captioning
 
-Supported `--caption-model-name` values:
+If you have a VLM endpoint running (e.g. via `vllm serve`), pass the URL
+instead:
 
-| Model | Precision | Notes |
+```bash
+python -m nemo_retriever.examples.inprocess_pipeline \
+  data/multimodal_test.pdf \
+  --caption-invoke-url http://vlm:8000/v1/chat/completions
+```
+
+### Supported models
+
+| `--caption-model-name` | Precision | Notes |
 |---|---|---|
 | `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16` (default) | BFloat16 | Works on SM80+ (A100, A10, RTX 3090, ...) |
 | `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8` | FP8 | Works on SM80+ |
 | `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD` | NVFP4 | Requires SM89+ (Ada Lovelace / Hopper) |
+
+### Python API
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.params import CaptionParams, ExtractParams
+
+ingestor = create_ingestor(run_mode="inprocess")
+results = (
+    ingestor
+    .files("doc.pdf")
+    .extract(ExtractParams(extract_images=True))
+    .caption(CaptionParams())                    # local vLLM
+    # or: .caption(CaptionParams(endpoint_url="http://vlm:8000/v1/chat/completions"))
+    .embed()
+    .vdb_upload()
+    .ingest()
+)
+```
 
 ## Run the pipeline
 

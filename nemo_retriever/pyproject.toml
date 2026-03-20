@@ -83,12 +83,8 @@ dependencies = [
 svg = [
   "cairosvg>=2.7.0",
 ]
-# Install with: pip install ".[vlm-caption]"
-# mamba-ssm must be built from source against the installed torch:
-#   uv pip install --no-deps --no-build-isolation mamba-ssm
 vlm-caption = [
   "vllm>=0.16.0",
-  "mamba-ssm>=2.3.1",
 ]
 dev = [
   "build>=1.2.2",

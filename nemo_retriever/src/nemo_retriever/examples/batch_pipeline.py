@@ -512,6 +512,21 @@ def main(
             "(used when --table-output-format=markdown)."
         ),
     ),
+    extract_text: bool = typer.Option(
+        True,
+        "--extract-text/--no-extract-text",
+        help="Extract text from PDF pages.",
+    ),
+    extract_tables: bool = typer.Option(
+        True,
+        "--extract-tables/--no-extract-tables",
+        help="Extract tables from PDF pages.",
+    ),
+    extract_charts: bool = typer.Option(
+        True,
+        "--extract-charts/--no-extract-charts",
+        help="Extract charts from PDF pages.",
+    ),
     extract_infographics: bool = typer.Option(
         False,
         "--extract-infographics/--no-extract-infographics",
@@ -729,9 +744,9 @@ def main(
             return ExtractParams(
                 method=method,
                 dpi=int(dpi),
-                extract_text=True,
-                extract_tables=True,
-                extract_charts=True,
+                extract_text=extract_text,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
                 extract_infographics=extract_infographics,
                 extract_page_as_image=extract_page_as_image,
                 api_key=extract_remote_api_key,

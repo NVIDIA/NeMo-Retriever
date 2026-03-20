@@ -93,6 +93,26 @@ def main(
         "--embed-model-name",
         help="Embedding model name passed to .embed().",
     ),
+    extract_text: bool = typer.Option(
+        True,
+        "--extract-text/--no-extract-text",
+        help="Extract text from PDF pages.",
+    ),
+    extract_tables: bool = typer.Option(
+        True,
+        "--extract-tables/--no-extract-tables",
+        help="Extract tables from PDF pages.",
+    ),
+    extract_charts: bool = typer.Option(
+        True,
+        "--extract-charts/--no-extract-charts",
+        help="Extract charts from PDF pages.",
+    ),
+    extract_infographics: bool = typer.Option(
+        False,
+        "--extract-infographics/--no-extract-infographics",
+        help="Extract infographics from PDF pages.",
+    ),
     method: str = typer.Option(
         "pdfium",
         "--method",
@@ -239,10 +259,10 @@ def main(
         ingestor = ingestor.files(file_patterns).extract_image_files(
             ExtractParams(
                 method=method,
-                extract_text=True,
-                extract_tables=True,
-                extract_charts=True,
-                extract_infographics=False,
+                extract_text=extract_text,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
+                extract_infographics=extract_infographics,
                 use_graphic_elements=use_graphic_elements,
                 graphic_elements_invoke_url=graphic_elements_invoke_url,
                 use_table_structure=use_table_structure,
@@ -256,10 +276,10 @@ def main(
         ingestor = ingestor.files(file_patterns).extract(
             ExtractParams(
                 method=method,
-                extract_text=True,
-                extract_tables=True,
-                extract_charts=True,
-                extract_infographics=False,
+                extract_text=extract_text,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
+                extract_infographics=extract_infographics,
                 use_graphic_elements=use_graphic_elements,
                 graphic_elements_invoke_url=graphic_elements_invoke_url,
                 use_table_structure=use_table_structure,
@@ -273,10 +293,10 @@ def main(
         ingestor = ingestor.files(file_patterns).extract(
             ExtractParams(
                 method=method,
-                extract_text=True,
-                extract_tables=True,
-                extract_charts=True,
-                extract_infographics=False,
+                extract_text=extract_text,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
+                extract_infographics=extract_infographics,
                 use_graphic_elements=use_graphic_elements,
                 graphic_elements_invoke_url=graphic_elements_invoke_url,
                 use_table_structure=use_table_structure,
