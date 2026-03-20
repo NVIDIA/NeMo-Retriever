@@ -82,7 +82,7 @@ svg = [
   "cairosvg>=2.7.0",
 ]
 vlm-caption = [
-  "vllm>=0.16.0",
+  "vllm==0.16.0",
 ]
 dev = [
   "build>=1.2.2",
