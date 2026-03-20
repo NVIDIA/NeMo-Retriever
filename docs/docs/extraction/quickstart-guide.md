@@ -101,43 +101,7 @@ h. Run the command `docker ps`. You should see output similar to the following. 
     3403c5a0e7be  redis/redis-stack                                "/entrypoint.sh"        7 minutes ago   Up 7 minutes            0.0.0.0:6379...  nv-ingest-redis-1
     ```
 
-
-## Step 2: Install Python Dependencies
-
-You can interact with the service from the host, or by using `docker exec` to run commands in the runtime container.
-
-To interact from the host, you'll need a Python environment that has the client dependencies installed.
-
-```
-uv venv --python 3.12 nv-ingest-dev
-source nv-ingest-dev/bin/activate
-uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2
-```
-
-!!! tip
-
-    To confirm that you have activated your virtual environment, run `which pip` and `which python`, and confirm that you see `nvingest` in the result. You can do this before any pip or python command that you run.
-
-
-!!! note
-
-Interaction from the host requires the appropriate port to be exposed from the runtime container, as defined in the `docker-compose.yaml` file. If you prefer, you can disable this port and interact directly with the service from within its container.
-
-To work inside the container, run the following code.
-
-```bash
-docker exec -it nv-ingest-nv-ingest-ms-runtime-1 bash
-```
-This command opens a shell in the `/workspace` directory, where the `DATASET_ROOT` from your `.env` file is mounted at `./data`. The pre-created `nv_ingest_runtime` virtual environment includes all necessary Python client libraries. You should see a prompt similar to the following.
-
-```bash
-(nv_ingest_runtime) root@your-computer-name:/workspace#
-```
-From this prompt, you can run the CLI and Python examples.
-
-Because many service URIs default to localhost, running inside the runtime container also requires that you specify URIs manually so that services can communicate across containers on the internal Docker network. When using Milvus, see the example following for how to set the `milvus_uri`. With the default LanceDB backend, no extra URI configuration is needed.
-
-## Step 3: Ingest Documents
+## Step 2: Ingest Documents
 
 You can submit jobs programmatically in Python or using the [CLI](nv-ingest_cli.md).
 
@@ -358,7 +322,7 @@ INFO:nv_ingest_client.cli.util.processing:Throughput (Pages/sec): 1.28
 INFO:nv_ingest_client.cli.util.processing:Throughput (Files/sec): 0.43
 ```
 
-## Step 4: Inspecting and Consuming Results
+## Step 3: Inspecting and Consuming Results
 
 After the ingestion steps above have been completed, you should be able to find the `text` and `image` subfolders inside your processed docs folder. Each will contain JSON-formatted extracted content and metadata.
 
@@ -429,6 +393,17 @@ You can specify multiple `--profile` options.
 | `nemotron-parse`      | Advanced | Use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), which adds state-of-the-art text and table extraction. For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md). | 
 | `vlm`                 | Advanced | Use [llama 3.1 Nemotron 8B Vision](https://build.nvidia.com/nvidia/llama-3.1-nemotron-nano-vl-8b-v1/modelcard) for image captioning of unstructured images and infographics. This profile enables the `caption` method in the Python API to generate text descriptions of visual content. For more information, refer to [Use Multimodal Embedding](vlm-embed.md) and [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images). | 
 
+
+## Air-Gapped Deployment (Docker Compose)
+
+When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
+
+1. On a machine with network access: Clone the repo, authenticate with NGC (`docker login nvcr.io`), and pull all images used by your chosen profile (for example, `docker compose --profile retrieval pull`).
+2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)).
+3. Transfer the image archives and your `docker-compose.yaml` (and `.env` if used) to the air-gapped system.
+4. On the air-gapped machine: Load the images (`docker load -i <archive>`) and start the stack with the same profile (for example, `docker compose --profile retrieval up`).
+
+Ensure the same image tags and `docker-compose.yaml` version are used in both environments so that service configuration stays consistent.
 
 ## Docker Compose override files
 
