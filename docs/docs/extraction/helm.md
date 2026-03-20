@@ -1,5 +1,7 @@
 <!-- Use this documentation to deploy [NeMo Retriever Library](overview.md) by using Helm. -->
 
+# Deploy With Helm for NeMo Retriever Library
+
 To deploy [NeMo Retriever Library](overview.md) by using Helm, refer to [NV-Ingest Helm Charts](https://github.com/NVIDIA/nv-ingest/blob/release/26.1.2/helm/README.md).
 
 !!! note "Air-gapped environments"
