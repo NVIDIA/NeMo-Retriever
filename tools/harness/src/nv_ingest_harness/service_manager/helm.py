@@ -952,11 +952,43 @@ done
     _INGESTION_DEPLOYMENTS = (
         # main deploy uses release name (e.g. nv-ingest); set at runtime
         "nemotron-page-elements-v3",
+        "nemoretriever-page-elements-v3",
         "nemotron-graphic-elements-v1",
+        "nemoretriever-graphic-elements-v1",
         "nemotron-table-structure-v1",
+        "nemoretriever-table-structure-v1",
         "nemotron-ocr-v1",
+        "nemoretriever-ocr-v1",
     )
-    _NON_INGESTION_DEPLOYMENTS = ("llama-nemotron-rerank-1b-v2",)
+    _NON_INGESTION_DEPLOYMENTS = (
+        "llama-nemotron-rerank-1b-v2",
+        "llama-32-nv-rerankqa-1b-v2",
+    )
+
+    def _wait_for_deployments_available(self, timeout_s: int = 600, verbose: bool = True) -> None:
+        """Wait for all deployments in the release namespace to be available (condition=available).
+        Ensures the deployment list is complete before scaling. No-op or proceeds on timeout/no resources.
+        """
+        if verbose:
+            print(f"Waiting for deployments in {self.namespace} to be available (timeout: {timeout_s}s)...")
+        cmd = self.kubectl_cmd + [
+            "wait",
+            "--for=condition=available",
+            "deployment",
+            "--all",
+            "-n",
+            self.namespace,
+            f"--timeout={timeout_s}s",
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s + 30)
+            if result.returncode == 0 and verbose:
+                print("Deployments available.")
+            elif result.returncode != 0 and verbose:
+                print("Proceeding (deployments wait finished or timed out).")
+        except Exception as e:
+            if verbose:
+                print(f"Proceeding after wait error: {e}")
 
     def _get_existing_deployments(self) -> set[str]:
         """Return set of deployment names that exist in the release namespace."""
@@ -1023,6 +1055,8 @@ done
 
     def stop_non_ingestion_services(self) -> int:
         """Stop reranker and other non-ingestion services (scale to 0) after initial start."""
+        timeout_s = getattr(self.config, "readiness_timeout", 600)
+        self._wait_for_deployments_available(timeout_s=timeout_s, verbose=True)
         existing = self._get_existing_deployments()
         to_stop = [d for d in self._NON_INGESTION_DEPLOYMENTS if d in existing]
         if not to_stop:
@@ -1035,15 +1069,22 @@ done
         return 0
 
     def start_retrieval_services(self, reranker: bool = False) -> int:
-        """Start recall-required services; if reranker is True, scale reranker to 1."""
+        """Start recall-required services; if reranker is True, scale reranker(s) to 1.
+        Tries both known reranker deployment names (llama-nemotron-rerank-1b-v2, llama-32-nv-rerankqa-1b-v2).
+        """
         if not reranker:
             return 0
         existing = self._get_existing_deployments()
-        reranker_name = "llama-nemotron-rerank-1b-v2"
-        if reranker_name not in existing:
+        to_start = [d for d in self._NON_INGESTION_DEPLOYMENTS if d in existing]
+        if not to_start:
             return 0
         print("Starting retrieval services (reranker)...")
-        return self._scale_deployment(reranker_name, 1)
+        rc = 0
+        for name in to_start:
+            if self._scale_deployment(name, 1) != 0:
+                print(f"Warning: Failed to scale {name} to 1")
+                rc = 1
+        return rc
 
     def wait_for_reranker_readiness(self, timeout_s: int, verbose: bool = True) -> bool:
         """Wait for reranker NIM to become ready (poll /v1/health/ready on port 8015)."""

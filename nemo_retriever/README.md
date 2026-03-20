@@ -2,17 +2,15 @@
 
 NeMo Retriever Library is a retrieval-augmented generation (RAG) ingestion pipeline for documents that can parse text, tables, charts, and infographics. NeMo Retriever Library parses documents, creates embeddings, optionally stores embeddings in LanceDB, and performs recall evaluation.
 
-This quick start guide shows how to run NeMo Retriever Library in library mode, directly from your application, without Docker. In library mode, NeMo Retriever Library supports two deployment options:
-- Load Hugging Face models locally on your GPU.
-- Use locally deployed NeMo Retriever NIM endpoints for embedding and OCR.
+This quick start guide shows how to run NeMo Retriever Library as a library all within local Python processes without containers. NeMo Retriever Library supports two inference options:
+- Pull and run [Nemotron RAG models from Hugging Face](https://huggingface.co/collections/nvidia/nemotron-rag) on your local GPU(s).
+- Make over the network inference calls to build.nvidia.com hosted or locally deployed NeMo Retriever NIM endpoints.
 
-You’ll set up a CUDA 13–compatible environment, install the library and its dependencies, and run GPU‑accelerated ingestion pipelines that convert PDFs, HTML, plain text, and audio into vector embeddings stored in LanceDB, with optional Ray‑based scaling and built‑in recall benchmarking.
+You’ll set up a CUDA 13–compatible environment, install the library and its dependencies, and run GPU‑accelerated ingestion pipelines that convert PDFs, HTML, plain text, audio, or video into vector embeddings stored in LanceDB (on local disk), with Ray‑based scaling and built‑in recall benchmarking.
 
 ## Prerequisites
 
-> **Warning:** The `online` and `fused` run modes are experimental and not fully supported. They may be incomplete, unstable, or subject to breaking changes. Use `batch` or `inprocess` modes for production workloads.
-
-Before you start, make sure your system meets the following requirements:
+Before starting, make sure your system meets the following requirements:
 
 - The host is running CUDA 13.x so that `libcudart.so.13` is available.
 - Your GPUs are visible to the system and compatible with CUDA 13.x.
@@ -27,7 +25,7 @@ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64
 
 ## Setup your environment
 
-Complete the following steps to setup your environment. You will create and activate isolated Python and project virtual environments, install the NeMo Retriever Library and its CUDA 13–compatible GPU dependencies, and then run the ingestion, benchmarking, and audio pipelines to validate the full setup.
+Complete the following steps to setup your environment. You will create and activate isolated Python and project virtual environments, install the NeMo Retriever Library and its dependencies, and then run the provided ingestion snippets to validate your setup.
 
 1. Create and activate the NeMo Retriever Library environment
 
@@ -36,28 +34,13 @@ Before installing NeMo Retriever Library, create an isolated Python environment 
 In your terminal, run the following commands from any location.
 
 ```bash
-uv venv .nemotron-ocr-test --python 3.12
-source .nemotron-ocr-test/bin/activate
-uv pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple nemo-retriever
+uv venv retriever --python 3.12
+source retriever/bin/activate
+uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
 ```
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
 
-2. Install NeMo Retriever Library and Dependencies
-
-Install the latest nightly builds of the NeMo Retriever Library so you can test the most recent features and fixes before they are rolled into a stable release. 
-
-In this step, you install the core library, its API layer, and the client package, ensuring the ingestion pipeline and related tooling all come from a consistent, up‑to‑date version set.
-
-In your terminal, run the following commands from any location.
-
-
-```bash
-uv pip install -i https://test.pypi.org/simple nemo-retriever==2026.3.3.dev20260303 nemo-retriever-api==2026.3.3.dev20260303 nemo-retriever-client==2026.3.3.dev20260303 --no-deps
-uv pip install nemo-retriever nemo-retriever-api nemo-retriever-client
-```
-These packages provide the ingestion pipeline and APIs used by NeMo Retriever Library until everything is consolidated under the single `nemo-retriever` surface.
-
-3. Install CUDA 13 builds of Torch and Torchvision
+2. Install CUDA 13 builds of Torch and Torchvision
 
 To ensure NeMo Retriever Library’s OCR and GPU‑accelerated components run correctly on your system, you need PyTorch and TorchVision builds that are compiled for CUDA 13. In this step, you uninstall any existing Torch/TorchVision packages and reinstall them from a dedicated CUDA 13.0 wheel index so they link against the same CUDA runtime as the rest of your pipeline.
 
@@ -69,342 +52,239 @@ uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu13
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
 
-4. Set up the NeMo Retriever Library project environment
+## Run the pipeline
 
-For local development, you need a project-scoped environment tied directly to the NeMo Retriever Library source tree. 
+The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
-In this step, you create a virtual environment in the repo itself and install the `nemo_retriever` package in editable mode so you can run examples, tweak the code, and pick up changes without reinstallation.
+> **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
 
-Run the following code from the NeMo Retriever Library repo root (NVIDIA/NeMo-Retriever).
-
-```bash
-cd /path/to/NeMo-Retriever
-uv venv .retriever
-source .retriever/bin/activate
-uv pip install -e ./nemo_retriever
-```
-This creates a project-local environment and installs the `nemo_retriever` Python package in editable mode for running the examples.
-
-5. Run the batch pipeline on PDFs
-
-In this procedure, you run the end‑to‑end NeMo Retriever Library batch pipeline to ingest a collection of PDFs and generate embeddings for them. Pointing the script at a directory of PDF files lets the pipeline handle parsing, OCR, embedding, optional LanceDB upload, and (if configured) recall evaluation in a single command.
-
-Run the batch pipeline script and point it at the directory that contains your PDFs using the following command.
-
-```bash
-uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/pdfs
-```
-
-The first positional argument is the `input-dir`, the directory with the PDF files to ingest.
-
-For recall evaluation, the pipeline uses bo767_query_gt.csv from the current working directory by default; you can override this by running the following command.
-
-```bash
-uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/pdfs \
-  --query-csv /path/to/custom_query_gt.csv
-```
-
-If the specified query CSV does not exist, recall evaluation is skipped automatically and only the ingestion process runs.
-
-By default, the pipeline prints per‑query details (query text, gold answers, and hits); use `--no-recall-details` to show only the missed‑gold summary and overall recall metrics.
-
-To reuse an existing Ray cluster, append --ray-address using the following command.
-
-```bash
---ray-address auto
-```
-
-By doing this the pipeline connects to the running Ray deployment instead of starting a new one.
-
-6. Ingest HTML or plain text instead of PDFs
-
-If your documents aren't stored as PDFs, you can point the same NeMo Retriever Library batch pipeline to directories of HTML or plain text files instead. 
-
-In this step, you either pass an input‑type flag to the batch example for a simple one‑shot run, or use a staged HTML CLI flow for more control over each phase of ingestion.
-
-To run the batch example directly on HTML or plain text, use one of the following commands in your terminal.
-
-```bash
-uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py <dir> --input-type html
-```
-or
-
-```bash
-uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py <dir> --input-type txt
-```
-Pass the directory that contains your PDFs as the first argument (`input-dir`). For recall evaluation, the pipeline uses `bo767_query_gt.csv` in the current directory by default; override with `--query-csv <path>`. For document-level recall, use `--recall-match-mode pdf_only` with `query,expected_pdf` data. Recall is skipped if the query file does not exist. By default, per-query details (query, gold, hits) are printed; use `--no-recall-details` to print only the missed-gold summary and recall metrics. To use an existing Ray cluster, pass `--ray-address auto`. If OCR fails with a missing `libcudart.so.13`, install the CUDA 13 runtime and set `LD_LIBRARY_PATH` as shown above.
-
-Use `--input-type html` for HTML files and `--input-type txt` for plain text.  HTML inputs are converted to markdown using the same tokenizer and chunking strategy used for `.txt` ingestion.
-
-For more step‑by‑step control with HTML, use the following staged HTML CLI flow commands instead.
-
-```bash
-retriever html run --input-dir <dir>
-retriever local stage5 run --input-dir <dir> --pattern "*.html_extraction.json"
-retriever local stage6 run --input-dir <dir>
-```
-`retriever html run` parses the HTML and writes `*.html_extraction.json` sidecar files into the input directory. `retriever local stage5 run` performs downstream processing over those JSON files, and `retriever local stage6 run` completes the final ingestion stages, such as embedding and optional upload, using the same core extraction pipeline.
-
-- Config files:
-  - `nemo_retriever/harness/test_configs.yaml`
-  - `nemo_retriever/harness/nightly_config.yaml`
-- CLI entrypoint is nested under `retriever harness`.
-- First pass is LanceDB-only and enforces recall-required pass/fail by default.
-- Single-run artifact directories default to `<dataset>_<timestamp>`.
-- Dataset-specific recall adapters are supported via config:
-  - `recall_adapter: none` (default passthrough)
-  - `recall_adapter: page_plus_one` (convert zero-indexed `page` CSVs to `pdf_page`)
-  - `recall_adapter: financebench_json` (convert FinanceBench JSON to `query,expected_pdf`)
-  - `recall_match_mode: pdf_page|pdf_only` controls recall matching mode.
-- Dataset presets configured under `/datasets/nv-ingest/...` will fall back to `/raid/$USER/...` when the dataset is not present in `/datasets`.
-- Relative `query_csv` entries in harness YAML resolve from the config file directory first, then fall back to the repo root.
-- The default `financebench` dataset preset now points at `data/financebench_train.json` and enables recall out of the box.
-
-After you’ve finished installing and configuring NeMo Retriever Library, it's a good idea to validate the entire pipeline with a small, known dataset. In this step, you run the batch pipeline module against the sample `bo20` dataset to confirm that ingestion, OCR under CUDA 13, embedding, and any configured recall evaluation all run end‑to‑end without errors.
-
-```bash
-uv run python -m nemo_retriever.examples.batch_pipeline /datasets/nemo-retriever/bo20
-```
-This uses the module form of the NeMo Retriever Library batch pipeline example and points it at a sample dataset directory, verifying both ingestion and OCR under CUDA 13.
-
-7. Ingest image files
-
-NeMo Retriever Library can ingest standalone image files through the same detection, OCR, and embedding pipeline used for PDFs. Supported formats are PNG, JPEG, BMP, TIFF, and SVG. SVG support requires the optional `cairosvg` package. Each image is treated as a single page.
-
-To run the batch pipeline on a directory of images, use `--input-type image` to match all supported formats at once.
-
-```bash
-uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/images \
-  --input-type image
-```
-
-You can also pass a single-format shortcut to restrict which files are picked up.
-
-```bash
-uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/images \
-  --input-type png
-```
-
-Valid single-format values are `png`, `jpg`, `jpeg`, `bmp`, `tiff`, `tif`, and `svg`.
-
-For in-process mode, build the ingestor chain with `extract_image_files` instead of `extract`.
-
+### Ingest a test pdf
 ```python
 from nemo_retriever import create_ingestor
-from nemo_retriever.params import ExtractParams, EmbedParams
+from nemo_retriever.io import to_markdown, to_markdown_by_page
+from pathlib import Path
 
+documents = [str(Path("../data/multimodal_test.pdf"))]
+ingestor = create_ingestor(run_mode="batch")
+
+# ingestion tasks are chainable and defined lazily
 ingestor = (
-    create_ingestor(run_mode="inprocess")
-    .files("images/*.png")
-    .extract_image_files(
-        ExtractParams(
-            extract_text=True,
-            extract_tables=True,
-            extract_charts=True,
-            extract_infographics=True,
-        )
-    )
-    .embed()
-    .vdb_upload()
-    .ingest()
+  ingestor.files(documents)
+  .extract(
+    # below are the default values, but content types can be controlled
+    extract_text=True,
+    extract_charts=True,
+    extract_tables=True,
+    extract_infographics=True
+  )
+  .embed()
+  .vdb_upload()
+)
+
+# ingestor.ingest() actually executes the pipeline
+# results are returned as a ray dataset and inspectable as chunks
+ray_dataset = ingestor.ingest()
+chunks = ray_dataset.get_dataset().take_all()
+```
+
+### Inspect extracts
+You can inspect how recall accuracy optimized text chunks for various content types were extracted into text representations:
+```python
+# page 1 raw text:
+>>> chunks[0]["text"]
+'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose...'
+
+# markdown formatted table from the first page
+>>> chunks[1]["text"]
+'| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |'
+
+# a chart from the first page
+>>> chunks[2]["text"]
+'Chart 1\nThis chart shows some gadgets, and some very fictitious costs.\nGadgets and their cost\n$160.00\n$140.00\n$120.00\n$100.00\nDollars\n$80.00\n$60.00\n$40.00\n$20.00\n$-\nPowerdrill\nBluetooth speaker\nMinifridge\nPremium desk fan\nHammer\nCost'
+
+# markdown formatting for full pages or documents:
+# document results are keyed by source filename
+>>> to_markdown_by_page(chunks).keys()
+dict_keys(['multimodal_test.pdf'])
+
+# results per document are keyed by page number
+>>> to_markdown_by_page(chunks)["multimodal_test.pdf"].keys()
+dict_keys([1, 2, 3])
+
+>>> to_markdown_by_page(chunks)["multimodal_test.pdf"][1]
+'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose. It contains some \r\nheadings and some placeholder text to fill the space. The text is not important and contains \r\nno real value, but it is useful for testing. Below, we will have some simple tables and charts \r\nthat we can use to confirm Ingest is working as expected.\r\nTable 1\r\nThis table describes some animals, and some activities they might be doing in specific \r\nlocations.\r\nAnimal Activity Place\r\nGira@e Driving a car At the beach\r\nLion Putting on sunscreen At the park\r\nCat Jumping onto a laptop In a home o@ice\r\nDog Chasing a squirrel In the front yard\r\nChart 1\r\nThis chart shows some gadgets, and some very fictitious costs.\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 1\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 1\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 2\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 2\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 3\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 3\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost'
+
+# full document markdown also keyed by source filename
+>>> to_markdown(chunks).keys()
+dict_keys(['multimodal_test.pdf'])
+```
+
+Since the ingestion job automatically populated a lancedb table with all these chunks, you can use queries to retrieve semantically relevant chunks for feeding directly into an LLM:
+
+### Run a recall query
+
+```python
+from nemo_retriever.retriever import Retriever
+
+retriever = Retriever(
+  # default values
+  lancedb_uri="lancedb",
+  lancedb_table="nv-ingest",
+  embedder="nvidia/llama-3.2-nv-embedqa-1b-v2",
+  top_k=5,
+  reranker=False
+)
+
+query = "Given their activities, which animal is responsible for the typos in my documents?"
+
+# you can also submit a list with retriever.queries[...]
+hits = retriever.query(query)
+```
+
+```python
+# retrieved text from the first page
+>>> hits[0]
+{'text': 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose. It contains some \r\nheadings and some placeholder text to fill the space. The text is not important and contains \r\nno real value, but it is useful for testing. Below, we will have some simple tables and charts \r\nthat we can use to confirm Ingest is working as expected.\r\nTable 1\r\nThis table describes some animals, and some activities they might be doing in specific \r\nlocations.\r\nAnimal Activity Place\r\nGira@e Driving a car At the beach\r\nLion Putting on sunscreen At the park\r\nCat Jumping onto a laptop In a home o@ice\r\nDog Chasing a squirrel In the front yard\r\nChart 1\r\nThis chart shows some gadgets, and some very fictitious costs.', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.5822279453277588}
+
+# retrieved text of the table from the first page
+>>> hits[1]
+{'text': '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.614684820175171}
+```
+
+###  Generate a query answer using an LLM
+The above retrieval results are often feedable directly to an LLM for answer generation.
+
+To do so, first install the openai client and set your [build.nvidia.com](https://build.nvidia.com/) API key:
+```bash
+uv pip install -y openai
+export NVIDIA_API_KEY=nvapi-...
+```
+
+```python
+from openai import OpenAI
+import os
+
+client = OpenAI(
+  base_url = "https://integrate.api.nvidia.com/v1",
+  api_key = os.environ.get("NVIDIA_API_KEY")
+)
+
+hit_texts = [hit["text"] for hit in hits]
+prompt = f"""
+Given the following retrieved documents, answer the question: {query}
+
+Documents:
+{hit_texts}
+"""
+
+completion = client.chat.completions.create(
+  model="nvidia/nemotron-3-super-120b-a12b",
+  messages=[{"role":"user","content":prompt}],
+  stream=False
+)
+
+answer = completion.choices[0].message.content
+print(answer)
+```
+
+Answer:
+```
+Cat is the animal whose activity (jumping onto a laptop) matches the location of the typos, so the cat is responsible for the typos in the documents.
+```
+
+### Ingest other types of content:
+
+For PowerPoint and Docx files, ensure libeoffice is installed by your system's package manager. This is required to make their pages renderable as images for our [page-elements content classifier](https://huggingface.co/nvidia/nemotron-page-elements-v3).
+
+For example, with apt-get on Ubuntu:
+```bash
+sudo apt install -y libreoffice
+```
+
+Example usage:
+```python
+# docx and pptx files
+documents = [str(Path(f"../data/*{ext}")) for ext in [".pptx", ".docx"]]
+# mixed types of images
+images = [str(Path(f"../data/*{ext}")) for ext in [".png", ".jpeg", ".bmp"]]
+ingestor = (
+  # above file types can be combined into a single job
+  ingestor.files(documents + images)
+  .extract()
 )
 ```
 
-All `ExtractParams` options (`extract_text`, `extract_tables`, `extract_charts`, `extract_infographics`) apply to image ingestion.
+*Note:* the `split()` task uses a tokenizer to split texts by a max_token length
 
-### Render one document as markdown
+PDF text is split at the page level.
 
-If you want a readable page-by-page markdown view of a single in-process result, pass the
-single-document result from `results[0]` to `nemo_retriever.io.to_markdown`.
+HTML and .txt files have no natural page delimiters, so they almost always need to be paired with the `.split()` task.
 
 ```python
-from nemo_retriever import create_ingestor
-from nemo_retriever.io import to_markdown
-
+# html and text files - include a split task to prevent texts from exceeding the embedder's max sequence length
+documents = [str(Path(f"../data/*{ext}")) for ext in [".txt", ".html"]]
 ingestor = (
-    create_ingestor(run_mode="inprocess")
-    .files("data/multimodal_test.pdf")
-    .extract(
-        extract_text=True,
-        extract_tables=True,
-        extract_charts=True,
-        extract_infographics=True,
-    )
+  ingestor.files(documents)
+  .extract()
+  .split(max_tokens=5) #1024 by default, set low here to demonstrate chunking
 )
-results = ingestor.ingest()
-print(to_markdown(results[0]))
 ```
 
-Use `to_markdown_by_page(results[0])` when you want a `dict[int, str]` instead of one concatenated
-markdown document.
+For audio and video files, ensure ffmpeg is installed by your system's package manager.
 
-## Benchmark harness
-
-NeMo Retriever Library includes a lightweight benchmark harness that lets you run repeatable evaluations and sweeps without using Docker. [NeMo Retriever Library benchmarking documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/benchmarking/)
-
-1. Configuration
-
-The harness is configured using the following configuration files:
-
-- `nemo_retriever/harness/test_configs.yaml`  
-- `nemo_retriever/harness/nightly_config.yaml`  
-
-The CLI entrypoint is nested under `retriever harness`. The first pass is LanceDB‑only and enforces recall‑required pass/fail by default, and single‑run artifact directories default to `<dataset>_<timestamp>`. [NeMo Retriever Library benchmarking documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/benchmarking/)
-
-2. Single run
-
-You can run a single benchmark either from a preset dataset name or a direct path.
-
-Preset dataset name
+For example, with apt-get on Ubuntu:
 ```bash
-# Dataset preset from test_configs.yaml (recall-required example)
-retriever harness run --dataset jp20 --preset single_gpu
+sudo apt install -y ffmpeg
 ```
-or
-
-# Direct dataset path
-retriever harness run --dataset /datasets/nv-ingest/bo767 --preset single_gpu
-
-# Add repeatable run or session tags for later review
-retriever harness run --dataset jp20 --preset single_gpu --tag nightly --tag candidate
-```
-
-3. Sweep runs
-
-To sweep multiple runs defined in a config file use the following command.
-
-```bash
-retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
-```
-
-4. Nightly sessions
-
-To orchestrate a full nightly benchmark session use the following command.
-
-```bash
-export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
-retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml
-retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --skip-slack
-retriever harness nightly --dry-run
-retriever harness nightly --replay nemo_retriever/artifacts/nightly_20260305_010203_UTC
-```
-
-`nemo_retriever/harness/nightly_config.yaml` supports a small top-level `preset:` and `slack:`
-block alongside `runs:`. Keep the webhook secret out of YAML and source control; provide it only
-through the `SLACK_WEBHOOK_URL` environment variable. If the variable is missing, nightly still
-runs and writes artifacts but skips the Slack post. `--replay` lets you resend a previous session
-directory, run directory, or `results.json` file after fixing webhook access.
-
-For reusable box-local automation, the harness also includes shell entrypoints:
-
-```bash
-# One-shot nightly run using the repo-local .retriever env
-bash nemo_retriever/harness/run_nightly.sh
-
-# Forever loop that sleeps until the next UTC schedule window, then runs nightly
-tmux new-session -d -s retriever-nightly \
-  "cd /path/to/nv-ingest && export SLACK_WEBHOOK_URL='https://hooks.slack.com/services/...' && \
-   bash nemo_retriever/harness/run_nightly_loop.sh"
-```
-
-`run_nightly_loop.sh` is intended as a pragmatic fallback for boxes where cron or timers are
-unreliable. It does not require an interactive SSH session once launched inside `tmux`, but it is
-still less robust than a real scheduler such as `systemd` or a cluster job scheduler.
-
-The `--dry-run` option lets you verify the planned runs without executing them. [NeMo Retriever Library benchmarking documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/benchmarking/)
-
-5. Harness artifacts
-
-Each harness run writes a compact artifact set (no full stdout/stderr log persistence):
-
-- `results.json` (normalized metrics + pass/fail + config snapshot + `run_metadata`)
-- `command.txt` (exact invoked command)
-- `runtime_metrics/` (Ray runtime summary + timeline files)
-
-Recall metrics in `results.json` are normalized as `recall_1`, `recall_5`, and `recall_10`.
-Nightly/sweep rollups intentionally focus on compact `summary_metrics`:
-
-- `pages`
-- `ingest_secs`
-- `pages_per_sec_ingest`
-- `recall_5`
-
-By default, detection totals are embedded into `results.json` under `detection_summary`.
-If you want a separate detection file for ad hoc inspection, set `write_detection_file: true` in
-`nemo_retriever/harness/test_configs.yaml`.
-When tags are supplied with `--tag`, they are persisted in `results.json` and in session rollups for sweep/nightly runs.
-
-`results.json` also includes a nested `run_metadata` block for lightweight environment context:
-
-- `host`
-- `gpu_count`
-- `cuda_driver`
-- `ray_version`
-- `python_version`
-
-These fields use best-effort discovery and fall back to `null` or `"unknown"` rather than failing a run.
-
-Sweep/nightly sessions additionally write:
-
-The `runtime_metrics/` directory contains:
-
-When Slack posting is enabled, the nightly summary is built from `session_summary.json` plus each
-run's `results.json`, so the on-disk artifacts remain the source of truth even if you need to replay
-or troubleshoot a failed post later.
-
-### Runtime metrics interpretation
-
-- **`run.runtime.summary.json`** - run totals (input files, pages, elapsed seconds)  
-- **`run.ray.timeline.json`** - detailed Ray execution timeline  
-- **`run.rd_dataset.stats.txt`** - Ray dataset stats dump  
-
-Use `results.json` for routine benchmark comparison, and use the files under `runtime_metrics/` when investigating throughput regressions or stage‑level behavior. [NeMo Retriever Library benchmarking documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/benchmarking/)
-
-6. Artifact size profile
-
-Current benchmark runs show that the LanceDB data dominates the artifact footprint:
-
-### Cron / timer setup
-
-For a simple machine-local schedule, run the nightly command from `cron` or a `systemd` timer on the
-GPU host that already has dataset access and the retriever environment installed.
-
-Example cron entry:
-
-```bash
-0 2 * * * cd /path/to/nv-ingest && source .retriever/bin/activate && \
-  export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..." && \
-  retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml \
-  >> nemo_retriever/artifacts/nightly_cron.log 2>&1
-```
-
-If you prefer `systemd`, keep the same command in an `ExecStart=` line and move
-`SLACK_WEBHOOK_URL` into an environment file owned by the machine user so the secret stays out of
-the repo.
-
-### Artifact size profile
-
-- **`bo20`** - ~9.0 MiB total, ~8.6 MiB LanceDB  
-- **`jp20`** - ~36.8 MiB total, ~36.2 MiB LanceDB 
-
-## Audio ingestion pipeline
-
-NeMo Retriever Library also supports audio ingestion alongside documents. Audio pipelines typically follow a chained pattern such as the following.  
 
 ```python
-.files("mp3/*.mp3").extract_audio(...).embed().vdb_upload().ingest()
+ingestor = create_ingestor(run_mode="batch")
+ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 ```
 
-This can be run in batch, in‑process, or fused mode within NeMo Retriever Library. [NeMo Retriever Library audio extraction documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/audio/)
+### Explore Different Pipeline Options:
 
-### ASR options
+You can use the [Nemotron RAG VL Embedder](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2)
 
-For automatic speech recognition (ASR), you have the following two options:
+```python
+ingestor = (
+  ingestor.files(documents)
+  .extract()
+  .embed(
+    model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+    #works with plain "text"s, "image"s, and "text_image" pairs
+    embed_modality="text_image"  
+  )
+)
+```
 
-- Local: When `audio_endpoints` are not set, the pipeline uses local HuggingFace ASR (`nvidia/parakeet-ctc-1.1b`) through Transformers with NeMo fallback; no NIM or gRPC endpoint is required. [Parakeet CTC 1.1B model on Hugging Face](https://huggingface.co/nvidia/parakeet-ctc-1.1b)
-- Remote: When `audio_endpoints` is set (for example, Parakeet NIM or self‑deployed Riva gRPC), the pipeline uses the remote client; set `AUDIO_GRPC_ENDPOINT`, `NGC_API_KEY`, and optionally `AUDIO_FUNCTION_ID`. [NeMo Retriever Library audio extraction documentation (25.6.3)](https://docs.nvidia.com/nemo/retriever/25.6.3/extraction/audio/)
+You can use a different ingestion pipeline based on [Nemotron-Parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) combined with the default embedder:
+```python
+ingestor = ingestor.files(documents).extract(method="nemotron_parse")
+```
 
-See `ingest-config.yaml` (sections `audio_chunk`, `audio_asr`) and audio scripts under `retriever/scripts/` for concrete configuration examples. [NeMo Retriever Library audio extraction documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/audio/)
+## Run with remote inference, no local GPU required:
+
+For build.nvidia.com hosted inference, make sure you have NVIDIA_API_KEY set as an environment variable. 
+
+```python
+ingestor = (
+  ingestor.files(documents)
+  .extract(
+    # for self hosted NIMs, your URLs will depend on your NIM container DNS settings
+    page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
+    graphic_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1",
+    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
+    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
+  )
+  .embed(
+    embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",
+    model_name="nvidia/llama-nemotron-embed-1b-v2",
+    embed_modality="text",
+  )
+  .vdb_upload()
+)
+```
 
 ## Ray cluster setup
 
@@ -494,3 +374,24 @@ To stop and remove both stacks use the following command.
 docker compose -p retriever-gpu0 down
 docker compose -p retriever-gpu1 down
 ```
+
+## ViDoRe Harness Sweep
+
+The harness includes BEIR-style ViDoRe dataset presets in `nemo_retriever/harness/test_configs.yaml` and a ready-made sweep definition in `nemo_retriever/harness/vidore_sweep.yaml`.
+
+The ViDoRe harness datasets are configured to:
+
+- read PDFs from `/datasets/nv-ingest/vidore_v3_corpus_pdf/...`
+- ingest with `embed_modality: text_image`
+- embed at `embed_granularity: page`
+- enable `extract_page_as_image: true` and `extract_infographics: true`
+- evaluate with BEIR-style `ndcg` and `recall` metrics
+
+To run the full ViDoRe sweep:
+
+```bash
+cd ~/nv-ingest/nemo_retriever
+retriever-harness sweep --runs-config harness/vidore_sweep.yaml
+```
+
+The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.

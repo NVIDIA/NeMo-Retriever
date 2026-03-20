@@ -184,6 +184,99 @@ def test_load_harness_config_supports_recall_adapter_and_match_mode(tmp_path: Pa
     assert cfg.recall_match_mode == "pdf_page"
 
 
+def test_load_harness_config_supports_multimodal_embedding_options(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: true",
+                "    embed_modality: text",
+                "    embed_granularity: element",
+                "    extract_page_as_image: false",
+                "    extract_infographics: true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.embed_modality == "text"
+    assert cfg.embed_granularity == "element"
+    assert cfg.extract_page_as_image is False
+    assert cfg.extract_infographics is True
+
+
+def test_load_harness_config_supports_beir_mode_without_recall_fields(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    beir_dataset_name: vidore_v3_computer_science",
+                "    recall_required: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.evaluation_mode == "beir"
+    assert cfg.beir_loader == "vidore_hf"
+    assert cfg.beir_dataset_name == "vidore_v3_computer_science"
+    assert cfg.query_csv is None
+
+
+def test_load_harness_config_defaults_beir_dataset_name_from_dataset_label(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: vidore_v3_computer_science",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  vidore_v3_computer_science:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    recall_required: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.beir_dataset_name == "vidore_v3_computer_science"
+
+
 def test_load_harness_config_resolves_relative_query_csv_from_config_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -282,6 +375,120 @@ def test_load_harness_config_rejects_invalid_recall_adapter(tmp_path: Path) -> N
     )
 
     with pytest.raises(ValueError, match="recall_adapter must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_rejects_invalid_beir_loader(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: nope",
+                "    recall_required: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="beir_loader must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_rejects_invalid_embed_modality(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: true",
+                "    embed_modality: invalid",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="embed_modality must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_rejects_image_text_alias(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: true",
+                "    embed_modality: image_text",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="embed_modality must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_rejects_removed_image_elements_modality_key(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: true",
+                "    image_elements_modality: text_image",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="image_elements_modality is no longer supported by the harness"):
         load_harness_config(config_file=str(cfg_path))
 
 

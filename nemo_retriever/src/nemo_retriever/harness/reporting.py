@@ -49,12 +49,12 @@ def _load_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in results if isinstance(item, dict)]
 
 
-def _collect_recall_keys(results: list[dict[str, Any]]) -> list[str]:
+def _collect_metric_keys(results: list[dict[str, Any]]) -> list[str]:
     keys = {
         key
         for result in results
         for key in dict(result.get("metrics", {})).keys()
-        if isinstance(key, str) and key.startswith("recall_")
+        if isinstance(key, str) and key.startswith(("recall_", "ndcg_"))
     }
     return sorted(keys)
 
@@ -130,11 +130,11 @@ def _format_table(headers: list[str], rows: list[list[str]], right_align: set[in
 
 def format_session_summary(summary_path: Path, payload: dict[str, Any]) -> str:
     results = _load_results(payload)
-    recall_keys = _collect_recall_keys(results)
+    metric_keys = _collect_metric_keys(results)
     include_tags = any(result.get("tags") for result in results)
 
     headers = ["run_name", "status", "files", "pages", "pps"]
-    headers.extend(recall_keys)
+    headers.extend(metric_keys)
     if include_tags:
         headers.append("tags")
     headers.append("artifact_dir")
@@ -148,7 +148,7 @@ def format_session_summary(summary_path: Path, payload: dict[str, Any]) -> str:
             _format_value(_metric_int(result, "pages")),
             _format_value(_metric_float(result, "pages_per_sec_ingest")),
         ]
-        row.extend(_format_value(_metric_float(result, key)) for key in recall_keys)
+        row.extend(_format_value(_metric_float(result, key)) for key in metric_keys)
         if include_tags:
             row.append(_format_value(result.get("tags")))
         row.append(_format_value(result.get("artifact_dir")))
@@ -166,7 +166,7 @@ def format_session_summary(summary_path: Path, payload: dict[str, Any]) -> str:
         return "\n".join(header_lines + ["No runs found."])
 
     right_align = {2, 3, 4}
-    right_align.update(idx for idx, header in enumerate(headers) if header.startswith("recall_"))
+    right_align.update(idx for idx, header in enumerate(headers) if header.startswith(("recall_", "ndcg_")))
     return "\n".join(header_lines + ["", _format_table(headers, rows, right_align=right_align)])
 
 
@@ -179,10 +179,10 @@ def format_session_compare(
     left_map = {str(item.get("run_name")): item for item in left_results if item.get("run_name")}
     right_map = {str(item.get("run_name")): item for item in right_results if item.get("run_name")}
     run_names = sorted(set(left_map) | set(right_map))
-    recall_keys = _collect_recall_keys(left_results + right_results)
+    metric_keys = _collect_metric_keys(left_results + right_results)
 
     headers = ["run_name", "left_status", "right_status", "left_pps", "right_pps", "delta_pps"]
-    headers.extend(f"delta_{key}" for key in recall_keys)
+    headers.extend(f"delta_{key}" for key in metric_keys)
 
     rows: list[list[str]] = []
     for run_name in run_names:
@@ -199,7 +199,7 @@ def format_session_compare(
             _format_value(right_pps),
             _format_delta(left_pps, right_pps),
         ]
-        for key in recall_keys:
+        for key in metric_keys:
             row.append(_format_delta(_metric_float(left_result or {}, key), _metric_float(right_result or {}, key)))
         rows.append(row)
 
@@ -211,7 +211,7 @@ def format_session_compare(
         return "\n".join(header_lines + ["No comparable runs found."])
 
     right_align = {3, 4, 5}
-    right_align.update(idx for idx, header in enumerate(headers) if header.startswith("delta_recall_"))
+    right_align.update(idx for idx, header in enumerate(headers) if header.startswith(("delta_recall_", "delta_ndcg_")))
     return "\n".join(header_lines + ["", _format_table(headers, rows, right_align=right_align)])
 
 

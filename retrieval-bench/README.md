@@ -16,6 +16,12 @@ All model backends load HuggingFace models with `trust_remote_code=True`, which
 executes Python code shipped with the model repository. Only use model IDs from
 sources you trust.
 
+## Retrieval Pipeline Leaderboards
+By March 13, 2026, the Nemo Retriever's Agentic Retrieval Pipeline placed 1st on the [Vidore V3 Retrieval Pipeline Leaderboard](https://huggingface.co/spaces/vidore/vidore-leaderboard) and 2nd on the [BRIGHT reasoning-intensive leaderboard](https://brightbenchmark.github.io/). Check below the pipeline information and results for those leaderboards.
+
+- [Vidore V3 Retrieval Pipeline Leaderboard submission](submissions/vidore_v3_agentic_pipeline.md)
+- [BRIGHT reasoning-intensive leaderboard submission](submissions/bright_agentic.md)
+
 ## Installation
 
 ```bash
@@ -65,7 +71,7 @@ Backend-specific overrides can be passed via `--pipeline-args` JSON:
 retrieval-bench evaluate dense-retrieval \
   --dataset-name bright/biology \
   --backend llama-nv-embed-reasoning-3b \
-  --pipeline-args '{"model_id":"~/checkpoints/my_model","scoring_batch_size":2048}'
+  --pipeline-args '{"model_id":"~/checkpoints/my_model","max_scoring_batch_size":2048}'
 ```
 
 ## Agentic retrieval

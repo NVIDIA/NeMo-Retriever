@@ -167,6 +167,7 @@ class ExtractParams(_ParamsModel):
     dpi: int = 200
     image_format: str = "jpeg"
     jpeg_quality: int = 100
+    render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
 
@@ -211,7 +212,8 @@ class ExtractParams(_ParamsModel):
         return self
 
 
-IMAGE_MODALITIES: frozenset[str] = frozenset({"image", "text_image", "image_text"})
+VALID_EMBED_MODALITIES: frozenset[str] = frozenset({"text", "image", "text_image"})
+IMAGE_MODALITIES: frozenset[str] = frozenset({"image", "text_image"})
 
 
 class EmbedParams(_ParamsModel):
@@ -238,10 +240,15 @@ class EmbedParams(_ParamsModel):
 
     @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
     @classmethod
-    def _normalize_modality(cls, v: str | None) -> str | None:
-        if v == "image_text":
-            return "text_image"
-        return v
+    def _validate_modality(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        modality = str(v).strip()
+        if modality == "image_text":
+            raise ValueError("Use 'text_image' instead of 'image_text'.")
+        if modality not in VALID_EMBED_MODALITIES:
+            raise ValueError(f"Modality must be one of {sorted(VALID_EMBED_MODALITIES)}")
+        return modality
 
     @model_validator(mode="after")
     def _warn_page_granularity_overrides(self) -> "EmbedParams":
