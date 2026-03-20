@@ -411,11 +411,28 @@ def resolve_requested_plan(
     override_pdf_extract_batch_size: Optional[int] = None,
     override_pdf_extract_cpus_per_task: Optional[float] = None,
     override_pdf_extract_tasks: Optional[int] = None,
+    allow_no_gpu: bool = False,
 ) -> RequestedPlan:
     available_gpu_count = max(0, int(cluster_resources.available_gpu_count()))
 
     if available_gpu_count == 0:
-        raise ValueError("No GPUs available")
+        if not allow_no_gpu:
+            raise ValueError("No GPUs available")
+        return RequestedPlan(
+            embed_initial_actors=1, embed_min_actors=1, embed_max_actors=1,
+            embed_gpus_per_actor=0.0, embed_batch_size=EMBED_BATCH_SIZE,
+            nemotron_parse_initial_actors=1, nemotron_parse_min_actors=1,
+            nemotron_parse_max_actors=1, nemotron_parse_gpus_per_actor=0.0,
+            nemotron_parse_batch_size=NEMOTRON_PARSE_BATCH_SIZE,
+            ocr_initial_actors=1, ocr_min_actors=1, ocr_max_actors=1,
+            ocr_gpus_per_actor=0.0, ocr_batch_size=OCR_BATCH_SIZE,
+            page_elements_initial_actors=1, page_elements_min_actors=1,
+            page_elements_max_actors=1, page_elements_gpus_per_actor=0.0,
+            page_elements_batch_size=PAGE_ELEMENTS_BATCH_SIZE,
+            pdf_extract_batch_size=PDF_EXTRACT_BATCH_SIZE,
+            pdf_extract_cpus_per_task=PDF_EXTRACT_CPUS_PER_TASK,
+            pdf_extract_tasks=PDF_EXTRACT_TASKS,
+        )
 
     def _resolve_int(override: Optional[int], default: int, multiply_by_available_num_gpu: bool) -> int:
         if override is not None and override > 0:

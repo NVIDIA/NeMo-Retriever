@@ -199,6 +199,7 @@ class BatchIngestor(Ingestor):
         ray_address: Optional[str] = None,
         ray_log_to_driver: bool = True,
         debug: bool = False,
+        allow_no_gpu: bool = False,
     ) -> None:
         super().__init__(documents=documents)
 
