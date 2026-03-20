@@ -1,6 +1,4 @@
-# Deploy Without Containers (Library Mode) for NeMo Retriever Library
-
-[NeMo Retriever Library](overview.md) is typically deployed as a cluster of containers for robust, scalable production use. 
+# NeMo Retriever Library
 
 !!! note
 
@@ -11,7 +9,6 @@ In addition, you can use library mode, which is intended for the following cases
 - Local development
 - Experimentation and testing
 - Small-scale workloads, such as workloads of fewer than 100 documents
-
 
 By default, library mode depends on NIMs that are hosted on build.nvidia.com. 
 In library mode you launch the main pipeline service directly within a Python process, 
@@ -24,7 +21,6 @@ To get started using library mode, you need the following:
 - We strongly advise using an isolated Python virtual env with [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 
-
 ## Step 1: Prepare Your Environment
 
 Use the following procedure to prepare your environment.
@@ -34,7 +30,7 @@ Use the following procedure to prepare your environment.
     ```
        uv venv --python 3.12 nvingest && \
          source nvingest/bin/activate && \
-         uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2
+         uv pip install nv-ingest==26.3.0 nv-ingest-api==26.3.0 nv-ingest-client==26.3.0
     ```
 
     By default, the pipeline uses **LanceDB** as the vector database (no extra package required). To use **Milvus** (e.g. milvus-lite) instead, also install `milvus-lite==2.4.12` and pass `milvus_uri="milvus.db"` in `vdb_upload`. For details, see [Data Upload](data-store.md).
@@ -485,3 +481,5 @@ The `run_pipeline` throws the following errors:
 - [Deploy With Helm](helm.md)
 - [Notebooks](notebooks.md)
 - [Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
+
+Use the [Quick Start for NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/nemo_retriever/README.md) to set up and run the NeMo Retriever Library locally, so you can build a GPU‑accelerated, multimodal RAG ingestion pipeline that parses PDFs, HTML, text, audio, and video into LanceDB vector embeddings, integrates with Nemotron RAG models (locally or via NIM endpoints), which includes Ray‑based scaling plus built‑in recall evaluation.

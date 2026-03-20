@@ -111,7 +111,7 @@ To interact from the host, you'll need a Python environment that has the client 
 ```
 uv venv --python 3.12 nv-ingest-dev
 source nv-ingest-dev/bin/activate
-uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2
+uv pip install nv-ingest==26.3.0 nv-ingest-api==26.3.0 nv-ingest-client==26.3.0
 ```
 
 !!! tip
@@ -358,7 +358,7 @@ INFO:nv_ingest_client.cli.util.processing:Throughput (Pages/sec): 1.28
 INFO:nv_ingest_client.cli.util.processing:Throughput (Files/sec): 0.43
 ```
 
-## Step 4: Inspecting and Consuming Results
+## Step 3: Inspecting and Consuming Results
 
 After the ingestion steps above have been completed, you should be able to find the `text` and `image` subfolders inside your processed docs folder. Each will contain JSON-formatted extracted content and metadata.
 
@@ -429,6 +429,16 @@ You can specify multiple `--profile` options.
 | `nemotron-parse`      | Advanced | Use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), which adds state-of-the-art text and table extraction. For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md). | 
 | `vlm`                 | Advanced | Use [llama 3.1 Nemotron 8B Vision](https://build.nvidia.com/nvidia/llama-3.1-nemotron-nano-vl-8b-v1/modelcard) for image captioning of unstructured images and infographics. This profile enables the `caption` method in the Python API to generate text descriptions of visual content. For more information, refer to [Use Multimodal Embedding](vlm-embed.md) and [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images). | 
 
+## Air-Gapped Deployment (Docker Compose)
+
+When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
+
+1. On a machine with network access: Clone the repo, authenticate with NGC (`docker login nvcr.io`), and pull all images used by your chosen profile (for example, `docker compose --profile retrieval pull`).
+2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)).
+3. Transfer the image archives and your `docker-compose.yaml` (and `.env` if used) to the air-gapped system.
+4. On the air-gapped machine: Load the images (`docker load -i <archive>`) and start the stack with the same profile (for example, `docker compose --profile retrieval up`).
+
+Ensure the same image tags and `docker-compose.yaml` version are used in both environments so that service configuration stays consistent.
 
 ## Docker Compose override files
 
@@ -514,6 +524,7 @@ This syntax and structure can be repeated for each NIM model used by CAS, ensuri
 !!! important
 
     Advanced features require additional GPU support and disk space. For more information, refer to [Support Matrix](support-matrix.md).
+
 
 ## Related Topics
 
