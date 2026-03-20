@@ -10,6 +10,8 @@ import pandas as pd
 
 from nemo_retriever.params import CaptionParams
 
+_MAX_CONTEXT_TEXT_CHARS = 4096
+
 
 class CaptionActor:
     """Ray Data actor that holds a local VLM captioner on a single GPU.
@@ -37,6 +39,16 @@ class CaptionActor:
 
     def __call__(self, batch_df: Any) -> Any:
         return caption_images(batch_df, model=self._model, **self._kwargs)
+
+
+def _build_prompt_with_context(base_prompt: str, context_text: str) -> str:
+    """Prepend surrounding page text to the base VLM prompt.
+
+    If *context_text* is empty the *base_prompt* is returned unchanged.
+    """
+    if not context_text:
+        return base_prompt
+    return f"Text near this image:\n---\n{context_text}\n---\n\n{base_prompt}"
 
 
 def _caption_batch_remote(
@@ -89,6 +101,32 @@ def _caption_batch_local(
     )
 
 
+def _caption_one(
+    b64: str,
+    *,
+    model: Any,
+    endpoint_url: str | None,
+    model_name: str,
+    api_key: str | None,
+    prompt: str,
+    system_prompt: str | None,
+    temperature: float,
+) -> str:
+    """Caption a single image (used when each image gets a unique prompt)."""
+    if model is not None:
+        captions = _caption_batch_local(
+            [b64], model=model, prompt=prompt,
+            system_prompt=system_prompt, temperature=temperature,
+        )
+    else:
+        captions = _caption_batch_remote(
+            [b64], endpoint_url=endpoint_url,  # type: ignore[arg-type]
+            model_name=model_name, api_key=api_key, prompt=prompt,
+            system_prompt=system_prompt, temperature=temperature,
+        )
+    return captions[0] if captions else ""
+
+
 def caption_images(
     batch_df: pd.DataFrame,
     *,
@@ -100,6 +138,7 @@ def caption_images(
     system_prompt: str | None = "/no_think",
     temperature: float = 1.0,
     batch_size: int = 8,
+    context_text_max_chars: int = 0,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """Caption images in the ``images`` column using a VLM.
@@ -111,34 +150,14 @@ def caption_images(
     * **Local** (``model`` is set): runs inference through a local
       ``NemotronVLMCaptioner`` instance loaded from Hugging Face.
 
+    When ``context_text_max_chars`` is greater than zero, the page's ``text``
+    column is prepended to the prompt for each image so the VLM can use
+    surrounding OCR text as context.  In this mode images are captioned
+    one at a time (each gets its own enriched prompt).
+
     For each row, any item in the ``images`` list whose ``text`` field is
     empty will be captioned.  The returned caption is written back into
     ``images[i]["text"]``.
-
-    Parameters
-    ----------
-    batch_df : pd.DataFrame
-        DataFrame with an ``images`` column containing lists of dicts with
-        keys ``image_b64``, ``text``, and ``bbox_xyxy_norm``.
-    model : NemotronVLMCaptioner | None
-        Pre-loaded local VLM model.  When provided, ``endpoint_url`` is
-        ignored and inference runs in-process.
-    endpoint_url : str | None
-        URL of a remote VLM HTTP endpoint.
-    model_name : str
-        Model identifier passed to the remote VLM endpoint (ignored for
-        local mode).
-    api_key : str | None
-        Bearer token for the remote VLM endpoint.
-    prompt : str
-        Text prompt sent alongside each image.
-    system_prompt : str | None
-        Optional system prompt for the VLM.
-    temperature : float
-        Sampling temperature.
-    batch_size : int
-        Number of images per remote VLM request (local mode processes
-        images one at a time).
     """
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
         return batch_df
@@ -156,6 +175,9 @@ def caption_images(
             tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
             gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.9),
         )
+
+    use_context = context_text_max_chars > 0
+    effective_max = min(context_text_max_chars, _MAX_CONTEXT_TEXT_CHARS) if use_context else 0
 
     # Collect all (row_idx, item_idx, image_b64) needing captions.
     pending: List[Tuple[int, int, str]] = []
@@ -175,33 +197,39 @@ def caption_images(
     if not pending:
         return batch_df
 
-    # Generate captions.
-    all_captions: List[str] = []
-    for start in range(0, len(pending), batch_size):
-        chunk_b64 = [b64 for _, _, b64 in pending[start : start + batch_size]]
-
-        if model is not None:
-            captions = _caption_batch_local(
-                chunk_b64,
-                model=model,
-                prompt=prompt,
-                system_prompt=system_prompt,
+    if use_context:
+        # Each image gets a per-page enriched prompt, so caption one at a time.
+        for row_idx, item_idx, b64 in pending:
+            page_text = batch_df.at[row_idx, "text"] if "text" in batch_df.columns else ""
+            context = (page_text or "")[:effective_max]
+            enriched_prompt = _build_prompt_with_context(prompt, context)
+            caption = _caption_one(
+                b64, model=model, endpoint_url=endpoint_url,
+                model_name=model_name, api_key=api_key,
+                prompt=enriched_prompt, system_prompt=system_prompt,
                 temperature=temperature,
             )
-        else:
-            captions = _caption_batch_remote(
-                chunk_b64,
-                endpoint_url=endpoint_url,  # type: ignore[arg-type]
-                model_name=model_name,
-                api_key=api_key,
-                prompt=prompt,
-                system_prompt=system_prompt,
-                temperature=temperature,
-            )
-        all_captions.extend(captions)
+            batch_df.at[row_idx, "images"][item_idx]["text"] = caption
+    else:
+        # Batch mode: all images share the same prompt.
+        all_captions: List[str] = []
+        for start in range(0, len(pending), batch_size):
+            chunk_b64 = [b64 for _, _, b64 in pending[start : start + batch_size]]
 
-    # Write captions back into the DataFrame.
-    for (row_idx, item_idx, _), caption in zip(pending, all_captions):
-        batch_df.at[row_idx, "images"][item_idx]["text"] = caption
+            if model is not None:
+                captions = _caption_batch_local(
+                    chunk_b64, model=model, prompt=prompt,
+                    system_prompt=system_prompt, temperature=temperature,
+                )
+            else:
+                captions = _caption_batch_remote(
+                    chunk_b64, endpoint_url=endpoint_url,  # type: ignore[arg-type]
+                    model_name=model_name, api_key=api_key, prompt=prompt,
+                    system_prompt=system_prompt, temperature=temperature,
+                )
+            all_captions.extend(captions)
+
+        for (row_idx, item_idx, _), caption in zip(pending, all_captions):
+            batch_df.at[row_idx, "images"][item_idx]["text"] = caption
 
     return batch_df

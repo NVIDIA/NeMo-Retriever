@@ -557,6 +557,11 @@ def main(
         "--caption-device",
         help="GPU device for the local VLM captioner (e.g. 'cuda:1').",
     ),
+    caption_context_text_max_chars: int = typer.Option(
+        0,
+        "--caption-context-text-max-chars",
+        help="Max characters of surrounding page text to include in the VLM prompt. 0 disables context.",
+    ),
     text_chunk: bool = typer.Option(
         False,
         "--text-chunk",
@@ -790,6 +795,7 @@ def main(
                     endpoint_url=caption_invoke_url,
                     model_name=caption_model_name,
                     device=caption_device,
+                    context_text_max_chars=caption_context_text_max_chars,
                 )
             )
 

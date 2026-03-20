@@ -312,6 +312,7 @@ class CaptionParams(_ParamsModel):
     batch_size: int = 8
     device: Optional[str] = None
     hf_cache_dir: Optional[str] = None
+    context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.9
 
