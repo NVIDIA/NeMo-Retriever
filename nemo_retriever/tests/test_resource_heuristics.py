@@ -175,6 +175,19 @@ def test_resolve_requested_plan_raises_with_no_gpus() -> None:
         rh.resolve_requested_plan(cluster_resources=_make_cluster(total_gpu=0))
 
 
+def test_resolve_requested_plan_allow_no_gpu_returns_cpu_only_plan() -> None:
+    plan = rh.resolve_requested_plan(cluster_resources=_make_cluster(total_gpu=0), allow_no_gpu=True)
+
+    assert plan.embed_gpus_per_actor == 0.0
+    assert plan.nemotron_parse_gpus_per_actor == 0.0
+    assert plan.ocr_gpus_per_actor == 0.0
+    assert plan.page_elements_gpus_per_actor == 0.0
+
+    assert plan.embed_initial_actors == 1
+    assert plan.embed_min_actors == 1
+    assert plan.embed_max_actors == 1
+    
+
 # ---------------------------------------------------------------------------
 # RequestedPlan — getters and model behavior
 # ---------------------------------------------------------------------------
