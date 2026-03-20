@@ -23,6 +23,7 @@ from nemo_retriever import create_ingestor
 from nemo_retriever.ingest_modes.batch import BatchIngestor
 from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema
 from nemo_retriever.model import resolve_embed_model
+from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import IngestExecuteParams
@@ -521,6 +522,26 @@ def main(
         "--extract-page-as-image/--no-extract-page-as-image",
         help="Render and retain full page images for downstream multimodal stages.",
     ),
+    caption: bool = typer.Option(
+        False,
+        "--caption/--no-caption",
+        help="Enable image captioning via a local VLM or remote endpoint.",
+    ),
+    caption_invoke_url: Optional[str] = typer.Option(
+        None,
+        "--caption-invoke-url",
+        help="Optional VLM endpoint URL for image captioning. Implies --caption.",
+    ),
+    caption_model_name: str = typer.Option(
+        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        "--caption-model-name",
+        help="VLM model name / HF model ID for image captioning.",
+    ),
+    caption_device: Optional[str] = typer.Option(
+        None,
+        "--caption-device",
+        help="GPU device for the local VLM captioner (e.g. 'cuda:1').",
+    ),
     text_chunk: bool = typer.Option(
         False,
         "--text-chunk",
@@ -746,6 +767,16 @@ def main(
         enable_text_chunk = text_chunk or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
         if enable_text_chunk:
             ingestor = ingestor.split(_text_chunk_params)
+
+        enable_caption = caption or caption_invoke_url is not None
+        if enable_caption:
+            ingestor = ingestor.caption(
+                CaptionParams(
+                    endpoint_url=caption_invoke_url,
+                    model_name=caption_model_name,
+                    device=caption_device,
+                )
+            )
 
         ingestor = ingestor.embed(embed_params)
 

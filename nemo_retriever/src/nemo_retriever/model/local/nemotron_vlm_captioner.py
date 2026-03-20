@@ -90,7 +90,7 @@ class NemotronVLMCaptioner(BaseModel):
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                "Local VLM captioning requires vLLM. " 'Install with: pip install "nemo-retriever[vlm-caption]"'
+                'Local VLM captioning requires vLLM. Install with: pip install "nemo-retriever[vlm-caption]"'
             ) from e
 
         self._model_path = model_path

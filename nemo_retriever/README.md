@@ -52,6 +52,12 @@ uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu13
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
 
+Alternatively, if you have uv 0.7+ you can set `UV_TORCH_BACKEND` to select the correct PyTorch CUDA index automatically:
+
+```bash
+UV_TORCH_BACKEND=cu130 uv pip install torch torchvision
+```
+
 ## Image Captioning (optional)
 
 NeMo Retriever Library can caption extracted images using a local VLM
@@ -61,12 +67,15 @@ This requires [vLLM](https://github.com/vllm-project/vllm) and
 separately because they contain CUDA kernels that must match your torch build.
 
 ```bash
-# 1. Install vLLM (--no-deps avoids overwriting the torch+cu130 already installed)
+# Install vLLM (--no-deps prevents overwriting torch, transformers, etc.)
 uv pip install --no-deps vllm>=0.16.0
 
-# 2. Build mamba-ssm from source against your torch (takes a few minutes)
+# Build mamba-ssm from source against your torch (takes a few minutes)
 uv pip install --no-deps --no-build-isolation mamba-ssm>=2.3.1
 ```
+
+> **Note:** `--no-deps` is required because vLLM's dependency solver would
+> downgrade `transformers` and `huggingface-hub` to incompatible versions.
 
 After installing, add `--caption` and `--caption-device` to your pipeline command:
 

@@ -8,6 +8,36 @@ from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
+from nemo_retriever.params import CaptionParams
+
+
+class CaptionActor:
+    """Ray Data actor that holds a local VLM captioner on a single GPU.
+
+    When ``endpoint_url`` is provided, the actor delegates to a remote VLM
+    endpoint and no local model is loaded.
+    """
+
+    def __init__(self, params: CaptionParams) -> None:
+        self._params = params
+        self._kwargs = params.model_dump(mode="python")
+        endpoint = (self._kwargs.get("endpoint_url") or "").strip()
+        if endpoint:
+            self._model = None
+        else:
+            from nemo_retriever.model.local import NemotronVLMCaptioner
+
+            self._model = NemotronVLMCaptioner(
+                model_path=self._kwargs.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"),
+                device=self._kwargs.get("device"),
+                hf_cache_dir=self._kwargs.get("hf_cache_dir"),
+                tensor_parallel_size=self._kwargs.get("tensor_parallel_size", 1),
+                gpu_memory_utilization=self._kwargs.get("gpu_memory_utilization", 0.9),
+            )
+
+    def __call__(self, batch_df: Any) -> Any:
+        return caption_images(batch_df, model=self._model, **self._kwargs)
+
 
 def _caption_batch_remote(
     base64_images: List[str],

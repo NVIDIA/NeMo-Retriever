@@ -48,6 +48,7 @@ from ..params import HtmlChunkParams
 from ..params import IngestExecuteParams
 from ..params import PdfSplitParams
 from ..params import TextChunkParams
+from ..params import CaptionParams
 from ..params import VdbUploadParams
 
 logger = logging.getLogger(__name__)
@@ -868,10 +869,17 @@ class BatchIngestor(Ingestor):
             target_num_rows_per_block=self._requested_plan.get_embed_batch_size()
         )
 
+        from nemo_retriever.ingest_modes.inprocess import _CONTENT_COLUMNS
+
+        content_columns = (
+            (_CONTENT_COLUMNS + ("images",)) if getattr(self, "_caption_enabled", False) else _CONTENT_COLUMNS
+        )
+
         if embed_granularity == "page":
             _row_fn = partial(
                 collapse_content_to_page_rows,
                 modality=embed_modality,
+                content_columns=content_columns,
             )
         else:
             text_elements_modality = resolved.text_elements_modality or embed_modality
@@ -881,6 +889,7 @@ class BatchIngestor(Ingestor):
                 modality=embed_modality,
                 text_elements_modality=text_elements_modality,
                 structured_elements_modality=structured_elements_modality,
+                content_columns=content_columns,
             )
         self._rd_dataset = self._rd_dataset.map_batches(
             _row_fn,
@@ -909,6 +918,36 @@ class BatchIngestor(Ingestor):
             fn_constructor_kwargs={"params": resolved},
         )
 
+        return self
+
+    def caption(self, params: CaptionParams | None = None, **kwargs: Any) -> "BatchIngestor":
+        """
+        Add an image-captioning stage to the batch pipeline.
+
+        Uses a GPU actor pool with a local VLM (vLLM) or delegates to a
+        remote VLM endpoint when ``endpoint_url`` is set.
+        """
+        if self._rd_dataset is None:
+            raise RuntimeError("No Ray Dataset to caption. Run .files(...) / .extract(...) first.")
+
+        resolved = _coerce_params(params, CaptionParams, kwargs)
+        if resolved.endpoint_url and not resolved.api_key:
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+
+        from nemo_retriever.caption.caption import CaptionActor
+
+        caption_num_gpus = 0.0 if resolved.endpoint_url else 1.0
+
+        self._rd_dataset = self._rd_dataset.map_batches(
+            CaptionActor,
+            batch_size=resolved.batch_size or 8,
+            batch_format="pandas",
+            num_gpus=caption_num_gpus,
+            concurrency=1,
+            fn_constructor_kwargs={"params": resolved},
+        )
+
+        self._caption_enabled = True
         return self
 
     def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "BatchIngestor":
