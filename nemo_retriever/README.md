@@ -54,10 +54,10 @@ This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library 
 
 3. (Optional) Install vLLM for image captioning
 
-If you want to generate captions for extracted images, install [vLLM](https://docs.vllm.ai/).
+If you want to generate captions for extracted images, install the `vlm-caption` extra which includes [vLLM](https://docs.vllm.ai/) built for CUDA 13.
 
 ```bash
-uv pip install vllm --torch-backend=cu130
+uv pip install "nemo-retriever[vlm-caption]"
 ```
 
 ## Run the pipeline
