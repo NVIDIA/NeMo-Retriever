@@ -186,7 +186,7 @@ def test_resolve_requested_plan_allow_no_gpu_returns_cpu_only_plan() -> None:
     assert plan.embed_initial_actors == 1
     assert plan.embed_min_actors == 1
     assert plan.embed_max_actors == 1
-    
+
 
 # ---------------------------------------------------------------------------
 # RequestedPlan — getters and model behavior
