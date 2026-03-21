@@ -44,6 +44,7 @@ class IngestorCreateParams(_ParamsModel):
     ray_log_to_driver: bool = True
     debug: bool = False
     base_url: str = "http://localhost:7670"
+    inference: Optional[str] = None
 
 
 class IngestExecuteParams(_ParamsModel):

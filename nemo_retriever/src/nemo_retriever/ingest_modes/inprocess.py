@@ -944,7 +944,13 @@ def _print_ingest_summary(results: list, elapsed_s: float) -> None:
 class InProcessIngestor(Ingestor):
     RUN_MODE = "inprocess"
 
-    def __init__(self, documents: Optional[List[str]] = None) -> None:
+    def __init__(
+        self,
+        documents: Optional[List[str]] = None,
+        *,
+        default_extract_kwargs: Optional[Dict[str, Any]] = None,
+        default_embed_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         super().__init__(documents=documents)
 
         # Keep backwards-compatibility with code that inspects `Ingestor._documents`
@@ -958,6 +964,11 @@ class InProcessIngestor(Ingestor):
         self._pipeline_type: Literal["pdf", "txt", "html", "image"] = "pdf"
         self._extract_txt_kwargs: Dict[str, Any] = {}
         self._extract_html_kwargs: Dict[str, Any] = {}
+
+        # Inference preset defaults (e.g. from ``inference="build.nvidia.com"``).
+        # User-supplied kwargs in .extract()/.embed() always override these.
+        self._default_extract_kwargs: Dict[str, Any] = dict(default_extract_kwargs or {})
+        self._default_embed_kwargs: Dict[str, Any] = dict(default_embed_kwargs or {})
 
     def files(self, documents: Union[str, List[str]]) -> "InProcessIngestor":
         """
@@ -1012,7 +1023,7 @@ class InProcessIngestor(Ingestor):
             os.path.splitext(f)[1].lower() in SUPPORTED_IMAGE_EXTENSIONS for f in self._input_documents
         ):
             return self.extract_image_files(params=params, **kwargs)
-        resolved = _coerce_params(params, ExtractParams, kwargs)
+        resolved = _coerce_params(params, ExtractParams, {**self._default_extract_kwargs, **kwargs})
         if (
             any(
                 (
@@ -1070,7 +1081,7 @@ class InProcessIngestor(Ingestor):
             if invoke_url:
                 out["invoke_url"] = invoke_url
             api_key = kwargs.get(f"{stage_prefix}api_key", kwargs.get("api_key"))
-            if api_key:
+            if api_key is not None:
                 out["api_key"] = api_key
             timeout = kwargs.get(f"{stage_prefix}request_timeout_s", kwargs.get("request_timeout_s"))
             if timeout is not None:
@@ -1343,7 +1354,7 @@ class InProcessIngestor(Ingestor):
         ``"http://embedding:8000/v1"``), a remote NIM endpoint is used for
         embedding instead of the local HF model.
         """
-        resolved = _coerce_params(params, EmbedParams, kwargs)
+        resolved = _coerce_params(params, EmbedParams, {**self._default_embed_kwargs, **kwargs})
         if any((resolved.embedding_endpoint, resolved.embed_invoke_url)) and not resolved.api_key:
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
         embed_modality = resolved.embed_modality
