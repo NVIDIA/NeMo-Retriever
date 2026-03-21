@@ -265,13 +265,44 @@ ingestor = ingestor.files(documents).extract(method="nemotron_parse")
 
 ## Run with remote inference, no local GPU required:
 
-For build.nvidia.com hosted inference, make sure you have NVIDIA_API_KEY set as an environment variable. 
+For build.nvidia.com hosted inference, make sure you have `NVIDIA_API_KEY` set as an environment variable:
+
+```bash
+export NVIDIA_API_KEY=nvapi-...
+```
+
+Pass `inference="build.nvidia.com"` to `create_ingestor()` and the correct NIM endpoint URLs are applied automatically:
 
 ```python
 ingestor = (
-  ingestor.files(documents)
+  create_ingestor(run_mode="inprocess", inference="build.nvidia.com")
+  .files(documents)
+  .extract()
+  .embed()
+  .vdb_upload()
+)
+```
+
+You can still override individual fields — any keyword argument you pass to `.extract()` or `.embed()` takes precedence over the preset:
+
+```python
+# Use the preset but swap in your own embedder endpoint
+ingestor = (
+  create_ingestor(run_mode="inprocess", inference="build.nvidia.com")
+  .files(documents)
+  .extract()
+  .embed(embed_invoke_url="http://my-embedder:8000/v1")
+  .vdb_upload()
+)
+```
+
+For self-hosted NIMs, pass the endpoint URLs directly — your URLs will depend on your NIM container DNS settings:
+
+```python
+ingestor = (
+  create_ingestor(run_mode="inprocess")
+  .files(documents)
   .extract(
-    # for self hosted NIMs, your URLs will depend on your NIM container DNS settings
     page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
     graphic_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1",
     ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
