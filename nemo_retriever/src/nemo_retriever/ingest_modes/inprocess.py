@@ -1077,13 +1077,21 @@ class InProcessIngestor(Ingestor):
         def _stage_remote_kwargs(stage_name: str) -> dict[str, Any]:
             stage_prefix = f"{stage_name}_"
             out: dict[str, Any] = {}
-            invoke_url = kwargs.get(f"{stage_prefix}invoke_url", kwargs.get("invoke_url"))
+
+            def _stage_value(name: str) -> Any:
+                stage_key = f"{stage_prefix}{name}"
+                stage_value = kwargs.get(stage_key)
+                if stage_value is not None:
+                    return stage_value
+                return kwargs.get(name)
+
+            invoke_url = _stage_value("invoke_url")
             if invoke_url:
                 out["invoke_url"] = invoke_url
-            api_key = kwargs.get(f"{stage_prefix}api_key", kwargs.get("api_key"))
+            api_key = _stage_value("api_key")
             if api_key is not None:
                 out["api_key"] = api_key
-            timeout = kwargs.get(f"{stage_prefix}request_timeout_s", kwargs.get("request_timeout_s"))
+            timeout = _stage_value("request_timeout_s")
             if timeout is not None:
                 out["request_timeout_s"] = timeout
             for k in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
