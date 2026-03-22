@@ -644,7 +644,12 @@ class BatchIngestor(Ingestor):
 
             ocr_flags["inference_batch_size"] = self._requested_plan.get_ocr_batch_size()
 
-            if ocr_flags:
+            # Only append OCR stage if at least one content type needs it.
+            needs_ocr = any(
+                ocr_flags.get(k)
+                for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            )
+            if needs_ocr:
                 self._rd_dataset = self._rd_dataset.map_batches(
                     OCRActor,
                     batch_size=self._requested_plan.get_ocr_batch_size(),
