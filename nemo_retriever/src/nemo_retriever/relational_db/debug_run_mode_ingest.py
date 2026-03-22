@@ -25,7 +25,7 @@ try:
 except ImportError:
     pass
 
-from nemo_retriever.application.modes.executor import run_mode_ingest
+from nemo_retriever.application.modes.run_batch_structured import run_batch_structured
 from nemo_retriever.params import (
     EmbedParams,
     IngestExecuteParams,
@@ -36,15 +36,15 @@ from nemo_retriever.params import (
 
 
 def _get_embed_api_key() -> str:
-    """Return embedding API key from env (LLM_API_KEY or NVIDIA_API_KEY)."""
-    return (os.environ.get("LLM_API_KEY") or os.environ.get("NVIDIA_API_KEY") or "").strip()
+    """Return embedding API key from env (NVIDIA_API_KEY)."""
+    return (os.environ.get("NVIDIA_API_KEY") or "").strip()
 
 
 def _check_embed_key() -> None:
     """Print whether embedding API key is set (masked). Run before ingest to debug 401."""
     key = _get_embed_api_key()
     if not key:
-        print("DEBUG: No embedding API key found. Set LLM_API_KEY or NVIDIA_API_KEY (or load .env).")
+        print("DEBUG: No embedding API key found. Set NVIDIA_API_KEY (or load .env).")
         return
     k = key
     if len(k) <= 12:
@@ -93,8 +93,11 @@ def main() -> None:
         return
     _check_embed_key()
 
-    create_params = IngestorCreateParams(documents=[])
-    ingest_params = IngestExecuteParams(show_progress=True)
+    create_params = IngestorCreateParams(
+        documents=[],  # no unstructured documents
+        allow_no_gpu=True,
+    )
+    
     structured_params = StructuredExtractParams(db_connection_string="./spider2.duckdb")
     # Set structured_params = None to skip structured path when Neo4j is not running.
 
@@ -115,10 +118,9 @@ def main() -> None:
         )
     )
 
-    result, structured_future = run_mode_ingest(
-        run_mode="inprocess",
+    result = run_batch_structured(
+       
         create_params=create_params,
-        ingest_params=ingest_params,
         structured_params=structured_params,
         embed_params=embed_params,
         vdb_params=vdb_params,
@@ -126,15 +128,6 @@ def main() -> None:
 
     print("ingest() result:", result)
 
-    if structured_future is not None:
-        print("Waiting for structured ingest to finish...")
-        try:
-            structured_future.result(timeout=300)
-            print("Structured ingest completed.")
-        except Exception as e:  # noqa: BLE001
-            print("Structured ingest failed:", e)
-            if structured_future.exception() is not None:
-                raise structured_future.exception() from e
 
 
 if __name__ == "__main__":
