@@ -941,7 +941,7 @@ class BatchIngestor(Ingestor):
 
         from nemo_retriever.caption.caption import CaptionActor
 
-        caption_num_gpus = 0.0 if resolved.endpoint_url else 1.0
+        caption_num_gpus = 0.0 if resolved.endpoint_url else resolved.gpu_memory_utilization
 
         self._rd_dataset = self._rd_dataset.map_batches(
             CaptionActor,
