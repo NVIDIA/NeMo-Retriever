@@ -187,6 +187,19 @@ CREATE TABLE IF NOT EXISTS portal_settings (
 );
 """
 
+CREATE_PRESET_MATRICES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS preset_matrices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    dataset_names TEXT NOT NULL,
+    preset_names TEXT NOT NULL,
+    tags TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+"""
+
 _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN hostname TEXT",
     "ALTER TABLE runs ADD COLUMN gpu_type TEXT",
@@ -211,6 +224,7 @@ _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN execution_commit TEXT",
     "ALTER TABLE runs ADD COLUMN num_gpus INTEGER",
     "ALTER TABLE presets ADD COLUMN overrides TEXT",
+    "ALTER TABLE schedules ADD COLUMN preset_matrix TEXT",
 ]
 
 RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
@@ -239,6 +253,7 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
     conn.execute(CREATE_ALERT_RULES_TABLE_SQL)
     conn.execute(CREATE_ALERT_EVENTS_TABLE_SQL)
     conn.execute(CREATE_PORTAL_SETTINGS_TABLE_SQL)
+    conn.execute(CREATE_PRESET_MATRICES_TABLE_SQL)
     conn.execute(CREATE_INDEX_SQL)
     for stmt in _MIGRATIONS:
         try:
@@ -588,6 +603,127 @@ def import_yaml_presets(yaml_presets: dict[str, dict[str, Any]], db_path: str | 
         except Exception:
             pass
     return imported
+
+
+# ---------------------------------------------------------------------------
+# Preset Matrix CRUD
+# ---------------------------------------------------------------------------
+
+
+def _deserialize_matrix_row(row: sqlite3.Row) -> dict[str, Any]:
+    d = dict(row)
+    for field in ("dataset_names", "preset_names"):
+        if d.get(field):
+            try:
+                d[field] = json.loads(d[field])
+            except (json.JSONDecodeError, TypeError):
+                d[field] = []
+        else:
+            d[field] = []
+    if d.get("tags"):
+        try:
+            d["tags"] = json.loads(d["tags"])
+        except (json.JSONDecodeError, TypeError):
+            d["tags"] = []
+    else:
+        d["tags"] = []
+    return d
+
+
+def create_preset_matrix(data: dict[str, Any], db_path: str | None = None) -> dict[str, Any]:
+    conn = _connect(db_path)
+    try:
+        now = _now_iso()
+        conn.execute(
+            "INSERT INTO preset_matrices (name, description, dataset_names, preset_names, tags, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                data["name"],
+                data.get("description"),
+                json.dumps(data.get("dataset_names") or []),
+                json.dumps(data.get("preset_names") or []),
+                json.dumps(data.get("tags") or []),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return get_preset_matrix_by_id(row_id, db_path)  # type: ignore[return-value]
+    finally:
+        conn.close()
+
+
+def get_all_preset_matrices(db_path: str | None = None) -> list[dict[str, Any]]:
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute("SELECT * FROM preset_matrices ORDER BY name").fetchall()
+        return [_deserialize_matrix_row(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_preset_matrix_by_id(matrix_id: int, db_path: str | None = None) -> dict[str, Any] | None:
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT * FROM preset_matrices WHERE id = ?", (matrix_id,)).fetchone()
+        return _deserialize_matrix_row(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_preset_matrix_by_name(name: str, db_path: str | None = None) -> dict[str, Any] | None:
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT * FROM preset_matrices WHERE name = ?", (name,)).fetchone()
+        return _deserialize_matrix_row(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_preset_matrix(matrix_id: int, data: dict[str, Any], db_path: str | None = None) -> dict[str, Any] | None:
+    conn = _connect(db_path)
+    try:
+        sets: list[str] = []
+        vals: list[Any] = []
+        if "name" in data:
+            sets.append("name = ?")
+            vals.append(data["name"])
+        if "description" in data:
+            sets.append("description = ?")
+            vals.append(data["description"])
+        if "dataset_names" in data:
+            sets.append("dataset_names = ?")
+            vals.append(json.dumps(data["dataset_names"] if isinstance(data["dataset_names"], list) else []))
+        if "preset_names" in data:
+            sets.append("preset_names = ?")
+            vals.append(json.dumps(data["preset_names"] if isinstance(data["preset_names"], list) else []))
+        if "tags" in data:
+            sets.append("tags = ?")
+            vals.append(json.dumps(data["tags"] if isinstance(data["tags"], list) else []))
+        if not sets:
+            return get_preset_matrix_by_id(matrix_id, db_path)
+        sets.append("updated_at = ?")
+        vals.append(_now_iso())
+        vals.append(matrix_id)
+        conn.execute(f"UPDATE preset_matrices SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+        return get_preset_matrix_by_id(matrix_id, db_path)
+    finally:
+        conn.close()
+
+
+def delete_preset_matrix(matrix_id: int, db_path: str | None = None) -> bool:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("DELETE FROM preset_matrices WHERE id = ?", (matrix_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -1176,6 +1312,7 @@ _SCHEDULE_SCALAR_FIELDS = (
     "description",
     "dataset",
     "preset",
+    "preset_matrix",
     "config",
     "trigger_type",
     "cron_expression",

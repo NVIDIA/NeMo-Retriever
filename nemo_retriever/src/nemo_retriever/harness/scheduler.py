@@ -153,7 +153,11 @@ def _dispatch_schedule(
     git_commit: str | None = None,
     git_ref: str | None = None,
 ) -> dict[str, Any] | None:
-    """Create a pending job for a schedule.
+    """Create pending job(s) for a schedule.
+
+    When the schedule references a ``preset_matrix``, all (dataset, preset)
+    combinations from the matrix are dispatched as individual jobs.  Otherwise
+    a single job is created for the schedule's dataset + preset.
 
     If a preferred runner or resource requirements are specified, attempt to
     match a runner now and assign the job directly.  Otherwise (or if no
@@ -161,10 +165,14 @@ def _dispatch_schedule(
     ``assigned_runner_id = None`` so that any available runner can pick it up
     on its next heartbeat / work-poll.
 
-    After creating the job, enforces a backlog limit of ``MAX_PENDING_PER_SCHEDULE``
-    pending jobs per schedule — the oldest pending jobs are cancelled if the
-    limit is exceeded.
+    After creating the job(s), enforces a backlog limit of
+    ``MAX_PENDING_PER_SCHEDULE`` pending jobs per schedule — the oldest
+    pending jobs are cancelled if the limit is exceeded.
     """
+    matrix_name = schedule.get("preset_matrix")
+    if matrix_name:
+        return _dispatch_schedule_matrix(schedule, matrix_name, trigger_source, git_commit, git_ref)
+
     runner = match_runner(
         min_gpu_count=schedule.get("min_gpu_count"),
         gpu_type_pattern=schedule.get("gpu_type_pattern"),
@@ -212,6 +220,70 @@ def _dispatch_schedule(
     _enforce_backlog_limit(schedule["id"])
 
     return job
+
+
+def _dispatch_schedule_matrix(
+    schedule: dict[str, Any],
+    matrix_name: str,
+    trigger_source: str,
+    git_commit: str | None,
+    git_ref: str | None,
+) -> dict[str, Any] | None:
+    """Expand a preset matrix into individual jobs for every (dataset, preset) pair."""
+    matrix = history.get_preset_matrix_by_name(matrix_name)
+    if not matrix:
+        logger.warning("Schedule '%s' references unknown preset_matrix '%s' — skipping", schedule.get("name"), matrix_name)
+        return None
+
+    dataset_names: list[str] = matrix.get("dataset_names") or []
+    preset_names: list[str] = matrix.get("preset_names") or []
+    if not dataset_names or not preset_names:
+        logger.warning("Preset matrix '%s' is empty — skipping dispatch", matrix_name)
+        return None
+
+    schedule_tags = schedule.get("tags") or []
+    matrix_tags = matrix.get("tags") or []
+    merged_tags = list(dict.fromkeys(schedule_tags + matrix_tags))
+    first_job = None
+
+    for ds_name in dataset_names:
+        runner = match_runner(
+            min_gpu_count=schedule.get("min_gpu_count"),
+            gpu_type_pattern=schedule.get("gpu_type_pattern"),
+            min_cpu_count=schedule.get("min_cpu_count"),
+            min_memory_gb=schedule.get("min_memory_gb"),
+            preferred_runner_id=schedule.get("preferred_runner_id"),
+            dataset_name=ds_name,
+        )
+        dataset_path, dataset_overrides = _resolve_dataset_config(ds_name)
+
+        for pr_name in preset_names:
+            preset_overrides = _resolve_preset_overrides(pr_name)
+            merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
+
+            job = history.create_job({
+                "schedule_id": schedule["id"],
+                "trigger_source": trigger_source,
+                "dataset": ds_name,
+                "dataset_path": dataset_path,
+                "dataset_overrides": merged_overrides if merged_overrides else None,
+                "preset": pr_name,
+                "config": schedule.get("config"),
+                "assigned_runner_id": runner["id"] if runner else None,
+                "git_commit": git_commit,
+                "git_ref": git_ref,
+                "tags": merged_tags,
+            })
+            if first_job is None:
+                first_job = job
+            logger.info(
+                "Matrix dispatch: job %s for schedule '%s' (dataset=%s, preset=%s)",
+                job["id"], schedule.get("name"), ds_name, pr_name,
+            )
+
+    history.mark_schedule_triggered(schedule["id"])
+    _enforce_backlog_limit(schedule["id"])
+    return first_job
 
 
 def _on_schedule_fire(schedule_id: int) -> None:

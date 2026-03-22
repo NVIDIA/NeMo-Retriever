@@ -250,8 +250,9 @@ class RunnerUpdateRequest(BaseModel):
 class ScheduleCreateRequest(BaseModel):
     name: str
     description: str | None = None
-    dataset: str
+    dataset: str = ""
     preset: str | None = None
+    preset_matrix: str | None = None
     config: str | None = None
     trigger_type: str = "cron"
     cron_expression: str | None = None
@@ -271,6 +272,7 @@ class ScheduleUpdateRequest(BaseModel):
     description: str | None = None
     dataset: str | None = None
     preset: str | None = None
+    preset_matrix: str | None = None
     config: str | None = None
     trigger_type: str | None = None
     cron_expression: str | None = None
@@ -307,6 +309,29 @@ class PresetUpdateRequest(BaseModel):
     config: dict[str, Any] | None = None
     tags: list[str] | None = None
     overrides: dict[str, Any] | None = None
+
+
+class PresetMatrixCreateRequest(BaseModel):
+    name: str
+    description: str | None = None
+    dataset_names: list[str]
+    preset_names: list[str]
+    tags: list[str] | None = None
+
+
+class PresetMatrixUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    dataset_names: list[str] | None = None
+    preset_names: list[str] | None = None
+    tags: list[str] | None = None
+
+
+class MatrixTriggerResponse(BaseModel):
+    matrix_id: int
+    matrix_name: str
+    job_ids: list[str]
+    job_count: int
 
 
 class DatasetCreateRequest(BaseModel):
@@ -1214,9 +1239,11 @@ async def get_config():
     managed_preset_names = history.get_preset_names()
     all_datasets = sorted(set(yaml_datasets + managed_dataset_names))
     all_presets = sorted(set(yaml_presets + managed_preset_names))
+    matrices = history.get_all_preset_matrices()
     return {
         "datasets": all_datasets,
         "presets": all_presets,
+        "preset_matrices": [{"id": m["id"], "name": m["name"]} for m in matrices],
         "github_repo_url": _detect_github_repo_url(),
     }
 
@@ -1336,6 +1363,89 @@ async def delete_managed_preset(preset_id: int):
     if not history.delete_preset(preset_id):
         raise HTTPException(status_code=404, detail="Preset not found")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Preset Matrix CRUD
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/preset-matrices")
+async def list_preset_matrices():
+    return history.get_all_preset_matrices()
+
+
+@app.post("/api/preset-matrices")
+async def create_preset_matrix(req: PresetMatrixCreateRequest):
+    data = req.model_dump(exclude_none=True)
+    try:
+        return history.create_preset_matrix(data)
+    except Exception as exc:
+        if "UNIQUE constraint" in str(exc):
+            raise HTTPException(status_code=409, detail=f"Preset matrix '{req.name}' already exists")
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/preset-matrices/{matrix_id}")
+async def get_preset_matrix(matrix_id: int):
+    row = history.get_preset_matrix_by_id(matrix_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Preset matrix not found")
+    return row
+
+
+@app.put("/api/preset-matrices/{matrix_id}")
+async def update_preset_matrix(matrix_id: int, req: PresetMatrixUpdateRequest):
+    data = {k: v for k, v in req.model_dump().items() if v is not None}
+    row = history.update_preset_matrix(matrix_id, data)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Preset matrix not found")
+    return row
+
+
+@app.delete("/api/preset-matrices/{matrix_id}")
+async def delete_preset_matrix(matrix_id: int):
+    if not history.delete_preset_matrix(matrix_id):
+        raise HTTPException(status_code=404, detail="Preset matrix not found")
+    return {"ok": True}
+
+
+@app.post("/api/preset-matrices/{matrix_id}/trigger", response_model=MatrixTriggerResponse)
+async def trigger_preset_matrix(matrix_id: int):
+    matrix = history.get_preset_matrix_by_id(matrix_id)
+    if matrix is None:
+        raise HTTPException(status_code=404, detail="Preset matrix not found")
+
+    dataset_names: list[str] = matrix.get("dataset_names") or []
+    preset_names: list[str] = matrix.get("preset_names") or []
+    if not dataset_names or not preset_names:
+        raise HTTPException(status_code=400, detail="Matrix must have at least one dataset and one preset")
+
+    matrix_tags = matrix.get("tags") or []
+    job_ids: list[str] = []
+    for ds_name in dataset_names:
+        for pr_name in preset_names:
+            dataset_path, dataset_overrides = _resolve_dataset_config(ds_name)
+            preset_overrides = _resolve_preset_overrides(pr_name)
+            merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
+            job = history.create_job(
+                {
+                    "trigger_source": "matrix",
+                    "dataset": ds_name,
+                    "dataset_path": dataset_path,
+                    "dataset_overrides": merged_overrides if merged_overrides else None,
+                    "preset": pr_name,
+                    "tags": matrix_tags,
+                }
+            )
+            job_ids.append(job["id"])
+
+    return MatrixTriggerResponse(
+        matrix_id=matrix["id"],
+        matrix_name=matrix["name"],
+        job_ids=job_ids,
+        job_count=len(job_ids),
+    )
 
 
 # ---------------------------------------------------------------------------

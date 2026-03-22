@@ -1141,12 +1141,17 @@ const TUNING_GROUPS = [
   { label:"Embed", fields: TUNING_FIELDS.filter(f=>f.key.includes("embed")) },
 ];
 
-function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
+function PresetsView({ managedPresets, yamlPresets, loading, onRefresh, presetMatrices, presetMatricesLoading }) {
   const [showForm, setShowForm] = useState(false);
   const [editPreset, setEditPreset] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [showMatrixForm, setShowMatrixForm] = useState(false);
+  const [editMatrix, setEditMatrix] = useState(null);
+  const [expandedMatrixId, setExpandedMatrixId] = useState(null);
   const allPresets = managedPresets;
   const pg = usePagination(allPresets, 25);
+  const matrices = presetMatrices || [];
+  const mxPg = usePagination(matrices, 25);
 
   function handleCreate() { setEditPreset(null); setShowForm(true); }
   function handleEdit(p) { setEditPreset(p); setShowForm(true); }
@@ -1158,10 +1163,32 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
     } catch {}
   }
 
+  function handleCreateMatrix() { setEditMatrix(null); setShowMatrixForm(true); }
+  function handleEditMatrix(m) { setEditMatrix(m); setShowMatrixForm(true); }
+  async function handleDeleteMatrix(id, name) {
+    if (!confirm(`Delete preset matrix "${name}"? This cannot be undone.`)) return;
+    try {
+      await fetch(`/api/preset-matrices/${id}`, { method: "DELETE" });
+      onRefresh();
+    } catch {}
+  }
+  async function handleTriggerMatrix(id, name) {
+    if (!confirm(`Trigger all jobs in matrix "${name}"?`)) return;
+    try {
+      const res = await fetch(`/api/preset-matrices/${id}/trigger`, { method: "POST" });
+      if (!res.ok) { const d = await res.json().catch(()=>({})); alert(d.detail || "Trigger failed"); return; }
+      const data = await res.json();
+      alert(`Queued ${data.job_count} job${data.job_count!==1?'s':''} from matrix "${data.matrix_name}"`);
+    } catch (err) { alert("Trigger failed: " + err.message); }
+  }
+
   return (
     <>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
-        <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Add Preset</button>
+        <div style={{display:'flex',gap:'8px'}}>
+          <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Add Preset</button>
+          <button className="btn btn-secondary" onClick={handleCreateMatrix}><IconPlus /> Add Matrix</button>
+        </div>
         <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
       </div>
 
@@ -1245,11 +1272,104 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh }) {
           pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
       </div>
 
+      {/* ===== Preset Matrices Section ===== */}
+      <div style={{marginTop:'32px'}}>
+        <div style={{fontSize:'16px',fontWeight:700,color:'#fff',marginBottom:'16px'}}>Preset Matrices</div>
+        <div className="card">
+          <div style={{overflowX:'auto'}}>
+            <table className="runs-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Description</th><th style={{textAlign:'right'}}>Datasets</th><th style={{textAlign:'right'}}>Presets</th><th style={{textAlign:'right'}}>Jobs</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {presetMatricesLoading ? (
+                  <tr><td colSpan="6" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                    <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading matrices…</div>
+                  </td></tr>
+                ) : matrices.length === 0 ? (
+                  <tr><td colSpan="6" style={{textAlign:'center',padding:'40px',color:'var(--nv-text-muted)'}}>
+                    <div style={{marginBottom:'8px',fontSize:'15px'}}>No preset matrices configured</div>
+                    <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>Click "Add Matrix" to group datasets and presets for batch scheduling.</div>
+                  </td></tr>
+                ) : mxPg.pageData.map(m => {
+                  const dsCount = (m.dataset_names || []).length;
+                  const prCount = (m.preset_names || []).length;
+                  const jobCount = dsCount * prCount;
+                  const isExpanded = expandedMatrixId === m.id;
+                  return (
+                    <React.Fragment key={m.id}>
+                      <tr>
+                        <td>
+                          <span style={{color:'#fff',fontWeight:600,cursor:'pointer'}} onClick={()=>setExpandedMatrixId(isExpanded?null:m.id)}>
+                            <span style={{display:'inline-block',transform:isExpanded?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s',marginRight:'6px',fontSize:'10px'}}>{"\u25B6"}</span>
+                            {m.name}
+                          </span>
+                        </td>
+                        <td style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{m.description || "\u2014"}</td>
+                        <td style={{textAlign:'right'}}><span className="badge badge-na">{dsCount} dataset{dsCount!==1?'s':''}</span></td>
+                        <td style={{textAlign:'right'}}><span className="badge badge-na">{prCount} preset{prCount!==1?'s':''}</span></td>
+                        <td style={{textAlign:'right'}}><span className="badge" style={{background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.25)'}}>{jobCount} job{jobCount!==1?'s':''}</span></td>
+                        <td>
+                          <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
+                            <button className="btn btn-primary btn-sm" onClick={()=>handleTriggerMatrix(m.id,m.name)} title="Run all jobs in this matrix"><IconPlay /> Run</button>
+                            <button className="btn btn-secondary btn-sm" onClick={()=>handleEditMatrix(m)} title="Edit"><IconEdit /> Edit</button>
+                            <button className="btn btn-sm" onClick={()=>handleDeleteMatrix(m.id,m.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr><td colSpan="6" style={{padding:'0 16px 16px',background:'rgba(255,255,255,0.01)'}}>
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',padding:'12px',borderRadius:'8px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)'}}>
+                            <div>
+                              <div style={{fontSize:'11px',fontWeight:600,color:'var(--nv-green)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'8px'}}>Datasets ({dsCount})</div>
+                              <div style={{display:'flex',flexWrap:'wrap',gap:'6px'}}>
+                                {(m.dataset_names || []).map(n => (
+                                  <span key={n} className="badge badge-na" style={{fontSize:'12px'}}>{n}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{fontSize:'11px',fontWeight:600,color:'var(--nv-green)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'8px'}}>Presets ({prCount})</div>
+                              <div style={{display:'flex',flexWrap:'wrap',gap:'6px'}}>
+                                {(m.preset_names || []).map(n => (
+                                  <span key={n} className="badge badge-na" style={{fontSize:'12px'}}>{n}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          {(m.tags || []).length > 0 && (
+                            <div style={{marginTop:'8px',padding:'8px 12px',borderRadius:'8px',background:'var(--nv-bg)',border:'1px solid var(--nv-border)',fontSize:'12px'}}>
+                              <span style={{color:'var(--nv-text-dim)',marginRight:'8px'}}>Tags:</span>
+                              {m.tags.map(t => <span key={t} className="badge badge-na" style={{fontSize:'11px',marginRight:'4px'}}>{t}</span>)}
+                            </div>
+                          )}
+                        </td></tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={mxPg.page} totalPages={mxPg.totalPages} totalItems={mxPg.totalItems}
+            pageSize={mxPg.pageSize} onPageChange={mxPg.setPage} onPageSizeChange={mxPg.setPageSize} />
+        </div>
+      </div>
+
       {showForm && (
         <PresetFormModal
           preset={editPreset}
           onClose={()=>setShowForm(false)}
           onSaved={()=>{setShowForm(false);onRefresh();}}
+        />
+      )}
+      {showMatrixForm && (
+        <PresetMatrixFormModal
+          matrix={editMatrix}
+          onClose={()=>setShowMatrixForm(false)}
+          onSaved={()=>{setShowMatrixForm(false);onRefresh();}}
         />
       )}
     </>
@@ -1409,6 +1529,143 @@ function PresetFormModal({ preset, onClose, onSaved }) {
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" disabled={saving||!name.trim()} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
               {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit ? "Update Preset" : "Create Preset"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Preset Matrix Form Modal ===== */
+function PresetMatrixFormModal({ matrix, onClose, onSaved }) {
+  const isEdit = !!matrix;
+  const [name, setName] = useState(matrix?.name || "");
+  const [description, setDescription] = useState(matrix?.description || "");
+  const [tags, setTags] = useState((matrix?.tags || []).join(", "));
+  const [selectedDatasets, setSelectedDatasets] = useState(new Set(matrix?.dataset_names || []));
+  const [selectedPresets, setSelectedPresets] = useState(new Set(matrix?.preset_names || []));
+  const [availableDatasets, setAvailableDatasets] = useState([]);
+  const [availablePresets, setAvailablePresets] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/config").then(r=>r.json()).then(cfg => {
+      setAvailableDatasets(cfg.datasets || []);
+      setAvailablePresets(cfg.presets || []);
+    }).catch(()=>{});
+  }, []);
+
+  function toggleDataset(d) {
+    setSelectedDatasets(prev => { const s = new Set(prev); s.has(d) ? s.delete(d) : s.add(d); return s; });
+  }
+  function togglePreset(p) {
+    setSelectedPresets(prev => { const s = new Set(prev); s.has(p) ? s.delete(p) : s.add(p); return s; });
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim() || selectedDatasets.size === 0 || selectedPresets.size === 0) return;
+    setSaving(true);
+    setError("");
+    const payload = {
+      name: name.trim(),
+      description: description || null,
+      dataset_names: [...selectedDatasets],
+      preset_names: [...selectedPresets],
+      tags: tags ? tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+    };
+    try {
+      const url = isEdit ? `/api/preset-matrices/${matrix.id}` : "/api/preset-matrices";
+      const method = isEdit ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method, headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(()=>({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const labelStyle = {display:'block',fontSize:'11px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.04em'};
+  const jobCount = selectedDatasets.size * selectedPresets.size;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'700px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>{isEdit ? "Edit Preset Matrix" : "Create Preset Matrix"}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px',maxHeight:'65vh',overflowY:'auto'}}>
+            {error && (
+              <div style={{padding:'10px 14px',borderRadius:'8px',background:'rgba(255,50,50,0.08)',border:'1px solid rgba(255,50,50,0.2)',color:'#ff5050',fontSize:'13px'}}>{error}</div>
+            )}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+              <div>
+                <label style={labelStyle}>Name *</label>
+                <input className="input" style={{width:'100%'}} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. nightly_full_suite" required />
+              </div>
+              <div>
+                <label style={labelStyle}>Description</label>
+                <input className="input" style={{width:'100%'}} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional description" />
+              </div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}}>
+              <div>
+                <label style={labelStyle}>Datasets * <span style={{color:'var(--nv-green)',fontWeight:700}}>({selectedDatasets.size} selected)</span></label>
+                <div style={{border:'1px solid var(--nv-border)',borderRadius:'8px',maxHeight:'200px',overflowY:'auto',padding:'4px'}}>
+                  {availableDatasets.length === 0 ? (
+                    <div style={{padding:'12px',textAlign:'center',color:'var(--nv-text-dim)',fontSize:'12px'}}>Loading…</div>
+                  ) : availableDatasets.map(d => (
+                    <label key={d} style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 8px',cursor:'pointer',borderRadius:'4px',fontSize:'13px',color:selectedDatasets.has(d)?'#fff':'var(--nv-text-muted)',background:selectedDatasets.has(d)?'rgba(118,185,0,0.08)':'transparent'}}>
+                      <input type="checkbox" checked={selectedDatasets.has(d)} onChange={()=>toggleDataset(d)} style={{accentColor:'var(--nv-green)'}} />
+                      {d}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Presets * <span style={{color:'var(--nv-green)',fontWeight:700}}>({selectedPresets.size} selected)</span></label>
+                <div style={{border:'1px solid var(--nv-border)',borderRadius:'8px',maxHeight:'200px',overflowY:'auto',padding:'4px'}}>
+                  {availablePresets.length === 0 ? (
+                    <div style={{padding:'12px',textAlign:'center',color:'var(--nv-text-dim)',fontSize:'12px'}}>Loading…</div>
+                  ) : availablePresets.map(p => (
+                    <label key={p} style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 8px',cursor:'pointer',borderRadius:'4px',fontSize:'13px',color:selectedPresets.has(p)?'#fff':'var(--nv-text-muted)',background:selectedPresets.has(p)?'rgba(118,185,0,0.08)':'transparent'}}>
+                      <input type="checkbox" checked={selectedPresets.has(p)} onChange={()=>togglePreset(p)} style={{accentColor:'var(--nv-green)'}} />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{padding:'12px 16px',borderRadius:'8px',background:jobCount>0?'rgba(118,185,0,0.06)':'rgba(255,255,255,0.02)',border:'1px solid '+(jobCount>0?'rgba(118,185,0,0.2)':'var(--nv-border)'),textAlign:'center'}}>
+              <span style={{fontSize:'14px',fontWeight:600,color:jobCount>0?'var(--nv-green)':'var(--nv-text-dim)'}}>
+                {selectedDatasets.size} dataset{selectedDatasets.size!==1?'s':''} &times; {selectedPresets.size} preset{selectedPresets.size!==1?'s':''} = {jobCount} job{jobCount!==1?'s':''}
+              </span>
+              <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px'}}>Each trigger will create {jobCount} job{jobCount!==1?'s':''} in the queue</div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Tags</label>
+              <input className="input" style={{width:'100%'}} value={tags} onChange={e=>setTags(e.target.value)} placeholder="Comma-separated tags applied to all spawned jobs" />
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={saving||!name.trim()||selectedDatasets.size===0||selectedPresets.size===0} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit ? "Update Matrix" : "Create Matrix"}
             </button>
           </div>
         </form>
@@ -2234,7 +2491,7 @@ function SchedulingView({ schedules, loading, onRefresh, runners }) {
                     {s.description && <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px'}}>{s.description}</div>}
                   </td>
                   <td><ScheduleTypeBadge type={s.trigger_type} /></td>
-                  <td style={{color:'var(--nv-text-muted)'}}>{s.dataset}{s.preset ? ` / ${s.preset}` : ''}</td>
+                  <td style={{color:'var(--nv-text-muted)'}}>{s.preset_matrix ? <span title="Preset Matrix"><span style={{color:'var(--nv-green)',fontWeight:600}}>Matrix:</span> {s.preset_matrix}</span> : <>{s.dataset}{s.preset ? ` / ${s.preset}` : ''}</>}</td>
                   <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)'}}>
                     {s.trigger_type === 'cron' ? (s.cron_expression || "\u2014") : `${s.github_repo || ''}:${s.github_branch || 'main'}`}
                   </td>
@@ -2293,11 +2550,14 @@ function ScheduleFormModal({ schedule, runners, onClose, onSaved }) {
   const isEdit = !!schedule;
   const [datasets, setDatasets] = useState([]);
   const [presets, setPresets] = useState([]);
+  const [presetMatricesList, setPresetMatricesList] = useState([]);
+  const [useMatrix, setUseMatrix] = useState(!!schedule?.preset_matrix);
   const [form, setForm] = useState({
     name: schedule?.name || "",
     description: schedule?.description || "",
     dataset: schedule?.dataset || "",
     preset: schedule?.preset || "",
+    preset_matrix: schedule?.preset_matrix || "",
     config: schedule?.config || "",
     trigger_type: schedule?.trigger_type || "cron",
     cron_expression: schedule?.cron_expression || "",
@@ -2317,22 +2577,26 @@ function ScheduleFormModal({ schedule, runners, onClose, onSaved }) {
     fetch("/api/config").then(r=>r.json()).then(cfg => {
       setDatasets(cfg.datasets || []);
       setPresets(cfg.presets || []);
-      if (!form.dataset && cfg.datasets?.length) setForm(f=>({...f, dataset: cfg.datasets[0]}));
+      setPresetMatricesList(cfg.preset_matrices || []);
+      if (!useMatrix && !form.dataset && cfg.datasets?.length) setForm(f=>({...f, dataset: cfg.datasets[0]}));
     });
   }, []);
 
   function set(field, val) { setForm(f=>({...f,[field]:val})); }
 
+  const canSubmit = form.name.trim() && (useMatrix ? form.preset_matrix : form.dataset);
+
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name.trim() || !form.dataset) return;
+    if (!canSubmit) return;
     setSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
         description: form.description.trim() || null,
-        dataset: form.dataset,
-        preset: form.preset || null,
+        dataset: useMatrix ? "" : form.dataset,
+        preset: useMatrix ? null : (form.preset || null),
+        preset_matrix: useMatrix ? form.preset_matrix : null,
         config: form.config.trim() || null,
         trigger_type: form.trigger_type,
         cron_expression: form.trigger_type === "cron" ? form.cron_expression.trim() || null : null,
@@ -2382,22 +2646,47 @@ function ScheduleFormModal({ schedule, runners, onClose, onSaved }) {
               <input className="input" style={{width:'100%'}} value={form.description} onChange={e=>set('description',e.target.value)} placeholder="Optional description" />
             </div>
 
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
-              <div>
-                <label style={labelStyle}>Dataset *</label>
-                <select className="select" style={{width:'100%'}} value={form.dataset} onChange={e=>set('dataset',e.target.value)}>
-                  <option value="">Select dataset…</option>
-                  {datasets.map(d=><option key={d} value={d}>{d}</option>)}
-                </select>
+            {/* Run Mode Toggle */}
+            <div>
+              <label style={labelStyle}>Run Mode</label>
+              <div style={{display:'flex',gap:'8px'}}>
+                <button type="button" className={`btn ${!useMatrix?'btn-primary':'btn-secondary'}`} style={{flex:1,justifyContent:'center'}}
+                  onClick={()=>setUseMatrix(false)}>Single Dataset + Preset</button>
+                <button type="button" className={`btn ${useMatrix?'btn-primary':'btn-secondary'}`} style={{flex:1,justifyContent:'center'}}
+                  onClick={()=>setUseMatrix(true)}>Preset Matrix</button>
               </div>
-              <div>
-                <label style={labelStyle}>Preset</label>
-                <select className="select" style={{width:'100%'}} value={form.preset} onChange={e=>set('preset',e.target.value)}>
-                  <option value="">Default</option>
-                  {presets.map(p=><option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
+              {useMatrix && <div style={helpStyle}>All dataset &times; preset combinations from the selected matrix will be queued as separate jobs</div>}
             </div>
+
+            {!useMatrix ? (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
+                <div>
+                  <label style={labelStyle}>Dataset *</label>
+                  <select className="select" style={{width:'100%'}} value={form.dataset} onChange={e=>set('dataset',e.target.value)}>
+                    <option value="">Select dataset…</option>
+                    {datasets.map(d=><option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Preset</label>
+                  <select className="select" style={{width:'100%'}} value={form.preset} onChange={e=>set('preset',e.target.value)}>
+                    <option value="">Default</option>
+                    {presets.map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label style={labelStyle}>Preset Matrix *</label>
+                <select className="select" style={{width:'100%'}} value={form.preset_matrix} onChange={e=>set('preset_matrix',e.target.value)}>
+                  <option value="">Select matrix…</option>
+                  {presetMatricesList.map(m=><option key={m.id} value={m.name}>{m.name}</option>)}
+                </select>
+                {presetMatricesList.length === 0 && (
+                  <div style={helpStyle}>No matrices available. Create one in the Presets view first.</div>
+                )}
+              </div>
+            )}
 
             {/* Trigger Type */}
             <div>
@@ -2481,7 +2770,7 @@ function ScheduleFormModal({ schedule, runners, onClose, onSaved }) {
 
           <div className="modal-foot">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving||!form.name.trim()||!form.dataset} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+            <button type="submit" disabled={saving||!canSubmit} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
               {saving ? <><span className="spinner" style={{marginRight:'8px'}}></span>Saving…</> : isEdit ? "Update Schedule" : "Create Schedule"}
             </button>
           </div>
@@ -5791,6 +6080,8 @@ function App() {
   const [managedPresets, setManagedPresets] = useState([]);
   const [managedPresetsLoading, setManagedPresetsLoading] = useState(true);
   const [yamlPresets, setYamlPresets] = useState([]);
+  const [presetMatrices, setPresetMatrices] = useState([]);
+  const [presetMatricesLoading, setPresetMatricesLoading] = useState(true);
   const [alertRules, setAlertRules] = useState([]);
   const [alertRulesLoading, setAlertRulesLoading] = useState(true);
   const [alertEvents, setAlertEvents] = useState([]);
@@ -5847,6 +6138,12 @@ function App() {
     finally { setManagedPresetsLoading(false); }
   }, [managedPresets.length]);
 
+  const fetchPresetMatrices = useCallback(async () => {
+    setPresetMatricesLoading(prev => presetMatrices.length === 0 ? true : prev);
+    try { const res = await fetch("/api/preset-matrices"); setPresetMatrices(await res.json()); } catch {}
+    finally { setPresetMatricesLoading(false); }
+  }, [presetMatrices.length]);
+
   const fetchJobs = useCallback(async () => {
     try { const res = await fetch("/api/jobs"); setJobs(await res.json()); } catch {}
   }, []);
@@ -5875,7 +6172,7 @@ function App() {
     finally { setAlertEventsLoading(false); }
   }, [alertEvents.length]);
 
-  useEffect(() => { fetchRuns(); fetchDatasets(); fetchJobs(); fetchRunners(); fetchSchedules(); fetchManagedDatasets(); fetchManagedPresets(); fetchAlertRules(); fetchAlertEvents(); }, [fetchRuns, fetchDatasets, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchAlertRules, fetchAlertEvents]);
+  useEffect(() => { fetchRuns(); fetchDatasets(); fetchJobs(); fetchRunners(); fetchSchedules(); fetchManagedDatasets(); fetchManagedPresets(); fetchPresetMatrices(); fetchAlertRules(); fetchAlertEvents(); }, [fetchRuns, fetchDatasets, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchPresetMatrices, fetchAlertRules, fetchAlertEvents]);
 
   // Auto-refresh the active view every 10 seconds
   useEffect(() => {
@@ -5884,13 +6181,13 @@ function App() {
       fetchAlertEvents();
       if (activeView === "runs")       { fetchRuns(); }
       if (activeView === "datasets")   { fetchManagedDatasets(); }
-      if (activeView === "presets")    { fetchManagedPresets(); }
+      if (activeView === "presets")    { fetchManagedPresets(); fetchPresetMatrices(); }
       if (activeView === "runners")    { fetchRunners(); }
       if (activeView === "scheduling") { fetchSchedules(); }
       if (activeView === "alerts")     { fetchAlertRules(); fetchAlertEvents(); }
     }, 10000);
     return () => clearInterval(interval);
-  }, [activeView, fetchRuns, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchAlertRules, fetchAlertEvents]);
+  }, [activeView, fetchRuns, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchPresetMatrices, fetchAlertRules, fetchAlertEvents]);
 
   // Fast polling (3s) when jobs are actively running
   useEffect(() => {
@@ -5931,7 +6228,10 @@ function App() {
       return managedDatasetsLoading ? "Loading\u2026" : `${managedDatasets.length} dataset${managedDatasets.length!==1?'s':''} configured`;
     }
     if (activeView === "presets") {
-      return managedPresetsLoading ? "Loading\u2026" : `${managedPresets.length} preset${managedPresets.length!==1?'s':''} configured`;
+      if (managedPresetsLoading) return "Loading\u2026";
+      const parts = [`${managedPresets.length} preset${managedPresets.length!==1?'s':''}`];
+      if (presetMatrices.length > 0) parts.push(`${presetMatrices.length} matrix${presetMatrices.length!==1?'es':''}`);
+      return parts.join(", ") + " configured";
     }
     if (activeView === "runners") return runnersLoading ? "Loading\u2026" : `${runners.length} runner${runners.length!==1?'s':''} registered`;
     if (activeView === "scheduling") return schedulesLoading ? "Loading\u2026" : `${schedules.length} schedule${schedules.length!==1?'s':''} configured`;
@@ -5956,7 +6256,7 @@ function App() {
       return loading ? "Loading\u2026" : `${runs.length} run${runs.length!==1?'s':''} available for reporting`;
     }
     return "";
-  }, [activeView, runs.length, activeJobCount, managedDatasets.length, managedPresets.length, yamlPresets.length, runners.length, schedules.length, alertRules.length, alertEvents.length, alertEvents, loading, managedDatasetsLoading, managedPresetsLoading, runnersLoading, schedulesLoading, alertRulesLoading, alertEventsLoading]);
+  }, [activeView, runs.length, activeJobCount, managedDatasets.length, managedPresets.length, presetMatrices.length, yamlPresets.length, runners.length, schedules.length, alertRules.length, alertEvents.length, alertEvents, loading, managedDatasetsLoading, managedPresetsLoading, runnersLoading, schedulesLoading, alertRulesLoading, alertEventsLoading]);
 
   return (
     <div className="app-layout">
@@ -5973,7 +6273,7 @@ function App() {
             <button className="btn btn-ghost btn-icon" onClick={fetchManagedDatasets} title="Refresh"><IconRefresh /></button>
           )}
           {activeView==="presets" && (
-            <button className="btn btn-ghost btn-icon" onClick={fetchManagedPresets} title="Refresh"><IconRefresh /></button>
+            <button className="btn btn-ghost btn-icon" onClick={()=>{fetchManagedPresets();fetchPresetMatrices();}} title="Refresh"><IconRefresh /></button>
           )}
           {activeView==="runners" && (
             <button className="btn btn-ghost btn-icon" onClick={fetchRunners} title="Refresh"><IconRefresh /></button>
@@ -6007,7 +6307,8 @@ function App() {
           )}
           {activeView==="presets" && (
             <PresetsView managedPresets={managedPresets} yamlPresets={yamlPresets}
-              loading={managedPresetsLoading} onRefresh={fetchManagedPresets} />
+              loading={managedPresetsLoading} onRefresh={()=>{fetchManagedPresets();fetchPresetMatrices();}}
+              presetMatrices={presetMatrices} presetMatricesLoading={presetMatricesLoading} />
           )}
           {activeView==="runners" && <RunnersView runners={runners} loading={runnersLoading} onRefresh={fetchRunners} githubRepoUrl={githubRepoUrl} />}
           {activeView==="scheduling" && <SchedulingView schedules={schedules} loading={schedulesLoading} onRefresh={fetchSchedules} runners={runners} />}
