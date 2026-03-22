@@ -12,7 +12,7 @@ class Labels:
     SCHEMA = "Schema"
     TEMP_SCHEMA = "TempSchema"
     DB = "Db"
-   
+    CONNECTION = "Connection"
 
     LIST_OF_ALL = [
         DB,
@@ -27,8 +27,7 @@ class Labels:
         OPERATOR,
         FUNCTION,
         CONSTANT,
-       
-       
+        CONNECTION,
     ]
 
 
@@ -48,8 +47,16 @@ class Props:
 # Labels that have no parent owner in the graph (used by get_entity_before_update).
 entities_without_owners = []
 
+class RelTypes:
+    """Neo4j relationship type names (used in Cypher)."""
+
+    CONTAINS = "CONTAINS"
+    CONNECTING = "CONNECTING"
+    FOREIGN_KEY = "FOREIGN_KEY"
+
+
 # Relationship types for owner traversal (used by get_node_parent_owner_by_id).
-data_relationships = ["CONTAINS"]
+data_relationships = [RelTypes.CONTAINS]
 
 
 def label_to_type(label: str) -> str:
