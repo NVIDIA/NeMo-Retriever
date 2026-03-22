@@ -562,13 +562,8 @@ def main(
         "--caption-context-text-max-chars",
         help="Max characters of surrounding page text to include in the VLM prompt. 0 disables context.",
     ),
-    caption_batch_size: int = typer.Option(
-        4,
-        "--caption-batch-size",
-        help="Number of images to caption per batch.",
-    ),
     caption_gpu_memory_utilization: float = typer.Option(
-        0.5,
+        0.4,
         "--caption-gpu-memory-utilization",
         help="Fraction of GPU memory vLLM may use for the caption model (0.0–1.0).",
     ),
@@ -806,7 +801,6 @@ def main(
                     model_name=caption_model_name,
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
-                    batch_size=caption_batch_size,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
                 )
             )

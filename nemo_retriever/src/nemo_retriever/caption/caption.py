@@ -232,21 +232,24 @@ def caption_images(
             batch_df.at[row_idx, "images"][item_idx]["text"] = caption
     else:
         # Batch mode: all images share the same prompt.
-        all_captions: List[str] = []
-        for start in range(0, len(pending), batch_size):
-            chunk_b64 = [b64 for _, _, b64 in pending[start : start + batch_size]]
+        all_b64 = [b64 for _, _, b64 in pending]
 
-            if model is not None:
-                captions = _caption_batch_local(
-                    chunk_b64,
-                    model=model,
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                )
-            else:
+        if model is not None:
+            # Submit all at once — vLLM schedules internally based on
+            # available GPU memory.
+            all_captions = _caption_batch_local(
+                all_b64,
+                model=model,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+            )
+        else:
+            # Remote endpoints may have request-size limits; chunk.
+            all_captions: List[str] = []
+            for start in range(0, len(all_b64), batch_size):
                 captions = _caption_batch_remote(
-                    chunk_b64,
+                    all_b64[start : start + batch_size],
                     endpoint_url=endpoint_url,  # type: ignore[arg-type]
                     model_name=model_name,
                     api_key=api_key,
@@ -254,7 +257,7 @@ def caption_images(
                     system_prompt=system_prompt,
                     temperature=temperature,
                 )
-            all_captions.extend(captions)
+                all_captions.extend(captions)
 
         for (row_idx, item_idx, _), caption in zip(pending, all_captions):
             batch_df.at[row_idx, "images"][item_idx]["text"] = caption
