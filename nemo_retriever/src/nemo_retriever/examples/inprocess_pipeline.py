@@ -197,6 +197,11 @@ def main(
         "--caption-context-text-max-chars",
         help="Max characters of surrounding page text to include in the VLM prompt. 0 disables context.",
     ),
+    caption_gpu_memory_utilization: float = typer.Option(
+        0.25,
+        "--caption-gpu-memory-utilization",
+        help="Fraction of GPU memory vLLM may use for the caption model (0.0–1.0).",
+    ),
     hybrid: bool = typer.Option(
         False,
         "--hybrid/--no-hybrid",
@@ -329,6 +334,7 @@ def main(
                 model_name=caption_model_name,
                 device=caption_device,
                 context_text_max_chars=caption_context_text_max_chars,
+                gpu_memory_utilization=caption_gpu_memory_utilization,
             )
         )
 
