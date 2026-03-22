@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Neo4j connection and session management for the relational_db stack.
+Neo4j connection management for the relational_db stack.
 """
 
 import os
 import logging
 
-from neo4j import GraphDatabase, WRITE_ACCESS, READ_ACCESS
+from neo4j import GraphDatabase, Result, RoutingControl
 
 logger = logging.getLogger(__name__)
 
@@ -50,39 +50,38 @@ class Neo4jConnection:
         self,
         query,
         parameters=None,
-        default_access_mode=WRITE_ACCESS,
+        routing=RoutingControl.WRITE,
         ret_type="data",
     ):
         assert self.__driver is not None, "Driver not initialized!"
-        db = "neo4j"
-        session = None
         try:
-            session = self.__driver.session(
-                database=db,
-                default_access_mode=default_access_mode,
-            )
-            result = session.run(query, parameters)
-            # Consume and copy data before closing session to avoid BufferError
-            # ("Existing exports of data: object cannot be re-sized")
             if ret_type == "data":
-                response = [dict(record) for record in result]
+                records, _, _ = self.__driver.execute_query(
+                    query,
+                    parameters_=parameters,
+                    routing_=routing,
+                    database_="neo4j",
+                )
+                return [dict(record) for record in records]
             else:
-                response = result.graph()
-            return response
+                return self.__driver.execute_query(
+                    query,
+                    parameters_=parameters,
+                    routing_=routing,
+                    database_="neo4j",
+                    result_transformer_=Result.graph,
+                )
         except Exception as e:
             logger.error(f"CYPHER QUERY FAILED: {query}, parameters: {parameters}")
             raise e
-        finally:
-            if session is not None:
-                session.close()
 
     def query_write(self, query, parameters=None):
         """Run a write query."""
         return self.query(query, parameters)
 
-    def query_read_only(self, query, parameters=None):
+    def query_read(self, query, parameters=None):
         """Run a read-only query."""
-        return self.query(query, parameters, default_access_mode=READ_ACCESS)
+        return self.query(query, parameters, routing=RoutingControl.READ)
 
     def query_graph(self, query, parameters=None):
         """Run a query and return the graph."""

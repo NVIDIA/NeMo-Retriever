@@ -5,8 +5,6 @@ from nemo_retriever.relational_db.population.graph.model.reserved_words import (
     Props,
     Labels,
     label_to_type,
-    entities_without_owners,
-    data_relationships,
 )
 from nemo_retriever.relational_db.neo4j_connection import get_neo4j_conn
 
@@ -20,7 +18,7 @@ def entity_exists_in_graph_insensitive(name: str, label: Labels):
             WHERE toLower(n.name) = toLower($name)
             RETURN n
             """
-    result = conn.query_read_only(query=query, parameters={"name": name})
+    result = conn.query_read(query=query, parameters={"name": name})
     return True if len(result) > 0 else False
 
 
@@ -28,21 +26,13 @@ def is_flat_dict(properties: dict):
     for key, value in properties.items():
         if isinstance(value, list):
             if value:
-                if any(
-                    isinstance(item, list) or isinstance(item, dict) for item in value
-                ):
-                    raise NestedPropertyError(
-                        f"Invalid property name: {key}\nThe property value: {value}"
-                    )
+                if any(isinstance(item, list) or isinstance(item, dict) for item in value):
+                    raise ValueError(f"Invalid property name: {key}\nThe property value: {value}")
         if isinstance(value, dict):
-            raise NestedPropertyError(
-                f"Invalid property name: {key}\nThe property value: {value}"
-            )
+            raise ValueError(f"Invalid property name: {key}\nThe property value: {value}")
 
 
-def check_properties_compatibility_with_neo4j(
-    node_from: Node, node_to: Node, edge_props: dict
-):
+def check_properties_compatibility_with_neo4j(node_from: Node, node_to: Node, edge_props: dict):
     is_flat_dict(node_from.get_properties())
     if node_from.get_override_existing_props():
         is_flat_dict(node_from.get_override_existing_props())
@@ -53,16 +43,12 @@ def check_properties_compatibility_with_neo4j(
 
 
 def prepare_edge(edge):
-    node_from = edge[0].get_sql_node() if isinstance(edge[0], Query) else edge[0]
-    node_to = edge[1].get_sql_node() if isinstance(edge[1], Query) else edge[1]
+    node_from = edge[0]
+    node_to = edge[1]
 
     e_label = _get_edge_label(edge)
-    v1_label, v1_identity_props, v1_on_create_props, v1_on_match_props = prepare_node(
-        node_from
-    )
-    v2_label, v2_identity_props, v2_on_create_props, v2_on_match_props = prepare_node(
-        node_to
-    )
+    v1_label, v1_identity_props, v1_on_create_props, v1_on_match_props = prepare_node(node_from)
+    v2_label, v2_identity_props, v2_on_create_props, v2_on_match_props = prepare_node(node_to)
     edge_props = edge[2].copy()
 
     check_properties_compatibility_with_neo4j(node_from, node_to, edge[2])
@@ -106,14 +92,11 @@ def prepare_node(node: Node):
     label = node.get_label()
     props = node.get_properties()
 
-
     identity_props = node.get_match_props()
     on_create_props = props.copy()
     if "type" not in on_create_props:
         on_create_props.update({"type": label_to_type(on_create_props["label"])})
-    override_props = (
-        node.get_override_existing_props() if node.get_override_existing_props() else {}
-    )
+    override_props = node.get_override_existing_props() if node.get_override_existing_props() else {}
     return [label], identity_props, on_create_props, override_props
 
 
@@ -126,16 +109,31 @@ def add_edges(edges_data):
     """
     query = """
             unwind $edges_data as data
-            call apoc.merge.node.eager(data.v1_label, data.v1_identity_props, data.v1_on_create_props, data.v1_on_match_props)
+            call apoc.merge.node.eager(
+                data.v1_label,
+                data.v1_identity_props,
+                data.v1_on_create_props,
+                data.v1_on_match_props,
+            )
             yield node as v1
-            call apoc.merge.node.eager(data.v2_label, data.v2_identity_props, data.v2_on_create_props, data.v2_on_match_props)
+            call apoc.merge.node.eager(
+                data.v2_label,
+                data.v2_identity_props,
+                data.v2_on_create_props,
+                data.v2_on_match_props,
+            )
             yield node as v2
             with v1, v2, data, data.edge_identity_props as e_identity_props
             call apoc.merge.relationship.eager(v1, data.edge_label, e_identity_props, {}, v2)
             YIELD rel
-            with rel, case when not rel.source_sql_id is null and rel.join_sql_id is null then {source_sql_id: apoc.coll.toSet(rel.source_sql_id + data.edge_props.source_sql_id)}
-            when rel.source_sql_id is null and not rel.join_sql_id is null then {join_sql_id: apoc.coll.toSet(rel.join_sql_id + data.edge_props.join_sql_id), join: rel.join}
-            else data.edge_props end as props
+            with rel,
+            case
+              when not rel.source_sql_id is null and rel.join_sql_id is null
+                then {source_sql_id: apoc.coll.toSet(rel.source_sql_id + data.edge_props.source_sql_id)}
+              when rel.source_sql_id is null and not rel.join_sql_id is null
+                then {join_sql_id: apoc.coll.toSet(rel.join_sql_id + data.edge_props.join_sql_id), join: rel.join}
+              else data.edge_props
+            end as props
             SET rel = props
             RETURN DISTINCT 'true'
             """
@@ -152,84 +150,11 @@ def get_node_properties_by_id(id, label: str | list[str]):
         RETURN apoc.map.setKey(properties(n),"label", labels(n)[0]) as props
     """
 
-    props = conn.query_read_only(query, parameters={"id": id})
+    props = conn.query_read(query, parameters={"id": id})
     if len(props) == 0:
         return None
     else:
         return props[0]["props"]
-
-
-def get_node_properties_and_tags_by_id(id, label: str | list[str]):
-    if isinstance(label, list):
-        label_filter = "|".join(label)
-    else:
-        label_filter = label
-    query = (
-        """MATCH(n:"""
-        + label_filter
-        + """{id:$id})
-        """
-        + """
-        WITH apoc.map.setKey(properties(n),"label", labels(n)[0]) as props, value.tags_ids as tags
-        RETURN distinct apoc.map.setKey(props, "tags", tags) as props
-        """
-    )
-
-    props = conn.query_read_only(query, parameters={"id": id})
-    if len(props) == 0:
-        return None
-    else:
-        return props[0]["props"]
-
-
-
-
-
-def get_node_parent_owner_by_id(node_id, label: str = None):
-    concatenated_relationships = "|".join(data_relationships)
-    query = (
-        """MATCH(n:"""
-        + label
-        + """{id:$id})
-           CALL apoc.case([
-            n:attribute,
-            'match(n)<-[:term_of]-(bt:term)
-            return bt.owner_id as owner_id',
-
-            n:Column,
-            'match(n)<-[:CONTAINS]-(t:Table)
-            return t.owner_id as owner_id',
-
-            n:field,
-            'MATCH (n)<-[r:"""
-        + concatenated_relationships
-        + """]-(parent)
-            
-            with collect(parent.owner_id) as owner_ids
-            return case when size(owner_ids) > 0 then owner_ids[0] else NULL end as owner_id'
-            ],
-            '', {n:n})
-
-            YIELD value
-            return value.owner_id as owner_id
-        """
-    )
-
-    result = conn.query_read_only(query, parameters={"id": node_id})
-    return result[0]["owner_id"]
-
-
-def get_entity_before_update(node_id: str, label: Labels):
-    entity_before_update: dict = get_node_properties_and_tags_by_id(node_id, label)
-
-    if label in entities_without_owners:
-        owner_id = get_node_parent_owner_by_id(node_id, label)
-        if owner_id:
-            entity_before_update["owner_id"] = owner_id
-
-    return entity_before_update
-
-
 
 
 def delete_bulk_of_nodes(ids, labels):
@@ -252,9 +177,7 @@ def detach_bulk_of_nodes(ids):
 def get_node_id_by_name_and_label(name: str, label: Labels):
     query = f"""MATCH (n:{label}{{name:$name}})
                RETURN n.id as id"""
-    result = conn.query_read_only(query=query, parameters={"name": name})
+    result = conn.query_read(query=query, parameters={"name": name})
     if len(result) > 0:
         return result[0]["id"]
     return None
-
-

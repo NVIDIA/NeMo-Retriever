@@ -17,7 +17,7 @@ def flat_list_recursive(nested_list):
 
 
 def remove_redundant_parentheses(text):
-    r = "s/(\(|^)\K(\((((?2)|[^()])*)\))(?=\)|$)/\\3/"
+    r = r"s/(\(|^)\K(\((((?2)|[^()])*)\))(?=\)|$)/\3/"
     if r[0] != "s":
         raise SyntaxError('Missing "s"')
     d = r[1]
@@ -53,9 +53,6 @@ def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
-
-
-
 
 
 def load_tables(df: pd.DataFrame) -> pd.DataFrame:
@@ -94,17 +91,11 @@ def load_tables(df: pd.DataFrame) -> pd.DataFrame:
 
     # parse_dates / optional date fields
     if "last_altered" in df:
-        df["last_altered"] = pd.to_datetime(
-            df["last_altered"], utc=True, format="mixed"
-        )
-        df["last_altered"] = df["last_altered"].apply(
-            lambda x: (x.tz_convert(timezone.utc).replace(microsecond=0))
-        )
+        df["last_altered"] = pd.to_datetime(df["last_altered"], utc=True, format="mixed")
+        df["last_altered"] = df["last_altered"].apply(lambda x: x.tz_convert(timezone.utc).replace(microsecond=0))
     if "created" in df:
         df["created"] = pd.to_datetime(df["created"], utc=True, format="mixed")
-        df["created"] = df["created"].apply(
-            lambda x: (x.tz_convert(timezone.utc).replace(microsecond=0))
-        )
+        df["created"] = df["created"].apply(lambda x: x.tz_convert(timezone.utc).replace(microsecond=0))
 
     # Shkolar did it in playtika
     if "owner" in df:
@@ -142,8 +133,6 @@ def load_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.astype(dtype=types)
 
     return df
-
-
 
 
 def load_fks(df: pd.DataFrame) -> pd.DataFrame:

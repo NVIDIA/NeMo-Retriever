@@ -3,6 +3,7 @@ import os
 # Load .env from current working directory so LLM_API_KEY, LLM_INVOKE_URL are set (run from repo root)
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -45,6 +46,7 @@ def _read_sql_string_literal(text: str, start: int) -> tuple[str, int] | None:
 def _extract_json_from_sql_object(text: str) -> dict | None:
     """Extract sql_code, answer, result from SQL JSON_OBJECT('sql_code', '...', 'answer', ..., 'result', '...')."""
     import re
+
     text = (text or "").strip()
     # Find JSON_OBJECT( and then parse key-value pairs (allowing nested parens in values)
     obj_start = re.search(r"JSON_OBJECT\s*\(", text, re.IGNORECASE)
@@ -76,9 +78,7 @@ def _extract_json_from_sql_object(text: str) -> dict | None:
                 out[key], _ = lit
         else:
             # Non-string value (e.g. COUNT(...)); take until next 'sql_code', 'answer', 'result' or end
-            next_key = re.search(
-                r"'\s*(?:sql_code|answer|result)\s*'\s*,\s*", inner[pos:], re.IGNORECASE
-            )
+            next_key = re.search(r"'\s*(?:sql_code|answer|result)\s*'\s*,\s*", inner[pos:], re.IGNORECASE)
             end = pos + next_key.start() if next_key else len(inner)
             out[key] = inner[pos:end].strip().rstrip(",").strip()
     if out["sql_code"] or out["answer"] or out["result"] is not None:
@@ -88,8 +88,10 @@ def _extract_json_from_sql_object(text: str) -> dict | None:
 
 def _extract_json_from_markdown(text: str) -> dict | None:
     """Extract a JSON object from markdown content (e.g. inside ```json ... ``` or ``` ... ```).
-    Also handles ```sql blocks where the content is SQL with JSON_OBJECT('sql_code', ..., 'answer', ..., 'result', ...)."""
+    Also handles ```sql blocks where the content is SQL with JSON_OBJECT('sql_code', ..., 'answer', ..., 'result', ...).
+    """
     import re
+
     # 1) Try parsing the whole content as JSON
     text = (text or "").strip()
     try:
@@ -143,6 +145,7 @@ def _parse_markdown_explanation_sql_thought(content: str) -> dict | None:
     """Parse LLM output that uses **Explanation** / **Final Response**, **SQL Code** (```sql...```), **Thought**.
     Used when the model returns markdown instead of JSON (e.g. OutputParserException)."""
     import re
+
     if not (content and isinstance(content, str)):
         return None
     text = content.strip()
@@ -210,11 +213,17 @@ CALC_FINAL_RESPONSE_JSON_SCHEMA = {
     "properties": {
         "response": {
             "type": "string",
-            "description": "The final response with your explanations and the final sql query that answers the user's question.",
+            "description": (
+                "The final response with your explanations and the final sql query",
+                "that answers the user's question.",
+            ),
         },
         "sql_code": {
             "type": "string",
-            "description": "The sql code that answers the user's question based on chosen snippet/s and appropriate joins (if present).",
+            "description": (
+                "The sql code that answers the user's question",
+                "based on chosen snippet/s and appropriate joins (if present).",
+            ),
         },
         "thought": {
             "type": "string",
@@ -270,7 +279,7 @@ def get_sql_tool_response_top_k(
         '- "response": string with your explanation and the final SQL in words\n'
         '- "sql_code": string with the executable SQL query only\n'
         '- "thought": string with a short thought about your answer\n'
-        'Example: {"response": "We use table X to...", "sql_code": "SELECT ... FROM x;", "thought": "The query joins..."}'
+        'Example: {"response": "We use table X to", "sql_code": "SELECT ... FROM x;", "thought": "The query joins"}'
     )
 
     llm = _make_llm()

@@ -10,12 +10,19 @@ def query_neo4j_tables_for_embedding() -> List[dict]:
     neo4j_conn = get_neo4j_conn()
     query = """MATCH (d:Db)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)
                MATCH (t)-[:CONTAINS]->(c:Column)
-               WITH d, s, t, collect("{name: " + c.name + ", data_type: " + c.data_type +
-                 CASE WHEN c.description IS NOT NULL AND trim(c.description) <> '' THEN ", description: " + c.description ELSE "" END + "}") as columns
-               RETURN collect({text: "db_name: " + d.name + ", schema_name: " + s.name + ", table_name: " + t.name +
-                 CASE WHEN t.description IS NOT NULL AND trim(t.description) <> '' THEN ", table_description: " + t.description ELSE "" END +
-                 ", columns: " + apoc.text.join(columns, ' '),
-               name: t.name, label: labels(t)[0], id: t.id}) as docs
+               WITH d, s, t, collect(
+                 "{name: " + c.name + ", data_type: " + c.data_type +
+                 CASE WHEN c.description IS NOT NULL AND trim(c.description) <> ''
+                   THEN ", description: " + c.description ELSE "" END +
+                 "}") as columns
+               RETURN collect({
+                 text: "db_name: " + d.name + ", schema_name: " + s.name +
+                   ", table_name: " + t.name +
+                   CASE WHEN t.description IS NOT NULL AND trim(t.description) <> ''
+                     THEN ", table_description: " + t.description ELSE "" END +
+                   ", columns: " + apoc.text.join(columns, ' '),
+                 name: t.name, label: labels(t)[0], id: t.id
+               }) as docs
             """
     result = neo4j_conn.query_write(query, parameters={})
     if not result:
@@ -50,18 +57,20 @@ def neo4j_tables_result_to_embedding_dataframe(
         label = item.get(label_key, "")
         name = item.get(name_key, "")
         path = f"neo4j:{node_id}" if node_id is not None else "neo4j:unknown"
-        rows.append({
-            "text": text,
-            "_embed_modality": embed_modality,
-            "path": path,
-            "page_number": -1,
-            "metadata": {
-                "id": node_id,
-                "label": label,
-                "name": name,
-                "source_path": path,
-            },
-        })
+        rows.append(
+            {
+                "text": text,
+                "_embed_modality": embed_modality,
+                "path": path,
+                "page_number": -1,
+                "metadata": {
+                    "id": node_id,
+                    "label": label,
+                    "name": name,
+                    "source_path": path,
+                },
+            }
+        )
     return pd.DataFrame(rows)
 
 

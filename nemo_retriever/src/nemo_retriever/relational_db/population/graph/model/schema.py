@@ -1,7 +1,9 @@
 import logging
 import uuid
 from nemo_retriever.relational_db.population.graph.model.node import Node
-from nemo_retriever.relational_db.population.graph.model.reserved_words import label_to_type
+from nemo_retriever.relational_db.population.graph.model.reserved_words import (
+    label_to_type,
+)
 import pandas as pd
 import numpy as np
 from nemo_retriever.relational_db.population.graph.model.reserved_words import Labels
@@ -9,7 +11,6 @@ from nemo_retriever.relational_db.population.graph.model.reserved_words import L
 pd.options.mode.chained_assignment = None
 
 logger = logging.getLogger("schema.py")
-
 
 
 class Schema:
@@ -28,69 +29,51 @@ class Schema:
         self.tables_to_columns = {}  # key - table node object, value - list of column names (strings) in lower case
         self.tables_columns_pos = {}  # key - tuple of the form (table name, ordinal position), value - column name
         self.table_nodes = {}  # key - table name in lower case, value - table node object
-        self.column_nodes = {}  # key - tuple of the form (column name in lower case, table name in lower case), value - column node object
+        self.column_nodes = (
+            {}
+        )  # key - tuple of the form (column name in lower case, table name in lower case), value - column node object
         self.id_to_node = {}  # key - node id, value - column or table "full" names (schema_name.table_name.column_name
 
         self.tables_df = schema_tables_df
         self.columns_df = schema_columns_df
         if schema_tables_df is not None and schema_columns_df is not None:
             table_names = self.tables_df.table_name.unique()
-            self.columns_df = self.columns_df.loc[
-                self.columns_df["table_name"].isin(table_names)
-            ]
+            self.columns_df = self.columns_df.loc[self.columns_df["table_name"].isin(table_names)]
 
-            self.tables_df["table_name_lower"] = self.tables_df["table_name"].apply(
-                lambda x: x.lower()
-            )
+            self.tables_df["table_name_lower"] = self.tables_df["table_name"].apply(lambda x: x.lower())
             if "id" not in self.tables_df.columns:
-                self.tables_df["id"] = [
-                    str(uuid.uuid4()) for x in range(self.tables_df.shape[0])
-                ]
+                self.tables_df["id"] = [str(uuid.uuid4()) for x in range(self.tables_df.shape[0])]
 
             if "table_type" in self.tables_df:
-                self.tables_df["table_type"] = self.tables_df["table_type"].apply(
-                    lambda x: x.lower()
-                )
+                self.tables_df["table_type"] = self.tables_df["table_type"].apply(lambda x: x.lower())
             self.tables_df["full_name"] = self.tables_df.apply(
                 lambda x: f"{x.schema}.{x.table_name}",
                 axis=1,
             )
 
-            self.id_to_node.update(
-                self.tables_df.set_index("id")["full_name"].to_dict()
-            )
+            self.id_to_node.update(self.tables_df.set_index("id")["full_name"].to_dict())
 
-            self.columns_df["table_name_lower"] = self.columns_df["table_name"].apply(
-                lambda x: x.lower()
-            )
+            self.columns_df["table_name_lower"] = self.columns_df["table_name"].apply(lambda x: x.lower())
 
             # Sciplay table has one column with empty name, no idea how this can happen
             self.columns_df = self.columns_df[~self.columns_df["column_name"].isna()]
 
-            self.columns_df["column_name_lower"] = self.columns_df["column_name"].apply(
-                lambda x: x.strip('"').lower()
-            )
+            self.columns_df["column_name_lower"] = self.columns_df["column_name"].apply(lambda x: x.strip('"').lower())
             if "id" not in self.columns_df.columns:
-                self.columns_df["id"] = [
-                    str(uuid.uuid4()) for x in range(self.columns_df.shape[0])
-                ]
+                self.columns_df["id"] = [str(uuid.uuid4()) for x in range(self.columns_df.shape[0])]
             self.columns_df["data_type"] = self.columns_df["data_type"].str.strip('"')
             self.columns_df["full_name"] = self.columns_df.apply(
                 lambda x: f"{x.schema}.{x.table_name}.{x.column_name}",
                 axis=1,
             )
-            self.id_to_node.update(
-                self.columns_df.set_index("id")["full_name"].to_dict()
-            )
+            self.id_to_node.update(self.columns_df.set_index("id")["full_name"].to_dict())
 
             # This is for improving is_column_in_table
             self.columns_map = {}
             for index, row in self.columns_df.iterrows():
                 if row["table_name_lower"] not in self.columns_map:
                     self.columns_map[row["table_name_lower"]] = {}
-                self.columns_map[row["table_name_lower"]][row["column_name_lower"]] = (
-                    True
-                )
+                self.columns_map[row["table_name_lower"]][row["column_name_lower"]] = True
 
             if is_creation_mode:
                 self.reset_tables_props()
@@ -108,13 +91,9 @@ class Schema:
                 "type": x["table_type"].lower(),
                 "row_count": None if pd.isna(x["row_count"]) else x["row_count"],
                 "size": None if pd.isna(x["size"]) else x["size"],
-                "retention_time": (
-                    None if pd.isna(x["retention_time"]) else x["retention_time"]
-                ),
+                "retention_time": (None if pd.isna(x["retention_time"]) else x["retention_time"]),
                 "created": None if pd.isna(x["created"]) else x["created"],
-                "last_altered": (
-                    None if pd.isna(x["last_altered"]) else x["last_altered"]
-                ),
+                "last_altered": (None if pd.isna(x["last_altered"]) else x["last_altered"]),
                 "id": x.id,
                 "label": Labels.TEMP_TABLE if x["is_temp"] else Labels.TABLE,
             },
@@ -133,9 +112,7 @@ class Schema:
         self.columns_df["props"] = self.columns_df.apply(
             lambda x: {
                 "name": x["column_name"].strip('"'),
-                "data_type": (
-                    None if pd.isna(x["data_type"]) else x["data_type"].strip('"')
-                ),
+                "data_type": (None if pd.isna(x["data_type"]) else x["data_type"].strip('"')),
                 "is_nullable": x["is_nullable"],
                 "default": None if pd.isna(x["default"]) else x["default"],
                 "length": None if pd.isna(x["length"]) else x["length"],
@@ -144,9 +121,7 @@ class Schema:
                 "description": None if pd.isna(x["comment"]) else x["comment"],
                 "id": x.id,
                 "label": Labels.TEMP_COLUMN if x["is_temp"] else Labels.COLUMN,
-                "type": label_to_type(
-                    Labels.TEMP_COLUMN if x["is_temp"] else Labels.COLUMN
-                ),
+                "type": label_to_type(Labels.TEMP_COLUMN if x["is_temp"] else Labels.COLUMN),
             },
             axis=1,
         )
@@ -221,26 +196,21 @@ class Schema:
     def get_column_nodes_by_table_name(self, table_name: str):
         if self.columns_df is not None:
             columns_names = list(self.get_table_columns_by_table_name(table_name))
-            columns_nodes = [
-                self.get_column_node(column_name, table_name)
-                for column_name in columns_names
-            ]
+            columns_nodes = [self.get_column_node(column_name, table_name) for column_name in columns_names]
             return columns_nodes
         return []
 
     def get_table_columns_by_table_name(self, table_name):
         table_name_lower = table_name.lower()
-        columns_df = self.columns_df.loc[
-            self.columns_df["table_name_lower"] == table_name_lower
-        ].replace(np.nan, None)
+        columns_df = self.columns_df.loc[self.columns_df["table_name_lower"] == table_name_lower].replace(np.nan, None)
         return columns_df.column_name.unique()
 
     def get_table_columns(self, table_node):
         table_name_lower = table_node.name.lower()
         if self.columns_df is not None:
-            columns_df = self.columns_df.loc[
-                self.columns_df["table_name_lower"] == table_name_lower
-            ].replace(np.nan, None)
+            columns_df = self.columns_df.loc[self.columns_df["table_name_lower"] == table_name_lower].replace(
+                np.nan, None
+            )
             if not columns_df.empty:
                 return columns_df.column_name.unique()
         return self.tables_to_columns[table_node]
@@ -251,9 +221,7 @@ class Schema:
             self.tables_to_columns[table_node] = []
         if column_name_lower not in self.tables_to_columns[table_node]:
             self.tables_to_columns[table_node].append(column_name_lower)
-            self.tables_columns_pos.update(
-                {(table_node.name.lower(), ordinal_position): column_name_lower}
-            )
+            self.tables_columns_pos.update({(table_node.name.lower(), ordinal_position): column_name_lower})
 
     def get_db_schema_edge(self):
         if self.db_node is None:
@@ -287,13 +255,13 @@ class Schema:
             unique_table_names = self.tables_df.table_name.unique()
             for table_name in unique_table_names:
                 table_name_lower = table_name.lower()
-                tables_df = self.tables_df.loc[
-                    self.tables_df["table_name_lower"] == table_name_lower
-                ].replace(np.nan, None)
+                tables_df = self.tables_df.loc[self.tables_df["table_name_lower"] == table_name_lower].replace(
+                    np.nan, None
+                )
                 table_id = tables_df.iloc[0]["props"]["id"]
-                column_df = self.columns_df.loc[
-                    self.columns_df["table_name_lower"] == table_name_lower
-                ].replace(np.nan, None)
+                column_df = self.columns_df.loc[self.columns_df["table_name_lower"] == table_name_lower].replace(
+                    np.nan, None
+                )
                 table_edges = [
                     {
                         "vid": table_id,
@@ -348,13 +316,7 @@ class Schema:
         )
         self.column_nodes.update({(column_name_lower, table_name_lower): column_node})
         if str(column_node.get_id()) not in self.id_to_node:
-            self.id_to_node.update(
-                {
-                    str(
-                        column_node.get_id()
-                    ): f"{self.schema_name}.{table_name}.{column_name}"
-                }
-            )
+            self.id_to_node.update({str(column_node.get_id()): f"{self.schema_name}.{table_name}.{column_name}"})
 
     def get_column_node_props(self, column_name, table_name):
         column_name_lower = column_name.lower()
@@ -394,52 +356,39 @@ class Schema:
             ].replace(np.nan, None)
 
             if column_df.empty:
-                raise MissingDataError(
-                    f"Column {column_name} is not in table {table_name}."
-                )
+                raise ValueError(f"Column {column_name} is not in table {table_name}.")
 
             id = column_df.iloc[0]["props"]["id"]
-            data_type = (
-                None
-                if pd.isna(column_df.iloc[0]["data_type"])
-                else column_df.iloc[0]["data_type"].strip('"')
-            )
+            data_type = None if pd.isna(column_df.iloc[0]["data_type"]) else column_df.iloc[0]["data_type"].strip('"')
             column_name = column_df.iloc[0]["column_name"].strip('"')
             # comment <-> description (?)
             description = (
                 None
-                if "comment" not in column_df.iloc[0]
-                or pd.isna(column_df.iloc[0]["comment"])
+                if "comment" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["comment"])
                 else column_df.iloc[0]["comment"]
             )
             is_nullable = (
                 None
-                if "is_nullable" not in column_df.iloc[0]
-                or pd.isna(column_df.iloc[0]["is_nullable"])
+                if "is_nullable" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["is_nullable"])
                 else column_df.iloc[0]["is_nullable"]
             )
             default = (
                 None
-                if "default" not in column_df.iloc[0]
-                or pd.isna(column_df.iloc[0]["default"])
+                if "default" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["default"])
                 else column_df.iloc[0]["default"]
             )
             length = (
                 None
-                if "length" not in column_df.iloc[0]
-                or pd.isna(column_df.iloc[0]["length"])
+                if "length" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["length"])
                 else column_df.iloc[0]["length"]
             )
             scale = (
                 None
-                if "scale" not in column_df.iloc[0]
-                or pd.isna(column_df.iloc[0]["scale"])
+                if "scale" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["scale"])
                 else column_df.iloc[0]["scale"]
             )
             ordinal_position = (
-                None
-                if ("ordinal_position" not in column_df.iloc[0])
-                else column_df.iloc[0]["ordinal_position"]
+                None if ("ordinal_position" not in column_df.iloc[0]) else column_df.iloc[0]["ordinal_position"]
             )
             self.create_column_node(
                 column_name,
@@ -454,9 +403,7 @@ class Schema:
                 ordinal_position=ordinal_position,
                 is_temp=column_df.iloc[0]["is_temp"],
             )
-            column_node = self.get_column_node(
-                column_df.iloc[0]["column_name"], table_name
-            )
+            column_node = self.get_column_node(column_df.iloc[0]["column_name"], table_name)
             table_node = self.get_table_node(table_name)
             self.add_column_to_table(table_node, column_node, ordinal_position)
         return self.column_nodes[(column_name_lower, table_name_lower)]
@@ -464,9 +411,7 @@ class Schema:
     def table_exists(self, table_name):
         table_name_lower = table_name.lower()
         if self.tables_df is not None:
-            result = self.tables_df.loc[
-                self.tables_df["table_name_lower"] == table_name_lower
-            ].replace(np.nan, None)
+            result = self.tables_df.loc[self.tables_df["table_name_lower"] == table_name_lower].replace(np.nan, None)
             if result.empty:
                 return table_name.lower() in self.table_nodes
             return True
@@ -512,15 +457,11 @@ class Schema:
         )
         self.table_nodes.update({table_name_lower: table_node})
         if str(table_node.get_id()) not in self.id_to_node:
-            self.id_to_node.update(
-                {str(table_node.get_id()): f"{self.schema_name}.{table_name}"}
-            )
+            self.id_to_node.update({str(table_node.get_id()): f"{self.schema_name}.{table_name}"})
 
     def get_table_node_props(self, table_name):
         table_name_lower = table_name.lower()
-        table_df = self.tables_df.loc[
-            self.tables_df["table_name_lower"] == table_name_lower
-        ].replace(np.nan, None)
+        table_df = self.tables_df.loc[self.tables_df["table_name_lower"] == table_name_lower].replace(np.nan, None)
 
         if table_df.empty:
             raise Exception(f"Table {table_name} is not in schema {self.schema_name}.")
@@ -530,9 +471,7 @@ class Schema:
 
     def get_table_node_match_props(self, table_name):
         table_name_lower = table_name.lower()
-        table_df = self.tables_df.loc[
-            self.tables_df["table_name_lower"] == table_name_lower
-        ].replace(np.nan, None)
+        table_df = self.tables_df.loc[self.tables_df["table_name_lower"] == table_name_lower].replace(np.nan, None)
 
         if table_df.empty:
             raise Exception(f"Table {table_name} is not in schema {self.schema_name}.")
@@ -543,26 +482,20 @@ class Schema:
     def get_table_node(self, table_name):
         table_name_lower = table_name.lower()
         if table_name_lower not in self.table_nodes:
-            table_df = self.tables_df.loc[
-                self.tables_df["table_name_lower"] == table_name_lower
-            ].replace(np.nan, None)
+            table_df = self.tables_df.loc[self.tables_df["table_name_lower"] == table_name_lower].replace(np.nan, None)
 
             if table_df.empty:
-                raise MissingDataError(
-                    f"Table {table_name} is not in schema {self.schema_name}."
-                )
+                raise ValueError(f"Table {table_name} is not in schema {self.schema_name}.")
 
             id = table_df.iloc[0]["props"]["id"]
             table_type = (
                 None
-                if "table_type" not in table_df.iloc[0]
-                or pd.isna(table_df.iloc[0]["table_type"])
+                if "table_type" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["table_type"])
                 else table_df.iloc[0]["table_type"]
             )
             row_count = (
                 None
-                if "row_count" not in table_df.iloc[0]
-                or pd.isna(table_df.iloc[0]["row_count"])
+                if "row_count" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["row_count"])
                 else table_df.iloc[0]["row_count"]
             )
             size = (
@@ -572,26 +505,22 @@ class Schema:
             )
             retention_time = (
                 None
-                if "retention_time" not in table_df.iloc[0]
-                or pd.isna(table_df.iloc[0]["retention_time"])
+                if "retention_time" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["retention_time"])
                 else table_df.iloc[0]["retention_time"]
             )
             created = (
                 None
-                if "created" not in table_df.iloc[0]
-                or pd.isna(table_df.iloc[0]["created"])
+                if "created" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["created"])
                 else table_df.iloc[0]["created"]
             )
             last_altered = (
                 None
-                if "last_altered" not in table_df.iloc[0]
-                or pd.isna(table_df.iloc[0]["last_altered"])
+                if "last_altered" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["last_altered"])
                 else table_df.iloc[0]["last_altered"]
             )
             description = (
                 None
-                if "comment" not in table_df.iloc[0]
-                or pd.isna(table_df.iloc[0]["comment"])
+                if "comment" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["comment"])
                 else table_df.iloc[0]["comment"]
             )
             self.create_table_node(
@@ -611,9 +540,7 @@ class Schema:
     def get_schema_node(self):
         return self.schema_node
 
-    def create_schema_node(
-        self, schema_name, id=None, is_temp=False
-    ):
+    def create_schema_node(self, schema_name, id=None, is_temp=False):
         if self.schema_node is None:
             self.schema_name = schema_name
             props = {"name": schema_name}
@@ -634,10 +561,7 @@ class Schema:
         table_name_lower = table_node.name.lower()
 
         if (self.columns_df is not None) and table_node.label != Labels.TEMP_TABLE:
-            return (
-                table_name_lower in self.columns_map
-                and column_name_lower in self.columns_map[table_name_lower]
-            )
+            return table_name_lower in self.columns_map and column_name_lower in self.columns_map[table_name_lower]
         else:
             if table_node in self.tables_to_columns:
                 if column_name_lower in self.tables_to_columns[table_node]:
@@ -654,9 +578,7 @@ class Schema:
             table_props = table.iloc[0]["props"]
             table_props["id"] = new_id
             self.tables_df.replace(old_id, new_id, inplace=True)
-        column = self.columns_df.loc[self.columns_df["id"] == old_id].replace(
-            np.nan, None
-        )
+        column = self.columns_df.loc[self.columns_df["id"] == old_id].replace(np.nan, None)
         if not column.empty:
             column_props = column.iloc[0]["props"]
             column_props["id"] = new_id

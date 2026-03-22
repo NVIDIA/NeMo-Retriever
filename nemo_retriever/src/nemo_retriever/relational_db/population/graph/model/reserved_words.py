@@ -38,6 +38,7 @@ labels_to_types = {
 
 class Props:
     """Edge/node property keys (used by utils_dal, node)."""
+
     JOIN = "join"
     SOURCE_SQL_ID = "source_sql_id"
     UNION = "union"
@@ -46,6 +47,7 @@ class Props:
 
 # Labels that have no parent owner in the graph (used by get_entity_before_update).
 entities_without_owners = []
+
 
 class RelTypes:
     """Neo4j relationship type names (used in Cypher)."""

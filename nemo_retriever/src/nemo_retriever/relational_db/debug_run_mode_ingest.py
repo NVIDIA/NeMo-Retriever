@@ -21,6 +21,7 @@ import urllib.request
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -28,7 +29,6 @@ except ImportError:
 from nemo_retriever.application.modes.run_batch_structured import run_batch_structured
 from nemo_retriever.params import (
     EmbedParams,
-    IngestExecuteParams,
     IngestorCreateParams,
     StructuredExtractParams,
     VdbUploadParams,
@@ -51,7 +51,10 @@ def _check_embed_key() -> None:
         masked = "*" * len(k)
     else:
         masked = f"{k[:4]}...{k[-4:]}"
-    print(f"DEBUG: Embedding API key is set ({masked}, len={len(k)}). If you still get 401, the key may be invalid or lack access to the embedding model.")
+    print(
+        f"DEBUG: Embedding API key is set ({masked}, len={len(k)}). "
+        "If you still get 401, the key may be invalid or lack access to the embedding model."
+    )
 
 
 def list_embedding_models() -> None:
@@ -97,7 +100,7 @@ def main() -> None:
         documents=[],  # no unstructured documents
         allow_no_gpu=True,
     )
-    
+
     structured_params = StructuredExtractParams(db_connection_string="./spider2.duckdb")
     # Set structured_params = None to skip structured path when Neo4j is not running.
 
@@ -119,7 +122,6 @@ def main() -> None:
     )
 
     result = run_batch_structured(
-       
         create_params=create_params,
         structured_params=structured_params,
         embed_params=embed_params,
@@ -127,7 +129,6 @@ def main() -> None:
     )
 
     print("ingest() result:", result)
-
 
 
 if __name__ == "__main__":

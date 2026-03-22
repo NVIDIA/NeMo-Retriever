@@ -23,8 +23,7 @@ from __future__ import annotations
 
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -47,9 +46,7 @@ class DuckDB:
         try:
             import duckdb  # type: ignore
         except ImportError as exc:
-            raise ImportError(
-                "DuckDB is required. Install it via: pip install 'duckdb>=1.2.0'"
-            ) from exc
+            raise ImportError("DuckDB is required. Install it via: pip install 'duckdb>=1.2.0'") from exc
 
         self.connection_properties = connection or {}
         db_path = self.connection_properties.get("database", ":memory:")
@@ -78,17 +75,10 @@ class DuckDB:
             rel = self.conn.execute(sql)
         return rel.df()
 
-    def test(self) -> List[Dict[str, Any]]:
-        """Return a list of dicts mapping each database to its schemas."""
-        return [
-            {"db_name": db, "schemas": self.list_db_schemas(db)}
-            for db in self.list_databases()
-        ]
-
     @property
-    def pull_info(self) -> List[Dict[str, Any]]:
-        """List of {db_name, schemas} for merging with tables/columns/views (e.g. in extract_data)."""
-        return self.test()
+    def db_schemas(self) -> List[Dict[str, Any]]:
+        """Return a list of {db_name, schemas} for merging with tables/columns/views."""
+        return [{"db_name": db, "schemas": self.list_db_schemas(db)} for db in self.list_databases()]
 
     # ------------------------------------------------------------------
     # Helpers
@@ -106,8 +96,7 @@ class DuckDB:
     def list_db_schemas(self, db: str) -> List[str]:
         """Return schema names within *db*."""
         df = self.execute(
-            f"SELECT DISTINCT schema_name FROM information_schema.schemata "
-            f"WHERE catalog_name = '{db}'"
+            f"SELECT DISTINCT schema_name FROM information_schema.schemata " f"WHERE catalog_name = '{db}'"
         )
         return df["schema_name"].tolist()
 
@@ -122,7 +111,8 @@ class DuckDB:
 
     def get_tables(self) -> pd.DataFrame:
         """Return all tables from information_schema as a DataFrame."""
-        return self.execute("""
+        return self.execute(
+            """
             SELECT
                 table_catalog AS "database",
                 table_schema  AS "schema",
@@ -131,11 +121,13 @@ class DuckDB:
                 NULL          AS "created"
             FROM information_schema.tables
             ORDER BY table_catalog, table_schema, table_name
-        """)
+        """
+        )
 
     def get_columns(self) -> pd.DataFrame:
         """Return all columns from information_schema as a DataFrame."""
-        return self.execute("""
+        return self.execute(
+            """
             SELECT
                 table_catalog    AS "database",
                 table_schema     AS "schema",
@@ -146,7 +138,8 @@ class DuckDB:
                 is_nullable      AS "is_nullable"
             FROM information_schema.columns
             ORDER BY table_catalog, table_schema, table_name, ordinal_position
-        """)
+        """
+        )
 
     def get_schemas(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Return (tables_df, columns_df) from information_schema."""
@@ -158,7 +151,8 @@ class DuckDB:
 
     def get_views(self) -> pd.DataFrame:
         """Return all views from information_schema."""
-        return self.execute("""
+        return self.execute(
+            """
             SELECT
                 table_catalog   AS database,
                 table_schema    AS schema,
@@ -166,7 +160,8 @@ class DuckDB:
                 view_definition
             FROM information_schema.views
             ORDER BY table_catalog, table_schema, table_name
-        """)
+        """
+        )
 
     def get_pks(self) -> pd.DataFrame:
         """Return primary key columns from duckdb_constraints() as a DataFrame.
@@ -175,11 +170,18 @@ class DuckDB:
         If duckdb_constraints() is unavailable, returns an empty DataFrame with those columns.
         """
         empty = pd.DataFrame(
-            columns=["database", "schema", "table_name", "column_name", "ordinal_position"]
+            columns=[
+                "database",
+                "schema",
+                "table_name",
+                "column_name",
+                "ordinal_position",
+            ]
         )
         try:
             # duckdb_constraints() returns constraint_column_names as list; unnest to one row per column
-            df = self.execute("""
+            df = self.execute(
+                """
                 SELECT
                     current_database() AS "database",
                     c.schema_name      AS "schema",
@@ -189,7 +191,8 @@ class DuckDB:
                 FROM duckdb_constraints() c
                 WHERE c.constraint_type = 'PRIMARY KEY'
                 ORDER BY c.schema_name, c.table_name, "ordinal_position"
-            """)
+            """
+            )
             return df if not df.empty else empty
         except Exception:
             return empty
@@ -202,12 +205,18 @@ class DuckDB:
         """
         empty = pd.DataFrame(
             columns=[
-                "database", "schema", "table_name", "column_name",
-                "referenced_schema", "referenced_table", "referenced_column",
+                "database",
+                "schema",
+                "table_name",
+                "column_name",
+                "referenced_schema",
+                "referenced_table",
+                "referenced_column",
             ]
         )
         try:
-            df = self.execute("""
+            df = self.execute(
+                """
                 SELECT
                     current_database() AS "database",
                     c.schema_name      AS "schema",
@@ -216,17 +225,9 @@ class DuckDB:
                 FROM duckdb_constraints() c
                 WHERE c.constraint_type = 'FOREIGN KEY'
                 ORDER BY c.schema_name, c.table_name
-            """)
-            if not df.empty and "referenced_table_name" in self.execute("SELECT * FROM duckdb_constraints() LIMIT 1").columns:
-                ref = self.execute("""
-                    SELECT schema_name, table_name, constraint_column_names
-                    FROM duckdb_constraints()
-                    WHERE constraint_type IN ('FOREIGN KEY', 'PRIMARY KEY', 'UNIQUE')
-                """)
-                # Simplified: return FK side only; referenced_* can be extended if DuckDB exposes it
-                for col in ["referenced_schema", "referenced_table", "referenced_column"]:
-                    if col not in df.columns:
-                        df[col] = None
+            """
+            )
+
             return df if not df.empty else empty
         except Exception:
             return empty

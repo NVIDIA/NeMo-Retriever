@@ -19,19 +19,17 @@ def add_indices():
         query_create = f"""CREATE INDEX index_on_{c.lower()}_name IF NOT EXISTS FOR (n: {c}) ON(n.name)
                         """
         conn.query_write(query_create, parameters)
-        query_create = f"""CREATE INDEX index_on_{c.lower()}_account IF NOT EXISTS FOR (n: {c}) ON(n.account_id) 
+        query_create = f"""CREATE INDEX index_on_{c.lower()}_account IF NOT EXISTS FOR (n: {c}) ON(n.account_id)
                                     """
         conn.query_write(query_create, parameters)
-        query_create = f"""CREATE INDEX index_on_{c.lower()}_id IF NOT EXISTS FOR (n: {c}) ON(n.id) 
+        query_create = f"""CREATE INDEX index_on_{c.lower()}_id IF NOT EXISTS FOR (n: {c}) ON(n.id)
                                             """
         conn.query_write(query_create, parameters)
 
-
         labels_str = "|".join([n for n in Labels.LIST_OF_ALL if n != Labels.SQL])
-        query_fulltext_name_create = f"""CREATE FULLTEXT INDEX name_index IF NOT EXISTS FOR 
-                                    (n:{labels_str}) ON EACH [n.name] 
-                                    OPTIONS {{indexConfig: {{`fulltext.eventually_consistent`: true, 
+        query_fulltext_name_create = f"""CREATE FULLTEXT INDEX name_index IF NOT EXISTS FOR
+                                    (n:{labels_str}) ON EACH [n.name]
+                                    OPTIONS {{indexConfig: {{`fulltext.eventually_consistent`: true,
                                     `fulltext.analyzer`: 'standard-no-stop-words'}}}}"""
-       
 
         conn.query_write(query_fulltext_name_create, parameters)

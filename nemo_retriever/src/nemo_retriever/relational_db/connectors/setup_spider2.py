@@ -69,7 +69,9 @@ def _clone_spider2(target_dir: Path) -> None:
 def _load_data(spider2_lite_dir: Path, db_path: Path, overwrite: bool) -> dict:
     try:
         from nemo_retriever.relational_db.connectors.duckdb import DuckDB
-        from nemo_retriever.relational_db.connectors.spider2_loader import load_spider2_lite
+        from nemo_retriever.relational_db.connectors.spider2_loader import (
+            load_spider2_lite,
+        )
     except ImportError:
         print(
             "\n[error] Could not import nemo_retriever. Install the package first:\n\n"
@@ -115,8 +117,6 @@ def _load_data(spider2_lite_dir: Path, db_path: Path, overwrite: bool) -> dict:
             print(f"  ✗ {f['database']} → {f['error']}")
 
     return summary
-
-
 
 
 # ---------------------------------------------------------------------------

@@ -1,15 +1,12 @@
-from datetime import datetime
 import logging
-
 import pandas as pd
+
 from nemo_retriever.relational_db.neo4j_connection import get_neo4j_conn
-
-logger = logging.getLogger(__name__)
-
 from nemo_retriever.relational_db.population.graph.utils import chunks
 from nemo_retriever.relational_db.population.graph.model.reserved_words import Labels
-from nemo_retriever.relational_db.population.graph.dal.schemas_dal import load_schema_from_graph, add_schemas_edge
+from .schemas_dal import load_schema_from_graph, add_schemas_edge
 
+logger = logging.getLogger(__name__)
 conn = get_neo4j_conn()
 
 
@@ -17,17 +14,14 @@ def db_exists(db_node):
     db_name = db_node.get_name()
     query = """
     MATCH (n:Db{name: $db_name})
-    OPTIONAL MATCH (n)-[r]-(v) WHERE NOT v:Connection
+    OPTIONAL MATCH (n)-[r]-(v)
     RETURN n.id AS id, count(r) AS nbrs
     """
-    result_data = conn.query_read_only(
-        query=query, parameters={"db_name": db_name}
-    )
+    result_data = conn.query_read(query=query, parameters={"db_name": db_name})
     if not result_data or len(result_data) == 0:
         return None, None
 
     nbrs = result_data[0]["nbrs"]
-
     return result_data[0]["id"], False if nbrs == 0 else True
 
 
@@ -45,26 +39,14 @@ def update_node_property(label, node_id, update_properties):
     )
 
 
-def delete_schema(schema_node_id, deleted_time=datetime.now()):
-    query = """MATCH (n:Schema {id: $schema_node_id})-[:CONTAINS]->(t:Table)-[:CONTAINS]->(c:Column)
-               SET n.deleted = True
-               SET n.deleted_time = $deleted_time
-               SET t.deleted = True
-               SET t.deleted_time = $deleted_time
-               SET c.deleted = True
-               SET c.deleted_time = $deleted_time
+def delete_schema(schema_node_id):
+    query = """MATCH (schema:Schema {id: $schema_node_id})-[:CONTAINS]->(table:Table)-[:CONTAINS]->(col:Column)
+               DETACH DELETE schema, table, col
              """
     conn.query_write(
         query=query,
-        parameters={
-            "schema_node_id": schema_node_id,
-            "deleted_time": deleted_time,
-        },
+        parameters={"schema_node_id": schema_node_id},
     )
-
-
-
-
 
 
 def add_schemas_edge_batch(edges, created):
@@ -75,17 +57,24 @@ def add_schemas_edge_batch(edges, created):
     :return:
     """
     try:
-        # in case of match override the existing ID in the graph, in order to correlate with the ID of the parsed Node object
+        # in case of match override the existing ID in the graph,
+        # in order to correlate with the ID of the parsed Node object
         query = """
             UNWIND $edges as e
             CALL apoc.merge.node.eager([e.from_label], e.from_identProps, e.v_props, {id:e.v_props.id})
             yield node as v1
-            set v1.created = case when coalesce(v1.deleted, false) = false then coalesce(v1.created, $created) else $created end
+            set v1.created = case when coalesce(v1.deleted, false) = false
+            then coalesce(v1.created, $created)
+            else $created end
+
             set v1.deleted = false
             with v1, e
             call apoc.merge.node.eager([e.to_label], e.to_identProps, e.u_props, {id:e.u_props.id})
             yield node as v2
-            set v2.created = case when coalesce(v2.deleted, false) = false then coalesce(v2.created, $created) else $created end
+            set v2.created = case when coalesce(v2.deleted, false) = false
+            then coalesce(v2.created, $created)
+            else $created end
+
             set v2.deleted = false
             MERGE (v1)-[r:CONTAINS]->(v2)
             SET r = e.optional_edge_props
@@ -99,14 +88,12 @@ def add_schemas_edge_batch(edges, created):
             },
         )
     except Exception as err:
-        raise Exception('Error in "add_schemas_edge_batch"')
+        raise Exception(f'Error in "add_schemas_edge_batch": {err}')
 
 
 def accumulate_added_column_props(added_column, edges_to_add, new_schema):
     new_table_node_props = new_schema.get_table_node_props(added_column.table_name)
-    new_table_node_match_props = new_schema.get_table_node_match_props(
-        added_column.table_name
-    )
+    new_table_node_match_props = new_schema.get_table_node_match_props(added_column.table_name)
     edges_to_add.append(
         {
             "from_label": new_table_node_props["label"],
@@ -120,9 +107,7 @@ def accumulate_added_column_props(added_column, edges_to_add, new_schema):
     )
 
 
-def accumulate_updated_table(
-    table_in_intersection, items_to_update_in_graph, new_schema
-):
+def accumulate_updated_table(table_in_intersection, items_to_update_in_graph, new_schema):
     # verify that the node with the correct id is in hand: replace new table id with existing table id
     # new_schema.replace_id(table_in_intersection.props_y["id"], table_in_intersection.props_x["id"])
     new_table_node_props = table_in_intersection.props_files
@@ -136,9 +121,7 @@ def accumulate_updated_table(
     )
 
 
-def accumulate_updated_column(
-    column_in_intersection, items_to_update_in_graph, new_schema
-):
+def accumulate_updated_column(column_in_intersection, items_to_update_in_graph, new_schema):
     # verify that the node with the correct id is in hand
     # new_schema.replace_id(column_in_intersection.props_y["id"], column_in_intersection.props_x["id"])
     new_column_node_props = column_in_intersection.props_files
@@ -167,9 +150,7 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         if is_temp:
             return added_or_modified_tables
 
-        existing_schema = load_schema_from_graph(
-            db_name, schema_name, is_temp=is_temp
-        )
+        existing_schema = load_schema_from_graph(db_name, schema_name, is_temp=is_temp)
         if existing_schema is None:
             return False
 
@@ -206,9 +187,7 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         tables_names_to_delete = set(existing_table_names) - set(new_table_names)
         logger.info(f"Tables to delete in schema {schema_name}: {len(tables_names_to_delete)}")
         for deleted_table_name in tables_names_to_delete:
-            deleted_table_node_props = existing_schema.get_table_node_props(
-                deleted_table_name
-            )
+            deleted_table_node_props = existing_schema.get_table_node_props(deleted_table_name)
             delete_table(deleted_table_node_props["id"])
         # update ids of tables and columns that appear both in the new schema and in the existing schema
         tables_merge = pd.merge(
@@ -222,15 +201,8 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         if len(list_of_props) > 0:
             table_diffs = []
             for prop in list_of_props:
-                # This is not working after upgrading NumPy, as it doesn't allow to compare pd.NA
-                # table_diff = tables_merge.loc[
-                #     ~pd.isna(tables_merge[f"{prop}_graph"])
-                #     & (tables_merge[f"{prop}_graph"] != tables_merge[f"{prop}_files"])
-                # ]
-                # Converting to string for now (just like columns), we need to think about pd.NA
                 table_diff = tables_merge[
-                    tables_merge[f"{prop}_graph"].astype(str)
-                    != tables_merge[f"{prop}_files"].astype(str)
+                    tables_merge[f"{prop}_graph"].astype(str) != tables_merge[f"{prop}_files"].astype(str)
                 ]
                 table_diffs.append(table_diff)
             tables_to_update = pd.concat(table_diffs, ignore_index=True, axis=0)
@@ -249,14 +221,10 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
 
             items_to_update_in_graph = []
             tables_to_update.apply(
-                lambda x: accumulate_updated_table(
-                    x, items_to_update_in_graph, new_schema
-                ),
+                lambda x: accumulate_updated_table(x, items_to_update_in_graph, new_schema),
                 axis=1,
             )
-            items_to_update_in_graph_chunks = list(
-                chunks(items_to_update_in_graph, 1000)
-            )
+            items_to_update_in_graph_chunks = list(chunks(items_to_update_in_graph, 1000))
             len_chunks = len(items_to_update_in_graph_chunks)
             for i, chunk in enumerate(items_to_update_in_graph_chunks):
                 logger.info(f"Updating tables chunk {i + 1}/{len_chunks}")
@@ -270,9 +238,7 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
             how="left",
             suffixes=("_graph", "_files"),
         )
-        deleted_columns = columns_merge.loc[
-            columns_merge["column_name_lower_files"].isnull()
-        ]
+        deleted_columns = columns_merge.loc[columns_merge["column_name_lower_files"].isnull()]
         logger.info(f"Columns to delete in schema {schema_name}: {len(deleted_columns)}")
         ids_to_delete = deleted_columns["props_graph"].apply(lambda p: p["id"]).tolist()
         delete_columns_batch(ids_to_delete)
@@ -287,9 +253,7 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
             how="right",
             suffixes=("_graph", "_files"),
         )
-        added_columns = columns_merge.loc[
-            columns_merge["column_name_lower_graph"].isnull()
-        ]
+        added_columns = columns_merge.loc[columns_merge["column_name_lower_graph"].isnull()]
         logger.info(f"Columns to add in schema {schema_name}: {len(added_columns)}")
         edges_to_merge = []
         added_columns.apply(
@@ -313,14 +277,8 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         if len(list_of_props) > 0:
             column_diffs = []
             for prop in list_of_props:
-                # column_diff = columns_merge.loc[
-                #     (columns_merge[f"{prop}_graph"] != columns_merge[f"{prop}_files"])
-                #     & ~pd.isna(columns_merge[f"{prop}_graph"])
-                # ]
-                # https://stackoverflow.com/a/34746437
                 column_diff = columns_merge[
-                    columns_merge[f"{prop}_graph"].astype(str)
-                    != columns_merge[f"{prop}_files"].astype(str)
+                    columns_merge[f"{prop}_graph"].astype(str) != columns_merge[f"{prop}_files"].astype(str)
                 ]
                 column_diffs.append(column_diff)
             columns_to_update = pd.concat(column_diffs, ignore_index=True, axis=0)
@@ -339,14 +297,10 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
 
             items_to_update_in_graph = []
             columns_to_update.apply(
-                lambda x: accumulate_updated_column(
-                    x, items_to_update_in_graph, new_schema
-                ),
+                lambda x: accumulate_updated_column(x, items_to_update_in_graph, new_schema),
                 axis=1,
             )
-            items_to_update_in_graph_chunks = list(
-                chunks(items_to_update_in_graph, 1000)
-            )
+            items_to_update_in_graph_chunks = list(chunks(items_to_update_in_graph, 1000))
             len_chunks = len(items_to_update_in_graph_chunks)
             for i, chunk in enumerate(items_to_update_in_graph_chunks):
                 logger.info(f"Updating columns chunk {i + 1}/{len_chunks}")
@@ -362,18 +316,18 @@ def get_tables_columns(db_id, schema):
         query = """MATCH(db:Db)-[:CONTAINS]->(s:Schema{name:$schema})-[:CONTAINS]->
                     (t:Table)-[:CONTAINS]->(c:Column)
                     WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and
-                        coalesce(c.deleted, false) = false 
-                    RETURN t.name as table_name, c.name as col_name 
+                        coalesce(c.deleted, false) = false
+                    RETURN t.name as table_name, c.name as col_name
                 """
     else:
         query = """MATCH(db:Db{id:$db_id})-[:CONTAINS]->(s:Schema{name:$schema})-[:CONTAINS]->
                     (t:Table)-[:CONTAINS]->(c:Column)
                     WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and
-                        coalesce(c.deleted, false) = false 
-                    RETURN t.name as table_name, c.name as col_name 
+                        coalesce(c.deleted, false) = false
+                    RETURN t.name as table_name, c.name as col_name
                     """
     result = pd.DataFrame(
-        conn.query_read_only(
+        conn.query_read(
             query=query,
             parameters={"db_id": db_id, "schema": schema},
         )
@@ -383,33 +337,25 @@ def get_tables_columns(db_id, schema):
     return result
 
 
-
-
-def delete_table(table_id, deleted_time=datetime.now()):
-    query = """ MATCH (n:Table {id: $table_id})-[:CONTAINS]->(c:Column)
-                SET n.deleted = True
-                SET n.deleted_time = $deleted_time
-                SET c.deleted = True
-                SET c.deleted_time = $deleted_time
+def delete_table(table_id):
+    query = """MATCH (table:Table {id: $table_id})-[:CONTAINS]->(col:Column)
+               DETACH DELETE table, col
             """
     conn.query_write(
         query=query,
-        parameters={
-            "table_id": table_id,
-            "deleted_time": deleted_time,
-        },
+        parameters={"table_id": table_id},
     )
 
 
 def update_properties_in_graph_batch(items):
     query = """
             UNWIND $items as item
-            WITH item, item.props.description as new_description, 
-            apoc.map.removeKeys(item.props, ["description"]) as item_props_no_description 
-            CALL apoc.merge.node.eager([item.label], {id: item.id}, {}, item_props_no_description) 
+            WITH item, item.props.description as new_description,
+            apoc.map.removeKeys(item.props, ["description"]) as item_props_no_description
+            CALL apoc.merge.node.eager([item.label], {id: item.id}, {}, item_props_no_description)
             YIELD node
             // keep existing description unless it is null
-            SET node.description = coalesce(node.description, new_description)  
+            SET node.description = coalesce(node.description, new_description)
             """
     conn.query_write(
         query=query,
@@ -430,33 +376,22 @@ def update_properties_in_graph(item_id, node_label, new_parameters):
     )
 
 
-
-
-
-def delete_columns_batch(column_ids, deleted_time=datetime.now()):
+def delete_columns_batch(column_ids):
     query = """UNWIND $column_ids as column_id
-               MATCH (c:Column {id: column_id}) 
-               SET c.deleted = True 
-               SET c.deleted_time = $deleted_time
+               MATCH (col:Column {id: column_id})
+               DETACH DELETE col
             """
     conn.query_write(
         query=query,
-        parameters={
-            "column_ids": column_ids,
-            "deleted_time": deleted_time,
-        },
+        parameters={"column_ids": column_ids},
     )
 
 
-def delete_column(column_id, deleted_time=datetime.now()):
-    query = """MATCH (c:Column {id: $column_id}) 
-               SET c.deleted = True 
-               SET c.deleted_time = $deleted_time
+def delete_column(column_id):
+    query = """MATCH (col:Column {id: $column_id})
+               DETACH DELETE col
             """
     conn.query_write(
         query=query,
-        parameters={
-            "column_id": column_id,
-            "deleted_time": deleted_time,
-        },
+        parameters={"column_id": column_id},
     )

@@ -1,7 +1,10 @@
 import logging
 import uuid
 from json import JSONEncoder
-from nemo_retriever.relational_db.population.graph.model.reserved_words import Labels, label_to_type
+from nemo_retriever.relational_db.population.graph.model.reserved_words import (
+    Labels,
+    label_to_type,
+)
 
 logger = logging.getLogger("node.py")
 
@@ -32,9 +35,7 @@ class Node:
         if match_props is None:
             self.match_props = {"id": str(self.id)}
 
-        self.override_existing_props = (
-            override_existing_props if override_existing_props else None
-        )
+        self.override_existing_props = override_existing_props if override_existing_props else None
 
     def change_label(self, new_label):
         self.label = new_label
@@ -91,38 +92,20 @@ class Node:
         if isinstance(other, Node):
             # compare without uuid
             equal_result = (
-                self.name == other.name
-                and self.label == other.label
-                and self.match_props == other.match_props
+                self.name == other.name and self.label == other.label and self.match_props == other.match_props
             )
             return equal_result
 
     def __str__(self):
         self_id = self.pop_property("id")
-        str_val = (
-            "Node: {name: "
-            + self.name
-            + "; label: "
-            + self.label
-            + "; properties: "
-            + str(self.props)
-            + "}"
-        )
+        str_val = "Node: {name: " + self.name + "; label: " + self.label + "; properties: " + str(self.props) + "}"
         self.restore_property("id", self_id)
 
         return str_val
 
     def __repr__(self):
         self_id = self.pop_property("id")
-        repr_val = (
-            "Node: {name: "
-            + self.name
-            + "; label: "
-            + self.label
-            + "; properties: "
-            + str(self.props)
-            + "}"
-        )
+        repr_val = "Node: {name: " + self.name + "; label: " + self.label + "; properties: " + str(self.props) + "}"
         self.restore_property("id", self_id)
 
         return repr_val

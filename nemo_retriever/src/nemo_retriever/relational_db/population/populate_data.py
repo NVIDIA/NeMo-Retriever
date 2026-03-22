@@ -2,9 +2,7 @@ from datetime import datetime, timezone
 import logging
 import time
 
-logger = logging.getLogger(__name__)
-
-from nemo_retriever.relational_db.population.db.dal import (
+from nemo_retriever.relational_db.population.graph.dal.db_dal import (
     db_exists,
     update_node_property,
     delete_schema,
@@ -12,7 +10,6 @@ from nemo_retriever.relational_db.population.db.dal import (
 )
 from nemo_retriever.relational_db.population.graph.indexes import add_indices
 from concurrent.futures import ThreadPoolExecutor
-
 from nemo_retriever.relational_db.population.graph.parsers import schemas_parser
 from nemo_retriever.relational_db.population.graph.dal.schemas_dal import (
     get_schemas_ids_and_names,
@@ -22,6 +19,9 @@ from nemo_retriever.relational_db.population.graph.dal.schemas_dal import (
     reset_pks,
 )
 from nemo_retriever.relational_db.population.graph.services.schema import add_schema
+
+logger = logging.getLogger(__name__)
+
 
 def populate_structured_data(data, num_workers, dialect):
     logger.info("Using Dialect: " + dialect)
@@ -90,9 +90,7 @@ def populate_db(tables_df, columns_df, num_workers):
     existing_schema_names = [s["schema_name"].lower() for s in existing_schemas]
     new_schemas = schemas.keys()
     schemas_to_add = [
-        schema[1]
-        for schema in schemas.items()
-        if schema[0] in (set(new_schemas) - set(existing_schema_names))
+        schema[1] for schema in schemas.items() if schema[0] in (set(new_schemas) - set(existing_schema_names))
     ]
     for schema in schemas_to_add:
         schema.get_db_node().replace_id(existing_db_id)
@@ -112,8 +110,7 @@ def populate_db(tables_df, columns_df, num_workers):
     schemas_to_update = [
         schema[1]
         for schema in schemas.items()
-        if schema[0]
-        in (set(new_schemas) - (set(new_schemas) - set(existing_schema_names)))
+        if schema[0] in (set(new_schemas) - (set(new_schemas) - set(existing_schema_names)))
     ]
     for schema in schemas_to_update:
         schema.get_db_node().replace_id(existing_db_id)
@@ -132,11 +129,7 @@ def populate_db(tables_df, columns_df, num_workers):
         for schema_name in existing_schema_names
         if schema_name.lower() in (set(existing_schema_names) - set(new_schemas))
     ]
-    schemas_ids_to_delete = [
-        s["schema_id"]
-        for s in existing_schemas
-        if s["schema_name"].lower() in schemas_to_delete
-    ]
+    schemas_ids_to_delete = [s["schema_id"] for s in existing_schemas if s["schema_name"].lower() in schemas_to_delete]
     schemas_props_to_delete = [
         {"id": s["schema_id"], "name": s["schema_name"]}
         for s in existing_schemas
@@ -166,8 +159,6 @@ def populate_pks(pks):
 
 
 def _update_schema(schema, latest_timestamp):
-    added_or_modified_tables = update_diff_from_existing_schema(
-        schema, latest_timestamp
-    )
+    added_or_modified_tables = update_diff_from_existing_schema(schema, latest_timestamp)
     logger.info(f"Updated schema {schema.get_schema_name()} to db.")
     return added_or_modified_tables

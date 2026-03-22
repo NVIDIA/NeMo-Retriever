@@ -1,5 +1,3 @@
-import sys
-import pendulum
 import pandas as pd
 from nemo_retriever.relational_db.connectors.duckdb import DuckDB
 from nemo_retriever.relational_db.population.graph.utils import (
@@ -11,7 +9,7 @@ from nemo_retriever.relational_db.population.graph.utils import (
 
 
 def create_dataframe(settings):
-    duckdb_connector = DuckDB({"database": "./spider2.duckdb"})
+    duckdb_connector = DuckDB(settings.get("connection_properties", {"database": "./spider2.duckdb"}))
 
     queries = duckdb_connector.get_queries()
 
@@ -21,10 +19,8 @@ def create_dataframe(settings):
 
     views = duckdb_connector.get_views()
 
-    pull_df = pd.DataFrame(duckdb_connector.pull_info).explode("schemas")
-    pull_df = pull_df.rename(
-        {"db_name": "database", "schemas": "schema"}, axis=1
-    )
+    pull_df = pd.DataFrame(duckdb_connector.db_schemas).explode("schemas")
+    pull_df = pull_df.rename({"db_name": "database", "schemas": "schema"}, axis=1)
 
     tables = tables.merge(pull_df)
     columns = columns.merge(pull_df)
@@ -38,7 +34,7 @@ def create_dataframe(settings):
 
 def data_for_populate_structured(settings):
     """Build the `data` dict expected by populate_structured_data from create_dataframe output."""
-    tables, columns, views, queries, pks, fks = create_dataframe(settings)
+    tables, columns, views, pks, fks = create_dataframe(settings)
     tables = load_tables(tables)
     columns = load_columns(columns)
     pks = load_pks(pks)
@@ -82,7 +78,9 @@ def store_relational_db_in_neo4j(data, neo4j_conn=None):
                     populate_structured_data uses its own DAL connection, but
                     accepted for API consistency with the other ingest steps).
     """
-    from nemo_retriever.relational_db.population.populate_data import populate_structured_data
+    from nemo_retriever.relational_db.population.populate_data import (
+        populate_structured_data,
+    )
 
     populate_structured_data(
         data,

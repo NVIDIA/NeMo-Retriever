@@ -1,10 +1,16 @@
 import pandas as pd
 from nemo_retriever.relational_db.neo4j_connection import get_neo4j_conn
-from nemo_retriever.relational_db.population.graph.utils import load_tables, load_columns
+from nemo_retriever.relational_db.population.graph.utils import (
+    load_tables,
+    load_columns,
+)
 import logging
 
 from nemo_retriever.relational_db.population.graph.model.node import Node
-from nemo_retriever.relational_db.population.graph.model.reserved_words import Labels, RelTypes
+from nemo_retriever.relational_db.population.graph.model.reserved_words import (
+    Labels,
+    RelTypes,
+)
 from nemo_retriever.relational_db.population.graph.model.schema import Schema
 
 conn = get_neo4j_conn()
@@ -35,18 +41,14 @@ def load_schema_from_graph(
     return schema
 
 
-
-
-def get_schemas_ids_and_names(
-    db_id: str = None, include_deleted: bool = False
-):
+def get_schemas_ids_and_names(db_id: str = None, include_deleted: bool = False):
     db_filter = " {id:$db_id}" if db_id else ""
     query = f"""MATCH(db:{Labels.DB}{db_filter})-[:{RelTypes.CONTAINS}]->(s:{Labels.SCHEMA}|{Labels.TEMP_SCHEMA})
                 {"" if include_deleted else "WHERE coalesce(s.deleted, false) = false"}
                 RETURN s.name as schema_name, s.id as schema_id
             """
     result = pd.DataFrame(
-        conn.query_read_only(
+        conn.query_read(
             query=query,
             parameters={
                 "db_id": db_id,
@@ -59,18 +61,47 @@ def get_schemas_ids_and_names(
 
 def get_schema_columns(db_name, schema_name, include_deleted: bool = False):
     # Use c_id alias: "id" is reserved in Cypher
+    deleted_filter = (
+        ""
+        if include_deleted
+        else (
+            " WHERE coalesce(s.deleted, false) = false"
+            " and coalesce(t.deleted, false) = false"
+            " and coalesce(c.deleted, false) = false "
+        )
+    )
     query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{RelTypes.CONTAINS}]->
                 (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{RelTypes.CONTAINS}]->
                 (t:{Labels.TABLE})-[:{RelTypes.CONTAINS}]->(c:{Labels.COLUMN})
-                {"" if include_deleted else " WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and coalesce(c.deleted, false) = false "}
-                WITH d.name as database, s.name as schema, t.name as table_name,
-                c.name as column_name, c.id as c_id, c.data_type as data_type, c.ordinal_position as ordinal_position,
-                c.is_nullable as is_nullable, c.default as default, c.length as length, c.description as comment, c.scale as scale
-                RETURN collect({{database:database, schema:schema, table_name:table_name, column_name:column_name, id:c_id, data_type:data_type,
-                                ordinal_position: ordinal_position, is_nullable:is_nullable, default:default, length:length, comment:comment,
-                                scale:scale }}) as columns
+                {deleted_filter}
+                WITH d.name as database
+                s.name as schema
+                t.name as table_name,
+                c.name as column_name
+                c.id as c_id
+                c.data_type as data_type
+                c.ordinal_position as ordinal_position,
+                c.is_nullable as is_nullable
+                c.default as default
+                c.length as length
+                c.description as comment
+                c.scale as scale
+                RETURN collect({{
+                    database:database
+                    schema:schema
+                    table_name:table_name
+                    column_name:column_name
+                    id:c_id
+                    data_type:data_type,
+                    ordinal_position: ordinal_position
+                    is_nullable:is_nullable
+                    default:default
+                    length:length
+                    comment:comment,
+                    scale:scale
+                }}) as columns
                 """
-    res = conn.query_read_only(
+    res = conn.query_read(
         query=query,
         parameters={
             "db_name": db_name,
@@ -83,18 +114,27 @@ def get_schema_columns(db_name, schema_name, include_deleted: bool = False):
 
 def get_schema_tables(db_name, schema_name, include_deleted: bool = False):
     # Use t_id alias: "id" is reserved in Cypher
+    deleted_filter = (
+        ""
+        if include_deleted
+        else (" WHERE coalesce(s.deleted, false) = false" " and coalesce(t.deleted, false) = false ")
+    )
     query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{RelTypes.CONTAINS}]->
                 (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{RelTypes.CONTAINS}]->
                 (t:{Labels.TABLE})
-                {"" if include_deleted else " WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false "}
+                {deleted_filter}
                 WITH d.name as database, s.name as schema, t.name as table_name, t.id as t_id,
                 t.table_type as table_type, t.row_count as row_count, t.size as size,
                 t.retention_time as retention_time, tostring(t.created) as created,
                 tostring(t.last_altered) as last_altered, t.description as comment
-                RETURN collect({{database: database, schema: schema, table_name:table_name, id:t_id, table_type:table_type, row_count:row_count,
-                size:size, retention_time:retention_time, created: created, last_altered: last_altered, comment:comment }}) as tables
+                RETURN collect({{
+                    database: database, schema: schema, table_name:table_name,
+                    id:t_id, table_type:table_type, row_count:row_count,
+                    size:size, retention_time:retention_time, created: created,
+                    last_altered: last_altered, comment:comment
+                }}) as tables
                 """
-    res = conn.query_read_only(
+    res = conn.query_read(
         query=query,
         parameters={
             "db_name": db_name,
@@ -107,14 +147,12 @@ def get_schema_tables(db_name, schema_name, include_deleted: bool = False):
 
 def get_db_ids_and_names(connection_id=None):
     if connection_id:
-        query = f"""match (c:{Labels.CONNECTION} {{id: $conn_id}})-[:{RelTypes.CONNECTING}]->(db:{Labels.DB}) 
+        query = f"""match (c:{Labels.CONNECTION} {{id: $conn_id}})-[:{RelTypes.CONNECTING}]->(db:{Labels.DB})
                    return collect({{id: db.id, name:db.name}}) as dbs"""
     else:
-        query = f"""match (db:{Labels.DB}) 
+        query = f"""match (db:{Labels.DB})
                    return collect({{id: db.id, name:db.name}}) as dbs"""
-    return conn.query_read_only(
-        query=query, parameters={"conn_id": connection_id}
-    )[0]["dbs"]
+    return conn.query_read(query=query, parameters={"conn_id": connection_id})[0]["dbs"]
 
 
 def add_schemas_edge(edge, created):
@@ -131,16 +169,19 @@ def add_schemas_edge(edge, created):
         node_from_label = node_from.get_label()
         node_to_label = node_to.get_label()
 
-        # in case of match override the existing ID in the graph, in order to correlate with the ID of the parsed Node object
+        # in case of match, override the existing ID in the graph
+        # to correlate with the ID of the parsed Node object
         query = f"""
             CALL apoc.merge.node.eager($from_label, $from_identProps, $v_props, {{id:$v_props.id}})
             yield node as v1
-            set v1.created = case when coalesce(v1.deleted, false) = false then coalesce(v1.created, $created) else $created end
+            set v1.created = case when coalesce(v1.deleted, false) = false
+                then coalesce(v1.created, $created) else $created end
             set v1.deleted = false
             with v1
             call apoc.merge.node.eager($to_label, $to_identProps, $u_props, {{id:$u_props.id}})
             yield node as v2
-            set v2.created = case when coalesce(v2.deleted, false) = false then coalesce(v2.created, $created) else $created end
+            set v2.created = case when coalesce(v2.deleted, false) = false
+                then coalesce(v2.created, $created) else $created end
             set v2.deleted = false
             MERGE (v1)-[r:{RelTypes.CONTAINS}]->(v2)
             SET r = $optional_edge_props
@@ -176,10 +217,17 @@ def delete_old_fks(last_seen):
 
 
 def add_fks(fks_df, last_seen):
-    # pk_database_name	pk_schema_name	pk_table_name	pk_column_name	fk_database_name	fk_schema_name	fk_table_name	fk_column_name
+    # pk_database_name, pk_schema_name, pk_table_name, pk_column_name
+    # fk_database_name, fk_schema_name, fk_table_name, fk_column_name
     query = f"""UNWIND $fks_dict as fkd
-               MATCH (t1:{Labels.TABLE}{{name: fkd.pk_table_name, schema_name: fkd.pk_schema_name, db_name: fkd.pk_database_name}})-[:{RelTypes.CONTAINS}]->(col1:{Labels.COLUMN}{{name: fkd.pk_column_name}})
-               MATCH (t2:{Labels.TABLE}{{name: fkd.fk_table_name, schema_name: fkd.fk_schema_name, db_name: fkd.fk_database_name}})-[:{RelTypes.CONTAINS}]->(col2:{Labels.COLUMN}{{name: fkd.fk_column_name}})
+               MATCH (t1:{Labels.TABLE}{{
+                   name: fkd.pk_table_name, schema_name: fkd.pk_schema_name,
+                   db_name: fkd.pk_database_name
+               }})-[:{RelTypes.CONTAINS}]->(col1:{Labels.COLUMN}{{name: fkd.pk_column_name}})
+               MATCH (t2:{Labels.TABLE}{{
+                   name: fkd.fk_table_name, schema_name: fkd.fk_schema_name,
+                   db_name: fkd.fk_database_name
+               }})-[:{RelTypes.CONTAINS}]->(col2:{Labels.COLUMN}{{name: fkd.fk_column_name}})
                MERGE (col1)-[:{RelTypes.FOREIGN_KEY} {{last_seen: $last_seen}}]->(col2)"""
     conn.query_write(
         query=query,
@@ -197,9 +245,12 @@ def reset_pks():
 
 
 def add_pks(pks_df):
-    # database_name	schema_name	table_name	column_name
+    # database_name, schema_name, table_name, column_name
     query = f"""UNWIND $pks_dict as pkd
-               MATCH (t:{Labels.TABLE}{{name: pkd.table_name, schema_name: pkd.schema_name, db_name: pkd.database_name}})-[:{RelTypes.CONTAINS}]->(col:{Labels.COLUMN}{{name: pkd.column_name}})
+               MATCH (t:{Labels.TABLE}{{
+                   name: pkd.table_name, schema_name: pkd.schema_name,
+                   db_name: pkd.database_name
+               }})-[:{RelTypes.CONTAINS}]->(col:{Labels.COLUMN}{{name: pkd.column_name}})
                SET t.pk = CASE WHEN t.pk is NULL THEN [col.name] ELSE t.pk + [col.name] END"""
     conn.query_write(
         query=query,
@@ -208,12 +259,14 @@ def add_pks(pks_df):
 
 
 def merge_schema_nodes(nodes, created):
-    # in case of match override the existing ID in the graph, in order to correlate with the ID of the parsed Node object
-    merge_nodes_query = """ 
+    # in case of match, override the existing ID in the graph
+    # to correlate with the ID of the parsed Node object
+    merge_nodes_query = """
                             UNWIND $nodes as node
                             CALL apoc.merge.node.eager(node.label, node.match_props, node.props, {id:node.props.id})
                             yield node as v1
-                            set v1.created = case when coalesce(v1.deleted, false) = false then coalesce(v1.created, $created) else $created end
+                            set v1.created = case when coalesce(v1.deleted, false) = false
+                                then coalesce(v1.created, $created) else $created end
                             set v1.deleted = false
                             set v1.description = coalesce(v1.description, node.props.description)
                         """
@@ -231,6 +284,4 @@ def merge_schema_edges(edges, from_label, to_label):
                             CALL apoc.merge.relationship(v, "{RelTypes.CONTAINS}", {{}}, edge.props, u, {{}})
                             YIELD rel RETURN rel
                         """
-    conn.query_write(
-        query=merge_edges_query, parameters={"edges": edges}
-    )
+    conn.query_write(query=merge_edges_query, parameters={"edges": edges})

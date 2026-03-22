@@ -92,10 +92,12 @@ def load_spider2_lite(
     skipped_schemas: List[str] = []
     failed: List[Dict[str, str]] = []
 
-    existing_schemas = set(engine.execute(
-        "SELECT schema_name FROM information_schema.schemata "
-        "WHERE schema_name NOT IN ('main', 'information_schema', 'pg_catalog')"
-    )["schema_name"].tolist())
+    existing_schemas = set(
+        engine.execute(
+            "SELECT schema_name FROM information_schema.schemata "
+            "WHERE schema_name NOT IN ('main', 'information_schema', 'pg_catalog')"
+        )["schema_name"].tolist()
+    )
 
     for db_dir in db_dirs:
         schema = _sanitize(db_dir.name)
@@ -172,10 +174,7 @@ def load_spider2(
             return f"read_json_auto('{escaped}')"
 
     pattern = "**/*" if recursive else "*"
-    all_files = sorted(
-        p for p in data_dir.glob(pattern)
-        if p.is_file() and p.suffix.lower() in extensions
-    )
+    all_files = sorted(p for p in data_dir.glob(pattern) if p.is_file() and p.suffix.lower() in extensions)
 
     existing_tables = set(engine.execute("SHOW TABLES")["name"].tolist())
 
