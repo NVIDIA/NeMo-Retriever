@@ -11,6 +11,22 @@ import pandas as pd
 from nemo_retriever.params import CaptionParams
 
 _MAX_CONTEXT_TEXT_CHARS = 4096
+_cached_local_model = None
+
+
+def _get_cached_local_model(kwargs: dict) -> "Any":
+    global _cached_local_model
+    if _cached_local_model is None:
+        from nemo_retriever.model.local import NemotronVLMCaptioner
+
+        _cached_local_model = NemotronVLMCaptioner(
+            model_path=kwargs.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"),
+            device=kwargs.get("device"),
+            hf_cache_dir=kwargs.get("hf_cache_dir"),
+            tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
+            gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.9),
+        )
+    return _cached_local_model
 
 
 class CaptionActor:
@@ -115,14 +131,21 @@ def _caption_one(
     """Caption a single image (used when each image gets a unique prompt)."""
     if model is not None:
         captions = _caption_batch_local(
-            [b64], model=model, prompt=prompt,
-            system_prompt=system_prompt, temperature=temperature,
+            [b64],
+            model=model,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
         )
     else:
         captions = _caption_batch_remote(
-            [b64], endpoint_url=endpoint_url,  # type: ignore[arg-type]
-            model_name=model_name, api_key=api_key, prompt=prompt,
-            system_prompt=system_prompt, temperature=temperature,
+            [b64],
+            endpoint_url=endpoint_url,  # type: ignore[arg-type]
+            model_name=model_name,
+            api_key=api_key,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
         )
     return captions[0] if captions else ""
 
@@ -166,15 +189,8 @@ def caption_images(
 
     if model is None and not endpoint_url:
         # Lazy model creation for the sequential (no GPU pool) fallback.
-        from nemo_retriever.model.local import NemotronVLMCaptioner
-
-        model = NemotronVLMCaptioner(
-            model_path=kwargs.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"),
-            device=kwargs.get("device"),
-            hf_cache_dir=kwargs.get("hf_cache_dir"),
-            tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
-            gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.9),
-        )
+        # Cache the model so it is not re-created on every call.
+        model = _get_cached_local_model(kwargs)
 
     use_context = context_text_max_chars > 0
     effective_max = min(context_text_max_chars, _MAX_CONTEXT_TEXT_CHARS) if use_context else 0
@@ -204,9 +220,13 @@ def caption_images(
             context = (page_text or "")[:effective_max]
             enriched_prompt = _build_prompt_with_context(prompt, context)
             caption = _caption_one(
-                b64, model=model, endpoint_url=endpoint_url,
-                model_name=model_name, api_key=api_key,
-                prompt=enriched_prompt, system_prompt=system_prompt,
+                b64,
+                model=model,
+                endpoint_url=endpoint_url,
+                model_name=model_name,
+                api_key=api_key,
+                prompt=enriched_prompt,
+                system_prompt=system_prompt,
                 temperature=temperature,
             )
             batch_df.at[row_idx, "images"][item_idx]["text"] = caption
@@ -218,14 +238,21 @@ def caption_images(
 
             if model is not None:
                 captions = _caption_batch_local(
-                    chunk_b64, model=model, prompt=prompt,
-                    system_prompt=system_prompt, temperature=temperature,
+                    chunk_b64,
+                    model=model,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
                 )
             else:
                 captions = _caption_batch_remote(
-                    chunk_b64, endpoint_url=endpoint_url,  # type: ignore[arg-type]
-                    model_name=model_name, api_key=api_key, prompt=prompt,
-                    system_prompt=system_prompt, temperature=temperature,
+                    chunk_b64,
+                    endpoint_url=endpoint_url,  # type: ignore[arg-type]
+                    model_name=model_name,
+                    api_key=api_key,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
                 )
             all_captions.extend(captions)
 
