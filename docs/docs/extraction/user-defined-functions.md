@@ -702,7 +702,7 @@ def risky_udf(control_message: IngestControlMessage) -> IngestControlMessage:
     logger = logging.getLogger(__name__)
     
     try:
-        df = control_message.get_payload()
+        df = control_message.payload()
         logger.info(f"Processing {len(df)} documents")
         
         # Load model repeatedly (memory intensive)
@@ -731,7 +731,7 @@ def stable_udf(control_message: IngestControlMessage) -> IngestControlMessage:
     logger = logging.getLogger(__name__)
     
     try:
-        df = control_message.get_payload()
+        df = control_message.payload()
         logger.info(f"Processing {len(df)} documents")
         
         # Load model once and reuse (consider caching)
@@ -889,7 +889,7 @@ def test_my_udf():
     result = my_custom_processor(control_message)
     
     # Verify results
-    result_df = result.get_payload()
+    result_df = result.payload()
     print(result_df)
     assert 'custom_field' in result_df.iloc[0]['metadata']
 
@@ -916,7 +916,7 @@ def debug_udf(control_message: IngestControlMessage) -> IngestControlMessage:
     logger = logging.getLogger(__name__)
     
     try:
-        df = control_message.get_payload()
+        df = control_message.payload()
         logger.info(f"Processing {len(df)} documents")
         
         # Log input data structure
