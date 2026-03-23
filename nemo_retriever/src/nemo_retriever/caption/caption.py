@@ -4,29 +4,29 @@
 
 from __future__ import annotations
 
+import base64
+from io import BytesIO
 from typing import Any, Dict, List, Tuple
 
 import pandas as pd
+from PIL import Image
 
 from nemo_retriever.params import CaptionParams
 
+_DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
 _MAX_CONTEXT_TEXT_CHARS = 4096
 _MIN_IMAGE_DIMENSION = 32
+_cached_local_model = None
 
 
 def _image_meets_min_size(b64: str) -> bool:
     """Return True if the base64 image is at least _MIN_IMAGE_DIMENSION on both sides."""
-    import base64
-    from io import BytesIO
-    from PIL import Image
-
     try:
         img = Image.open(BytesIO(base64.b64decode(b64)))
         w, h = img.size
         return w >= _MIN_IMAGE_DIMENSION and h >= _MIN_IMAGE_DIMENSION
     except Exception:
         return False
-_cached_local_model = None
 
 
 def _get_cached_local_model(kwargs: dict) -> "Any":
@@ -35,7 +35,7 @@ def _get_cached_local_model(kwargs: dict) -> "Any":
         from nemo_retriever.model.local import NemotronVLMCaptioner
 
         _cached_local_model = NemotronVLMCaptioner(
-            model_path=kwargs.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"),
+            model_path=kwargs.get("model_name", _DEFAULT_MODEL_NAME),
             device=kwargs.get("device"),
             hf_cache_dir=kwargs.get("hf_cache_dir"),
             tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
@@ -61,7 +61,7 @@ class CaptionActor:
             from nemo_retriever.model.local import NemotronVLMCaptioner
 
             self._model = NemotronVLMCaptioner(
-                model_path=self._kwargs.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"),
+                model_path=self._kwargs.get("model_name", _DEFAULT_MODEL_NAME),
                 device=self._kwargs.get("device"),
                 hf_cache_dir=self._kwargs.get("hf_cache_dir"),
                 tensor_parallel_size=self._kwargs.get("tensor_parallel_size", 1),
@@ -170,7 +170,7 @@ def caption_images(
     *,
     model: Any = None,
     endpoint_url: str | None = None,
-    model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+    model_name: str = _DEFAULT_MODEL_NAME,
     api_key: str | None = None,
     prompt: str = "Caption the content of this image:",
     system_prompt: str | None = "/no_think",

@@ -48,17 +48,9 @@ Use the CUDA 13.0 wheels from the dedicated index by running the following comma
 
 ```bash
 uv pip uninstall torch torchvision
-uv pip install torch==2.9.1 torchvision --torch-backend=cu130
+uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu130
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
-
-3. (Optional) Install vLLM for image captioning
-
-If you want to generate captions for extracted images, install the `vlm-caption` extra which includes [vLLM](https://docs.vllm.ai/) built for CUDA 13.
-
-```bash
-uv pip install "nemo-retriever[vlm-caption]"
-```
 
 ## Run the pipeline
 
@@ -257,7 +249,13 @@ Use `.caption()` to generate text descriptions for extracted images using a loca
 ```python
 ingestor = (
   ingestor.files(documents)
-  .extract()
+  .extract(
+      extract_text=True,
+      extract_tables=False,
+      extract_charts=False,
+      extract_infographics=False,
+      extract_images=True,
+  )
   .caption()
   .embed()
   .vdb_upload()
