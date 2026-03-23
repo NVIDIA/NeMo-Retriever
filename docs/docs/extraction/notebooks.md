@@ -4,7 +4,7 @@ To get started using [NeMo Retriever Library](overview.md), you can try one of t
 
 !!! note
 
-    NeMo Retriever Library is also known as NVIDIA Ingest.
+    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
 
 
 ## Dataset Downloads for Benchmarking

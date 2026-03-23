@@ -5,7 +5,7 @@ You can specify these in your .env file or directly in your environment.
 
 !!! note
 
-    NeMo Retriever Library is also known as NVIDIA Ingest.
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
 ## General Environment Variables

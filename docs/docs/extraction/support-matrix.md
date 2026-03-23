@@ -4,20 +4,20 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
 
 !!! note
 
-    NeMo Retriever Library is also known as NVIDIA Ingest.
+    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
 
 
 ## Core and Advanced Pipeline Features
 
-The Nemo Retriever extraction core pipeline features run on a single A10G or better GPU. 
+The Nemo Retriever Library extraction core pipeline features run on a single A10G or better GPU. 
 The core pipeline features include the following:
 
-- llama3.2-nv-embedqa-1b-v2 — Embedding model for converting text chunks into vectors.
-- nemoretriever-page-elements-v3 — Detects and classifies images on a page as a table, chart or infographic.
-- nemoretriever-table-structure-v1 — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. 
-- nemoretriever-graphic-elements-v1 — Detects graphic elements within chart images such as titles, legends, axes, and numerical values. 
-- nemoretriever-ocr-v1 — Image OCR model to detect and extract text from images.
-- retrieval — Enables embedding and indexing into LanceDB (default) or Milvus.
+- llama-nemotron-embed-1b-v2 — Embedding model for converting text chunks into vectors.
+- nemotron-page-elements-v3 — Detects and classifies images on a page as a table, chart or infographic.
+- nemotron-table-structure-v1 — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. 
+- nemotron-graphic-elements-v1 — Detects graphic elements within chart images such as titles, legends, axes, and numerical values. 
+- nemotron-ocr-v1 — Image OCR model to detect and extract text from images.
+- retrieval — Enables embedding and indexing into Milvus.
 
 Advanced features require additional GPU support and disk space. 
 This includes the following:

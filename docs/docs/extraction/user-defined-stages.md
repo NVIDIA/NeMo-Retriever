@@ -8,7 +8,7 @@ and operate on a well-defined DataFrame payload and metadata structure.
 
 !!! note
 
-    NeMo Retriever Library is also known as NVIDIA Ingest.
+    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
 
 
 To add user-defined stages to your pipeline, you need the following:
