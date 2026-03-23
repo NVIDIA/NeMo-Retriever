@@ -101,12 +101,15 @@ class HarnessConfig:
         if self.recall_adapter not in VALID_RECALL_ADAPTERS:
             errors.append(f"recall_adapter must be one of {sorted(VALID_RECALL_ADAPTERS)}")
 
+        _ZERO_ALLOWED_WORKERS = {"page_elements_workers"}
         for name in TUNING_FIELDS:
             val = getattr(self, name)
             if name.startswith("gpu_") and float(val) < 0.0:
                 errors.append(f"{name} must be >= 0.0")
-            elif name.endswith("_workers") and int(val) < 1:
-                errors.append(f"{name} must be >= 1")
+            elif name.endswith("_workers"):
+                min_val = 0 if name in _ZERO_ALLOWED_WORKERS else 1
+                if int(val) < min_val:
+                    errors.append(f"{name} must be >= {min_val}")
 
         return errors
 
