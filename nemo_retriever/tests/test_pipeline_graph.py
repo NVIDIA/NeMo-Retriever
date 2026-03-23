@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from nemo_retriever.utils.abstract_operator import AbstractOperator
+from nemo_retriever.utils.pipeline import UDFOperator, MultiTypeExtractOperator
 from nemo_retriever.utils.pipeline_graph import Graph, Node
 from nemo_retriever.utils.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 
@@ -483,6 +484,77 @@ class TestGraphExecute:
         results = g.execute(5)
         # 5 -> +10=15 -> *2=30
         assert results == [30]
+
+    def test_custom_udf_operator_in_chain(self):
+        """Ensure user-defined function operator works in a larger graph chain."""
+
+        # UDF: multiply by 4 (in process), then add 3, then append suffix
+        def multiply_by_four(x):
+            return x * 4
+
+        udf = UDFOperator(multiply_by_four, name="MultiplyByFour")
+        a = AddOperator(3)
+        b = MultiplyOperator(2)
+        c = AppendOperator("_done")
+
+        graph = udf >> a >> b >> c
+
+        # 1 -> *4=4 -> +3=7 -> *2=14 -> _done
+        results = graph.execute(1)
+        assert results == ["14_done"]
+
+
+# =====================================================================
+# MultiTypeExtractOperator tests
+# =====================================================================
+class TestMultiTypeExtractOperator:
+    def test_group_files_by_type(self):
+        """Test file grouping logic."""
+
+        op = MultiTypeExtractOperator()
+
+        # Mock folder with mixed files
+        files = [
+            "/folder/test.pdf",
+            "/folder/image.png",
+            "/folder/text.txt",
+            "/folder/page.html",
+            "/folder/audio.mp3",
+            "/folder/video.mp4",
+            "/folder/unknown.xyz",
+        ]
+
+        grouped = op.preprocess(files)
+
+        assert grouped["pdf"] == ["/folder/test.pdf"]
+        assert grouped["image"] == ["/folder/image.png"]
+        assert grouped["text"] == ["/folder/text.txt"]
+        assert grouped["html"] == ["/folder/page.html"]
+        assert grouped["audio"] == ["/folder/audio.mp3"]
+        assert grouped["video"] == ["/folder/video.mp4"]
+
+    def test_preprocess_folder_path(self):
+        """Test preprocessing with folder path."""
+        from unittest.mock import patch
+        from pathlib import Path
+
+        op = MultiTypeExtractOperator()
+
+        with patch("pathlib.Path.rglob") as mock_rglob, patch("pathlib.Path.is_file", return_value=True), patch(
+            "pathlib.Path.is_dir", return_value=True
+        ):
+
+            mock_rglob.return_value = [Path("/folder/file.pdf")]
+            grouped = op.preprocess("/folder")
+
+            assert grouped["pdf"] == ["/folder/file.pdf"]
+
+    def test_process_empty_groups(self):
+        """Test process with no files."""
+        op = MultiTypeExtractOperator()
+        grouped = {"pdf": [], "image": [], "text": [], "html": [], "audio": [], "video": []}
+        result = op.process(grouped)
+        assert result == []
 
 
 # =====================================================================

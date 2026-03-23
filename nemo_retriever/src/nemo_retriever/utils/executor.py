@@ -2,9 +2,9 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Backwards-compatible re-export — canonical location is utils.pipeline.executor."""
+"""Backwards-compatible re-export — canonical location is graph.executor."""
 
-from nemo_retriever.utils.pipeline.executor import (
+from nemo_retriever.graph.executor import (
     AbstractExecutor,
     InprocessExecutor,
     RayDataExecutor,

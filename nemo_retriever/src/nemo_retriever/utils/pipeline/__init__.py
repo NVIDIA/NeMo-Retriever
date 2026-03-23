@@ -2,17 +2,20 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pipeline building blocks: operators, graph, and executors."""
+"""Backwards-compatible re-export of the canonical graph package."""
 
-from nemo_retriever.utils.pipeline.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
-from nemo_retriever.utils.pipeline.executor import (
+from nemo_retriever.graph import (
     AbstractExecutor,
+    AbstractOperator,
+    CPUOperator,
+    GPUOperator,
+    Graph,
     InprocessExecutor,
+    MultiTypeExtractOperator,
+    Node,
     RayDataExecutor,
+    UDFOperator,
 )
-from nemo_retriever.utils.pipeline.gpu_operator import GPUOperator
-from nemo_retriever.utils.pipeline.pipeline_graph import Graph, Node
 
 __all__ = [
     "AbstractExecutor",
@@ -23,4 +26,6 @@ __all__ = [
     "InprocessExecutor",
     "Node",
     "RayDataExecutor",
+    "UDFOperator",
+    "MultiTypeExtractOperator",
 ]
