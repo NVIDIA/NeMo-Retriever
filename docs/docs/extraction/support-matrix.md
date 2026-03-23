@@ -64,17 +64,9 @@ The following are the hardware requirements to run NeMo Retriever Library.
 | Reranker       | With Core Pipeline        | Yes           | Yes           | Yes           | Yes         | Yes         | No*           | No*           | No*    | No*                    |
 | Reranker       | Standalone (recall only)  | Yes           | Yes           | Yes           | Yes         | Yes         | Yes           | Yes           | Yes    | Yes                    |
 
-¹ Audio (Parakeet) runs but requires runtime engine build — no pre-defined model profile for this GPU. Dev team to confirm official support status.
-
-² Nemotron Parse fails to start on 32GB despite being supported on A10G (24GB). Pending engineering investigation — may be Blackwell architecture compatibility issue (see related bug).
-
-³ VLM (nemotron-nano-12b-v2-vl) fails to load on 32GB, consistent with "Not supported" on A100-40GB (40GB). 32GB is below the threshold.
-
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
 and run only the embedder, reranker, and your vector database.
-
-
 
 ## Related Topics
 
