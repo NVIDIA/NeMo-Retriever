@@ -8,9 +8,12 @@ Ray Data adapter for images: ImageLoadActor turns bytes+path batches into page r
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List
 
 import pandas as pd
+
+from nemo_retriever.utils.abstract_operator import AbstractOperator
+from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
 
 from .load import image_bytes_to_pages_df
 
@@ -29,7 +32,7 @@ _PAGE_COLUMNS = [
 ]
 
 
-class ImageLoadActor:
+class ImageLoadActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of page rows.
 
@@ -37,12 +40,20 @@ class ImageLoadActor:
     (page-element detection, OCR, table/chart/infographic extraction) work unchanged.
     """
 
-    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
-        if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
+    def __init__(self) -> None:
+        super().__init__()
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        if not isinstance(data, pd.DataFrame) or data.empty:
             return pd.DataFrame(columns=_PAGE_COLUMNS)
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        if not isinstance(data, pd.DataFrame) or data.empty:
+            return data
 
         out_dfs: List[pd.DataFrame] = []
-        for _, row in batch_df.iterrows():
+        for _, row in data.iterrows():
             raw = row.get("bytes")
             path = row.get("path")
             if raw is None or path is None:
@@ -57,3 +68,9 @@ class ImageLoadActor:
         if not out_dfs:
             return pd.DataFrame(columns=_PAGE_COLUMNS)
         return pd.concat(out_dfs, ignore_index=True)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+        return self.run(batch_df)

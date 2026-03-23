@@ -23,6 +23,9 @@ from typing import Union
 
 import ray
 import ray.data as rd
+from nemo_retriever.utils.abstract_operator import AbstractOperator
+from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
+from nemo_retriever.utils.pipeline.gpu_operator import GPUOperator
 from nemo_retriever.utils.convert import DocToPdfConversionActor
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.page_elements import PageElementDetectionActor
@@ -144,7 +147,41 @@ class _LanceDBWriteActor:
         return batch_df
 
 
-class _BatchEmbedActor:
+class ExplodeContentActor(AbstractOperator, CPUOperator):
+    """Expand page-level rows into per-element rows for finer-grained embedding.
+
+    Wraps :func:`explode_content_to_rows` as an :class:`AbstractOperator` so it
+    can be used as a node in a pipeline :class:`Graph`.
+    """
+
+    def __init__(
+        self,
+        *,
+        modality: str = "text",
+        text_elements_modality: str | None = None,
+        structured_elements_modality: str | None = None,
+    ) -> None:
+        super().__init__()
+        self._modality = modality
+        self._text_elements_modality = text_elements_modality
+        self._structured_elements_modality = structured_elements_modality
+
+    def preprocess(self, data, **kwargs):
+        return data
+
+    def process(self, data, **kwargs):
+        return explode_content_to_rows(
+            data,
+            modality=self._modality,
+            text_elements_modality=self._text_elements_modality,
+            structured_elements_modality=self._structured_elements_modality,
+        )
+
+    def postprocess(self, data, **kwargs):
+        return data
+
+
+class _BatchEmbedActor(AbstractOperator, GPUOperator):
     """Ray Data actor that holds a local text embedder on a single GPU.
 
     When ``embedding_endpoint`` is provided in kwargs, the actor skips local
@@ -152,6 +189,7 @@ class _BatchEmbedActor:
     """
 
     def __init__(self, params: EmbedParams) -> None:
+        super().__init__()
         import warnings
 
         warnings.filterwarnings(
@@ -184,10 +222,55 @@ class _BatchEmbedActor:
             max_length=int(self._kwargs.get("max_length", 8192)),
         )
 
-    def __call__(self, batch_df: Any) -> Any:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
         from nemo_retriever.ingest_modes.inprocess import embed_text_main_text_embed
 
-        return embed_text_main_text_embed(batch_df, model=self._model, **self._kwargs)
+        return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any) -> Any:
+        return self.run(batch_df)
+
+
+class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only variant of :class:`_BatchEmbedActor`.
+
+    Defaults to the build.nvidia.com endpoint for
+    ``nvidia/llama-nemotron-embed-1b-v2``.  No local GPU embedder is loaded.
+    """
+
+    DEFAULT_EMBED_INVOKE_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+
+    def __init__(self, params: "EmbedParams") -> None:
+        super().__init__()
+        self._params = params
+        self._kwargs = {
+            **params.model_dump(mode="python", exclude={"runtime", "batch_tuning", "fused_tuning"}, exclude_none=True),
+            **params.runtime.model_dump(mode="python", exclude_none=True),
+        }
+        if "embedding_endpoint" not in self._kwargs:
+            self._kwargs["embedding_endpoint"] = self._kwargs.get("embed_invoke_url") or self.DEFAULT_EMBED_INVOKE_URL
+
+        endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
+        if not endpoint:
+            self._kwargs["embedding_endpoint"] = self.DEFAULT_EMBED_INVOKE_URL
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        from nemo_retriever.ingest_modes.inprocess import embed_text_main_text_embed
+
+        return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
 
 class BatchIngestor(Ingestor):

@@ -10,10 +10,12 @@ import os
 import subprocess
 import tempfile
 import traceback
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
+from nemo_retriever.utils.abstract_operator import AbstractOperator
+from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
 
 SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".pptx"})
 
@@ -136,8 +138,7 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     return pd.DataFrame(out_rows)
 
 
-@dataclass(slots=True)
-class DocToPdfConversionActor:
+class DocToPdfConversionActor(AbstractOperator, CPUOperator):
     """Ray Data actor that converts DOCX/PPTX batches to PDF.
 
     Used with ``ray.data.Dataset.map_batches`` in the same style as
@@ -145,7 +146,16 @@ class DocToPdfConversionActor:
     """
 
     def __init__(self) -> None:
-        pass
+        super().__init__()
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return convert_batch_to_pdf(data)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
     def __call__(self, batch_df: Any) -> Any:
-        return convert_batch_to_pdf(batch_df)
+        return self.run(batch_df)

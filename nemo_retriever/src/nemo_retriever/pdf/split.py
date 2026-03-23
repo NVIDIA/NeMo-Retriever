@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -13,6 +12,8 @@ import traceback
 
 import pandas as pd
 from nemo_retriever.params import PdfSplitParams
+from nemo_retriever.utils.abstract_operator import AbstractOperator
+from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
 
 try:
     import pypdfium2 as pdfium
@@ -170,15 +171,22 @@ def split_pdf_batch(pdf_batch: Any, params: PdfSplitParams | None = None) -> pd.
     return pd.DataFrame(out_rows)
 
 
-@dataclass(slots=True)
-class PDFSplitActor:
-    split_params: PdfSplitParams
-
+class PDFSplitActor(AbstractOperator, CPUOperator):
     def __init__(self, split_params: PdfSplitParams | None = None) -> None:
+        super().__init__()
         self.split_params = split_params or PdfSplitParams()
 
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return split_pdf_batch(data, params=self.split_params)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
     def __call__(self, pdf_batch: Any) -> Any:
-        return split_pdf_batch(pdf_batch, params=self.split_params)
+        return self.run(pdf_batch)
 
 
 def split_pdf(pdf_ds: Any, params: PdfSplitParams | None = None) -> Any:
