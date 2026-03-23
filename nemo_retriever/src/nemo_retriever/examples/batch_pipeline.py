@@ -305,7 +305,12 @@ def main(
     embed_use_vllm: bool = typer.Option(
         False,
         "--embed-use-vllm/--no-embed-use-vllm",
-        help="Use vLLM Python API for embedding (docs and recall queries). Requires [embed-vllm] extra.",
+        help="Use vLLM Python API for embedding ingested documents. Requires [embed-vllm] extra.",
+    ),
+    recall_use_vllm: bool = typer.Option(
+        False,
+        "--recall-use-vllm/--no-recall-use-vllm",
+        help="Use vLLM Python API for embedding recall queries. Defaults to False (uses local HF). Requires [embed-vllm] extra.",  # noqa: E501
     ),
     embed_modality: str = typer.Option(
         "text",
@@ -867,7 +872,7 @@ def main(
                 ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
                 embedding_http_endpoint=embed_invoke_url,
                 embedding_api_key=embed_remote_api_key or "",
-                use_vllm=embed_use_vllm,
+                use_vllm=recall_use_vllm,
                 hybrid=hybrid,
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
@@ -883,7 +888,7 @@ def main(
                 lancedb_table=str(LANCEDB_TABLE),
                 embedding_model=_recall_model,
                 embedding_http_endpoint=embed_invoke_url,
-                use_vllm=embed_use_vllm,
+                use_vllm=recall_use_vllm,
                 embedding_api_key=embed_remote_api_key or "",
                 top_k=10,
                 ks=(1, 5, 10),
