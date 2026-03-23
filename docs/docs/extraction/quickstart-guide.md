@@ -410,7 +410,7 @@ docker compose \
 When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
 
 1. On a machine with network access: Clone the repo, authenticate with NGC (`docker login nvcr.io`), and pull all images used by your chosen profile (for example, `docker compose --profile retrieval pull`).
-2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)).
+2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml)).
 3. Transfer the image archives and your `docker-compose.yaml` (and `.env` if used) to the air-gapped system.
 4. On the air-gapped machine: Load the images (`docker load -i <archive>`) and start the stack with the same profile (for example, `docker compose --profile retrieval up`).
 

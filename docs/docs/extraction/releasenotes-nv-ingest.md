@@ -10,11 +10,11 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 NVIDIA® NeMo Retriever Library version 26.03 adds broader hardware and software support along with many pipeline, evaluation, and deployment enhancements.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/nv-ingest/blob/release/26.3.0/helm/README.md).
 
 Highlights for the 26.03 release include:
 
-- NV-Ingest GitHub repo renamed to NeMo-Retriever  
+- Source code and documentation links use the [NVIDIA/nv-ingest](https://github.com/NVIDIA/nv-ingest) GitHub repository (product name: NeMo Retriever Library)  
 - NeMo Retriever Extraction pipeline renamed to NeMo Retriever Library  
 - NeMo Retriever Library now supports two deployment options:  
   - A new no-container, pip-installable in-process library for development (available on PyPI)  
