@@ -7,7 +7,7 @@ This guide covers how resource scaling modes work across stages in [NeMo Retriev
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
 

@@ -4,7 +4,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.   
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.   
 
 ## 26.03 Release Notes (26.3.0)
 
