@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local debug script to run run_mode_ingest (structured path). Part of relational_db.
+"""Local debug script to run run_mode_ingest (tabular path). Part of relational_db.
 
 Run from repo root:
   PYTHONPATH=nemo_retriever/src python -m nemo_retriever.relational_db.debug_run_mode_ingest
@@ -7,8 +7,8 @@ Run from repo root:
 List embedding models for your NVIDIA API key:
   PYTHONPATH=nemo_retriever/src python -m nemo_retriever.relational_db.debug_run_mode_ingest --list-models
 
-Structured path: embed_params and vdb_params are required; otherwise ingest_structured() only runs
-fetch_structured() and skips embed + vdb_upload. Structured data is written to table nv-ingest-structured.
+Tabular path: embed_params and vdb_params are required; otherwise ingest_tabular() only runs
+fetch_tabular() and skips embed + vdb_upload. Tabular data is written to table nv-ingest-tabular.
 Breakpoints: inprocess.run_pipeline_tasks_on_df (embed_text_main_text_embed); inprocess._embed_group (model.embed).
 """
 
@@ -26,11 +26,11 @@ try:
 except ImportError:
     pass
 
-from nemo_retriever.application.modes.run_batch_structured import run_batch_structured
+from nemo_retriever.application.modes.run_batch_tabular import run_batch_tabular
 from nemo_retriever.params import (
     EmbedParams,
     IngestorCreateParams,
-    StructuredExtractParams,
+    TabularExtractParams,
     VdbUploadParams,
 )
 
@@ -101,8 +101,8 @@ def main() -> None:
         allow_no_gpu=True,
     )
 
-    structured_params = StructuredExtractParams(db_connection_string="./spider2.duckdb")
-    # Set structured_params = None to skip structured path when Neo4j is not running.
+    tabular_params = TabularExtractParams(db_connection_string="./spider2.duckdb")
+    # Set tabular_params = None to skip tabular path when Neo4j is not running.
 
     embed_params = EmbedParams(
         model_name="nvidia/nvidia/llama-3.2-nv-embedqa-1b-v2",
@@ -121,9 +121,9 @@ def main() -> None:
         )
     )
 
-    result = run_batch_structured(
+    result = run_batch_tabular(
         create_params=create_params,
-        structured_params=structured_params,
+        tabular_params=tabular_params,
         embed_params=embed_params,
         vdb_params=vdb_params,
     )

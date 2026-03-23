@@ -8,7 +8,7 @@ from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import IngestExecuteParams
 from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import RunMode
-from nemo_retriever.params import StructuredExtractParams
+from nemo_retriever.params import TabularExtractParams
 from nemo_retriever.params import VdbUploadParams
 
 from .factory import create_runmode_ingestor
@@ -24,11 +24,11 @@ def run_mode_ingest(
     return ingestor.ingest(params=ingest_params)
 
 
-def run_mode_ingest_structured(
+def run_mode_ingest_tabular(
     *,
     run_mode: RunMode,
     create_params: IngestorCreateParams | None = None,
-    structured_params: StructuredExtractParams,
+    tabular_params: TabularExtractParams,
     embed_params: EmbedParams | None = None,
     vdb_params: VdbUploadParams | None = None,
 ) -> object:
@@ -39,4 +39,4 @@ def run_mode_ingest_structured(
     if vdb_params is not None:
         ingestor = ingestor.vdb_upload(vdb_params)
 
-    return ingestor.ingest_structured(structured_params)
+    return ingestor.ingest_tabular(tabular_params)

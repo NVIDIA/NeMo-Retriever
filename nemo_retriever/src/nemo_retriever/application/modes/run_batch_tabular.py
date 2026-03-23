@@ -6,23 +6,23 @@ from __future__ import annotations
 
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import IngestorCreateParams
-from nemo_retriever.params import StructuredExtractParams
+from nemo_retriever.params import TabularExtractParams
 from nemo_retriever.params import VdbUploadParams
 
-from .executor import run_mode_ingest_structured
+from .executor import run_mode_ingest_tabular
 
 
-def run_batch_structured(
+def run_batch_tabular(
     *,
     create_params: IngestorCreateParams | None = None,
-    structured_params: StructuredExtractParams,
+    tabular_params: TabularExtractParams,
     embed_params: EmbedParams | None = None,
     vdb_params: VdbUploadParams | None = None,
 ) -> object:
-    return run_mode_ingest_structured(
+    return run_mode_ingest_tabular(
         run_mode="batch",
         create_params=create_params,
-        structured_params=structured_params,
+        tabular_params=tabular_params,
         embed_params=embed_params,
         vdb_params=vdb_params,
     )

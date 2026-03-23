@@ -333,7 +333,7 @@ class InfographicParams(_ParamsModel):
 # ---------------------------------------------------------------------------
 
 
-class StructuredExtractParams(_ParamsModel):
+class TabularExtractParams(_ParamsModel):
     """Params for step 1: extract schema metadata and write to Neo4j.
 
     Covers SQLAlchemy reflection of a live database and/or parsing of
@@ -346,13 +346,13 @@ class StructuredExtractParams(_ParamsModel):
     db_connection_string: Optional[str] = None
 
 
-class StructuredSemanticLayerParams(_ParamsModel):
+class TabularSemanticLayerParams(_ParamsModel):
     """Params for step 2: map business terms/attributes to graph entities.
 
     Global term and attribute definitions are matched to Table and Column
     nodes; unmatched entities receive auto-generated Term/Attribute nodes
     together with MAPS_TO_TABLE / MAPS_TO_COLUMN relationships.
-    The Neo4j connection is injected at runtime by ingest_structured().
+    The Neo4j connection is injected at runtime by ingest_tabular().
     """
 
     # Path to a YAML/JSON file containing the global semantic-layer definition
@@ -364,31 +364,13 @@ class StructuredSemanticLayerParams(_ParamsModel):
     auto_create_unmapped: bool = True
 
 
-class StructuredPIIParams(_ParamsModel):
-    """Params for step 3: detect PII in Column nodes and tag them.
-
-    Regex patterns are applied first; an optional LLM call can be made for
-    columns whose names/descriptions are ambiguous.  Matching columns receive
-    a ``pii_type`` property and a HAS_PII_TYPE relationship.
-    The Neo4j connection is injected at runtime by ingest_structured().
-    """
-
-    # Additional regex patterns keyed by PII type label
-    extra_patterns: dict[str, str] = Field(default_factory=dict)
-    # When True, ambiguous columns are also evaluated via an LLM
-    use_llm: bool = False
-    llm_invoke_url: Optional[str] = None
-    llm_api_key: Optional[str] = None
-    llm_model: Optional[str] = None
-
-
-class StructuredUsageWeightsParams(_ParamsModel):
+class TabularUsageWeightsParams(_ParamsModel):
     """Params for step 4: derive usage weights from query log files.
 
     Query log files are parsed and Table/Column co-occurrence frequencies are
     computed, then written back as ``usage_weight`` float properties on the
     corresponding Neo4j nodes.
-    The Neo4j connection is injected at runtime by ingest_structured().
+    The Neo4j connection is injected at runtime by ingest_tabular().
     """
 
     # One or more paths (or glob patterns) pointing to SQL query log files
@@ -398,12 +380,12 @@ class StructuredUsageWeightsParams(_ParamsModel):
     normalize_weights: bool = True
 
 
-class StructuredDescriptionParams(_ParamsModel):
+class TabularDescriptionParams(_ParamsModel):
     """Params for step 5: LLM-generate natural-language descriptions for all nodes.
 
     Descriptions are generated for Database, Schema, Table, Column, View and
     Query nodes and written back to Neo4j as a ``description`` property.
-    The Neo4j connection is injected at runtime by ingest_structured().
+    The Neo4j connection is injected at runtime by ingest_tabular().
     """
 
     llm_invoke_url: Optional[str] = None
@@ -417,14 +399,14 @@ class StructuredDescriptionParams(_ParamsModel):
     max_retries: int = 3
 
 
-class StructuredFetchParams(_ParamsModel):
+class TabularFetchParams(_ParamsModel):
     """Params for step 6: fetch entity descriptions from Neo4j into a DataFrame.
 
     Reads all node descriptions from Neo4j and assembles a pandas DataFrame
     with columns: ``text`` (the description), ``_embed_modality`` = ``"text"``,
     and ``metadata`` (JSON blob with entity_type, entity_name, node_id).
     No embedding is performed here — the DataFrame is passed to the embed step.
-    The Neo4j connection is injected at runtime by ingest_structured().
+    The Neo4j connection is injected at runtime by ingest_tabular().
     """
 
     # Node labels to fetch; empty list means all supported types

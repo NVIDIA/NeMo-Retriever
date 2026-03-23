@@ -26,10 +26,10 @@ from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import IngestExecuteParams
 from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import RunMode
-from nemo_retriever.params import StructuredDescriptionParams
-from nemo_retriever.params import StructuredExtractParams
-from nemo_retriever.params import StructuredSemanticLayerParams
-from nemo_retriever.params import StructuredUsageWeightsParams
+from nemo_retriever.params import TabularDescriptionParams
+from nemo_retriever.params import TabularExtractParams
+from nemo_retriever.params import TabularSemanticLayerParams
+from nemo_retriever.params import TabularUsageWeightsParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VdbUploadParams
 
@@ -215,21 +215,21 @@ class ingestor:
         self._not_implemented("get_status")
 
     # ------------------------------------------------------------------
-    # Structured (database) ingestion pipeline
+    # Tabular (database) ingestion pipeline
     # ------------------------------------------------------------------
 
-    def pull_structured_db_entities(
+    def pull_tabular_db_entities(
         self,
-        params: StructuredExtractParams | None = None,
+        params: TabularExtractParams | None = None,
     ) -> dict:
         """Step 1 — Pull schema entities from the relational DB into a data dict.
 
         Reads tables, columns, views, PKs and FKs from the source database
         (e.g. DuckDB) and returns them as a plain dict for the next step.
         """
-        self._not_implemented("pull_structured_db_entities")
+        self._not_implemented("pull_tabular_db_entities")
 
-    def store_structured_in_neo4j(
+    def store_tabular_in_neo4j(
         self,
         data: dict,
         neo4j_conn: Any = None,
@@ -237,14 +237,14 @@ class ingestor:
         """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
 
         Creates Database, Schema, Table, Column, View and FK/PK relationship
-        nodes from the dict returned by pull_structured_db_entities().
+        nodes from the dict returned by pull_tabular_db_entities().
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
-        self._not_implemented("store_structured_in_neo4j")
+        self._not_implemented("store_tabular_in_neo4j")
 
-    def populate_structured_semantic_layer(
+    def populate_tabular_semantic_layer(
         self,
-        params: StructuredSemanticLayerParams | None = None,
+        params: TabularSemanticLayerParams | None = None,
         neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 3 — Map global business terms/attributes to graph entities.
@@ -253,11 +253,11 @@ class ingestor:
         relationships for entities not already covered by the semantic-layer.
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
-        self._not_implemented("populate_structured_semantic_layer")
+        self._not_implemented("populate_tabular_semantic_layer")
 
-    def populate_structured_usage_weights(
+    def populate_tabular_usage_weights(
         self,
-        params: StructuredUsageWeightsParams | None = None,
+        params: TabularUsageWeightsParams | None = None,
         neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 4 — Derive usage weights from query log files.
@@ -266,11 +266,11 @@ class ingestor:
         and writes ``usage_weight`` float properties back onto the graph nodes.
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
-        self._not_implemented("populate_structured_usage_weights")
+        self._not_implemented("populate_tabular_usage_weights")
 
-    def generate_structured_descriptions(
+    def generate_tabular_descriptions(
         self,
-        params: StructuredDescriptionParams | None = None,
+        params: TabularDescriptionParams | None = None,
         neo4j_conn: Any = None,
     ) -> "ingestor":
         """Step 5 — LLM-generate natural-language descriptions for all node types.
@@ -279,9 +279,9 @@ class ingestor:
         on Database, Schema, Table, Column, View and Query nodes.
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
-        self._not_implemented("generate_structured_descriptions")
+        self._not_implemented("generate_tabular_descriptions")
 
-    def get_structured_metadata_for_embedding(
+    def get_tabular_metadata_for_embedding(
         self,
         neo4j_conn: Any = None,
     ) -> Any:
@@ -292,25 +292,25 @@ class ingestor:
         run_pipeline_tasks_on_df (embed + vdb_upload) works unchanged.
         ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
         """
-        self._not_implemented("get_structured_metadata_for_embedding")
+        self._not_implemented("get_tabular_metadata_for_embedding")
 
-    def ingest_structured(
+    def ingest_tabular(
         self,
-        params: StructuredExtractParams | None = None,
+        params: TabularExtractParams | None = None,
     ) -> Any:
-        """Orchestrate the full structured ingestion pipeline.
+        """Orchestrate the full tabular ingestion pipeline.
 
         Runs the following steps in order:
-        1. pull_structured_db_entities      → pull schema entities from the DB
-        2. store_structured_in_neo4j        → write entities as graph nodes to Neo4j
-        3. populate_structured_semantic_layer
-        4. populate_structured_usage_weights
-        5. generate_structured_descriptions
-        6. get_structured_metadata_for_embedding → DataFrame
+        1. pull_tabular_db_entities      → pull schema entities from the DB
+        2. store_tabular_in_neo4j        → write entities as graph nodes to Neo4j
+        3. populate_tabular_semantic_layer
+        4. populate_tabular_usage_weights
+        5. generate_tabular_descriptions
+        6. get_tabular_metadata_for_embedding → DataFrame
         7. embed
         8. vdb_upload
         """
-        self._not_implemented("ingest_structured")
+        self._not_implemented("ingest_tabular")
 
 
 # Backward compatibility alias.

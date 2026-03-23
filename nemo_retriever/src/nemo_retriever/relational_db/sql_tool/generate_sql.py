@@ -256,7 +256,7 @@ def get_sql_tool_response_top_k(
     from nemo_retriever.retriever import Retriever
 
     retriever = Retriever(
-        lancedb_table="nv-ingest-structured",
+        lancedb_table="nv-ingest-tabular",
         top_k=top_k,
     )
     hits = retriever.query(question)

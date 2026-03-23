@@ -32,8 +32,8 @@ def create_dataframe(settings):
     return tables, columns, views, queries, pks, fks
 
 
-def data_for_populate_structured(settings):
-    """Build the `data` dict expected by populate_structured_data from create_dataframe output."""
+def data_for_populate_tabular(settings):
+    """Build the `data` dict expected by populate_tabular_data from create_dataframe output."""
     tables, columns, views, queries, pks, fks = create_dataframe(settings)
     tables = load_tables(tables)
     columns = load_columns(columns)
@@ -46,7 +46,7 @@ def data_for_populate_structured(settings):
         "pks": pks,
         "fks": fks,
     }
-    # queries is not used by populate_structured_data; include if needed elsewhere
+    # queries is not used by populate_tabular_data; include if needed elsewhere
     return data
 
 
@@ -54,7 +54,7 @@ def extract_relational_db_data(params=None):
     """Step 1 — Pull schema entities from the relational DB into a data dict.
 
     Args:
-        params: StructuredExtractParams instance. When provided,
+        params: TabularExtractParams instance. When provided,
             ``params.db_connection_string`` overrides the default database path.
 
     Returns:
@@ -66,7 +66,7 @@ def extract_relational_db_data(params=None):
         else "./spider2.duckdb"
     )
     settings = {"connection_properties": {"database": db_path}}
-    return data_for_populate_structured(settings)
+    return data_for_populate_tabular(settings)
 
 
 def store_relational_db_in_neo4j(data, neo4j_conn=None):
@@ -75,7 +75,7 @@ def store_relational_db_in_neo4j(data, neo4j_conn=None):
     Args:
         data:       Data dict returned by extract_relational_db_data().
         neo4j_conn: Active Neo4jConnectionManager instance (unused directly here;
-                    populate_structured_data uses its own DAL connection, but
+                    populate_tabular_data uses its own DAL connection, but
                     accepted for API consistency with the other ingest steps).
     """
     from nemo_retriever.relational_db.population.populate_data import (
