@@ -15,15 +15,15 @@ PIL = pytest.importorskip("PIL")
 from PIL import Image  # noqa: E402
 
 
-def _make_1x1_png_b64() -> str:
-    img = Image.new("RGB", (1, 1), color=(255, 0, 0))
+def _make_test_png_b64(size: tuple[int, int] = (64, 64)) -> str:
+    img = Image.new("RGB", size, color=(255, 0, 0))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 def _make_page_df(num_images=2, captioned=False):
-    b64 = _make_1x1_png_b64()
+    b64 = _make_test_png_b64()
     images = [
         {"bbox_xyxy_norm": [0.1, 0.2, 0.5, 0.8], "text": "done" if captioned else "", "image_b64": b64}
         for _ in range(num_images)
@@ -55,7 +55,7 @@ def test_pdf_extraction_populates_images(mock_extract):
     _ext = pytest.importorskip("nemo_retriever.pdf.extract")
     pdfium = pytest.importorskip("pypdfium2")
 
-    mock_img = MagicMock(image=_make_1x1_png_b64(), bbox=(10, 20, 100, 200), max_width=612, max_height=792)
+    mock_img = MagicMock(image=_make_test_png_b64(), bbox=(10, 20, 100, 200), max_width=612, max_height=792)
     mock_extract.return_value = [mock_img]
 
     doc = pdfium.PdfDocument.new()
@@ -74,7 +74,7 @@ def test_pdf_extraction_populates_images(mock_extract):
 def test_explode_includes_captioned_images():
     from nemo_retriever.ingest_modes.inprocess import explode_content_to_rows
 
-    b64 = _make_1x1_png_b64()
+    b64 = _make_test_png_b64()
     df = pd.DataFrame([{
         "text": "page",
         "page_image": {"image_b64": b64},
@@ -105,3 +105,16 @@ def test_context_text_prepended_to_prompt():
     call_kwargs = mock_model.caption_batch.call_args[1]
     assert "quick brown fox" in call_kwargs["prompt"]
     assert "Text near this image:" in call_kwargs["prompt"]
+
+
+def test_caption_images_skips_small_images():
+    from nemo_retriever.caption.caption import caption_images
+
+    tiny_b64 = _make_test_png_b64(size=(1, 1))
+    images = [{"bbox_xyxy_norm": [0.1, 0.2, 0.5, 0.8], "text": "", "image_b64": tiny_b64}]
+    df = pd.DataFrame([{"text": "page", "images": images, "tables": [], "charts": [], "infographics": []}])
+
+    mock_model = MagicMock()
+    result = caption_images(df, model=mock_model)
+    mock_model.caption_batch.assert_not_called()
+    assert result.iloc[0]["images"][0]["text"] == ""
