@@ -6,7 +6,7 @@ from nemo_retriever.relational_db.population.graph.model.reserved_words import (
     label_to_type,
 )
 
-logger = logging.getLogger("node.py")
+logger = logging.getLogger(__name__)
 
 
 class Node:

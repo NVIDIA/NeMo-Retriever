@@ -14,7 +14,7 @@ from nemo_retriever.relational_db.population.graph.model.reserved_words import (
 from nemo_retriever.relational_db.population.graph.model.schema import Schema
 
 conn = get_neo4j_conn()
-logger = logging.getLogger("schemas_dal")
+logger = logging.getLogger(__name__)
 
 
 def load_schema_from_graph(

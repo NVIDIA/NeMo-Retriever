@@ -10,7 +10,7 @@ from nemo_retriever.relational_db.population.graph.model.reserved_words import L
 
 pd.options.mode.chained_assignment = None
 
-logger = logging.getLogger("schema.py")
+logger = logging.getLogger(__name__)
 
 
 class Schema:

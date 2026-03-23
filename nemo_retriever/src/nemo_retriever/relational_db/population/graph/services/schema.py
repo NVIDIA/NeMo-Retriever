@@ -10,7 +10,7 @@ from nemo_retriever.relational_db.population.graph.model.reserved_words import L
 from nemo_retriever.relational_db.population.graph.model.schema import Schema
 import logging
 
-logger = logging.getLogger("schemas_service")
+logger = logging.getLogger(__name__)
 
 
 def add_table(table_edges):

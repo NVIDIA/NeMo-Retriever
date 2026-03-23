@@ -5,7 +5,7 @@ from nemo_retriever.relational_db.population.graph.model.node import Node
 from nemo_retriever.relational_db.population.graph.model.schema import Schema
 import logging
 
-logger = logging.getLogger("schemas_parser.py")
+logger = logging.getLogger(__name__)
 
 
 def parse_df(tables_df, columns_df, db_node=None):
