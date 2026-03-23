@@ -33,7 +33,7 @@ def create_dataframe(settings):
 
 
 def data_for_populate_tabular(settings):
-    """Build the `data` dict expected by populate_tabular_data from create_dataframe output."""
+    """Build the `data` dict expected by populate_tabular_data() from create_dataframe output."""
     tables, columns, views, queries, pks, fks = create_dataframe(settings)
     tables = load_tables(tables)
     columns = load_columns(columns)
@@ -46,7 +46,7 @@ def data_for_populate_tabular(settings):
         "pks": pks,
         "fks": fks,
     }
-    # queries is not used by populate_tabular_data; include if needed elsewhere
+    # queries is not used by populate_tabular_data(); include if needed elsewhere
     return data
 
 
@@ -79,10 +79,10 @@ def store_relational_db_in_neo4j(data, neo4j_conn=None):
                     accepted for API consistency with the other ingest steps).
     """
     from nemo_retriever.relational_db.population.populate_data import (
-        populate_structured_data,
+        populate_tabular_data,
     )
 
-    populate_structured_data(
+    populate_tabular_data(
         data,
         num_workers=4,
         dialect="duckdb",

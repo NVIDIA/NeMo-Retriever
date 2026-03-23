@@ -23,7 +23,7 @@ from nemo_retriever.relational_db.population.graph.services.schema import add_sc
 logger = logging.getLogger(__name__)
 
 
-def populate_structured_data(data, num_workers, dialect):
+def populate_tabular_data(data, num_workers, dialect):
     logger.info("Using Dialect: " + dialect)
 
     add_indices()
