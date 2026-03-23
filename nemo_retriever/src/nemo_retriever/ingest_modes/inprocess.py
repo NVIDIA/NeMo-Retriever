@@ -47,6 +47,7 @@ except Exception as e:  # pragma: no cover
     pdfium = None  # type: ignore[assignment]
     _PDFIUM_IMPORT_ERROR = e
 
+from ..image.load import SUPPORTED_IMAGE_EXTENSIONS
 from ..utils.convert import SUPPORTED_EXTENSIONS, convert_to_pdf_bytes
 from ..ingestor import Ingestor
 from ..params import ASRParams
@@ -60,6 +61,7 @@ from ..params import TextChunkParams
 from ..params import VdbUploadParams
 from ..pdf.extract import pdf_extraction
 from ..pdf.split import _split_pdf_to_single_page_bytes, pdf_path_to_pages_df
+from ..utils.remote_auth import resolve_remote_api_key
 from ..txt import txt_file_to_chunks_df
 from ..html import html_file_to_chunks_df
 
@@ -283,7 +285,7 @@ def _embed_group(
     group_modality: str,
     model: Any,
     endpoint: Optional[str],
-    api_key: Optional[str] = None,
+    api_key: Optional[str],
     text_column: str,
     inference_batch_size: int,
     output_column: str,
@@ -328,7 +330,6 @@ def _embed_group(
         input_type="passage",
         truncate="END",
         dimensions=None,
-        api_key=api_key,
         embedding_nim_endpoint=endpoint or "http://localhost:8012/v1",
         embedding_model=resolved_model_name or "nvidia/llama-nemotron-embed-1b-v2",
         embed_modality=group_modality,
@@ -337,10 +338,10 @@ def _embed_group(
     out_df, _ = create_text_embeddings_for_df(
         group_df,
         task_config={
+            "api_key": api_key,
             "embedder": _embed,
             "multimodal_embedder": _multimodal_embedder,
             "endpoint_url": endpoint,
-            "api_key": api_key,
             "local_batch_size": int(inference_batch_size),
         },
         transform_config=cfg,
@@ -357,7 +358,7 @@ def embed_text_main_text_embed(
     model_name: Optional[str] = None,
     embedding_endpoint: Optional[str] = None,
     embed_invoke_url: Optional[str] = None,
-    embedding_api_key: Optional[str] = None,
+    api_key: Optional[str] = None,
     text_column: str = "text",
     inference_batch_size: int = 16,
     output_column: str = "text_embeddings_1b_v2",
@@ -419,7 +420,7 @@ def embed_text_main_text_embed(
                 group_modality=modalities[0],
                 model=model,
                 endpoint=_endpoint,
-                api_key=embedding_api_key,
+                api_key=api_key,
                 text_column=text_column,
                 inference_batch_size=inference_batch_size,
                 output_column=output_column,
@@ -438,7 +439,7 @@ def embed_text_main_text_embed(
                     group_modality=mod,
                     model=model,
                     endpoint=_endpoint,
-                    api_key=embedding_api_key,
+                    api_key=api_key,
                     text_column=text_column,
                     inference_batch_size=inference_batch_size,
                     output_column=output_column,
@@ -955,8 +956,8 @@ class InProcessIngestor(Ingestor):
         # Builder-style configuration recorded for later execution (TBD).
         self._tasks: List[tuple[Callable[..., Any], dict[str, Any]]] = []
 
-        # Pipeline type: "pdf" (extract), "txt" (extract_txt), or "html" (extract_html). Loader dispatch in ingest().
-        self._pipeline_type: Literal["pdf", "txt", "html"] = "pdf"
+        # Pipeline type: "pdf" (extract), "txt" (extract_txt), "html" (extract_html), or "image" (extract_image_files).
+        self._pipeline_type: Literal["pdf", "txt", "html", "image"] = "pdf"
         self._extract_txt_kwargs: Dict[str, Any] = {}
         self._extract_html_kwargs: Dict[str, Any] = {}
         self._caption_enabled: bool = False
@@ -1004,16 +1005,32 @@ class InProcessIngestor(Ingestor):
         # NOTE: `kwargs` passed to `.extract()` are intended primarily for PDF extraction
         # (e.g. `extract_text`, `dpi`, etc). Downstream model stages do NOT necessarily
         # accept the same keyword arguments. Keep per-stage kwargs isolated.
-
+        if self._input_documents and all(f.lower().endswith(".txt") for f in self._input_documents):
+            txt_params = TextChunkParams()
+            return self.extract_txt(params=txt_params)
+        if self._input_documents and all(f.lower().endswith(".html") for f in self._input_documents):
+            html_params = HtmlChunkParams()
+            return self.extract_html(params=html_params)
+        if self._input_documents and all(
+            os.path.splitext(f)[1].lower() in SUPPORTED_IMAGE_EXTENSIONS for f in self._input_documents
+        ):
+            return self.extract_image_files(params=params, **kwargs)
         resolved = _coerce_params(params, ExtractParams, kwargs)
+        if (
+            any(
+                (
+                    resolved.invoke_url,
+                    resolved.page_elements_invoke_url,
+                    resolved.ocr_invoke_url,
+                    resolved.graphic_elements_invoke_url,
+                    resolved.table_structure_invoke_url,
+                )
+            )
+            and not resolved.api_key
+        ):
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
         kwargs = resolved.model_dump(mode="python")
-        batch_tuning = kwargs.get("batch_tuning") if isinstance(kwargs.get("batch_tuning"), dict) else {}
-        nemotron_parse_workers = float(batch_tuning.get("nemotron_parse_workers", 0.0) or 0.0)
-        gpu_nemotron_parse = float(batch_tuning.get("gpu_nemotron_parse", 0.0) or 0.0)
-        nemotron_parse_batch_size = float(batch_tuning.get("nemotron_parse_batch_size", 0.0) or 0.0)
-        use_nemotron_parse_only = (
-            nemotron_parse_workers > 0.0 and gpu_nemotron_parse > 0.0 and nemotron_parse_batch_size > 0.0
-        )
+        use_nemotron_parse_only = kwargs.get("method") == "nemotron_parse"
         extract_kwargs = dict(kwargs)
         # Downstream in-process stages (page elements / table / chart / infographic) assume
         # `page_image.image_b64` exists. Ensure PDF extraction emits a page image unless
@@ -1027,6 +1044,20 @@ class InProcessIngestor(Ingestor):
         self._pipeline_type = "pdf"
         self._tasks.append((pdf_extraction, extract_kwargs))
 
+        self._append_detection_tasks(kwargs, use_nemotron_parse_only=use_nemotron_parse_only)
+
+        return self
+
+    def _append_detection_tasks(
+        self,
+        kwargs: dict[str, Any],
+        *,
+        use_nemotron_parse_only: bool = False,
+    ) -> None:
+        """Append page-element detection, OCR, table/chart/infographic tasks.
+
+        Shared by ``extract()`` (PDF) and ``extract_image_files()`` (standalone images).
+        """
         # Common, optional knobs shared by our detect_* helpers.
         detect_passthrough_keys = {
             "inference_batch_size",
@@ -1072,7 +1103,6 @@ class InProcessIngestor(Ingestor):
                 parse_flags["extract_charts"] = True
             if kwargs.get("extract_infographics") is True:
                 parse_flags["extract_infographics"] = True
-            parse_flags["inference_batch_size"] = int(nemotron_parse_batch_size)
             parse_flags.update(_stage_remote_kwargs("nemotron_parse"))
             parse_invoke_url = kwargs.get(
                 "nemotron_parse_invoke_url", kwargs.get("ocr_invoke_url", kwargs.get("invoke_url", ""))
@@ -1181,6 +1211,9 @@ class InProcessIngestor(Ingestor):
             # When use_graphic_elements is True, charts are handled above;
             # when use_table_structure is True, tables are handled above.
             ocr_flags = {}
+            method = kwargs.get("method", "pdfium")
+            if method in ("pdfium_hybrid", "ocr") and kwargs.get("extract_text") is True:
+                ocr_flags["extract_text"] = True
             if kwargs.get("extract_tables") is True and not use_table_structure:
                 ocr_flags["extract_tables"] = True
             if kwargs.get("extract_charts") is True and not use_graphic_elements:
@@ -1204,6 +1237,46 @@ class InProcessIngestor(Ingestor):
                     model = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
                     self._tasks.append((ocr_page_elements, {"model": model, **ocr_flags}))
 
+    def extract_image_files(self, params: ExtractParams | None = None, **kwargs: Any) -> "InProcessIngestor":
+        """
+        Configure image ingestion: standalone image -> page DataFrame -> detection/OCR.
+
+        Use with .files("*.png").extract_image_files(...).embed().vdb_upload().ingest().
+        Do not call .extract() when using .extract_image_files().
+        """
+        resolved = _coerce_params(params, ExtractParams, kwargs)
+        if (
+            any(
+                (
+                    resolved.invoke_url,
+                    resolved.page_elements_invoke_url,
+                    resolved.ocr_invoke_url,
+                    resolved.graphic_elements_invoke_url,
+                    resolved.table_structure_invoke_url,
+                )
+            )
+            and not resolved.api_key
+        ):
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+        kwargs = resolved.model_dump(mode="python")
+        use_nemotron_parse_only = kwargs.get("method") == "nemotron_parse"
+        self._pipeline_type = "image"
+        self._append_detection_tasks(kwargs, use_nemotron_parse_only=use_nemotron_parse_only)
+        return self
+
+    def split(self, params: TextChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
+        """
+        Re-chunk the ``text`` column by token count (post-extraction transform).
+
+        Appends :func:`~nemo_retriever.txt.split.split_df` as a GPU-category
+        task so it runs in sequence after extraction and before embedding.
+        """
+        from nemo_retriever.txt.split import split_df
+
+        resolved = _coerce_params(params, TextChunkParams, kwargs)
+        split_kwargs = resolved.model_dump(mode="python")
+        split_kwargs.pop("encoding", None)
+        self._tasks.append((split_df, split_kwargs))
         return self
 
     def extract_txt(self, params: TextChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1213,9 +1286,13 @@ class InProcessIngestor(Ingestor):
         Use with .files("*.txt").extract_txt(...).embed().vdb_upload().ingest().
         Do not call .extract() when using .extract_txt().
         """
+        from nemo_retriever.txt.ray_data import TxtSplitActor
+
         self._pipeline_type = "txt"
         resolved = _coerce_params(params, TextChunkParams, kwargs)
         self._extract_txt_kwargs = resolved.model_dump(mode="python")
+        text_split = TxtSplitActor(params=TextChunkParams(**self._extract_txt_kwargs))
+        self._tasks.append((text_split, {}))
         return self
 
     def extract_html(self, params: HtmlChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1225,9 +1302,15 @@ class InProcessIngestor(Ingestor):
         Use with .files("*.html").extract_html(...).embed().vdb_upload().ingest().
         Do not call .extract() when using .extract_html().
         """
+        from nemo_retriever.html.ray_data import HtmlSplitActor
+
         self._pipeline_type = "html"
         resolved = _coerce_params(params, HtmlChunkParams, kwargs)
         self._extract_html_kwargs = resolved.model_dump(mode="python")
+        html_split = HtmlSplitActor(
+            params=HtmlChunkParams(**self._extract_html_kwargs),
+        )
+        self._tasks.append((html_split, {}))
         return self
 
     def extract_audio(
@@ -1304,6 +1387,8 @@ class InProcessIngestor(Ingestor):
         embedding instead of the local HF model.
         """
         resolved = _coerce_params(params, EmbedParams, kwargs)
+        if any((resolved.embedding_endpoint, resolved.embed_invoke_url)) and not resolved.api_key:
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
         embed_modality = resolved.embed_modality
         embed_granularity = resolved.embed_granularity
 
@@ -1728,6 +1813,13 @@ class InProcessIngestor(Ingestor):
             def _loader(p: str) -> pd.DataFrame:
                 return html_file_to_chunks_df(p, params=HtmlChunkParams(**self._extract_html_kwargs))
 
+        elif self._pipeline_type == "image":
+
+            def _loader(p: str) -> pd.DataFrame:
+                from nemo_retriever.image.load import image_file_to_pages_df
+
+                return image_file_to_pages_df(p)
+
         elif self._pipeline_type == "audio":
 
             def _loader(p: str) -> pd.DataFrame:
@@ -1754,4 +1846,3 @@ class InProcessIngestor(Ingestor):
         if show_progress:
             _print_ingest_summary(results, time.perf_counter() - _start)
         return results
-

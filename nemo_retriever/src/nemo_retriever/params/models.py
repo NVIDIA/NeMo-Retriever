@@ -66,7 +66,7 @@ class PdfSplitParams(_ParamsModel):
 
 
 class TextChunkParams(_ParamsModel):
-    max_tokens: int = 512
+    max_tokens: int = 1024
     overlap_tokens: int = 0
     tokenizer_model_id: Optional[str] = None
     encoding: str = "utf-8"
@@ -161,11 +161,14 @@ class ExtractParams(_ParamsModel):
     extract_page_as_image: Optional[bool] = None
 
     # Extraction options
-    method: Optional[str] = None
+    method: str = "pdfium"
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
     use_graphic_elements: bool = False
     dpi: int = 200
+    image_format: str = "jpeg"
+    jpeg_quality: int = 100
+    render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
 
@@ -210,14 +213,15 @@ class ExtractParams(_ParamsModel):
         return self
 
 
-IMAGE_MODALITIES: frozenset[str] = frozenset({"image", "text_image", "image_text"})
+VALID_EMBED_MODALITIES: frozenset[str] = frozenset({"text", "image", "text_image"})
+IMAGE_MODALITIES: frozenset[str] = frozenset({"image", "text_image"})
 
 
 class EmbedParams(_ParamsModel):
     model_name: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
-    embedding_api_key: Optional[str] = None  # e.g. NVIDIA API key for inference-api.nvidia.com
+    api_key: Optional[str] = None #.g. NVIDIA API key for inference-api.nvidia.com
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types
     embed_granularity: Literal["element", "page"] = "element"  # "element" = per-element rows, "page" = one row per page
@@ -237,10 +241,15 @@ class EmbedParams(_ParamsModel):
 
     @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
     @classmethod
-    def _normalize_modality(cls, v: str | None) -> str | None:
-        if v == "image_text":
-            return "text_image"
-        return v
+    def _validate_modality(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        modality = str(v).strip()
+        if modality == "image_text":
+            raise ValueError("Use 'text_image' instead of 'image_text'.")
+        if modality not in VALID_EMBED_MODALITIES:
+            raise ValueError(f"Modality must be one of {sorted(VALID_EMBED_MODALITIES)}")
+        return modality
 
     @model_validator(mode="after")
     def _warn_page_granularity_overrides(self) -> "EmbedParams":

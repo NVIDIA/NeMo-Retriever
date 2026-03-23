@@ -44,6 +44,7 @@ minio = [
     "minio>=7.2.15",
 ]
 
+
 [project.urls]
 homepage = "https://github.com/NVIDIA/nv-ingest"
 repository = "https://github.com/NVIDIA/nv-ingest"

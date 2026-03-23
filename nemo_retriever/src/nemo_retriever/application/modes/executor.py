@@ -19,16 +19,8 @@ def run_mode_ingest(
     run_mode: RunMode,
     create_params: IngestorCreateParams | None = None,
     ingest_params: IngestExecuteParams | None = None,
-    embed_params: EmbedParams | None = None,
-    vdb_params: VdbUploadParams | None = None,
 ) -> object:
     ingestor = create_runmode_ingestor(run_mode=run_mode, params=create_params)
-
-    if embed_params is not None:
-        ingestor = ingestor.embed(embed_params)
-    if vdb_params is not None:
-        ingestor = ingestor.vdb_upload(vdb_params)
-
     return ingestor.ingest(params=ingest_params)
 
 
