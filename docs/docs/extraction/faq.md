@@ -102,5 +102,5 @@ Ingestor(client=client)
     .extract()
     .embed()
     .caption()
-)
+
 ```
