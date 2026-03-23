@@ -516,33 +516,6 @@ results = ingestor.ingest()
 
     For more information about working with infographics and multimodal content, refer to [Use Multimodal Embedding](vlm-embed.md).
 
-### Caption Images and Control Reasoning
-
-The caption task can call a VLM with optional prompt and system prompt overrides:
-
-- `caption_prompt` (user prompt): defaults to `"Caption the content of this image:"`.
-- `caption_system_prompt` (system prompt): defaults to `"/no_think"` (reasoning off). Set to `"/think"` to enable reasoning per the Nemotron Nano 12B v2 VL model card.
-- `context_text_max_chars` (int, optional): Maximum characters of page text to include as context for the VLM.
-- `temperature` (float, optional): Sampling temperature for the VLM.
-
-Example:
-```python
-from nemo_retriever.client.interface import Ingestor
-
-ingestor = (
-    Ingestor()
-    .files("path/to/doc-with-images.pdf")
-    .extract(extract_images=True)
-    .caption(
-        prompt="Caption the content of this image:",
-        system_prompt="/think",  # or "/no_think"
-    )
-    .ingest()
-)
-```
-
-
-
 ## Extract Embeddings
 
 The `embed` method in the NeMo Retriever Library generates text embeddings for document content.
