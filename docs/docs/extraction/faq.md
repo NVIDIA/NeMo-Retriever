@@ -4,7 +4,7 @@ This documentation contains the Frequently Asked Questions (FAQ) for [NeMo Retri
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
 

@@ -5,7 +5,7 @@ This guide covers how to write, validate, and submit UDFs using both the CLI and
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library. 
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library. 
 
 
 ## Quickstart
