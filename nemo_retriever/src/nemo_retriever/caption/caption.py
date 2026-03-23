@@ -11,6 +11,21 @@ import pandas as pd
 from nemo_retriever.params import CaptionParams
 
 _MAX_CONTEXT_TEXT_CHARS = 4096
+_MIN_IMAGE_DIMENSION = 32
+
+
+def _image_meets_min_size(b64: str) -> bool:
+    """Return True if the base64 image is at least _MIN_IMAGE_DIMENSION on both sides."""
+    import base64
+    from io import BytesIO
+    from PIL import Image
+
+    try:
+        img = Image.open(BytesIO(base64.b64decode(b64)))
+        w, h = img.size
+        return w >= _MIN_IMAGE_DIMENSION and h >= _MIN_IMAGE_DIMENSION
+    except Exception:
+        return False
 _cached_local_model = None
 
 
@@ -207,7 +222,7 @@ def caption_images(
             if item.get("text"):
                 continue  # already captioned
             b64 = item.get("image_b64")
-            if b64:
+            if b64 and _image_meets_min_size(b64):
                 pending.append((row_idx, item_idx, b64))
 
     if not pending:
