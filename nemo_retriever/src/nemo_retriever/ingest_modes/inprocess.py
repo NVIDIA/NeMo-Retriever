@@ -1364,8 +1364,9 @@ class InProcessIngestor(Ingestor):
 
                 warnings.warn(
                     "No caption device specified. The VLM will load on cuda:0, which "
-                    "may conflict with other models. Use --caption-device (e.g. "
-                    "'cuda:1') to place the captioner on a separate GPU.",
+                    "may conflict with other models. Use device='cuda:1' (or "
+                    "--caption-device from the CLI) to place the captioner on a "
+                    "separate GPU.",
                     stacklevel=2,
                 )
             caption_kwargs["model"] = None

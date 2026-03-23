@@ -67,28 +67,6 @@ class NemotronParseModelConfig:
 
 
 @dataclass
-class CaptionModelConfig:
-    """Config to recreate a NemotronVLMCaptioner model."""
-
-    model_path: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
-    device: Optional[str] = None
-    hf_cache_dir: Optional[str] = None
-    tensor_parallel_size: int = 1
-    gpu_memory_utilization: float = 0.9
-
-    def create(self) -> Any:
-        from nemo_retriever.model.local import NemotronVLMCaptioner
-
-        return NemotronVLMCaptioner(
-            model_path=self.model_path,
-            device=self.device,
-            hf_cache_dir=self.hf_cache_dir,
-            tensor_parallel_size=self.tensor_parallel_size,
-            gpu_memory_utilization=self.gpu_memory_utilization,
-        )
-
-
-@dataclass
 class EmbeddingModelConfig:
     """Config to recreate an embedding model (VL or non-VL)."""
 
@@ -188,19 +166,6 @@ def _extract_model_config(func: Callable, kwargs: dict[str, Any]) -> Any:
 
     if func is collapse_content_to_page_rows:
         return None  # CPU-only, no model
-
-    from nemo_retriever.caption.caption import caption_images
-
-    if func is caption_images:
-        if kwargs.get("endpoint_url"):
-            return None  # Remote endpoint, no local model
-        return CaptionModelConfig(
-            model_path=kwargs.get("model_name", CaptionModelConfig.model_path),
-            device=kwargs.get("device"),
-            hf_cache_dir=kwargs.get("hf_cache_dir"),
-            tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
-            gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.9),
-        )
 
     return None
 
@@ -327,7 +292,7 @@ class GPUWorkerPool:
             p = self._ctx.Process(
                 target=_gpu_worker_entry,
                 args=(idx, device_id, self._task_descriptors, iq, self._output_queue, evt),
-                daemon=False,
+                daemon=True,
             )
             p.start()
             self._workers.append(p)
