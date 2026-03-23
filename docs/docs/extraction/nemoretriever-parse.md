@@ -12,7 +12,7 @@ to run [NeMo Retriever Library](overview.md) with nemotron-parse.
 
 !!! note
 
-    NeMo Retriever Library is also known as NVIDIA Ingest.
+    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
 
 
 ## Limitations

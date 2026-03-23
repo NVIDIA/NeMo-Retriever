@@ -10,7 +10,7 @@ The model supports images that contain text, tables, charts, and infographics.
 
 !!! note
 
-    NeMo Retriever Library is also known as NVIDIA Ingest.
+    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
 
 
 ## Configure and Run the Multimodal NIM
