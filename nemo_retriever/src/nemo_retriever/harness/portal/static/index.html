@@ -1740,10 +1740,21 @@ function RunDetailModal({ run, onClose, onDelete, githubRepoUrl }) {
 
   function copyRunLink() {
     const url = `${window.location.origin}${window.location.pathname}#runs/${run.id}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
-    }).catch(() => {});
+    function onSuccess() { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(onSuccess).catch(() => fallbackCopy(url, onSuccess));
+    } else {
+      fallbackCopy(url, onSuccess);
+    }
+  }
+  function fallbackCopy(text, onSuccess) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); onSuccess(); } catch {}
+    document.body.removeChild(ta);
   }
 
   return (
