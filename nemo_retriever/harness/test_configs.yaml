@@ -160,7 +160,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_finance_fr:
-    path: /localhome/local-cjarrett/NeMo-Retriever/data/vidore_v3_finance_fr
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_finance_fr
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
@@ -176,7 +176,7 @@ datasets:
     extract_infographics: true
 
   vidore_v3_hr:
-    path: /localhome/local-cjarrett/NeMo-Retriever/data/vidore_v3_hr
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_hr
     query_csv: null
     recall_required: false
     recall_match_mode: pdf_page
