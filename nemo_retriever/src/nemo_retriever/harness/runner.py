@@ -188,10 +188,10 @@ def _git_checkout_commit(commit: str, ref: str | None = None) -> str | None:
 
     try:
         if commit.startswith("refs/pull/"):
-            # PR ref from GitHub (refs/pull/<n>/head) — fetch via origin into a
-            # temporary local ref then checkout by the resolved SHA.
-            _run_git("fetch", "origin", commit, check=True)
-            sha = _run_git("rev-parse", "FETCH_HEAD").stdout.strip()
+            # GitHub doesn't advertise pull refs by default; must specify a
+            # destination refspec so git actually fetches it.
+            _run_git("fetch", "origin", f"{commit}:{commit}", check=True)
+            sha = _run_git("rev-parse", commit).stdout.strip()
             logger.info("Checking out PR ref %s (%s) in %s", commit, sha[:12], repo_root)
             _run_git("checkout", sha)
         else:
@@ -602,6 +602,7 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
         logger.info("Job %s — installing extra packages: %s", job_id, extra_packages)
         try:
             import shutil
+
             uv_bin = shutil.which("uv")
             if uv_bin:
                 cmd = [uv_bin, "pip", "install", "--python", sys.executable, *extra_packages]
