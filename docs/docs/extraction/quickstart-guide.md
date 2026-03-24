@@ -107,7 +107,7 @@ You can submit jobs programmatically in Python or using the [CLI](nv-ingest_cli.
 
 !!! important "Python version"
 
-    Install the client and CLI into an environment that uses **Python 3.12 or later**. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. See [Prerequisites](prerequisites.md) and [Support Matrix](support-matrix.md).
+    Install the client and CLI into an environment that uses Python 3.12 or later. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. See [Prerequisites](prerequisites.md) and [Support Matrix](support-matrix.md).
 
 The following examples demonstrate how to extract text, charts, tables, and images:
 
