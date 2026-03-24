@@ -23,20 +23,23 @@ from typing import Union
 
 import ray
 import ray.data as rd
-from nemo_retriever.utils.convert import DocToPdfConversionActor
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
-from nemo_retriever.page_elements import PageElementDetectionActor
+from nemo_retriever.dedup.dedup import DedupActor
+from nemo_retriever.ingest_modes.inprocess import collapse_content_to_page_rows, explode_content_to_rows
 from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
-from nemo_retriever.table.table_detection import TableStructureActor
+from nemo_retriever.page_elements import PageElementDetectionActor
+from nemo_retriever.params import DedupParams
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
+from nemo_retriever.table.table_detection import TableStructureActor
+from nemo_retriever.utils.convert import DocToPdfConversionActor
 from nemo_retriever.utils.hf_cache import resolve_hf_cache_dir
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
     resolve_requested_plan,
 )
-from nemo_retriever.ingest_modes.inprocess import collapse_content_to_page_rows, explode_content_to_rows
+
 
 from ..image.load import SUPPORTED_IMAGE_EXTENSIONS
 from ..ingestor import Ingestor
@@ -955,9 +958,6 @@ class BatchIngestor(Ingestor):
         """Remove duplicate and overlapping images before captioning."""
         if self._rd_dataset is None:
             raise RuntimeError("No Ray Dataset to dedup. Run .files(...) / .extract(...) first.")
-
-        from nemo_retriever.dedup.dedup import DedupActor
-        from nemo_retriever.params import DedupParams
 
         resolved = _coerce_params(params, DedupParams, kwargs)
         self._rd_dataset = self._rd_dataset.map_batches(

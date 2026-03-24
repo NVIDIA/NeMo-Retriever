@@ -29,10 +29,12 @@ from nemo_retriever.params import CaptionParams
 
 
 import pandas as pd
-from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
-from nemo_retriever.page_elements import detect_page_elements_v3
+from nemo_retriever.dedup.dedup import dedup_images
+from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox, nemotron_parse_page_elements, ocr_page_elements
+from nemo_retriever.page_elements import detect_page_elements_v3
+from nemo_retriever.params import DedupParams
 from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
@@ -1337,8 +1339,6 @@ class InProcessIngestor(Ingestor):
 
     def dedup(self, params: "DedupParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
         """Remove duplicate and overlapping images before captioning."""
-        from nemo_retriever.dedup.dedup import dedup_images
-        from nemo_retriever.params import DedupParams
 
         resolved = _coerce_params(params, DedupParams, kwargs)
         self._tasks.append((dedup_images, resolved.model_dump(mode="python")))
