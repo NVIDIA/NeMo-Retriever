@@ -74,9 +74,9 @@ class TestBboxIouDedup:
             [
                 {
                     "images": [_make_image("X", bbox=[0.0, 0.0, 1.0, 1.0])],
-                    "tables": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
-                    "charts": [],
-                    "infographics": [],
+                    "table": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
+                    "chart": [],
+                    "infographic": [],
                 }
             ]
         )
@@ -88,9 +88,9 @@ class TestBboxIouDedup:
             [
                 {
                     "images": [_make_image("X", bbox=[0.0, 0.0, 0.1, 0.1])],
-                    "tables": [{"bbox_xyxy_norm": [0.9, 0.9, 1.0, 1.0], "text": "t"}],
-                    "charts": [],
-                    "infographics": [],
+                    "table": [{"bbox_xyxy_norm": [0.9, 0.9, 1.0, 1.0], "text": "t"}],
+                    "chart": [],
+                    "infographic": [],
                 }
             ]
         )
@@ -102,9 +102,9 @@ class TestBboxIouDedup:
             [
                 {
                     "images": [_make_image("X", bbox=[0.0, 0.0, 1.0, 1.0])],
-                    "tables": [],
-                    "charts": [],
-                    "infographics": [],
+                    "table": [],
+                    "chart": [],
+                    "infographic": [],
                 }
             ]
         )
@@ -116,9 +116,9 @@ class TestBboxIouDedup:
             [
                 {
                     "images": [_make_image("X")],  # no bbox
-                    "tables": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
-                    "charts": [],
-                    "infographics": [],
+                    "table": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
+                    "chart": [],
+                    "infographic": [],
                 }
             ]
         )
