@@ -11,7 +11,7 @@ import pandas as pd
 
 from nemo_retriever.params import DedupParams
 
-_STRUCTURED_COLUMNS = ("tables", "charts", "infographics")
+_STRUCTURED_COLUMNS = ("table", "chart", "infographic")
 
 
 def calculate_iou(bbox1: Tuple[float, ...], bbox2: Tuple[float, ...]) -> float:
@@ -122,10 +122,7 @@ def dedup_images(
                         surviving.append(item)
                         continue
                     img_bbox_t = tuple(img_bbox[:4])
-                    overlaps = any(
-                        calculate_iou(img_bbox_t, sb) >= iou_threshold
-                        for sb in structured_bboxes
-                    )
+                    overlaps = any(calculate_iou(img_bbox_t, sb) >= iou_threshold for sb in structured_bboxes)
                     if not overlaps:
                         surviving.append(item)
                 filtered = surviving
