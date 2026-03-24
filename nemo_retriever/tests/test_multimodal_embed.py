@@ -28,7 +28,7 @@ from nemo_retriever.text_embed.main_text_embed import (
 # Stub heavy internal modules so ``from nemo_retriever.ingest_modes.inprocess``
 # can be imported in lightweight CI (only pytest, pandas, pydantic, pyyaml).
 #
-# The ``nemo_retriever.ingest_modes`` __init__.py eagerly imports batch/fused/online
+# The ``nemo_retriever.ingest_modes`` __init__.py eagerly imports batch/fused/remote
 # which pull in ray, torch, nemotron_*, nv_ingest_api, etc.  And inprocess.py
 # itself imports model/local (torch, nemotron_*), page_elements, ocr, and
 # pdf.extract — each with their own heavy transitive deps.
@@ -41,7 +41,7 @@ _HEAVY_INTERNAL = [
     # -- sibling ingest modes (prevents batch.py/fused.py from loading) ------
     "nemo_retriever.ingest_modes.batch",
     "nemo_retriever.ingest_modes.fused",
-    "nemo_retriever.ingest_modes.online",
+    "nemo_retriever.ingest_modes.remote",
     # -- model / ML packages (torch, nemotron_*, transformers) ---------------
     "nemo_retriever.model.local",
     "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder",

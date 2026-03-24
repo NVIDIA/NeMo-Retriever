@@ -2,4 +2,4 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Online ingest: Ray Serve REST API and CLI for submitting documents."""
+"""Remote ingest: Ray Serve REST API and CLI for submitting documents."""

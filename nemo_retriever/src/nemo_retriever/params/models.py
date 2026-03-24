@@ -11,7 +11,7 @@ import warnings
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-RunMode = Literal["inprocess", "batch", "fused", "online"]
+RunMode = Literal["inprocess", "batch", "fused", "remote"]
 
 
 class _ParamsModel(BaseModel):

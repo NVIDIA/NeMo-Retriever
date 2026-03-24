@@ -20,7 +20,7 @@ import pytest
 _HEAVY_INTERNAL = [
     "nemo_retriever.ingest_modes.batch",
     "nemo_retriever.ingest_modes.fused",
-    "nemo_retriever.ingest_modes.online",
+    "nemo_retriever.ingest_modes.remote",
     "nemo_retriever.model.local",
     "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder",
     "nemo_retriever.model.local.nemotron_page_elements_v3",

@@ -4,6 +4,13 @@
 
 from __future__ import annotations
 
-from nemo_retriever.adapters.service.app import RetrieverAPIDeployment, app
+from nemo_retriever.adapters.service.app import app
 
-__all__ = ["RetrieverAPIDeployment", "app"]
+__all__ = ["app"]
+
+try:
+    from nemo_retriever.adapters.service.app import RetrieverAPIDeployment  # noqa: F401
+
+    __all__.append("RetrieverAPIDeployment")
+except ImportError:
+    pass

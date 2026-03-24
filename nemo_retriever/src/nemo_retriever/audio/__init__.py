@@ -6,7 +6,7 @@
 Audio pipeline: media chunking (MediaChunkActor) and ASR (ASRActor).
 
 Provides the same semantics as nv-ingest-api dataloader + Parakeet for
-batch, inprocess, fused, and online run modes.
+batch, inprocess, fused, and remote run modes.
 """
 
 from __future__ import annotations

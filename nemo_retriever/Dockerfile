@@ -4,9 +4,9 @@
 # syntax=docker/dockerfile:1.3
 #
 # Build from repo root: docker build -f nemo_retriever/Dockerfile -t nemo-retriever .
-# Run: docker run nemo-retriever  (shell with venv active)
-# Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
-# Run with data:     docker run -v /host/docs:/data nemo-retriever /data
+# Run: docker run -p 7670:7670 nemo-retriever  (starts Ray Serve on port 7670)
+# Run with dev mount: docker run -p 7670:7670 -v $(pwd):/workspace -it nemo-retriever
+# Shell access:       docker run -it --entrypoint /bin/bash nemo-retriever
 
 ARG BASE_IMG=nvcr.io/nvidia/base/ubuntu
 ARG BASE_IMG_TAG=jammy-20250619
@@ -120,5 +120,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     . /opt/retriever_runtime/bin/activate \
     && uv pip install -e ./nemo_retriever
 
-# Default: run in-process pipeline (help if no args)
-CMD ["/bin/bash"]
+EXPOSE 7670
+
+CMD ["retriever", "remote", "serve", "--host", "0.0.0.0", "--port", "7670"]

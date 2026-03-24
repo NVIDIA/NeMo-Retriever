@@ -11,7 +11,7 @@ Concrete implementations are provided by runmodes:
 - inprocess: local Python process, no framework assumptions
 - batch: large-scale batch execution
 - fused: low-latency single-actor GPU model fusion
-- online: low-latency, multi-request serving
+- remote: low-latency, multi-request serving via Ray Serve REST API
 """
 
 from __future__ import annotations

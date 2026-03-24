@@ -554,7 +554,7 @@ def pages_df_from_pdf_bytes(pdf_bytes: Union[bytes, bytearray], source_path: str
     """
     Build a per-page DataFrame from raw PDF bytes (same schema as pdf_path_to_pages_df).
 
-    Used by the online ingest mode to run the same pipeline on document bytes
+    Used by the remote ingest mode to run the same pipeline on document bytes
     received via REST. Columns: bytes, path, page_number.
     """
     pages = _split_pdf_to_single_page_bytes(pdf_bytes)
@@ -572,7 +572,7 @@ def run_pipeline_tasks_on_df(
 
     Returns (final_result, metrics) where metrics is a list of
     {"stage": str, "duration_sec": float} for each stage. Used by both
-    InProcessIngestor.ingest() and the online Ray Serve deployment.
+    InProcessIngestor.ingest() and the remote Ray Serve deployment.
     """
     import time
 
@@ -1469,7 +1469,7 @@ class InProcessIngestor(Ingestor):
         self,
     ) -> Tuple[List[Tuple[Callable[..., Any], Dict[str, Any]]], List[Tuple[Callable[..., Any], Dict[str, Any]]]]:
         """
-        Return (per_doc_tasks, post_tasks) for use by ingest() or by the online
+        Return (per_doc_tasks, post_tasks) for use by ingest() or by the remote
         serve deployment to run the same pipeline on a single document.
         """
         per_doc_tasks = [(f, k) for f, k in self._tasks if f not in self._POST_TASKS]

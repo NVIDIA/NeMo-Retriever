@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Online runmode.
+Remote runmode.
 
 Low-latency request/response serving: documents are submitted to a Ray Serve
 REST API (see ingest_modes.serve) which runs the same pipeline as inprocess
@@ -24,7 +24,7 @@ from ..params import ExtractParams
 from ..params import IngestExecuteParams
 from ..params import VdbUploadParams
 
-# Extension -> MIME for online ingest (server may dispatch to audio pipeline by MIME or header).
+# Extension -> MIME for remote ingest (server may dispatch to audio pipeline by MIME or header).
 _EXTENSION_MIME = {
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
@@ -41,18 +41,18 @@ def _mime_for_path(path: str) -> str:
     return _EXTENSION_MIME.get(ext, "application/pdf")
 
 
-class OnlineIngestor(Ingestor):
+class RemoteIngestor(Ingestor):
     """
-    Client-side ingestor that submits documents to the online ingest REST API.
+    Client-side ingestor that submits documents to the remote ingest REST API.
 
-    Use create_ingestor(run_mode="online", base_url="http://localhost:7670")
+    Use create_ingestor(run_mode="remote", base_url="http://localhost:7670")
     then .files(...).extract(...).embed(...).vdb_upload().ingest().
     extract/embed/vdb_upload record configuration for compatibility; the
     actual pipeline runs on the server. ingest() POSTs each file to the
     /ingest endpoint and returns a list of response metrics per document.
     """
 
-    RUN_MODE = "online"
+    RUN_MODE = "remote"
 
     def __init__(
         self,
@@ -63,8 +63,8 @@ class OnlineIngestor(Ingestor):
         self._base_url = base_url.rstrip("/")
         self._input_documents: List[str] = self._documents
 
-    def files(self, documents: Union[str, List[str]]) -> "OnlineIngestor":
-        """Add local file paths or globs for submission to the online service."""
+    def files(self, documents: Union[str, List[str]]) -> "RemoteIngestor":
+        """Add local file paths or globs for submission to the remote service."""
         if isinstance(documents, str):
             documents = [documents]
 
@@ -88,7 +88,7 @@ class OnlineIngestor(Ingestor):
 
         return self
 
-    def buffers(self, buffers: Union[Tuple[str, BytesIO], List[Tuple[str, BytesIO]]]) -> "OnlineIngestor":
+    def buffers(self, buffers: Union[Tuple[str, BytesIO], List[Tuple[str, BytesIO]]]) -> "RemoteIngestor":
         """Add in-memory buffers for submission. Name is used as source_path."""
         if isinstance(buffers, (list, tuple)) and len(buffers) == 2 and not isinstance(buffers[0], (list, tuple)):
             buffers = [buffers]
@@ -96,38 +96,38 @@ class OnlineIngestor(Ingestor):
             self._buffers.append((str(name), buf))
         return self
 
-    def load(self) -> "OnlineIngestor":
+    def load(self) -> "RemoteIngestor":
         """No-op for API compatibility."""
         return self
 
-    def extract(self, params: ExtractParams | None = None, **kwargs: Any) -> "OnlineIngestor":
+    def extract(self, params: ExtractParams | None = None, **kwargs: Any) -> "RemoteIngestor":
         """Record extraction config (server uses its own config). API compatibility."""
         _ = params or ExtractParams(**kwargs)
         return self
 
-    def extract_image_files(self, params: ExtractParams | None = None, **kwargs: Any) -> "OnlineIngestor":
+    def extract_image_files(self, params: ExtractParams | None = None, **kwargs: Any) -> "RemoteIngestor":
         """Record image file config. API compatibility. Server must accept image MIME types."""
         _ = params or ExtractParams(**kwargs)
         return self
 
-    def extract_txt(self, params: ExtractParams | None = None, **kwargs: Any) -> "OnlineIngestor":
-        """Record txt config. API compatibility. Online mode typically serves PDF only."""
+    def extract_txt(self, params: ExtractParams | None = None, **kwargs: Any) -> "RemoteIngestor":
+        """Record txt config. API compatibility. Remote mode typically serves PDF only."""
         _ = params or ExtractParams(**kwargs)
         return self
 
-    def extract_audio(self, params: Any = None, asr_params: Any = None, **kwargs: Any) -> "OnlineIngestor":
+    def extract_audio(self, params: Any = None, asr_params: Any = None, **kwargs: Any) -> "RemoteIngestor":
         """Record audio config. API compatibility. Server must accept audio MIME and run audio pipeline."""
         _ = params
         _ = asr_params
         _ = kwargs
         return self
 
-    def embed(self, params: EmbedParams | None = None, **kwargs: Any) -> "OnlineIngestor":
+    def embed(self, params: EmbedParams | None = None, **kwargs: Any) -> "RemoteIngestor":
         """Record embed config (server uses its own config). API compatibility."""
         _ = params or EmbedParams(**kwargs)
         return self
 
-    def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "OnlineIngestor":
+    def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "RemoteIngestor":
         """Record vdb config (server uses its own config). API compatibility."""
         _ = params or VdbUploadParams(
             purge_results_after_upload=bool(kwargs.get("purge_results_after_upload", True)),
@@ -137,7 +137,7 @@ class OnlineIngestor(Ingestor):
 
     def ingest(self, params: IngestExecuteParams | None = None, **kwargs: Any) -> List[Dict[str, Any]]:
         """
-        Submit each configured file (and buffer) to the online ingest REST API.
+        Submit each configured file (and buffer) to the remote ingest REST API.
 
         Returns a list of response dicts (one per document) with ok, total_duration_sec,
         stages, rows_written, and optional error.
@@ -208,38 +208,38 @@ class OnlineIngestor(Ingestor):
 
         return results
 
-    def all_tasks(self) -> "OnlineIngestor":
+    def all_tasks(self) -> "RemoteIngestor":
         return self
 
-    def dedup(self) -> "OnlineIngestor":
+    def dedup(self) -> "RemoteIngestor":
         return self
 
-    def filter(self) -> "OnlineIngestor":
+    def filter(self) -> "RemoteIngestor":
         return self
 
-    def split(self) -> "OnlineIngestor":
+    def split(self) -> "RemoteIngestor":
         return self
 
-    def store(self) -> "OnlineIngestor":
+    def store(self) -> "RemoteIngestor":
         return self
 
-    def store_embed(self) -> "OnlineIngestor":
+    def store_embed(self) -> "RemoteIngestor":
         return self
 
-    def udf(self, *args: Any, **kwargs: Any) -> "OnlineIngestor":
+    def udf(self, *args: Any, **kwargs: Any) -> "RemoteIngestor":
         return self
 
-    def save_intermediate_results(self, output_dir: str) -> "OnlineIngestor":
+    def save_intermediate_results(self, output_dir: str) -> "RemoteIngestor":
         return self
 
-    def save_to_disk(self, *args: Any) -> "OnlineIngestor":
+    def save_to_disk(self, *args: Any) -> "RemoteIngestor":
         _ = args
         return self
 
-    def caption(self) -> "OnlineIngestor":
+    def caption(self) -> "RemoteIngestor":
         return self
 
-    def pdf_split_config(self, pages_per_chunk: int = 32) -> "OnlineIngestor":
+    def pdf_split_config(self, pages_per_chunk: int = 32) -> "RemoteIngestor":
         return self
 
     def completed_jobs(self) -> int:

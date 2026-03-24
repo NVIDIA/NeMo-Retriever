@@ -92,7 +92,7 @@ image:
   # All ExtractParams options (extract_text, extract_tables, etc.) apply.
   pass: true  # placeholder; no image-specific knobs beyond ExtractParams
 
-# Optional config for .extract_audio() API (batch, inprocess, fused, online).
+# Optional config for .extract_audio() API (batch, inprocess, fused, remote).
 # ASR can be remote (Parakeet/Riva gRPC) or local (HuggingFace nvidia/parakeet-ctc-1.1b).
 audio_chunk:
   split_type: size

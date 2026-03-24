@@ -14,11 +14,11 @@ from __future__ import annotations
 from .batch import BatchIngestor
 from .fused import FusedIngestor
 from .inprocess import InProcessIngestor
-from .online import OnlineIngestor
+from .remote import RemoteIngestor
 
 __all__ = [
     "BatchIngestor",
     "FusedIngestor",
     "InProcessIngestor",
-    "OnlineIngestor",
+    "RemoteIngestor",
 ]

@@ -1,0 +1,131 @@
+## @section Deployment parameters
+
+## @param replicaCount Number of replicas for the NeMo Retriever deployment
+replicaCount: 1
+
+## @section Image Configuration
+## @param image.repository Container image repository
+## @param image.tag Image tag or version
+## @param image.pullPolicy Image pull policy
+image:
+  repository: nemo-retriever
+  tag: latest
+  pullPolicy: IfNotPresent
+
+## @section Image Pull Secrets
+## @param imagePullSecrets List of secret names for pulling container images
+imagePullSecrets: []
+
+## @param nameOverride Override the chart name
+nameOverride: ""
+
+## @param fullnameOverride Override the full release name
+fullnameOverride: ""
+
+## @section Service Account
+## @param serviceAccount.create Whether to create a service account
+## @param serviceAccount.automount Automatically mount the service account token
+## @param serviceAccount.annotations Annotations for the service account
+## @param serviceAccount.name Override the service account name
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+## @param podAnnotations Additional pod annotations
+podAnnotations: {}
+
+## @param podLabels Additional pod labels
+podLabels: {}
+
+## @param podSecurityContext Pod-level security context
+podSecurityContext: {}
+
+## @param containerSecurityContext Container-level security context
+containerSecurityContext: {}
+
+## @section Service parameters
+## @param service.type Kubernetes Service type
+## @param service.port Service port (must be 7670 to match Ray Serve)
+service:
+  type: ClusterIP
+  port: 7670
+
+## @section Ingress parameters
+## @param ingress.enabled Enable ingress
+## @param ingress.className Ingress class name
+## @param ingress.annotations Ingress annotations
+## @param ingress.hosts Ingress host rules
+## @param ingress.tls Ingress TLS configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: nemo-retriever.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+## @section Resource Configuration
+## @param resources Resource requests and limits for the container
+resources: {}
+
+## @section Autoscaling parameters
+## @param autoscaling.enabled Enable horizontal pod autoscaler
+## @param autoscaling.minReplicas Minimum replicas
+## @param autoscaling.maxReplicas Maximum replicas
+## @param autoscaling.targetCPUUtilizationPercentage Target CPU utilization
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+## @param nodeSelector Node selector for pod assignment
+nodeSelector: {}
+
+## @param tolerations Tolerations for pod assignment
+tolerations: []
+
+## @param affinity Affinity rules for pod assignment
+affinity: {}
+
+## @section Probe parameters
+## @param livenessProbe Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+## @param readinessProbe Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+## @section Environment Variables
+## @param envVars Environment variables passed to the container as key-value pairs
+envVars: {}
+
+## @section Volume Configuration
+## @param tmpDirSize Size of the ephemeral scratch volume
+tmpDirSize: 50Gi
+
+## @param extraVolumes Additional volumes to add to the pod
+extraVolumes: {}
+
+## @param extraVolumeMounts Additional volume mounts for the container
+extraVolumeMounts: {}

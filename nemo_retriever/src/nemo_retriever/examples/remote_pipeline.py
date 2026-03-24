@@ -3,16 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Unified ingestion pipeline: inprocess (local) or online (REST API) with optional recall.
+Unified ingestion pipeline: inprocess (local) or remote (REST API) with optional recall.
 
 - Inprocess: runs the full pipeline locally (no server).
-- Online: submits each document to the online ingest REST service (start with
-  `retriever online serve`). Uses the same LanceDB for recall evaluation.
+- Remote: submits each document to the remote ingest REST service (start with
+  `retriever remote serve`). Uses the same LanceDB for recall evaluation.
 
 Run with:
-  uv run python -m nemo_retriever.examples.online_pipeline <input-dir>
-  uv run python -m nemo_retriever.examples.online_pipeline <input-dir>
-  --run-mode online --base-url http://localhost:7670
+  uv run python -m nemo_retriever.examples.remote_pipeline <input-dir>
+  uv run python -m nemo_retriever.examples.remote_pipeline <input-dir>
+  --run-mode remote --base-url http://localhost:7670
 """
 
 from pathlib import Path
@@ -51,18 +51,18 @@ def main(
         "inprocess",
         "--run-mode",
         "-m",
-        help="'inprocess' (local pipeline) or 'online' (submit to REST API).",
+        help="'inprocess' (local pipeline) or 'remote' (submit to REST API).",
     ),
     base_url: str = typer.Option(
         "http://localhost:7670",
         "--base-url",
         "-u",
-        help="Base URL of the online ingest service (used when run-mode=online).",
+        help="Base URL of the remote ingest service (used when run-mode=remote).",
     ),
     input_type: str = typer.Option(
         "pdf",
         "--input-type",
-        help="Input format: 'pdf', 'txt', or 'doc'. Online mode supports PDF only.",
+        help="Input format: 'pdf', 'txt', or 'doc'. Remote mode supports PDF only.",
     ),
     query_csv: Path = typer.Option(
         "bo767_query_gt.csv",
@@ -81,11 +81,11 @@ def main(
         help="Do not print per-query retrieval details.",
     ),
 ) -> None:
-    if run_mode not in ("inprocess", "online"):
-        raise typer.BadParameter("run_mode must be 'inprocess' or 'online'")
+    if run_mode not in ("inprocess", "remote"):
+        raise typer.BadParameter("run_mode must be 'inprocess' or 'remote'")
 
-    if run_mode == "online" and input_type != "pdf":
-        typer.echo("Online mode currently supports PDF only; use --input-type pdf.", err=True)
+    if run_mode == "remote" and input_type != "pdf":
+        typer.echo("Remote mode currently supports PDF only; use --input-type pdf.", err=True)
         raise typer.Exit(1)
 
     input_path = Path(input_path)
@@ -101,8 +101,8 @@ def main(
     else:
         raise typer.BadParameter(f"Path does not exist: {input_path}")
 
-    if run_mode == "online":
-        ingestor = create_ingestor(run_mode="online", params=IngestorCreateParams(base_url=base_url))
+    if run_mode == "remote":
+        ingestor = create_ingestor(run_mode="remote", params=IngestorCreateParams(base_url=base_url))
         ingestor = (
             ingestor.files(file_patterns)
             .extract(ExtractParams(method=method, extract_text=True, extract_tables=True, extract_charts=True))
@@ -118,12 +118,12 @@ def main(
                 )
             )
         )
-        typer.echo("Submitting documents to online ingest service...")
+        typer.echo("Submitting documents to remote ingest service...")
         results = ingestor.ingest()
         ok_count = sum(1 for r in results if r.get("ok"))
         total_rows = sum(int(r.get("rows_written", 0)) for r in results if r.get("ok"))
         total_sec = sum(float(r.get("total_duration_sec", 0)) for r in results if r.get("ok"))
-        typer.echo(f"Online ingest: {ok_count}/{len(results)} docs OK, {total_rows} rows, {total_sec:.2f}s total.")
+        typer.echo(f"Remote ingest: {ok_count}/{len(results)} docs OK, {total_rows} rows, {total_sec:.2f}s total.")
         for r in results:
             if not r.get("ok"):
                 typer.echo(f"  FAIL {r.get('source_path', '?')}: {r.get('error', 'unknown')}", err=True)

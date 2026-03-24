@@ -57,11 +57,11 @@ def test_create_runmode_ingestor_batch_and_fused(monkeypatch: pytest.MonkeyPatch
     }
 
 
-def test_create_runmode_ingestor_online(monkeypatch: pytest.MonkeyPatch) -> None:
-    dummy_class = _register_dummy_mode_module(monkeypatch, "nemo_retriever.ingest_modes.online", "OnlineIngestor")
+def test_create_runmode_ingestor_remote(monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_class = _register_dummy_mode_module(monkeypatch, "nemo_retriever.ingest_modes.remote", "RemoteIngestor")
     params = IngestorCreateParams(documents=["doc.pdf"], base_url="http://example:7670")
 
-    ingestor = create_runmode_ingestor(run_mode="online", params=params)
+    ingestor = create_runmode_ingestor(run_mode="remote", params=params)
 
     assert isinstance(ingestor, dummy_class)
     assert ingestor.kwargs == {"documents": ["doc.pdf"], "base_url": "http://example:7670"}

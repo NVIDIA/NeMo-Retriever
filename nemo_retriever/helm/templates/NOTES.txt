@@ -1,0 +1,26 @@
+NeMo Retriever has been deployed.
+
+Service endpoints:
+  GET  /health      - Health check
+  GET  /version     - Version metadata
+  POST /ingest      - Document ingestion
+  POST /stream-pdf  - Stream PDF text as NDJSON
+  POST /embeddings  - Generate text embeddings
+  POST /retrieve    - Query vector store
+
+To access the service:
+
+{{- if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "nemo-retriever.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "nemo-retriever.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "nemo-retriever.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  echo http://localhost:{{ .Values.service.port }}
+{{- end }}
+
+Health check:
+  curl http://localhost:{{ .Values.service.port }}/health

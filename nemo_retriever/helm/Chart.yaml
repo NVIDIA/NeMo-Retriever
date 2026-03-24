@@ -1,0 +1,9 @@
+apiVersion: v2
+name: nemo-retriever
+description: NeMo Retriever Ray Serve microservice
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: NVIDIA Corporation
+    url: https://www.nvidia.com/

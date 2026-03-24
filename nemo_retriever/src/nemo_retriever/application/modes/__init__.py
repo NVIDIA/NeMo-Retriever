@@ -7,7 +7,7 @@ from .factory import RunMode, create_runmode_ingestor
 from .run_batch import run_batch
 from .run_fused import run_fused
 from .run_inprocess import run_inprocess
-from .run_online import run_online
+from .run_remote import run_remote
 
 __all__ = [
     "RunMode",
@@ -16,5 +16,5 @@ __all__ = [
     "run_batch",
     "run_fused",
     "run_inprocess",
-    "run_online",
+    "run_remote",
 ]

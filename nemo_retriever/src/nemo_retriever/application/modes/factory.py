@@ -31,8 +31,8 @@ def create_runmode_ingestor(*, run_mode: RunMode = "inprocess", params: Ingestor
             ray_address=p.ray_address,
             ray_log_to_driver=p.ray_log_to_driver,
         )
-    if run_mode == "online":
-        from nemo_retriever.ingest_modes.online import OnlineIngestor
+    if run_mode == "remote":
+        from nemo_retriever.ingest_modes.remote import RemoteIngestor
 
-        return OnlineIngestor(documents=p.documents, base_url=p.base_url)
+        return RemoteIngestor(documents=p.documents, base_url=p.base_url)
     raise ValueError(f"Unknown run_mode: {run_mode!r}")

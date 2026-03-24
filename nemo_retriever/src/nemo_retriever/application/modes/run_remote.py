@@ -10,9 +10,9 @@ from nemo_retriever.params import IngestorCreateParams
 from .executor import run_mode_ingest
 
 
-def run_online(
+def run_remote(
     *,
     create_params: IngestorCreateParams | None = None,
     ingest_params: IngestExecuteParams | None = None,
 ) -> object:
-    return run_mode_ingest(run_mode="online", create_params=create_params, ingest_params=ingest_params)
+    return run_mode_ingest(run_mode="remote", create_params=create_params, ingest_params=ingest_params)
