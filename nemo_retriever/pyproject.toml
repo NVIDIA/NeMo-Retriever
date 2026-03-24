@@ -75,6 +75,7 @@ dependencies = [
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
+  "vllm==0.16.0",
 ]
 
 [project.optional-dependencies]
@@ -103,6 +104,10 @@ nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
 torch = { index = "torch-cuda"}
 torchvision = { index ="torch-cuda"}
+vllm = [
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
+]
 
 [[tool.uv.index]]
 name = "test-pypi"

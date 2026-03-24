@@ -23,6 +23,7 @@ from nemo_retriever import create_ingestor
 from nemo_retriever.ingest_modes.batch import BatchIngestor
 from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema
 from nemo_retriever.model import resolve_embed_model
+from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import IngestExecuteParams
@@ -511,6 +512,21 @@ def main(
             "(used when --table-output-format=markdown)."
         ),
     ),
+    extract_text: bool = typer.Option(
+        True,
+        "--extract-text/--no-extract-text",
+        help="Extract text from PDF pages.",
+    ),
+    extract_tables: bool = typer.Option(
+        True,
+        "--extract-tables/--no-extract-tables",
+        help="Extract tables from PDF pages.",
+    ),
+    extract_charts: bool = typer.Option(
+        True,
+        "--extract-charts/--no-extract-charts",
+        help="Extract charts from PDF pages.",
+    ),
     extract_infographics: bool = typer.Option(
         False,
         "--extract-infographics/--no-extract-infographics",
@@ -520,6 +536,36 @@ def main(
         True,
         "--extract-page-as-image/--no-extract-page-as-image",
         help="Render and retain full page images for downstream multimodal stages.",
+    ),
+    caption: bool = typer.Option(
+        False,
+        "--caption/--no-caption",
+        help="Enable image captioning via a local VLM or remote endpoint.",
+    ),
+    caption_invoke_url: Optional[str] = typer.Option(
+        None,
+        "--caption-invoke-url",
+        help="Optional VLM endpoint URL for image captioning. Implies --caption.",
+    ),
+    caption_model_name: str = typer.Option(
+        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        "--caption-model-name",
+        help="VLM model name / HF model ID for image captioning.",
+    ),
+    caption_device: Optional[str] = typer.Option(
+        None,
+        "--caption-device",
+        help="GPU device for the local VLM captioner (e.g. 'cuda:1').",
+    ),
+    caption_context_text_max_chars: int = typer.Option(
+        0,
+        "--caption-context-text-max-chars",
+        help="Max characters of surrounding page text to include in the VLM prompt. 0 disables context.",
+    ),
+    caption_gpu_memory_utilization: float = typer.Option(
+        0.5,
+        "--caption-gpu-memory-utilization",
+        help="Fraction of GPU memory vLLM may use for the caption model (0.0–1.0).",
     ),
     text_chunk: bool = typer.Option(
         False,
@@ -708,9 +754,9 @@ def main(
             return ExtractParams(
                 method=method,
                 dpi=int(dpi),
-                extract_text=True,
-                extract_tables=True,
-                extract_charts=True,
+                extract_text=extract_text,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
                 extract_infographics=extract_infographics,
                 extract_page_as_image=extract_page_as_image,
                 api_key=extract_remote_api_key,
@@ -746,6 +792,18 @@ def main(
         enable_text_chunk = text_chunk or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
         if enable_text_chunk:
             ingestor = ingestor.split(_text_chunk_params)
+
+        enable_caption = caption or caption_invoke_url is not None
+        if enable_caption:
+            ingestor = ingestor.caption(
+                CaptionParams(
+                    endpoint_url=caption_invoke_url,
+                    model_name=caption_model_name,
+                    device=caption_device,
+                    context_text_max_chars=caption_context_text_max_chars,
+                    gpu_memory_utilization=caption_gpu_memory_utilization,
+                )
+            )
 
         ingestor = ingestor.embed(embed_params)
 
