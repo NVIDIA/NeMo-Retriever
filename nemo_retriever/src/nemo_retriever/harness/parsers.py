@@ -12,6 +12,8 @@ INGEST_ROWS_RE = re.compile(
     r"Ingestion complete\.\s+(?P<rows>\d+)\s+rows\s+proces+ed\s+in\s+(?P<secs>[0-9.]+)\s+seconds\.\s+"
     r"(?P<pps>[0-9.]+)\s+PPS"
 )
+INGEST_ONLY_TIME_RE = re.compile(r"Ingestion only time:\s*(?P<secs>[0-9.]+)s\b")
+INGEST_ONLY_PPS_RE = re.compile(r"Ingestion only PPS:\s*(?P<val>[0-9.]+)\b")
 PAGES_PER_SEC_RE = re.compile(r"Pages/sec \(ingest only; excludes Ray startup and recall\):\s*(?P<val>[0-9.]+)")
 METRIC_RE = re.compile(r"(?P<metric>[A-Za-z_]+@\d+):\s*(?P<val>[0-9.]+)\s*$")
 
@@ -40,6 +42,14 @@ class StreamMetrics:
             self.rows_processed = int(ingest_rows_match.group("rows"))
             self.ingest_secs = float(ingest_rows_match.group("secs"))
             self.rows_per_sec_ingest = float(ingest_rows_match.group("pps"))
+
+        ingest_only_time_match = INGEST_ONLY_TIME_RE.search(line)
+        if ingest_only_time_match:
+            self.ingest_secs = float(ingest_only_time_match.group("secs"))
+
+        ingest_only_pps_match = INGEST_ONLY_PPS_RE.search(line)
+        if ingest_only_pps_match:
+            self.pages_per_sec_ingest = float(ingest_only_pps_match.group("val"))
 
         pps_match = PAGES_PER_SEC_RE.search(line)
         if pps_match:
