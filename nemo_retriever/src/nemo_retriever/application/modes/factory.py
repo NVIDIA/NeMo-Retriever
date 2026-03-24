@@ -14,12 +14,14 @@ def create_runmode_ingestor(*, run_mode: RunMode = "inprocess", params: Ingestor
         from nemo_retriever.ingest_modes.inprocess import InProcessIngestor
         from nemo_retriever.inference_presets import resolve_inference_preset
 
-        extract_defaults, embed_defaults = resolve_inference_preset(p.inference)
+        extract_defaults, embed_defaults, caption_defaults = resolve_inference_preset(p.inference)
         init_kwargs: dict = {"documents": p.documents}
         if extract_defaults:
             init_kwargs["default_extract_kwargs"] = extract_defaults
         if embed_defaults:
             init_kwargs["default_embed_kwargs"] = embed_defaults
+        if caption_defaults:
+            init_kwargs["default_caption_kwargs"] = caption_defaults
         return InProcessIngestor(**init_kwargs)
     if run_mode == "batch":
         from nemo_retriever.ingest_modes.batch import BatchIngestor

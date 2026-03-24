@@ -954,6 +954,7 @@ class InProcessIngestor(Ingestor):
         *,
         default_extract_kwargs: Optional[Dict[str, Any]] = None,
         default_embed_kwargs: Optional[Dict[str, Any]] = None,
+        default_caption_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__(documents=documents)
 
@@ -971,9 +972,10 @@ class InProcessIngestor(Ingestor):
         self._caption_enabled: bool = False
 
         # Inference preset defaults (e.g. from ``inference="build.nvidia.com"``).
-        # User-supplied kwargs in .extract()/.embed() always override these.
+        # User-supplied kwargs in .extract()/.embed()/.caption() always override these.
         self._default_extract_kwargs: Dict[str, Any] = dict(default_extract_kwargs or {})
         self._default_embed_kwargs: Dict[str, Any] = dict(default_embed_kwargs or {})
+        self._default_caption_kwargs: Dict[str, Any] = dict(default_caption_kwargs or {})
 
     def files(self, documents: Union[str, List[str]]) -> "InProcessIngestor":
         """
@@ -1377,7 +1379,7 @@ class InProcessIngestor(Ingestor):
         from nemo_retriever.caption.caption import caption_images
         from nemo_retriever.params import CaptionParams
 
-        resolved = _coerce_params(params, CaptionParams, kwargs)
+        resolved = _coerce_params(params, CaptionParams, {**self._default_caption_kwargs, **kwargs})
         caption_kwargs = resolved.model_dump(mode="python")
 
         if resolved.endpoint_url:

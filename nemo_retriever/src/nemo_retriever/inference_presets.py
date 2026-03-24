@@ -4,9 +4,10 @@
 
 """Named inference presets for hosted NIM endpoints.
 
-Each preset maps a short name to default ``extract`` and ``embed`` kwargs that
-are injected into the ingestor pipeline.  Users can still override individual
-fields by passing their own keyword arguments to ``.extract()`` or ``.embed()``.
+Each preset maps a short name to default ``extract``, ``embed``, and
+``caption`` kwargs that are injected into the ingestor pipeline. Users can
+still override individual fields by passing their own keyword arguments to
+``.extract()``, ``.embed()``, or ``.caption()``.
 
 Currently supported presets
 ----------------------------
@@ -38,22 +39,28 @@ _BUILD_NVIDIA_EMBED_DEFAULTS: Dict[str, Any] = {
     "embed_modality": "text",
 }
 
+_BUILD_NVIDIA_CAPTION_DEFAULTS: Dict[str, Any] = {
+    "endpoint_url": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "model_name": "nvidia/nemotron-nano-12b-v2-vl",
+}
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
-_PRESETS: Dict[str, Tuple[Dict[str, Any], Dict[str, Any]]] = {
+_PRESETS: Dict[str, Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]] = {
     "build.nvidia.com": (
         _BUILD_NVIDIA_EXTRACT_DEFAULTS,
         _BUILD_NVIDIA_EMBED_DEFAULTS,
+        _BUILD_NVIDIA_CAPTION_DEFAULTS,
     ),
 }
 
 
 def resolve_inference_preset(
     inference: Optional[str],
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Return ``(extract_defaults, embed_defaults)`` for the given preset name.
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    """Return ``(extract_defaults, embed_defaults, caption_defaults)`` for the preset.
 
     Parameters
     ----------
@@ -67,7 +74,7 @@ def resolve_inference_preset(
         If *inference* is not ``None`` and is not a recognised preset name.
     """
     if not inference:
-        return {}, {}
+        return {}, {}, {}
     key = inference.strip().lower()
     if key not in _PRESETS:
         known = ", ".join(sorted(_PRESETS))
@@ -75,5 +82,5 @@ def resolve_inference_preset(
             f"Unknown inference preset {inference!r}.  "
             f"Supported values: {known}"
         )
-    extract_defaults, embed_defaults = _PRESETS[key]
-    return dict(extract_defaults), dict(embed_defaults)
+    extract_defaults, embed_defaults, caption_defaults = _PRESETS[key]
+    return dict(extract_defaults), dict(embed_defaults), dict(caption_defaults)
