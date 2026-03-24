@@ -662,8 +662,7 @@ class BatchIngestor(Ingestor):
 
             # Only append OCR stage if at least one content type needs it.
             needs_ocr = any(
-                ocr_flags.get(k)
-                for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+                ocr_flags.get(k) for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
             )
             if needs_ocr:
                 self._rd_dataset = self._rd_dataset.map_batches(

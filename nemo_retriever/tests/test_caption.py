@@ -64,7 +64,9 @@ def test_pdf_extraction_populates_images(mock_extract):
     doc.save(buf)
     doc.close()
 
-    result = _ext.pdf_extraction(pd.DataFrame([{"bytes": buf.getvalue(), "path": "t.pdf", "page_number": 1}]), extract_images=True)
+    result = _ext.pdf_extraction(
+        pd.DataFrame([{"bytes": buf.getvalue(), "path": "t.pdf", "page_number": 1}]), extract_images=True
+    )
     images = result.iloc[0]["images"]
     assert len(images) == 1
     assert images[0]["text"] == ""
@@ -75,12 +77,18 @@ def test_explode_includes_captioned_images():
     from nemo_retriever.ingest_modes.inprocess import explode_content_to_rows
 
     b64 = _make_test_png_b64()
-    df = pd.DataFrame([{
-        "text": "page",
-        "page_image": {"image_b64": b64},
-        "images": [{"text": "a dog", "bbox_xyxy_norm": [0.1, 0.2, 0.5, 0.8], "image_b64": b64}],
-        "tables": [], "charts": [], "infographics": [],
-    }])
+    df = pd.DataFrame(
+        [
+            {
+                "text": "page",
+                "page_image": {"image_b64": b64},
+                "images": [{"text": "a dog", "bbox_xyxy_norm": [0.1, 0.2, 0.5, 0.8], "image_b64": b64}],
+                "tables": [],
+                "charts": [],
+                "infographics": [],
+            }
+        ]
+    )
     result = explode_content_to_rows(df, content_columns=("table", "chart", "infographic", "images"))
     assert len(result) == 2  # page text + image caption
 
