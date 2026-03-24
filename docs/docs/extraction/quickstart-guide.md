@@ -101,7 +101,7 @@ h. Run the command `docker ps`. You should see output similar to the following. 
     3403c5a0e7be  redis/redis-stack                                "/entrypoint.sh"        7 minutes ago   Up 7 minutes            0.0.0.0:6379...  nv-ingest-redis-1
     ```
 
-i. To run the NeMo Retriever Library Python client from your host machine, **Python 3.12 or later is required**. Create a virtual environment and install the client packages:
+i. To run the NeMo Retriever Library Python client from your host machine, Python 3.12 or later is required. Create a virtual environment and install the client packages:
 
     ```shell
     uv venv --python 3.12 nv-ingest-dev
