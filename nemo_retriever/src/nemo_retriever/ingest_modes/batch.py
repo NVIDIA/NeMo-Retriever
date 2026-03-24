@@ -23,9 +23,9 @@ from typing import Union
 
 import ray
 import ray.data as rd
-from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
-from nemo_retriever.utils.pipeline.gpu_operator import GPUOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.utils.convert import DocToPdfConversionActor
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.page_elements import PageElementDetectionActor
@@ -51,6 +51,7 @@ from ..params import HtmlChunkParams
 from ..params import IngestExecuteParams
 from ..params import PdfSplitParams
 from ..params import TextChunkParams
+from ..params import CaptionParams
 from ..params import VdbUploadParams
 
 logger = logging.getLogger(__name__)
@@ -282,6 +283,7 @@ class BatchIngestor(Ingestor):
         ray_address: Optional[str] = None,
         ray_log_to_driver: bool = True,
         debug: bool = False,
+        allow_no_gpu: bool = False,
     ) -> None:
         super().__init__(documents=documents)
 
@@ -323,7 +325,10 @@ class BatchIngestor(Ingestor):
         logger.info(self._cluster_resources)
 
         # 2. Resolve requested plan for the Ray DAG that will be built
-        self._requested_plan = resolve_requested_plan(cluster_resources=self._cluster_resources)
+        self._requested_plan = resolve_requested_plan(
+            cluster_resources=self._cluster_resources,
+            allow_no_gpu=allow_no_gpu,
+        )
         logger.info(self._requested_plan)
 
         # Builder-style task configuration recorded for later execution.
@@ -337,6 +342,22 @@ class BatchIngestor(Ingestor):
         self._extract_txt_kwargs: Dict[str, Any] = {}  # noqa: F821
         self._extract_html_kwargs: Dict[str, Any] = {}  # noqa: F821
         self._use_nemotron_parse_only: bool = False
+
+    @staticmethod
+    def _positive_int(value: Any) -> int | None:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
+
+    @staticmethod
+    def _positive_float(value: Any) -> float | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0.0 else None
 
     def files(self, documents: Union[str, List[str]]) -> "BatchIngestor":
         """
@@ -726,7 +747,11 @@ class BatchIngestor(Ingestor):
 
             ocr_flags["inference_batch_size"] = self._requested_plan.get_ocr_batch_size()
 
-            if ocr_flags:
+            # Only append OCR stage if at least one content type needs it.
+            needs_ocr = any(
+                ocr_flags.get(k) for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            )
+            if needs_ocr:
                 self._rd_dataset = self._rd_dataset.map_batches(
                     OCRActor,
                     batch_size=self._requested_plan.get_ocr_batch_size(),
@@ -940,6 +965,13 @@ class BatchIngestor(Ingestor):
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
 
         kwargs = build_embed_kwargs(resolved, include_batch_tuning=True)
+        embed_batch_size = (
+            self._positive_int(kwargs.get("embed_batch_size")) or self._requested_plan.get_embed_batch_size()
+        )
+        embed_workers = self._positive_int(kwargs.get("embed_workers"))
+        embed_initial_actors = embed_workers or self._requested_plan.get_embed_initial_actors()
+        embed_min_actors = embed_workers or self._requested_plan.get_embed_min_actors()
+        embed_max_actors = embed_workers or self._requested_plan.get_embed_max_actors()
 
         # Remaining kwargs are forwarded to the actor constructor.
         embed_modality = resolved.embed_modality
@@ -947,14 +979,19 @@ class BatchIngestor(Ingestor):
         self._tasks.append(("embed", dict(kwargs)))
 
         # We want to create Ray batches that are of the same size as the embed_batch_size.
-        self._rd_dataset = self._rd_dataset.repartition(
-            target_num_rows_per_block=self._requested_plan.get_embed_batch_size()
+        self._rd_dataset = self._rd_dataset.repartition(target_num_rows_per_block=embed_batch_size)
+
+        from nemo_retriever.ingest_modes.inprocess import _CONTENT_COLUMNS
+
+        content_columns = (
+            (_CONTENT_COLUMNS + ("images",)) if getattr(self, "_caption_enabled", False) else _CONTENT_COLUMNS
         )
 
         if embed_granularity == "page":
             _row_fn = partial(
                 collapse_content_to_page_rows,
                 modality=embed_modality,
+                content_columns=content_columns,
             )
         else:
             text_elements_modality = resolved.text_elements_modality or embed_modality
@@ -964,10 +1001,11 @@ class BatchIngestor(Ingestor):
                 modality=embed_modality,
                 text_elements_modality=text_elements_modality,
                 structured_elements_modality=structured_elements_modality,
+                content_columns=content_columns,
             )
         self._rd_dataset = self._rd_dataset.map_batches(
             _row_fn,
-            batch_size=self._requested_plan.get_embed_batch_size(),
+            batch_size=embed_batch_size,
             batch_format="pandas",
             num_cpus=1,
         )
@@ -977,21 +1015,53 @@ class BatchIngestor(Ingestor):
         if endpoint:
             embed_actor_num_gpus = 0  # We do not need GPU resources if invoking a remote NIM endpoint
         else:
-            embed_actor_num_gpus = self._requested_plan.get_embed_gpus_per_actor()
+            embed_actor_num_gpus = (
+                self._positive_float(kwargs.get("gpu_embed")) or self._requested_plan.get_embed_gpus_per_actor()
+            )
 
         self._rd_dataset = self._rd_dataset.map_batches(
             _BatchEmbedActor,
-            batch_size=self._requested_plan.get_embed_batch_size(),
+            batch_size=embed_batch_size,
             batch_format="pandas",
             num_gpus=embed_actor_num_gpus,  # pulled from if statement above
             compute=rd.ActorPoolStrategy(
-                initial_size=self._requested_plan.get_embed_initial_actors(),
-                min_size=self._requested_plan.get_embed_min_actors(),
-                max_size=self._requested_plan.get_embed_max_actors(),
+                initial_size=embed_initial_actors,
+                min_size=embed_min_actors,
+                max_size=embed_max_actors,
             ),
             fn_constructor_kwargs={"params": resolved},
         )
 
+        return self
+
+    def caption(self, params: CaptionParams | None = None, **kwargs: Any) -> "BatchIngestor":
+        """
+        Add an image-captioning stage to the batch pipeline.
+
+        Uses a GPU actor pool with a local VLM (vLLM) or delegates to a
+        remote VLM endpoint when ``endpoint_url`` is set.
+        """
+        if self._rd_dataset is None:
+            raise RuntimeError("No Ray Dataset to caption. Run .files(...) / .extract(...) first.")
+
+        resolved = _coerce_params(params, CaptionParams, kwargs)
+        if resolved.endpoint_url and not resolved.api_key:
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+
+        from nemo_retriever.caption.caption import CaptionActor
+
+        caption_num_gpus = 0.0 if resolved.endpoint_url else resolved.gpu_memory_utilization
+
+        self._rd_dataset = self._rd_dataset.map_batches(
+            CaptionActor,
+            batch_size=resolved.batch_size or 8,
+            batch_format="pandas",
+            num_gpus=caption_num_gpus,
+            concurrency=1,
+            fn_constructor_kwargs={"params": resolved},
+        )
+
+        self._caption_enabled = True
         return self
 
     def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "BatchIngestor":

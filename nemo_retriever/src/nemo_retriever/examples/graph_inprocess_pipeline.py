@@ -25,7 +25,7 @@ from typing import Any, Optional
 
 import typer
 
-from nemo_retriever.utils.executor import InprocessExecutor
+from nemo_retriever.graph.executor import InprocessExecutor
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()

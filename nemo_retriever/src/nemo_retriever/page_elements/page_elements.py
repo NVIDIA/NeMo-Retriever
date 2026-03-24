@@ -14,9 +14,9 @@ import traceback
 from nemotron_page_elements_v3.utils import postprocess_preds_page_element
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
-from nemo_retriever.utils.pipeline.gpu_operator import GPUOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 
 try:
     import numpy as np

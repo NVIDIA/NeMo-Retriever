@@ -9,8 +9,7 @@ This script shows how to create a custom UDF operator and chain it with
 other operators in a graph, then execute the pipeline.
 """
 
-from nemo_retriever.utils.pipeline import UDFOperator
-from nemo_retriever.utils.abstract_operator import AbstractOperator
+from nemo_retriever.graph import AbstractOperator, UDFOperator
 
 
 # Example UDF: a simple transformation function

@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.utils.abstract_operator import AbstractOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
 
 
 # ---------------------------------------------------------------------------

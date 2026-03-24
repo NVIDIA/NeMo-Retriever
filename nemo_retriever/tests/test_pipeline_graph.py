@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 
-from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline import FileListLoaderOperator, UDFOperator, MultiTypeExtractOperator
-from nemo_retriever.utils.pipeline_graph import Graph, Node
-from nemo_retriever.utils.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
+from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.pipeline_graph import Graph, Node
 
 
 # ---------------------------------------------------------------------------

@@ -253,6 +253,7 @@ class AgenticRetrievalPipeline(BasePipeline):
         self.retriever_top_k = int(retriever_top_k)
         self.num_concurrent = max(1, int(num_concurrent))
         self._backend_kwargs = dict(backend_kwargs)
+        self._dataset_name = None
 
         # Resolve os.environ/... convention for base_url.
         if base_url and str(base_url).strip().startswith("os.environ/"):
@@ -287,6 +288,14 @@ class AgenticRetrievalPipeline(BasePipeline):
         if not torch.cuda.is_available():
             print("Error: CUDA is not available. This pipeline requires a GPU.")
             sys.exit(1)
+
+    @property
+    def dataset_name(self):
+        return self._dataset_name
+
+    @dataset_name.setter
+    def dataset_name(self, value: str):
+        self._dataset_name = value
 
     # -----------------------------------------------------------------------
     # Async query loop
@@ -525,10 +534,13 @@ class AgenticRetrievalPipeline(BasePipeline):
     # Main entry point
     # -----------------------------------------------------------------------
 
-    def index(self, corpus_ids: List[str], corpus_images: List[Any], corpus_texts: List[str]) -> None:
+    def index(
+        self, corpus_ids: List[str], corpus_images: List[Any], corpus_texts: List[str], dataset_name: str = None
+    ) -> None:
         super().index(corpus_ids=corpus_ids, corpus_images=corpus_images, corpus_texts=corpus_texts)
 
-        dataset_name = self.dataset_name
+        if dataset_name is not None:
+            self.dataset_name = dataset_name
         task_key = infer_bright_task_key(dataset_name)
 
         corpus = [{"image": img, "markdown": md} for img, md in zip(corpus_images, corpus_texts)]

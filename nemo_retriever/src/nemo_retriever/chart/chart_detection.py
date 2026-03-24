@@ -14,9 +14,9 @@ import traceback
 import pandas as pd
 from nemo_retriever.nim.nim import invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
-from nemo_retriever.utils.pipeline.gpu_operator import GPUOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 
 try:
     import numpy as np

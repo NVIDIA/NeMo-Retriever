@@ -5,6 +5,7 @@
 from .models import ASRParams
 from .models import AudioChunkParams
 from .models import BatchTuningParams
+from .models import CaptionParams
 from .models import ChartParams
 from .models import EmbedParams
 from .models import ExtractParams
@@ -30,6 +31,7 @@ __all__ = [
     "ASRParams",
     "AudioChunkParams",
     "BatchTuningParams",
+    "CaptionParams",
     "ChartParams",
     "EmbedParams",
     "ExtractParams",

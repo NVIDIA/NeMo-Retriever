@@ -8,7 +8,7 @@ Example using MultiTypeExtractOperator in a graph pipeline.
 This demonstrates processing a mixed folder of files with different types.
 """
 
-from nemo_retriever.utils.pipeline import MultiTypeExtractOperator
+from nemo_retriever.graph import MultiTypeExtractOperator
 
 
 def main():

@@ -13,8 +13,8 @@ from typing import Any, List
 import pandas as pd
 
 from nemo_retriever.params import HtmlChunkParams
-from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 from .convert import html_bytes_to_chunks_df
 

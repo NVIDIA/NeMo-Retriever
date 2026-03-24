@@ -6,7 +6,7 @@
 Test script for MultiTypeExtractOperator with sample data.
 """
 
-from nemo_retriever.utils.pipeline import MultiTypeExtractOperator
+from nemo_retriever.graph import MultiTypeExtractOperator
 
 
 def main():

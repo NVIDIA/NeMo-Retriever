@@ -8,9 +8,9 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from nemo_retriever.utils.pipeline.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.gpu_operator import GPUOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 
 # ---------------------------------------------------------------------------
@@ -26,6 +26,10 @@ class TestGPUOperatorFlag:
         from nemo_retriever.table.table_detection import TableStructureActor
         from nemo_retriever.ocr.ocr import OCRActor, NemotronParseActor
         from nemo_retriever.ingest_modes.batch import _BatchEmbedActor
+        from nemo_retriever.caption.caption import CaptionActor
+        from nemo_retriever.infographic.infographic_detection import InfographicDetectionActor
+        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.text_embed.text_embed import TextEmbedActor
 
         assert issubclass(PageElementDetectionActor, GPUOperator)
         assert issubclass(GraphicElementsActor, GPUOperator)
@@ -33,6 +37,10 @@ class TestGPUOperatorFlag:
         assert issubclass(OCRActor, GPUOperator)
         assert issubclass(NemotronParseActor, GPUOperator)
         assert issubclass(_BatchEmbedActor, GPUOperator)
+        assert issubclass(CaptionActor, GPUOperator)
+        assert issubclass(InfographicDetectionActor, GPUOperator)
+        assert issubclass(NemotronRerankActor, GPUOperator)
+        assert issubclass(TextEmbedActor, GPUOperator)
 
     def test_gpu_operators_are_not_cpu(self):
         from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
@@ -52,6 +60,8 @@ class TestCPUOperatorFlag:
         from nemo_retriever.image.ray_data import ImageLoadActor
         from nemo_retriever.html.ray_data import HtmlSplitActor
         from nemo_retriever.ingest_modes.batch import ExplodeContentActor
+        from nemo_retriever.audio.asr_actor import ASRActor
+        from nemo_retriever.audio.chunk_actor import MediaChunkActor
 
         assert issubclass(DocToPdfConversionActor, CPUOperator)
         assert issubclass(PDFSplitActor, CPUOperator)
@@ -61,6 +71,8 @@ class TestCPUOperatorFlag:
         assert issubclass(ImageLoadActor, CPUOperator)
         assert issubclass(HtmlSplitActor, CPUOperator)
         assert issubclass(ExplodeContentActor, CPUOperator)
+        assert issubclass(ASRActor, CPUOperator)
+        assert issubclass(MediaChunkActor, CPUOperator)
 
     def test_cpu_operators_are_not_gpu(self):
         from nemo_retriever.pdf.split import PDFSplitActor
@@ -69,12 +81,24 @@ class TestCPUOperatorFlag:
 
     def test_all_operators_are_abstract_operator(self):
         from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
+        from nemo_retriever.audio.asr_actor import ASRActor
+        from nemo_retriever.audio.chunk_actor import MediaChunkActor
+        from nemo_retriever.caption.caption import CaptionActor
+        from nemo_retriever.infographic.infographic_detection import InfographicDetectionActor
+        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.text_embed.text_embed import TextEmbedActor
         from nemo_retriever.pdf.split import PDFSplitActor
         from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 
         assert issubclass(DocToPdfConversionActor, AbstractOperator)
+        assert issubclass(ASRActor, AbstractOperator)
+        assert issubclass(MediaChunkActor, AbstractOperator)
+        assert issubclass(CaptionActor, AbstractOperator)
+        assert issubclass(InfographicDetectionActor, AbstractOperator)
+        assert issubclass(NemotronRerankActor, AbstractOperator)
         assert issubclass(PDFSplitActor, AbstractOperator)
         assert issubclass(PageElementDetectionActor, AbstractOperator)
+        assert issubclass(TextEmbedActor, AbstractOperator)
 
 
 # ---------------------------------------------------------------------------

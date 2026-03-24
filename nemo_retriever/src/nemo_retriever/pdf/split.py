@@ -12,8 +12,8 @@ import traceback
 
 import pandas as pd
 from nemo_retriever.params import PdfSplitParams
-from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 try:
     import pypdfium2 as pdfium

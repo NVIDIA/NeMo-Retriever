@@ -206,6 +206,8 @@ class RayDataExecutor(AbstractExecutor):
         ray.data.Dataset
             The materialized result dataset.
         """
+        import glob as _glob
+
         import ray
         import ray.data as rd
 
@@ -215,7 +217,12 @@ class RayDataExecutor(AbstractExecutor):
         if isinstance(data, rd.Dataset):
             ds = data
         elif isinstance(data, (str, list)):
-            ds = rd.read_binary_files(data, include_paths=True)
+            paths = [data] if isinstance(data, str) else list(data)
+            expanded: List[str] = []
+            for pattern in paths:
+                matches = _glob.glob(pattern)
+                expanded.extend(sorted(matches) if matches else [pattern])
+            ds = rd.read_binary_files(expanded, include_paths=True)
         else:
             raise TypeError(
                 f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
@@ -224,10 +231,14 @@ class RayDataExecutor(AbstractExecutor):
         nodes = self._linearize(self.graph)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
+            target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
             num_gpus = overrides.pop("num_gpus", self._default_num_gpus)
+
+            if target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
+                ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
 
             # Pass the operator class directly to map_batches with
             # fn_constructor_kwargs for deferred construction on workers.

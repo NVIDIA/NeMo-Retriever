@@ -241,4 +241,4 @@ from nemo_retriever.graph import (
 )
 ```
 
-Older `nemo_retriever.utils.pipeline` imports are still available as compatibility shims, but `nemo_retriever.graph` is now the canonical location.
+`nemo_retriever.graph` is the graph API location used by the codebase.

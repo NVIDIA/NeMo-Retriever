@@ -12,8 +12,8 @@ from typing import Any, List
 
 import pandas as pd
 
-from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline.cpu_operator import CPUOperator
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 from .load import image_bytes_to_pages_df
 
