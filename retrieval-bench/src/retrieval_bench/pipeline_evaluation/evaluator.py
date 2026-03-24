@@ -91,7 +91,7 @@ def evaluate_retrieval(
         return out
 
     # Dataset context (for trace directory layout).
-    dataset_name_eff = dataset_name or getattr(pipeline, "dataset_name", None) or "unknown_dataset"
+    dataset_name_eff = dataset_name or "unknown_dataset"
 
     # Trace run name: always enabled; default is <PipelineClass>__<model_short>.
     trace_run_name_eff = trace_run_name or default_trace_run_name(pipeline)
