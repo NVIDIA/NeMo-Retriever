@@ -12,9 +12,15 @@ runs:
 
   - name: vidore_v3_finance_fr_dgx_8gpu
     dataset: vidore_v3_finance_fr
+    overrides:
+      embed_workers: 8
+      gpu_embed: 1.0
 
   - name: vidore_v3_hr_dgx_8gpu
     dataset: vidore_v3_hr
+    overrides:
+      embed_workers: 8
+      gpu_embed: 1.0
 
   - name: vidore_v3_industrial_dgx_8gpu
     dataset: vidore_v3_industrial
