@@ -7,6 +7,15 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
     NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
+## Software environment
+
+| Component | Supported versions |
+|-----------|-------------------|
+| Python (for PyPI-installed client, CLI, and library workflows) | `>= 3.12` |
+
+Python 3.10 or 3.11 are not supported for these packages; installs may fail during dependency resolution. Use Python 3.12 or later. For prerequisites, see [Prerequisites](prerequisites.md).
+
+
 ## Core and Advanced Pipeline Features
 
 The Nemo Retriever Library extraction core pipeline features run on a single A10G or better GPU. 
