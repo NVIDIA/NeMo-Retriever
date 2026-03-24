@@ -31,6 +31,12 @@ class Labels:
     ]
 
 
+class Edges:
+    CONTAINS = "CONTAINS"
+    CONNECTING = "CONNECTING"
+    FOREIGN_KEY = "FOREIGN_KEY"
+
+
 labels_to_types = {
     Labels.TABLE: "base table",
 }
@@ -49,16 +55,12 @@ class Props:
 entities_without_owners = []
 
 
-class RelTypes:
-    """Neo4j relationship type names (used in Cypher)."""
-
-    CONTAINS = "CONTAINS"
-    CONNECTING = "CONNECTING"
-    FOREIGN_KEY = "FOREIGN_KEY"
+class RelTypes(Edges):
+    """Alias for Edges – kept for backward compatibility."""
 
 
 # Relationship types for owner traversal (used by get_node_parent_owner_by_id).
-data_relationships = [RelTypes.CONTAINS]
+data_relationships = [Edges.CONTAINS]
 
 
 def label_to_type(label: str) -> str:

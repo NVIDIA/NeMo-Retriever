@@ -3,7 +3,7 @@ import pandas as pd
 
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 from nemo_retriever.tabular_data.ingestion.population.graph.utils import chunks
-from nemo_retriever.tabular_data.ingestion.population.graph.model.reserved_words import Labels
+from nemo_retriever.tabular_data.ingestion.population.graph.model.reserved_words import Edges, Labels
 from .schemas_dal import load_schema_from_graph, add_schemas_edge
 
 logger = logging.getLogger(__name__)
@@ -12,8 +12,8 @@ conn = get_neo4j_conn()
 
 def db_exists(db_node):
     db_name = db_node.get_name()
-    query = """
-    MATCH (n:Db{name: $db_name})
+    query = f"""
+    MATCH (n:{Labels.DB}{{name: $db_name}})
     OPTIONAL MATCH (n)-[r]-(v)
     RETURN n.id AS id, count(r) AS nbrs
     """
@@ -40,7 +40,8 @@ def update_node_property(label, node_id, update_properties):
 
 
 def delete_schema(schema_node_id):
-    query = """MATCH (schema:Schema {id: $schema_node_id})-[:CONTAINS]->(table:Table)-[:CONTAINS]->(col:Column)
+    query = f"""MATCH (schema:{Labels.SCHEMA} {{id: $schema_node_id}})-[:{Edges.CONTAINS}]->
+               (table:{Labels.TABLE})-[:{Edges.CONTAINS}]->(col:{Labels.COLUMN})
                DETACH DELETE schema, table, col
              """
     conn.query_write(
@@ -59,9 +60,9 @@ def add_schemas_edge_batch(edges, created):
     try:
         # in case of match override the existing ID in the graph,
         # in order to correlate with the ID of the parsed Node object
-        query = """
+        query = f"""
             UNWIND $edges as e
-            CALL apoc.merge.node.eager([e.from_label], e.from_identProps, e.v_props, {id:e.v_props.id})
+            CALL apoc.merge.node.eager([e.from_label], e.from_identProps, e.v_props, {{id:e.v_props.id}})
             yield node as v1
             set v1.created = case when coalesce(v1.deleted, false) = false
             then coalesce(v1.created, $created)
@@ -69,14 +70,14 @@ def add_schemas_edge_batch(edges, created):
 
             set v1.deleted = false
             with v1, e
-            call apoc.merge.node.eager([e.to_label], e.to_identProps, e.u_props, {id:e.u_props.id})
+            call apoc.merge.node.eager([e.to_label], e.to_identProps, e.u_props, {{id:e.u_props.id}})
             yield node as v2
             set v2.created = case when coalesce(v2.deleted, false) = false
             then coalesce(v2.created, $created)
             else $created end
 
             set v2.deleted = false
-            MERGE (v1)-[r:CONTAINS]->(v2)
+            MERGE (v1)-[r:{Edges.CONTAINS}]->(v2)
             SET r = e.optional_edge_props
             """
 
@@ -146,11 +147,7 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         schema_name = new_schema.get_schema_name()
         db_name = new_schema.get_db_name()
 
-        is_temp = new_schema.schema_node.label == Labels.TEMP_SCHEMA
-        if is_temp:
-            return added_or_modified_tables
-
-        existing_schema = load_schema_from_graph(db_name, schema_name, is_temp=is_temp)
+        existing_schema = load_schema_from_graph(db_name, schema_name)
         if existing_schema is None:
             return False
 
@@ -311,34 +308,8 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         raise Exception(f'Error in "update_diff_from_existing_schema": {err}')
 
 
-def get_tables_columns(db_id, schema):
-    if db_id is None:
-        query = """MATCH(db:Db)-[:CONTAINS]->(s:Schema{name:$schema})-[:CONTAINS]->
-                    (t:Table)-[:CONTAINS]->(c:Column)
-                    WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and
-                        coalesce(c.deleted, false) = false
-                    RETURN t.name as table_name, c.name as col_name
-                """
-    else:
-        query = """MATCH(db:Db{id:$db_id})-[:CONTAINS]->(s:Schema{name:$schema})-[:CONTAINS]->
-                    (t:Table)-[:CONTAINS]->(c:Column)
-                    WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false and
-                        coalesce(c.deleted, false) = false
-                    RETURN t.name as table_name, c.name as col_name
-                    """
-    result = pd.DataFrame(
-        conn.query_read(
-            query=query,
-            parameters={"db_id": db_id, "schema": schema},
-        )
-    )
-    result = result.groupby("table_name")["col_name"].apply(list).reset_index()
-    result["col_length"] = result["col_name"].apply(lambda x: len(x))
-    return result
-
-
 def delete_table(table_id):
-    query = """MATCH (table:Table {id: $table_id})-[:CONTAINS]->(col:Column)
+    query = f"""MATCH (table:{Labels.TABLE} {{id: $table_id}})-[:{Edges.CONTAINS}]->(col:{Labels.COLUMN})
                DETACH DELETE table, col
             """
     conn.query_write(
@@ -377,8 +348,8 @@ def update_properties_in_graph(item_id, node_label, new_parameters):
 
 
 def delete_columns_batch(column_ids):
-    query = """UNWIND $column_ids as column_id
-               MATCH (col:Column {id: column_id})
+    query = f"""UNWIND $column_ids as column_id
+               MATCH (col:{Labels.COLUMN} {{id: column_id}})
                DETACH DELETE col
             """
     conn.query_write(
@@ -388,7 +359,7 @@ def delete_columns_batch(column_ids):
 
 
 def delete_column(column_id):
-    query = """MATCH (col:Column {id: $column_id})
+    query = f"""MATCH (col:{Labels.COLUMN} {{id: $column_id}})
                DETACH DELETE col
             """
     conn.query_write(
