@@ -156,12 +156,9 @@ class NemotronVLMCaptioner(BaseModel):
         temperature: float = 1.0,
     ) -> str:
         """Generate a caption for a single base64-encoded image."""
-        from vllm import SamplingParams
-
-        messages = self._build_messages(base64_image, prompt=prompt, system_prompt=system_prompt)
-        sampling_params = SamplingParams(temperature=temperature, max_tokens=self._max_new_tokens)
-        outputs = self._llm.chat([messages], sampling_params=sampling_params)
-        return outputs[0].outputs[0].text.strip()
+        return self.caption_batch([base64_image], prompt=prompt, system_prompt=system_prompt, temperature=temperature)[
+            0
+        ]
 
     def caption_batch(
         self,
@@ -186,7 +183,7 @@ class NemotronVLMCaptioner(BaseModel):
 
     @property
     def model_name(self) -> str:
-        return "NVIDIA-Nemotron-Nano-12B-v2-VL"
+        return self._model_path
 
     @property
     def model_type(self) -> str:

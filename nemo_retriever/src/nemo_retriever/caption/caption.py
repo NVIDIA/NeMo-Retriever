@@ -29,18 +29,22 @@ def _image_meets_min_size(b64: str) -> bool:
         return False
 
 
+def _create_local_model(kwargs: dict) -> "Any":
+    from nemo_retriever.model.local import NemotronVLMCaptioner
+
+    return NemotronVLMCaptioner(
+        model_path=kwargs.get("model_name", _DEFAULT_MODEL_NAME),
+        device=kwargs.get("device"),
+        hf_cache_dir=kwargs.get("hf_cache_dir"),
+        tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
+        gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.8),
+    )
+
+
 def _get_cached_local_model(kwargs: dict) -> "Any":
     global _cached_local_model
     if _cached_local_model is None:
-        from nemo_retriever.model.local import NemotronVLMCaptioner
-
-        _cached_local_model = NemotronVLMCaptioner(
-            model_path=kwargs.get("model_name", _DEFAULT_MODEL_NAME),
-            device=kwargs.get("device"),
-            hf_cache_dir=kwargs.get("hf_cache_dir"),
-            tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
-            gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.9),
-        )
+        _cached_local_model = _create_local_model(kwargs)
     return _cached_local_model
 
 
@@ -58,15 +62,7 @@ class CaptionActor:
         if endpoint:
             self._model = None
         else:
-            from nemo_retriever.model.local import NemotronVLMCaptioner
-
-            self._model = NemotronVLMCaptioner(
-                model_path=self._kwargs.get("model_name", _DEFAULT_MODEL_NAME),
-                device=self._kwargs.get("device"),
-                hf_cache_dir=self._kwargs.get("hf_cache_dir"),
-                tensor_parallel_size=self._kwargs.get("tensor_parallel_size", 1),
-                gpu_memory_utilization=self._kwargs.get("gpu_memory_utilization", 0.9),
-            )
+            self._model = _create_local_model(self._kwargs)
 
     def __call__(self, batch_df: Any) -> Any:
         return caption_images(batch_df, model=self._model, **self._kwargs)
@@ -82,19 +78,29 @@ def _build_prompt_with_context(base_prompt: str, context_text: str) -> str:
     return f"Text near this image:\n---\n{context_text}\n---\n\n{base_prompt}"
 
 
+def _create_remote_client(endpoint_url: str, api_key: str | None) -> Any:
+    """Create a reusable NIM inference client for a remote VLM endpoint."""
+    from nv_ingest_api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nv_ingest_api.util.nim import create_inference_client
+
+    return create_inference_client(
+        model_interface=VLMModelInterface(),
+        endpoints=(None, endpoint_url),
+        auth_token=api_key,
+        infer_protocol="http",
+    )
+
+
 def _caption_batch_remote(
     base64_images: List[str],
     *,
-    endpoint_url: str,
+    nim_client: Any,
     model_name: str,
-    api_key: str | None,
     prompt: str,
     system_prompt: str | None,
     temperature: float,
 ) -> List[str]:
     """Send a batch of images to a remote VLM endpoint and return captions."""
-    from nv_ingest_api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
-    from nv_ingest_api.util.nim import create_inference_client
     from nv_ingest_api.util.image_processing.transforms import scale_image_to_encoding_size
 
     scaled = [scale_image_to_encoding_size(b64)[0] for b64 in base64_images]
@@ -106,12 +112,6 @@ def _caption_batch_remote(
     if system_prompt:
         data["system_prompt"] = system_prompt
 
-    nim_client = create_inference_client(
-        model_interface=VLMModelInterface(),
-        endpoints=(None, endpoint_url),
-        auth_token=api_key,
-        infer_protocol="http",
-    )
     return nim_client.infer(data, model_name=model_name, temperature=temperature)
 
 
@@ -136,9 +136,8 @@ def _caption_one(
     b64: str,
     *,
     model: Any,
-    endpoint_url: str | None,
+    nim_client: Any | None,
     model_name: str,
-    api_key: str | None,
     prompt: str,
     system_prompt: str | None,
     temperature: float,
@@ -155,9 +154,8 @@ def _caption_one(
     else:
         captions = _caption_batch_remote(
             [b64],
-            endpoint_url=endpoint_url,  # type: ignore[arg-type]
+            nim_client=nim_client,
             model_name=model_name,
-            api_key=api_key,
             prompt=prompt,
             system_prompt=system_prompt,
             temperature=temperature,
@@ -203,14 +201,13 @@ def caption_images(
         return batch_df
 
     if model is None and not endpoint_url:
-        # Lazy model creation for the sequential (no GPU pool) fallback.
-        # Cache the model so it is not re-created on every call.
         model = _get_cached_local_model(kwargs)
+
+    nim_client = _create_remote_client(endpoint_url, api_key) if endpoint_url and model is None else None
 
     use_context = context_text_max_chars > 0
     effective_max = min(context_text_max_chars, _MAX_CONTEXT_TEXT_CHARS) if use_context else 0
 
-    # Collect all (row_idx, item_idx, image_b64) needing captions.
     pending: List[Tuple[int, int, str]] = []
     for row_idx, row in batch_df.iterrows():
         images = row.get("images")
@@ -229,7 +226,6 @@ def caption_images(
         return batch_df
 
     if use_context:
-        # Each image gets a per-page enriched prompt, so caption one at a time.
         for row_idx, item_idx, b64 in pending:
             page_text = batch_df.at[row_idx, "text"] if "text" in batch_df.columns else ""
             context = (page_text or "")[:effective_max]
@@ -237,21 +233,17 @@ def caption_images(
             caption = _caption_one(
                 b64,
                 model=model,
-                endpoint_url=endpoint_url,
+                nim_client=nim_client,
                 model_name=model_name,
-                api_key=api_key,
                 prompt=enriched_prompt,
                 system_prompt=system_prompt,
                 temperature=temperature,
             )
             batch_df.at[row_idx, "images"][item_idx]["text"] = caption
     else:
-        # Batch mode: all images share the same prompt.
         all_b64 = [b64 for _, _, b64 in pending]
 
         if model is not None:
-            # Submit all at once — vLLM schedules internally based on
-            # available GPU memory.
             all_captions = _caption_batch_local(
                 all_b64,
                 model=model,
@@ -260,14 +252,12 @@ def caption_images(
                 temperature=temperature,
             )
         else:
-            # Remote endpoints may have request-size limits; chunk.
             all_captions: List[str] = []
             for start in range(0, len(all_b64), batch_size):
                 captions = _caption_batch_remote(
                     all_b64[start : start + batch_size],
-                    endpoint_url=endpoint_url,  # type: ignore[arg-type]
+                    nim_client=nim_client,
                     model_name=model_name,
-                    api_key=api_key,
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=temperature,
