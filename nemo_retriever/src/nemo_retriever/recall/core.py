@@ -45,6 +45,8 @@ class RecallConfig:
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
     local_hf_batch_size: int = 64
+    # vLLM: when True and no endpoint, embed queries via vLLM Python API (same space as vLLM-ingested docs).
+    use_vllm: bool = False
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys
@@ -297,7 +299,6 @@ def retrieve_and_score(
 
     queries = df_query["query"].astype(str).tolist()
     gold = df_query["golden_answer"].astype(str).tolist()
-    endpoint, use_grpc = _resolve_embedding_endpoint(cfg)
     retriever = Retriever(
         lancedb_uri=cfg.lancedb_uri,
         lancedb_table=cfg.lancedb_table,
@@ -311,6 +312,7 @@ def retrieve_and_score(
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,
         local_hf_batch_size=cfg.local_hf_batch_size,
+        embed_use_vllm=cfg.use_vllm,
         reranker=cfg.reranker,
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=cfg.reranker_api_key,
