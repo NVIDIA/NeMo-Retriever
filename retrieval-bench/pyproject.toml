@@ -53,6 +53,7 @@ packages = ["src/retrieval_bench"]
 filterwarnings = ["ignore::Warning"]
 markers = ["slow: marks test as slow"]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 120
