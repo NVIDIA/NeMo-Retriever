@@ -18,7 +18,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from nemo_retriever.audio.asr_actor import ASRActor
-from nemo_retriever.audio.asr_actor import apply_asr_to_df
+from nemo_retriever.audio.asr_actor import asr_chunks_to_text
 from nemo_retriever.params import ASRParams
 
 
@@ -90,7 +90,8 @@ def test_asr_actor_mock_transcribe():
         assert call_arg == base64.b64encode(raw).decode("ascii")
 
 
-def test_apply_asr_to_df():
+def test_asr_chunks_to_text_remote():
+    """asr_chunks_to_text with remote endpoints uses client (no model)."""
     with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
         mock_client.infer.return_value = ([], "applied transcript")
@@ -109,7 +110,7 @@ def test_apply_asr_to_df():
                 }
             ]
         )
-        out = apply_asr_to_df(batch, asr_params={"audio_endpoints": ("localhost:50051", None)})
+        out = asr_chunks_to_text(batch, asr_params={"audio_endpoints": ("localhost:50051", None)})
         assert isinstance(out, pd.DataFrame)
         assert len(out) == 1
         assert out["text"].iloc[0] == "applied transcript"
@@ -157,7 +158,7 @@ def test_asr_actor_remote_segment_audio():
         assert out["metadata"].iloc[1]["segment_end"] == 2.5
 
 
-def test_apply_asr_to_df_segment_audio():
+def test_asr_chunks_to_text_remote_segment_audio():
     with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
         mock_client.infer.return_value = (
@@ -182,7 +183,7 @@ def test_apply_asr_to_df_segment_audio():
                 }
             ]
         )
-        out = apply_asr_to_df(
+        out = asr_chunks_to_text(
             batch,
             asr_params={"audio_endpoints": ("localhost:50051", None), "segment_audio": True},
         )
@@ -239,8 +240,8 @@ def test_local_asr_does_not_call_get_client():
             sys.modules["nemo_retriever.model.local"] = prev_local
 
 
-def test_local_asr_apply_asr_to_df():
-    """apply_asr_to_df with audio_endpoints=(None, None) uses local model when mocked."""
+def test_asr_chunks_to_text_local_backward_compat():
+    """asr_chunks_to_text with audio_endpoints=(None, None) and no model uses local model when mocked."""
     mock_model = MagicMock()
     mock_model.transcribe.return_value = ["apply local text"]
     mock_class = MagicMock(return_value=mock_model)
@@ -263,7 +264,7 @@ def test_local_asr_apply_asr_to_df():
                     }
                 ]
             )
-            out = apply_asr_to_df(batch, asr_params={"audio_endpoints": (None, None)})
+            out = asr_chunks_to_text(batch, asr_params={"audio_endpoints": (None, None)})
 
             mock_get.assert_not_called()
             assert len(out) == 1
@@ -273,3 +274,26 @@ def test_local_asr_apply_asr_to_df():
             sys.modules.pop("nemo_retriever.model.local", None)
         else:
             sys.modules["nemo_retriever.model.local"] = prev_local
+
+
+def test_asr_chunks_to_text_reuses_injected_model():
+    """asr_chunks_to_text(batch_df, model=parakeet) uses the given model without creating ASRActor."""
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = ["injected model transcript"]
+    batch = pd.DataFrame(
+        [
+            {
+                "path": "/p",
+                "bytes": b"x",
+                "source_path": "/s",
+                "duration": 0.5,
+                "chunk_index": 0,
+                "metadata": {},
+                "page_number": 0,
+            }
+        ]
+    )
+    out = asr_chunks_to_text(batch, model=mock_model, asr_params={"audio_endpoints": (None, None)})
+    assert len(out) == 1
+    assert out["text"].iloc[0] == "injected model transcript"
+    mock_model.transcribe.assert_called_once()

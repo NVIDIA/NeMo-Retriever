@@ -1325,14 +1325,19 @@ class InProcessIngestor(Ingestor):
         Use with .files("mp3/*.mp3").extract_audio(...).embed().vdb_upload().ingest().
         Do not call .extract() when using .extract_audio(). ASR requires a remote Parakeet/Riva endpoint.
         """
-        from nemo_retriever.audio.asr_actor import apply_asr_to_df
+        from nemo_retriever.audio.asr_actor import asr_chunks_to_text, _use_remote
+        from nemo_retriever.model.local import ParakeetCTC1B1ASR
 
         self._pipeline_type = "audio"
         chunk_resolved = _coerce_params(params, AudioChunkParams, kwargs)
         asr_resolved = _coerce_params(asr_params, ASRParams, kwargs)
         self._extract_audio_chunk_kwargs = chunk_resolved.model_dump(mode="python")
         self._extract_audio_asr_kwargs = asr_resolved.model_dump(mode="python")
-        self._tasks.append((apply_asr_to_df, {"asr_params": self._extract_audio_asr_kwargs}))
+        if _use_remote(asr_resolved):
+            self._tasks.append((asr_chunks_to_text, {"model": None, "asr_params": self._extract_audio_asr_kwargs}))
+        else:
+            model = ParakeetCTC1B1ASR()
+            self._tasks.append((asr_chunks_to_text, {"model": model, "asr_params": self._extract_audio_asr_kwargs}))
         return self
 
     def caption(self, params: "CaptionParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1522,6 +1527,41 @@ class InProcessIngestor(Ingestor):
         post_tasks = [(f, k) for f, k in self._tasks if f in self._POST_TASKS]
         return per_doc_tasks, post_tasks
 
+    def _load_doc_to_df(self, doc_path: str) -> pd.DataFrame:
+        """Load a single document into a DataFrame of chunks/pages based on _pipeline_type."""
+        if self._pipeline_type == "pdf":
+            abs_path = os.path.abspath(doc_path)
+            ext = os.path.splitext(abs_path)[1].lower()
+            if ext in SUPPORTED_EXTENSIONS and ext != ".pdf":
+                try:
+                    with open(abs_path, "rb") as f:
+                        file_bytes = f.read()
+                    pdf_bytes = convert_to_pdf_bytes(file_bytes, ext)
+                    pages = _split_pdf_to_single_page_bytes(pdf_bytes)
+                    out_rows = [{"bytes": b, "path": abs_path, "page_number": i + 1} for i, b in enumerate(pages)]
+                    return pd.DataFrame(out_rows)
+                except BaseException as e:
+                    return pd.DataFrame([{"bytes": b"", "path": abs_path, "page_number": 0, "error": str(e)}])
+            return pdf_path_to_pages_df(doc_path)
+        if self._pipeline_type == "html":
+            return html_file_to_chunks_df(doc_path, params=HtmlChunkParams(**self._extract_html_kwargs))
+        if self._pipeline_type == "image":
+            from nemo_retriever.image.load import image_file_to_pages_df
+
+            return image_file_to_pages_df(doc_path)
+        if self._pipeline_type == "audio":
+            from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
+
+            return audio_path_to_chunks_df(doc_path, params=AudioChunkParams(**self._extract_audio_chunk_kwargs))
+        return txt_file_to_chunks_df(doc_path, params=TextChunkParams(**self._extract_txt_kwargs))
+
+    def _iter_doc_chunks(self, doc_path: str, page_chunk_size: int) -> Iterator[pd.DataFrame]:
+        """Yield chunk DataFrames for one document. PDF: multiple page chunks; else: one loader result."""
+        if self._pipeline_type == "pdf":
+            yield from _iter_page_chunks(doc_path, page_chunk_size)
+        else:
+            yield self._load_doc_to_df(doc_path)
+
     def ingest(self, params: IngestExecuteParams | None = None, **kwargs: Any) -> list[Any]:
         run_params = _coerce_params(params, IngestExecuteParams, kwargs)
         show_progress = run_params.show_progress
@@ -1567,8 +1607,13 @@ class InProcessIngestor(Ingestor):
                     chunks: list[pd.DataFrame] = []
                     chunk_to_doc: list[str] = []
                     doc_chunk_total: dict[str, int] = defaultdict(int)
-                    for doc in docs:
-                        for chunk_df in _iter_page_chunks(doc, page_chunk_size):
+                    doc_iter = (
+                        tqdm(docs, desc="Chunking documents", unit="doc")
+                        if (show_progress and tqdm is not None)
+                        else docs
+                    )
+                    for doc in doc_iter:
+                        for chunk_df in self._iter_doc_chunks(doc, page_chunk_size):
                             chunk_to_doc.append(doc)
                             doc_chunk_total[doc] += 1
                             chunks.append(chunk_df)
@@ -1648,8 +1693,11 @@ class InProcessIngestor(Ingestor):
                 chunks: list[pd.DataFrame] = []
                 chunk_to_doc: list[str] = []
                 doc_chunk_total: dict[str, int] = defaultdict(int)
-                for doc in docs:
-                    for chunk_df in _iter_page_chunks(doc, page_chunk_size):
+                doc_iter = (
+                    tqdm(docs, desc="Chunking documents", unit="doc") if (show_progress and tqdm is not None) else docs
+                )
+                for doc in doc_iter:
+                    for chunk_df in self._iter_doc_chunks(doc, page_chunk_size):
                         chunk_to_doc.append(doc)
                         doc_chunk_total[doc] += 1
                         chunks.append(chunk_df)
@@ -1727,8 +1775,11 @@ class InProcessIngestor(Ingestor):
                 doc_chunk_total: dict[str, int] = defaultdict(int)
                 doc_done: dict[str, int] = defaultdict(int)
 
-                for doc_path in docs:
-                    for chunk_df in _iter_page_chunks(doc_path, page_chunk_size):
+                doc_iter = (
+                    tqdm(docs, desc="Chunking documents", unit="doc") if (show_progress and tqdm is not None) else docs
+                )
+                for doc_path in doc_iter:
+                    for chunk_df in self._iter_doc_chunks(doc_path, page_chunk_size):
                         doc_chunk_total[doc_path] += 1
                         current: Any = chunk_df
                         for func, kwargs in cpu_and_extract:
@@ -1787,50 +1838,7 @@ class InProcessIngestor(Ingestor):
         if show_progress and tqdm is not None:
             doc_iter = tqdm(docs, desc="Processing documents", unit="doc")
 
-        if self._pipeline_type == "pdf":
-
-            def _loader(p: str) -> pd.DataFrame:
-                """
-                Load a document as a per-page DataFrame. For .pdf use pdf_path_to_pages_df.
-                For .docx/.pptx convert to PDF via LibreOffice then split (same schema).
-                """
-                abs_path = os.path.abspath(p)
-                ext = os.path.splitext(abs_path)[1].lower()
-                if ext in SUPPORTED_EXTENSIONS and ext != ".pdf":
-                    try:
-                        with open(abs_path, "rb") as f:
-                            file_bytes = f.read()
-                        pdf_bytes = convert_to_pdf_bytes(file_bytes, ext)
-                        pages = _split_pdf_to_single_page_bytes(pdf_bytes)
-                        out_rows = [{"bytes": b, "path": abs_path, "page_number": i + 1} for i, b in enumerate(pages)]
-                        return pd.DataFrame(out_rows)
-                    except BaseException as e:
-                        return pd.DataFrame([{"bytes": b"", "path": abs_path, "page_number": 0, "error": str(e)}])
-                return pdf_path_to_pages_df(p)
-
-        elif self._pipeline_type == "html":
-
-            def _loader(p: str) -> pd.DataFrame:
-                return html_file_to_chunks_df(p, params=HtmlChunkParams(**self._extract_html_kwargs))
-
-        elif self._pipeline_type == "image":
-
-            def _loader(p: str) -> pd.DataFrame:
-                from nemo_retriever.image.load import image_file_to_pages_df
-
-                return image_file_to_pages_df(p)
-
-        elif self._pipeline_type == "audio":
-
-            def _loader(p: str) -> pd.DataFrame:
-                from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
-
-                return audio_path_to_chunks_df(p, params=AudioChunkParams(**self._extract_audio_chunk_kwargs))
-
-        else:
-
-            def _loader(p: str) -> pd.DataFrame:
-                return txt_file_to_chunks_df(p, params=TextChunkParams(**self._extract_txt_kwargs))
+        _loader = self._load_doc_to_df
 
         for doc_path in doc_iter:
             initial_df = _loader(doc_path)

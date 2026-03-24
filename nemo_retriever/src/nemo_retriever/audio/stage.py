@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import typer
 
-from nemo_retriever.audio.asr_actor import apply_asr_to_df
+from nemo_retriever.audio.asr_actor import asr_chunks_to_text
 from nemo_retriever.audio.asr_actor import asr_params_from_env
 from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
 from nemo_retriever.audio.media_interface import is_media_available
@@ -124,7 +124,7 @@ def _run_extract_one(
     if chunk_df.empty:
         return chunk_df
     asr_kw = asr_params.model_dump(mode="python")
-    return apply_asr_to_df(chunk_df, asr_params=asr_kw)
+    return asr_chunks_to_text(chunk_df, asr_params=asr_kw)
 
 
 @app.command("extract")

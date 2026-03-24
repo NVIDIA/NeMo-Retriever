@@ -125,14 +125,38 @@ class MediaInterface(_LoaderInterface):
                 probe = _probe(str(path_file), format=path_file.suffix)
             if probe["streams"][0]["codec_type"] == "video":
                 sample_rate = float(probe["streams"][0]["avg_frame_rate"].split("/")[0])
-                duration = float(probe["format"]["duration"])
+                duration_raw = probe["format"].get("duration")
+                if duration_raw is not None and str(duration_raw).strip():
+                    duration = float(duration_raw)
+                else:
+                    logger.warning(
+                        "Missing duration for video file %s (format keys: %s); ffprobe may have reported invalid data.",
+                        path_file,
+                        list(probe["format"].keys()),
+                    )
+                    duration = None
             elif probe["streams"][0]["codec_type"] == "audio":
                 sample_rate = float(probe["streams"][0]["sample_rate"])
-                bitrate = probe["format"]["bit_rate"]
-                duration = (file_size * 8) / float(bitrate)
+                bitrate = probe["format"].get("bit_rate")
+                if bitrate is not None and str(bitrate).strip():
+                    duration = (file_size * 8) / float(bitrate)
+                else:
+                    # VBR or invalid/corrupt chunk often has no bit_rate; use format duration if present
+                    duration_raw = probe["format"].get("duration")
+                    if duration_raw is not None and str(duration_raw).strip():
+                        duration = float(duration_raw)
+                    else:
+                        logger.warning(
+                            "Missing bit_rate and duration for audio file %s (format keys: %s); "
+                            "ffprobe may have reported invalid data.",
+                            path_file,
+                            list(probe["format"].keys()),
+                        )
+                        duration = None
             else:
                 raise ValueError(f"Unknown codec_type: {probe['streams'][0]}")
-            num_splits = self.find_num_splits(file_size, sample_rate, duration, split_interval, split_type)
+            if duration is not None:
+                num_splits = self.find_num_splits(file_size, sample_rate, duration, split_interval, split_type)
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", path_file, e.stderr.decode())
         except ValueError as e:

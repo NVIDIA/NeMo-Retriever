@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional
 
@@ -26,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 MODEL_ID = "nvidia/parakeet-ctc-1.1b"
 SAMPLING_RATE = 16000
+# Model has max_position_embeddings=5000; long audio exceeds it. Cap segment duration (seconds).
+MAX_AUDIO_DURATION_SEC = 25.0
 
 
 def _strip_pad_from_transcript(text: str) -> str:
@@ -179,7 +182,37 @@ class ParakeetCTC1B1ASR:
         return result
 
     def _transcribe_audio_batch(self, audios: List[np.ndarray]) -> List[str]:
-        """Single forward pass for a list of audio arrays; returns one string per array."""
+        """Forward pass for a list of audio arrays. Long clips are split to avoid max_position_embeddings."""
+        if self._model is None or self._processor is None or not audios:
+            return [""] * len(audios)
+        max_samples = int(MAX_AUDIO_DURATION_SEC * SAMPLING_RATE)
+        segments: List[np.ndarray] = []
+        segment_to_orig: List[int] = []  # original index for each segment
+        for i, audio in enumerate(audios):
+            n = len(audio)
+            if n <= max_samples:
+                segments.append(audio)
+                segment_to_orig.append(i)
+            else:
+                for start in range(0, n, max_samples):
+                    end = min(start + max_samples, n)
+                    segments.append(audio[start:end].copy())
+                    segment_to_orig.append(i)
+        if not segments:
+            return [""] * len(audios)
+        try:
+            segment_transcripts = self._transcribe_audio_batch_impl(segments)
+        except Exception as e:
+            logger.warning("ASR (transformers) batch failed: %s", e)
+            return [""] * len(audios)
+        # Reassemble: concatenate transcripts for segments belonging to the same original audio
+        orig_to_texts: dict[int, List[str]] = defaultdict(list)
+        for seg_idx, orig_idx in enumerate(segment_to_orig):
+            orig_to_texts[orig_idx].append(_strip_pad_from_transcript((segment_transcripts[seg_idx] or "").strip()))
+        return [" ".join(filter(None, orig_to_texts[i])).strip() for i in range(len(audios))]
+
+    def _transcribe_audio_batch_impl(self, audios: List[np.ndarray]) -> List[str]:
+        """Single forward pass for a list of audio arrays (each assumed within length limit)."""
         if self._model is None or self._processor is None or not audios:
             return [""] * len(audios)
         try:

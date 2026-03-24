@@ -12,6 +12,7 @@ batch, inprocess, fused, and online run modes.
 from __future__ import annotations
 
 from nemo_retriever.audio.asr_actor import ASRActor
+from nemo_retriever.audio.asr_actor import asr_chunks_to_text
 from nemo_retriever.audio.asr_actor import asr_params_from_env
 from nemo_retriever.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.audio.media_interface import MediaInterface
@@ -24,6 +25,7 @@ __all__ = [
     "ASRActor",
     "ASRParams",
     "app",
+    "asr_chunks_to_text",
     "asr_params_from_env",
     "AudioChunkParams",
     "MediaChunkActor",
