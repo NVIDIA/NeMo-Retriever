@@ -45,6 +45,7 @@ class IngestorCreateParams(_ParamsModel):
     debug: bool = False
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
+    inference: Optional[str] = None
 
 
 class IngestExecuteParams(_ParamsModel):
