@@ -601,11 +601,13 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     if extra_packages:
         logger.info("Job %s — installing extra packages: %s", job_id, extra_packages)
         try:
-            subprocess.run(
-                [sys.executable, "-m", "uv", "pip", "install", *extra_packages],
-                check=True,
-                timeout=300,
-            )
+            import shutil
+            uv_bin = shutil.which("uv")
+            if uv_bin:
+                cmd = [uv_bin, "pip", "install", "--python", sys.executable, *extra_packages]
+            else:
+                cmd = [sys.executable, "-m", "pip", "install", *extra_packages]
+            subprocess.run(cmd, check=True, timeout=300)
         except subprocess.CalledProcessError as exc:
             logger.error("Job %s — extra_packages install failed: %s", job_id, exc)
             try:
