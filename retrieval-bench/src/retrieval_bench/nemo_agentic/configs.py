@@ -31,7 +31,7 @@ class AgentConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """Configuration for the LLM (LiteLLM wrapper)."""
+    """Configuration for the LLM (OpenAI SDK wrapper)."""
 
     model_config = ConfigDict(extra="forbid")
     model: str

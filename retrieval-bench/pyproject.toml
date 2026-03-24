@@ -20,7 +20,7 @@ dependencies = [
     "bm25s",
     "datasets>=4.5.0",
     "jinja2",
-    "litellm",
+    "openai>=1.0.0,<2",
     "Pillow",
     "pydantic>=2.0.0,<3.0.0",
     "pytrec_eval",

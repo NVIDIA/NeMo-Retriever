@@ -20,6 +20,8 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import openai
 import pytest
 
 from retrieval_bench.nemo_agentic.configs import LLMConfig
@@ -38,7 +40,7 @@ from retrieval_bench.nemo_agentic.llm_handler import (
 
 
 def _make_model_response(**overrides: Any) -> MagicMock:
-    """Create a mock that quacks like a ModelResponse."""
+    """Create a mock that quacks like a ChatCompletion."""
     resp = MagicMock()
     dump = {
         "id": "chatcmpl-test",
@@ -58,9 +60,15 @@ def _make_model_response(**overrides: Any) -> MagicMock:
 
 def _make_llm(**config_overrides: Any) -> LLM:
     """Create an LLM instance with sensible test defaults."""
-    defaults = dict(model="test-model")
+    defaults = dict(model="test-model", api_key="test-key")
     defaults.update(config_overrides)
     return LLM(LLMConfig(**defaults))
+
+
+def _make_bad_request_error(message: str) -> openai.BadRequestError:
+    """Create an openai.BadRequestError with the given message."""
+    response = httpx.Response(400, request=httpx.Request("POST", "https://test"))
+    return openai.BadRequestError(message=message, response=response, body=None)
 
 
 # ---------------------------------------------------------------------------
@@ -136,43 +144,46 @@ class TestNormalizeMessages:
 # ---------------------------------------------------------------------------
 
 
+def _make_mock_client(side_effect=None, return_value=None):
+    """Create a mock AsyncOpenAI client."""
+    client = MagicMock()
+    create_mock = AsyncMock(side_effect=side_effect, return_value=return_value)
+    client.chat.completions.create = create_mock
+    return client, create_mock
+
+
 class TestRateLimitRetry:
     @pytest.mark.asyncio
     async def test_success_on_first_try(self):
         expected = _make_model_response()
-        with patch("retrieval_bench.nemo_agentic.llm_handler.litellm") as mock_ll:
-            mock_ll.acompletion = AsyncMock(return_value=expected)
-            result = await make_acall_with_ratelimit_pause(model="m", messages=[])
+        client, _ = _make_mock_client(return_value=expected)
+        result = await make_acall_with_ratelimit_pause(client, model="m", messages=[])
         assert result is expected
 
     @pytest.mark.asyncio
     async def test_retries_on_rate_limit_then_succeeds(self):
         expected = _make_model_response()
-        rate_limit_exc = Exception("rate limited")
+        response_429 = httpx.Response(429, request=httpx.Request("POST", "https://test"))
+        rate_limit_exc = openai.RateLimitError(message="rate limited", response=response_429, body=None)
+        client, _ = _make_mock_client(side_effect=[rate_limit_exc, expected])
 
-        with patch("retrieval_bench.nemo_agentic.llm_handler.litellm") as mock_ll:
-            mock_ll.RateLimitError = type("RateLimitError", (Exception,), {})
-            rate_limit_exc = mock_ll.RateLimitError("rate limited")
-            mock_ll.acompletion = AsyncMock(side_effect=[rate_limit_exc, expected])
-
-            with patch("retrieval_bench.nemo_agentic.llm_handler.asyncio.sleep", new_callable=AsyncMock):
-                result = await make_acall_with_ratelimit_pause(model="m", messages=[])
+        with patch("retrieval_bench.nemo_agentic.llm_handler.asyncio.sleep", new_callable=AsyncMock):
+            result = await make_acall_with_ratelimit_pause(client, model="m", messages=[])
 
         assert result is expected
 
     @pytest.mark.asyncio
     async def test_gives_up_after_3_retries(self):
-        with patch("retrieval_bench.nemo_agentic.llm_handler.litellm") as mock_ll:
-            mock_ll.RateLimitError = type("RateLimitError", (Exception,), {})
-            exc = mock_ll.RateLimitError("rate limited")
-            mock_ll.acompletion = AsyncMock(side_effect=[exc, exc, exc, exc])
+        response_429 = httpx.Response(429, request=httpx.Request("POST", "https://test"))
+        exc = openai.RateLimitError(message="rate limited", response=response_429, body=None)
+        client, create_mock = _make_mock_client(side_effect=[exc, exc, exc, exc])
 
-            with patch("retrieval_bench.nemo_agentic.llm_handler.asyncio.sleep", new_callable=AsyncMock):
-                with pytest.raises(mock_ll.RateLimitError):
-                    await make_acall_with_ratelimit_pause(model="m", messages=[])
+        with patch("retrieval_bench.nemo_agentic.llm_handler.asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(openai.RateLimitError):
+                await make_acall_with_ratelimit_pause(client, model="m", messages=[])
 
         # 1 initial + 3 retries = 4 calls total
-        assert mock_ll.acompletion.await_count == 4
+        assert create_mock.await_count == 4
 
 
 # ---------------------------------------------------------------------------
@@ -184,17 +195,11 @@ class TestLLMInit:
     def test_basic_kwargs(self):
         llm = _make_llm(model="gpt-4", base_url="http://localhost:8000")
         assert llm.completion_kwargs["model"] == "gpt-4"
-        assert llm.completion_kwargs["base_url"] == "http://localhost:8000"
+        assert str(llm._client.base_url).rstrip("/") == "http://localhost:8000"
 
     def test_optional_fields_omitted_when_none(self):
         llm = _make_llm()
-        assert "drop_params" not in llm.completion_kwargs
-        assert "allowed_openai_params" not in llm.completion_kwargs
         assert "reasoning_effort" not in llm.completion_kwargs
-
-    def test_drop_params_included_when_set(self):
-        llm = _make_llm(drop_params=True)
-        assert llm.completion_kwargs["drop_params"] is True
 
     def test_reasoning_effort_included(self):
         llm = _make_llm(reasoning_effort="medium")
@@ -209,6 +214,10 @@ class TestLLMInit:
             assert llm._api_key == "secret123"
         finally:
             del os.environ["_TEST_LLM_KEY"]
+
+    def test_num_retries_passed_to_client(self):
+        llm = _make_llm(num_retries=7)
+        assert llm._client.max_retries == 7
 
 
 # ---------------------------------------------------------------------------
@@ -301,14 +310,7 @@ class TestACompletion:
         with patch(
             "retrieval_bench.nemo_agentic.llm_handler.make_acall_with_ratelimit_pause", new_callable=AsyncMock
         ) as mock_call:
-            # Import the real exception type to raise
-            from litellm.exceptions import ContentPolicyViolationError
-
-            mock_call.side_effect = ContentPolicyViolationError(
-                message="content policy violation",
-                model="test",
-                llm_provider="test",
-            )
+            mock_call.side_effect = _make_bad_request_error("content policy violation")
             result = await llm.acompletion(messages=[{"role": "user", "content": "bad"}])
 
         assert is_error(result)
@@ -321,13 +323,7 @@ class TestACompletion:
         with patch(
             "retrieval_bench.nemo_agentic.llm_handler.make_acall_with_ratelimit_pause", new_callable=AsyncMock
         ) as mock_call:
-            from litellm.exceptions import ContextWindowExceededError
-
-            mock_call.side_effect = ContextWindowExceededError(
-                message="context window exceeded",
-                model="test",
-                llm_provider="test",
-            )
+            mock_call.side_effect = _make_bad_request_error("context window exceeded")
             result = await llm.acompletion(messages=[{"role": "user", "content": "long"}])
 
         assert is_error(result)
@@ -339,14 +335,8 @@ class TestACompletion:
         with patch(
             "retrieval_bench.nemo_agentic.llm_handler.make_acall_with_ratelimit_pause", new_callable=AsyncMock
         ) as mock_call:
-            from litellm.exceptions import ContentPolicyViolationError
-
-            mock_call.side_effect = ContentPolicyViolationError(
-                message="content policy violation",
-                model="test",
-                llm_provider="test",
-            )
-            with pytest.raises(ContentPolicyViolationError):
+            mock_call.side_effect = _make_bad_request_error("content policy violation")
+            with pytest.raises(openai.BadRequestError):
                 await llm.acompletion(messages=[{"role": "user", "content": "bad"}])
 
     @pytest.mark.asyncio
@@ -357,14 +347,8 @@ class TestACompletion:
         with patch(
             "retrieval_bench.nemo_agentic.llm_handler.make_acall_with_ratelimit_pause", new_callable=AsyncMock
         ) as mock_call:
-            from litellm.exceptions import BadRequestError
-
-            mock_call.side_effect = BadRequestError(
-                message="something completely different",
-                model="test",
-                llm_provider="test",
-            )
-            with pytest.raises(BadRequestError):
+            mock_call.side_effect = _make_bad_request_error("something completely different")
+            with pytest.raises(openai.BadRequestError):
                 await llm.acompletion(messages=[{"role": "user", "content": "bad"}])
 
     @pytest.mark.asyncio
@@ -375,13 +359,7 @@ class TestACompletion:
         with patch(
             "retrieval_bench.nemo_agentic.llm_handler.make_acall_with_ratelimit_pause", new_callable=AsyncMock
         ) as mock_call:
-            from litellm.exceptions import BadRequestError
-
-            mock_call.side_effect = BadRequestError(
-                message="This model's maximum context window is exceeded",
-                model="test",
-                llm_provider="test",
-            )
+            mock_call.side_effect = _make_bad_request_error("This model's maximum context window is exceeded")
             result = await llm.acompletion(messages=[{"role": "user", "content": "long"}])
 
         assert is_error(result)
@@ -434,23 +412,14 @@ class TestACompletion:
         assert "messages" in data
 
     @pytest.mark.asyncio
-    async def test_api_key_env_override_used_in_call(self):
-        """When api_key uses os.environ/ syntax, the resolved key is passed to the API call."""
+    async def test_api_key_env_override_used_in_client(self):
+        """When api_key uses os.environ/ syntax, the resolved key is set on the client."""
         import os
 
         os.environ["_TEST_ACOMP_KEY"] = "resolved-key"
         try:
             llm = _make_llm(api_key="os.environ/_TEST_ACOMP_KEY")
-            expected = _make_model_response()
-
-            with patch(
-                "retrieval_bench.nemo_agentic.llm_handler.make_acall_with_ratelimit_pause",
-                new_callable=AsyncMock,
-                return_value=expected,
-            ) as mock_call:
-                await llm.acompletion(messages=[{"role": "user", "content": "hi"}])
-
-            call_kwargs = mock_call.call_args[1]
-            assert call_kwargs["api_key"] == "resolved-key"
+            assert llm._api_key == "resolved-key"
+            assert llm._client.api_key == "resolved-key"
         finally:
             del os.environ["_TEST_ACOMP_KEY"]
