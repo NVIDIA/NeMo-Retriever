@@ -5,7 +5,6 @@
 """Unit tests for nemo_retriever.dedup.dedup."""
 
 import pandas as pd
-import pytest
 
 from nemo_retriever.dedup.dedup import calculate_iou, dedup_images
 
@@ -44,16 +43,24 @@ class TestCalculateIou:
 
 class TestContentHashDedup:
     def test_removes_exact_duplicate_images(self):
-        df = _make_df([{
-            "images": [_make_image("AAA"), _make_image("BBB"), _make_image("AAA")],
-        }])
+        df = _make_df(
+            [
+                {
+                    "images": [_make_image("AAA"), _make_image("BBB"), _make_image("AAA")],
+                }
+            ]
+        )
         result = dedup_images(df, content_hash=True, bbox_iou=False)
         assert len(result.iloc[0]["images"]) == 2
 
     def test_keeps_unique_images(self):
-        df = _make_df([{
-            "images": [_make_image("AAA"), _make_image("BBB")],
-        }])
+        df = _make_df(
+            [
+                {
+                    "images": [_make_image("AAA"), _make_image("BBB")],
+                }
+            ]
+        )
         result = dedup_images(df, content_hash=True, bbox_iou=False)
         assert len(result.iloc[0]["images"]) == 2
 
@@ -63,42 +70,58 @@ class TestContentHashDedup:
 
 class TestBboxIouDedup:
     def test_drops_image_overlapping_with_table(self):
-        df = _make_df([{
-            "images": [_make_image("X", bbox=[0.0, 0.0, 1.0, 1.0])],
-            "table": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
-            "chart": [],
-            "infographic": [],
-        }])
+        df = _make_df(
+            [
+                {
+                    "images": [_make_image("X", bbox=[0.0, 0.0, 1.0, 1.0])],
+                    "tables": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
+                    "charts": [],
+                    "infographics": [],
+                }
+            ]
+        )
         result = dedup_images(df, content_hash=False, bbox_iou=True, iou_threshold=0.45)
         assert len(result.iloc[0]["images"]) == 0
 
     def test_keeps_image_below_threshold(self):
-        df = _make_df([{
-            "images": [_make_image("X", bbox=[0.0, 0.0, 0.1, 0.1])],
-            "table": [{"bbox_xyxy_norm": [0.9, 0.9, 1.0, 1.0], "text": "t"}],
-            "chart": [],
-            "infographic": [],
-        }])
+        df = _make_df(
+            [
+                {
+                    "images": [_make_image("X", bbox=[0.0, 0.0, 0.1, 0.1])],
+                    "tables": [{"bbox_xyxy_norm": [0.9, 0.9, 1.0, 1.0], "text": "t"}],
+                    "charts": [],
+                    "infographics": [],
+                }
+            ]
+        )
         result = dedup_images(df, content_hash=False, bbox_iou=True, iou_threshold=0.45)
         assert len(result.iloc[0]["images"]) == 1
 
     def test_keeps_image_when_no_structured_content(self):
-        df = _make_df([{
-            "images": [_make_image("X", bbox=[0.0, 0.0, 1.0, 1.0])],
-            "table": [],
-            "chart": [],
-            "infographic": [],
-        }])
+        df = _make_df(
+            [
+                {
+                    "images": [_make_image("X", bbox=[0.0, 0.0, 1.0, 1.0])],
+                    "tables": [],
+                    "charts": [],
+                    "infographics": [],
+                }
+            ]
+        )
         result = dedup_images(df, content_hash=False, bbox_iou=True)
         assert len(result.iloc[0]["images"]) == 1
 
     def test_image_without_bbox_is_kept(self):
-        df = _make_df([{
-            "images": [_make_image("X")],  # no bbox
-            "table": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
-            "chart": [],
-            "infographic": [],
-        }])
+        df = _make_df(
+            [
+                {
+                    "images": [_make_image("X")],  # no bbox
+                    "tables": [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
+                    "charts": [],
+                    "infographics": [],
+                }
+            ]
+        )
         result = dedup_images(df, content_hash=False, bbox_iou=True)
         assert len(result.iloc[0]["images"]) == 1
 

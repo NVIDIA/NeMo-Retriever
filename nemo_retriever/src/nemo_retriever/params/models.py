@@ -308,7 +308,6 @@ class DedupParams(_ParamsModel):
     iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
 
 
-
 class InfographicParams(_ParamsModel):
     remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
