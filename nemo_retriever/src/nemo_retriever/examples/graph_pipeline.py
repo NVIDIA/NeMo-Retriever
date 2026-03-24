@@ -138,9 +138,14 @@ def _input_file_patterns(input_path: Path, input_type: str) -> list[str]:
     return file_patterns
 
 
-def _override(batch_size: Optional[int] = None, num_cpus: Optional[float] = None, num_gpus: Optional[float] = None,
-              concurrency: Optional[int] = None, target_num_rows_per_block: Optional[int] = None,
-              **extra: Any) -> dict[str, Any]:
+def _override(
+    batch_size: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    concurrency: Optional[int] = None,
+    target_num_rows_per_block: Optional[int] = None,
+    **extra: Any,
+) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if batch_size is not None and batch_size > 0:
         out["batch_size"] = batch_size
@@ -159,14 +164,18 @@ def _override(batch_size: Optional[int] = None, num_cpus: Optional[float] = None
 @app.command()
 def main(
     ctx: typer.Context,
-    debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable debug-level logging for this full pipeline run."),
+    debug: bool = typer.Option(
+        False, "--debug/--no-debug", help="Enable debug-level logging for this full pipeline run."
+    ),
     dpi: int = typer.Option(300, "--dpi", min=72, help="Render DPI for PDF page images (default: 300)."),
     input_path: Path = typer.Argument(
         ...,
         help="File or directory containing PDFs, .txt, .html, or .doc/.pptx files to ingest.",
         path_type=Path,
     ),
-    detection_summary_file: Optional[Path] = typer.Option(None, "--detection-summary-file", path_type=Path, dir_okay=False),
+    detection_summary_file: Optional[Path] = typer.Option(
+        None, "--detection-summary-file", path_type=Path, dir_okay=False
+    ),
     recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode"),
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     no_recall_details: bool = typer.Option(False, "--no-recall-details"),
@@ -192,7 +201,9 @@ def main(
     method: str = typer.Option("pdfium", "--method"),
     log_file: Optional[Path] = typer.Option(None, "--log-file", path_type=Path, dir_okay=False),
     nemotron_parse_actors: Optional[int] = typer.Option(0, "--nemotron-parse-actors"),
-    nemotron_parse_gpus_per_actor: Optional[float] = typer.Option(0.0, "--nemotron-parse-gpus-per-actor", min=0.0, max=1.0),
+    nemotron_parse_gpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--nemotron-parse-gpus-per-actor", min=0.0, max=1.0
+    ),
     nemotron_parse_batch_size: Optional[int] = typer.Option(0, "--nemotron-parse-batch-size"),
     ocr_actors: Optional[int] = typer.Option(0, "--ocr-actors"),
     ocr_batch_size: Optional[int] = typer.Option(0, "--ocr-batch-size"),
@@ -202,7 +213,9 @@ def main(
     page_elements_actors: Optional[int] = typer.Option(0, "--page-elements-actors"),
     page_elements_batch_size: Optional[int] = typer.Option(0, "--page-elements-batch-size"),
     page_elements_cpus_per_actor: Optional[float] = typer.Option(0.0, "--page-elements-cpus-per-actor"),
-    page_elements_gpus_per_actor: Optional[float] = typer.Option(0.0, "--page-elements-gpus-per-actor", min=0.0, max=1.0),
+    page_elements_gpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--page-elements-gpus-per-actor", min=0.0, max=1.0
+    ),
     page_elements_invoke_url: Optional[str] = typer.Option(None, "--page-elements-invoke-url"),
     pdf_extract_batch_size: Optional[int] = typer.Option(0, "--pdf-extract-batch-size"),
     pdf_extract_cpus_per_task: Optional[float] = typer.Option(0.0, "--pdf-extract-cpus-per-task"),
@@ -211,7 +224,9 @@ def main(
     query_csv: Path = typer.Option("./data/bo767_query_gt.csv", "--query-csv", path_type=Path),
     ray_address: Optional[str] = typer.Option(None, "--ray-address"),
     ray_log_to_driver: bool = typer.Option(True, "--ray-log-to-driver/--no-ray-log-to-driver"),
-    runtime_metrics_dir: Optional[Path] = typer.Option(None, "--runtime-metrics-dir", path_type=Path, file_okay=False, dir_okay=True),
+    runtime_metrics_dir: Optional[Path] = typer.Option(
+        None, "--runtime-metrics-dir", path_type=Path, file_okay=False, dir_okay=True
+    ),
     runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
     reranker_model_name: str = typer.Option("nvidia/llama-nemotron-rerank-1b-v2", "--reranker-model-name"),
@@ -253,11 +268,24 @@ def main(
 
         remote_api_key = resolve_remote_api_key(api_key)
         extract_remote_api_key = (
-            remote_api_key if any((page_elements_invoke_url, ocr_invoke_url, graphic_elements_invoke_url, table_structure_invoke_url)) else None
+            remote_api_key
+            if any((page_elements_invoke_url, ocr_invoke_url, graphic_elements_invoke_url, table_structure_invoke_url))
+            else None
         )
         embed_remote_api_key = remote_api_key if embed_invoke_url else None
 
-        if any((page_elements_invoke_url, ocr_invoke_url, graphic_elements_invoke_url, table_structure_invoke_url, embed_invoke_url)) and remote_api_key is None:
+        if (
+            any(
+                (
+                    page_elements_invoke_url,
+                    ocr_invoke_url,
+                    graphic_elements_invoke_url,
+                    table_structure_invoke_url,
+                    embed_invoke_url,
+                )
+            )
+            and remote_api_key is None
+        ):
             logger.warning("Remote endpoint URL(s) were configured without an API key.")
 
         if page_elements_invoke_url and float(page_elements_gpus_per_actor or 0.0) != 0.0:
@@ -448,30 +476,54 @@ def main(
                 batch_size=page_elements_batch_size or 8,
                 target_num_rows_per_block=page_elements_batch_size or 8,
                 num_cpus=page_elements_cpus_per_actor or 1,
-                num_gpus=0.0 if page_elements_invoke_url else (page_elements_gpus_per_actor if page_elements_gpus_per_actor and page_elements_gpus_per_actor > 0 else 0.5),
+                num_gpus=(
+                    0.0
+                    if page_elements_invoke_url
+                    else (
+                        page_elements_gpus_per_actor
+                        if page_elements_gpus_per_actor and page_elements_gpus_per_actor > 0
+                        else 0.5
+                    )
+                ),
                 concurrency=page_elements_actors or None,
             ),
             "TableStructureActor": _override(
                 batch_size=ocr_batch_size or 8,
                 num_cpus=ocr_cpus_per_actor or 1,
-                num_gpus=0.0 if table_structure_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor and ocr_gpus_per_actor > 0 else 0.5),
+                num_gpus=(
+                    0.0
+                    if table_structure_invoke_url
+                    else (ocr_gpus_per_actor if ocr_gpus_per_actor and ocr_gpus_per_actor > 0 else 0.5)
+                ),
             ),
             "GraphicElementsActor": _override(
                 batch_size=ocr_batch_size or 8,
                 num_cpus=ocr_cpus_per_actor or 1,
-                num_gpus=0.0 if graphic_elements_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor and ocr_gpus_per_actor > 0 else 0.5),
+                num_gpus=(
+                    0.0
+                    if graphic_elements_invoke_url
+                    else (ocr_gpus_per_actor if ocr_gpus_per_actor and ocr_gpus_per_actor > 0 else 0.5)
+                ),
             ),
             "OCRActor": _override(
                 batch_size=ocr_batch_size or 8,
                 num_cpus=ocr_cpus_per_actor or 1,
-                num_gpus=0.0 if ocr_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor and ocr_gpus_per_actor > 0 else 0.5),
+                num_gpus=(
+                    0.0
+                    if ocr_invoke_url
+                    else (ocr_gpus_per_actor if ocr_gpus_per_actor and ocr_gpus_per_actor > 0 else 0.5)
+                ),
                 concurrency=ocr_actors or None,
             ),
             "NemotronParseActor": _override(
                 batch_size=nemotron_parse_batch_size or page_elements_batch_size or 8,
                 target_num_rows_per_block=nemotron_parse_batch_size or page_elements_batch_size or 8,
                 num_cpus=1,
-                num_gpus=nemotron_parse_gpus_per_actor if nemotron_parse_gpus_per_actor and nemotron_parse_gpus_per_actor > 0 else 0.5,
+                num_gpus=(
+                    nemotron_parse_gpus_per_actor
+                    if nemotron_parse_gpus_per_actor and nemotron_parse_gpus_per_actor > 0
+                    else 0.5
+                ),
                 concurrency=nemotron_parse_actors or None,
             ),
             "CaptionActor": _override(
@@ -486,7 +538,11 @@ def main(
                 batch_size=embed_batch_size or 256,
                 target_num_rows_per_block=embed_batch_size or 256,
                 num_cpus=embed_cpus_per_actor or 1,
-                num_gpus=0.0 if embed_invoke_url else (embed_gpus_per_actor if embed_gpus_per_actor and embed_gpus_per_actor > 0 else 0.5),
+                num_gpus=(
+                    0.0
+                    if embed_invoke_url
+                    else (embed_gpus_per_actor if embed_gpus_per_actor and embed_gpus_per_actor > 0 else 0.5)
+                ),
                 concurrency=embed_actors or None,
             ),
         }
@@ -524,7 +580,9 @@ def main(
         if detection_summary_file is not None:
             import pandas as pd
 
-            write_detection_summary(Path(detection_summary_file), collect_detection_summary_from_df(pd.DataFrame(ingest_local_results)))
+            write_detection_summary(
+                Path(detection_summary_file), collect_detection_summary_from_df(pd.DataFrame(ingest_local_results))
+            )
 
         from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
@@ -596,7 +654,9 @@ def main(
                 reranker=reranker_model_name if reranker else None,
             )
             evaluation_start = time.perf_counter()
-            _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(query_csv=query_csv, cfg=cfg)
+            _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
+                query_csv=query_csv, cfg=cfg
+            )
             evaluation_total_time = time.perf_counter() - evaluation_start
             evaluation_query_count = len(_df_query.index)
 
