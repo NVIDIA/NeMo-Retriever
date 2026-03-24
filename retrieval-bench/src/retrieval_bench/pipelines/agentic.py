@@ -346,7 +346,6 @@ class AgenticRetrievalPipeline(BasePipeline):
                 messages=probe_messages,
                 tools=None,
                 max_completion_tokens=8,
-                num_retries=0,
             )
         except Exception as e:
             raise RuntimeError(
