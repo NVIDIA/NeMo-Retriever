@@ -75,7 +75,7 @@ class NemotronVLMCaptioner(BaseModel):
         hf_cache_dir: Optional[str] = None,
         max_new_tokens: int = 1024,
         tensor_parallel_size: int = 1,
-        gpu_memory_utilization: float = 0.8,
+        gpu_memory_utilization: float = 0.5,
     ) -> None:
         super().__init__()
 

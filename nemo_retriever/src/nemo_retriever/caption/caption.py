@@ -37,7 +37,7 @@ def _create_local_model(kwargs: dict) -> "Any":
         device=kwargs.get("device"),
         hf_cache_dir=kwargs.get("hf_cache_dir"),
         tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
-        gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.8),
+        gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.5),
     )
 
 
