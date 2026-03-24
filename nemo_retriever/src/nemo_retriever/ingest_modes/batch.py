@@ -934,6 +934,25 @@ class BatchIngestor(Ingestor):
 
         return self
 
+    def dedup(self, params: "DedupParams | None" = None, **kwargs: Any) -> "BatchIngestor":
+        """Remove duplicate and overlapping images before captioning."""
+        if self._rd_dataset is None:
+            raise RuntimeError("No Ray Dataset to dedup. Run .files(...) / .extract(...) first.")
+
+        from nemo_retriever.dedup.dedup import DedupActor
+        from nemo_retriever.params import DedupParams
+
+        resolved = _coerce_params(params, DedupParams, kwargs)
+        self._rd_dataset = self._rd_dataset.map_batches(
+            DedupActor,
+            batch_size=64,
+            batch_format="pandas",
+            num_gpus=0,
+            concurrency=1,
+            fn_constructor_kwargs={"params": resolved},
+        )
+        return self
+
     def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "BatchIngestor":
         """
         Add a streaming LanceDB upload stage to the batch pipeline.

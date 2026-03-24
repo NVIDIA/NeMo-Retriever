@@ -1332,6 +1332,15 @@ class InProcessIngestor(Ingestor):
         self._tasks.append((apply_asr_to_df, {"asr_params": self._extract_audio_asr_kwargs}))
         return self
 
+    def dedup(self, params: "DedupParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
+        """Remove duplicate and overlapping images before captioning."""
+        from nemo_retriever.dedup.dedup import dedup_images
+        from nemo_retriever.params import DedupParams
+
+        resolved = _coerce_params(params, DedupParams, kwargs)
+        self._tasks.append((dedup_images, resolved.model_dump(mode="python")))
+        return self
+
     def embed(self, params: EmbedParams | None = None, **kwargs: Any) -> "InProcessIngestor":
         """
         Configure embedding for in-process execution.

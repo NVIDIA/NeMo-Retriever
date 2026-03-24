@@ -211,7 +211,7 @@ class OnlineIngestor(Ingestor):
     def all_tasks(self) -> "OnlineIngestor":
         return self
 
-    def dedup(self) -> "OnlineIngestor":
+    def dedup(self, params: Any = None, **kwargs: Any) -> "OnlineIngestor":
         return self
 
     def filter(self) -> "OnlineIngestor":

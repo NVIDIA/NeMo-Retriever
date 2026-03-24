@@ -302,6 +302,13 @@ class ChartParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
+class DedupParams(_ParamsModel):
+    content_hash: bool = True
+    bbox_iou: bool = True
+    iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
+
+
+
 class InfographicParams(_ParamsModel):
     remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)

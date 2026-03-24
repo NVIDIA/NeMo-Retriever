@@ -20,6 +20,7 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from nemo_retriever.application.modes.factory import create_runmode_ingestor
+from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import TextChunkParams
@@ -110,8 +111,9 @@ class ingestor:
         """Record the default task chain (placeholder)."""
         self._not_implemented("all_tasks")
 
-    def dedup(self) -> "ingestor":
+    def dedup(self, params: DedupParams | None = None, **kwargs: Any) -> "ingestor":
         """Record a dedup task configuration."""
+        _ = _merge_params(params, kwargs)
         self._not_implemented("dedup")
 
     def embed(self, params: EmbedParams | None = None, **kwargs: Any) -> "ingestor":
