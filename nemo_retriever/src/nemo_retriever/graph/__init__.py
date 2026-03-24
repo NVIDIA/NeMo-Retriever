@@ -8,6 +8,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.custom_operator import UDFOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.file_loader_operator import FileListLoaderOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
@@ -16,6 +17,7 @@ __all__ = [
     "AbstractExecutor",
     "AbstractOperator",
     "CPUOperator",
+    "FileListLoaderOperator",
     "GPUOperator",
     "Graph",
     "InprocessExecutor",

@@ -9,6 +9,10 @@ and RayDataExecutor.
 This example mirrors the PDF path of ``batch_pipeline.py`` but constructs the
 pipeline as an explicit operator graph instead of the fluent ingestor API.
 
+For PDF inputs, ``RayDataExecutor`` already uses ``ray.data.read_binary_files``
+to provide ``path`` and ``bytes`` columns, so the graph starts at
+``PDFSplitActor`` rather than adding an explicit file-loader node.
+
 Run with::
 
     source /opt/retriever_runtime/bin/activate
@@ -131,7 +135,6 @@ def main(
     remote_api_key = resolve_remote_api_key(api_key)
 
     # -- Operator classes and their kwargs (deferred construction on workers) --
-    from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
     from nemo_retriever.pdf.split import PDFSplitActor
     from nemo_retriever.pdf.extract import PDFExtractionActor
     from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
@@ -155,6 +158,7 @@ def main(
         detect_kwargs["api_key"] = remote_api_key
 
     ocr_kwargs: dict[str, Any] = {
+        "extract_text": True,
         "extract_tables": True,
         "extract_charts": True,
     }
@@ -170,15 +174,10 @@ def main(
     )
 
     # -- Build the graph using >> chaining -------------------------------------
-    # Operators are auto-wrapped in Nodes by the >> operator.
-    # The RayDataExecutor uses operator_class + operator_kwargs to
-    # reconstruct them on each Ray worker (deferred construction), so heavy
-    # GPU models are loaded there instead of being pickled from the driver.
     explode_kwargs: dict[str, Any] = {"modality": "text"}
 
     graph = (
-        DocToPdfConversionActor()
-        >> PDFSplitActor()
+        PDFSplitActor()
         >> PDFExtractionActor(**extract_kwargs)
         >> PageElementDetectionActor(**detect_kwargs)
         >> OCRActor(**ocr_kwargs)
@@ -191,7 +190,6 @@ def main(
     # -- Configure per-node Ray Data overrides ---------------------------------
     # Node names default to the operator class name when auto-wrapped.
     node_overrides: dict[str, dict[str, Any]] = {
-        "DocToPdfConversionActor": {"batch_size": 1, "num_cpus": 1},
         "PDFSplitActor": {"batch_size": 1, "num_cpus": 1},
         "PDFExtractionActor": {"batch_size": 4, "num_cpus": 1},
         "PageElementDetectionActor": {"batch_size": 8, "num_gpus": 0.0 if page_elements_invoke_url else 0.5},
@@ -214,17 +212,16 @@ def main(
     result_ds = executor.ingest(file_patterns)
 
     ingestion_time = time.perf_counter() - t0
-    ingest_local_results = result_ds.take_all()
-    logger.info("Ingestion complete: %d rows in %.2f seconds.", len(ingest_local_results), ingestion_time)
-
     # -- Download results from Ray ---------------------------------------------
     import ray
 
     download_start = time.perf_counter()
-    # ingest_local_results = result_ds.take_all()
+    ingest_local_results = result_ds.take_all()
+    ingest_local_results.sort(key=lambda x: x["source_id"])  # Optional: sort results by source_id
+
     download_time = time.perf_counter() - download_start
     logger.info("Ray dataset download: %.2f seconds.", download_time)
-
+    logger.info("Ingestion complete: %d rows in %.2f seconds.", len(ingest_local_results), ingestion_time)
     # -- Write to LanceDB ------------------------------------------------------
     from nemo_retriever.vector_store.lancedb_store import handle_lancedb
     from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema

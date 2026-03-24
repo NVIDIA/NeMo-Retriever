@@ -749,7 +749,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
     """
 
     def __init__(self, **detect_kwargs: Any) -> None:
-        super().__init__()
+        super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = str(
             self.detect_kwargs.get("page_elements_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
@@ -802,7 +802,7 @@ class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
     DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
 
     def __init__(self, **detect_kwargs: Any) -> None:
-        super().__init__()
+        super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = str(
             self.detect_kwargs.get("page_elements_invoke_url")

@@ -4,9 +4,11 @@
 
 """Unit tests verifying all pipeline actors inherit from AbstractOperator."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from nemo_retriever.utils.abstract_operator import AbstractOperator
 
@@ -98,6 +100,33 @@ class TestPDFExtractionActor:
         assert isinstance(result, list)
         record = result[0]
         assert record["metadata"]["error"]["type"] == "RuntimeError"
+
+    def test_pdfium_output_can_have_empty_text_without_ocr_flag(self):
+        from nemo_retriever.pdf.extract import PDFExtractionActor
+        from nemo_retriever.pdf.split import PDFSplitActor
+
+        pdf_path = Path("/raid/data/jp20/1312679.pdf")
+        if not pdf_path.exists():
+            pytest.skip(f"External regression fixture not available: {pdf_path}")
+
+        source_df = pd.DataFrame({"path": [str(pdf_path)], "bytes": [pdf_path.read_bytes()]})
+        split_df = PDFSplitActor()(source_df)
+
+        result = PDFExtractionActor(
+            method="pdfium",
+            extract_text=True,
+            extract_tables=True,
+            extract_charts=True,
+            extract_infographics=True,
+        )(split_df.head(5))
+
+        first_page = result[result["page_number"] == 1].iloc[0]
+        metadata = first_page["metadata"]
+
+        assert first_page["text"] == ""
+        assert metadata["has_text"] is False
+        assert metadata["needs_ocr_for_text"] is False
+        assert metadata["error"] is None
 
 
 # ---------------------------------------------------------------------------

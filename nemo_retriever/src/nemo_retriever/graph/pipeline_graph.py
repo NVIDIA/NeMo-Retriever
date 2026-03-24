@@ -53,7 +53,7 @@ class Node:
         self.name = name or type(operator).__name__
         self.children: List[Node] = []
         self.operator_class = operator_class or type(operator)
-        self.operator_kwargs = operator_kwargs if operator_kwargs is not None else {}
+        self.operator_kwargs = operator_kwargs if operator_kwargs is not None else operator.get_constructor_kwargs()
 
     def add_child(self, child: Union["Node", AbstractOperator]) -> "Node":
         """Append *child* to this node's children and return the child node."""

@@ -144,6 +144,7 @@ def main(
         detect_kwargs["api_key"] = remote_api_key
 
     ocr_kwargs: dict[str, Any] = {
+        "extract_text": True,
         "extract_tables": True,
         "extract_charts": True,
     }
@@ -163,7 +164,6 @@ def main(
     # -- Build the graph -------------------------------------------------------
     # Note: no DocToPdf stage needed — inprocess loads PDFs directly via
     # PDFSplitActor which calls pdf_path_to_pages_df / split_pdf_batch.
-    # Operators are auto-wrapped in Nodes by the >> operator.
     graph = (
         PDFSplitActor(**split_kwargs)
         >> PDFExtractionActor(**extract_kwargs)

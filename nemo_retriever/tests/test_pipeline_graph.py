@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from nemo_retriever.utils.abstract_operator import AbstractOperator
-from nemo_retriever.utils.pipeline import UDFOperator, MultiTypeExtractOperator
+from nemo_retriever.utils.pipeline import FileListLoaderOperator, UDFOperator, MultiTypeExtractOperator
 from nemo_retriever.utils.pipeline_graph import Graph, Node
 from nemo_retriever.utils.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 
@@ -68,6 +68,23 @@ class AppendOperator(AbstractOperator):
         return data
 
 
+class ParamsHolderOperator(AbstractOperator):
+    """Operator that stores its constructor arg on a private attribute."""
+
+    def __init__(self, params: dict[str, int]) -> None:
+        super().__init__()
+        self._params = params
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return data + self._params["value"]
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
 # =====================================================================
 # Node tests
 # =====================================================================
@@ -82,6 +99,14 @@ class TestNode:
     def test_create_node_custom_name(self):
         node = Node(AddOperator(), name="my_adder")
         assert node.name == "my_adder"
+
+    def test_node_infers_operator_kwargs_from_instance(self):
+        node = Node(AddOperator(5))
+        assert node.operator_kwargs == {"value": 5}
+
+    def test_node_infers_private_constructor_attrs(self):
+        node = Node(ParamsHolderOperator({"value": 9}))
+        assert node.operator_kwargs == {"params": {"value": 9}}
 
     def test_node_rejects_non_operator(self):
         with pytest.raises(TypeError, match="operator must be an AbstractOperator"):
@@ -557,6 +582,28 @@ class TestMultiTypeExtractOperator:
         assert result == []
 
 
+class TestFileListLoaderOperator:
+    def test_loads_files_into_path_and_bytes_dataframe(self, tmp_path) -> None:
+        first = tmp_path / "a.txt"
+        second = tmp_path / "b.txt"
+        first.write_text("alpha", encoding="utf-8")
+        second.write_text("beta", encoding="utf-8")
+
+        op = FileListLoaderOperator()
+        result = op.run([str(first), str(second)])
+
+        assert list(result.columns) == ["path", "bytes"]
+        assert result["path"].tolist() == [str(first.resolve()), str(second.resolve())]
+        assert result["bytes"].tolist() == [b"alpha", b"beta"]
+
+    def test_returns_empty_dataframe_for_missing_files(self, tmp_path) -> None:
+        op = FileListLoaderOperator()
+        result = op.run([str(tmp_path / "missing.txt")])
+
+        assert list(result.columns) == ["path", "bytes"]
+        assert result.empty
+
+
 # =====================================================================
 # AbstractExecutor tests
 # =====================================================================
@@ -843,3 +890,29 @@ class TestInprocessExecutor:
         # Should use value=100 from operator_kwargs, not value=1 from instance
         assert isinstance(result, pd.DataFrame)
         assert result["val"].iloc[0] == 105
+
+    def test_infers_operator_kwargs_for_construction(self):
+        """Test that InprocessExecutor can reconstruct from operator instance state."""
+        import pandas as pd
+
+        g = Graph()
+        g.add_root(Node(AddOperator(7), name="Add"))
+
+        executor = InprocessExecutor(g)
+        result = executor.ingest(pd.DataFrame({"val": [5]}))
+
+        assert isinstance(result, pd.DataFrame)
+        assert result["val"].iloc[0] == 12
+
+    def test_infers_private_constructor_attrs_for_construction(self):
+        """Test reconstruction when the constructor arg is stored on a private attribute."""
+        import pandas as pd
+
+        g = Graph()
+        g.add_root(Node(ParamsHolderOperator({"value": 8}), name="ParamsHolder"))
+
+        executor = InprocessExecutor(g)
+        result = executor.ingest(pd.DataFrame({"val": [5]}))
+
+        assert isinstance(result, pd.DataFrame)
+        assert result["val"].iloc[0] == 13

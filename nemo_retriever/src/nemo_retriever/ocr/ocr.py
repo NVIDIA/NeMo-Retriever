@@ -761,7 +761,7 @@ class OCRActor(AbstractOperator, GPUOperator):
     """
 
     def __init__(self, **ocr_kwargs: Any) -> None:
-        super().__init__()
+        super().__init__(**ocr_kwargs)
         import warnings
 
         if Image is not None:
@@ -835,7 +835,7 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
     DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
 
     def __init__(self, **ocr_kwargs: Any) -> None:
-        super().__init__()
+        super().__init__(**ocr_kwargs)
         self.ocr_kwargs = dict(ocr_kwargs)
         invoke_url = str(
             self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or self.DEFAULT_INVOKE_URL

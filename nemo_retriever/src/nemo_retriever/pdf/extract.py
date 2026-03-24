@@ -360,7 +360,7 @@ class PDFExtractionActor(AbstractOperator, CPUOperator):
     """
 
     def __init__(self, **extract_kwargs: Any) -> None:
-        super().__init__()
+        super().__init__(**extract_kwargs)
         self.extract_kwargs = dict(extract_kwargs)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
