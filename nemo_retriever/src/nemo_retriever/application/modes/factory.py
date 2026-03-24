@@ -22,6 +22,7 @@ def create_runmode_ingestor(*, run_mode: RunMode = "inprocess", params: Ingestor
             ray_address=p.ray_address,
             ray_log_to_driver=p.ray_log_to_driver,
             debug=p.debug,
+            allow_no_gpu=p.allow_no_gpu,
         )
     if run_mode == "fused":
         from nemo_retriever.ingest_modes.fused import FusedIngestor

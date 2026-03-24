@@ -199,6 +199,7 @@ class BatchIngestor(Ingestor):
         ray_address: Optional[str] = None,
         ray_log_to_driver: bool = True,
         debug: bool = False,
+        allow_no_gpu: bool = False,
     ) -> None:
         super().__init__(documents=documents)
 
@@ -240,7 +241,10 @@ class BatchIngestor(Ingestor):
         logger.info(self._cluster_resources)
 
         # 2. Resolve requested plan for the Ray DAG that will be built
-        self._requested_plan = resolve_requested_plan(cluster_resources=self._cluster_resources)
+        self._requested_plan = resolve_requested_plan(
+            cluster_resources=self._cluster_resources,
+            allow_no_gpu=allow_no_gpu,
+        )
         logger.info(self._requested_plan)
 
         # Builder-style task configuration recorded for later execution.

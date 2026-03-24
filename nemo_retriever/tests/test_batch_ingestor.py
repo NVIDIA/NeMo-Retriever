@@ -72,7 +72,7 @@ def test_batch_ingestor_filters_none_runtime_env_vars(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "nemo_retriever.ingest_modes.batch.resolve_requested_plan",
-        lambda cluster_resources: {"plan": "dummy"},
+        lambda cluster_resources, allow_no_gpu=False: {"plan": "dummy"},
     )
 
     BatchIngestor(documents=[])
