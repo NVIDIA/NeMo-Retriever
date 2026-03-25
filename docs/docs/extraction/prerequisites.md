@@ -16,12 +16,13 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure the followi
 - [Docker Buildx](https://docs.docker.com/build/concepts/overview/#buildx) `>= 0.17` (Compose 2.40+ enforces this)
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-- [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/)
+- [Python](https://www.python.org/downloads/) `>= 3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
+- [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
 
 
 !!! note
 
-    You install Python later.
+    When you use UV, create the environment with Python 3.12 or later — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
 
 
 
