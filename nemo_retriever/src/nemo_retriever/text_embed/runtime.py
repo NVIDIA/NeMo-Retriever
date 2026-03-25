@@ -37,7 +37,7 @@ def _embed_group(
         else:
             skip_prefix = hasattr(model, "embed_queries")
 
-            def embedder(texts: Sequence[str]) -> Sequence[Sequence[float]]: # noqa
+            def embedder(texts: Sequence[str]) -> Sequence[Sequence[float]]:  # noqa
                 batch = texts if skip_prefix else [f"passage: {text}" for text in texts]
                 vectors = model.embed(batch, batch_size=int(inference_batch_size))
                 tolist = getattr(vectors, "tolist", None)

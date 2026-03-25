@@ -113,7 +113,9 @@ def build_batch_graph(
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 ocr_kwargs["api_key"] = extract_params.api_key
-            detect_batch_size = _positive(getattr(tuning, "ocr_inference_batch_size", None) if tuning is not None else None)
+            detect_batch_size = _positive(
+                getattr(tuning, "ocr_inference_batch_size", None) if tuning is not None else None
+            )
             if detect_batch_size:
                 ocr_kwargs["inference_batch_size"] = int(detect_batch_size)
 
@@ -170,7 +172,8 @@ def build_batch_graph(
                     explode_content_to_rows,
                     modality=embed_params.embed_modality,
                     text_elements_modality=embed_params.text_elements_modality or embed_params.embed_modality,
-                    structured_elements_modality=embed_params.structured_elements_modality or embed_params.embed_modality,
+                    structured_elements_modality=embed_params.structured_elements_modality
+                    or embed_params.embed_modality,
                     content_columns=content_columns,
                 ),
                 name="ExplodeContentToRows",
@@ -259,7 +262,8 @@ def build_inprocess_graph(
                     explode_content_to_rows,
                     modality=embed_params.embed_modality,
                     text_elements_modality=embed_params.text_elements_modality or embed_params.embed_modality,
-                    structured_elements_modality=embed_params.structured_elements_modality or embed_params.embed_modality,
+                    structured_elements_modality=embed_params.structured_elements_modality
+                    or embed_params.embed_modality,
                     content_columns=content_columns,
                 ),
                 name="ExplodeContentToRows",

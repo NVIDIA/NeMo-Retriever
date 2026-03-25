@@ -1465,11 +1465,23 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
         embed_tuning = embed_params.batch_tuning if embed_params is not None else None
 
         pdf_split_batch_size = int(getattr(tuning, "pdf_split_batch_size", 1) or 1)
-        pdf_extract_batch_size = self._positive_int(getattr(tuning, "pdf_extract_batch_size", None)) or self._requested_plan.get_pdf_extract_batch_size()
-        pdf_extract_cpus = self._positive_float(getattr(tuning, "pdf_extract_num_cpus", None)) or self._requested_plan.get_pdf_extract_cpus_per_task()
-        pdf_extract_tasks = self._positive_int(getattr(tuning, "pdf_extract_workers", None)) or self._requested_plan.get_pdf_extract_tasks()
+        pdf_extract_batch_size = (
+            self._positive_int(getattr(tuning, "pdf_extract_batch_size", None))
+            or self._requested_plan.get_pdf_extract_batch_size()
+        )
+        pdf_extract_cpus = (
+            self._positive_float(getattr(tuning, "pdf_extract_num_cpus", None))
+            or self._requested_plan.get_pdf_extract_cpus_per_task()
+        )
+        pdf_extract_tasks = (
+            self._positive_int(getattr(tuning, "pdf_extract_workers", None))
+            or self._requested_plan.get_pdf_extract_tasks()
+        )
 
-        page_elements_batch_size = self._positive_int(getattr(tuning, "page_elements_batch_size", None)) or self._requested_plan.get_page_elements_batch_size()
+        page_elements_batch_size = (
+            self._positive_int(getattr(tuning, "page_elements_batch_size", None))
+            or self._requested_plan.get_page_elements_batch_size()
+        )
         page_elements_cpus = self._positive_float(getattr(tuning, "page_elements_cpus_per_actor", None)) or 1
         page_elements_gpus = (
             0.0
@@ -1479,7 +1491,10 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
                 or self._requested_plan.get_page_elements_gpus_per_actor()
             )
         )
-        page_elements_concurrency = self._positive_int(getattr(tuning, "page_elements_workers", None)) or self._requested_plan.get_page_elements_initial_actors()
+        page_elements_concurrency = (
+            self._positive_int(getattr(tuning, "page_elements_workers", None))
+            or self._requested_plan.get_page_elements_initial_actors()
+        )
 
         ocr_batch_size = (
             self._positive_int(getattr(tuning, "ocr_inference_batch_size", None))
@@ -1490,7 +1505,9 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
         ocr_gpus = (
             0.0
             if extract_params is not None and extract_params.ocr_invoke_url
-            else (self._positive_float(getattr(tuning, "gpu_ocr", None)) or self._requested_plan.get_ocr_gpus_per_actor())
+            else (
+                self._positive_float(getattr(tuning, "gpu_ocr", None)) or self._requested_plan.get_ocr_gpus_per_actor()
+            )
         )
         ocr_concurrency = (
             self._positive_int(getattr(tuning, "ocr_workers", None))
@@ -1507,17 +1524,29 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             self._positive_float(getattr(tuning, "gpu_nemotron_parse", None))
             or self._requested_plan.get_nemotron_parse_gpus_per_actor()
         )
-        nemotron_parse_concurrency = self._positive_int(getattr(tuning, "nemotron_parse_workers", None)) or self._requested_plan.get_nemotron_parse_initial_actors()
+        nemotron_parse_concurrency = (
+            self._positive_int(getattr(tuning, "nemotron_parse_workers", None))
+            or self._requested_plan.get_nemotron_parse_initial_actors()
+        )
 
         if embed_params is not None:
-            embed_batch_size = self._positive_int(getattr(embed_tuning, "embed_batch_size", None)) or self._requested_plan.get_embed_batch_size()
+            embed_batch_size = (
+                self._positive_int(getattr(embed_tuning, "embed_batch_size", None))
+                or self._requested_plan.get_embed_batch_size()
+            )
             embed_cpus = self._positive_float(getattr(embed_tuning, "embed_cpus_per_actor", None)) or 1
             embed_gpus = (
                 0.0
                 if embed_params.embed_invoke_url
-                else (self._positive_float(getattr(embed_tuning, "gpu_embed", None)) or self._requested_plan.get_embed_gpus_per_actor())
+                else (
+                    self._positive_float(getattr(embed_tuning, "gpu_embed", None))
+                    or self._requested_plan.get_embed_gpus_per_actor()
+                )
             )
-            embed_concurrency = self._positive_int(getattr(embed_tuning, "embed_workers", None)) or self._requested_plan.get_embed_initial_actors()
+            embed_concurrency = (
+                self._positive_int(getattr(embed_tuning, "embed_workers", None))
+                or self._requested_plan.get_embed_initial_actors()
+            )
         else:
             embed_batch_size = self._requested_plan.get_embed_batch_size()
             embed_cpus = 1
@@ -1607,7 +1636,9 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             split_params=self._graph_split_params,
             caption_params=self._graph_caption_params,
         )
-        executor = RayDataExecutor(graph, ray_address=None, batch_size=1, node_overrides=self._build_graph_node_overrides())
+        executor = RayDataExecutor(
+            graph, ray_address=None, batch_size=1, node_overrides=self._build_graph_node_overrides()
+        )
         self._rd_dataset = executor.ingest(self._graph_source_dataset)
         return self
 
