@@ -38,7 +38,7 @@ def populate_tabular_data(data, num_workers, dialect):
         sub_tables_df = tables_df.loc[tables_df["database"] == database]
         sub_columns_df = columns_df.loc[columns_df["database"] == database]
         logger.info(f"Started parsing db {database}.")
-        schemas, _, added_or_modified_tables = populate_db(
+        schemas = populate_db(
             sub_tables_df,
             sub_columns_df,
             num_workers,
@@ -54,7 +54,6 @@ def populate_tabular_data(data, num_workers, dialect):
 
 
 def populate_db(tables_df, columns_df, num_workers):
-    added_or_modified_tables = []
     schemas, db_node = schemas_parser.parse_df(tables_df, columns_df)
     existing_db_id, loaded = db_exists(db_node)
 
@@ -66,24 +65,13 @@ def populate_db(tables_df, columns_df, num_workers):
 
         before_adding_schemas = time.time()
         for schema_name, schema in schemas.items():
-            added_or_modified_tables_dict = {
-                "db": str(db_node.id),
-                "schema": str(schema.schema_node.name),
-            }
-            added_or_modified_tables_dict = add_schema(
-                schema,
-                latest_timestamp,
-                num_workers,
-                added_or_modified_tables_dict,
-            )
-            if added_or_modified_tables_dict:
-                added_or_modified_tables.append(added_or_modified_tables_dict)
+            add_schema(schema, latest_timestamp, num_workers)
             logger.info(f"Added schema {schema_name} to db.")
 
         update_node_property("db", str(db_node.get_id()), {"pulled": latest_timestamp})
 
         logger.info(f"Time took to add schemas:{time.time() - before_adding_schemas}")
-        return schemas, db_node, added_or_modified_tables
+        return schemas
 
     before_adding_schema = time.time()
     existing_schemas = get_schemas_ids_and_names(existing_db_id)
@@ -94,17 +82,7 @@ def populate_db(tables_df, columns_df, num_workers):
     ]
     for schema in schemas_to_add:
         schema.get_db_node().replace_id(existing_db_id)
-        added_or_modified_tables_dict = {
-            "db": str(db_node.id),
-            "schema": str(schema.schema_node.name),
-        }
-        added_or_modified_tables_dict = add_schema(
-            schema,
-            latest_timestamp,
-            num_workers,
-            added_or_modified_tables_dict,
-        )
-        added_or_modified_tables.append(added_or_modified_tables_dict)
+        add_schema(schema, latest_timestamp, num_workers)
         logger.info(f"Added schema {schema.get_schema_name()} to db.")
 
     schemas_to_update = [
@@ -115,13 +93,10 @@ def populate_db(tables_df, columns_df, num_workers):
     for schema in schemas_to_update:
         schema.get_db_node().replace_id(existing_db_id)
     with ThreadPoolExecutor(num_workers) as executor:
-        for r in executor.map(
+        executor.map(
             lambda schema: _update_schema(schema, latest_timestamp),
             schemas_to_update,
-        ):
-            if len(r["tables"]) > 0:
-                r["db"] = str(db_node.id)
-                added_or_modified_tables.append(r)
+        )
 
     # delete existing - new
     schemas_to_delete = [
@@ -142,7 +117,7 @@ def populate_db(tables_df, columns_df, num_workers):
     logger.info(f"Time took to update schemas:{time.time() - before_adding_schema}")
 
     update_node_property("db", existing_db_id, {"pulled": latest_timestamp})
-    return schemas, db_node, added_or_modified_tables
+    return schemas
 
 
 def populate_fks(fks):
@@ -159,6 +134,5 @@ def populate_pks(pks):
 
 
 def _update_schema(schema, latest_timestamp):
-    added_or_modified_tables = update_diff_from_existing_schema(schema, latest_timestamp)
+    update_diff_from_existing_schema(schema, latest_timestamp)
     logger.info(f"Updated schema {schema.get_schema_name()} to db.")
-    return added_or_modified_tables

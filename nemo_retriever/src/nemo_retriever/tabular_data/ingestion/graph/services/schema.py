@@ -21,7 +21,6 @@ def add_schema(
     schema: Schema,
     latest_timestamp: datetime,
     num_workers: int,
-    added_or_modified_tables_dict: dict,
 ):
     """
     Add all the nodes and edges of the given schema.
@@ -62,12 +61,6 @@ def add_schema(
                 500,
             )
         )
-        if len(table_column_nodes_chunks) > 0:
-            added_or_modified_tables_dict["tables"] = set(
-                [x["props"]["name"] for x in table_column_nodes_chunks[0]]
-            )  # take all table names
-        else:
-            added_or_modified_tables_dict["tables"] = set()
         for table_column_nodes in table_column_nodes_chunks:
             merge_schema_nodes(table_column_nodes, latest_timestamp)
 
@@ -89,7 +82,3 @@ def add_schema(
     except Exception as err:
         logger.info(f"Failed adding schema: {schema.get_schema_name()}")
         logger.exception(err)
-        added_or_modified_tables_dict["tables"] = set()
-        return added_or_modified_tables_dict
-
-    return added_or_modified_tables_dict

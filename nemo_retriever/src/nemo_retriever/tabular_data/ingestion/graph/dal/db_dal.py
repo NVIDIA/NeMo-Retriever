@@ -130,18 +130,13 @@ def accumulate_updated_column(column_in_intersection, items_to_update_in_graph, 
 
 def update_diff_from_existing_schema(new_schema, latest_timestamp):
     try:
-        added_or_modified_tables = {
-            "schema": str(new_schema.schema_node.name),
-            "tables": set(),
-        }
-
         # load existing schema
         schema_name = new_schema.get_schema_name()
         db_name = new_schema.get_db_name()
 
         existing_schema = load_schema_from_graph(db_name, schema_name)
         if existing_schema is None:
-            return False
+            return
 
         existing_schema_node = existing_schema.get_schema_node()
 
@@ -149,7 +144,6 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         new_table_names = new_schema.tables_df.table_name.unique()
         tables_names_to_add = set(new_table_names) - set(existing_table_names)
         logger.info(f"Tables to add in schema {schema_name}: {len(tables_names_to_add)}")
-        added_or_modified_tables["tables"].update(tables_names_to_add)
 
         for table_name in tables_names_to_add:
             edge_params = {"schema": schema_name}
@@ -191,9 +185,6 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         logger.info(f"Columns to delete in schema {schema_name}: {len(deleted_columns)}")
         ids_to_delete = deleted_columns["props_graph"].apply(lambda p: p["id"]).tolist()
         delete_columns_batch(ids_to_delete)
-        # filter out columns of deleted tables
-        modified_tables = deleted_columns.table_name.unique()
-        added_or_modified_tables["tables"].update(modified_tables)
 
         columns_merge = pd.merge(
             existing_schema.columns_df,
@@ -210,9 +201,6 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
             axis=1,
         )
         add_schemas_edge_batch(edges_to_merge, created=latest_timestamp)
-        # filter out columns of added tables
-        modified_tables = added_columns.table_name.unique()
-        added_or_modified_tables["tables"].update(modified_tables)
 
         columns_merge = pd.merge(
             existing_schema.columns_df,
@@ -255,7 +243,6 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
                 logger.info(f"Updating columns chunk {i + 1}/{len_chunks}")
                 update_properties_in_graph_batch(chunk)
 
-        return added_or_modified_tables
     except Exception as err:
         raise Exception(f'Error in "update_diff_from_existing_schema": {err}')
 
