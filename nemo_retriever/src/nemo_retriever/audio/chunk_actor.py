@@ -21,7 +21,6 @@ import pandas as pd
 from nemo_retriever.audio.media_interface import MediaInterface
 from nemo_retriever.audio.media_interface import is_media_available
 from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.params import AudioChunkParams
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 CHUNK_COLUMNS = ["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "bytes"]
 
 
-class MediaChunkActor(AbstractOperator, CPUOperator):
+class MediaChunkActor(AbstractOperator):
     """
     Ray Data map_batches callable: DataFrame with path, bytes -> DataFrame of chunk rows.
 

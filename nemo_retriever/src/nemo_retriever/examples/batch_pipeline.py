@@ -159,82 +159,214 @@ def main(
         path_type=Path,
     ),
     detection_summary_file: Optional[Path] = typer.Option(
-        None, "--detection-summary-file", path_type=Path, dir_okay=False
+        None,
+        "--detection-summary-file",
+        path_type=Path,
+        dir_okay=False,
+        help="Write a JSON detection summary for the ingested output rows to this file.",
     ),
-    recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode"),
-    evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
-    no_recall_details: bool = typer.Option(False, "--no-recall-details"),
-    embed_actors: Optional[int] = typer.Option(0, "--embed-actors"),
-    embed_batch_size: Optional[int] = typer.Option(0, "--embed-batch-size"),
-    embed_cpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-cpus-per-actor"),
-    embed_gpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-gpus-per-actor", max=1.0),
-    embed_granularity: str = typer.Option("element", "--embed-granularity"),
-    beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
-    beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
-    beir_split: str = typer.Option("test", "--beir-split"),
-    beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language"),
-    beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field"),
-    beir_k: list[int] = typer.Option([], "--beir-k"),
-    graphic_elements_invoke_url: Optional[str] = typer.Option(None, "--graphic-elements-invoke-url"),
-    api_key: Optional[str] = typer.Option(None, "--api-key"),
-    embed_invoke_url: Optional[str] = typer.Option(None, "--embed-invoke-url"),
-    embed_model_name: str = typer.Option("nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name"),
-    embed_modality: str = typer.Option("text", "--embed-modality"),
-    hybrid: bool = typer.Option(False, "--hybrid/--no-hybrid"),
-    input_type: str = typer.Option("pdf", "--input-type"),
-    lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri"),
-    method: str = typer.Option("pdfium", "--method"),
-    log_file: Optional[Path] = typer.Option(None, "--log-file", path_type=Path, dir_okay=False),
-    nemotron_parse_actors: Optional[int] = typer.Option(0, "--nemotron-parse-actors"),
+    recall_match_mode: str = typer.Option(
+        "pdf_page", "--recall-match-mode", help="Recall match mode: 'pdf_page' or 'pdf_only'."
+    ),
+    evaluation_mode: str = typer.Option(
+        "recall", "--evaluation-mode", help="Evaluation mode to run after ingest: 'recall' or 'beir'."
+    ),
+    no_recall_details: bool = typer.Option(
+        False, "--no-recall-details", help="Accepted for CLI parity; detailed recall output is not emitted here."
+    ),
+    embed_actors: Optional[int] = typer.Option(0, "--embed-actors", help="Number of embedding workers/actors to use."),
+    embed_batch_size: Optional[int] = typer.Option(0, "--embed-batch-size", help="Embedding inference batch size."),
+    embed_cpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--embed-cpus-per-actor", help="CPU resources reserved per embedding actor."
+    ),
+    embed_gpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--embed-gpus-per-actor", max=1.0, help="GPU fraction reserved per embedding actor."
+    ),
+    embed_granularity: str = typer.Option(
+        "element", "--embed-granularity", help="Embedding granularity, such as 'element' or chunk-level output."
+    ),
+    beir_loader: Optional[str] = typer.Option(
+        None, "--beir-loader", help="BEIR dataset loader name to use when --evaluation-mode=beir."
+    ),
+    beir_dataset_name: Optional[str] = typer.Option(
+        None, "--beir-dataset-name", help="BEIR dataset name to evaluate when --evaluation-mode=beir."
+    ),
+    beir_split: str = typer.Option("test", "--beir-split", help="BEIR dataset split to evaluate."),
+    beir_query_language: Optional[str] = typer.Option(
+        None, "--beir-query-language", help="Optional BEIR query language filter."
+    ),
+    beir_doc_id_field: str = typer.Option(
+        "pdf_basename", "--beir-doc-id-field", help="Document id field used when scoring BEIR retrieval results."
+    ),
+    beir_k: list[int] = typer.Option(
+        [], "--beir-k", help="Top-k values to score for BEIR evaluation. Repeat the flag to provide multiple values."
+    ),
+    graphic_elements_invoke_url: Optional[str] = typer.Option(
+        None, "--graphic-elements-invoke-url", help="Remote endpoint URL for graphic-elements model inference."
+    ),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Bearer token for remote NIM endpoints."),
+    embed_invoke_url: Optional[str] = typer.Option(
+        None, "--embed-invoke-url", help="Remote endpoint URL for embedding model inference."
+    ),
+    embed_model_name: str = typer.Option(
+        "nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name", help="Embedding model name."
+    ),
+    embed_modality: str = typer.Option(
+        "text", "--embed-modality", help="Embedding modality to generate, for example 'text'."
+    ),
+    hybrid: bool = typer.Option(False, "--hybrid/--no-hybrid", help="Enable LanceDB hybrid mode (dense + FTS text)."),
+    input_type: str = typer.Option(
+        "pdf", "--input-type", help="Input type to ingest from a directory. Supported here: 'pdf' or 'doc'."
+    ),
+    lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri", help="LanceDB URI/path for this run."),
+    method: str = typer.Option("pdfium", "--method", help="PDF text extraction method."),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", path_type=Path, dir_okay=False, help="Optional file to mirror stdout, stderr, and logs."
+    ),
+    nemotron_parse_actors: Optional[int] = typer.Option(
+        0, "--nemotron-parse-actors", help="Number of Nemotron Parse workers/actors to use."
+    ),
     nemotron_parse_gpus_per_actor: Optional[float] = typer.Option(
-        0.0, "--nemotron-parse-gpus-per-actor", min=0.0, max=1.0
+        0.0,
+        "--nemotron-parse-gpus-per-actor",
+        min=0.0,
+        max=1.0,
+        help="GPU fraction reserved per Nemotron Parse actor.",
     ),
-    nemotron_parse_batch_size: Optional[int] = typer.Option(0, "--nemotron-parse-batch-size"),
-    ocr_actors: Optional[int] = typer.Option(0, "--ocr-actors"),
-    ocr_batch_size: Optional[int] = typer.Option(0, "--ocr-batch-size"),
-    ocr_cpus_per_actor: Optional[float] = typer.Option(0.0, "--ocr-cpus-per-actor"),
-    ocr_gpus_per_actor: Optional[float] = typer.Option(0.0, "--ocr-gpus-per-actor", min=0.0, max=1.0),
-    ocr_invoke_url: Optional[str] = typer.Option(None, "--ocr-invoke-url"),
-    page_elements_actors: Optional[int] = typer.Option(0, "--page-elements-actors"),
-    page_elements_batch_size: Optional[int] = typer.Option(0, "--page-elements-batch-size"),
-    page_elements_cpus_per_actor: Optional[float] = typer.Option(0.0, "--page-elements-cpus-per-actor"),
+    nemotron_parse_batch_size: Optional[int] = typer.Option(
+        0, "--nemotron-parse-batch-size", help="Nemotron Parse inference batch size."
+    ),
+    ocr_actors: Optional[int] = typer.Option(0, "--ocr-actors", help="Number of OCR workers/actors to use."),
+    ocr_batch_size: Optional[int] = typer.Option(0, "--ocr-batch-size", help="OCR inference batch size."),
+    ocr_cpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--ocr-cpus-per-actor", help="CPU resources reserved per OCR actor."
+    ),
+    ocr_gpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--ocr-gpus-per-actor", min=0.0, max=1.0, help="GPU fraction reserved per OCR actor."
+    ),
+    ocr_invoke_url: Optional[str] = typer.Option(
+        None, "--ocr-invoke-url", help="Remote endpoint URL for OCR model inference."
+    ),
+    page_elements_actors: Optional[int] = typer.Option(
+        0, "--page-elements-actors", help="Number of page-elements workers/actors to use."
+    ),
+    page_elements_batch_size: Optional[int] = typer.Option(
+        0, "--page-elements-batch-size", help="Page-elements inference batch size."
+    ),
+    page_elements_cpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--page-elements-cpus-per-actor", help="CPU resources reserved per page-elements actor."
+    ),
     page_elements_gpus_per_actor: Optional[float] = typer.Option(
-        0.0, "--page-elements-gpus-per-actor", min=0.0, max=1.0
+        0.0,
+        "--page-elements-gpus-per-actor",
+        min=0.0,
+        max=1.0,
+        help="GPU fraction reserved per page-elements actor.",
     ),
-    page_elements_invoke_url: Optional[str] = typer.Option(None, "--page-elements-invoke-url"),
-    pdf_extract_batch_size: Optional[int] = typer.Option(0, "--pdf-extract-batch-size"),
-    pdf_extract_cpus_per_task: Optional[float] = typer.Option(0.0, "--pdf-extract-cpus-per-task"),
-    pdf_extract_tasks: Optional[int] = typer.Option(0, "--pdf-extract-tasks"),
-    pdf_split_batch_size: int = typer.Option(1, "--pdf-split-batch-size", min=1),
-    query_csv: Path = typer.Option("./data/bo767_query_gt.csv", "--query-csv", path_type=Path),
-    ray_address: Optional[str] = typer.Option(None, "--ray-address"),
-    ray_log_to_driver: bool = typer.Option(True, "--ray-log-to-driver/--no-ray-log-to-driver"),
+    page_elements_invoke_url: Optional[str] = typer.Option(
+        None, "--page-elements-invoke-url", help="Remote endpoint URL for page-elements model inference."
+    ),
+    pdf_extract_batch_size: Optional[int] = typer.Option(
+        0, "--pdf-extract-batch-size", help="Batch size for PDF extraction tasks."
+    ),
+    pdf_extract_cpus_per_task: Optional[float] = typer.Option(
+        0.0, "--pdf-extract-cpus-per-task", help="CPU resources reserved per PDF extraction task."
+    ),
+    pdf_extract_tasks: Optional[int] = typer.Option(
+        0, "--pdf-extract-tasks", help="Number of parallel PDF extraction tasks to use."
+    ),
+    pdf_split_batch_size: int = typer.Option(
+        1, "--pdf-split-batch-size", min=1, help="Batch size for PDF page splitting."
+    ),
+    query_csv: Path = typer.Option(
+        "./data/bo767_query_gt.csv",
+        "--query-csv",
+        path_type=Path,
+        help="Path to query CSV for recall evaluation.",
+    ),
+    ray_address: Optional[str] = typer.Option(
+        None, "--ray-address", help="Ray cluster address. Leave unset to start or connect using defaults."
+    ),
+    ray_log_to_driver: bool = typer.Option(
+        True, "--ray-log-to-driver/--no-ray-log-to-driver", help="Forward Ray worker logs to the driver process."
+    ),
     runtime_metrics_dir: Optional[Path] = typer.Option(
-        None, "--runtime-metrics-dir", path_type=Path, file_okay=False, dir_okay=True
+        None,
+        "--runtime-metrics-dir",
+        path_type=Path,
+        file_okay=False,
+        dir_okay=True,
+        help="Accepted for CLI parity; runtime metrics are not emitted by this graph example.",
     ),
-    runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix"),
-    reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
-    reranker_model_name: str = typer.Option("nvidia/llama-nemotron-rerank-1b-v2", "--reranker-model-name"),
-    structured_elements_modality: Optional[str] = typer.Option(None, "--structured-elements-modality"),
-    text_elements_modality: Optional[str] = typer.Option(None, "--text-elements-modality"),
-    use_graphic_elements: bool = typer.Option(False, "--use-graphic-elements"),
-    use_table_structure: bool = typer.Option(False, "--use-table-structure"),
-    table_output_format: Optional[str] = typer.Option(None, "--table-output-format"),
-    table_structure_invoke_url: Optional[str] = typer.Option(None, "--table-structure-invoke-url"),
-    extract_text: bool = typer.Option(True, "--extract-text/--no-extract-text"),
-    extract_tables: bool = typer.Option(True, "--extract-tables/--no-extract-tables"),
-    extract_charts: bool = typer.Option(True, "--extract-charts/--no-extract-charts"),
-    extract_infographics: bool = typer.Option(False, "--extract-infographics/--no-extract-infographics"),
-    extract_page_as_image: bool = typer.Option(True, "--extract-page-as-image/--no-extract-page-as-image"),
-    caption: bool = typer.Option(False, "--caption/--no-caption"),
-    caption_invoke_url: Optional[str] = typer.Option(None, "--caption-invoke-url"),
-    caption_model_name: str = typer.Option("nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16", "--caption-model-name"),
-    caption_device: Optional[str] = typer.Option(None, "--caption-device"),
-    caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
-    caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
-    text_chunk: bool = typer.Option(False, "--text-chunk"),
-    text_chunk_max_tokens: Optional[int] = typer.Option(None, "--text-chunk-max-tokens"),
-    text_chunk_overlap_tokens: Optional[int] = typer.Option(None, "--text-chunk-overlap-tokens"),
+    runtime_metrics_prefix: Optional[str] = typer.Option(
+        None, "--runtime-metrics-prefix", help="Accepted for CLI parity with the batch example."
+    ),
+    reranker: Optional[bool] = typer.Option(
+        False, "--reranker/--no-reranker", help="Enable reranking during evaluation."
+    ),
+    reranker_model_name: str = typer.Option(
+        "nvidia/llama-nemotron-rerank-1b-v2", "--reranker-model-name", help="Reranker model name."
+    ),
+    structured_elements_modality: Optional[str] = typer.Option(
+        None, "--structured-elements-modality", help="Embedding modality label for structured/table-like elements."
+    ),
+    text_elements_modality: Optional[str] = typer.Option(
+        None, "--text-elements-modality", help="Embedding modality label for text elements."
+    ),
+    use_graphic_elements: bool = typer.Option(
+        False, "--use-graphic-elements", help="Enable graphic-elements detection during extraction."
+    ),
+    use_table_structure: bool = typer.Option(
+        False, "--use-table-structure", help="Enable table-structure detection during extraction."
+    ),
+    table_output_format: Optional[str] = typer.Option(
+        None, "--table-output-format", help="Requested output format for extracted tables."
+    ),
+    table_structure_invoke_url: Optional[str] = typer.Option(
+        None, "--table-structure-invoke-url", help="Remote endpoint URL for table-structure model inference."
+    ),
+    extract_text: bool = typer.Option(
+        True, "--extract-text/--no-extract-text", help="Enable text extraction from documents."
+    ),
+    extract_tables: bool = typer.Option(
+        True, "--extract-tables/--no-extract-tables", help="Enable table extraction from documents."
+    ),
+    extract_charts: bool = typer.Option(
+        True, "--extract-charts/--no-extract-charts", help="Enable chart extraction from documents."
+    ),
+    extract_infographics: bool = typer.Option(
+        False, "--extract-infographics/--no-extract-infographics", help="Enable infographic extraction from documents."
+    ),
+    extract_page_as_image: bool = typer.Option(
+        True,
+        "--extract-page-as-image/--no-extract-page-as-image",
+        help="Include rendered page images in extraction output.",
+    ),
+    caption: bool = typer.Option(False, "--caption/--no-caption", help="Generate captions for extracted images."),
+    caption_invoke_url: Optional[str] = typer.Option(
+        None, "--caption-invoke-url", help="Remote endpoint URL for caption model inference."
+    ),
+    caption_model_name: str = typer.Option(
+        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16", "--caption-model-name", help="Caption model name."
+    ),
+    caption_device: Optional[str] = typer.Option(
+        None, "--caption-device", help="Device to use for local caption inference, such as 'cuda' or 'cpu'."
+    ),
+    caption_context_text_max_chars: int = typer.Option(
+        0,
+        "--caption-context-text-max-chars",
+        help="Maximum amount of surrounding text context to pass into captioning.",
+    ),
+    caption_gpu_memory_utilization: float = typer.Option(
+        0.5, "--caption-gpu-memory-utilization", help="Target GPU memory utilization for local caption inference."
+    ),
+    text_chunk: bool = typer.Option(False, "--text-chunk", help="Split extracted text into chunks before embedding."),
+    text_chunk_max_tokens: Optional[int] = typer.Option(
+        None, "--text-chunk-max-tokens", help="Maximum tokens per text chunk."
+    ),
+    text_chunk_overlap_tokens: Optional[int] = typer.Option(
+        None, "--text-chunk-overlap-tokens", help="Token overlap between adjacent text chunks."
+    ),
 ) -> None:
     _ = (ctx, no_recall_details)
     log_handle, original_stdout, original_stderr = _configure_logging(log_file, debug=bool(debug))
