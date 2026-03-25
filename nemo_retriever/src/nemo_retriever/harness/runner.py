@@ -588,6 +588,21 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     if git_commit:
         logger.info("Job %s requests commit %s (ref=%s) — pulling latest code", job_id, git_commit[:12], git_ref)
         prev_head = _git_checkout_commit(git_commit, git_ref)
+        repo_root = _find_repo_root()
+        if repo_root is not None:
+            import shutil
+
+            uv_bin = shutil.which("uv")
+            pkg_dir = str(repo_root / "nemo_retriever")
+            if uv_bin:
+                reinstall_cmd = [uv_bin, "pip", "install", "--python", sys.executable, "-e", pkg_dir]
+            else:
+                reinstall_cmd = [sys.executable, "-m", "pip", "install", "-e", pkg_dir]
+            logger.info("Job %s — reinstalling nemo_retriever from %s", job_id, pkg_dir)
+            try:
+                subprocess.run(reinstall_cmd, check=True, timeout=300, capture_output=True)
+            except subprocess.CalledProcessError as exc:
+                logger.warning("Job %s — nemo_retriever reinstall failed: %s", job_id, exc)
 
     extra_packages = job.get("extra_packages") or []
     if extra_packages:
