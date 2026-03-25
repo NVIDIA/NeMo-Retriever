@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,7 @@ TEXT_EXTENSIONS = {".txt"}
 HTML_EXTENSIONS = {".html"}
 AUDIO_EXTENSIONS = {".mp3", ".wav"}
 IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
+VIDEO_EXTENSIONS = {".mp4"}
 
 
 class MultiTypeExtractOperator(AbstractOperator):
@@ -70,12 +72,17 @@ class MultiTypeExtractOperator(AbstractOperator):
         self.audio_chunk_params = audio_chunk_params or AudioChunkParams()
         self.asr_params = asr_params or ASRParams()
 
-    def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame:
+    def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame | dict[str, list[str]]:
         if isinstance(data, pd.DataFrame):
             return data
-        raise ValueError("MultiTypeExtractOperator expects a pandas DataFrame Ray batch")
+        return self._group_file_inputs(data)
 
-    def process(self, batch_df: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
+    def process(self, batch_df: Any, **kwargs: Any) -> pd.DataFrame | list[Any]:
+        if isinstance(batch_df, dict):
+            if not any(batch_df.values()):
+                return []
+            raise ValueError("MultiTypeExtractOperator.process expects a pandas DataFrame for non-empty grouped inputs")
+
         if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
             return pd.DataFrame()
 
@@ -93,6 +100,9 @@ class MultiTypeExtractOperator(AbstractOperator):
         if not grouped["audio"].empty:
             audio_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["audio"])
             outputs.append(ASRActor(params=self.asr_params).run(audio_df))
+        if not grouped["video"].empty:
+            video_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["video"])
+            outputs.append(ASRActor(params=self.asr_params).run(video_df))
 
         non_empty = [df for df in outputs if isinstance(df, pd.DataFrame) and not df.empty]
         if not non_empty:
@@ -100,7 +110,7 @@ class MultiTypeExtractOperator(AbstractOperator):
         return pd.concat(non_empty, ignore_index=True, sort=False)
 
     def _group_batches(self, batch_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-        grouped: dict[str, list[int]] = {"pdf": [], "image": [], "text": [], "html": [], "audio": []}
+        grouped: dict[str, list[int]] = {"pdf": [], "image": [], "text": [], "html": [], "audio": [], "video": []}
         explicit_mode = self.extraction_mode
 
         for idx, row in batch_df.iterrows():
@@ -126,7 +136,32 @@ class MultiTypeExtractOperator(AbstractOperator):
             return "html"
         if ext in AUDIO_EXTENSIONS:
             return "audio"
+        if ext in VIDEO_EXTENSIONS:
+            return "video"
         return ""
+
+    def _group_file_inputs(self, data: Any) -> dict[str, list[str]]:
+        grouped: dict[str, list[str]] = {"pdf": [], "image": [], "text": [], "html": [], "audio": [], "video": []}
+
+        if isinstance(data, (str, os.PathLike)):
+            path = Path(data)
+            if path.is_dir():
+                files = [str(candidate) for candidate in path.rglob("*") if candidate.is_file()]
+            else:
+                files = [str(path)]
+        elif isinstance(data, (list, tuple)):
+            files = [str(item) for item in data]
+        else:
+            raise ValueError("MultiTypeExtractOperator expects a pandas DataFrame Ray batch")
+
+        explicit_mode = self.extraction_mode
+        for path in files:
+            ext = Path(path).suffix.lower()
+            target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            if target in grouped:
+                grouped[target].append(path)
+
+        return grouped
 
     def _run_pdf_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
@@ -230,7 +265,9 @@ class MultiTypeExtractOperator(AbstractOperator):
         if inference_batch_size:
             ocr_kwargs["inference_batch_size"] = int(inference_batch_size)
 
-        if any(ocr_kwargs.get(key) for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")):
+        if any(
+            ocr_kwargs.get(key) for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+        ):
             batch_df = OCRActor(**ocr_kwargs).run(batch_df)
 
         return batch_df

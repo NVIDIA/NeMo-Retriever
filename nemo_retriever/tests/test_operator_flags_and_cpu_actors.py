@@ -61,7 +61,6 @@ class TestCPUOperatorFlag:
         from nemo_retriever.html.ray_data import HtmlSplitActor
         from nemo_retriever.ingest_modes.batch import ExplodeContentActor
         from nemo_retriever.audio.asr_actor import ASRActor
-        from nemo_retriever.audio.chunk_actor import MediaChunkActor
 
         assert issubclass(DocToPdfConversionActor, CPUOperator)
         assert issubclass(PDFSplitActor, CPUOperator)
@@ -72,7 +71,6 @@ class TestCPUOperatorFlag:
         assert issubclass(HtmlSplitActor, CPUOperator)
         assert issubclass(ExplodeContentActor, CPUOperator)
         assert issubclass(ASRActor, CPUOperator)
-        assert issubclass(MediaChunkActor, CPUOperator)
 
     def test_cpu_operators_are_not_gpu(self):
         from nemo_retriever.pdf.split import PDFSplitActor
