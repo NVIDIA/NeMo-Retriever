@@ -16,6 +16,7 @@ import typer
 from nemo_retriever import create_ingestor
 from nemo_retriever.examples.common import estimate_processed_pages, print_pages_per_second
 from nemo_retriever.params import CaptionParams
+from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import IngestExecuteParams
@@ -202,6 +203,17 @@ def main(
         "--caption-gpu-memory-utilization",
         help="Fraction of GPU memory vLLM may use for the caption model (0.0–1.0).",
     ),
+    dedup: Optional[bool] = typer.Option(
+        None,
+        "--dedup/--no-dedup",
+        help="Remove duplicate/overlapping images before captioning. "
+        "Defaults to on when captioning is enabled, off otherwise.",
+    ),
+    dedup_iou_threshold: float = typer.Option(
+        0.45,
+        "--dedup-iou-threshold",
+        help="IoU threshold for bbox-based image dedup (0.0–1.0).",
+    ),
     hybrid: bool = typer.Option(
         False,
         "--hybrid/--no-hybrid",
@@ -327,6 +339,14 @@ def main(
         )
 
     enable_caption = caption or caption_invoke_url is not None
+    enable_dedup = dedup if dedup is not None else enable_caption
+    if enable_dedup:
+        ingestor = ingestor.dedup(
+            DedupParams(
+                iou_threshold=dedup_iou_threshold,
+            )
+        )
+
     if enable_caption:
         ingestor = ingestor.caption(
             CaptionParams(
