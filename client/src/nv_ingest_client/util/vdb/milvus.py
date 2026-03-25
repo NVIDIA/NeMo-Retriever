@@ -178,7 +178,7 @@ def grab_meta_collection_info(
     embedding_dim = embedding_dim or ""
     if milvus_uri:
         client = MilvusClient(milvus_uri, token=f"{username}:{password}")
-    results = client.query_iterator(
+    iterator = client.query_iterator(
         collection_name=meta_collection_name,
         output_fields=[
             "collection_name",
@@ -189,10 +189,12 @@ def grab_meta_collection_info(
         ],
     )
     query_res = []
-    res = results.next()
-    while res:
+    while True:
+        res = iterator.next()
+        if not res:
+            iterator.close()
+            break
         query_res += res
-        res = results.next()
     result = []
     for res in query_res:
         if (
