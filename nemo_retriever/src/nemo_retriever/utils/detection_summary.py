@@ -206,6 +206,18 @@ def _fmt_time(seconds: float) -> str:
     return f"{seconds:.2f}s / {h}:{m:02d}:{s:02d}.{millis:03d}"
 
 
+def _evaluation_metric_sort_key(item: tuple[str, float]) -> tuple[str, int, str]:
+    """Sort metrics like ndcg@1, ndcg@3, ..., recall@1, recall@3, ... ."""
+    key, _value = item
+    metric_name, sep, suffix = str(key).partition("@")
+    if sep:
+        try:
+            return metric_name, int(suffix), str(key)
+        except ValueError:
+            pass
+    return metric_name, 0, str(key)
+
+
 def print_run_summary(
     processed_pages: Optional[int],
     input_path: Path,
@@ -253,5 +265,5 @@ def print_run_summary(
     print(f"\tTotal - Processed: {processed_pages} pages in {_fmt_time(total_time)} @ {total_pps:.2f} PPS")
 
     print(f"{evaluation_label} metrics:")
-    for k, v in evaluation_metrics.items():
+    for k, v in sorted(evaluation_metrics.items(), key=_evaluation_metric_sort_key):
         print(f"  {k}: {v:.4f}")

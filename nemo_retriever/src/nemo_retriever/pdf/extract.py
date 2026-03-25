@@ -15,6 +15,7 @@ import cv2
 
 from nv_ingest_api.util.pdf.pdfium import (
     convert_bitmap_to_corrected_numpy,
+    extract_image_like_objects_from_pdfium_page,
     is_scanned_page as _is_scanned_page,
 )
 
@@ -296,13 +297,37 @@ def pdf_extraction(
                             render_mode=render_mode,
                         )
 
+                    # Extract cropped images from pdfium page objects.
+                    detected_images: List[Dict[str, Any]] = []
+                    if extract_images:
+                        try:
+                            base64_images = extract_image_like_objects_from_pdfium_page(page)
+                            for img in base64_images:
+                                max_w = float(img.max_width) if img.max_width else 1.0
+                                max_h = float(img.max_height) if img.max_height else 1.0
+                                x0, y0, x1, y1 = img.bbox
+                                detected_images.append(
+                                    {
+                                        "bbox_xyxy_norm": [
+                                            x0 / max_w,
+                                            y0 / max_h,
+                                            x1 / max_w,
+                                            y1 / max_h,
+                                        ],
+                                        "text": "",
+                                        "image_b64": img.image,
+                                    }
+                                )
+                        except Exception:
+                            pass  # Image extraction failure should not crash the pipeline.
+
                     page_record: Dict[str, Any] = {
                         "path": pdf_path,
                         "page_number": page_number,
                         "source_id": source_id,
                         "text": text if extract_text else "",
                         "page_image": None,
-                        "images": [],
+                        "images": detected_images,
                         "tables": [],
                         "charts": [],
                         "infographics": [],

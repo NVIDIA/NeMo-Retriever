@@ -48,6 +48,7 @@ from ..params import HtmlChunkParams
 from ..params import IngestExecuteParams
 from ..params import PdfSplitParams
 from ..params import TextChunkParams
+from ..params import CaptionParams
 from ..params import VdbUploadParams
 
 logger = logging.getLogger(__name__)
@@ -199,6 +200,7 @@ class BatchIngestor(Ingestor):
         ray_address: Optional[str] = None,
         ray_log_to_driver: bool = True,
         debug: bool = False,
+        allow_no_gpu: bool = False,
     ) -> None:
         super().__init__(documents=documents)
 
@@ -240,7 +242,10 @@ class BatchIngestor(Ingestor):
         logger.info(self._cluster_resources)
 
         # 2. Resolve requested plan for the Ray DAG that will be built
-        self._requested_plan = resolve_requested_plan(cluster_resources=self._cluster_resources)
+        self._requested_plan = resolve_requested_plan(
+            cluster_resources=self._cluster_resources,
+            allow_no_gpu=allow_no_gpu,
+        )
         logger.info(self._requested_plan)
 
         # Builder-style task configuration recorded for later execution.
@@ -659,7 +664,11 @@ class BatchIngestor(Ingestor):
 
             ocr_flags["inference_batch_size"] = self._requested_plan.get_ocr_batch_size()
 
-            if ocr_flags:
+            # Only append OCR stage if at least one content type needs it.
+            needs_ocr = any(
+                ocr_flags.get(k) for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            )
+            if needs_ocr:
                 self._rd_dataset = self._rd_dataset.map_batches(
                     OCRActor,
                     batch_size=self._requested_plan.get_ocr_batch_size(),
@@ -889,10 +898,17 @@ class BatchIngestor(Ingestor):
         # We want to create Ray batches that are of the same size as the embed_batch_size.
         self._rd_dataset = self._rd_dataset.repartition(target_num_rows_per_block=embed_batch_size)
 
+        from nemo_retriever.ingest_modes.inprocess import _CONTENT_COLUMNS
+
+        content_columns = (
+            (_CONTENT_COLUMNS + ("images",)) if getattr(self, "_caption_enabled", False) else _CONTENT_COLUMNS
+        )
+
         if embed_granularity == "page":
             _row_fn = partial(
                 collapse_content_to_page_rows,
                 modality=embed_modality,
+                content_columns=content_columns,
             )
         else:
             text_elements_modality = resolved.text_elements_modality or embed_modality
@@ -902,6 +918,7 @@ class BatchIngestor(Ingestor):
                 modality=embed_modality,
                 text_elements_modality=text_elements_modality,
                 structured_elements_modality=structured_elements_modality,
+                content_columns=content_columns,
             )
         self._rd_dataset = self._rd_dataset.map_batches(
             _row_fn,
@@ -932,6 +949,36 @@ class BatchIngestor(Ingestor):
             fn_constructor_kwargs={"params": resolved},
         )
 
+        return self
+
+    def caption(self, params: CaptionParams | None = None, **kwargs: Any) -> "BatchIngestor":
+        """
+        Add an image-captioning stage to the batch pipeline.
+
+        Uses a GPU actor pool with a local VLM (vLLM) or delegates to a
+        remote VLM endpoint when ``endpoint_url`` is set.
+        """
+        if self._rd_dataset is None:
+            raise RuntimeError("No Ray Dataset to caption. Run .files(...) / .extract(...) first.")
+
+        resolved = _coerce_params(params, CaptionParams, kwargs)
+        if resolved.endpoint_url and not resolved.api_key:
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+
+        from nemo_retriever.caption.caption import CaptionActor
+
+        caption_num_gpus = 0.0 if resolved.endpoint_url else resolved.gpu_memory_utilization
+
+        self._rd_dataset = self._rd_dataset.map_batches(
+            CaptionActor,
+            batch_size=resolved.batch_size or 8,
+            batch_format="pandas",
+            num_gpus=caption_num_gpus,
+            concurrency=1,
+            fn_constructor_kwargs={"params": resolved},
+        )
+
+        self._caption_enabled = True
         return self
 
     def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "BatchIngestor":

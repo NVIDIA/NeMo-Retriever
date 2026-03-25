@@ -242,6 +242,36 @@ ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 ```
 
+### Caption extracted images
+
+Use `.caption()` to generate text descriptions for extracted images using a local VLM. Requires vLLM (see step 3 above).
+
+```python
+ingestor = (
+  ingestor.files(documents)
+  .extract(
+      extract_text=True,
+      extract_tables=False,
+      extract_charts=False,
+      extract_infographics=False,
+      extract_images=True,
+  )
+  .caption()
+  .embed()
+  .vdb_upload()
+)
+```
+
+By default this uses [Nemotron-Nano-12B-VL](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16). You can customize the model and prompt:
+
+```python
+.caption(
+  model_name="nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+  prompt="Describe this image in detail:",
+  context_text_max_chars=1024,  # include surrounding page text as context
+)
+```
+
 ### Explore Different Pipeline Options:
 
 You can use the [Nemotron RAG VL Embedder](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2)
