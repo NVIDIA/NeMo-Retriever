@@ -39,6 +39,7 @@ dependencies = [
 milvus = [
     "pymilvus==2.5.10",
     "pymilvus[bulk_writer,model]",
+    "milvus-lite>=2.4.0,<2.5",
 ]
 minio = [
     "minio>=7.2.15",
