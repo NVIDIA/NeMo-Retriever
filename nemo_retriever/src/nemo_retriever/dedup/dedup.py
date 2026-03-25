@@ -9,38 +9,10 @@ from typing import Any, List, Tuple
 
 import pandas as pd
 
+from nv_ingest_api.internal.mutate.deduplicate import calculate_iou
 from nemo_retriever.params import DedupParams
 
 _STRUCTURED_COLUMNS = ("table", "chart", "infographic")
-
-
-def calculate_iou(bbox1: Tuple[float, ...], bbox2: Tuple[float, ...]) -> float:
-    """Calculate Intersection over Union (IoU) for two bounding boxes.
-
-    Boxes are in format (x1, y1, x2, y2) where (x1, y1) is the top-left corner
-    and (x2, y2) is the bottom-right corner.
-    """
-    x1_1, y1_1, x2_1, y2_1 = bbox1[:4]
-    x1_2, y1_2, x2_2, y2_2 = bbox2[:4]
-
-    x1_inter = max(x1_1, x1_2)
-    y1_inter = max(y1_1, y1_2)
-    x2_inter = min(x2_1, x2_2)
-    y2_inter = min(y2_1, y2_2)
-
-    if x2_inter <= x1_inter or y2_inter <= y1_inter:
-        return 0.0
-
-    intersection_area = (x2_inter - x1_inter) * (y2_inter - y1_inter)
-
-    area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-    area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
-    union_area = area1 + area2 - intersection_area
-
-    if union_area <= 0:
-        return 0.0
-
-    return intersection_area / union_area
 
 
 def _collect_structured_bboxes(row: pd.Series) -> List[Tuple[float, ...]]:

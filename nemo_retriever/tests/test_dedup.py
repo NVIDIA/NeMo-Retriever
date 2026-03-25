@@ -6,7 +6,8 @@
 
 import pandas as pd
 
-from nemo_retriever.dedup.dedup import calculate_iou, dedup_images
+from nv_ingest_api.internal.mutate.deduplicate import calculate_iou
+from nemo_retriever.dedup.dedup import dedup_images
 
 
 def _make_image(b64: str, bbox: list[float] | None = None) -> dict:
