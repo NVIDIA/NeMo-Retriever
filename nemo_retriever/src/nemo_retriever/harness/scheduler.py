@@ -140,6 +140,52 @@ def _resolve_preset_overrides(preset_name: str | None) -> dict[str, Any]:
 MAX_PENDING_PER_SCHEDULE = 3
 
 
+def _resolve_run_code_ref_sha() -> tuple[str | None, str | None]:
+    """Resolve the portal ``run_code_ref`` setting to a concrete commit SHA.
+
+    Returns ``(sha, ref)`` so that every job in a batch can be pinned to
+    the same commit even when the symbolic ref (e.g. ``nvidia/main``)
+    advances between job executions.
+    """
+    ref = history.get_portal_setting("run_code_ref")
+    if not ref:
+        return None, None
+    try:
+        env = dict(os.environ)
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        if "/" in ref and not ref.startswith("origin/"):
+            remote = ref.split("/")[0]
+            subprocess.run(
+                ["git", "fetch", remote, "--prune"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+                env=env,
+            )
+        else:
+            subprocess.run(
+                ["git", "fetch", "--all", "--prune"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+                env=env,
+            )
+        result = subprocess.run(
+            ["git", "rev-parse", ref],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+            env=env,
+        )
+        return result.stdout.strip(), ref
+    except Exception as exc:
+        logger.warning("Failed to resolve run_code_ref '%s' to SHA: %s", ref, exc)
+        return ref, ref
+
+
 def _enforce_backlog_limit(schedule_id: int) -> None:
     """Cancel the oldest pending jobs for a schedule if the backlog exceeds the limit."""
     pending = history.get_pending_jobs_for_schedule(schedule_id)
@@ -178,6 +224,9 @@ def _dispatch_schedule(
     ``MAX_PENDING_PER_SCHEDULE`` pending jobs per schedule — the oldest
     pending jobs are cancelled if the limit is exceeded.
     """
+    if not git_commit:
+        git_commit, git_ref = _resolve_run_code_ref_sha()
+
     matrix_name = schedule.get("preset_matrix")
     if matrix_name:
         return _dispatch_schedule_matrix(schedule, matrix_name, trigger_source, git_commit, git_ref)
@@ -242,7 +291,9 @@ def _dispatch_schedule_matrix(
     """Expand a preset matrix into individual jobs for every (dataset, preset) pair."""
     matrix = history.get_preset_matrix_by_name(matrix_name)
     if not matrix:
-        logger.warning("Schedule '%s' references unknown preset_matrix '%s' — skipping", schedule.get("name"), matrix_name)
+        logger.warning(
+            "Schedule '%s' references unknown preset_matrix '%s' — skipping", schedule.get("name"), matrix_name
+        )
         return None
 
     dataset_names: list[str] = matrix.get("dataset_names") or []
@@ -276,24 +327,29 @@ def _dispatch_schedule_matrix(
             preset_overrides = _resolve_preset_overrides(pr_name)
             merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
 
-            job = history.create_job({
-                "schedule_id": schedule["id"],
-                "trigger_source": trigger_source,
-                "dataset": ds_name,
-                "dataset_path": dataset_path,
-                "dataset_overrides": merged_overrides if merged_overrides else None,
-                "preset": pr_name,
-                "config": schedule.get("config"),
-                "assigned_runner_id": runner["id"] if runner else None,
-                "git_commit": git_commit,
-                "git_ref": git_ref,
-                "tags": merged_tags,
-            })
+            job = history.create_job(
+                {
+                    "schedule_id": schedule["id"],
+                    "trigger_source": trigger_source,
+                    "dataset": ds_name,
+                    "dataset_path": dataset_path,
+                    "dataset_overrides": merged_overrides if merged_overrides else None,
+                    "preset": pr_name,
+                    "config": schedule.get("config"),
+                    "assigned_runner_id": runner["id"] if runner else None,
+                    "git_commit": git_commit,
+                    "git_ref": git_ref,
+                    "tags": merged_tags,
+                }
+            )
             if first_job is None:
                 first_job = job
             logger.info(
                 "Matrix dispatch: job %s for schedule '%s' (dataset=%s, preset=%s)",
-                job["id"], schedule.get("name"), ds_name, pr_name,
+                job["id"],
+                schedule.get("name"),
+                ds_name,
+                pr_name,
             )
 
     history.mark_schedule_triggered(schedule["id"])

@@ -604,7 +604,11 @@ def get_preset_by_name(name: str, db_path: str | None = None) -> dict[str, Any] 
 def import_yaml_presets(yaml_presets: dict[str, dict[str, Any]], db_path: str | None = None) -> int:
     """Import presets from the YAML config into the managed presets table.
 
-    Only presets whose name does not already exist are inserted.
+    New presets are inserted.  Existing presets have their ``config``
+    column refreshed from YAML so that tuning-field changes are picked up,
+    but their ``overrides`` (user-configured key/value pairs added via the
+    Portal UI) are always preserved.
+
     Returns the number of newly imported presets.
     """
     imported = 0
@@ -613,6 +617,9 @@ def import_yaml_presets(yaml_presets: dict[str, dict[str, Any]], db_path: str | 
             continue
         existing = get_preset_by_name(name, db_path)
         if existing:
+            existing_config = existing.get("config") or {}
+            if isinstance(existing_config, dict) and existing_config != cfg:
+                update_preset(existing["id"], {"config": cfg}, db_path)
             continue
         data = {
             "name": name,

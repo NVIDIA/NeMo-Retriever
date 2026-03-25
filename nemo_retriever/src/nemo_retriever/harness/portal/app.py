@@ -11,6 +11,7 @@ import hmac
 import io
 import json as json_module
 import logging
+import mimetypes
 import os
 import re
 import shutil
@@ -35,6 +36,8 @@ from apscheduler.triggers.cron import CronTrigger
 
 from nemo_retriever.harness import history
 from nemo_retriever.harness import scheduler as sched_module
+
+mimetypes.add_type("text/javascript", ".jsx")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 if not STATIC_DIR.is_dir():
@@ -1394,7 +1397,7 @@ async def get_config():
 
 @app.get("/api/yaml-config")
 async def get_yaml_config():
-    """Legacy endpoint — returns empty config since YAML seeding is disabled."""
+    """Return empty config — all datasets and presets are managed via the Portal UI."""
     return {"datasets": {}, "presets": {}, "active": {}}
 
 
@@ -1557,6 +1560,8 @@ async def trigger_preset_matrix(matrix_id: int):
     if not dataset_names or not preset_names:
         raise HTTPException(status_code=400, detail="Matrix must have at least one dataset and one preset")
 
+    pinned_sha, pinned_ref = _resolve_run_code_ref_sha()
+
     preferred_runner_id = matrix.get("preferred_runner_id")
     gpu_type_filter = matrix.get("gpu_type_filter")
     matrix_tags = matrix.get("tags") or []
@@ -1579,6 +1584,8 @@ async def trigger_preset_matrix(matrix_id: int):
                     "dataset_overrides": merged_overrides if merged_overrides else None,
                     "preset": pr_name,
                     "assigned_runner_id": runner["id"] if runner else None,
+                    "git_commit": pinned_sha,
+                    "git_ref": pinned_ref,
                     "tags": matrix_tags,
                 }
             )
@@ -1676,6 +1683,7 @@ async def trigger_run(req: TriggerRequest):
     dataset_path, dataset_overrides = _resolve_dataset_config(req.dataset)
     preset_overrides = _resolve_preset_overrides(req.preset)
     merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
+    pinned_sha, pinned_ref = _resolve_run_code_ref_sha()
     job = history.create_job(
         {
             "trigger_source": "manual",
@@ -1685,6 +1693,8 @@ async def trigger_run(req: TriggerRequest):
             "preset": req.preset,
             "config": req.config,
             "assigned_runner_id": req.runner_id,
+            "git_commit": pinned_sha,
+            "git_ref": pinned_ref,
             "tags": req.tags or [],
         }
     )
@@ -2406,6 +2416,30 @@ def _git_run(*args: str, cwd: str | None = None, timeout: int = 30) -> str:
         text=True,
         timeout=timeout,
     ).strip()
+
+
+def _resolve_run_code_ref_sha() -> tuple[str | None, str | None]:
+    """Resolve the portal ``run_code_ref`` setting to a concrete SHA.
+
+    Fetches the latest refs and runs ``git rev-parse`` so that callers
+    get a pinned commit hash instead of a symbolic ref like
+    ``nvidia/main``.  Returns ``(sha, ref)`` — both may be ``None`` if
+    the setting is missing or the resolve fails.
+    """
+    ref = history.get_portal_setting("run_code_ref")
+    if not ref:
+        return None, None
+    try:
+        if "/" in ref and not ref.startswith("origin/"):
+            remote_name = ref.split("/")[0]
+            _git_run("fetch", remote_name, "--prune")
+        else:
+            _git_run("fetch", "--all", "--prune")
+        sha = _git_run("rev-parse", ref)
+        return sha, ref
+    except Exception as exc:
+        logger.warning("Failed to resolve run_code_ref '%s' to SHA: %s", ref, exc)
+        return ref, ref
 
 
 # ---------------------------------------------------------------------------
