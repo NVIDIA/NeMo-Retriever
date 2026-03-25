@@ -1,15 +1,9 @@
 class Labels:
-    COMMAND = "Command"
-    OPERATOR = "Operator"
-    FUNCTION = "Function"
-    CONSTANT = "Constant"
-    ALIAS = "Alias"
     SQL = "Sql"
     COLUMN = "Column"
     TABLE = "Table"
     SCHEMA = "Schema"
     DB = "Db"
-    CONNECTION = "Connection"
 
     LIST_OF_ALL = [
         DB,
@@ -17,11 +11,6 @@ class Labels:
         TABLE,
         COLUMN,
         SQL,
-        COMMAND,
-        OPERATOR,
-        FUNCTION,
-        CONSTANT,
-        CONNECTION,
     ]
 
 

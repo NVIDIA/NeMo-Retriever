@@ -68,12 +68,7 @@ def get_schema_columns(db_name, schema_name):
                 c.name as column_name,
                 c.id as c_id,
                 c.data_type as data_type,
-                c.ordinal_position as ordinal_position,
-                c.is_nullable as is_nullable,
-                c.default as default,
-                c.length as length,
-                c.description as comment,
-                c.scale as scale
+                c.is_nullable as is_nullable
                 RETURN collect({{
                     database: database,
                     schema: schema,
@@ -81,12 +76,7 @@ def get_schema_columns(db_name, schema_name):
                     column_name: column_name,
                     id: c_id,
                     data_type: data_type,
-                    ordinal_position: ordinal_position,
-                    is_nullable: is_nullable,
-                    default: default,
-                    length: length,
-                    comment: comment,
-                    scale: scale
+                    is_nullable: is_nullable
                 }}) as columns
                 """
     res = conn.query_read(
