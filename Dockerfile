@@ -130,10 +130,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && ./ci/scripts/build_pip_packages.sh --type ${RELEASE_TYPE} --lib client \
     && ./ci/scripts/build_pip_packages.sh --type ${RELEASE_TYPE} --lib service
 
+# Pin milvus-lite<2.5: version 2.5+ leaks the parent LD_LIBRARY_PATH into its
+# subprocess, causing the milvus binary to load incompatible libs and hang.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install ./src/dist/*.whl \
     && uv pip install ./api/dist/*.whl \
-    && uv pip install ./client/dist/*.whl
+    && uv pip install ./client/dist/*.whl \
+    && uv pip install 'milvus-lite>=2.4.0,<2.5'
 
 # Remove Ray's Java JAR (ray_dist.jar). It bundles shaded Jackson (e.g. jackson-core) and is only
 # needed for Ray's Java API / cross-language. This image runs Python-only; removing it drops
