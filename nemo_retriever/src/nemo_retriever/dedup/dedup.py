@@ -37,7 +37,6 @@ def dedup_images(
     content_hash: bool = True,
     bbox_iou: bool = True,
     iou_threshold: float = 0.45,
-    **kwargs: Any,
 ) -> pd.DataFrame:
     """Remove duplicate and overlapping images from the ``images`` column.
 
@@ -46,8 +45,8 @@ def dedup_images(
     1. **Content-hash dedup** (``content_hash=True``): MD5-hash each
        ``image_b64``; remove exact duplicates (keep first).
     2. **Bbox IoU dedup** (``bbox_iou=True``): Compare each image's
-       ``bbox_xyxy_norm`` against all entries in ``tables``, ``charts``,
-       ``infographics``. If IoU >= ``iou_threshold``, drop the image
+       ``bbox_xyxy_norm`` against all entries in ``table``, ``chart``,
+       ``infographic``. If IoU >= ``iou_threshold``, drop the image
        (prefer structured content).
     """
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
