@@ -21,14 +21,18 @@ from typing import Optional, TextIO
 import typer
 
 from nemo_retriever import create_ingestor
-from nemo_retriever.params import CaptionParams, EmbedParams, ExtractParams, TextChunkParams
-from nemo_retriever.params.models import BatchTuningParams
-from nemo_retriever.recall.beir import evaluate_lancedb_beir
-from nemo_retriever.utils.detection_summary import (
-    collect_detection_summary_from_df,
-    print_run_summary,
-    write_detection_summary,
-)
+from nemo_retriever.ingest_modes.batch import BatchIngestor
+from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema
+from nemo_retriever.model import resolve_embed_model
+from nemo_retriever.params import CaptionParams
+from nemo_retriever.params import DedupParams
+from nemo_retriever.params import EmbedParams
+from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import IngestExecuteParams
+from nemo_retriever.params import IngestorCreateParams
+from nemo_retriever.params import TextChunkParams
+from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
+from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
@@ -358,7 +362,28 @@ def main(
         help="Maximum amount of surrounding text context to pass into captioning.",
     ),
     caption_gpu_memory_utilization: float = typer.Option(
-        0.5, "--caption-gpu-memory-utilization", help="Target GPU memory utilization for local caption inference."
+        0.5,
+        "--caption-gpu-memory-utilization",
+        help="Fraction of GPU memory vLLM may use for the caption model (0.0–1.0).",
+    ),
+    dedup: Optional[bool] = typer.Option(
+        None,
+        "--dedup/--no-dedup",
+        help="Remove duplicate/overlapping images before captioning. "
+        "Defaults to on when captioning is enabled, off otherwise.",
+    ),
+    dedup_iou_threshold: float = typer.Option(
+        0.45,
+        "--dedup-iou-threshold",
+        help="IoU threshold for bbox-based image dedup (0.0–1.0).",
+    ),
+    text_chunk: bool = typer.Option(
+        False,
+        "--text-chunk",
+        help=(
+            "Re-chunk extracted page text by token count before embedding. "
+            "Uses --text-chunk-max-tokens and --text-chunk-overlap-tokens (defaults: 1024, 150)."
+        ),
     ),
     text_chunk: bool = typer.Option(False, "--text-chunk", help="Split extracted text into chunks before embedding."),
     text_chunk_max_tokens: Optional[int] = typer.Option(
@@ -505,8 +530,34 @@ def main(
             ray_log_to_driver=ray_log_to_driver,
             debug=bool(debug),
         )
-        ingestor = ingestor.files(file_patterns).extract(extract_params)
-        if caption or caption_invoke_url is not None:
+
+        if input_type == "txt":
+            ingestor = ingestor.files(file_patterns).extract_txt(_text_chunk_params)
+        elif input_type == "html":
+            ingestor = ingestor.files(file_patterns).extract_html(_text_chunk_params)
+        elif input_type == "image":
+            ingestor = ingestor.files(file_patterns).extract_image_files(_extract_params(_detection_batch_tuning))
+        elif input_type == "doc":
+            ingestor = ingestor.files(file_patterns).extract(_extract_params(_pdf_batch_tuning))
+        else:
+            ingestor = ingestor.files(file_patterns).extract(
+                _extract_params(_pdf_batch_tuning, inference_batch_size=page_elements_batch_size)
+            )
+
+        enable_text_chunk = text_chunk or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
+        if enable_text_chunk:
+            ingestor = ingestor.split(_text_chunk_params)
+
+        enable_caption = caption or caption_invoke_url is not None
+        enable_dedup = dedup if dedup is not None else enable_caption
+        if enable_dedup:
+            ingestor = ingestor.dedup(
+                DedupParams(
+                    iou_threshold=dedup_iou_threshold,
+                )
+            )
+
+        if enable_caption:
             ingestor = ingestor.caption(
                 CaptionParams(
                     endpoint_url=caption_invoke_url,
