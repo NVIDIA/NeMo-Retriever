@@ -526,24 +526,33 @@ class BatchIngestor(Ingestor):
                 fn_constructor_kwargs=parse_flags,
             )
         else:
-            # Set the target number of rows per block to the page-elements batch size
-            self._rd_dataset = self._rd_dataset.repartition(
-                target_num_rows_per_block=self._requested_plan.get_page_elements_batch_size()
+            # Page-elements detection is needed for tables/charts/infographics,
+            # and for text only when the method requires OCR (not plain pdfium).
+            _method = kwargs.get("method", "pdfium")
+            _need_pe_for_text = kwargs.get("extract_text") is True and _method in ("pdfium_hybrid", "ocr")
+            _need_pe = _need_pe_for_text or any(
+                kwargs.get(k) is True for k in ("extract_tables", "extract_charts", "extract_infographics")
             )
 
-            # Page-element detection with a GPU actor pool.
-            self._rd_dataset = self._rd_dataset.map_batches(
-                PageElementDetectionActor,
-                batch_size=self._requested_plan.get_page_elements_batch_size(),
-                batch_format="pandas",
-                num_gpus=self._requested_plan.get_page_elements_gpus_per_actor(),
-                compute=rd.ActorPoolStrategy(
-                    initial_size=self._requested_plan.get_page_elements_initial_actors(),
-                    min_size=self._requested_plan.get_page_elements_min_actors(),
-                    max_size=self._requested_plan.get_page_elements_max_actors(),
-                ),
-                fn_constructor_kwargs=dict(detect_kwargs),
-            )
+            if _need_pe:
+                # Set the target number of rows per block to the page-elements batch size
+                self._rd_dataset = self._rd_dataset.repartition(
+                    target_num_rows_per_block=self._requested_plan.get_page_elements_batch_size()
+                )
+
+                # Page-element detection with a GPU actor pool.
+                self._rd_dataset = self._rd_dataset.map_batches(
+                    PageElementDetectionActor,
+                    batch_size=self._requested_plan.get_page_elements_batch_size(),
+                    batch_format="pandas",
+                    num_gpus=self._requested_plan.get_page_elements_gpus_per_actor(),
+                    compute=rd.ActorPoolStrategy(
+                        initial_size=self._requested_plan.get_page_elements_initial_actors(),
+                        min_size=self._requested_plan.get_page_elements_min_actors(),
+                        max_size=self._requested_plan.get_page_elements_max_actors(),
+                    ),
+                    fn_constructor_kwargs=dict(detect_kwargs),
+                )
 
             # Graphic elements detection for charts (runs before OCR).
             use_graphic_elements = bool(kwargs.get("use_graphic_elements", False))

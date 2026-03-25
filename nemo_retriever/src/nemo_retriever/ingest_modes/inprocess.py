@@ -1113,12 +1113,12 @@ class InProcessIngestor(Ingestor):
             else:
                 self._tasks.append((nemotron_parse_page_elements, {"model": NemotronParseV12(), **parse_flags}))
         else:
-            # NOTE: Page element detection is a common prerequisite for downstream
-            # structure stages (tables/charts/infographics). We enable it whenever
-            # any downstream extraction is requested.
-            if any(
-                kwargs.get(k) is True
-                for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            # Page-elements detection is needed for tables/charts/infographics,
+            # and for text only when the method requires OCR (not plain pdfium).
+            _method = kwargs.get("method", "pdfium")
+            _need_pe_for_text = kwargs.get("extract_text") is True and _method in ("pdfium_hybrid", "ocr")
+            if _need_pe_for_text or any(
+                kwargs.get(k) is True for k in ("extract_tables", "extract_charts", "extract_infographics")
             ):
                 print("Adding page elements task")
                 pe_invoke_url = kwargs.get("page_elements_invoke_url", kwargs.get("invoke_url", ""))
