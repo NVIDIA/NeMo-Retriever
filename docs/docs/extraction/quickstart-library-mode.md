@@ -4,7 +4,7 @@
 
 !!! note
 
-    This library is the NeMo Retriever Library.
+     NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 In addition, you can use library mode, which is intended for the following cases:
 
