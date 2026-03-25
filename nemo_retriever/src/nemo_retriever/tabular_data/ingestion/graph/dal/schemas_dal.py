@@ -88,14 +88,10 @@ def get_schema_tables(db_name, schema_name):
                 (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{RelTypes.CONTAINS}]->
                 (t:{Labels.TABLE})
                 WITH d.name as database, s.name as schema, t.name as table_name, t.id as t_id,
-                t.table_type as table_type, t.row_count as row_count, t.size as size,
-                t.retention_time as retention_time, tostring(t.created) as created,
-                tostring(t.last_altered) as last_altered, t.description as comment
+                tostring(t.created) as created, t.description as description
                 RETURN collect({{
-                    database: database, schema: schema, table_name:table_name,
-                    id:t_id, table_type:table_type, row_count:row_count,
-                    size:size, retention_time:retention_time, created: created,
-                    last_altered: last_altered, comment:comment
+                    database: database, schema: schema, table_name: table_name,
+                    id:t_id, created: created, description: description
                 }}) as tables
                 """
     res = conn.query_read(

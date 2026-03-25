@@ -61,43 +61,23 @@ def load_tables(df: pd.DataFrame) -> pd.DataFrame:
         "database": "category",
         "schema": "category",
         "table_name": "string",
-        "table_type": "category",
-        "row_count": "Int64",
-        "size": "Int64",
-        "retention_time": "Int8",
         "created": "string",
-        "last_altered": "string",
-        "comment": "string",
+        "description": "string",
     }
     df = df.copy() if df is not None and not df.empty else pd.DataFrame()
     if df.empty:
         return df
 
-    if "row_count" not in df.columns:
-        df["row_count"] = list(range(1, len(df) + 1))
-    if "size" not in df.columns:
-        df["size"] = 0
-    if "retention_time" not in df.columns:
-        df["retention_time"] = 0
-
     for key in types.keys():
         if key not in df.columns:
             df[key] = pd.NA
 
-    df["row_count"] = pd.to_numeric(df["row_count"])
-    df["size"] = pd.to_numeric(df["size"])
-    df["retention_time"] = pd.to_numeric(df["retention_time"])
     df = df.astype(dtype=types)
 
-    # parse_dates / optional date fields
-    if "last_altered" in df:
-        df["last_altered"] = pd.to_datetime(df["last_altered"], utc=True, format="mixed")
-        df["last_altered"] = df["last_altered"].apply(lambda x: x.tz_convert(timezone.utc).replace(microsecond=0))
     if "created" in df:
         df["created"] = pd.to_datetime(df["created"], utc=True, format="mixed")
         df["created"] = df["created"].apply(lambda x: x.tz_convert(timezone.utc).replace(microsecond=0))
 
-    # Shkolar did it in playtika
     if "owner" in df:
         df = df.drop(columns=["owner"])
 
@@ -113,11 +93,8 @@ def load_columns(df: pd.DataFrame) -> pd.DataFrame:
         "column_name": "string",
         "ordinal_position": "Int16",
         "data_type": "category",
-        "default": "category",
         "is_nullable": "category",
-        "length": "Int64",
-        "scale": "Int16",
-        "comment": "string",
+        "description": "string",
     }
     df = df.copy() if df is not None and not df.empty else pd.DataFrame()
     if df.empty:
@@ -128,8 +105,6 @@ def load_columns(df: pd.DataFrame) -> pd.DataFrame:
             df[key] = pd.NA
 
     df["ordinal_position"] = pd.to_numeric(df["ordinal_position"])
-    df["length"] = pd.to_numeric(df["length"])
-    df["scale"] = pd.to_numeric(df["scale"])
     df = df.astype(dtype=types)
 
     return df

@@ -41,8 +41,6 @@ class Schema:
             if "id" not in self.tables_df.columns:
                 self.tables_df["id"] = [str(uuid.uuid4()) for x in range(self.tables_df.shape[0])]
 
-            if "table_type" in self.tables_df:
-                self.tables_df["table_type"] = self.tables_df["table_type"].apply(lambda x: x.lower())
             self.tables_df["full_name"] = self.tables_df.apply(
                 lambda x: f"{x.schema}.{x.table_name}",
                 axis=1,
@@ -84,13 +82,8 @@ class Schema:
         self.tables_df["props"] = self.tables_df.apply(
             lambda x: {
                 "name": x["table_name"],
-                "table_type": x["table_type"].lower(),
-                "type": x["table_type"].lower(),
-                "row_count": None if pd.isna(x["row_count"]) else x["row_count"],
-                "size": None if pd.isna(x["size"]) else x["size"],
-                "retention_time": (None if pd.isna(x["retention_time"]) else x["retention_time"]),
                 "created": None if pd.isna(x["created"]) else x["created"],
-                "last_altered": (None if pd.isna(x["last_altered"]) else x["last_altered"]),
+                "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
                 "label": Labels.TABLE,
             },
@@ -111,11 +104,8 @@ class Schema:
                 "name": x["column_name"].strip('"'),
                 "data_type": (None if pd.isna(x["data_type"]) else x["data_type"].strip('"')),
                 "is_nullable": x["is_nullable"],
-                "default": None if pd.isna(x["default"]) else x["default"],
-                "length": None if pd.isna(x["length"]) else x["length"],
-                "scale": None if pd.isna(x["scale"]) else x["scale"],
                 "ordinal_position": x["ordinal_position"],
-                "description": None if pd.isna(x["comment"]) else x["comment"],
+                "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
                 "label": Labels.COLUMN,
             },
@@ -135,7 +125,6 @@ class Schema:
         self.tables_df["props"] = self.tables_df.apply(
             lambda x: {
                 "name": x["name"],
-                "table_type": x["table_type"].lower() if "table_type" in x else None,
                 "id": x["id"],
                 "label": Labels.TABLE,
             },
@@ -277,9 +266,6 @@ class Schema:
         id=None,
         description=None,
         is_nullable=None,
-        default=None,
-        length=None,
-        scale=None,
         ordinal_position=None,
     ):
         column_name_lower = column_name.lower()
@@ -297,9 +283,6 @@ class Schema:
             data_type,
             description,
             is_nullable,
-            default,
-            length,
-            scale,
             ordinal_position,
         )
         column_node = Node(
@@ -356,31 +339,15 @@ class Schema:
             id = column_df.iloc[0]["props"]["id"]
             data_type = None if pd.isna(column_df.iloc[0]["data_type"]) else column_df.iloc[0]["data_type"].strip('"')
             column_name = column_df.iloc[0]["column_name"].strip('"')
-            # comment <-> description (?)
             description = (
                 None
-                if "comment" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["comment"])
-                else column_df.iloc[0]["comment"]
+                if "description" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["description"])
+                else column_df.iloc[0]["description"]
             )
             is_nullable = (
                 None
                 if "is_nullable" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["is_nullable"])
                 else column_df.iloc[0]["is_nullable"]
-            )
-            default = (
-                None
-                if "default" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["default"])
-                else column_df.iloc[0]["default"]
-            )
-            length = (
-                None
-                if "length" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["length"])
-                else column_df.iloc[0]["length"]
-            )
-            scale = (
-                None
-                if "scale" not in column_df.iloc[0] or pd.isna(column_df.iloc[0]["scale"])
-                else column_df.iloc[0]["scale"]
             )
             ordinal_position = (
                 None if ("ordinal_position" not in column_df.iloc[0]) else column_df.iloc[0]["ordinal_position"]
@@ -392,9 +359,6 @@ class Schema:
                 id=id,
                 description=description,
                 is_nullable=is_nullable,
-                default=default,
-                length=length,
-                scale=scale,
                 ordinal_position=ordinal_position,
             )
             column_node = self.get_column_node(column_df.iloc[0]["column_name"], table_name)
@@ -415,12 +379,7 @@ class Schema:
         self,
         table_name,
         id=None,
-        table_type=None,
-        row_count=None,
-        size=None,
-        retention_time=None,
         created=None,
-        last_altered=None,
         description=None,
     ):
         table_name_lower = table_name.lower()
@@ -433,12 +392,7 @@ class Schema:
         }
         props = self.update_table_props_by_arguments(
             props,
-            table_type,
-            row_count,
-            size,
-            retention_time,
             created,
-            last_altered,
             description,
         )
         table_node = Node(
@@ -481,50 +435,20 @@ class Schema:
                 raise ValueError(f"Table {table_name} is not in schema {self.schema_name}.")
 
             id = table_df.iloc[0]["props"]["id"]
-            table_type = (
-                None
-                if "table_type" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["table_type"])
-                else table_df.iloc[0]["table_type"]
-            )
-            row_count = (
-                None
-                if "row_count" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["row_count"])
-                else table_df.iloc[0]["row_count"]
-            )
-            size = (
-                None
-                if "size" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["size"])
-                else table_df.iloc[0]["size"]
-            )
-            retention_time = (
-                None
-                if "retention_time" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["retention_time"])
-                else table_df.iloc[0]["retention_time"]
-            )
             created = (
                 None
                 if "created" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["created"])
                 else table_df.iloc[0]["created"]
             )
-            last_altered = (
-                None
-                if "last_altered" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["last_altered"])
-                else table_df.iloc[0]["last_altered"]
-            )
             description = (
                 None
-                if "comment" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["comment"])
-                else table_df.iloc[0]["comment"]
+                if "description" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["description"])
+                else table_df.iloc[0]["description"]
             )
             self.create_table_node(
                 table_df.iloc[0]["table_name"],
                 id,
-                table_type,
-                row_count,
-                size,
-                retention_time,
                 created,
-                last_altered,
                 description,
             )
         return self.table_nodes[table_name_lower]
@@ -584,28 +508,13 @@ class Schema:
     def update_table_props_by_arguments(
         self,
         props,
-        table_type,
-        row_count,
-        size,
-        retention_time,
         created,
-        last_altered,
         description,
     ):
-        # The current behivor is that pandas defualt NA is empty string excepnt number properies
-        if table_type:
-            props.update({"table_type": table_type.lower()})
-            props.update({"type": table_type.lower()})
-        if row_count:
-            props.update({"row_count": row_count})
-        if size:
-            props.update({"size": size})
-        if retention_time:
-            props.update({"retention_time": retention_time})
         if created:
             props.update({"created": created})
-        if last_altered:
-            props.update({"last_altered": last_altered})
+        if description:
+            props.update({"description": description})
         return props
 
     def update_column_props_by_arguments(
@@ -614,9 +523,6 @@ class Schema:
         data_type,
         description,
         is_nullable,
-        default,
-        length,
-        scale,
         ordinal_position,
     ):
         if data_type:
@@ -625,12 +531,6 @@ class Schema:
             props.update({"description": description})
         if is_nullable:
             props.update({"is_nullable": is_nullable})
-        if default:
-            props.update({"default": default})
-        if not pd.isna(length):
-            props.update({"length": length})
-        if not pd.isna(scale):
-            props.update({"scale": scale})
         if not pd.isna(ordinal_position):
             props.update({"ordinal_position": ordinal_position})
         return props
