@@ -19,13 +19,15 @@ Run with::
 from __future__ import annotations
 
 import logging
+import pandas as pd
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import typer
 
-from nemo_retriever.graph.executor import InprocessExecutor
+from nemo_retriever import create_ingestor
+from nemo_retriever.params import EmbedParams, ExtractParams
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
@@ -117,71 +119,28 @@ def main(
     from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
     remote_api_key = resolve_remote_api_key(api_key)
-
-    # -- Operator classes and kwargs -------------------------------------------
-    from nemo_retriever.pdf.split import PDFSplitActor
-    from nemo_retriever.pdf.extract import PDFExtractionActor
-    from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
-    from nemo_retriever.ocr.ocr import OCRActor
-    from nemo_retriever.ingest_modes.batch import ExplodeContentActor, _BatchEmbedActor
-    from nemo_retriever.params import EmbedParams
-
-    split_kwargs: dict[str, Any] = {}
-
-    extract_kwargs: dict[str, Any] = {
-        "method": method,
-        "dpi": dpi,
-        "extract_text": True,
-        "extract_tables": True,
-        "extract_charts": True,
-        "extract_page_as_image": True,
-    }
-
-    detect_kwargs: dict[str, Any] = {}
-    if page_elements_invoke_url:
-        detect_kwargs["invoke_url"] = page_elements_invoke_url
-    if remote_api_key:
-        detect_kwargs["api_key"] = remote_api_key
-
-    ocr_kwargs: dict[str, Any] = {
-        "extract_text": True,
-        "extract_tables": True,
-        "extract_charts": True,
-    }
-    if ocr_invoke_url:
-        ocr_kwargs["ocr_invoke_url"] = ocr_invoke_url
-    if remote_api_key:
-        ocr_kwargs["api_key"] = remote_api_key
-
-    explode_kwargs: dict[str, Any] = {"modality": "text"}
-
+    extract_params = ExtractParams(
+        method=method,
+        dpi=dpi,
+        extract_text=True,
+        extract_tables=True,
+        extract_charts=True,
+        extract_page_as_image=True,
+        page_elements_invoke_url=page_elements_invoke_url,
+        ocr_invoke_url=ocr_invoke_url,
+        api_key=remote_api_key,
+    )
     embed_params = EmbedParams(
         model_name=embed_model_name,
         embed_invoke_url=embed_invoke_url,
         api_key=remote_api_key if embed_invoke_url else None,
     )
 
-    # -- Build the graph -------------------------------------------------------
-    # Note: no DocToPdf stage needed — inprocess loads PDFs directly via
-    # PDFSplitActor which calls pdf_path_to_pages_df / split_pdf_batch.
-    graph = (
-        PDFSplitActor(**split_kwargs)
-        >> PDFExtractionActor(**extract_kwargs)
-        >> PageElementDetectionActor(**detect_kwargs)
-        >> OCRActor(**ocr_kwargs)
-        >> ExplodeContentActor(**explode_kwargs)
-        >> _BatchEmbedActor(params=embed_params)
-    )
-
-    logger.info("Pipeline graph: %s", graph)
-
-    # -- Execute ---------------------------------------------------------------
-    executor = InprocessExecutor(graph)
-
     logger.info("Starting in-process ingestion of %s ...", input_path)
     t0 = time.perf_counter()
-
-    result_df = executor.ingest(file_patterns)
+    ingestor = create_ingestor(run_mode="inprocess").files(file_patterns).extract(extract_params).embed(embed_params)
+    results = ingestor.ingest()
+    result_df = pd.concat(results, ignore_index=True) if results else pd.DataFrame()
 
     ingestion_time = time.perf_counter() - t0
     row_count = len(result_df)
@@ -189,7 +148,7 @@ def main(
 
     # -- Write to LanceDB ------------------------------------------------------
     from nemo_retriever.vector_store.lancedb_store import handle_lancedb
-    from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema
+    from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
 
     lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
     lancedb_table = "nv-ingest"
