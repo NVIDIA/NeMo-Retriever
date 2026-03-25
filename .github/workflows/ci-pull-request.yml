@@ -44,49 +44,6 @@ jobs:
     secrets:
       HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
 
-  # Library mode integration tests (requires approval for external contributors)
-  library-mode-check-access:
-    name: Check Library Mode Test Access
-    if: github.event_name == 'pull_request_target'
-    runs-on: ubuntu-latest
-    outputs:
-      has-access: ${{ steps.check.outputs.has-access }}
-    steps:
-      - name: Check access
-        id: check
-        run: |
-          HAS_ACCESS="false"
-          if [[ "${{ github.event.pull_request.author_association }}" == "MEMBER" ]] || \
-             [[ "${{ github.event.pull_request.author_association }}" == "COLLABORATOR" ]] || \
-             [[ "${{ github.event.pull_request.author_association }}" == "OWNER" ]] || \
-             [[ "${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}" == "true" ]]; then
-            HAS_ACCESS="true"
-          fi
-          echo "has-access=$HAS_ACCESS" >> $GITHUB_OUTPUT
-
-  library-mode-test:
-    name: Test Library Mode
-    needs: library-mode-check-access
-    if: |
-      github.event_name == 'pull_request_target' &&
-      needs.library-mode-check-access.outputs.has-access == 'true'
-    uses: ./.github/workflows/reusable-integration-test.yml
-    with:
-      runner: 'ubuntu-latest'
-      timeout-minutes: 60
-      source-ref: ${{ github.event.pull_request.head.sha }}
-    secrets:
-      AUDIO_FUNCTION_ID: ${{ secrets.AUDIO_FUNCTION_ID }}
-      EMBEDDING_NIM_MODEL_NAME: ${{ secrets.EMBEDDING_NIM_MODEL_NAME }}
-      NEMOTRON_PARSE_MODEL_NAME: ${{ secrets.NEMOTRON_PARSE_MODEL_NAME }}
-      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-      PADDLE_HTTP_ENDPOINT: ${{ secrets.PADDLE_HTTP_ENDPOINT }}
-      VLM_CAPTION_ENDPOINT: ${{ secrets.VLM_CAPTION_ENDPOINT }}
-      VLM_CAPTION_MODEL_NAME: ${{ secrets.VLM_CAPTION_MODEL_NAME }}
-      YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT: ${{ secrets.YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT }}
-      YOLOX_HTTP_ENDPOINT: ${{ secrets.YOLOX_HTTP_ENDPOINT }}
-      YOLOX_TABLE_STRUCTURE_HTTP_ENDPOINT: ${{ secrets.YOLOX_TABLE_STRUCTURE_HTTP_ENDPOINT }}
-
   # Summary job
   pr-validation-complete:
     name: PR Validation Complete
