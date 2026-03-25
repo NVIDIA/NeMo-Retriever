@@ -65,7 +65,7 @@ dependencies = [
     "uvicorn",
     "pip",
     "opencv-python",
-    "pymilvus>=2.5.10",
+    "pymilvus==2.5.10",
     "pymilvus[bulk_writer, model]",
     "tritonclient",
     "nvidia-riva-client==2.25.0",
