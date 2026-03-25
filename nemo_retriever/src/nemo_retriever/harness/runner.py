@@ -608,13 +608,18 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     if extra_packages:
         logger.info("Job %s — installing extra packages: %s", job_id, extra_packages)
         try:
+            import shlex
             import shutil
 
+            # Each entry may be a plain package spec or a full pip arg string
+            # (e.g. "-i https://test.pypi.org/simple/ pkg==1.0"), so shlex-split
+            # each line and flatten into a single install invocation.
+            pip_args = [token for entry in extra_packages for token in shlex.split(entry)]
             uv_bin = shutil.which("uv")
             if uv_bin:
-                cmd = [uv_bin, "pip", "install", "--python", sys.executable, *extra_packages]
+                cmd = [uv_bin, "pip", "install", "--python", sys.executable, *pip_args]
             else:
-                cmd = [sys.executable, "-m", "pip", "install", *extra_packages]
+                cmd = [sys.executable, "-m", "pip", "install", *pip_args]
             subprocess.run(cmd, check=True, timeout=300)
         except subprocess.CalledProcessError as exc:
             logger.error("Job %s — extra_packages install failed: %s", job_id, exc)
