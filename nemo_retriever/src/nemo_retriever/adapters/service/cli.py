@@ -165,14 +165,16 @@ def ingest_cmd(
         resp.raise_for_status()
         body = resp.json()
         num_docs = body.get("num_documents", "?")
+        total_elapsed = body.get("elapsed_seconds", 0)
         pages = body.get("pages", [])
-        typer.echo(f"OK — {num_docs} document(s), {len(pages)} page(s) ingested.")
+        typer.echo(f"OK — {num_docs} document(s), {len(pages)} page(s) ingested in {total_elapsed:.2f}s.")
         for pg in pages:
+            page_time = pg.get("elapsed_seconds", 0)
             text_preview = (pg.get("text") or "")[:120]
             if text_preview:
                 text_preview = text_preview.replace("\n", " ").strip()
                 text_preview = f"  {text_preview}{'...' if len(pg.get('text', '')) > 120 else ''}"
-            typer.echo(f"  p{pg['page_number']}: {pg.get('filename', '')}")
+            typer.echo(f"  p{pg['page_number']}: {pg.get('filename', '')} ({page_time:.2f}s)")
             if text_preview:
                 typer.echo(text_preview)
     except requests.RequestException as e:

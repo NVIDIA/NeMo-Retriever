@@ -59,19 +59,36 @@ service:
 ## @param ingress.hosts Ingress host rules
 ## @param ingress.tls Ingress TLS configuration
 ingress:
-  enabled: false
+  enabled: true
   className: ""
   annotations: {}
   hosts:
-    - host: nemo-retriever.local
+    - host: ""
       paths:
         - path: /
-          pathType: ImplementationSpecific
+          pathType: Prefix
   tls: []
+
+## @section GPU Configuration
+## @param runtimeClassName Set to "nvidia" if the cluster uses the NVIDIA RuntimeClass
+## instead of the default container runtime. Leave empty if the NVIDIA Container Toolkit
+## is configured as the default runtime or if GPUs are not needed.
+runtimeClassName: ""
 
 ## @section Resource Configuration
 ## @param resources Resource requests and limits for the container
-resources: {}
+## To request GPUs, set nvidia.com/gpu in both requests and limits:
+##   resources:
+##     requests:
+##       nvidia.com/gpu: "1"
+##     limits:
+##       nvidia.com/gpu: "1"
+resources:
+  requests:
+    nvidia.com/gpu: "1"
+  limits:
+    nvidia.com/gpu: "1"
+
 
 ## @section Autoscaling parameters
 ## @param autoscaling.enabled Enable horizontal pod autoscaler
@@ -100,7 +117,7 @@ livenessProbe:
     path: /health
     port: http
   initialDelaySeconds: 30
-  periodSeconds: 10
+  periodSeconds: 30
   timeoutSeconds: 5
   failureThreshold: 6
   successThreshold: 1
