@@ -39,20 +39,7 @@ class TestResolveInferencePreset:
 
     def test_build_nvidia_returns_expected_extract_defaults(self):
         extract, _, _ = resolve_inference_preset("build.nvidia.com")
-        assert extract["page_elements_invoke_url"] == (
-            "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
-        )
-        assert extract["graphic_elements_invoke_url"] == (
-            "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
-        )
-        assert extract["ocr_invoke_url"] == (
-            "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1"
-        )
-        assert extract["table_structure_invoke_url"] == (
-            "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
-        )
-        assert extract["nemotron_parse_invoke_url"] == "https://integrate.api.nvidia.com/v1/chat/completions"
-        assert extract["nemotron_parse_model_name"] == "nvidia/nemotron-parse"
+        assert extract == _BUILD_NVIDIA_EXTRACT_DEFAULTS
 
     def test_build_nvidia_returns_expected_embed_defaults(self):
         _, embed, _ = resolve_inference_preset("build.nvidia.com")
