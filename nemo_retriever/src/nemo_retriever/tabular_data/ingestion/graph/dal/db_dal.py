@@ -178,46 +178,6 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
         for deleted_table_name in tables_names_to_delete:
             deleted_table_node_props = existing_schema.get_table_node_props(deleted_table_name)
             delete_table(deleted_table_node_props["id"])
-        # update ids of tables and columns that appear both in the new schema and in the existing schema
-        tables_merge = pd.merge(
-            existing_schema.tables_df,
-            new_schema.tables_df,
-            on=["database", "schema", "table_name"],
-            how="inner",
-            suffixes=("_graph", "_files"),
-        )
-        list_of_props = ["row_count", "size", "retention_time", "last_altered"]
-        if len(list_of_props) > 0:
-            table_diffs = []
-            for prop in list_of_props:
-                table_diff = tables_merge[
-                    tables_merge[f"{prop}_graph"].astype(str) != tables_merge[f"{prop}_files"].astype(str)
-                ]
-                table_diffs.append(table_diff)
-            tables_to_update = pd.concat(table_diffs, ignore_index=True, axis=0)
-            tables_to_update.drop_duplicates(
-                set(tables_to_update.columns)
-                - set(
-                    [
-                        "props_graph",
-                        "props_files",
-                        "match_props_graph",
-                        "match_props_files",
-                    ]
-                ),
-                inplace=True,
-            )
-
-            items_to_update_in_graph = []
-            tables_to_update.apply(
-                lambda x: accumulate_updated_table(x, items_to_update_in_graph, new_schema),
-                axis=1,
-            )
-            items_to_update_in_graph_chunks = list(chunks(items_to_update_in_graph, 1000))
-            len_chunks = len(items_to_update_in_graph_chunks)
-            for i, chunk in enumerate(items_to_update_in_graph_chunks):
-                logger.info(f"Updating tables chunk {i + 1}/{len_chunks}")
-                update_properties_in_graph_batch(chunk)
 
         # If a table appears in both schemas, identify columns to add and columns to delete.
         columns_merge = pd.merge(
@@ -262,7 +222,7 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
             suffixes=("_graph", "_files"),
         )
 
-        list_of_props = ["data_type", "default", "is_nullable", "length", "scale"]
+        list_of_props = ["data_type", "is_nullable"]
         if len(list_of_props) > 0:
             column_diffs = []
             for prop in list_of_props:
@@ -311,6 +271,7 @@ def delete_table(table_id):
 
 
 def update_properties_in_graph_batch(items):
+    # Bulk upsert nodes by id+label, updating all props while preserving any existing description.
     query = """
             UNWIND $items as item
             WITH item, item.props.description as new_description,
@@ -323,19 +284,6 @@ def update_properties_in_graph_batch(items):
     conn.query_write(
         query=query,
         parameters={"items": items},
-    )
-
-
-def update_properties_in_graph(item_id, node_label, new_parameters):
-    query = f""" MATCH (item:{node_label}{{id:$table_id}})
-                 SET item += $new_parameters
-            """
-    conn.query_write(
-        query=query,
-        parameters={
-            "table_id": item_id,
-            "new_parameters": new_parameters,
-        },
     )
 
 
