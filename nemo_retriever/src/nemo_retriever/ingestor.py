@@ -23,10 +23,14 @@ from nemo_retriever.application.modes.factory import create_runmode_ingestor
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import IngestExecuteParams
 from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import RunMode
+from nemo_retriever.params import TabularDescriptionParams
+from nemo_retriever.params import TabularExtractParams
+from nemo_retriever.params import TabularSemanticLayerParams
+from nemo_retriever.params import TabularUsageWeightsParams
+from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VdbUploadParams
 
 
@@ -209,6 +213,104 @@ class ingestor:
         Once Ray execution is wired, this should reflect actual job/task state.
         """
         self._not_implemented("get_status")
+
+    # ------------------------------------------------------------------
+    # Tabular (database) ingestion pipeline
+    # ------------------------------------------------------------------
+
+    def pull_tabular_db_entities(
+        self,
+        params: TabularExtractParams | None = None,
+    ) -> dict:
+        """Step 1 — Pull schema entities from the relational DB into a data dict.
+
+        Reads tables, columns, views, PKs and FKs from the source database
+        (e.g. DuckDB) and returns them as a plain dict for the next step.
+        """
+        self._not_implemented("pull_tabular_db_entities")
+
+    def store_tabular_in_neo4j(
+        self,
+        data: dict,
+        neo4j_conn: Any = None,
+    ) -> "ingestor":
+        """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
+
+        Creates Database, Schema, Table, Column, View and FK/PK relationship
+        nodes from the dict returned by pull_tabular_db_entities().
+        ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
+        """
+        self._not_implemented("store_tabular_in_neo4j")
+
+    def populate_tabular_semantic_layer(
+        self,
+        params: TabularSemanticLayerParams | None = None,
+        neo4j_conn: Any = None,
+    ) -> "ingestor":
+        """Step 3 — Map global business terms/attributes to graph entities.
+
+        Auto-creates Term/Attribute nodes and MAPS_TO_TABLE / MAPS_TO_COLUMN
+        relationships for entities not already covered by the semantic-layer.
+        ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
+        """
+        self._not_implemented("populate_tabular_semantic_layer")
+
+    def populate_tabular_usage_weights(
+        self,
+        params: TabularUsageWeightsParams | None = None,
+        neo4j_conn: Any = None,
+    ) -> "ingestor":
+        """Step 4 — Derive usage weights from query log files.
+
+        Parses SQL query logs, computes Table/Column co-occurrence frequencies,
+        and writes ``usage_weight`` float properties back onto the graph nodes.
+        ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
+        """
+        self._not_implemented("populate_tabular_usage_weights")
+
+    def generate_tabular_descriptions(
+        self,
+        params: TabularDescriptionParams | None = None,
+        neo4j_conn: Any = None,
+    ) -> "ingestor":
+        """Step 5 — LLM-generate natural-language descriptions for all node types.
+
+        Descriptions are written back to Neo4j as a ``description`` property
+        on Database, Schema, Table, Column, View and Query nodes.
+        ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
+        """
+        self._not_implemented("generate_tabular_descriptions")
+
+    def get_tabular_metadata_for_embedding(
+        self,
+        neo4j_conn: Any = None,
+    ) -> Any:
+        """Step 6 — Fetch entity descriptions from Neo4j into an embedding-ready DataFrame.
+
+        Returns a pandas DataFrame with columns: text, _embed_modality, path,
+        page_number, metadata — matching the unstructured pipeline format so
+        run_pipeline_tasks_on_df (embed + vdb_upload) works unchanged.
+        ``neo4j_conn`` is the shared Neo4j connection from get_neo4j_conn().
+        """
+        self._not_implemented("get_tabular_metadata_for_embedding")
+
+    def ingest_tabular(
+        self,
+        params: TabularExtractParams | None = None,
+    ) -> Any:
+        """Orchestrate the full tabular ingestion pipeline.
+
+        Runs the following steps in order:
+        1. pull_tabular_db_entities      → pull schema entities from the DB
+        2. store_tabular_in_neo4j        → write entities as graph nodes to Neo4j
+        3. populate_tabular_semantic_layer
+        4. populate_tabular_usage_weights
+        5. generate_tabular_descriptions
+        6. get_tabular_metadata_for_embedding → DataFrame
+        7. embed
+        8. vdb_upload
+        """
+        self._not_implemented("ingest_tabular")
 
 
 # Backward compatibility alias.

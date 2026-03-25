@@ -47,9 +47,16 @@ from ..params import ExtractParams
 from ..params import HtmlChunkParams
 from ..params import IngestExecuteParams
 from ..params import PdfSplitParams
+from ..params import TabularDescriptionParams
+from ..params import TabularExtractParams
+from ..params import TabularFetchParams
+from ..params import TabularSemanticLayerParams
+from ..params import TabularUsageWeightsParams
 from ..params import TextChunkParams
 from ..params import CaptionParams
 from ..params import VdbUploadParams
+from ..tabular_data.neo4j import get_neo4j_conn
+from ..tabular_data.ingestion.embeddings import fetch_tabular_embedding_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +266,9 @@ class BatchIngestor(Ingestor):
         self._extract_txt_kwargs: Dict[str, Any] = {}  # noqa: F821
         self._extract_html_kwargs: Dict[str, Any] = {}  # noqa: F821
         self._use_nemotron_parse_only: bool = False
+        # Stored params for the tabular ingest path (no Ray Dataset needed).
+        self._tabular_embed_params: Optional[EmbedParams] = None
+        self._tabular_vdb_params: Optional[VdbUploadParams] = None
 
     @staticmethod
     def _positive_int(value: Any) -> int | None:
@@ -870,14 +880,17 @@ class BatchIngestor(Ingestor):
         """
         if input_dataset is not None:
             self._rd_dataset = input_dataset
-        if self._rd_dataset is None:
-            raise RuntimeError(
-                "No Ray Dataset to embed. Provide input_dataset or run .files(...) / .extract(...) first."
-            )
 
         from nemo_retriever.params.utils import build_embed_kwargs
 
         resolved = _coerce_params(params, EmbedParams, kwargs)
+        # Always save params so ingest_tabular can use them without a Ray Dataset.
+        self._tabular_embed_params = resolved
+
+        if self._rd_dataset is None:
+            # Tabular-only mode: no Ray Dataset to configure; params stored above.
+            return self
+
         if any((resolved.embedding_endpoint, resolved.embed_invoke_url)) and not resolved.api_key:
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
 
@@ -1001,9 +1014,16 @@ class BatchIngestor(Ingestor):
             if "purge_results_after_upload" in kwargs:
                 p = p.model_copy(update={"purge_results_after_upload": bool(kwargs["purge_results_after_upload"])})
         _ = p.purge_results_after_upload
+        # Always save params so ingest_tabular can use them without a Ray Dataset.
+        self._tabular_vdb_params = p
+
         vdb_kwargs = p.lancedb.model_dump(mode="python")
         self._tasks.append(("vdb_upload", dict(vdb_kwargs)))
         self._vdb_upload_kwargs = dict(vdb_kwargs)
+
+        if self._rd_dataset is None:
+            # Tabular-only mode: no Ray Dataset to configure; params stored above.
+            return self
 
         # Streaming write stage — single actor, CPU-only, no GPU needed.
         self._rd_dataset = self._rd_dataset.map_batches(
@@ -1222,3 +1242,163 @@ class BatchIngestor(Ingestor):
             table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
 
         print(f"Wrote {n_vecs} rows to LanceDB uri={lancedb_uri!r} table={table_name!r}")
+
+    # ------------------------------------------------------------------
+    # Tabular (database) ingestion
+    # ------------------------------------------------------------------
+
+    def pull_tabular_db_entities(
+        self,
+        params: TabularExtractParams | None = None,
+    ) -> dict:
+        """Step 1 — Pull schema entities from the relational DB into a data dict."""
+        from ..tabular_data.ingestion.extract_data import extract_tabular_db_data
+
+        return extract_tabular_db_data(params=params)
+
+    def store_tabular_in_neo4j(
+        self,
+        data: dict,
+        neo4j_conn: Any = None,
+    ) -> "BatchIngestor":
+        """Step 2 — Write the extracted data dict as graph nodes into Neo4j."""
+        from ..tabular_data.ingestion.extract_data import store_relational_db_in_neo4j
+
+        store_relational_db_in_neo4j(data=data, neo4j_conn=neo4j_conn)
+        return self
+
+    def populate_tabular_semantic_layer(
+        self,
+        params: TabularSemanticLayerParams | None = None,
+        neo4j_conn: Any = None,
+    ) -> "BatchIngestor":
+        """Step 3 — Map global business terms/attributes to graph entities."""
+        pass
+
+    def populate_tabular_usage_weights(
+        self,
+        params: TabularUsageWeightsParams | None = None,
+        neo4j_conn: Any = None,
+    ) -> "BatchIngestor":
+        """Step 4 — Derive usage weights from query log files."""
+        pass
+
+    def generate_tabular_descriptions(
+        self,
+        params: TabularDescriptionParams | None = None,
+        neo4j_conn: Any = None,
+    ) -> "BatchIngestor":
+        """Step 5 — LLM-generate natural-language descriptions for all node types."""
+        pass
+
+    def get_tabular_metadata_for_embedding(
+        self,
+        params: TabularFetchParams | None = None,
+        neo4j_conn: Any = None,
+    ) -> "rd.Dataset | None":
+        """Step 6 — Fetch entity descriptions from Neo4j and return a Ray Dataset.
+
+        Converts the result directly to a Ray Dataset (via rd.from_pandas) so
+        ingest_tabular can feed it straight into the batch actor pipeline
+        without an intermediate pandas conversion step.
+
+        Columns: text, _embed_modality, path, page_number, metadata —
+        matching the unstructured pipeline row format.
+        """
+        df = fetch_tabular_embedding_dataframe()
+        if df.empty:
+            return None
+        return rd.from_pandas(df)
+
+    def ingest_tabular(
+        self,
+        params: TabularExtractParams | None = None,
+    ) -> Any:
+        """Orchestrate the full tabular ingestion pipeline.
+
+        Acquires the shared Neo4j connection once and passes it to every step.
+        After building the embedding DataFrame from Neo4j, converts it to a
+        Ray Dataset and runs the same batch actors used by the unstructured
+        pipeline (_BatchEmbedActor, _LanceDBWriteActor).
+
+        Steps:
+        1. pull_tabular_db_entities         → pull schema entities from the DB
+        2. store_tabular_in_neo4j           → write entities as graph nodes to Neo4j
+        3. populate_tabular_semantic_layer
+        4. populate_tabular_usage_weights
+        5. generate_tabular_descriptions
+        6. get_tabular_metadata_for_embedding → Ray Dataset
+        7. _BatchEmbedActor                 → GPU batch embedding (same as unstructured)
+        8. _LanceDBWriteActor               → streaming upload to "nv-ingest-tabular"
+        """
+        neo4j_conn = get_neo4j_conn()
+
+        data = self.pull_tabular_db_entities(params=params)
+        self.store_tabular_in_neo4j(data=data, neo4j_conn=neo4j_conn)
+
+        self.populate_tabular_semantic_layer(neo4j_conn=neo4j_conn)
+        self.populate_tabular_usage_weights(neo4j_conn=neo4j_conn)
+        self.generate_tabular_descriptions(neo4j_conn=neo4j_conn)
+
+        rd_dataset = self.get_tabular_metadata_for_embedding(neo4j_conn=neo4j_conn)
+
+        if rd_dataset is not None:
+            from nemo_retriever.params.utils import build_embed_kwargs
+
+            _TABULAR_TABLE = "nv-ingest-tabular"
+
+            if self._tabular_embed_params is not None:
+                resolved = self._tabular_embed_params
+                embed_kwargs = build_embed_kwargs(resolved, include_batch_tuning=True)
+
+                rd_dataset = rd_dataset.repartition(
+                    target_num_rows_per_block=self._requested_plan.get_embed_batch_size()
+                )
+
+                endpoint = (
+                    embed_kwargs.get("embedding_endpoint") or embed_kwargs.get("embed_invoke_url") or ""
+                ).strip()
+                embed_actor_num_gpus = 0 if endpoint else self._requested_plan.get_embed_gpus_per_actor()
+                rd_dataset = rd_dataset.map_batches(
+                    _BatchEmbedActor,
+                    batch_size=self._requested_plan.get_embed_batch_size(),
+                    batch_format="pandas",
+                    num_gpus=embed_actor_num_gpus,
+                    compute=rd.ActorPoolStrategy(
+                        initial_size=self._requested_plan.get_embed_initial_actors(),
+                        min_size=self._requested_plan.get_embed_min_actors(),
+                        max_size=self._requested_plan.get_embed_max_actors(),
+                    ),
+                    fn_constructor_kwargs={"params": resolved},
+                )
+
+            if self._tabular_vdb_params is not None:
+                tabular_vdb_params = self._tabular_vdb_params.model_copy(
+                    update={
+                        "lancedb": self._tabular_vdb_params.lancedb.model_copy(update={"table_name": _TABULAR_TABLE})
+                    }
+                )
+                rd_dataset = rd_dataset.map_batches(
+                    _LanceDBWriteActor,
+                    batch_format="pandas",
+                    num_cpus=1,
+                    compute=rd.ActorPoolStrategy(size=1),
+                    fn_constructor_kwargs={"params": tabular_vdb_params},
+                )
+
+            # Materialise the lazy Ray Data pipeline.
+            result = rd_dataset.count()
+
+            # Create the vector index after all writes have finished.
+            if self._tabular_vdb_params is not None:
+                saved_vdb_kwargs = getattr(self, "_vdb_upload_kwargs", None)
+                self._vdb_upload_kwargs = {
+                    **self._tabular_vdb_params.lancedb.model_dump(mode="python"),
+                    "table_name": _TABULAR_TABLE,
+                }
+                self._create_lancedb_index()
+                if saved_vdb_kwargs is not None:
+                    self._vdb_upload_kwargs = saved_vdb_kwargs
+
+            return result
+        return None
