@@ -181,6 +181,8 @@ class TriggerRequest(BaseModel):
     config: str | None = None
     tags: list[str] | None = None
     runner_id: int | None = None
+    git_ref: str | None = None
+    git_commit: str | None = None
 
 
 class TriggerResponse(BaseModel):
@@ -296,6 +298,8 @@ class PresetMatrixCreateRequest(BaseModel):
     tags: list[str] | None = None
     preferred_runner_id: int | None = None
     gpu_type_filter: str | None = None
+    git_ref: str | None = None
+    git_commit: str | None = None
 
 
 class PresetMatrixUpdateRequest(BaseModel):
@@ -306,6 +310,13 @@ class PresetMatrixUpdateRequest(BaseModel):
     tags: list[str] | None = None
     preferred_runner_id: int | None = None
     gpu_type_filter: str | None = None
+    git_ref: str | None = None
+    git_commit: str | None = None
+
+
+class MatrixTriggerRequest(BaseModel):
+    git_ref: str | None = None
+    git_commit: str | None = None
 
 
 class MatrixTriggerResponse(BaseModel):
@@ -1548,7 +1559,7 @@ async def delete_preset_matrix(matrix_id: int):
 
 
 @app.post("/api/preset-matrices/{matrix_id}/trigger", response_model=MatrixTriggerResponse)
-async def trigger_preset_matrix(matrix_id: int):
+async def trigger_preset_matrix(matrix_id: int, req: MatrixTriggerRequest | None = None):
     from nemo_retriever.harness.scheduler import match_runner
 
     matrix = history.get_preset_matrix_by_id(matrix_id)
@@ -1560,7 +1571,12 @@ async def trigger_preset_matrix(matrix_id: int):
     if not dataset_names or not preset_names:
         raise HTTPException(status_code=400, detail="Matrix must have at least one dataset and one preset")
 
-    pinned_sha, pinned_ref = _resolve_run_code_ref_sha()
+    req_ref = req.git_ref if req else None
+    req_commit = req.git_commit if req else None
+    if not req_ref and not req_commit:
+        req_ref = matrix.get("git_ref")
+        req_commit = matrix.get("git_commit")
+    pinned_sha, pinned_ref = _resolve_git_override(req_ref, req_commit)
 
     preferred_runner_id = matrix.get("preferred_runner_id")
     gpu_type_filter = matrix.get("gpu_type_filter")
@@ -1683,7 +1699,7 @@ async def trigger_run(req: TriggerRequest):
     dataset_path, dataset_overrides = _resolve_dataset_config(req.dataset)
     preset_overrides = _resolve_preset_overrides(req.preset)
     merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
-    pinned_sha, pinned_ref = _resolve_run_code_ref_sha()
+    pinned_sha, pinned_ref = _resolve_git_override(req.git_ref, req.git_commit)
     job = history.create_job(
         {
             "trigger_source": "manual",
@@ -2440,6 +2456,37 @@ def _resolve_run_code_ref_sha() -> tuple[str | None, str | None]:
     except Exception as exc:
         logger.warning("Failed to resolve run_code_ref '%s' to SHA: %s", ref, exc)
         return ref, ref
+
+
+def _resolve_git_override(
+    git_ref: str | None, git_commit: str | None
+) -> tuple[str | None, str | None]:
+    """Resolve explicit per-trigger git overrides, falling back to the global setting.
+
+    Returns ``(sha, ref)``.
+
+    * If *git_commit* is provided it is used as-is (exact SHA checkout).
+      *git_ref* is stored alongside it for display purposes.
+    * If only *git_ref* is provided the latest SHA for that ref is resolved
+      via ``git fetch`` + ``git rev-parse``.
+    * If neither is provided the global ``run_code_ref`` portal setting is
+      used (existing behaviour).
+    """
+    if git_commit:
+        return git_commit, git_ref or git_commit
+    if git_ref:
+        try:
+            if "/" in git_ref and not git_ref.startswith("origin/"):
+                remote_name = git_ref.split("/")[0]
+                _git_run("fetch", remote_name, "--prune")
+            else:
+                _git_run("fetch", "--all", "--prune")
+            sha = _git_run("rev-parse", git_ref)
+            return sha, git_ref
+        except Exception as exc:
+            logger.warning("Failed to resolve git_ref '%s' to SHA: %s", git_ref, exc)
+            return git_ref, git_ref
+    return _resolve_run_code_ref_sha()
 
 
 # ---------------------------------------------------------------------------

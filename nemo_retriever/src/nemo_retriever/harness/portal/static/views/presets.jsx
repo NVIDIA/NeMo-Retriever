@@ -56,14 +56,10 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh, presetMa
       onRefresh();
     } catch {}
   }
-  async function handleTriggerMatrix(id, name) {
-    if (!confirm(`Trigger all jobs in matrix "${name}"?`)) return;
-    try {
-      const res = await fetch(`/api/preset-matrices/${id}/trigger`, { method: "POST" });
-      if (!res.ok) { const d = await res.json().catch(()=>({})); alert(d.detail || "Trigger failed"); return; }
-      const data = await res.json();
-      alert(`Queued ${data.job_count} job${data.job_count!==1?'s':''} from matrix "${data.matrix_name}"`);
-    } catch (err) { alert("Trigger failed: " + err.message); }
+  const [triggerMatrixTarget, setTriggerMatrixTarget] = useState(null);
+
+  function handleTriggerMatrix(m) {
+    setTriggerMatrixTarget(m);
   }
 
   return (
@@ -197,7 +193,7 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh, presetMa
                         <td style={{textAlign:'right'}}><span className="badge" style={{background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.25)'}}>{jobCount} job{jobCount!==1?'s':''}</span></td>
                         <td>
                           <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
-                            <button className="btn btn-primary btn-sm" onClick={()=>handleTriggerMatrix(m.id,m.name)} title="Run all jobs in this matrix"><IconPlay /> Run</button>
+                            <button className="btn btn-primary btn-sm" onClick={()=>handleTriggerMatrix(m)} title="Run all jobs in this matrix"><IconPlay /> Run</button>
                             <button className="btn btn-secondary btn-sm" onClick={()=>handleEditMatrix(m)} title="Edit"><IconEdit /> Edit</button>
                             <button className="btn btn-sm" onClick={()=>handleDeleteMatrix(m.id,m.name)} title="Delete" style={{background:'rgba(255,80,80,0.1)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}><IconTrash /> Delete</button>
                           </div>
@@ -228,6 +224,13 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh, presetMa
                               <span style={{color:'var(--nv-text-dim)'}}>Runner Targeting:</span>
                               {m.preferred_runner_id && <span style={{color:'#fff'}}><span style={{color:'var(--nv-green)',fontWeight:600}}>Preferred Runner:</span> #{m.preferred_runner_id}</span>}
                               {m.gpu_type_filter && <span style={{color:'#fff'}}><span style={{color:'var(--nv-green)',fontWeight:600}}>GPU Type:</span> {m.gpu_type_filter}</span>}
+                            </div>
+                          )}
+                          {(m.git_ref || m.git_commit) && (
+                            <div style={{marginTop:'8px',padding:'8px 12px',borderRadius:'8px',background:'rgba(118,185,0,0.04)',border:'1px solid rgba(118,185,0,0.15)',fontSize:'12px',display:'flex',gap:'20px',flexWrap:'wrap'}}>
+                              <span style={{color:'var(--nv-text-dim)'}}>Git Override:</span>
+                              {m.git_ref && <span style={{color:'#fff'}}><span style={{color:'var(--nv-green)',fontWeight:600}}>Branch:</span> <span className="mono">{m.git_ref}</span></span>}
+                              {m.git_commit && <span style={{color:'#fff'}}><span style={{color:'var(--nv-green)',fontWeight:600}}>Commit:</span> <span className="mono">{m.git_commit.substring(0,12)}</span></span>}
                             </div>
                           )}
                           {(m.tags || []).length > 0 && (
@@ -263,9 +266,163 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh, presetMa
           onSaved={()=>{setShowMatrixForm(false);onRefresh();}}
         />
       )}
+      {triggerMatrixTarget && (
+        <MatrixTriggerModal
+          matrix={triggerMatrixTarget}
+          onClose={()=>setTriggerMatrixTarget(null)}
+        />
+      )}
     </>
   );
 }
+
+function MatrixTriggerModal({ matrix, onClose }) {
+  const matrixId = matrix.id;
+  const matrixName = matrix.name;
+  const savedRef = matrix.git_ref || "";
+  const savedCommit = matrix.git_commit || "";
+
+  const [gitMode, setGitMode] = useState(savedCommit ? "commit" : savedRef ? "branch" : "default");
+  const [gitRef, setGitRef] = useState(savedRef);
+  const [gitCommit, setGitCommit] = useState(savedCommit);
+  const [remoteBranches, setRemoteBranches] = useState([]);
+  const [defaultRef, setDefaultRef] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/portal-settings").then(r=>r.json()).then(s => {
+      setDefaultRef(s.run_code_ref || "");
+    }).catch(()=>{});
+    fetch("/api/settings/git-info").then(r=>r.json()).then(info => {
+      if (info.available) setRemoteBranches(info.remote_branches || []);
+    }).catch(()=>{});
+  }, []);
+
+  async function handleTrigger() {
+    setSubmitting(true);
+    try {
+      const body = {};
+      if (gitMode === "branch" && gitRef.trim()) {
+        body.git_ref = gitRef.trim();
+      } else if (gitMode === "commit" && gitRef.trim()) {
+        body.git_ref = gitRef.trim();
+        if (gitCommit.trim()) body.git_commit = gitCommit.trim();
+      }
+      const res = await fetch(`/api/preset-matrices/${matrixId}/trigger`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { const d = await res.json().catch(()=>({})); alert(d.detail || "Trigger failed"); return; }
+      const data = await res.json();
+      alert(`Queued ${data.job_count} job${data.job_count!==1?'s':''} from matrix "${data.matrix_name}"`);
+      onClose();
+    } catch (err) {
+      alert("Trigger failed: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
+  const hintStyle = {fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px',lineHeight:'1.5'};
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'520px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>Run Matrix: {matrixName}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
+        </div>
+        <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'16px'}}>
+          <div style={{fontSize:'13px',color:'var(--nv-text-muted)',lineHeight:'1.6'}}>
+            All jobs in this matrix will be queued. Choose which code version runners should checkout.
+          </div>
+
+          <div style={{display:'flex',gap:'6px'}}>
+            {[
+              {id:'default', label:'Use Settings Default'},
+              {id:'branch', label:'Latest from Branch'},
+              {id:'commit', label:'Specific Commit'},
+            ].map(opt => (
+              <button key={opt.id} type="button" onClick={()=>setGitMode(opt.id)}
+                className="btn btn-sm"
+                style={{
+                  fontSize:'11px',padding:'4px 10px',flex:1,justifyContent:'center',
+                  background: gitMode===opt.id ? 'rgba(118,185,0,0.12)' : 'transparent',
+                  color: gitMode===opt.id ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+                  border: `1px solid ${gitMode===opt.id ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+                }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {gitMode === "default" && (
+            <div style={hintStyle}>
+              {(savedRef || savedCommit)
+                ? <>Uses the matrix's saved git config: <span className="mono" style={{color:'var(--nv-green)'}}>{savedRef}{savedCommit ? ` @ ${savedCommit.substring(0,12)}` : ''}</span></>
+                : <>Uses the Runner Execution Branch from Settings{defaultRef ? `: ${defaultRef}` : '.'}</>
+              }
+            </div>
+          )}
+
+          {(gitMode === "branch" || gitMode === "commit") && (
+            <>
+              <div>
+                <label style={labelStyle}>Remote / Branch</label>
+                <input className="input" style={{width:'100%'}} value={gitRef}
+                  onChange={e=>setGitRef(e.target.value)}
+                  placeholder="e.g. nvidia/main or origin/feat/my-branch" />
+                {remoteBranches.length > 0 && (
+                  <div style={{marginTop:'8px',display:'flex',gap:'4px',flexWrap:'wrap',maxHeight:'80px',overflow:'auto'}}>
+                    {remoteBranches.slice(0, 20).map(b => (
+                      <button key={b} type="button" className="btn btn-sm"
+                        onClick={()=>setGitRef(b)}
+                        style={{
+                          fontSize:'10px',padding:'1px 6px',
+                          background: b===gitRef ? 'rgba(118,185,0,0.12)' : 'transparent',
+                          color: b===gitRef ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+                          border: `1px solid ${b===gitRef ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+                        }}>
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={hintStyle}>
+                  {gitMode === "branch"
+                    ? "Runners will fetch and checkout the latest commit from this branch."
+                    : "The branch that contains the commit below."}
+                </div>
+              </div>
+              {gitMode === "commit" && (
+                <div>
+                  <label style={labelStyle}>Commit SHA</label>
+                  <input className="input mono" style={{width:'100%',fontSize:'12px'}} value={gitCommit}
+                    onChange={e=>setGitCommit(e.target.value)}
+                    placeholder="e.g. a1b2c3d4e5f6 or full 40-char SHA" />
+                  <div style={hintStyle}>
+                    Runners will checkout this exact commit. Leave empty to use the latest from the branch above.
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={handleTrigger}
+            disabled={submitting}
+            style={{flex:1,justifyContent:'center'}}>
+            {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : <><IconPlay /> Run Matrix</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function PresetFormModal({ preset, onClose, onSaved }) {
   const isEdit = !!preset;
@@ -445,6 +602,14 @@ function PresetMatrixFormModal({ matrix, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const existingGitRef = matrix?.git_ref || "";
+  const existingGitCommit = matrix?.git_commit || "";
+  const [gitMode, setGitMode] = useState(existingGitCommit ? "commit" : existingGitRef ? "branch" : "default");
+  const [gitRef, setGitRef] = useState(existingGitRef);
+  const [gitCommit, setGitCommit] = useState(existingGitCommit);
+  const [remoteBranches, setRemoteBranches] = useState([]);
+  const [defaultRef, setDefaultRef] = useState("");
+
   useEffect(() => {
     fetch("/api/config").then(r=>r.json()).then(cfg => {
       setAvailableDatasets(cfg.datasets || []);
@@ -455,6 +620,12 @@ function PresetMatrixFormModal({ matrix, onClose, onSaved }) {
     }).catch(()=>{});
     fetch("/api/runners/gpu-types").then(r=>r.json()).then(types => {
       setGpuTypes(types || []);
+    }).catch(()=>{});
+    fetch("/api/portal-settings").then(r=>r.json()).then(s => {
+      setDefaultRef(s.run_code_ref || "");
+    }).catch(()=>{});
+    fetch("/api/settings/git-info").then(r=>r.json()).then(info => {
+      if (info.available) setRemoteBranches(info.remote_branches || []);
     }).catch(()=>{});
   }, []);
 
@@ -478,7 +649,15 @@ function PresetMatrixFormModal({ matrix, onClose, onSaved }) {
       tags: tags ? tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
       preferred_runner_id: preferredRunnerId ? Number(preferredRunnerId) : null,
       gpu_type_filter: gpuTypeFilter || null,
+      git_ref: null,
+      git_commit: null,
     };
+    if (gitMode === "branch" && gitRef.trim()) {
+      payload.git_ref = gitRef.trim();
+    } else if (gitMode === "commit" && gitRef.trim()) {
+      payload.git_ref = gitRef.trim();
+      if (gitCommit.trim()) payload.git_commit = gitCommit.trim();
+    }
     try {
       const url = isEdit ? `/api/preset-matrices/${matrix.id}` : "/api/preset-matrices";
       const method = isEdit ? "PUT" : "POST";
@@ -579,6 +758,72 @@ function PresetMatrixFormModal({ matrix, onClose, onSaved }) {
                   {preferredRunnerId && <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'4px'}}>Disabled when a preferred runner is selected</div>}
                 </div>
               </div>
+            </div>
+
+            {/* Git Checkout Override */}
+            <div style={{padding:'12px 16px',borderRadius:'8px',background:'rgba(255,255,255,0.02)',border:'1px solid var(--nv-border)'}}>
+              <div style={{fontSize:'11px',fontWeight:600,color:'var(--nv-text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'10px'}}>
+                Git Checkout Override (optional)
+              </div>
+              <div style={{fontSize:'11px',color:'var(--nv-text-dim)',lineHeight:'1.5',marginBottom:'12px'}}>
+                Pin all jobs from this matrix to a specific branch or commit. Overrides the global Runner Execution Branch setting{defaultRef ? ` (${defaultRef})` : ''}.
+              </div>
+              <div style={{display:'flex',gap:'6px',marginBottom:'12px'}}>
+                {[
+                  {id:'default', label:'Use Settings Default'},
+                  {id:'branch', label:'Latest from Branch'},
+                  {id:'commit', label:'Specific Commit'},
+                ].map(opt => (
+                  <button key={opt.id} type="button" onClick={()=>setGitMode(opt.id)}
+                    className="btn btn-sm"
+                    style={{
+                      fontSize:'11px',padding:'4px 10px',flex:1,justifyContent:'center',
+                      background: gitMode===opt.id ? 'rgba(118,185,0,0.12)' : 'transparent',
+                      color: gitMode===opt.id ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+                      border: `1px solid ${gitMode===opt.id ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+                    }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {(gitMode === "branch" || gitMode === "commit") && (
+                <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+                  <div>
+                    <label style={labelStyle}>Remote / Branch</label>
+                    <input className="input" style={{width:'100%'}} value={gitRef}
+                      onChange={e=>setGitRef(e.target.value)}
+                      placeholder="e.g. nvidia/main or origin/feat/my-branch" />
+                    {remoteBranches.length > 0 && (
+                      <div style={{marginTop:'6px',display:'flex',gap:'4px',flexWrap:'wrap',maxHeight:'60px',overflow:'auto'}}>
+                        {remoteBranches.slice(0, 15).map(b => (
+                          <button key={b} type="button" className="btn btn-sm"
+                            onClick={()=>setGitRef(b)}
+                            style={{
+                              fontSize:'10px',padding:'1px 6px',
+                              background: b===gitRef ? 'rgba(118,185,0,0.12)' : 'transparent',
+                              color: b===gitRef ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+                              border: `1px solid ${b===gitRef ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+                            }}>
+                            {b}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {gitMode === "commit" && (
+                    <div>
+                      <label style={labelStyle}>Commit SHA</label>
+                      <input className="input mono" style={{width:'100%',fontSize:'12px'}} value={gitCommit}
+                        onChange={e=>setGitCommit(e.target.value)}
+                        placeholder="e.g. a1b2c3d4e5f6 or full 40-char SHA" />
+                      <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'4px'}}>
+                        Leave empty to use the latest commit from the branch above.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>

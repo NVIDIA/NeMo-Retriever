@@ -240,6 +240,8 @@ _MIGRATIONS = [
     "ALTER TABLE datasets ADD COLUMN embed_granularity TEXT DEFAULT 'element'",
     "ALTER TABLE datasets ADD COLUMN extract_page_as_image INTEGER DEFAULT 0",
     "ALTER TABLE datasets ADD COLUMN extract_infographics INTEGER DEFAULT 0",
+    "ALTER TABLE preset_matrices ADD COLUMN git_ref TEXT",
+    "ALTER TABLE preset_matrices ADD COLUMN git_commit TEXT",
 ]
 
 RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
@@ -666,8 +668,8 @@ def create_preset_matrix(data: dict[str, Any], db_path: str | None = None) -> di
         now = _now_iso()
         conn.execute(
             "INSERT INTO preset_matrices (name, description, dataset_names, preset_names, tags,"
-            " preferred_runner_id, gpu_type_filter, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " preferred_runner_id, gpu_type_filter, git_ref, git_commit, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["name"],
                 data.get("description"),
@@ -676,6 +678,8 @@ def create_preset_matrix(data: dict[str, Any], db_path: str | None = None) -> di
                 json.dumps(data.get("tags") or []),
                 data.get("preferred_runner_id"),
                 data.get("gpu_type_filter"),
+                data.get("git_ref"),
+                data.get("git_commit"),
                 now,
                 now,
             ),
@@ -743,6 +747,12 @@ def update_preset_matrix(matrix_id: int, data: dict[str, Any], db_path: str | No
         if "gpu_type_filter" in data:
             sets.append("gpu_type_filter = ?")
             vals.append(data["gpu_type_filter"])
+        if "git_ref" in data:
+            sets.append("git_ref = ?")
+            vals.append(data["git_ref"])
+        if "git_commit" in data:
+            sets.append("git_commit = ?")
+            vals.append(data["git_commit"])
         if not sets:
             return get_preset_matrix_by_id(matrix_id, db_path)
         sets.append("updated_at = ?")

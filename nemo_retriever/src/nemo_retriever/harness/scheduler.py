@@ -186,6 +186,32 @@ def _resolve_run_code_ref_sha() -> tuple[str | None, str | None]:
         return ref, ref
 
 
+def _resolve_ref_to_sha(ref: str) -> str | None:
+    """Resolve an arbitrary git ref to a SHA via fetch + rev-parse."""
+    try:
+        env = dict(os.environ)
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        if "/" in ref and not ref.startswith("origin/"):
+            remote = ref.split("/")[0]
+            subprocess.run(
+                ["git", "fetch", remote, "--prune"],
+                capture_output=True, text=True, timeout=120, check=False, env=env,
+            )
+        else:
+            subprocess.run(
+                ["git", "fetch", "--all", "--prune"],
+                capture_output=True, text=True, timeout=120, check=False, env=env,
+            )
+        result = subprocess.run(
+            ["git", "rev-parse", ref],
+            capture_output=True, text=True, timeout=30, check=True, env=env,
+        )
+        return result.stdout.strip() or None
+    except Exception as exc:
+        logger.warning("Failed to resolve ref '%s' to SHA: %s", ref, exc)
+        return None
+
+
 def _enforce_backlog_limit(schedule_id: int) -> None:
     """Cancel the oldest pending jobs for a schedule if the backlog exceeds the limit."""
     pending = history.get_pending_jobs_for_schedule(schedule_id)
@@ -301,6 +327,16 @@ def _dispatch_schedule_matrix(
     if not dataset_names or not preset_names:
         logger.warning("Preset matrix '%s' is empty — skipping dispatch", matrix_name)
         return None
+
+    if not git_commit and not git_ref:
+        matrix_ref = matrix.get("git_ref")
+        matrix_commit = matrix.get("git_commit")
+        if matrix_commit:
+            git_commit = matrix_commit
+            git_ref = matrix_ref or matrix_commit
+        elif matrix_ref:
+            git_ref = matrix_ref
+            git_commit = _resolve_ref_to_sha(matrix_ref) or matrix_ref
 
     schedule_tags = schedule.get("tags") or []
     matrix_tags = matrix.get("tags") or []
