@@ -1,11 +1,10 @@
 import pandas as pd
+import logging
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 from nemo_retriever.tabular_data.ingestion.graph.utils import (
     load_tables,
     load_columns,
 )
-import logging
-
 from nemo_retriever.tabular_data.ingestion.graph.model.node import Node
 from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import (
     Labels,
@@ -39,7 +38,6 @@ def load_schema_from_graph(
 def get_schemas_ids_and_names(db_id: str = None):
     db_filter = " {id:$db_id}" if db_id else ""
     query = f"""MATCH(db:{Labels.DB}{db_filter})-[:{RelTypes.CONTAINS}]->(s:{Labels.SCHEMA})
-                WHERE coalesce(s.deleted, false) = false
                 RETURN s.name as schema_name, s.id as schema_id
             """
     result = pd.DataFrame(
@@ -53,15 +51,9 @@ def get_schemas_ids_and_names(db_id: str = None):
 
 def get_schema_columns(db_name, schema_name):
     # Use c_id alias: "id" is reserved in Cypher
-    deleted_filter = (
-        " WHERE coalesce(s.deleted, false) = false"
-        " and coalesce(t.deleted, false) = false"
-        " and coalesce(c.deleted, false) = false "
-    )
     query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{RelTypes.CONTAINS}]->
                 (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{RelTypes.CONTAINS}]->
                 (t:{Labels.TABLE})-[:{RelTypes.CONTAINS}]->(c:{Labels.COLUMN})
-                {deleted_filter}
                 WITH d.name as database,
                 s.name as schema,
                 t.name as table_name,
@@ -92,11 +84,9 @@ def get_schema_columns(db_name, schema_name):
 
 def get_schema_tables(db_name, schema_name):
     # Use t_id alias: "id" is reserved in Cypher
-    deleted_filter = " WHERE coalesce(s.deleted, false) = false and coalesce(t.deleted, false) = false "
     query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{RelTypes.CONTAINS}]->
                 (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{RelTypes.CONTAINS}]->
                 (t:{Labels.TABLE})
-                {deleted_filter}
                 WITH d.name as database, s.name as schema, t.name as table_name, t.id as t_id,
                 t.table_type as table_type, t.row_count as row_count, t.size as size,
                 t.retention_time as retention_time, tostring(t.created) as created,
