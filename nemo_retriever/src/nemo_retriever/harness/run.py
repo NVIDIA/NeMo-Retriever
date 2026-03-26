@@ -793,7 +793,7 @@ try:
                         import pyarrow as _pa
                         db = _ldb.connect(lancedb_uri)
                         arrow_ds = result_ds.to_arrow_refs()
-                        table = _pa.concat_tables([ray.get(ref) for ref in arrow_ds])
+                        table = _pa.concat_tables([ray.get(ref) for ref in arrow_ds], promote_options="permissive")
                         col_names = [f.name for f in table.schema]
                         if "vector" in col_names:
                             db.create_table(lancedb_table, table, mode="overwrite")
