@@ -101,7 +101,17 @@ h. Run the command `docker ps`. You should see output similar to the following. 
     3403c5a0e7be  redis/redis-stack                                "/entrypoint.sh"        7 minutes ago   Up 7 minutes            0.0.0.0:6379...  nv-ingest-redis-1
     ```
 
-## Step 2: Ingest Documents
+## Step 2: Install the Client
+
+Install the Python client and CLI in a Python 3.12+ environment.
+
+```shell
+uv venv --python 3.12 nv-ingest-dev
+source nv-ingest-dev/bin/activate
+uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2
+```
+
+## Step 3: Ingest Documents
 
 You can submit jobs programmatically in Python or using the [CLI](nv-ingest_cli.md).
 
@@ -326,7 +336,7 @@ INFO:nv_ingest_client.cli.util.processing:Throughput (Pages/sec): 1.28
 INFO:nv_ingest_client.cli.util.processing:Throughput (Files/sec): 0.43
 ```
 
-## Step 3: Inspecting and Consuming Results
+## Step 4: Inspecting and Consuming Results
 
 After the ingestion steps above have been completed, you should be able to find the `text` and `image` subfolders inside your processed docs folder. Each will contain JSON-formatted extracted content and metadata.
 
