@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -191,55 +190,67 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
     assert "q,doc_name_1" in csv_contents
 
 
-def test_normalize_recall_metric_key_removes_duplicate_prefix() -> None:
-    assert _normalize_recall_metric_key("recall@1") == "recall_1"
-    assert _normalize_recall_metric_key("recall@10") == "recall_10"
-
-
-def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> None:
+def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
     query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
-    runtime_dir = tmp_path / "runtime_metrics"
-    runtime_dir.mkdir()
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
+        run_mode="inprocess",
         query_csv=str(query_csv),
+        max_workers=8,
+        gpu_devices="0,1",
     )
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
-    monkeypatch.setattr(
-        harness_run,
-        "_build_command",
-        lambda *_args, **_kwargs: (["python", "-V"], runtime_dir, runtime_dir / ".detection_summary.json", query_csv),
+    assert "nemo_retriever.examples.inprocess_pipeline" in cmd
+    assert "--max-workers" in cmd
+    assert cmd[cmd.index("--max-workers") + 1] == "8"
+    assert "--gpu-devices" in cmd
+    assert cmd[cmd.index("--gpu-devices") + 1] == "0,1"
+    assert "--query-csv" in cmd
+    assert str(effective_query_csv) in cmd
+
+
+def test_build_command_supports_fused_run_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        run_mode="fused",
+        query_csv=str(query_csv),
+        fused_workers=2,
+        fused_batch_size=32,
+        fused_cpus_per_actor=2.0,
+        fused_gpus_per_actor=1.0,
     )
+    cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
-    def _fake_run_subprocess(_cmd: list[str], metrics) -> int:
-        metrics.files = 20
-        metrics.pages = 100
-        metrics.ingest_secs = 10.0
-        metrics.pages_per_sec_ingest = 10.0
-        metrics.recall_metrics = {"recall@1": 0.5, "recall@5": 0.8}
-        return 0
+    assert "nemo_retriever.examples.fused_pipeline" in cmd
+    assert "--fused-workers" in cmd
+    assert cmd[cmd.index("--fused-workers") + 1] == "2"
+    assert "--fused-batch-size" in cmd
+    assert cmd[cmd.index("--fused-batch-size") + 1] == "32"
+    assert "--runtime-metrics-dir" in cmd
+    assert str(runtime_dir) in cmd
+    assert "--detection-summary-file" in cmd
+    assert str(detection_file) in cmd
+    assert "--query-csv" in cmd
+    assert str(effective_query_csv) in cmd
 
-    monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
-    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
-    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
 
-    captured: dict[str, dict] = {}
-
-    def _fake_write_json(_path: Path, payload: dict) -> None:
-        captured["payload"] = payload
-
-    monkeypatch.setattr(harness_run, "write_json", _fake_write_json)
-
-    harness_run._run_single(cfg, tmp_path, run_id="r1", tags=["nightly", "candidate"])
-    assert captured["payload"]["tags"] == ["nightly", "candidate"]
-    assert captured["payload"]["metrics"]["recall_1"] == 0.5
-    assert captured["payload"]["metrics"]["recall_5"] == 0.8
+def test_normalize_recall_metric_key_removes_duplicate_prefix() -> None:
+    assert _normalize_recall_metric_key("recall@1") == "recall_1"
+    assert _normalize_recall_metric_key("recall@10") == "recall_10"
 
 
 def test_run_entry_session_artifact_dir_uses_run_name(monkeypatch, tmp_path: Path) -> None:
@@ -425,199 +436,6 @@ def test_collect_run_metadata_falls_back_without_gpu_or_ray(monkeypatch) -> None
         "ray_version": "unknown",
         "python_version": "unknown",
     }
-
-
-def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path) -> None:
-    artifact_dir = tmp_path / "run_artifacts"
-    artifact_dir.mkdir()
-    dataset_dir = tmp_path / "dataset"
-    dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
-
-    runtime_dir = artifact_dir / "runtime_metrics"
-    runtime_dir.mkdir()
-    detection_file = artifact_dir / "detection_summary.json"
-    detection_file.write_text(json.dumps({"total_detections": 7}), encoding="utf-8")
-    runtime_summary_file = runtime_dir / "jp20_single.runtime.summary.json"
-    runtime_summary_file.write_text(json.dumps({"elapsed_secs": 12.5}), encoding="utf-8")
-
-    cfg = HarnessConfig(
-        dataset_dir=str(dataset_dir),
-        dataset_label="jp20",
-        preset="single_gpu",
-        query_csv=str(query_csv),
-        write_detection_file=True,
-    )
-
-    monkeypatch.setattr(
-        harness_run,
-        "_build_command",
-        lambda _cfg, _artifact_dir, _run_id: (
-            ["python", "-m", "nemo_retriever.examples.batch_pipeline", str(dataset_dir)],
-            runtime_dir,
-            detection_file,
-            query_csv,
-        ),
-    )
-
-    def _fake_run_subprocess(_cmd: list[str], metrics) -> int:
-        metrics.files = None
-        metrics.pages = None
-        metrics.ingest_secs = 12.5
-        metrics.pages_per_sec_ingest = None
-        metrics.rows_processed = 3181
-        metrics.rows_per_sec_ingest = 254.48
-        metrics.recall_metrics = {"recall@5": 0.9}
-        return 0
-
-    monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
-    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_120000_UTC")
-    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc1234")
-    monkeypatch.setattr(
-        harness_run,
-        "_collect_run_metadata",
-        lambda: {
-            "host": "builder-01",
-            "gpu_count": 2,
-            "cuda_driver": "550.54.15",
-            "ray_version": "2.49.0",
-            "python_version": "3.12.4",
-        },
-    )
-
-    result = harness_run._run_single(cfg, artifact_dir, run_id="jp20_single")
-    payload = json.loads((artifact_dir / "results.json").read_text(encoding="utf-8"))
-
-    expected = {
-        "timestamp": "20260305_120000_UTC",
-        "latest_commit": "abc1234",
-        "success": True,
-        "return_code": 0,
-        "failure_reason": None,
-        "test_config": {
-            "dataset_label": "jp20",
-            "dataset_dir": str(dataset_dir),
-            "preset": "single_gpu",
-            "query_csv": str(query_csv),
-            "effective_query_csv": str(query_csv),
-            "input_type": cfg.input_type,
-            "recall_required": cfg.recall_required,
-            "recall_match_mode": cfg.recall_match_mode,
-            "recall_adapter": cfg.recall_adapter,
-            "evaluation_mode": cfg.evaluation_mode,
-            "beir_loader": cfg.beir_loader,
-            "beir_dataset_name": cfg.beir_dataset_name,
-            "beir_split": cfg.beir_split,
-            "beir_query_language": cfg.beir_query_language,
-            "beir_doc_id_field": cfg.beir_doc_id_field,
-            "beir_ks": list(cfg.beir_ks),
-            "ray_address": cfg.ray_address,
-            "hybrid": cfg.hybrid,
-            "embed_model_name": cfg.embed_model_name,
-            "embed_modality": cfg.embed_modality,
-            "embed_granularity": cfg.embed_granularity,
-            "extract_page_as_image": cfg.extract_page_as_image,
-            "extract_infographics": cfg.extract_infographics,
-            "write_detection_file": True,
-            "lancedb_uri": str((artifact_dir / "lancedb").resolve()),
-            "tuning": {field: getattr(cfg, field) for field in sorted(harness_run.TUNING_FIELDS)},
-        },
-        "metrics": {
-            "files": None,
-            "pages": None,
-            "ingest_secs": 12.5,
-            "pages_per_sec_ingest": None,
-            "rows_processed": 3181,
-            "rows_per_sec_ingest": 254.48,
-            "recall_5": 0.9,
-        },
-        "summary_metrics": {
-            "pages": None,
-            "ingest_secs": 12.5,
-            "pages_per_sec_ingest": None,
-            "recall_5": 0.9,
-            "ndcg_10": None,
-        },
-        "run_metadata": {
-            "host": "builder-01",
-            "gpu_count": 2,
-            "cuda_driver": "550.54.15",
-            "ray_version": "2.49.0",
-            "python_version": "3.12.4",
-        },
-        "runtime_summary": {"elapsed_secs": 12.5},
-        "detection_summary": {"total_detections": 7},
-        "artifacts": {
-            "command_file": str((artifact_dir / "command.txt").resolve()),
-            "runtime_metrics_dir": str(runtime_dir.resolve()),
-            "detection_summary_file": str(detection_file.resolve()),
-        },
-    }
-
-    assert result == expected
-    assert payload == expected
-
-
-def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path: Path) -> None:
-    artifact_dir = tmp_path / "run_artifacts"
-    artifact_dir.mkdir()
-    dataset_dir = tmp_path / "dataset"
-    dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
-
-    runtime_dir = artifact_dir / "runtime_metrics"
-    runtime_dir.mkdir()
-    detection_file = runtime_dir / ".detection_summary.json"
-
-    cfg = HarnessConfig(
-        dataset_dir=str(dataset_dir),
-        dataset_label="jp20",
-        preset="single_gpu",
-        query_csv=str(query_csv),
-        write_detection_file=False,
-        recall_required=False,
-    )
-
-    monkeypatch.setattr(
-        harness_run,
-        "_build_command",
-        lambda _cfg, _artifact_dir, _run_id: (
-            ["python", "-m", "nemo_retriever.examples.batch_pipeline", str(dataset_dir)],
-            runtime_dir,
-            detection_file,
-            query_csv,
-        ),
-    )
-
-    def _fake_run_subprocess(_cmd: list[str], metrics) -> int:
-        metrics.rows_processed = 42
-        metrics.rows_per_sec_ingest = 3.5
-        metrics.ingest_secs = 12.0
-        return 0
-
-    monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
-    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260306_210000_UTC")
-    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc1234")
-    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
-
-    result = harness_run._run_single(cfg, artifact_dir, run_id="jp20_single")
-
-    assert result["success"] is True
-    assert result["runtime_summary"] is None
-    assert result["detection_summary"] is None
-    assert result["metrics"]["rows_processed"] == 42
-    assert result["metrics"]["rows_per_sec_ingest"] == 3.5
-    assert result["metrics"]["pages"] is None
-    assert result["summary_metrics"] == {
-        "pages": None,
-        "ingest_secs": 12.0,
-        "pages_per_sec_ingest": None,
-        "recall_5": None,
-        "ndcg_10": None,
-    }
-    assert "detection_summary_file" not in result["artifacts"]
 
 
 def test_resolve_summary_metrics_falls_back_to_dataset_page_count(monkeypatch, tmp_path: Path) -> None:

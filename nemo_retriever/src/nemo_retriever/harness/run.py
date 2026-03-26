@@ -4,13 +4,7 @@
 
 from __future__ import annotations
 
-import errno
 from importlib import metadata
-import json
-import os
-import pty
-import re
-import select
 import shlex
 import socket
 import subprocess
@@ -20,6 +14,16 @@ from typing import Any
 
 import typer
 
+from nemo_retriever.application.modes.reports import (
+    RunArtifactConfig,
+    RunEvaluationConfig,
+    flatten_report_metrics,
+    normalize_metric_key,
+)
+from nemo_retriever.application.modes.run_batch import BatchPipelineConfig, run_batch_pipeline
+from nemo_retriever.application.modes.run_fused import FusedPipelineConfig, run_fused_pipeline
+from nemo_retriever.application.modes.run_inprocess import InProcessPipelineConfig, run_inprocess_pipeline
+from nemo_retriever.application.modes.shared import DEFAULT_LANCEDB_TABLE
 from nemo_retriever.harness.artifacts import (
     create_run_artifact_dir,
     create_session_dir,
@@ -31,15 +35,18 @@ from nemo_retriever.harness.artifacts import (
 from nemo_retriever.harness.config import (
     DEFAULT_NIGHTLY_CONFIG_PATH,
     HarnessConfig,
-    TUNING_FIELDS,
     load_harness_config,
     load_nightly_config,
+    tuning_fields_for_run_mode,
 )
-from nemo_retriever.harness.parsers import StreamMetrics
 from nemo_retriever.harness.recall_adapters import prepare_recall_query_file
+from nemo_retriever.params import EmbedParams
+from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import IngestExecuteParams
+from nemo_retriever.params import IngestorCreateParams
+from nemo_retriever.params import TextChunkParams
+from nemo_retriever.params import VdbUploadParams
 from nemo_retriever.utils.input_files import resolve_input_files
-
-ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 def _collect_gpu_metadata() -> tuple[int | None, str | None]:
@@ -94,20 +101,27 @@ def _collect_run_metadata() -> dict[str, Any]:
 def _normalize_tags(tags: list[str] | None) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
-
     for raw in tags or []:
         tag = str(raw).strip()
         if not tag or tag in seen:
             continue
         seen.add(tag)
         normalized.append(tag)
-
     return normalized
 
 
 def _normalize_recall_metric_key(key: str) -> str:
-    metric = str(key).strip().lower()
-    return metric.replace("@", "_").replace("-", "_")
+    return normalize_metric_key(key)
+
+
+def _empty_summary_metrics() -> dict[str, Any]:
+    return {
+        "pages": None,
+        "ingest_secs": None,
+        "pages_per_sec_ingest": None,
+        "recall_5": None,
+        "ndcg_10": None,
+    }
 
 
 def _safe_pdf_page_count(path: Path) -> int | None:
@@ -135,7 +149,7 @@ def _resolve_summary_metrics(
     metrics_payload: dict[str, Any],
     runtime_summary: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    summary_metrics: dict[str, Any] = {
+    summary_metrics = {
         "pages": metrics_payload.get("pages"),
         "ingest_secs": metrics_payload.get("ingest_secs"),
         "pages_per_sec_ingest": metrics_payload.get("pages_per_sec_ingest"),
@@ -144,7 +158,7 @@ def _resolve_summary_metrics(
     }
 
     if summary_metrics["pages"] is None and isinstance(runtime_summary, dict):
-        runtime_pages = runtime_summary.get("num_pages")
+        runtime_pages = runtime_summary.get("processed_pages")
         if runtime_pages is None:
             runtime_pages = runtime_summary.get("input_pages")
         if runtime_pages is not None:
@@ -187,204 +201,373 @@ def _resolve_lancedb_uri(cfg: HarnessConfig, artifact_dir: Path) -> str:
     return str(p)
 
 
-def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
+def _parse_gpu_devices(raw: str | None) -> list[str]:
+    if raw is None:
+        return []
+    return [token.strip() for token in str(raw).split(",") if token.strip()]
+
+
+def _prepare_run_paths(
+    cfg: HarnessConfig,
+    artifact_dir: Path,
+) -> tuple[Path, Path | None, Path | None]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
-    if cfg.write_detection_file:
-        detection_summary_file = artifact_dir / "detection_summary.json"
-    else:
-        # Keep detection summary out of top-level artifacts unless explicitly requested.
-        detection_summary_file = runtime_dir / ".detection_summary.json"
+    detection_summary_file = (
+        artifact_dir / "detection_summary.json" if cfg.write_detection_file else runtime_dir / ".detection_summary.json"
+    )
     effective_query_csv: Path | None = None
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "nemo_retriever.examples.batch_pipeline",
-        str(Path(cfg.dataset_dir).resolve()),
-        "--input-type",
-        cfg.input_type,
-        "--evaluation-mode",
-        cfg.evaluation_mode,
-        "--pdf-extract-tasks",
-        str(cfg.pdf_extract_workers),
-        "--pdf-extract-cpus-per-task",
-        str(cfg.pdf_extract_num_cpus),
-        "--pdf-extract-batch-size",
-        str(cfg.pdf_extract_batch_size),
-        "--pdf-split-batch-size",
-        str(cfg.pdf_split_batch_size),
-        "--page-elements-batch-size",
-        str(cfg.page_elements_batch_size),
-        "--page-elements-actors",
-        str(cfg.page_elements_workers),
-        "--ocr-actors",
-        str(cfg.ocr_workers),
-        "--ocr-batch-size",
-        str(cfg.ocr_batch_size),
-        "--embed-actors",
-        str(cfg.embed_workers),
-        "--embed-batch-size",
-        str(cfg.embed_batch_size),
-        "--page-elements-cpus-per-actor",
-        str(cfg.page_elements_cpus_per_actor),
-        "--ocr-cpus-per-actor",
-        str(cfg.ocr_cpus_per_actor),
-        "--embed-cpus-per-actor",
-        str(cfg.embed_cpus_per_actor),
-        "--page-elements-gpus-per-actor",
-        str(cfg.gpu_page_elements),
-        "--ocr-gpus-per-actor",
-        str(cfg.gpu_ocr),
-        "--embed-gpus-per-actor",
-        str(cfg.gpu_embed),
-        "--embed-model-name",
-        cfg.embed_model_name,
-        "--embed-modality",
-        cfg.embed_modality,
-        "--embed-granularity",
-        cfg.embed_granularity,
-        "--runtime-metrics-dir",
-        str(runtime_dir),
-        "--runtime-metrics-prefix",
-        run_id,
-        "--detection-summary-file",
-        str(detection_summary_file),
-        "--lancedb-uri",
-        _resolve_lancedb_uri(cfg, artifact_dir),
-    ]
-
-    if cfg.evaluation_mode == "beir":
-        cmd += [
-            "--beir-loader",
-            str(cfg.beir_loader),
-            "--beir-dataset-name",
-            str(cfg.beir_dataset_name or cfg.dataset_label),
-            "--beir-split",
-            cfg.beir_split,
-            "--beir-doc-id-field",
-            cfg.beir_doc_id_field,
-        ]
-        if cfg.beir_query_language:
-            cmd += ["--beir-query-language", cfg.beir_query_language]
-        for k in cfg.beir_ks:
-            cmd += ["--beir-k", str(int(k))]
-    else:
+    if cfg.evaluation_mode != "beir":
         effective_query_csv = prepare_recall_query_file(
             query_csv=Path(cfg.query_csv) if cfg.query_csv else None,
             recall_adapter=cfg.recall_adapter,
             output_dir=runtime_dir,
         )
-        cmd += [
-            "--query-csv",
-            str(effective_query_csv),
-            "--recall-match-mode",
-            cfg.recall_match_mode,
-            "--no-recall-details",
-        ]
+    return runtime_dir, detection_summary_file, effective_query_csv
 
-    cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    if cfg.extract_infographics:
-        cmd += ["--extract-infographics"]
-    if cfg.embed_modality:
-        cmd += ["--structured-elements-modality", cfg.embed_modality]
-    if cfg.ray_address:
-        cmd += ["--ray-address", cfg.ray_address]
-    if cfg.hybrid:
-        cmd += ["--hybrid"]
+
+def _build_command(
+    cfg: HarnessConfig,
+    artifact_dir: Path,
+    run_id: str,
+) -> tuple[list[str], Path, Path | None, Path | None]:
+    runtime_dir, detection_summary_file, effective_query_csv = _prepare_run_paths(cfg, artifact_dir)
+    lancedb_uri = _resolve_lancedb_uri(cfg, artifact_dir)
+    module_name = {
+        "batch": "nemo_retriever.examples.batch_pipeline",
+        "inprocess": "nemo_retriever.examples.inprocess_pipeline",
+        "fused": "nemo_retriever.examples.fused_pipeline",
+    }[cfg.run_mode]
+    cmd = [sys.executable, "-m", module_name, str(Path(cfg.dataset_dir).resolve())]
+
+    if cfg.input_type != "pdf":
+        cmd += ["--input-type", cfg.input_type]
+
+    if cfg.run_mode == "batch":
+        cmd += [
+            "--evaluation-mode",
+            cfg.evaluation_mode,
+            "--pdf-extract-tasks",
+            str(cfg.pdf_extract_workers),
+            "--pdf-extract-cpus-per-task",
+            str(cfg.pdf_extract_num_cpus),
+            "--pdf-extract-batch-size",
+            str(cfg.pdf_extract_batch_size),
+            "--pdf-split-batch-size",
+            str(cfg.pdf_split_batch_size),
+            "--page-elements-actors",
+            str(cfg.page_elements_workers),
+            "--page-elements-batch-size",
+            str(cfg.page_elements_batch_size),
+            "--ocr-actors",
+            str(cfg.ocr_workers),
+            "--ocr-batch-size",
+            str(cfg.ocr_batch_size),
+            "--embed-actors",
+            str(cfg.embed_workers),
+            "--embed-batch-size",
+            str(cfg.embed_batch_size),
+            "--page-elements-cpus-per-actor",
+            str(cfg.page_elements_cpus_per_actor),
+            "--ocr-cpus-per-actor",
+            str(cfg.ocr_cpus_per_actor),
+            "--embed-cpus-per-actor",
+            str(cfg.embed_cpus_per_actor),
+            "--page-elements-gpus-per-actor",
+            str(cfg.gpu_page_elements),
+            "--ocr-gpus-per-actor",
+            str(cfg.gpu_ocr),
+            "--embed-gpus-per-actor",
+            str(cfg.gpu_embed),
+            "--embed-model-name",
+            cfg.embed_model_name,
+            "--embed-modality",
+            cfg.embed_modality,
+            "--embed-granularity",
+            cfg.embed_granularity,
+            "--runtime-metrics-dir",
+            str(runtime_dir),
+            "--runtime-metrics-prefix",
+            run_id,
+            "--lancedb-uri",
+            lancedb_uri,
+        ]
+        cmd += ["--detection-summary-file", str(detection_summary_file)]
+        if cfg.evaluation_mode == "beir":
+            cmd += [
+                "--beir-loader",
+                str(cfg.beir_loader),
+                "--beir-dataset-name",
+                str(cfg.beir_dataset_name or cfg.dataset_label),
+                "--beir-split",
+                cfg.beir_split,
+                "--beir-doc-id-field",
+                cfg.beir_doc_id_field,
+            ]
+            if cfg.beir_query_language:
+                cmd += ["--beir-query-language", cfg.beir_query_language]
+            for k in cfg.beir_ks:
+                cmd += ["--beir-k", str(int(k))]
+        elif effective_query_csv is not None:
+            cmd += ["--query-csv", str(effective_query_csv), "--recall-match-mode", cfg.recall_match_mode]
+        cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
+        if cfg.extract_infographics:
+            cmd += ["--extract-infographics"]
+        if cfg.embed_modality:
+            cmd += ["--structured-elements-modality", cfg.embed_modality]
+        if cfg.hybrid:
+            cmd += ["--hybrid"]
+        if cfg.ray_address:
+            cmd += ["--ray-address", cfg.ray_address]
+    elif cfg.run_mode == "inprocess":
+        cmd += ["--max-workers", str(cfg.max_workers)]
+        if cfg.gpu_devices:
+            cmd += ["--gpu-devices", cfg.gpu_devices]
+        if effective_query_csv is not None:
+            cmd += ["--query-csv", str(effective_query_csv)]
+        if cfg.hybrid:
+            cmd += ["--hybrid"]
+        cmd += ["--embed-modality", cfg.embed_modality, "--embed-granularity", cfg.embed_granularity]
+    else:
+        cmd += [
+            "--pdf-extract-tasks",
+            str(cfg.pdf_extract_workers),
+            "--pdf-extract-cpus-per-task",
+            str(cfg.pdf_extract_num_cpus),
+            "--pdf-extract-batch-size",
+            str(cfg.pdf_extract_batch_size),
+            "--pdf-split-batch-size",
+            str(cfg.pdf_split_batch_size),
+            "--fused-workers",
+            str(cfg.fused_workers),
+            "--fused-batch-size",
+            str(cfg.fused_batch_size),
+            "--fused-cpus-per-actor",
+            str(cfg.fused_cpus_per_actor),
+            "--fused-gpus-per-actor",
+            str(cfg.fused_gpus_per_actor),
+            "--lancedb-uri",
+            lancedb_uri,
+            "--runtime-metrics-dir",
+            str(runtime_dir),
+            "--runtime-metrics-prefix",
+            run_id,
+        ]
+        if effective_query_csv is not None:
+            cmd += ["--query-csv", str(effective_query_csv)]
+        if detection_summary_file is not None:
+            cmd += ["--detection-summary-file", str(detection_summary_file)]
+        if cfg.ray_address:
+            cmd += ["--ray-address", cfg.ray_address]
 
     return cmd, runtime_dir, detection_summary_file, effective_query_csv
 
 
+def _common_evaluation_config(cfg: HarnessConfig, effective_query_csv: Path | None) -> RunEvaluationConfig:
+    return RunEvaluationConfig(
+        evaluation_mode=cfg.evaluation_mode,
+        query_csv=str(effective_query_csv) if effective_query_csv is not None else None,
+        recall_match_mode=cfg.recall_match_mode,
+        beir_loader=cfg.beir_loader,
+        beir_dataset_name=cfg.beir_dataset_name or cfg.dataset_label,
+        beir_split=cfg.beir_split,
+        beir_query_language=cfg.beir_query_language,
+        beir_doc_id_field=cfg.beir_doc_id_field,
+        beir_ks=tuple(cfg.beir_ks),
+    )
+
+
+def _common_extract_params(cfg: HarnessConfig, *, batch_tuning: dict[str, Any] | None = None) -> ExtractParams:
+    kwargs: dict[str, Any] = {
+        "extract_text": True,
+        "extract_tables": True,
+        "extract_charts": True,
+        "extract_infographics": cfg.extract_infographics,
+        "extract_page_as_image": cfg.extract_page_as_image,
+    }
+    if batch_tuning is not None:
+        kwargs["batch_tuning"] = batch_tuning
+    return ExtractParams(**kwargs)
+
+
+def _common_embed_params(
+    cfg: HarnessConfig,
+    *,
+    batch_tuning: dict[str, Any] | None = None,
+    fused_tuning: dict[str, Any] | None = None,
+    model_name: str | None = None,
+) -> EmbedParams:
+    kwargs: dict[str, Any] = {
+        "model_name": model_name or cfg.embed_model_name,
+        "embed_modality": cfg.embed_modality,
+        "embed_granularity": cfg.embed_granularity,
+    }
+    if batch_tuning is not None:
+        kwargs["batch_tuning"] = batch_tuning
+    if fused_tuning is not None:
+        kwargs["fused_tuning"] = fused_tuning
+    return EmbedParams(**kwargs)
+
+
+def _build_runner_config(
+    cfg: HarnessConfig,
+    artifact_dir: Path,
+    run_id: str,
+    runtime_dir: Path,
+    detection_summary_file: Path | None,
+    effective_query_csv: Path | None,
+):
+    lancedb_uri = _resolve_lancedb_uri(cfg, artifact_dir)
+    artifacts = RunArtifactConfig(
+        lancedb_uri=lancedb_uri,
+        lancedb_table=DEFAULT_LANCEDB_TABLE,
+        detection_summary_file=str(detection_summary_file) if detection_summary_file is not None else None,
+    )
+    evaluation = _common_evaluation_config(cfg, effective_query_csv)
+    runtime_metrics_dir = str(runtime_dir)
+    text_chunk_params = TextChunkParams()
+
+    if cfg.run_mode == "batch":
+        batch_tuning = {
+            "pdf_extract_workers": cfg.pdf_extract_workers,
+            "pdf_extract_num_cpus": cfg.pdf_extract_num_cpus,
+            "pdf_extract_batch_size": cfg.pdf_extract_batch_size,
+            "pdf_split_batch_size": cfg.pdf_split_batch_size,
+            "page_elements_batch_size": cfg.page_elements_batch_size,
+            "page_elements_workers": cfg.page_elements_workers,
+            "detect_workers": cfg.ocr_workers,
+            "ocr_inference_batch_size": cfg.ocr_batch_size,
+            "detect_batch_size": cfg.ocr_batch_size,
+            "embed_workers": cfg.embed_workers,
+            "embed_batch_size": cfg.embed_batch_size,
+            "page_elements_cpus_per_actor": cfg.page_elements_cpus_per_actor,
+            "ocr_cpus_per_actor": cfg.ocr_cpus_per_actor,
+            "embed_cpus_per_actor": cfg.embed_cpus_per_actor,
+            "gpu_page_elements": cfg.gpu_page_elements,
+            "gpu_ocr": cfg.gpu_ocr,
+            "gpu_embed": cfg.gpu_embed,
+        }
+        extract_params = (
+            None if cfg.input_type in {"txt", "html"} else _common_extract_params(cfg, batch_tuning=batch_tuning)
+        )
+        return BatchPipelineConfig(
+            input_path=cfg.dataset_dir,
+            input_type=cfg.input_type,
+            create_params=IngestorCreateParams(ray_address=cfg.ray_address, ray_log_to_driver=True, debug=False),
+            execute_params=IngestExecuteParams(
+                runtime_metrics_dir=runtime_metrics_dir,
+                runtime_metrics_prefix=run_id,
+            ),
+            extract_params=extract_params,
+            embed_params=_common_embed_params(cfg, batch_tuning=batch_tuning),
+            text_chunk_params=text_chunk_params,
+            enable_text_chunk=False,
+            evaluation=evaluation,
+            artifacts=artifacts,
+            hybrid=cfg.hybrid,
+        )
+
+    if cfg.run_mode == "inprocess":
+        return InProcessPipelineConfig(
+            input_path=cfg.dataset_dir,
+            input_type=cfg.input_type,
+            execute_params=IngestExecuteParams(
+                parallel=True,
+                max_workers=cfg.max_workers,
+                gpu_devices=_parse_gpu_devices(cfg.gpu_devices),
+                show_progress=False,
+                runtime_metrics_dir=runtime_metrics_dir,
+                runtime_metrics_prefix=run_id,
+            ),
+            extract_params=_common_extract_params(cfg),
+            embed_params=_common_embed_params(cfg),
+            text_chunk_params=text_chunk_params,
+            enable_text_chunk=False,
+            vdb_upload_params=VdbUploadParams(
+                lancedb={
+                    "lancedb_uri": lancedb_uri,
+                    "table_name": DEFAULT_LANCEDB_TABLE,
+                    "overwrite": True,
+                    "create_index": True,
+                    "hybrid": cfg.hybrid,
+                }
+            ),
+            evaluation=evaluation,
+            artifacts=artifacts,
+        )
+
+    fused_model_name = cfg.embed_model_name
+    if fused_model_name == "nvidia/llama-nemotron-embed-1b-v2":
+        fused_model_name = "nemo_retriever_v1"
+    return FusedPipelineConfig(
+        input_path=cfg.dataset_dir,
+        input_type=cfg.input_type,
+        create_params=IngestorCreateParams(ray_address=cfg.ray_address, ray_log_to_driver=True),
+        execute_params=IngestExecuteParams(
+            runtime_metrics_dir=runtime_metrics_dir,
+            runtime_metrics_prefix=run_id,
+        ),
+        extract_params=_common_extract_params(
+            cfg,
+            batch_tuning={
+                "pdf_extract_workers": cfg.pdf_extract_workers,
+                "pdf_extract_num_cpus": cfg.pdf_extract_num_cpus,
+                "pdf_extract_batch_size": cfg.pdf_extract_batch_size,
+                "pdf_split_batch_size": cfg.pdf_split_batch_size,
+            },
+        ),
+        embed_params=_common_embed_params(
+            cfg,
+            fused_tuning={
+                "fused_workers": cfg.fused_workers,
+                "fused_batch_size": cfg.fused_batch_size,
+                "fused_cpus_per_actor": cfg.fused_cpus_per_actor,
+                "fused_gpus_per_actor": cfg.fused_gpus_per_actor,
+            },
+            model_name=fused_model_name,
+        ),
+        vdb_upload_params=VdbUploadParams(
+            lancedb={
+                "lancedb_uri": lancedb_uri,
+                "table_name": DEFAULT_LANCEDB_TABLE,
+                "overwrite": True,
+                "create_index": True,
+                "hybrid": cfg.hybrid,
+            }
+        ),
+        evaluation=evaluation,
+        artifacts=artifacts,
+    )
+
+
+def _execute_runner(cfg: HarnessConfig, runner_cfg):
+    if cfg.run_mode == "batch":
+        return run_batch_pipeline(runner_cfg)
+    if cfg.run_mode == "inprocess":
+        return run_inprocess_pipeline(runner_cfg)
+    return run_fused_pipeline(runner_cfg)
+
+
 def _evaluate_run_outcome(
-    process_rc: int,
-    evaluation_mode: str,
-    recall_required: bool,
-    recall_metrics: dict[str, float],
+    process_rc: int | None = None,
+    evaluation_mode: str | None = None,
+    recall_required: bool | None = None,
+    recall_metrics: dict[str, float] | None = None,
     evaluation_metrics: dict[str, float] | None = None,
+    *,
+    runner_error: Exception | None = None,
 ) -> tuple[int, str, bool]:
-    if process_rc != 0:
-        reason = f"subprocess_exit_{process_rc}"
-        return process_rc, reason, False
-    if evaluation_mode == "beir" and not (evaluation_metrics or {}):
+    if runner_error is not None:
+        return 1, f"runner_exception_{type(runner_error).__name__}", False
+    if process_rc not in {None, 0}:
+        return int(process_rc), f"subprocess_exit_{int(process_rc)}", False
+
+    metrics = evaluation_metrics or recall_metrics or {}
+    if evaluation_mode == "beir" and not metrics:
         return 97, "missing_beir_metrics", False
-    if evaluation_mode == "recall" and recall_required and not recall_metrics:
+    if evaluation_mode == "recall" and recall_required and not metrics:
         return 98, "missing_recall_metrics", False
     return 0, "", True
-
-
-def _read_json_if_exists(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data
-
-
-def _consume_parseable_output(metrics: StreamMetrics, parse_buffer: str) -> str:
-    while "\n" in parse_buffer:
-        line, parse_buffer = parse_buffer.split("\n", 1)
-        cleaned = ANSI_ESCAPE_RE.sub("", line)
-        metrics.consume(cleaned + "\n")
-    return parse_buffer
-
-
-def _run_subprocess_with_tty(cmd: list[str], metrics: StreamMetrics) -> int:
-    """
-    Run command in a pseudo-terminal so Ray renders rich progress.
-
-    We still parse lines from the PTY stream to extract benchmark metrics.
-    """
-    master_fd, slave_fd = pty.openpty()
-    parse_buffer = ""
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdin=None,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
-        )
-    finally:
-        os.close(slave_fd)
-
-    try:
-        while True:
-            read_fds, _, _ = select.select([master_fd], [], [], 0.1)
-            if master_fd not in read_fds:
-                if proc.poll() is not None:
-                    break
-                continue
-
-            try:
-                chunk = os.read(master_fd, 4096)
-            except OSError as exc:
-                # PTY EOF on Linux often appears as EIO.
-                if exc.errno == errno.EIO:
-                    break
-                raise
-
-            if not chunk:
-                break
-
-            text = chunk.decode("utf-8", errors="replace")
-            sys.stdout.write(text)
-            sys.stdout.flush()
-
-            parse_buffer += text.replace("\r", "\n")
-            parse_buffer = _consume_parseable_output(metrics, parse_buffer)
-
-        if parse_buffer:
-            cleaned_tail = ANSI_ESCAPE_RE.sub("", parse_buffer)
-            metrics.consume(cleaned_tail)
-
-        return proc.wait()
-    finally:
-        os.close(master_fd)
 
 
 def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[str] | None = None) -> dict[str, Any]:
@@ -395,39 +578,35 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
     typer.echo(f"\n=== Running {run_id} ===")
     typer.echo(command_text)
 
-    metrics = StreamMetrics()
-    process_rc = _run_subprocess_with_tty(cmd, metrics)
     run_metadata = _collect_run_metadata()
-    runtime_summary_path = runtime_dir / f"{run_id}.runtime.summary.json"
-    runtime_summary = _read_json_if_exists(runtime_summary_path)
-    detection_summary = _read_json_if_exists(detection_summary_file)
-    if not cfg.write_detection_file and detection_summary_file.exists():
-        detection_summary_file.unlink()
+    runner_error: Exception | None = None
+    report = None
+    try:
+        runner_cfg = _build_runner_config(
+            cfg, artifact_dir, run_id, runtime_dir, detection_summary_file, effective_query_csv
+        )
+        report = _execute_runner(cfg, runner_cfg)
+    except Exception as exc:
+        runner_error = exc
+        typer.echo(f"Run failed: {type(exc).__name__}: {exc}", err=True)
 
-    recall_metrics_normalized: dict[str, float] = {}
-    for key, val in metrics.recall_metrics.items():
-        recall_metrics_normalized[_normalize_recall_metric_key(key)] = val
-    evaluation_metrics_normalized: dict[str, float] = {}
-    for key, val in metrics.evaluation_metrics.items():
-        evaluation_metrics_normalized[_normalize_recall_metric_key(key)] = val
-
+    metrics_payload = flatten_report_metrics(report) if report is not None else {}
+    runtime_summary = report.runtime_summary if report is not None else None
+    summary_metrics = (
+        _resolve_summary_metrics(cfg, metrics_payload, runtime_summary)
+        if report is not None
+        else _empty_summary_metrics()
+    )
+    detection_summary = report.detection_summary if report is not None else None
+    evaluation_metrics = dict(report.evaluation.metrics) if report is not None else {}
     effective_rc, failure_reason, success = _evaluate_run_outcome(
-        process_rc=process_rc,
+        process_rc=0,
         evaluation_mode=cfg.evaluation_mode,
         recall_required=bool(cfg.recall_required),
-        recall_metrics=metrics.recall_metrics,
-        evaluation_metrics=metrics.evaluation_metrics,
+        recall_metrics=evaluation_metrics,
+        evaluation_metrics=evaluation_metrics,
+        runner_error=runner_error,
     )
-
-    metrics_payload = {
-        "files": metrics.files,
-        "pages": metrics.pages,
-        "ingest_secs": metrics.ingest_secs,
-        "pages_per_sec_ingest": metrics.pages_per_sec_ingest,
-        **recall_metrics_normalized,
-        **evaluation_metrics_normalized,
-    }
-    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary)
 
     result_payload: dict[str, Any] = {
         "timestamp": now_timestr(),
@@ -439,6 +618,7 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "dataset_label": cfg.dataset_label,
             "dataset_dir": cfg.dataset_dir,
             "preset": cfg.preset,
+            "run_mode": cfg.run_mode,
             "query_csv": cfg.query_csv,
             "effective_query_csv": str(effective_query_csv) if effective_query_csv is not None else None,
             "input_type": cfg.input_type,
@@ -461,18 +641,9 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
             "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
-            "tuning": {field: getattr(cfg, field) for field in sorted(TUNING_FIELDS)},
+            "tuning": {field: getattr(cfg, field) for field in sorted(tuning_fields_for_run_mode(cfg.run_mode))},
         },
-        "metrics": {
-            "files": metrics.files,
-            "pages": metrics.pages,
-            "ingest_secs": metrics.ingest_secs,
-            "pages_per_sec_ingest": metrics.pages_per_sec_ingest,
-            "rows_processed": metrics.rows_processed,
-            "rows_per_sec_ingest": metrics.rows_per_sec_ingest,
-            **recall_metrics_normalized,
-            **evaluation_metrics_normalized,
-        },
+        "metrics": metrics_payload,
         "summary_metrics": summary_metrics,
         "run_metadata": run_metadata,
         "runtime_summary": runtime_summary,
@@ -482,8 +653,16 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "runtime_metrics_dir": str(runtime_dir.resolve()),
         },
     }
-    if cfg.write_detection_file:
-        result_payload["artifacts"]["detection_summary_file"] = str(detection_summary_file.resolve())
+    if report is not None:
+        result_payload["run_report"] = report.model_dump(mode="python")
+        if report.artifacts.report_file:
+            result_payload["artifacts"]["mode_run_report_file"] = report.artifacts.report_file
+        if report.artifacts.runtime_summary_file:
+            result_payload["artifacts"]["runtime_summary_file"] = report.artifacts.runtime_summary_file
+        if cfg.write_detection_file and report.artifacts.detection_summary_file:
+            result_payload["artifacts"]["detection_summary_file"] = report.artifacts.detection_summary_file
+    if runner_error is not None:
+        result_payload["error"] = {"type": type(runner_error).__name__, "message": str(runner_error)}
     if tags:
         result_payload["tags"] = list(tags)
 
