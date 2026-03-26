@@ -570,11 +570,11 @@ The `store` task uses [fsspec](https://filesystem-spec.readthedocs.io/) for stor
 | Amazon S3 | `s3://` | `s3://my-bucket/extracted-images` |
 | Google Cloud Storage | `gs://` | `gs://my-bucket/images` |
 | Azure Blob Storage | `abfs://` | `abfs://container@account.dfs.core.windows.net/images` |
-| MinIO (S3-compatible) | `s3://` | `s3://nemo-retriever/artifacts/store/images` (default) |
+| MinIO (S3-compatible) | `s3://` | `s3://nv-ingest/artifacts/store/images` (default) |
 
 !!! tip
 
-    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nemo-retriever/...`). If you change that variable—for example to a host-mounted `file://` path—restart the NeMo Retriever Library runtime so the container picks up the new value.
+    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nv-ingest/...`). If you change that variable—for example to a host-mounted `file://` path—restart the NeMo Retriever Library runtime so the container picks up the new value.
 
 When `public_base_url` is provided, the metadata returned from `ingest()` surfaces that HTTP(S) link while still recording the underlying storage URI. Leave it unset when the storage endpoint itself is already publicly reachable.
 
