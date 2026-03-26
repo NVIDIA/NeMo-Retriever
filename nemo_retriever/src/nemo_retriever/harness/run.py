@@ -736,13 +736,20 @@ def _run_single(
 
 
 _GRAPH_RUNNER_SCRIPT = """\
-import json, sys, os, traceback, time
+import json, sys, os, traceback, time, shutil
 
 graph_code_file = sys.argv[1]
 result_file = sys.argv[2]
 ray_address = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "__none__" else None
 lancedb_uri = os.environ.get("NEMO_LANCEDB_URI", "")
 lancedb_table = os.environ.get("NEMO_LANCEDB_TABLE", "nv-ingest")
+
+if lancedb_uri:
+    ldb_path = os.path.abspath(lancedb_uri)
+    if os.path.isdir(ldb_path):
+        shutil.rmtree(ldb_path)
+        print(f"Cleared stale LanceDB directory: {ldb_path}")
+    os.makedirs(ldb_path, exist_ok=True)
 
 def _root_cause(exc):
     seen = set()

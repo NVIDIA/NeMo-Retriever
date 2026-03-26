@@ -396,11 +396,19 @@ with open(sys.argv[2], "w") as f:
 """
 
 _GRAPH_WRAPPER_SCRIPT = """\
-import json, sys, os, traceback, time
+import json, sys, os, traceback, time, shutil
 
 graph_code_file = sys.argv[1]
 result_file = sys.argv[2]
 ray_address = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "__none__" else None
+
+lancedb_env = os.environ.get("NEMO_LANCEDB_URI", "")
+if lancedb_env:
+    _ldb_path = os.path.abspath(lancedb_env)
+    if os.path.isdir(_ldb_path):
+        shutil.rmtree(_ldb_path)
+        print(f"Cleared stale LanceDB directory: {_ldb_path}")
+    os.makedirs(_ldb_path, exist_ok=True)
 
 def _root_cause(exc):
     \"\"\"Walk the exception chain to find the original cause.\"\"\"
