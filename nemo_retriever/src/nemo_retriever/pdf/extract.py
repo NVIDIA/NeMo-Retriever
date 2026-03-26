@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import base64
@@ -20,6 +19,9 @@ from nv_ingest_api.util.pdf.pdfium import (
 )
 
 import pandas as pd
+
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 try:
     import pypdfium2 as pdfium
@@ -374,8 +376,7 @@ def pdf_extraction(
         raise NotImplementedError("pdf_extraction currently only supports pandas.DataFrame input.")
 
 
-@dataclass(slots=True)
-class PDFExtractionActor:
+class PDFExtractionActor(AbstractOperator, CPUOperator):
     """
     Skeleton PDF extraction callable.
 
@@ -383,14 +384,22 @@ class PDFExtractionActor:
     before running the (not yet implemented) extraction logic.
     """
 
-    extract_kwargs: Dict[str, Any]
-
     def __init__(self, **extract_kwargs: Any) -> None:
+        super().__init__(**extract_kwargs)
         self.extract_kwargs = dict(extract_kwargs)
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return pdf_extraction(data, **self.extract_kwargs, **kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
     def __call__(self, pdf: Any, **override_kwargs: Any) -> Optional[Any]:
         try:
-            return pdf_extraction(pdf, **self.extract_kwargs, **override_kwargs)
+            return self.run(pdf, **override_kwargs)
         except BaseException as e:
             # As a last line of defense, never let the Ray UDF raise.
             source_path = None

@@ -53,6 +53,8 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 
 
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
@@ -241,7 +243,7 @@ def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-class NemotronRerankActor:
+class NemotronRerankActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
 
@@ -299,9 +301,8 @@ class NemotronRerankActor:
         If ``True`` (default) rows in each batch are sorted by score descending.
     """
 
-    __slots__ = ("_kwargs", "_model")
-
     def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
 
         invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
@@ -319,9 +320,18 @@ class NemotronRerankActor:
                 hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
             )
 
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        return _rerank_batch(batch_df, model=self._model, **self._kwargs, **override_kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
-            return _rerank_batch(batch_df, model=self._model, **self._kwargs, **override_kwargs)
+            return self.run(batch_df, **override_kwargs)
         except BaseException as exc:
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
