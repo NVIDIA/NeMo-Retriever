@@ -980,11 +980,21 @@ def _run_entry(
     skip_local_history: bool = False,
     graph_code: str | None = None,
 ) -> dict[str, Any]:
+    graph_overrides: dict[str, Any] | None = None
+    if graph_code:
+        graph_overrides = {
+            "query_csv": None,
+            "recall_required": False,
+            "evaluation_mode": "none",
+        }
+        if sweep_overrides:
+            graph_overrides.update(sweep_overrides)
+
     cfg = load_harness_config(
         config_file=config_file,
         dataset=dataset,
         preset=preset,
-        sweep_overrides=sweep_overrides,
+        sweep_overrides=graph_overrides if graph_code else sweep_overrides,
         cli_overrides=cli_overrides,
         cli_recall_required=recall_required,
     )
