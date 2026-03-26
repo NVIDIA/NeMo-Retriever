@@ -45,6 +45,7 @@ class IngestorCreateParams(_ParamsModel):
     debug: bool = False
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
+    inference: Optional[str] = None
 
 
 class IngestExecuteParams(_ParamsModel):
@@ -184,6 +185,8 @@ class ExtractParams(_ParamsModel):
     ocr_request_timeout_s: Optional[float] = None
     graphic_elements_invoke_url: Optional[str] = None
     table_structure_invoke_url: Optional[str] = None
+    nemotron_parse_invoke_url: Optional[str] = None
+    nemotron_parse_model_name: Optional[str] = None
 
     # Output columns
     output_column: str = "page_elements_v3"

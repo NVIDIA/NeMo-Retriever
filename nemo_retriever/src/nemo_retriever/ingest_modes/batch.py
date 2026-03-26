@@ -591,6 +591,7 @@ class BatchIngestor(Ingestor):
                 "remote_max_pool_workers",
                 "remote_max_retries",
                 "remote_max_429_retries",
+                "nemotron_parse_model_name",
             ):
                 if k in kwargs:
                     parse_flags[k] = kwargs[k]

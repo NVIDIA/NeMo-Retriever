@@ -16,16 +16,17 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import base64
 import io
+import json
 import time
 import traceback
 
 import numpy as np
 import pandas as pd
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.nim.nim import invoke_image_inference_batches
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.nim.nim import invoke_image_inference_batches, invoke_nemotron_parse_batches
+from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
 
 try:
@@ -885,7 +886,28 @@ def _extract_parse_text(response_item: Any) -> str:
     if isinstance(response_item, str):
         return response_item.strip()
     if isinstance(response_item, dict):
+        tool_calls = response_item.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for tool_call in tool_calls:
+                if not isinstance(tool_call, dict):
+                    continue
+                fn = tool_call.get("function")
+                if not isinstance(fn, dict):
+                    continue
+                args = fn.get("arguments")
+                if isinstance(args, str) and args.strip():
+                    try:
+                        parsed_args = json.loads(args)
+                    except Exception:
+                        return args.strip()
+                    text = _extract_parse_text(parsed_args)
+                    if text:
+                        return text
         for key in ("generated_text", "text", "output_text", "prediction", "output", "data"):
+            value = response_item.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        for key in ("markdown", "content"):
             value = response_item.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
@@ -938,6 +960,7 @@ def nemotron_parse_page_elements(
         raise NotImplementedError("nemotron_parse_page_elements currently only supports pandas.DataFrame input.")
 
     invoke_url = (invoke_url or kwargs.get("nemotron_parse_invoke_url") or "").strip()
+    model_name = str(kwargs.get("nemotron_parse_model_name", "nvidia/nemotron-parse"))
     use_remote = bool(invoke_url)
     if not use_remote and model is None:
         raise ValueError("A local `model` is required when `invoke_url` is not provided.")
@@ -995,9 +1018,10 @@ def nemotron_parse_page_elements(
                 crop_meta: List[Tuple[str, List[float]]] = [(label, bbox) for label, bbox, _b64 in crops]
 
                 if crop_b64s:
-                    response_items = invoke_image_inference_batches(
+                    response_items = invoke_nemotron_parse_batches(
                         invoke_url=invoke_url,
                         image_b64_list=crop_b64s,
+                        model_name=model_name,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
@@ -1058,9 +1082,10 @@ def nemotron_parse_page_elements(
             if extract_text and needs_ocr:
                 try:
                     if use_remote:
-                        resp = invoke_image_inference_batches(
+                        resp = invoke_nemotron_parse_batches(
                             invoke_url=invoke_url,
                             image_b64_list=[page_image_b64],
+                            model_name=model_name,
                             api_key=api_key,
                             timeout_s=float(request_timeout_s),
                             max_batch_size=1,
@@ -1123,6 +1148,19 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
     wiring in batch/inprocess ingest modes.
     """
 
+    __slots__ = (
+        "_model",
+        "_extract_tables",
+        "_extract_charts",
+        "_extract_infographics",
+        "_invoke_url",
+        "_model_name",
+        "_api_key",
+        "_request_timeout_s",
+        "_task_prompt",
+        "_remote_retry",
+    )
+
     def __init__(
         self,
         *,
@@ -1130,6 +1168,7 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
         extract_charts: bool = False,
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
+        nemotron_parse_model_name: str = "nvidia/nemotron-parse",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -1140,6 +1179,7 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
     ) -> None:
         super().__init__()
         self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        self._model_name = str(nemotron_parse_model_name)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)
@@ -1168,6 +1208,7 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
             invoke_url=self._invoke_url,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
+            nemotron_parse_model_name=self._model_name,
             task_prompt=self._task_prompt,
             extract_tables=self._extract_tables,
             extract_charts=self._extract_charts,

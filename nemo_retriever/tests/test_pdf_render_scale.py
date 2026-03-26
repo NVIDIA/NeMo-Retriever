@@ -19,6 +19,7 @@ PIL = pytest.importorskip("PIL")
 from PIL import Image  # noqa: E402
 
 _extract = pytest.importorskip("nemo_retriever.pdf.extract")
+_nim = pytest.importorskip("nemo_retriever.nim.nim")
 _ocr = pytest.importorskip("nemo_retriever.ocr.ocr")
 
 
@@ -224,3 +225,62 @@ class TestOcrRemotePathNoNpRoundtrip:
                 extract_tables=True,
             )
             spy.assert_not_called()
+
+
+class TestNemotronParseHostedPath:
+    """Verify the hosted Nemotron Parse path uses chat-completions tool calling."""
+
+    def test_extract_parse_text_handles_tool_call_arguments(self):
+        response_item = {
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "markdown_bbox",
+                        "arguments": '{"markdown":"parsed markdown output"}',
+                    }
+                }
+            ]
+        }
+
+        assert _ocr._extract_parse_text(response_item) == "parsed markdown output"
+
+    def test_invoke_nemotron_parse_batches_uses_chat_completions_payload(self):
+        img_b64 = _make_test_image_b64(64, 64)
+        captured_payloads = []
+
+        def _fake_post_with_retries(**kwargs):
+            captured_payloads.append(kwargs)
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": "markdown_bbox",
+                                        "arguments": '{"markdown":"ok"}',
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+
+        with patch.object(_nim, "_post_with_retries", side_effect=_fake_post_with_retries):
+            out = _nim.invoke_nemotron_parse_batches(
+                invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+                image_b64_list=[img_b64],
+                model_name="nvidia/nemotron-parse",
+                api_key="secret",
+            )
+
+        assert len(out) == 1
+        payload = captured_payloads[0]["payload"]
+        headers = captured_payloads[0]["headers"]
+        assert payload["model"] == "nvidia/nemotron-parse"
+        assert payload["tool_choice"]["function"]["name"] == "markdown_bbox"
+        assert payload["tools"][0]["function"]["name"] == "markdown_bbox"
+        assert payload["messages"][0]["role"] == "user"
+        assert '<img src="data:image/png;base64,' in payload["messages"][0]["content"]
+        assert headers["Authorization"] == "Bearer secret"

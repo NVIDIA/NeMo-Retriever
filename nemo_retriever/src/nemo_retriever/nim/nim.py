@@ -115,6 +115,20 @@ def _mime_from_b64(b64: str) -> str:
     return "image/png"
 
 
+def _normalize_chat_completions_response(response_json: Any) -> Any:
+    """Extract the primary message payload from an OpenAI-style chat response."""
+    if not isinstance(response_json, dict):
+        return response_json
+    choices = response_json.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return response_json
+    choice0 = choices[0]
+    if not isinstance(choice0, dict):
+        return response_json
+    message = choice0.get("message")
+    return message if isinstance(message, dict) else response_json
+
+
 def invoke_image_inference_batches(
     *,
     invoke_url: str,
@@ -166,6 +180,90 @@ def invoke_image_inference_batches(
             max_429_retries=int(max_429_retries),
         )
         per_image = _normalize_batch_response(response_json, end - start)
+        return start, end, per_image
+
+    with ThreadPoolExecutor(max_workers=max(1, int(max_pool_workers))) as executor:
+        futures = {
+            executor.submit(
+                _invoke_one_batch,
+                start,
+                end,
+                invoke_urls[idx % len(invoke_urls)],
+            ): (start, end)
+            for idx, (start, end) in enumerate(ranges)
+        }
+        for future in as_completed(futures):
+            start, end = futures[future]
+            _s, _e, per_image = future.result()
+            if _s != start or _e != end:
+                raise RuntimeError("Internal batch ordering mismatch.")
+            for i, item in enumerate(per_image):
+                flattened[start + i] = item
+
+    out: List[Any] = []
+    for idx, item in enumerate(flattened):
+        if item is None:
+            raise RuntimeError(f"Missing response for item index {idx}")
+        out.append(item)
+    return out
+
+
+def invoke_nemotron_parse_batches(
+    *,
+    invoke_url: str,
+    image_b64_list: Sequence[str],
+    model_name: str,
+    tool_name: str = "markdown_bbox",
+    api_key: Optional[str] = None,
+    timeout_s: float = 120.0,
+    max_batch_size: int = 8,
+    max_pool_workers: int = 16,
+    max_retries: int = 10,
+    max_429_retries: int = 5,
+) -> List[Any]:
+    """
+    Invoke hosted Nemotron Parse via chat completions with tool calling.
+
+    This matches the build.nvidia.com / integrate.api.nvidia.com contract for
+    ``nvidia/nemotron-parse``.
+    """
+    invoke_urls = _parse_invoke_urls(invoke_url)
+
+    token = (api_key or "").strip()
+    headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    n = len(image_b64_list)
+    if n == 0:
+        return []
+
+    ranges = _chunk_ranges(n, int(max_batch_size))
+    flattened: List[Optional[Any]] = [None] * n
+
+    tool_spec = [{"type": "function", "function": {"name": str(tool_name)}}]
+    tool_choice = {"type": "function", "function": {"name": str(tool_name)}}
+
+    def _invoke_one_batch(start: int, end: int, endpoint_url: str) -> Tuple[int, int, List[Any]]:
+        per_image: List[Any] = []
+        for b64 in image_b64_list[start:end]:
+            mime = _mime_from_b64(b64)
+            payload = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": f'<img src="data:{mime};base64,{b64}" />'}],
+                "tools": tool_spec,
+                "tool_choice": tool_choice,
+                "max_tokens": 8192,
+            }
+            response_json = _post_with_retries(
+                invoke_url=endpoint_url,
+                payload=payload,
+                headers=headers,
+                timeout_s=float(timeout_s),
+                max_retries=int(max_retries),
+                max_429_retries=int(max_429_retries),
+            )
+            per_image.append(_normalize_chat_completions_response(response_json))
         return start, end, per_image
 
     with ThreadPoolExecutor(max_workers=max(1, int(max_pool_workers))) as executor:
