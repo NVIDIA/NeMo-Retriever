@@ -242,6 +242,8 @@ _MIGRATIONS = [
     "ALTER TABLE datasets ADD COLUMN extract_infographics INTEGER DEFAULT 0",
     "ALTER TABLE preset_matrices ADD COLUMN git_ref TEXT",
     "ALTER TABLE preset_matrices ADD COLUMN git_commit TEXT",
+    "ALTER TABLE jobs ADD COLUMN matrix_run_id TEXT",
+    "ALTER TABLE jobs ADD COLUMN matrix_name TEXT",
 ]
 
 RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
@@ -1618,6 +1620,8 @@ def create_job(data: dict[str, Any], db_path: str | None = None) -> dict[str, An
             "result": None,
             "error": None,
             "tags": json.dumps(data["tags"]) if data.get("tags") else None,
+            "matrix_run_id": data.get("matrix_run_id"),
+            "matrix_name": data.get("matrix_name"),
         }
         columns = ", ".join(row.keys())
         placeholders = ", ".join("?" * len(row))
@@ -1777,6 +1781,31 @@ def cancel_job(job_id: str, reason: str = "Cancelled due to backlog limit", db_p
         )
         conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def cancel_jobs_by_matrix_run_id(matrix_run_id: str, db_path: str | None = None) -> int:
+    """Cancel all pending and running jobs that share a matrix_run_id.
+
+    Pending jobs are cancelled immediately.  Running jobs are transitioned to
+    ``cancelling``.  Returns the total number of affected jobs.
+    """
+    conn = _connect(db_path)
+    try:
+        now = _now_iso()
+        c1 = conn.execute(
+            "UPDATE jobs SET status = 'cancelled', completed_at = ?, error = ? "
+            "WHERE matrix_run_id = ? AND status = 'pending'",
+            (now, "Cancelled by user (matrix cancel)", matrix_run_id),
+        )
+        c2 = conn.execute(
+            "UPDATE jobs SET status = 'cancelling' "
+            "WHERE matrix_run_id = ? AND status = 'running'",
+            (matrix_run_id,),
+        )
+        conn.commit()
+        return c1.rowcount + c2.rowcount
     finally:
         conn.close()
 

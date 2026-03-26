@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import uuid
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -338,6 +339,7 @@ def _dispatch_schedule_matrix(
             git_ref = matrix_ref
             git_commit = _resolve_ref_to_sha(matrix_ref) or matrix_ref
 
+    matrix_run_id = str(uuid.uuid4())
     schedule_tags = schedule.get("tags") or []
     matrix_tags = matrix.get("tags") or []
     merged_tags = list(dict.fromkeys(schedule_tags + matrix_tags))
@@ -376,6 +378,8 @@ def _dispatch_schedule_matrix(
                     "git_commit": git_commit,
                     "git_ref": git_ref,
                     "tags": merged_tags,
+                    "matrix_run_id": matrix_run_id,
+                    "matrix_name": matrix_name,
                 }
             )
             if first_job is None:

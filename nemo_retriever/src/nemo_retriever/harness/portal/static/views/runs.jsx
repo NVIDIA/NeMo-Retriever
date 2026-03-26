@@ -1,3 +1,116 @@
+/* ===== Matrix Jobs Modal ===== */
+function MatrixJobsModal({ matrixRunId, matrixName, jobs, runnerMap, githubRepoUrl, onClose, onRefresh, onViewLogs, onDiagnose }) {
+  const matrixJobs = jobs.filter(j => j.matrix_run_id === matrixRunId);
+
+  const counts = { pending: 0, running: 0, cancelling: 0, completed: 0, failed: 0, cancelled: 0, error: 0 };
+  matrixJobs.forEach(j => { counts[j.status] = (counts[j.status] || 0) + 1; });
+
+  const handleCancelAll = async () => {
+    if (!confirm(`Cancel all ${matrixJobs.filter(j=>j.status==="pending"||j.status==="running").length} active jobs in this matrix run?`)) return;
+    try {
+      await fetch(`/api/matrix-runs/${matrixRunId}/cancel`, { method: "POST" });
+      onRefresh();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleCancelOne = async (jobId) => {
+    try {
+      await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+      onRefresh();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleForceDelete = async (jobId) => {
+    if (!confirm("Force delete this stuck job?")) return;
+    try {
+      await fetch(`/api/jobs/${jobId}`, { method: "DELETE" });
+      onRefresh();
+    } catch (e) { console.error(e); }
+  };
+
+  const activeCt = (counts.pending || 0) + (counts.running || 0) + (counts.cancelling || 0);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content" style={{maxWidth:'900px',maxHeight:'85vh',overflow:'hidden',display:'flex',flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'20px 24px',borderBottom:'1px solid var(--nv-border)'}}>
+          <div>
+            <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff',margin:0}}>Matrix: {matrixName || matrixRunId.substring(0,8)}</h2>
+            <div style={{fontSize:'12px',color:'var(--nv-text-dim)',marginTop:'4px',display:'flex',gap:'12px',flexWrap:'wrap'}}>
+              <span>{matrixJobs.length} total jobs</span>
+              {counts.running > 0 && <span style={{color:'var(--nv-green)'}}>● {counts.running} running</span>}
+              {counts.pending > 0 && <span style={{color:'#fcd34d'}}>● {counts.pending} pending</span>}
+              {counts.cancelling > 0 && <span style={{color:'#ff8844'}}>● {counts.cancelling} cancelling</span>}
+              {counts.completed > 0 && <span style={{color:'var(--nv-green)'}}>✓ {counts.completed} completed</span>}
+              {counts.failed > 0 && <span style={{color:'#ff5050'}}>✕ {counts.failed} failed</span>}
+              {counts.cancelled > 0 && <span style={{color:'var(--nv-text-dim)'}}>⊘ {counts.cancelled} cancelled</span>}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+            {activeCt > 0 && (
+              <button className="btn" style={{fontSize:'12px',padding:'6px 14px',background:'rgba(255,80,80,0.12)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.25)',fontWeight:600}}
+                onClick={handleCancelAll}>
+                <IconStop /> Cancel All ({activeCt})
+              </button>
+            )}
+            <button className="btn btn-secondary" style={{fontSize:'12px',padding:'6px 14px'}} onClick={onClose}>Close</button>
+          </div>
+        </div>
+
+        <div style={{overflow:'auto',flex:1,padding:'0'}}>
+          {matrixJobs.map(j => {
+            const runner = runnerMap[j.assigned_runner_id];
+            const runnerLabel = runner ? (runner.name || runner.hostname || `#${j.assigned_runner_id}`) : j.assigned_runner_id ? `Runner #${j.assigned_runner_id}` : null;
+            return (
+              <div key={j.id} style={{
+                display:'flex',alignItems:'center',justifyContent:'space-between',
+                padding:'10px 24px',borderBottom:'1px solid var(--nv-border)',
+              }}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap',flex:1,minWidth:0}}>
+                  <JobStatusBadge status={j.status} />
+                  {(j.status==="running" || j.status==="cancelling") && <span className="spinner"></span>}
+                  <span style={{color:'#fff',fontWeight:500,fontSize:'13px'}}>{j.dataset}</span>
+                  {j.preset && <span style={{color:'var(--nv-text-muted)',fontSize:'12px'}}>{j.preset}</span>}
+                  {j.git_commit && <CommitLink sha={j.git_commit} repoUrl={githubRepoUrl} />}
+                  {runnerLabel && <span style={{color:'var(--nv-text-dim)',fontSize:'11px',background:'var(--nv-bg)',padding:'2px 6px',borderRadius:'4px',border:'1px solid var(--nv-border)'}}>{runnerLabel}</span>}
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
+                  {j.status==="pending" && (
+                    <button className="btn btn-secondary" style={{fontSize:'11px',padding:'3px 8px'}}
+                      onClick={() => onDiagnose(j.id)} title="Diagnose">
+                      <IconSearch />
+                    </button>
+                  )}
+                  {(j.status==="running" || j.status==="cancelling") && (
+                    <button className="btn btn-secondary" style={{fontSize:'11px',padding:'3px 8px'}}
+                      onClick={() => onViewLogs && onViewLogs(j.id)} title="View Logs">
+                      <IconTerminal />
+                    </button>
+                  )}
+                  {(j.status==="pending" || j.status==="running") && (
+                    <button className="btn" style={{fontSize:'11px',padding:'3px 8px',background:'rgba(255,80,80,0.12)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}
+                      onClick={() => handleCancelOne(j.id)} title="Cancel">
+                      <IconStop />
+                    </button>
+                  )}
+                  {j.status==="cancelling" && (
+                    <button className="btn" style={{fontSize:'11px',padding:'3px 8px',background:'rgba(255,80,80,0.2)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.3)',fontWeight:700}}
+                      onClick={() => handleForceDelete(j.id)} title="Force delete">
+                      <IconTrash />
+                    </button>
+                  )}
+                  <span className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)'}}>{j.id}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 /* ===== Job Diagnose Modal ===== */
 function JobDiagnoseModal({ jobId, onClose }) {
   const [data, setData] = useState(null);
@@ -121,6 +234,7 @@ function JobDiagnoseModal({ jobId, onClose }) {
 function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, filterCommit, setFilterCommit, onRefresh, onSelectRun, onDeleteRun, onTrigger, jobs, runners, githubRepoUrl, onViewLogs }) {
   const activeJobs = (jobs || []).filter(j => j.status==="running" || j.status==="pending" || j.status==="cancelling");
   const [diagnoseJobId, setDiagnoseJobId] = useState(null);
+  const [matrixModalId, setMatrixModalId] = useState(null);
   const pg = usePagination(runs, 25);
 
   const runnerMap = useMemo(() => {
@@ -128,6 +242,20 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
     (runners || []).forEach(r => { m[r.id] = r; });
     return m;
   }, [runners]);
+
+  const { matrixGroups, standaloneJobs } = useMemo(() => {
+    const groups = {};
+    const standalone = [];
+    activeJobs.forEach(j => {
+      if (j.matrix_run_id) {
+        if (!groups[j.matrix_run_id]) groups[j.matrix_run_id] = { id: j.matrix_run_id, name: j.matrix_name || "Matrix", jobs: [], gitCommit: j.git_commit };
+        groups[j.matrix_run_id].jobs.push(j);
+      } else {
+        standalone.push(j);
+      }
+    });
+    return { matrixGroups: Object.values(groups), standaloneJobs: standalone };
+  }, [activeJobs]);
 
   const handleCancel = async (jobId) => {
     if (!confirm("Cancel this job?")) return;
@@ -143,14 +271,66 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
       onRefresh();
     } catch (e) { console.error(e); }
   };
+  const handleCancelMatrix = async (matrixRunId, activeCt) => {
+    if (!confirm(`Cancel all ${activeCt} active jobs in this matrix run?`)) return;
+    try {
+      await fetch(`/api/matrix-runs/${matrixRunId}/cancel`, { method: "POST" });
+      onRefresh();
+    } catch (e) { console.error(e); }
+  };
 
   return (
     <>
-      {activeJobs.length > 0 && (
+      {(matrixGroups.length > 0 || standaloneJobs.length > 0) && (
         <div style={{marginBottom:'20px'}}>
           <div className="section-title" style={{marginBottom:'8px'}}>Active Jobs</div>
           <div className="card" style={{padding:'0'}}>
-            {activeJobs.map(j => (
+            {/* Matrix group rows */}
+            {matrixGroups.map(g => {
+              const counts = { pending: 0, running: 0, cancelling: 0 };
+              g.jobs.forEach(j => { counts[j.status] = (counts[j.status] || 0) + 1; });
+              const activeCt = counts.pending + counts.running + counts.cancelling;
+              const hasRunning = counts.running > 0 || counts.cancelling > 0;
+              return (
+                <div key={g.id} style={{borderBottom:'1px solid var(--nv-border)'}}>
+                  <div style={{
+                    display:'flex',alignItems:'center',justifyContent:'space-between',
+                    padding:'10px 16px',cursor:'pointer',
+                    background:'rgba(118,185,0,0.02)',
+                  }} onClick={() => setMatrixModalId(g.id)}>
+                    <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
+                      {hasRunning && <span className="spinner"></span>}
+                      <span style={{
+                        fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',
+                        padding:'3px 8px',borderRadius:'4px',
+                        background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.2)',
+                      }}>Matrix</span>
+                      <span style={{color:'#fff',fontWeight:600,fontSize:'13px'}}>{g.name}</span>
+                      <span style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>{g.jobs.length} jobs</span>
+                      <span style={{fontSize:'11px',display:'flex',gap:'8px',color:'var(--nv-text-muted)'}}>
+                        {counts.running > 0 && <span style={{color:'var(--nv-green)'}}>● {counts.running} running</span>}
+                        {counts.pending > 0 && <span style={{color:'#fcd34d'}}>● {counts.pending} pending</span>}
+                        {counts.cancelling > 0 && <span style={{color:'#ff8844'}}>● {counts.cancelling} cancelling</span>}
+                      </span>
+                      {g.gitCommit && <CommitLink sha={g.gitCommit} repoUrl={githubRepoUrl} />}
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:'8px'}} onClick={e => e.stopPropagation()}>
+                      <button className="btn btn-secondary" style={{fontSize:'11px',padding:'3px 10px'}}
+                        onClick={() => setMatrixModalId(g.id)} title="View all jobs">
+                        <IconSearch /> Details
+                      </button>
+                      <button className="btn" style={{fontSize:'11px',padding:'3px 10px',background:'rgba(255,80,80,0.12)',color:'#ff5050',border:'1px solid rgba(255,80,80,0.2)'}}
+                        onClick={() => handleCancelMatrix(g.id, activeCt)} title="Cancel all matrix jobs">
+                        <IconStop /> Cancel All
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Standalone (non-matrix) job rows */}
+            {standaloneJobs.map(j => (
               <div key={j.id} style={{
                 display:'flex',alignItems:'center',justifyContent:'space-between',
                 padding:'10px 16px',borderBottom:'1px solid var(--nv-border)',
@@ -296,6 +476,19 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
           pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} />
       </div>
       {diagnoseJobId && <JobDiagnoseModal jobId={diagnoseJobId} onClose={() => setDiagnoseJobId(null)} />}
+      {matrixModalId && (
+        <MatrixJobsModal
+          matrixRunId={matrixModalId}
+          matrixName={(matrixGroups.find(g => g.id === matrixModalId) || {}).name}
+          jobs={jobs || []}
+          runnerMap={runnerMap}
+          githubRepoUrl={githubRepoUrl}
+          onClose={() => setMatrixModalId(null)}
+          onRefresh={onRefresh}
+          onViewLogs={onViewLogs}
+          onDiagnose={setDiagnoseJobId}
+        />
+      )}
     </>
   );
 }

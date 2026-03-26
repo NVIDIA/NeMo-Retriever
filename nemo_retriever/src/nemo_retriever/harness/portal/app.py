@@ -322,6 +322,7 @@ class MatrixTriggerRequest(BaseModel):
 class MatrixTriggerResponse(BaseModel):
     matrix_id: int
     matrix_name: str
+    matrix_run_id: str
     job_ids: list[str]
     job_count: int
 
@@ -1578,6 +1579,7 @@ async def trigger_preset_matrix(matrix_id: int, req: MatrixTriggerRequest | None
         req_commit = matrix.get("git_commit")
     pinned_sha, pinned_ref = _resolve_git_override(req_ref, req_commit)
 
+    matrix_run_id = str(uuid.uuid4())
     preferred_runner_id = matrix.get("preferred_runner_id")
     gpu_type_filter = matrix.get("gpu_type_filter")
     matrix_tags = matrix.get("tags") or []
@@ -1603,6 +1605,8 @@ async def trigger_preset_matrix(matrix_id: int, req: MatrixTriggerRequest | None
                     "git_commit": pinned_sha,
                     "git_ref": pinned_ref,
                     "tags": matrix_tags,
+                    "matrix_run_id": matrix_run_id,
+                    "matrix_name": matrix["name"],
                 }
             )
             job_ids.append(job["id"])
@@ -1610,6 +1614,7 @@ async def trigger_preset_matrix(matrix_id: int, req: MatrixTriggerRequest | None
     return MatrixTriggerResponse(
         matrix_id=matrix["id"],
         matrix_name=matrix["name"],
+        matrix_run_id=matrix_run_id,
         job_ids=job_ids,
         job_count=len(job_ids),
     )
@@ -1829,6 +1834,13 @@ async def cancel_job_endpoint(job_id: str):
     if not history.request_job_cancel(job_id):
         raise HTTPException(status_code=409, detail="Job cannot be cancelled (not pending or running)")
     return {"ok": True}
+
+
+@app.post("/api/matrix-runs/{matrix_run_id}/cancel")
+async def cancel_matrix_run(matrix_run_id: str):
+    """Cancel all pending and running jobs that belong to a matrix run."""
+    count = history.cancel_jobs_by_matrix_run_id(matrix_run_id)
+    return {"ok": True, "cancelled_count": count}
 
 
 @app.delete("/api/jobs/{job_id}")
