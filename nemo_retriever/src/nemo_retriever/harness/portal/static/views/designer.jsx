@@ -4,7 +4,7 @@
 function _uid() { return 'n' + Math.random().toString(36).slice(2, 10); }
 
 function _categoryColor(cat) {
-  const map = { gpu: '#e06cff', cpu: '#64b4ff', graph: 'var(--nv-green)' };
+  const map = { gpu: 'var(--nv-green)', cpu: '#64b4ff', graph: '#e06cff' };
   return map[cat] || 'var(--nv-text-muted)';
 }
 
@@ -165,8 +165,8 @@ function CanvasNode({ node, selected, onMouseDown, onSelect, onDelete }) {
       <rect x="0" y="0" width="180" height="56" rx="8"
         fill={selected ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)'}
         stroke={selected ? color : 'var(--nv-border)'} strokeWidth={selected ? 2 : 1} />
-      <circle cx="0" cy="28" r="6" fill="var(--nv-bg)" stroke={color} strokeWidth="1.5" />
-      <circle cx="180" cy="28" r="6" fill="var(--nv-bg)" stroke={color} strokeWidth="1.5" />
+      <circle cx="0" cy="28" r="7" fill="var(--nv-bg)" stroke={color} strokeWidth="2" pointerEvents="none" />
+      <circle cx="180" cy="28" r="7" fill="var(--nv-bg)" stroke={color} strokeWidth="2" pointerEvents="none" />
       <rect x="6" y="6" width="4" height="44" rx="2" fill={color} opacity="0.6" />
       <text x="18" y="22" fill="#fff" fontSize="12" fontWeight="600" fontFamily="inherit">{node.operator?.class_name || 'Unknown'}</text>
       <text x="18" y="38" fill="var(--nv-text-dim)" fontSize="10" fontFamily="inherit">{node.varName}</text>
@@ -631,7 +631,7 @@ function DesignerView() {
           <svg ref={svgRef} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
             style={{width:'100%',height:'100%',display:'block'}}
             onMouseMove={handleCanvasMouseMove} onMouseUp={handleCanvasMouseUp}
-            onClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setConnecting(null); }}>
+            onClick={e => { if (e.target === svgRef.current || e.target.getAttribute('fill') === 'url(#grid)') { setSelectedNodeId(null); setSelectedEdgeId(null); setConnecting(null); } }}>
             <defs>
               <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
                 <polygon points="0 0, 10 3.5, 0 7" fill="var(--nv-text-dim)" />
@@ -653,10 +653,14 @@ function DesignerView() {
                   onMouseDown={handleNodeMouseDown} onSelect={id => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
                   onDelete={deleteNode} />
                 {/* Input port click target */}
-                <circle cx={n.x} cy={n.y+28} r="10" fill="transparent" style={{cursor:'crosshair'}}
+                <circle cx={n.x} cy={n.y+28} r="12"
+                  fill="rgba(0,0,0,0.001)" pointerEvents="all" style={{cursor:'crosshair'}}
+                  onMouseDown={e => e.stopPropagation()}
                   onClick={e => { e.stopPropagation(); handlePortClick(n.id, 'in'); }} />
                 {/* Output port click target */}
-                <circle cx={n.x+180} cy={n.y+28} r="10" fill="transparent" style={{cursor:'crosshair'}}
+                <circle cx={n.x+180} cy={n.y+28} r="12"
+                  fill="rgba(0,0,0,0.001)" pointerEvents="all" style={{cursor:'crosshair'}}
+                  onMouseDown={e => e.stopPropagation()}
                   onClick={e => { e.stopPropagation(); handlePortClick(n.id, 'out'); }} />
               </g>
             ))}
