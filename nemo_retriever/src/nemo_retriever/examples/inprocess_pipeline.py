@@ -27,21 +27,8 @@ from typing import Optional
 import typer
 
 from nemo_retriever import create_ingestor
-from nemo_retriever.examples.common import estimate_processed_pages, print_pages_per_second
-from nemo_retriever.params import CaptionParams
-from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import IngestExecuteParams
-from nemo_retriever.params import TextChunkParams
-from nemo_retriever.params import VdbUploadParams
-from nemo_retriever.recall.core import (
-    RecallConfig,
-    gold_to_doc_page,
-    hit_key_and_distance,
-    is_hit_at_k,
-    retrieve_and_score,
-)
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
@@ -166,26 +153,8 @@ def main(
     ingestor = create_ingestor(run_mode="inprocess").files(file_patterns).extract(extract_params).embed(embed_params)
     results = ingestor.ingest()
     result_df = pd.concat(results, ignore_index=True) if results else pd.DataFrame()
-
-    enable_caption = caption or caption_invoke_url is not None
-    enable_dedup = dedup if dedup is not None else enable_caption
-    if enable_dedup:
-        ingestor = ingestor.dedup(
-            DedupParams(
-                iou_threshold=dedup_iou_threshold,
-            )
-        )
-
-    if enable_caption:
-        ingestor = ingestor.caption(
-            CaptionParams(
-                endpoint_url=caption_invoke_url,
-                model_name=caption_model_name,
-                device=caption_device,
-                context_text_max_chars=caption_context_text_max_chars,
-                gpu_memory_utilization=caption_gpu_memory_utilization,
-            )
-        )
+    ingestion_time = time.perf_counter() - t0
+    row_count = len(result_df)
 
     # -- Write to LanceDB ------------------------------------------------------
     from nemo_retriever.vector_store.lancedb_store import handle_lancedb
@@ -237,10 +206,9 @@ def main(
         )
 
         recall_start = time.perf_counter()
-        _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
-            query_csv=query_csv,
-            cfg=recall_cfg,
-        )
+        recall_result = retrieve_and_score(query_csv=query_csv, cfg=recall_cfg)
+        _df_query = recall_result[0]
+        evaluation_metrics = recall_result[-1]
         recall_time = time.perf_counter() - recall_start
 
         total_time = time.perf_counter() - t0

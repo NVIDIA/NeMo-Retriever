@@ -36,7 +36,6 @@ from nemo_retriever.params import DedupParams
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
-from nemo_retriever.utils.convert import DocToPdfConversionActor
 from nemo_retriever.utils.hf_cache import resolve_hf_cache_dir
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.utils.ray_resource_hueristics import (

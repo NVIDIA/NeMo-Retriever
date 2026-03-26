@@ -21,18 +21,18 @@ from typing import Optional, TextIO
 import typer
 
 from nemo_retriever import create_ingestor
-from nemo_retriever.ingest_modes.batch import BatchIngestor
-from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema
-from nemo_retriever.model import resolve_embed_model
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import IngestExecuteParams
-from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import TextChunkParams
-from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
-from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
+from nemo_retriever.params.models import BatchTuningParams
+from nemo_retriever.recall.beir import evaluate_lancedb_beir
+from nemo_retriever.utils.detection_summary import (
+    collect_detection_summary_from_df,
+    print_run_summary,
+    write_detection_summary,
+)
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
@@ -385,7 +385,6 @@ def main(
             "Uses --text-chunk-max-tokens and --text-chunk-overlap-tokens (defaults: 1024, 150)."
         ),
     ),
-    text_chunk: bool = typer.Option(False, "--text-chunk", help="Split extracted text into chunks before embedding."),
     text_chunk_max_tokens: Optional[int] = typer.Option(
         None, "--text-chunk-max-tokens", help="Maximum tokens per text chunk."
     ),
@@ -524,6 +523,10 @@ def main(
             "inference_batch_size": embed_batch_size or None,
         }
         embed_params = EmbedParams(**{key: value for key, value in embed_params_kwargs.items() if value is not None})
+        text_chunk_params = TextChunkParams(
+            max_tokens=text_chunk_max_tokens or 1024,
+            overlap_tokens=text_chunk_overlap_tokens if text_chunk_overlap_tokens is not None else 150,
+        )
         ingestor = create_ingestor(
             run_mode="batch",
             ray_address=ray_address,
@@ -532,21 +535,19 @@ def main(
         )
 
         if input_type == "txt":
-            ingestor = ingestor.files(file_patterns).extract_txt(_text_chunk_params)
+            ingestor = ingestor.files(file_patterns).extract_txt(text_chunk_params)
         elif input_type == "html":
-            ingestor = ingestor.files(file_patterns).extract_html(_text_chunk_params)
+            ingestor = ingestor.files(file_patterns).extract_html(text_chunk_params)
         elif input_type == "image":
-            ingestor = ingestor.files(file_patterns).extract_image_files(_extract_params(_detection_batch_tuning))
+            ingestor = ingestor.files(file_patterns).extract_image_files(extract_params)
         elif input_type == "doc":
-            ingestor = ingestor.files(file_patterns).extract(_extract_params(_pdf_batch_tuning))
+            ingestor = ingestor.files(file_patterns).extract(extract_params)
         else:
-            ingestor = ingestor.files(file_patterns).extract(
-                _extract_params(_pdf_batch_tuning, inference_batch_size=page_elements_batch_size)
-            )
+            ingestor = ingestor.files(file_patterns).extract(extract_params)
 
         enable_text_chunk = text_chunk or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
         if enable_text_chunk:
-            ingestor = ingestor.split(_text_chunk_params)
+            ingestor = ingestor.split(text_chunk_params)
 
         enable_caption = caption or caption_invoke_url is not None
         enable_dedup = dedup if dedup is not None else enable_caption
@@ -565,13 +566,6 @@ def main(
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
-                )
-            )
-        if text_chunk or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None:
-            ingestor = ingestor.split(
-                TextChunkParams(
-                    max_tokens=text_chunk_max_tokens or 1024,
-                    overlap_tokens=text_chunk_overlap_tokens if text_chunk_overlap_tokens is not None else 150,
                 )
             )
         ingestor = ingestor.embed(embed_params)
@@ -620,13 +614,6 @@ def main(
         handle_lancedb(ingest_local_results, lancedb_uri, LANCEDB_TABLE, hybrid=hybrid, mode="overwrite")
         lancedb_write_time = time.perf_counter() - lancedb_write_start
 
-        db = _lancedb().connect(lancedb_uri)
-        table = db.open_table(LANCEDB_TABLE)
-        if int(table.count_rows()) == 0:
-            logger.warning("LanceDB table is empty; skipping %s evaluation.", evaluation_mode)
-            ray.shutdown()
-            return
-
         from nemo_retriever.model import resolve_embed_model
         from nemo_retriever.recall.beir import BeirConfig
         from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
@@ -636,13 +623,27 @@ def main(
         evaluation_total_time = 0.0
         evaluation_metrics: dict[str, float] = {}
         evaluation_query_count: Optional[int] = None
+        query_csv_path = Path(query_csv)
 
         if evaluation_mode == "beir":
             if not beir_loader:
                 raise ValueError("--beir-loader is required when --evaluation-mode=beir")
             if not beir_dataset_name:
                 raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
+        else:
+            if not query_csv_path.exists():
+                logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv_path)
+                ray.shutdown()
+                return
 
+        db = _lancedb().connect(lancedb_uri)
+        table = db.open_table(LANCEDB_TABLE)
+        if int(table.count_rows()) == 0:
+            logger.warning("LanceDB table is empty; skipping %s evaluation.", evaluation_mode)
+            ray.shutdown()
+            return
+
+        if evaluation_mode == "beir":
             cfg = BeirConfig(
                 lancedb_uri=str(lancedb_uri),
                 lancedb_table=str(LANCEDB_TABLE),
@@ -665,12 +666,6 @@ def main(
             evaluation_label = "BEIR"
             evaluation_query_count = len(beir_dataset.query_ids)
         else:
-            query_csv = Path(query_csv)
-            if not query_csv.exists():
-                logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv)
-                ray.shutdown()
-                return
-
             cfg = RecallConfig(
                 lancedb_uri=str(lancedb_uri),
                 lancedb_table=str(LANCEDB_TABLE),
@@ -685,7 +680,7 @@ def main(
             )
             evaluation_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
-                query_csv=query_csv, cfg=cfg
+                query_csv=query_csv_path, cfg=cfg
             )
             evaluation_total_time = time.perf_counter() - evaluation_start
             evaluation_query_count = len(_df_query.index)
