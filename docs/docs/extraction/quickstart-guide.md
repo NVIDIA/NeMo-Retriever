@@ -279,8 +279,8 @@ You should see output that indicates the document processing status followed by 
 ```
 None of PyTorch, TensorFlow >= 2.0, or Flax have been found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
 [nltk_data] Downloading package punkt_tab to
-[nltk_data]     /raid/jdyer/miniforge3/envs/nv-ingest-
-[nltk_data]     dev/lib/python3.10/site-
+[nltk_data]     /path/to/nv-ingest-dev/
+[nltk_data]     lib/python3.12/site-
 [nltk_data]     packages/llama_index/core/_static/nltk_cache...
 [nltk_data]   Package punkt_tab is already up-to-date!
 INFO:nv_ingest_client.nv_ingest_cli:Processing 1 documents.
