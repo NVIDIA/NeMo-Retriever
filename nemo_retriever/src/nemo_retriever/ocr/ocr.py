@@ -1147,6 +1147,7 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
     This actor is a drop-in map-batches stage intended for future pipeline
     wiring in batch/inprocess ingest modes.
     """
+
     __slots__ = (
         "_model",
         "_extract_tables",
@@ -1159,6 +1160,7 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
         "_task_prompt",
         "_remote_retry",
     )
+
     def __init__(
         self,
         *,
