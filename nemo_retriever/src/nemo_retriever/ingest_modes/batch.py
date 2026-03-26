@@ -508,6 +508,7 @@ class BatchIngestor(Ingestor):
         )
 
         self._apply_nemotron_parse_overrides(kwargs)
+        self._apply_user_batch_overrides_to_requested_plan(kwargs)
 
         self._append_detection_stages(kwargs)
 
@@ -537,6 +538,35 @@ class BatchIngestor(Ingestor):
             overrides["nemotron_parse_batch_size"] = int(nemotron_parse_batch_size)
         if overrides:
             self._requested_plan = self._requested_plan.model_copy(update=overrides)
+
+    def _apply_user_batch_overrides_to_requested_plan(self, kwargs: dict[str, Any]) -> None:
+        """Apply ``batch_tuning`` sizes from ``ExtractParams`` onto ``_requested_plan``.
+
+        ``_append_detection_stages`` uses ``RequestedPlan.get_ocr_batch_size()`` and
+        ``get_page_elements_batch_size()`` for Ray ``map_batches(..., batch_size=)``
+        and for ``OCRActor`` / ``PageElementDetectionActor`` constructor kwargs
+        (including ``ocr_page_elements`` streaming crop batching via
+        ``inference_batch_size``). Without this merge, CLI values such as
+        ``ocr_inference_batch_size`` from :mod:`nemo_retriever.examples.batch_pipeline`
+        would be ignored in favour of heuristic defaults from
+        ``resolve_requested_plan``.
+        """
+        updates: dict[str, Any] = {}
+
+        ocr_bs = kwargs.get("ocr_inference_batch_size")
+        if not (isinstance(ocr_bs, (int, float)) and int(ocr_bs) > 0):
+            dbs = kwargs.get("detect_batch_size")
+            if isinstance(dbs, (int, float)) and int(dbs) > 0:
+                ocr_bs = int(dbs)
+        if isinstance(ocr_bs, (int, float)) and int(ocr_bs) > 0:
+            updates["ocr_batch_size"] = int(ocr_bs)
+
+        pe_bs = kwargs.get("page_elements_batch_size")
+        if isinstance(pe_bs, (int, float)) and int(pe_bs) > 0:
+            updates["page_elements_batch_size"] = int(pe_bs)
+
+        if updates:
+            self._requested_plan = self._requested_plan.model_copy(update=updates)
 
     def _append_detection_stages(self, kwargs: dict[str, Any]) -> None:
         """Append downstream GPU detection stages (page elements, OCR, table/chart/infographic).
@@ -811,6 +841,7 @@ class BatchIngestor(Ingestor):
 
         # Downstream detection stages (page elements, OCR, table/chart/infographic).
         self._apply_nemotron_parse_overrides(kwargs)
+        self._apply_user_batch_overrides_to_requested_plan(kwargs)
         self._append_detection_stages(kwargs)
 
         return self
