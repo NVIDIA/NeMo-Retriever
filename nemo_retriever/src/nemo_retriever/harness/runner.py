@@ -399,6 +399,14 @@ result_file = sys.argv[2]
 ray_address = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "__none__" else None
 input_path = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] != "__none__" else None
 
+def _root_cause(exc):
+    \"\"\"Walk the exception chain to find the original cause.\"\"\"
+    seen = set()
+    while exc.__cause__ is not None and id(exc.__cause__) not in seen:
+        seen.add(id(exc))
+        exc = exc.__cause__
+    return exc
+
 try:
     with open(graph_code_file) as f:
         code = f.read()
@@ -443,11 +451,29 @@ try:
             "elapsed_secs": elapsed,
         }
 
-except Exception:
-    traceback.print_exc()
+except Exception as exc:
+    full_tb = traceback.format_exc()
+    print(full_tb, file=sys.stderr)
+    print(full_tb)
+
+    root = _root_cause(exc)
+    root_msg = f"{type(root).__name__}: {root}"
+    root_tb_lines = traceback.format_exception(type(root), root, root.__traceback__)
+    root_tb = "".join(root_tb_lines)
+
+    if root is not exc:
+        print(f"\\n=== Root cause ===\\n{root_tb}")
+
+    failure_lines = [root_msg]
+    if len(full_tb) <= 4000:
+        failure_lines.append(full_tb)
+    else:
+        failure_lines.append(full_tb[-4000:])
+
     result = {
         "success": False,
-        "failure_reason": traceback.format_exc().splitlines()[-1],
+        "failure_reason": root_msg,
+        "error_detail": "\\n".join(failure_lines),
         "return_code": 1,
     }
 

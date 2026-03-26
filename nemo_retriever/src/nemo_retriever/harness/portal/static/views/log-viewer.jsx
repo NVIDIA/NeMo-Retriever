@@ -85,7 +85,15 @@ function LogViewerModal({ jobId, onClose }) {
                   </span>
                 )}
               </div>
-              {jd.error && jd.error !== resultData.failure_reason && (
+              {resultData.error_detail && (
+                <pre className="mono" style={{
+                  fontSize:'11px',color:'#ff8888',margin:'6px 0 0',
+                  whiteSpace:'pre-wrap',wordBreak:'break-all',lineHeight:'1.5',
+                  maxHeight:'200px',overflow:'auto',
+                  background:'rgba(0,0,0,0.2)',padding:'8px',borderRadius:'4px',
+                }}>{resultData.error_detail}</pre>
+              )}
+              {jd.error && jd.error !== resultData.failure_reason && !resultData.error_detail && (
                 <pre className="mono" style={{
                   fontSize:'11px',color:'#ff8888',margin:0,
                   whiteSpace:'pre-wrap',wordBreak:'break-all',lineHeight:'1.5',

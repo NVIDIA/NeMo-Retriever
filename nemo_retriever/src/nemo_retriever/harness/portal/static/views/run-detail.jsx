@@ -167,6 +167,18 @@ function RunDetailModal({ run, onClose, onDelete, githubRepoUrl }) {
                   </>;
                 })()}
               </div>
+              {(() => {
+                const detail = (run.raw_json || {}).error_detail;
+                if (!detail) return null;
+                return (
+                  <pre className="mono" style={{
+                    fontSize:'11px',color:'#ff8888',marginTop:'12px',
+                    whiteSpace:'pre-wrap',wordBreak:'break-all',lineHeight:'1.5',
+                    maxHeight:'200px',overflow:'auto',
+                    background:'rgba(0,0,0,0.2)',padding:'8px',borderRadius:'4px',
+                  }}>{detail}</pre>
+                );
+              })()}
             </div>
           )}
 
