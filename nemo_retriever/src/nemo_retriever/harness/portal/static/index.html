@@ -241,6 +241,7 @@
 <div id="root"></div>
 <script>
 (async function loadViews() {
+  const cacheBust = "v=" + Date.now();
   const files = [
     "/static/views/icons.jsx",
     "/static/views/utils.jsx",
@@ -263,13 +264,17 @@
     "/static/views/app.jsx",
   ];
   for (const file of files) {
-    const res = await fetch(file);
-    if (!res.ok) { console.error("Failed to load", file, res.status); continue; }
-    const jsx = await res.text();
-    const js = Babel.transform(jsx, { presets: ["react"] }).code;
-    const el = document.createElement("script");
-    el.textContent = js;
-    document.head.appendChild(el);
+    try {
+      const res = await fetch(file + "?" + cacheBust);
+      if (!res.ok) { console.error("Failed to load", file, res.status); continue; }
+      const jsx = await res.text();
+      const js = Babel.transform(jsx, { presets: ["react"] }).code;
+      const el = document.createElement("script");
+      el.textContent = js;
+      document.head.appendChild(el);
+    } catch (err) {
+      console.error("Failed to load/transform", file, err);
+    }
   }
 })();
 </script>
