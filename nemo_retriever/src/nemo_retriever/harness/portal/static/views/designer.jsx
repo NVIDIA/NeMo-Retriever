@@ -451,7 +451,7 @@ function CanvasNode({ node, selected, onMouseDown, onSelect, onDelete }) {
         stroke={selected ? color : 'var(--nv-border)'} strokeWidth={selected ? 2 : 1}
         strokeDasharray={isSpecial ? '4 2' : undefined} />
       {!isSource && <circle cx="0" cy={nodeHeight/2} r="7" fill="var(--nv-bg)" stroke={color} strokeWidth="2" pointerEvents="none" />}
-      {!isSink && !isEval && <circle cx="180" cy={nodeHeight/2} r="7" fill="var(--nv-bg)" stroke={color} strokeWidth="2" pointerEvents="none" />}
+      <circle cx="180" cy={nodeHeight/2} r="7" fill="var(--nv-bg)" stroke={color} strokeWidth="2" pointerEvents="none" />
       <rect x="6" y="6" width="4" height={nodeHeight - 12} rx="2" fill={color} opacity="0.6" />
       {typeLabel && <text x="170" y="12" fill={color} fontSize="8" fontWeight="700" textAnchor="end" fontFamily="inherit">{typeLabel}</text>}
       <text x="18" y={isSpecial ? 24 : 22} fill="#fff" fontSize="12" fontWeight="600" fontFamily="inherit">{displayName}</text>
