@@ -391,6 +391,9 @@ function DesignerView() {
   const [connecting, setConnecting] = useState(null);
   const [dragNode, setDragNode] = useState(null);
   const [dragOffset, setDragOffset] = useState({x:0,y:0});
+  const dragStartPos = useRef(null);
+  const isDragging = useRef(false);
+  const nodeInteractionRef = useRef(false);
 
   const svgRef = useRef(null);
   const [viewBox, setViewBox] = useState({x:0,y:0,w:1200,h:700});
@@ -437,19 +440,32 @@ function DesignerView() {
     const my = ((e.clientY - rect.top) / rect.height) * viewBox.h + viewBox.y;
     setDragNode(nodeId);
     setDragOffset({ x: mx - node.x, y: my - node.y });
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+    isDragging.current = false;
+    nodeInteractionRef.current = true;
     setSelectedNodeId(nodeId);
     setSelectedEdgeId(null);
   }
 
   function handleCanvasMouseMove(e) {
     if (!dragNode) return;
+    if (!isDragging.current && dragStartPos.current) {
+      const dx = e.clientX - dragStartPos.current.x;
+      const dy = e.clientY - dragStartPos.current.y;
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      isDragging.current = true;
+    }
     const rect = svgRef.current.getBoundingClientRect();
     const mx = ((e.clientX - rect.left) / rect.width) * viewBox.w + viewBox.x;
     const my = ((e.clientY - rect.top) / rect.height) * viewBox.h + viewBox.y;
     setNodes(prev => prev.map(n => n.id === dragNode ? { ...n, x: mx - dragOffset.x, y: my - dragOffset.y } : n));
   }
 
-  function handleCanvasMouseUp() { setDragNode(null); }
+  function handleCanvasMouseUp() {
+    setDragNode(null);
+    dragStartPos.current = null;
+    isDragging.current = false;
+  }
 
   function handlePortClick(nodeId, port) {
     if (!connecting) {
@@ -631,7 +647,10 @@ function DesignerView() {
           <svg ref={svgRef} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
             style={{width:'100%',height:'100%',display:'block'}}
             onMouseMove={handleCanvasMouseMove} onMouseUp={handleCanvasMouseUp}
-            onClick={e => { if (e.target === svgRef.current || e.target.getAttribute('fill') === 'url(#grid)') { setSelectedNodeId(null); setSelectedEdgeId(null); setConnecting(null); } }}>
+            onClick={e => {
+              if (nodeInteractionRef.current) { nodeInteractionRef.current = false; return; }
+              if (e.target === svgRef.current || e.target.getAttribute('fill') === 'url(#grid)') { setSelectedNodeId(null); setSelectedEdgeId(null); setConnecting(null); }
+            }}>
             <defs>
               <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
                 <polygon points="0 0, 10 3.5, 0 7" fill="var(--nv-text-dim)" />
@@ -650,7 +669,7 @@ function DesignerView() {
             {nodes.map(n => (
               <g key={n.id}>
                 <CanvasNode node={n} selected={selectedNodeId===n.id}
-                  onMouseDown={handleNodeMouseDown} onSelect={id => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
+                  onMouseDown={handleNodeMouseDown} onSelect={id => { nodeInteractionRef.current = true; setSelectedNodeId(id); setSelectedEdgeId(null); }}
                   onDelete={deleteNode} />
                 {/* Input port click target */}
                 <circle cx={n.x} cy={n.y+28} r="12"
