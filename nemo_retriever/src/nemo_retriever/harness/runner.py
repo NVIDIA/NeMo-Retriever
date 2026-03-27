@@ -467,6 +467,9 @@ try:
 
     result_ds = ns.get("result")
     graph = ns.get("graph")
+    _requested_plan = ns.get("requested_plan")
+
+    ray_stats_str = None
 
     if result_ds is not None:
         elapsed = round(time.perf_counter() - wall_start, 2)
@@ -475,6 +478,11 @@ try:
             if isinstance(result_ds, _rd.Dataset):
                 row_count = result_ds.count()
                 print(f"Pipeline complete: {row_count} rows in {elapsed}s")
+                try:
+                    ray_stats_str = result_ds.stats()
+                    print(f"\\n=== Ray Data Execution Stats ===\\n{ray_stats_str}")
+                except Exception:
+                    pass
                 result = {"success": True, "return_code": 0, "rows": row_count, "elapsed_secs": elapsed}
             else:
                 print(f"Pipeline complete in {elapsed}s (result type: {type(result_ds).__name__})")
@@ -489,6 +497,11 @@ try:
         result = {"success": True, "return_code": 0, "outputs": len(outputs), "elapsed_secs": elapsed}
     else:
         raise RuntimeError("Generated code did not produce a 'result' (Ray Data) or 'graph' variable")
+
+    if _requested_plan is not None:
+        result["requested_plan"] = _requested_plan
+    if ray_stats_str is not None:
+        result["ray_stats"] = ray_stats_str
 
 except Exception as exc:
     full_tb = traceback.format_exc()

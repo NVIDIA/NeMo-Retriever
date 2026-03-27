@@ -220,6 +220,62 @@ function _generateRayDataCode(nodes, edges) {
     lines.push('');
   });
 
+  const planEntries = [];
+
+  const _srcPlanEntry = {stage: srcOp.class_name, display_name: srcOp.display_name || srcOp.class_name, type: 'source', ray_fn: srcOp.ray_fn};
+  srcParams.forEach(p => { const v = srcCfg[p.name]; if (v !== undefined && v !== '') _srcPlanEntry[p.name] = v; });
+  planEntries.push(_srcPlanEntry);
+
+  for (let i = 1; i < chain.length; i++) {
+    const n = chain[i];
+    const op = n.operator;
+    if (!op) continue;
+    if (op.type === 'pipeline_sink' || op.type === 'pipeline_evaluator') continue;
+    const isGpu = op.compute === 'gpu';
+    const concVal = (n.config || {}).concurrency;
+    const entry = {stage: op.class_name, display_name: op.display_name || op.class_name, type: isGpu ? 'gpu' : 'cpu', batch_size: 1};
+    if (isGpu) { entry.num_cpus = 0; entry.num_gpus = 1; }
+    if (concVal !== undefined && concVal !== '') entry.concurrency = parseInt(concVal, 10) || 1;
+    const cfg = n.config || {};
+    (op.params || []).forEach(p => {
+      if (_MAP_BATCHES_PARAMS.has(p.name)) return;
+      const v = cfg[p.name];
+      if (v !== undefined && v !== '') entry[p.name] = v;
+    });
+    planEntries.push(entry);
+  }
+
+  sinkNodes.forEach(sn => {
+    const op = sn.operator;
+    if (!op) return;
+    const concVal = (sn.config || {}).concurrency;
+    const entry = {stage: op.class_name, display_name: op.display_name || op.class_name, type: 'sink', batch_size: 1};
+    if (concVal !== undefined && concVal !== '') entry.concurrency = parseInt(concVal, 10) || 1;
+    const cfg = sn.config || {};
+    (op.params || []).forEach(p => {
+      if (_MAP_BATCHES_PARAMS.has(p.name)) return;
+      const v = cfg[p.name];
+      if (v !== undefined && v !== '') entry[p.name] = v;
+    });
+    planEntries.push(entry);
+  });
+
+  evalNodes.forEach(en => {
+    const op = en.operator;
+    if (!op) return;
+    const entry = {stage: op.class_name, display_name: op.display_name || op.class_name, type: 'evaluator'};
+    const cfg = en.config || {};
+    (op.params || []).forEach(p => {
+      const v = cfg[p.name];
+      if (v !== undefined && v !== '') entry[p.name] = v;
+    });
+    planEntries.push(entry);
+  });
+
+  lines.push('# Requested plan: structured description of each pipeline stage');
+  lines.push('requested_plan = ' + JSON.stringify(planEntries, null, 4));
+  lines.push('');
+
   const importBlock = Array.from(imports).sort().join('\n');
   lines[0] = importBlock;
 

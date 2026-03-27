@@ -15,6 +15,8 @@ function RunDetailModal({ run, onClose, onDelete, githubRepoUrl }) {
   const [showPipList, setShowPipList] = useState(false);
   const [pipListText, setPipListText] = useState(null);
   const [pipListLoading, setPipListLoading] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
+  const [showRayStats, setShowRayStats] = useState(false);
   const logRef = useRef(null);
   const raw = run.raw_json && typeof run.raw_json === 'object' && Object.keys(run.raw_json).length > 0 ? run.raw_json : run;
 
@@ -387,6 +389,84 @@ function RunDetailModal({ run, onClose, onDelete, githubRepoUrl }) {
                 ) : (
                   <div style={{padding:'12px',color:'var(--nv-text-dim)',fontSize:'13px',fontStyle:'italic'}}>No package list available for this run.</div>
                 )
+              )}
+            </div>
+          )}
+
+          {/* Requested Plan */}
+          {raw.requested_plan && Array.isArray(raw.requested_plan) && raw.requested_plan.length > 0 && (
+            <div style={{marginBottom:'28px'}}>
+              <button className="btn btn-secondary" style={{fontSize:'12px',padding:'5px 12px',display:'flex',alignItems:'center',gap:'6px',marginBottom:'10px'}}
+                onClick={() => setShowPlan(v => !v)}>
+                <span style={{transform: showPlan ? 'rotate(90deg)' : 'rotate(0deg)', transition:'transform 0.15s', display:'inline-block'}}>&#9654;</span>
+                Requested Plan ({raw.requested_plan.length} stage{raw.requested_plan.length!==1?'s':''})
+              </button>
+              {showPlan && (
+                <div style={{position:'relative'}}>
+                  <button className="btn btn-ghost btn-sm"
+                    style={{position:'absolute',top:'6px',right:'6px',fontSize:'10px',zIndex:1,color:'var(--nv-text-dim)'}}
+                    onClick={() => navigator.clipboard.writeText(JSON.stringify(raw.requested_plan, null, 2))}>Copy JSON</button>
+                  <div style={{
+                    background:'rgba(0,0,0,0.25)',padding:'10px',borderRadius:'6px',
+                    border:'1px solid rgba(255,255,255,0.06)',maxHeight:'300px',overflow:'auto',
+                  }}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead>
+                        <tr style={{borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
+                          <th style={{textAlign:'left',padding:'6px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Stage</th>
+                          <th style={{textAlign:'left',padding:'6px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Type</th>
+                          <th style={{textAlign:'center',padding:'6px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>GPUs</th>
+                          <th style={{textAlign:'center',padding:'6px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>CPUs</th>
+                          <th style={{textAlign:'center',padding:'6px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Batch</th>
+                          <th style={{textAlign:'center',padding:'6px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Concurrency</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {raw.requested_plan.map((s, i) => (
+                          <tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                            <td style={{padding:'6px 8px',color:'#fff'}}>{s.display_name || s.stage}</td>
+                            <td style={{padding:'6px 8px'}}>
+                              <span style={{
+                                fontSize:'10px',padding:'2px 6px',borderRadius:'4px',
+                                background: s.type==='gpu' ? 'rgba(118,185,0,0.15)' : s.type==='source' ? 'rgba(0,150,255,0.15)' : s.type==='sink' ? 'rgba(255,165,0,0.15)' : s.type==='evaluator' ? 'rgba(180,100,255,0.15)' : 'rgba(150,150,150,0.15)',
+                                color: s.type==='gpu' ? '#76b900' : s.type==='source' ? '#4da6ff' : s.type==='sink' ? '#ffa500' : s.type==='evaluator' ? '#b464ff' : '#aaa',
+                              }}>{s.type}</span>
+                            </td>
+                            <td style={{padding:'6px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.num_gpus != null ? s.num_gpus : '-'}</td>
+                            <td style={{padding:'6px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.num_cpus != null ? s.num_cpus : '-'}</td>
+                            <td style={{padding:'6px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.batch_size != null ? s.batch_size : '-'}</td>
+                            <td style={{padding:'6px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.concurrency != null ? s.concurrency : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ray Execution Stats */}
+          {raw.ray_stats && (
+            <div style={{marginBottom:'28px'}}>
+              <button className="btn btn-secondary" style={{fontSize:'12px',padding:'5px 12px',display:'flex',alignItems:'center',gap:'6px',marginBottom:'10px'}}
+                onClick={() => setShowRayStats(v => !v)}>
+                <span style={{transform: showRayStats ? 'rotate(90deg)' : 'rotate(0deg)', transition:'transform 0.15s', display:'inline-block'}}>&#9654;</span>
+                Ray Execution Stats
+              </button>
+              {showRayStats && (
+                <div style={{position:'relative'}}>
+                  <button className="btn btn-ghost btn-sm"
+                    style={{position:'absolute',top:'6px',right:'6px',fontSize:'10px',zIndex:1,color:'var(--nv-text-dim)'}}
+                    onClick={() => navigator.clipboard.writeText(raw.ray_stats)}>Copy</button>
+                  <pre className="mono" style={{
+                    fontSize:'11px',color:'var(--nv-text-muted)',margin:0,
+                    whiteSpace:'pre',lineHeight:'1.4',
+                    maxHeight:'300px',overflow:'auto',
+                    background:'rgba(0,0,0,0.25)',padding:'10px',borderRadius:'6px',
+                    border:'1px solid rgba(255,255,255,0.06)',
+                  }}>{raw.ray_stats}</pre>
+                </div>
               )}
             </div>
           )}

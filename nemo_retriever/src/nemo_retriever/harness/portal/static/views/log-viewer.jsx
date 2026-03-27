@@ -4,6 +4,8 @@ function LogViewerModal({ jobId, onClose }) {
   const [jobDetail, setJobDetail] = useState(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [showPipList, setShowPipList] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
+  const [showRayStats, setShowRayStats] = useState(false);
   const logRef = useRef(null);
 
   const fetchLogs = useCallback(async () => {
@@ -132,6 +134,80 @@ function LogViewerModal({ jobId, onClose }) {
               lines.map((line, i) => <div key={i} className="log-line">{line}</div>)
             )}
           </div>
+
+          {resultData.requested_plan && Array.isArray(resultData.requested_plan) && (
+            <div style={{marginTop:'12px'}}>
+              <button className="btn btn-secondary" style={{fontSize:'11px',padding:'4px 10px',display:'flex',alignItems:'center',gap:'6px'}}
+                onClick={() => setShowPlan(v => !v)}>
+                <span style={{transform: showPlan ? 'rotate(90deg)' : 'rotate(0deg)', transition:'transform 0.15s', display:'inline-block'}}>&#9654;</span>
+                Requested Plan ({resultData.requested_plan.length} stage{resultData.requested_plan.length!==1?'s':''})
+              </button>
+              {showPlan && (
+                <div style={{marginTop:'8px',position:'relative'}}>
+                  <button className="btn btn-secondary" style={{position:'absolute',top:'6px',right:'6px',fontSize:'10px',padding:'2px 6px',zIndex:1}}
+                    onClick={() => navigator.clipboard.writeText(JSON.stringify(resultData.requested_plan, null, 2))}>Copy</button>
+                  <div style={{
+                    background:'rgba(0,0,0,0.25)',padding:'10px',borderRadius:'6px',
+                    border:'1px solid rgba(255,255,255,0.06)',maxHeight:'300px',overflow:'auto',
+                  }}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
+                      <thead>
+                        <tr style={{borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
+                          <th style={{textAlign:'left',padding:'4px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Stage</th>
+                          <th style={{textAlign:'left',padding:'4px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Type</th>
+                          <th style={{textAlign:'center',padding:'4px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>GPUs</th>
+                          <th style={{textAlign:'center',padding:'4px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>CPUs</th>
+                          <th style={{textAlign:'center',padding:'4px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Batch</th>
+                          <th style={{textAlign:'center',padding:'4px 8px',color:'var(--nv-text-muted)',fontWeight:600}}>Concurrency</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {resultData.requested_plan.map((s, i) => (
+                          <tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                            <td style={{padding:'4px 8px',color:'#fff'}}>{s.display_name || s.stage}</td>
+                            <td style={{padding:'4px 8px'}}>
+                              <span style={{
+                                fontSize:'10px',padding:'2px 6px',borderRadius:'4px',
+                                background: s.type==='gpu' ? 'rgba(118,185,0,0.15)' : s.type==='source' ? 'rgba(0,150,255,0.15)' : s.type==='sink' ? 'rgba(255,165,0,0.15)' : 'rgba(150,150,150,0.15)',
+                                color: s.type==='gpu' ? '#76b900' : s.type==='source' ? '#4da6ff' : s.type==='sink' ? '#ffa500' : '#aaa',
+                              }}>{s.type}</span>
+                            </td>
+                            <td style={{padding:'4px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.num_gpus != null ? s.num_gpus : '-'}</td>
+                            <td style={{padding:'4px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.num_cpus != null ? s.num_cpus : '-'}</td>
+                            <td style={{padding:'4px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.batch_size != null ? s.batch_size : '-'}</td>
+                            <td style={{padding:'4px 8px',textAlign:'center',color:'var(--nv-text-muted)'}}>{s.concurrency != null ? s.concurrency : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {resultData.ray_stats && (
+            <div style={{marginTop:'12px'}}>
+              <button className="btn btn-secondary" style={{fontSize:'11px',padding:'4px 10px',display:'flex',alignItems:'center',gap:'6px'}}
+                onClick={() => setShowRayStats(v => !v)}>
+                <span style={{transform: showRayStats ? 'rotate(90deg)' : 'rotate(0deg)', transition:'transform 0.15s', display:'inline-block'}}>&#9654;</span>
+                Ray Execution Stats
+              </button>
+              {showRayStats && (
+                <div style={{marginTop:'8px',position:'relative'}}>
+                  <button className="btn btn-secondary" style={{position:'absolute',top:'6px',right:'6px',fontSize:'10px',padding:'2px 6px',zIndex:1}}
+                    onClick={() => navigator.clipboard.writeText(resultData.ray_stats)}>Copy</button>
+                  <pre className="mono" style={{
+                    fontSize:'11px',color:'var(--nv-text-muted)',margin:0,
+                    whiteSpace:'pre',lineHeight:'1.4',
+                    maxHeight:'300px',overflow:'auto',
+                    background:'rgba(0,0,0,0.25)',padding:'10px',borderRadius:'6px',
+                    border:'1px solid rgba(255,255,255,0.06)',
+                  }}>{resultData.ray_stats}</pre>
+                </div>
+              )}
+            </div>
+          )}
 
           {jd.pip_list && (
             <div style={{marginTop:'12px'}}>

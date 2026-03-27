@@ -793,7 +793,10 @@ try:
 
     result_ds = ns.get("result")
     graph = ns.get("graph")
+    _requested_plan = ns.get("requested_plan")
     row_count = 0
+
+    ray_stats_str = None
 
     if result_ds is not None:
         elapsed = round(time.perf_counter() - wall_start, 2)
@@ -802,6 +805,11 @@ try:
             if isinstance(result_ds, _rd.Dataset):
                 row_count = result_ds.count()
                 print(f"Pipeline complete: {row_count} rows in {elapsed}s")
+                try:
+                    ray_stats_str = result_ds.stats()
+                    print(f"\\n=== Ray Data Execution Stats ===\\n{ray_stats_str}")
+                except Exception:
+                    pass
             else:
                 print(f"Pipeline complete in {elapsed}s (result type: {type(result_ds).__name__})")
         except Exception:
@@ -821,6 +829,11 @@ try:
         }
     else:
         raise RuntimeError("Generated code did not produce a 'result' (Ray Data) or 'graph' variable")
+
+    if _requested_plan is not None:
+        result["requested_plan"] = _requested_plan
+    if ray_stats_str is not None:
+        result["ray_stats"] = ray_stats_str
 
 except Exception as exc:
     full_tb = traceback.format_exc()
@@ -974,6 +987,10 @@ def _run_graph_pipeline(
             "graph_code_file": str(code_file.resolve()),
         },
     }
+    if graph_result.get("requested_plan"):
+        result_payload["requested_plan"] = graph_result["requested_plan"]
+    if graph_result.get("ray_stats"):
+        result_payload["ray_stats"] = graph_result["ray_stats"]
     if tags:
         result_payload["tags"] = list(tags)
 
