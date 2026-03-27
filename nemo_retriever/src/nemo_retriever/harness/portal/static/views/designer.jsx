@@ -553,6 +553,7 @@ function NodeConfigPanel({ node, onUpdate, onClose }) {
               const curVal = cfg[p.name] !== undefined ? cfg[p.name] : defaultStr;
               const displayLabel = p.label || p.name;
               const hasChoices = p.choices && p.choices.length > 0;
+              const isBool = (p.type && /bool/i.test(p.type)) || p.default === true || p.default === false;
               return (
                 <div key={p.name} style={{marginBottom:'10px'}}>
                   <label style={{display:'block',fontSize:'11px',color:'#fff',fontWeight:500,marginBottom:'3px'}}>
@@ -568,6 +569,13 @@ function NodeConfigPanel({ node, onUpdate, onClose }) {
                       style={{width:'100%',fontSize:'11px',padding:'4px 8px'}}>
                       {!curVal && <option value="">-- select --</option>}
                       {p.choices.map(c => <option key={c} value={String(c)}>{String(c)}</option>)}
+                    </select>
+                  ) : isBool ? (
+                    <select className="input" value={String(curVal === true || curVal === 'true' || curVal === 'True' ? 'True' : 'False')}
+                      onChange={e => setCfg({...cfg, [p.name]: e.target.value})}
+                      style={{width:'100%',fontSize:'11px',padding:'4px 8px'}}>
+                      <option value="True">True</option>
+                      <option value="False">False</option>
                     </select>
                   ) : (
                     <input className="input" value={curVal}
