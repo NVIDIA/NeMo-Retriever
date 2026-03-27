@@ -372,7 +372,7 @@ You can use this to generate descriptions of unstructured images, infographics, 
 
 !!! note
 
-    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/llama-3.1-nemotron-nano-vl-8b-v1`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
+    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
 
 ### Basic Usage
 
@@ -389,7 +389,7 @@ To specify a different API endpoint, pass additional parameters to `caption`.
 ```python
 ingestor = ingestor.caption(
     endpoint_url="https://integrate.api.nvidia.com/v1/chat/completions",
-    model_name="nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+    model_name="nvidia/nemotron-nano-12b-v2-vl",
     api_key="nvapi-"
 )
 ```
