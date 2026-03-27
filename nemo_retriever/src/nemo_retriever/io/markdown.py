@@ -28,7 +28,6 @@ _PAGE_CONTENT_COLUMNS = (
 )
 
 
-
 @dataclass
 class _PageContent:
     text_blocks: list[str] = field(default_factory=list)
