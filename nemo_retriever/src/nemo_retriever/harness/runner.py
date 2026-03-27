@@ -411,20 +411,27 @@ def _root_cause(exc):
     return exc
 
 try:
-    import torch
-    print(f"[diag] torch.cuda.is_available() = {torch.cuda.is_available()}")
-    print(f"[diag] torch.cuda.device_count() = {torch.cuda.device_count()}")
+    print(f"[diag] Python executable: {sys.executable}")
     print(f"[diag] CUDA_VISIBLE_DEVICES = {os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            print(f"[diag]   GPU {i}: {torch.cuda.get_device_name(i)}")
 
     import ray
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS") or "auto"
+    if effective_ray in ("auto", "local", None):
+        ray.shutdown()
     ray.init(address=effective_ray, ignore_reinit_error=True)
     print(f"Ray initialized: {effective_ray}")
-    print(f"[diag] Ray cluster resources: {ray.cluster_resources()}")
+    cluster_res = ray.cluster_resources()
+    print(f"[diag] Ray cluster resources: {cluster_res}")
+    print(f"[diag] Ray GPU count: {cluster_res.get('GPU', 0)}")
+
+    import torch
+    print(f"[diag] torch.version.cuda = {getattr(torch.version, 'cuda', 'N/A')}")
+    print(f"[diag] torch.cuda.is_available() = {torch.cuda.is_available()}")
+    print(f"[diag] torch.cuda.device_count() = {torch.cuda.device_count()}")
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            print(f"[diag]   GPU {i}: {torch.cuda.get_device_name(i)}")
 
     with open(graph_code_file) as f:
         code = f.read()
