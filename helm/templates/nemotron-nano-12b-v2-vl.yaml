@@ -17,6 +17,10 @@ spec:
       storageClass: {{ .Values.nimOperator.nemotron_nano_12b_v2_vl.storage.pvc.storageClass }}
       size: {{ .Values.nimOperator.nemotron_nano_12b_v2_vl.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.nemotron_nano_12b_v2_vl.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_nano_12b_v2_vl.nodeSelector | nindent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.nemotron_nano_12b_v2_vl.tolerations | nindent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -34,6 +38,8 @@ spec:
     nimCache:
       name: nemotron-nano-12b-v2-vl
   replicas: {{ .Values.nimOperator.nemotron_nano_12b_v2_vl.replicas }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_nano_12b_v2_vl.nodeSelector | nindent 4 }}
   resources:
 {{ toYaml .Values.nimOperator.nemotron_nano_12b_v2_vl.resources | nindent 4 }}
   tolerations:
