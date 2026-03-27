@@ -774,10 +774,31 @@ try:
         os.environ.pop("RAY_ADDRESS", None)
         detected_gpus = _detect_gpu_count()
         print(f"[ray] Starting fresh local cluster ({detected_gpus} GPU(s) detected)")
-        ray.init(
-            num_gpus=detected_gpus if detected_gpus > 0 else None,
-            runtime_env=runtime_env,
-        )
+
+        try:
+            ray.init(
+                num_gpus=detected_gpus if detected_gpus > 0 else None,
+                runtime_env=runtime_env,
+            )
+        except ValueError as _ve:
+            if "existing cluster" in str(_ve):
+                print("[ray] Detected running Ray cluster — stopping it to start a fresh one")
+                try:
+                    import subprocess as __sp
+                    __sp.run(["ray", "stop", "--force"], capture_output=True, timeout=30)
+                except Exception:
+                    pass
+                ray.shutdown()
+                try:
+                    ray.init(
+                        num_gpus=detected_gpus if detected_gpus > 0 else None,
+                        runtime_env=runtime_env,
+                    )
+                except ValueError:
+                    print("[ray] Still cannot start fresh cluster — connecting to existing one instead")
+                    ray.init(runtime_env=runtime_env)
+            else:
+                raise
     else:
         print(f"[ray] Connecting to cluster: {effective_ray}")
         ray.init(address=effective_ray, runtime_env=runtime_env)

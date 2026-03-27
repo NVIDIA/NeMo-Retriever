@@ -454,10 +454,30 @@ try:
         os.environ.pop("RAY_ADDRESS", None)
         detected_gpus = _detect_gpu_count()
         print(f"[diag] Starting fresh local Ray cluster (nvidia-smi detected {detected_gpus} GPU(s))")
-        ray.init(
-            num_gpus=detected_gpus if detected_gpus > 0 else None,
-            runtime_env=runtime_env,
-        )
+
+        try:
+            ray.init(
+                num_gpus=detected_gpus if detected_gpus > 0 else None,
+                runtime_env=runtime_env,
+            )
+        except ValueError as _ve:
+            if "existing cluster" in str(_ve):
+                print("[diag] Detected running Ray cluster — stopping it to start a fresh one")
+                try:
+                    _sp.run(["ray", "stop", "--force"], capture_output=True, timeout=30)
+                except Exception:
+                    pass
+                ray.shutdown()
+                try:
+                    ray.init(
+                        num_gpus=detected_gpus if detected_gpus > 0 else None,
+                        runtime_env=runtime_env,
+                    )
+                except ValueError:
+                    print("[diag] Still cannot start fresh cluster — connecting to existing one instead")
+                    ray.init(runtime_env=runtime_env)
+            else:
+                raise
     else:
         print(f"[diag] Connecting to existing Ray cluster: {effective_ray}")
         ray.init(address=effective_ray, runtime_env=runtime_env)
@@ -566,20 +586,21 @@ def _nsys_available() -> bool:
 def _nsys_prefix(output_path: str) -> list[str]:
     """Return the command prefix to wrap a subprocess with nsys profile.
 
-    Uses NVTX-triggered capture so only code inside ``gpu_inference_range``
-    context managers is profiled, rather than the entire multi-hour process.
-    ``--trace-fork-before-exec=true`` ensures Ray worker child processes
-    are also instrumented so their NVTX ranges trigger capture.
+    Traces only CUDA kernels and NVTX annotations (no OS-runtime tracing,
+    which was the main source of multi-GB reports).  The ``gpu_inference_range``
+    NVTX markers placed around model invocations will appear as named regions
+    in the Nsight Systems timeline for easy identification.
+
+    Note: ``--capture-range=nvtx`` is intentionally NOT used because Ray Data
+    runs model inference in separate worker processes that nsys cannot follow
+    via fork-tracing.  Full-process capture with ``-t cuda,nvtx`` keeps report
+    sizes manageable (typically tens of MB) while capturing all GPU activity.
     """
     return [
         "nsys", "profile",
         "-o", output_path,
         "--force-overwrite=true",
         "-t", "cuda,nvtx",
-        "--capture-range=nvtx",
-        "--nvtx-capture=gpu_inference",
-        "--capture-range-end=repeat",
-        "--trace-fork-before-exec=true",
     ]
 
 
@@ -604,9 +625,9 @@ def _collect_nsys_report_info(nsys_output_dir: Path | None) -> dict[str, Any]:
             )
         else:
             info["error"] = (
-                "nsys produced no output files. This usually means no NVTX "
-                "'gpu_inference' ranges were hit during execution (e.g. model "
-                "inference ran in Ray worker processes that nsys could not follow)."
+                "nsys produced no output files. The profiled process may have "
+                "exited before nsys could finalize the report, or nsys encountered "
+                "an internal error. Check the job logs for nsys warnings."
             )
         return info
 
