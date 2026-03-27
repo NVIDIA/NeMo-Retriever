@@ -414,13 +414,37 @@ try:
     print(f"[diag] Python executable: {sys.executable}")
     print(f"[diag] CUDA_VISIBLE_DEVICES = {os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
 
+    import subprocess as _sp
+    def _detect_gpu_count():
+        try:
+            out = _sp.check_output(
+                ["nvidia-smi", "--query-gpu=index", "--format=csv,noheader"],
+                text=True, timeout=10,
+            )
+            return len([l for l in out.strip().splitlines() if l.strip()])
+        except Exception:
+            return 0
+
     import ray
 
-    effective_ray = ray_address or os.environ.get("RAY_ADDRESS") or "auto"
-    if effective_ray in ("auto", "local", None):
-        ray.shutdown()
-    ray.init(address=effective_ray, ignore_reinit_error=True)
-    print(f"Ray initialized: {effective_ray}")
+    effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
+    is_local = effective_ray in ("auto", "local", None, "")
+
+    ray.shutdown()
+
+    runtime_env = {"env_vars": {"VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable))}}
+
+    if is_local:
+        detected_gpus = _detect_gpu_count()
+        print(f"[diag] Starting fresh local Ray cluster (nvidia-smi detected {detected_gpus} GPU(s))")
+        ray.init(
+            num_gpus=detected_gpus if detected_gpus > 0 else None,
+            runtime_env=runtime_env,
+        )
+    else:
+        print(f"[diag] Connecting to existing Ray cluster: {effective_ray}")
+        ray.init(address=effective_ray, runtime_env=runtime_env)
+
     cluster_res = ray.cluster_resources()
     print(f"[diag] Ray cluster resources: {cluster_res}")
     print(f"[diag] Ray GPU count: {cluster_res.get('GPU', 0)}")
