@@ -261,7 +261,7 @@ def pdf_extraction(
 
                     ocr_extraction_needed_for_text = extract_text and (
                         (text_extraction_method == "pdfium_hybrid" and is_scanned_page)
-                        or text_extraction_method == "ocr"
+                        or text_extraction_method in ("ocr", "nemotron_parse")
                     )
 
                     # extraction_needed_for_structured = (

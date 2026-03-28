@@ -4,12 +4,51 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
 import numpy as np
 import torch
 from PIL import Image
+
+# Matches one detection: <x_...><y_...>CONTENT<x_...><y_...><class_LABEL>
+_DETECTION_RE = re.compile(
+    r"<x_[\d.]+><y_[\d.]+>(.*?)<x_[\d.]+><y_[\d.]+><class_([\w-]+)>",
+    re.DOTALL,
+)
+_TABULAR_RE = re.compile(r"\\begin\{tabular\}\{[^}]*\}(.*?)\\end\{tabular\}", re.DOTALL)
+
+
+def _latex_tabular_to_markdown(text: str) -> str:
+    def _replace(match: re.Match) -> str:
+        rows = [r.strip() for r in match.group(1).split("\\\\") if r.strip()]
+        if not rows:
+            return match.group(0)
+        md: list[str] = []
+        for i, row in enumerate(rows):
+            cells = [c.strip() for c in row.split("&")]
+            md.append("| " + " | ".join(cells) + " |")
+            if i == 0:
+                md.append("|" + "|".join("---" for _ in cells) + "|")
+        return "\n".join(md)
+
+    return _TABULAR_RE.sub(_replace, text)
+
+
+def _parse_detections(raw: str) -> str:
+    """Extract content from each detection, skipping picture/coordinate-only entries."""
+    parts: list[str] = []
+    for match in _DETECTION_RE.finditer(raw):
+        content = match.group(1).strip()
+        label = match.group(2)
+        if not content or label == "Picture":
+            continue
+        if label == "Table":
+            content = _latex_tabular_to_markdown(content)
+        parts.append(content)
+    return "\n\n".join(parts)
+
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
@@ -135,10 +174,11 @@ class NemotronParseV12(BaseModel):
         ).to(self._device)
 
         with torch.inference_mode():
-            outputs = self._model.generate(**inputs, generation_config=self._generation_config)
+            outputs = self._model.generate(**inputs, generation_config=self._generation_config, use_cache=False)
 
         decoded = self._processor.batch_decode(outputs, skip_special_tokens=True)
-        return decoded[0] if decoded else ""
+        raw = decoded[0] if decoded else ""
+        return _parse_detections(raw)
 
     def __call__(
         self,
