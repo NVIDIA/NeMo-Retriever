@@ -68,16 +68,19 @@ active:
   test_name: null  # Auto-generated if null
   
   # API Configuration
-  api_version: v1  # v1 or v2
+  api_version: v2  # v1 or v2
   pdf_split_page_count: null  # V2 only: pages per chunk (null = default 32)
   
   # Infrastructure
   hostname: localhost
   readiness_timeout: 600
-  profiles: [retrieval]
+  compose:
+    profiles:
+      - retrieval
+      - reranker  # Required for recall evaluation
   
   # Runtime
-  sparse: true
+  sparse: false
   gpu_search: false
   embedding_model: auto
   
@@ -109,7 +112,7 @@ Each dataset includes its path, extraction settings, and recall evaluator in one
 ```yaml
 datasets:
   bo767:
-    path: /raid/jioffe/bo767
+    path: /datasets/nv-ingest/bo767
     extract_text: true
     extract_tables: true
     extract_charts: true
@@ -118,16 +121,16 @@ datasets:
     recall_dataset: bo767  # Evaluator for recall testing
   
   bo20:
-    path: /raid/jioffe/bo20
+    path: /datasets/nv-ingest/bo20
     extract_text: true
     extract_tables: true
     extract_charts: true
     extract_images: true
-    extract_infographics: false
+    extract_infographics: true
     recall_dataset: null  # bo20 does not have recall
   
   earnings:
-    path: /raid/jioffe/earnings_conusulting
+    path: /datasets/nv-ingest/earnings_consulting
     extract_text: true
     extract_tables: true
     extract_charts: true
@@ -159,7 +162,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=/custom/path
 |---------|------|--------|--------|--------|--------------|--------|
 | `bo767` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
 | `earnings` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| `bo20` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `bo20` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `financebench` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `single` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
@@ -173,11 +176,11 @@ Settings are applied in order of priority:
 
 Example:
 ```bash
-# YAML active section has api_version: v1
+# YAML active section has api_version: v2
 # Dataset bo767 has extract_images: false
 # Override via environment variable (highest priority)
-EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
-# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v2 (env override)
+EXTRACT_IMAGES=true API_VERSION=v1 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v1 (env override)
 ```
 
 **Precedence Details:**
@@ -211,7 +214,7 @@ EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dat
 #### Infrastructure Options
 - `hostname` (string): Service hostname
 - `readiness_timeout` (integer): Docker startup timeout in seconds
-- `profiles` (list): Docker compose profiles
+- `compose.profiles` (list): Docker Compose profiles, nested under `compose` in YAML (loaded as top-level `profiles`)
 
 #### Runtime Options
 - `sparse` (boolean): Use sparse embeddings
