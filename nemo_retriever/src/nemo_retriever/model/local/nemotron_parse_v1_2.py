@@ -12,7 +12,11 @@ import numpy as np
 import torch
 from PIL import Image
 
-_POSITION_TAG_RE = re.compile(r"<(?:x|y)_[\d.]+>|<class_\S+>")
+# Matches one detection: <x_...><y_...>CONTENT<x_...><y_...><class_LABEL>
+_DETECTION_RE = re.compile(
+    r"<x_[\d.]+><y_[\d.]+>(.*?)<x_[\d.]+><y_[\d.]+><class_([\w-]+)>",
+    re.DOTALL,
+)
 _TABULAR_RE = re.compile(r"\\begin\{tabular\}\{[^}]*\}(.*?)\\end\{tabular\}", re.DOTALL)
 
 
@@ -30,6 +34,20 @@ def _latex_tabular_to_markdown(text: str) -> str:
         return "\n".join(md)
 
     return _TABULAR_RE.sub(_replace, text)
+
+
+def _parse_detections(raw: str) -> str:
+    """Extract content from each detection, skipping picture/coordinate-only entries."""
+    parts: list[str] = []
+    for match in _DETECTION_RE.finditer(raw):
+        content = match.group(1).strip()
+        label = match.group(2)
+        if not content or label == "Picture":
+            continue
+        if label == "Table":
+            content = _latex_tabular_to_markdown(content)
+        parts.append(content)
+    return "\n\n".join(parts)
 
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
@@ -159,9 +177,8 @@ class NemotronParseV12(BaseModel):
             outputs = self._model.generate(**inputs, generation_config=self._generation_config, use_cache=False)
 
         decoded = self._processor.batch_decode(outputs, skip_special_tokens=True)
-        text = decoded[0] if decoded else ""
-        text = _POSITION_TAG_RE.sub("", text).strip()
-        return _latex_tabular_to_markdown(text)
+        raw = decoded[0] if decoded else ""
+        return _parse_detections(raw)
 
     def __call__(
         self,
