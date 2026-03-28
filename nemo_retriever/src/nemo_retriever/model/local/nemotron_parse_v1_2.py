@@ -4,12 +4,33 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
 import numpy as np
 import torch
 from PIL import Image
+
+_POSITION_TAG_RE = re.compile(r"<(?:x|y)_[\d.]+>|<class_\S+>")
+_TABULAR_RE = re.compile(r"\\begin\{tabular\}\{[^}]*\}(.*?)\\end\{tabular\}", re.DOTALL)
+
+
+def _latex_tabular_to_markdown(text: str) -> str:
+    def _replace(match: re.Match) -> str:
+        rows = [r.strip() for r in match.group(1).split("\\\\") if r.strip()]
+        if not rows:
+            return match.group(0)
+        md: list[str] = []
+        for i, row in enumerate(rows):
+            cells = [c.strip() for c in row.split("&")]
+            md.append("| " + " | ".join(cells) + " |")
+            if i == 0:
+                md.append("|" + "|".join("---" for _ in cells) + "|")
+        return "\n".join(md)
+
+    return _TABULAR_RE.sub(_replace, text)
+
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
@@ -138,7 +159,9 @@ class NemotronParseV12(BaseModel):
             outputs = self._model.generate(**inputs, generation_config=self._generation_config, use_cache=False)
 
         decoded = self._processor.batch_decode(outputs, skip_special_tokens=True)
-        return decoded[0] if decoded else ""
+        text = decoded[0] if decoded else ""
+        text = _POSITION_TAG_RE.sub("", text).strip()
+        return _latex_tabular_to_markdown(text)
 
     def __call__(
         self,
