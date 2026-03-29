@@ -50,7 +50,7 @@ body:
     attributes:
       label: Describe the bug.
       description: Also tell us, what did you expect to happen?
-      placeholder: XYZ occured, I expected QRS results
+      placeholder: XYZ occurred, I expected QRS results
     validations:
       required: true
 
