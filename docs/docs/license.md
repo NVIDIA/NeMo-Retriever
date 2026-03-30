@@ -2,15 +2,20 @@
 
 This page summarizes where to find licensing terms for the nv-ingest project, third-party components, and related NVIDIA software.
 
-## Apache License 2.0
+## License
 
 The nv-ingest source code and documentation in this repository are licensed under the **Apache License, Version 2.0**, unless otherwise noted.
 
-- **Full text:** [LICENSE](https://github.com/NVIDIA/nv-ingest/blob/main/LICENSE) in the repository ([raw text](https://raw.githubusercontent.com/NVIDIA/nv-ingest/main/LICENSE))
+Reference links to the main license file in the GitHub repository:
 
-## Third-party licenses
+- [LICENSE](https://github.com/NVIDIA/nv-ingest/blob/main/LICENSE) (repository file on GitHub)
+- [LICENSE (raw text)](https://raw.githubusercontent.com/NVIDIA/nv-ingest/main/LICENSE) (raw view for download or copy)
 
-The authoritative list in the repository is [THIRD_PARTY_LICENSES.md](https://github.com/NVIDIA/nv-ingest/blob/main/THIRD_PARTY_LICENSES.md). Contents:
+## Third-Party Licenses
+
+- **NeMo Retriever:** [Third Party License Notice](https://github.com/NVIDIA/NeMo-Retriever/blob/main/README.md#notices) in the NeMo Retriever README.
+
+The authoritative third-party list for this repository is [THIRD_PARTY_LICENSES.md](https://github.com/NVIDIA/nv-ingest/blob/main/THIRD_PARTY_LICENSES.md). Contents:
 
 --8<-- "THIRD_PARTY_LICENSES.md:3"
 
