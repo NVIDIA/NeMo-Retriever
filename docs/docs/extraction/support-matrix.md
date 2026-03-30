@@ -22,7 +22,7 @@ The core pipeline features include the following:
 Advanced features require additional GPU support and disk space. 
 This includes the following:
 
-- parakeet-1-1b-ctc-en-us — Use the [Parakeet CTC English (en-US) ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) for processing audio files. For more information, refer to [Audio Processing](audio.md).
+- Audio extraction - parakeet-1-1b-ctc-en-us — Use the [Parakeet CTC English (en-US) ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) for processing audio files. For more information, refer to [Audio Processing](audio.md).
 - Advanced visual parsing — Use [nemotron-parse](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/overview.html), which adds state-of-the-art text and table extraction. For more information, refer to [Advanced Visual Parsing ](nemoretriever-parse.md).
 - VLM — Use [nemotron-nano-12b-v2-vl](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for experimental image captioning of unstructured images. 
     
