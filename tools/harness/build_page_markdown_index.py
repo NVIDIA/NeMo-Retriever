@@ -60,7 +60,7 @@ def main() -> int:
 
     path_col = "path" if "path" in df.columns else "source_id"
     if path_col not in df.columns:
-        print(f"ERROR: Neither 'path' nor 'source_id' found in columns", file=sys.stderr)
+        print("ERROR: Neither 'path' nor 'source_id' found in columns", file=sys.stderr)
         return 1
 
     def _ndarray_to_list(record: dict) -> dict:
