@@ -3,469 +3,237 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-In-process ingestion pipeline (no Ray) with optional recall evaluation.
-Run with: uv run python -m nemo_retriever.examples.inprocess_pipeline <input-dir>
+Graph-based in-process ingestion pipeline using AbstractOperator, Node, Graph,
+and InprocessExecutor.
+
+This example mirrors the PDF path of ``inprocess_pipeline.py`` but constructs
+the pipeline as an explicit operator graph instead of the fluent ingestor API.
+All processing runs in a single process on pandas DataFrames — no Ray.
+
+Run with::
+
+    source /opt/retriever_runtime/bin/activate
+    python -m nemo_retriever.examples.graph_inprocess_pipeline <input-dir-or-file>
 """
 
+from __future__ import annotations
+
+import logging
+import pandas as pd
 import time
 from pathlib import Path
 from typing import Optional
 
-import lancedb
 import typer
+
 from nemo_retriever import create_ingestor
-from nemo_retriever.examples.common import estimate_processed_pages, print_pages_per_second
-from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import IngestExecuteParams
-from nemo_retriever.params import TextChunkParams
-from nemo_retriever.params import VdbUploadParams
-from nemo_retriever.recall.core import (
-    RecallConfig,
-    gold_to_doc_page,
-    hit_key_and_distance,
-    is_hit_at_k,
-    retrieve_and_score,
-)
 
+logger = logging.getLogger(__name__)
 app = typer.Typer()
-
-LANCEDB_URI = "lancedb"
-LANCEDB_TABLE = "nv-ingest"
 
 
 @app.command()
 def main(
     input_path: Path = typer.Argument(
         ...,
-        help="File or directory containing PDFs, .txt, .html, or .doc/.pptx files to ingest.",
+        help="File or directory containing PDFs to ingest.",
         path_type=Path,
-    ),
-    input_type: str = typer.Option(
-        "pdf",
-        "--input-type",
-        help="Input format: 'pdf', 'txt', 'html', 'doc', or 'image'. Use 'txt' for .txt, 'html' for .html (markitdown -> chunks), 'doc' for .docx/.pptx (converted to PDF via LibreOffice), 'image' for standalone image files (PNG, JPEG, BMP, TIFF, SVG).",  # noqa: E501
-    ),
-    query_csv: Path = typer.Option(
-        "bo767_query_gt.csv",
-        "--query-csv",
-        path_type=Path,
-        help="Path to query CSV for recall evaluation. Default: bo767_query_gt.csv (current directory). Recall is skipped if the file does not exist.",  # noqa: E501
-    ),
-    no_recall_details: bool = typer.Option(
-        False,
-        "--no-recall-details",
-        help="Do not print per-query retrieval details (query, gold, hits). Only the missed-gold summary and recall metrics are printed.",  # noqa: E501
-    ),
-    max_workers: int = typer.Option(
-        16,
-        "--max-workers",
-        help="Maximum number of parallel ingest workers.",
-    ),
-    gpu_devices: Optional[str] = typer.Option(
-        None,
-        "--gpu-devices",
-        help="Comma-separated GPU device IDs (e.g. --gpu-devices 0,1,2). Mutually exclusive with --num-gpus.",
-    ),
-    num_gpus: Optional[int] = typer.Option(
-        None,
-        "--num-gpus",
-        help="Number of GPUs to use, starting from device 0 (e.g. --num-gpus 2 → GPUs 0,1). Mutually exclusive with --gpu-devices.",  # noqa: E501
     ),
     page_elements_invoke_url: Optional[str] = typer.Option(
         None,
         "--page-elements-invoke-url",
-        help="Optional remote endpoint URL for page-elements model inference.",
+        help="Remote endpoint URL for page-elements model inference.",
     ),
     ocr_invoke_url: Optional[str] = typer.Option(
         None,
         "--ocr-invoke-url",
-        help="Optional remote endpoint URL for OCR model inference.",
+        help="Remote endpoint URL for OCR model inference.",
     ),
     embed_invoke_url: Optional[str] = typer.Option(
         None,
         "--embed-invoke-url",
-        help="Optional remote endpoint URL for embedding model inference.",
+        help="Remote endpoint URL for embedding model inference.",
     ),
     embed_model_name: str = typer.Option(
         "nvidia/llama-nemotron-embed-1b-v2",
         "--embed-model-name",
-        help="Embedding model name passed to .embed().",
+        help="Embedding model name.",
     ),
-    extract_text: bool = typer.Option(
-        True,
-        "--extract-text/--no-extract-text",
-        help="Extract text from PDF pages.",
-    ),
-    extract_tables: bool = typer.Option(
-        True,
-        "--extract-tables/--no-extract-tables",
-        help="Extract tables from PDF pages.",
-    ),
-    extract_charts: bool = typer.Option(
-        True,
-        "--extract-charts/--no-extract-charts",
-        help="Extract charts from PDF pages.",
-    ),
-    extract_infographics: bool = typer.Option(
-        False,
-        "--extract-infographics/--no-extract-infographics",
-        help="Extract infographics from PDF pages.",
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        help="Bearer token for remote NIM endpoints.",
     ),
     method: str = typer.Option(
         "pdfium",
         "--method",
-        help="PDF text extraction method: 'pdfium' (native only), 'pdfium_hybrid' (native + OCR for scanned), 'ocr' (OCR all pages), or 'nemotron_parse' (Nemotron Parse only).",  # noqa: E501
+        help="PDF text extraction method.",
     ),
-    embed_modality: str = typer.Option(
-        "text",
-        "--embed-modality",
-        help="Default embedding modality for all element types: 'text', 'image', or 'text_image'.",
+    dpi: int = typer.Option(
+        300,
+        "--dpi",
+        help="Render DPI for PDF page images.",
     ),
-    text_elements_modality: Optional[str] = typer.Option(
+    lancedb_uri: str = typer.Option(
+        "lancedb_graph_inprocess",
+        "--lancedb-uri",
+        help="LanceDB URI/path for this run.",
+    ),
+    query_csv: Path = typer.Option(
+        "./data/bo767_query_gt.csv",
+        "--query-csv",
+        path_type=Path,
+        help="Path to query CSV for recall evaluation.",
+    ),
+    recall_match_mode: str = typer.Option(
+        "pdf_page",
+        "--recall-match-mode",
+        help="Recall match mode: 'pdf_page' or 'pdf_only'.",
+    ),
+    dedup: Optional[bool] = typer.Option(
         None,
-        "--text-elements-modality",
-        help="Embedding modality override for page-text rows. Falls back to --embed-modality.",
+        "--dedup/--no-dedup",
+        help="Remove duplicate/overlapping images before captioning. "
+        "Defaults to on when captioning is enabled, off otherwise.",
     ),
-    structured_elements_modality: Optional[str] = typer.Option(
-        None,
-        "--structured-elements-modality",
-        help="Embedding modality override for table/chart/infographic rows. Falls back to --embed-modality.",
-    ),
-    use_table_structure: bool = typer.Option(
-        False,
-        "--use-table-structure",
-        help="Enable the combined table-structure + OCR stage for tables (requires extract_tables).",
-    ),
-    table_output_format: Optional[str] = typer.Option(
-        None,
-        "--table-output-format",
-        help=(
-            "Table output format: 'pseudo_markdown' (OCR-only) or 'markdown' "
-            "(table-structure + OCR). Defaults to 'markdown' when table-structure "
-            "is enabled, 'pseudo_markdown' otherwise."
-        ),
-    ),
-    table_structure_invoke_url: Optional[str] = typer.Option(
-        None,
-        "--table-structure-invoke-url",
-        help=(
-            "Optional remote endpoint URL for table-structure model inference "
-            "(used when --table-output-format=markdown)."
-        ),
-    ),
-    embed_granularity: str = typer.Option(
-        "element",
-        "--embed-granularity",
-        help="Embedding granularity: 'element' (one row per table/chart/text) or 'page' (one row per page).",
-    ),
-    use_graphic_elements: bool = typer.Option(
-        False,
-        "--use-graphic-elements",
-        help="Enable the combined graphic-elements + OCR stage for charts (requires extract_charts).",
-    ),
-    graphic_elements_invoke_url: Optional[str] = typer.Option(
-        None,
-        "--graphic-elements-invoke-url",
-        help="Optional remote endpoint URL for graphic-elements model inference.",
-    ),
-    caption: bool = typer.Option(
-        False,
-        "--caption/--no-caption",
-        help="Enable image captioning. Uses a local model by default, "
-        "or a remote endpoint if --caption-invoke-url is set.",
-    ),
-    caption_invoke_url: Optional[str] = typer.Option(
-        None,
-        "--caption-invoke-url",
-        help="Optional VLM endpoint URL for image captioning (e.g. http://vlm:8000/v1/chat/completions). "
-        "Implies --caption. When omitted, a local HF model is loaded instead.",
-    ),
-    caption_model_name: str = typer.Option(
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
-        "--caption-model-name",
-        help="VLM model name / HF model ID for image captioning.",
-    ),
-    caption_device: Optional[str] = typer.Option(
-        None,
-        "--caption-device",
-        help="GPU device for the local VLM captioner (e.g. 'cuda:1'). Defaults to the first --gpu-devices entry.",
-    ),
-    caption_context_text_max_chars: int = typer.Option(
-        0,
-        "--caption-context-text-max-chars",
-        help="Max characters of surrounding page text to include in the VLM prompt. 0 disables context.",
-    ),
-    caption_gpu_memory_utilization: float = typer.Option(
-        0.5,
-        "--caption-gpu-memory-utilization",
-        help="Fraction of GPU memory vLLM may use for the caption model (0.0–1.0).",
+    dedup_iou_threshold: float = typer.Option(
+        0.45,
+        "--dedup-iou-threshold",
+        help="IoU threshold for bbox-based image dedup (0.0–1.0).",
     ),
     hybrid: bool = typer.Option(
         False,
         "--hybrid/--no-hybrid",
         help="Enable LanceDB hybrid mode (dense + FTS text).",
     ),
-    text_chunk: bool = typer.Option(
-        False,
-        "--text-chunk",
-        help=(
-            "Re-chunk extracted page text by token count before embedding. "
-            "Uses --text-chunk-max-tokens and --text-chunk-overlap-tokens (defaults: 1024, 150)."
-        ),
-    ),
-    text_chunk_max_tokens: Optional[int] = typer.Option(
-        None,
-        "--text-chunk-max-tokens",
-        help="Max tokens per text chunk (default: 1024). Implies --text-chunk.",
-    ),
-    text_chunk_overlap_tokens: Optional[int] = typer.Option(
-        None,
-        "--text-chunk-overlap-tokens",
-        help="Token overlap between consecutive text chunks (default: 150). Implies --text-chunk.",
-    ),
 ) -> None:
-    if gpu_devices is not None and num_gpus is not None:
-        raise typer.BadParameter("--gpu-devices and --num-gpus are mutually exclusive.")
-    if gpu_devices is not None:
-        gpu_device_list = [d.strip() for d in gpu_devices.split(",") if d.strip()]
-    elif num_gpus is not None:
-        gpu_device_list = [str(i) for i in range(num_gpus)] if num_gpus > 0 else ["0"]
-    else:
-        gpu_device_list = ["0"]
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
 
+    # -- Resolve input files ---------------------------------------------------
     input_path = Path(input_path)
     if input_path.is_file():
         file_patterns = [str(input_path)]
     elif input_path.is_dir():
-        ext_map = {
-            "txt": ["*.txt"],
-            "html": ["*.html"],
-            "doc": ["*.docx", "*.pptx"],
-            "image": ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tiff", "*.tif", "*.svg"],
-        }
-        exts = ext_map.get(input_type, ["*.pdf"])
-        file_patterns = [str(input_path / e) for e in exts]
+        import glob as _glob
+
+        file_patterns = _glob.glob(str(input_path / "*.pdf"))
+        if not file_patterns:
+            raise typer.BadParameter(f"No PDF files found in {input_path}")
     else:
         raise typer.BadParameter(f"Path does not exist: {input_path}")
 
-    ingestor = create_ingestor(run_mode="inprocess")
-    if input_type == "txt":
-        ingestor = ingestor.files(file_patterns).extract_txt(
-            TextChunkParams(
-                max_tokens=text_chunk_max_tokens or 1024,
-                overlap_tokens=text_chunk_overlap_tokens if text_chunk_overlap_tokens is not None else 150,
-            )
-        )
-    elif input_type == "html":
-        ingestor = ingestor.files(file_patterns).extract_html(
-            TextChunkParams(
-                max_tokens=text_chunk_max_tokens or 1024,
-                overlap_tokens=text_chunk_overlap_tokens if text_chunk_overlap_tokens is not None else 150,
-            )
-        )
-    elif input_type == "image":
-        ingestor = ingestor.files(file_patterns).extract_image_files(
-            ExtractParams(
-                method=method,
-                extract_text=extract_text,
-                extract_tables=extract_tables,
-                extract_charts=extract_charts,
-                extract_infographics=extract_infographics,
-                use_graphic_elements=use_graphic_elements,
-                graphic_elements_invoke_url=graphic_elements_invoke_url,
-                use_table_structure=use_table_structure,
-                table_output_format=table_output_format,
-                table_structure_invoke_url=table_structure_invoke_url,
-                page_elements_invoke_url=page_elements_invoke_url,
-                ocr_invoke_url=ocr_invoke_url,
-            )
-        )
-    elif input_type == "doc":
-        ingestor = ingestor.files(file_patterns).extract(
-            ExtractParams(
-                method=method,
-                extract_text=extract_text,
-                extract_tables=extract_tables,
-                extract_charts=extract_charts,
-                extract_infographics=extract_infographics,
-                use_graphic_elements=use_graphic_elements,
-                graphic_elements_invoke_url=graphic_elements_invoke_url,
-                use_table_structure=use_table_structure,
-                table_output_format=table_output_format,
-                table_structure_invoke_url=table_structure_invoke_url,
-                page_elements_invoke_url=page_elements_invoke_url,
-                ocr_invoke_url=ocr_invoke_url,
-            )
-        )
-    else:
-        ingestor = ingestor.files(file_patterns).extract(
-            ExtractParams(
-                method=method,
-                extract_text=extract_text,
-                extract_tables=extract_tables,
-                extract_charts=extract_charts,
-                extract_infographics=extract_infographics,
-                use_graphic_elements=use_graphic_elements,
-                graphic_elements_invoke_url=graphic_elements_invoke_url,
-                use_table_structure=use_table_structure,
-                table_output_format=table_output_format,
-                table_structure_invoke_url=table_structure_invoke_url,
-                page_elements_invoke_url=page_elements_invoke_url,
-                ocr_invoke_url=ocr_invoke_url,
-            )
-        )
+    from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
-    enable_text_chunk = text_chunk or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
-    if enable_text_chunk:
-        ingestor = ingestor.split(
-            TextChunkParams(
-                max_tokens=text_chunk_max_tokens or 1024,
-                overlap_tokens=text_chunk_overlap_tokens if text_chunk_overlap_tokens is not None else 150,
-            )
-        )
-
-    enable_caption = caption or caption_invoke_url is not None
-    if enable_caption:
-        ingestor = ingestor.caption(
-            CaptionParams(
-                endpoint_url=caption_invoke_url,
-                model_name=caption_model_name,
-                device=caption_device,
-                context_text_max_chars=caption_context_text_max_chars,
-                gpu_memory_utilization=caption_gpu_memory_utilization,
-            )
-        )
-
-    ingestor = ingestor.embed(
-        EmbedParams(
-            model_name=str(embed_model_name),
-            embed_invoke_url=embed_invoke_url,
-            embed_modality=embed_modality,
-            text_elements_modality=text_elements_modality,
-            structured_elements_modality=structured_elements_modality,
-            embed_granularity=embed_granularity,
-        )
-    ).vdb_upload(
-        VdbUploadParams(
-            lancedb={
-                "lancedb_uri": LANCEDB_URI,
-                "table_name": LANCEDB_TABLE,
-                "overwrite": True,
-                "create_index": True,
-                "hybrid": hybrid,
-            }
-        )
+    remote_api_key = resolve_remote_api_key(api_key)
+    extract_params = ExtractParams(
+        method=method,
+        dpi=dpi,
+        extract_text=True,
+        extract_tables=True,
+        extract_charts=True,
+        extract_page_as_image=True,
+        page_elements_invoke_url=page_elements_invoke_url,
+        ocr_invoke_url=ocr_invoke_url,
+        api_key=remote_api_key,
+    )
+    embed_params = EmbedParams(
+        model_name=embed_model_name,
+        embed_invoke_url=embed_invoke_url,
+        api_key=remote_api_key if embed_invoke_url else None,
     )
 
-    print("Running extraction...")
-    ingest_start = time.perf_counter()
-    ingestor.ingest(
-        params=IngestExecuteParams(
-            parallel=True,
-            max_workers=max_workers,
-            gpu_devices=gpu_device_list,
-            show_progress=True,
-        )
-    )
-    ingest_elapsed_s = time.perf_counter() - ingest_start
-    processed_pages = estimate_processed_pages(LANCEDB_URI, LANCEDB_TABLE)
-    print("Extraction complete.")
+    logger.info("Starting in-process ingestion of %s ...", input_path)
+    t0 = time.perf_counter()
+    ingestor = create_ingestor(run_mode="inprocess").files(file_patterns).extract(extract_params).embed(embed_params)
+    results = ingestor.ingest()
+    result_df = pd.concat(results, ignore_index=True) if results else pd.DataFrame()
+    ingestion_time = time.perf_counter() - t0
+    row_count = len(result_df)
 
-    # ---------------------------------------------------------------------------
-    # Recall calculation (optional)
-    # ---------------------------------------------------------------------------
+    # -- Write to LanceDB ------------------------------------------------------
+    from nemo_retriever.vector_store.lancedb_store import handle_lancedb
+    from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
+
+    lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
+    lancedb_table = "nv-ingest"
+
+    import lancedb as _lancedb_mod
+    import pyarrow as pa
+
+    Path(lancedb_uri).mkdir(parents=True, exist_ok=True)
+    _db = _lancedb_mod.connect(lancedb_uri)
+    try:
+        _db.open_table(lancedb_table)
+    except Exception:
+        schema = lancedb_schema()
+        empty = pa.table({f.name: [] for f in schema}, schema=schema)
+        _db.create_table(lancedb_table, data=empty, schema=schema, mode="create")
+
+    # Convert DataFrame to list of dicts for handle_lancedb
+    local_results = result_df.to_dict("records")
+
+    lancedb_start = time.perf_counter()
+    handle_lancedb(local_results, lancedb_uri, lancedb_table, hybrid=hybrid, mode="overwrite")
+    lancedb_time = time.perf_counter() - lancedb_start
+    logger.info("LanceDB write: %.2f seconds.", lancedb_time)
+
+    # -- Recall evaluation -----------------------------------------------------
     query_csv = Path(query_csv)
-    if not query_csv.exists():
-        print(f"Query CSV not found at {query_csv}; skipping recall evaluation.")
-        print_pages_per_second(processed_pages, ingest_elapsed_s)
-        return
+    if query_csv.exists():
+        from nemo_retriever.model import resolve_embed_model
+        from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
+        from nemo_retriever.utils.detection_summary import print_run_summary
 
-    db = lancedb.connect(f"./{LANCEDB_URI}")
-    table = db.open_table(LANCEDB_TABLE)
-    unique_basenames = table.to_pandas()["pdf_basename"].unique()
-    print(f"Unique basenames: {unique_basenames}")
+        _recall_model = resolve_embed_model(str(embed_model_name))
+        embed_remote_api_key = remote_api_key if embed_invoke_url else None
 
-    # Resolve the HF model ID for recall query embedding so aliases
-    # (e.g. "nemo_retriever_v1") map to the correct model.
-    from nemo_retriever.model import resolve_embed_model
-
-    _recall_model = resolve_embed_model(str(embed_model_name))
-
-    cfg = RecallConfig(
-        lancedb_uri=str(LANCEDB_URI),
-        lancedb_table=str(LANCEDB_TABLE),
-        embedding_model=_recall_model,
-        embedding_http_endpoint=embed_invoke_url,
-        top_k=10,
-        ks=(1, 5, 10),
-        hybrid=hybrid,
-    )
-
-    _df_query, _gold, _raw_hits, _retrieved_keys, metrics = retrieve_and_score(query_csv=query_csv, cfg=cfg)
-
-    if not no_recall_details:
-        print("\nPer-query retrieval details:")
-    missed_gold: list[tuple[str, str]] = []
-    for i, (q, g, hits) in enumerate(
-        zip(
-            _df_query["query"].astype(str).tolist(),
-            _gold,
-            _raw_hits,
+        recall_cfg = RecallConfig(
+            lancedb_uri=lancedb_uri,
+            lancedb_table=lancedb_table,
+            embedding_model=_recall_model,
+            embedding_http_endpoint=embed_invoke_url,
+            embedding_api_key=embed_remote_api_key or "",
+            top_k=10,
+            ks=(1, 5, 10),
+            hybrid=hybrid,
+            match_mode=recall_match_mode,
         )
-    ):
-        doc, page = gold_to_doc_page(g)
 
-        scored_hits: list[tuple[str, float | None]] = []
-        for h in hits:
-            key, dist = hit_key_and_distance(h)
-            if key:
-                scored_hits.append((key, dist))
+        recall_start = time.perf_counter()
+        recall_result = retrieve_and_score(query_csv=query_csv, cfg=recall_cfg)
+        _df_query = recall_result[0]
+        evaluation_metrics = recall_result[-1]
+        recall_time = time.perf_counter() - recall_start
 
-        top_keys = [k for (k, _d) in scored_hits]
-        hit = is_hit_at_k(g, top_keys, cfg.top_k, match_mode="pdf_page")
+        total_time = time.perf_counter() - t0
 
-        if not no_recall_details:
-            ext = (
-                ".txt"
-                if input_type == "txt"
-                else (".html" if input_type == "html" else (".docx" if input_type == "doc" else ".pdf"))
-            )
-            print(f"\nQuery {i}: {q}")
-            print(f"  Gold: {g}  (file: {doc}{ext}, page: {page})")
-            print(f"  Hit@{cfg.top_k}: {hit}")
-            print("  Top hits:")
-            if not scored_hits:
-                print("    (no hits)")
-            else:
-                for rank, (key, dist) in enumerate(scored_hits[: int(cfg.top_k)], start=1):
-                    if dist is None:
-                        print(f"    {rank:02d}. {key}")
-                    else:
-                        print(f"    {rank:02d}. {key}  distance={dist:.6f}")
+        # Count unique source_ids for page count
+        num_pages = result_df["source_id"].nunique() if "source_id" in result_df.columns else row_count
 
-        if not hit:
-            ext = (
-                ".txt"
-                if input_type == "txt"
-                else (".html" if input_type == "html" else (".docx" if input_type == "doc" else ".pdf"))
-            )
-            missed_gold.append((f"{doc}{ext}", str(page)))
-
-    missed_unique = sorted(set(missed_gold), key=lambda x: (x[0], x[1]))
-    print("\nMissed gold (unique doc/page):")
-    if not missed_unique:
-        print("  (none)")
+        print_run_summary(
+            num_pages,
+            input_path,
+            hybrid,
+            lancedb_uri,
+            lancedb_table,
+            total_time,
+            ingestion_time,
+            0.0,  # no ray download time
+            lancedb_time,
+            recall_time,
+            evaluation_metrics,
+            evaluation_label="Recall",
+            evaluation_count=len(_df_query.index),
+        )
     else:
-        for doc_page, page in missed_unique:
-            print(f"  {doc_page} page {page}")
-    print(f"\nTotal missed: {len(missed_unique)} / {len(_gold)}")
-
-    print("\nRecall metrics (matching nemo_retriever.recall.core):")
-    for k, v in metrics.items():
-        print(f"  {k}: {v:.4f}")
-    print_pages_per_second(processed_pages, ingest_elapsed_s)
+        logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv)
+        logger.info("Total time: %.2f seconds.", time.perf_counter() - t0)
 
 
 if __name__ == "__main__":

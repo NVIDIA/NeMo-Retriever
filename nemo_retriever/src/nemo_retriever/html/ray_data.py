@@ -8,16 +8,18 @@ Ray Data adapter for .html: HtmlSplitActor turns bytes+path batches into chunk r
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List
 
 import pandas as pd
 
 from nemo_retriever.params import HtmlChunkParams
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 from .convert import html_bytes_to_chunks_df
 
 
-class HtmlSplitActor:
+class HtmlSplitActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of chunks.
 
@@ -25,15 +27,21 @@ class HtmlSplitActor:
     """
 
     def __init__(self, params: HtmlChunkParams | None = None) -> None:
+        super().__init__()
         self._params = params or HtmlChunkParams()
 
-    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
-        if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        if not isinstance(data, pd.DataFrame) or data.empty:
             return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        if not isinstance(data, pd.DataFrame) or data.empty:
+            return data
 
         params = self._params
         out_dfs: List[pd.DataFrame] = []
-        for _, row in batch_df.iterrows():
+        for _, row in data.iterrows():
             raw = row.get("bytes")
             text = row.get("text")
             path = row.get("path")
@@ -50,3 +58,9 @@ class HtmlSplitActor:
         if not out_dfs:
             return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
         return pd.concat(out_dfs, ignore_index=True)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+        return self.run(batch_df)
