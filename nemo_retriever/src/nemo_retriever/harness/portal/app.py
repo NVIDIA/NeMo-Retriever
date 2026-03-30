@@ -2037,6 +2037,57 @@ async def complete_job_endpoint(job_id: str, req: JobCompleteRequest):
     return {"ok": True, "run_id": run_id}
 
 
+def _normalize_runner_result(
+    result: dict[str, Any],
+    job: dict[str, Any],
+    success: bool,
+    error: str | None,
+    execution_commit: str | None,
+) -> dict[str, Any]:
+    """Normalise a runner result dict into the canonical ``record_run`` format.
+
+    The runner may send either the full ``_run_entry`` payload (which already
+    has ``timestamp``, ``test_config``, ``summary_metrics``, ``run_metadata``,
+    etc.) or a compact/legacy payload with top-level ``dataset``, ``preset``,
+    and a flat ``metrics`` dict.  This function fills in the structural keys
+    that ``record_run`` relies on so metrics are never silently discarded.
+    """
+    run_result = dict(result)
+
+    if not run_result.get("timestamp"):
+        run_result["timestamp"] = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_UTC")
+
+    run_result.setdefault("latest_commit", execution_commit)
+    run_result.setdefault("success", success)
+    run_result.setdefault("failure_reason", error or (None if success else "Job failed"))
+
+    if "test_config" not in run_result:
+        run_result["test_config"] = {
+            "dataset_label": result.get("dataset") or job.get("dataset", "unknown"),
+            "preset": result.get("preset") or job.get("preset"),
+        }
+
+    if "summary_metrics" not in run_result:
+        run_result["summary_metrics"] = dict(result.get("metrics") or {})
+
+    if "run_metadata" not in run_result:
+        runner_id = job.get("assigned_runner_id")
+        runner = history.get_runner_by_id(runner_id) if runner_id else None
+        run_result["run_metadata"] = {
+            "host": (runner or {}).get("hostname"),
+            "gpu_type": (runner or {}).get("gpu_type"),
+        }
+
+    if "artifacts" not in run_result and result.get("artifact_dir"):
+        art = str(result["artifact_dir"])
+        run_result["artifacts"] = {
+            "runtime_metrics_dir": str(Path(art) / "runtime_metrics"),
+        }
+
+    run_result.setdefault("tags", job.get("tags"))
+    return run_result
+
+
 def _record_run_from_job(
     job: dict[str, Any] | None,
     success: bool,
@@ -2047,27 +2098,27 @@ def _record_run_from_job(
 ) -> int | None:
     """Create a run record in the runs table from a completed job.
 
-    When the runner sends back a full ``result`` dict (from ``_run_entry``),
-    use that directly.  Otherwise synthesise a minimal result so that failed
-    jobs still appear in the Runs view.
+    When the runner sends back a ``result`` dict it is normalised into the
+    canonical format expected by ``record_run``.  If no result is available at
+    all, a minimal stub is synthesised so the job still appears in the Runs
+    view.
 
     Returns the newly created run row id, or ``None`` on failure.
     """
     if job is None:
         return None
 
-    if result and isinstance(result, dict) and result.get("timestamp"):
-        run_result = result
+    if result and isinstance(result, dict):
+        run_result = _normalize_runner_result(result, job, success, error, execution_commit)
     else:
         logger.warning(
-            "Job %s completed without a full result (result=%s) — metrics will be empty in the Runs view",
+            "Job %s completed with no result dict — metrics will be empty in the Runs view",
             job.get("id"),
-            "None" if result is None else f"dict(keys={list(result.keys()) if isinstance(result, dict) else type(result).__name__})",
         )
         now_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_UTC")
         run_result = {
             "timestamp": now_ts,
-            "latest_commit": None,
+            "latest_commit": execution_commit,
             "success": success,
             "return_code": None,
             "failure_reason": error or (None if success else "Job failed (no result returned)"),
@@ -2090,7 +2141,7 @@ def _record_run_from_job(
         artifact_dir = str(Path(runtime_metrics_dir).parent)
     else:
         command_file = artifacts.get("command_file", "")
-        artifact_dir = str(Path(command_file).parent) if command_file else ""
+        artifact_dir = str(Path(command_file).parent) if command_file else run_result.get("artifact_dir", "")
 
     try:
         run_row_id = history.record_run(
