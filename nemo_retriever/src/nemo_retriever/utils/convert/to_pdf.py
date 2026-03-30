@@ -10,10 +10,12 @@ import os
 import subprocess
 import tempfile
 import traceback
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".pptx"})
 
@@ -98,6 +100,10 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     rows that are already PDFs are returned as-is.  On error, an error record
     is emitted (matching the pattern in ``pdf/split.py``).
     """
+    if isinstance(batch_df, list):
+        # If we get a list of files instead of a DataFrame, convert it to a DataFrame.
+        batch_df = pd.DataFrame({"path": batch_df})
+
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("convert_batch_to_pdf currently only supports pandas.DataFrame input.")
 
@@ -114,7 +120,7 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
             out_rows.append({"bytes": file_bytes, "path": file_path})
             continue
 
-        if ext == ".pdf":
+        if ext == ".pdf" and len(file_bytes) > 0:
             out_rows.append({"bytes": file_bytes, "path": file_path})
             continue
 
@@ -136,8 +142,7 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     return pd.DataFrame(out_rows)
 
 
-@dataclass(slots=True)
-class DocToPdfConversionActor:
+class DocToPdfConversionActor(AbstractOperator, CPUOperator):
     """Ray Data actor that converts DOCX/PPTX batches to PDF.
 
     Used with ``ray.data.Dataset.map_batches`` in the same style as
@@ -145,7 +150,16 @@ class DocToPdfConversionActor:
     """
 
     def __init__(self) -> None:
-        pass
+        super().__init__()
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return convert_batch_to_pdf(data)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
     def __call__(self, batch_df: Any) -> Any:
-        return convert_batch_to_pdf(batch_df)
+        return self.run(batch_df)

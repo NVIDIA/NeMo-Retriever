@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 from PIL import Image
 
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.params import CaptionParams
 
 _DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
@@ -48,7 +50,7 @@ def _get_cached_local_model(kwargs: dict) -> "Any":
     return _cached_local_model
 
 
-class CaptionActor:
+class CaptionActor(AbstractOperator, GPUOperator):
     """Ray Data actor that holds a local VLM captioner on a single GPU.
 
     When ``endpoint_url`` is provided, the actor delegates to a remote VLM
@@ -56,6 +58,7 @@ class CaptionActor:
     """
 
     def __init__(self, params: CaptionParams) -> None:
+        super().__init__(params=params)
         self._params = params
         self._kwargs = params.model_dump(mode="python")
         endpoint = (self._kwargs.get("endpoint_url") or "").strip()
@@ -64,8 +67,14 @@ class CaptionActor:
         else:
             self._model = _create_local_model(self._kwargs)
 
-    def __call__(self, batch_df: Any) -> Any:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **kwargs: Any) -> Any:
         return caption_images(batch_df, model=self._model, **self._kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
 
 def _build_prompt_with_context(base_prompt: str, context_text: str) -> str:

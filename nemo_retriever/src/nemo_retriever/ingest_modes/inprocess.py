@@ -29,10 +29,12 @@ from nemo_retriever.params import CaptionParams
 
 
 import pandas as pd
-from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
-from nemo_retriever.page_elements import detect_page_elements_v3
+from nemo_retriever.dedup.dedup import dedup_images
+from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox, nemotron_parse_page_elements, ocr_page_elements
+from nemo_retriever.page_elements import detect_page_elements_v3
+from nemo_retriever.params import DedupParams
 from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
@@ -1113,12 +1115,12 @@ class InProcessIngestor(Ingestor):
             else:
                 self._tasks.append((nemotron_parse_page_elements, {"model": NemotronParseV12(), **parse_flags}))
         else:
-            # NOTE: Page element detection is a common prerequisite for downstream
-            # structure stages (tables/charts/infographics). We enable it whenever
-            # any downstream extraction is requested.
-            if any(
-                kwargs.get(k) is True
-                for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            # Page-elements detection is needed for tables/charts/infographics,
+            # and for text only when the method requires OCR (not plain pdfium).
+            _method = kwargs.get("method", "pdfium")
+            _need_pe_for_text = kwargs.get("extract_text") is True and _method in ("pdfium_hybrid", "ocr")
+            if _need_pe_for_text or any(
+                kwargs.get(k) is True for k in ("extract_tables", "extract_charts", "extract_infographics")
             ):
                 print("Adding page elements task")
                 pe_invoke_url = kwargs.get("page_elements_invoke_url", kwargs.get("invoke_url", ""))
@@ -1333,6 +1335,13 @@ class InProcessIngestor(Ingestor):
         self._extract_audio_chunk_kwargs = chunk_resolved.model_dump(mode="python")
         self._extract_audio_asr_kwargs = asr_resolved.model_dump(mode="python")
         self._tasks.append((apply_asr_to_df, {"asr_params": self._extract_audio_asr_kwargs}))
+        return self
+
+    def dedup(self, params: "DedupParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
+        """Remove duplicate and overlapping images before captioning."""
+
+        resolved = _coerce_params(params, DedupParams, kwargs)
+        self._tasks.append((dedup_images, resolved.model_dump(mode="python")))
         return self
 
     def caption(self, params: "CaptionParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
