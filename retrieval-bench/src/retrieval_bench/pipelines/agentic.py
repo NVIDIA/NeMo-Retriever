@@ -230,10 +230,7 @@ class AgenticRetrievalPipeline(BasePipeline):
         llm_model: str,
         api_key: str = "os.environ/OPENAI_API_KEY",
         base_url: Optional[str] = "os.environ/OPENAI_BASE_URL",
-        api_version: Optional[str] = None,
         reasoning_effort: str = "high",
-        drop_params: bool = True,
-        allowed_openai_params: Optional[List[str]] = None,
         raw_log_pardir: str = "nemo_agentic_logs",
         instant_log: bool = False,
         strict_error_handling: bool = False,
@@ -274,13 +271,10 @@ class AgenticRetrievalPipeline(BasePipeline):
             model=str(llm_model),
             api_key=str(api_key),
             base_url=str(base_url) if base_url else None,
-            api_version=str(api_version) if api_version else None,
             reasoning_effort=str(reasoning_effort),
             raw_log_pardir=str(raw_log_pardir),
             instant_log=bool(instant_log),
             strict_error_handling=bool(strict_error_handling),
-            drop_params=bool(drop_params),
-            allowed_openai_params=list(allowed_openai_params) if allowed_openai_params else None,
         )
 
         self.llm_model = self._llm_config.model
@@ -346,7 +340,6 @@ class AgenticRetrievalPipeline(BasePipeline):
                 messages=probe_messages,
                 tools=None,
                 max_completion_tokens=8,
-                num_retries=0,
             )
         except Exception as e:
             raise RuntimeError(

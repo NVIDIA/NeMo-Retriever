@@ -31,7 +31,7 @@ class AgentConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """Configuration for the LLM (LiteLLM wrapper)."""
+    """Configuration for the LLM (OpenAI SDK wrapper)."""
 
     model_config = ConfigDict(extra="forbid")
     model: str
@@ -39,11 +39,8 @@ class LLMConfig(BaseModel):
     tool_choice: str = "auto"
     reasoning_effort: Optional[str] = None
     base_url: Optional[str] = None
-    api_version: Optional[str] = None
     num_retries: Optional[int] = 4
     max_completion_tokens: Optional[int] = None
     raw_log_pardir: Optional[str] = None
     instant_log: bool = False
     strict_error_handling: bool = False
-    drop_params: bool = False
-    allowed_openai_params: Optional[List[str]] = None
