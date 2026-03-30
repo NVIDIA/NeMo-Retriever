@@ -131,8 +131,11 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh, presetMa
               ) : pg.pageData.map(p => {
                 const cfg = typeof p.config === 'object' ? p.config : {};
                 const ovr = typeof p.overrides === 'object' ? p.overrides : {};
-                const fieldCount = Object.keys(cfg).length;
+                const tuningKeySet_ = new Set(TUNING_FIELDS.map(f=>f.key));
+                const tuningCount = Object.keys(cfg).filter(k=>tuningKeySet_.has(k)).length;
+                const extraCfgCount = Object.keys(cfg).filter(k=>!tuningKeySet_.has(k)).length;
                 const overrideCount = Object.keys(ovr).length;
+                const totalOverrides = extraCfgCount + overrideCount;
                 const isExpanded = expandedId === p.id;
                 return (
                   <React.Fragment key={p.id}>
@@ -144,9 +147,13 @@ function PresetsView({ managedPresets, yamlPresets, loading, onRefresh, presetMa
                         </span>
                       </td>
                       <td style={{color:'var(--nv-text-muted)',fontSize:'13px'}}>{p.description || "\u2014"}</td>
-                      <td style={{textAlign:'right'}}><span className="badge badge-na">{fieldCount} params</span></td>
+                      <td style={{textAlign:'right'}}>{tuningCount > 0 ? <span className="badge badge-na">{tuningCount} param{tuningCount!==1?'s':''}</span> : <span style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>{"\u2014"}</span>}</td>
                       <td style={{textAlign:'right'}}>
-                        {overrideCount > 0 ? <span className="badge" style={{background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.25)'}}>{overrideCount} override{overrideCount!==1?'s':''}</span> : <span style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>{"\u2014"}</span>}
+                        {totalOverrides > 0 ? (
+                          <span className="badge" style={{background:'rgba(118,185,0,0.1)',color:'var(--nv-green)',border:'1px solid rgba(118,185,0,0.25)'}}>
+                            {totalOverrides} override{totalOverrides!==1?'s':''}
+                          </span>
+                        ) : <span style={{color:'var(--nv-text-dim)',fontSize:'12px'}}>{"\u2014"}</span>}
                       </td>
                       <td>
                         <div style={{display:'flex',gap:'6px',flexWrap:'nowrap'}}>
