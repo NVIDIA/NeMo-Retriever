@@ -35,6 +35,7 @@ def strip_think_tags(text: str) -> str:
     stripped = re.sub(r"<think>.*", "", stripped, flags=re.DOTALL)
     return stripped.strip()
 
+
 _RAG_SYSTEM_PROMPT = (
     "You are a precise question-answering assistant. "
     "Answer the question using ONLY the information provided in the context below. "

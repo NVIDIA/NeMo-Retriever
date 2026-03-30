@@ -64,14 +64,11 @@ def main():
     from nemo_retriever import create_ingestor
 
     ingestor = create_ingestor(run_mode="batch")
-    ingestor = (
-        ingestor.files(documents)
-        .extract(
-            extract_text=True,
-            extract_tables=True,
-            extract_charts=True,
-            extract_infographics=True,
-        )
+    ingestor = ingestor.files(documents).extract(
+        extract_text=True,
+        extract_tables=True,
+        extract_charts=True,
+        extract_infographics=True,
     )
 
     print("Running extraction (no embed, no vdb_upload) ...")

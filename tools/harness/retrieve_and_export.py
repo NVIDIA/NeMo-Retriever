@@ -146,11 +146,13 @@ def main() -> int:
 
                 source = entity.get("source", {})
                 content_meta = entity.get("content_metadata", {})
-                metadata.append({
-                    "source_id": source.get("source_id", ""),
-                    "page_number": content_meta.get("page_number", ""),
-                    "distance": hit.get("distance"),
-                })
+                metadata.append(
+                    {
+                        "source_id": source.get("source_id", ""),
+                        "page_number": content_meta.get("page_number", ""),
+                        "distance": hit.get("distance"),
+                    }
+                )
 
             all_results[query] = {
                 "chunks": chunks,

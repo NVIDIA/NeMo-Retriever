@@ -221,9 +221,7 @@ class FileRetriever:
 
     def __init__(self, file_path: str):
         if not os.path.exists(file_path):
-            raise FileNotFoundError(
-                f"FileRetriever: retrieval results file not found: {file_path}"
-            )
+            raise FileNotFoundError(f"FileRetriever: retrieval results file not found: {file_path}")
 
         with open(file_path) as f:
             data = json.load(f)
@@ -232,7 +230,7 @@ class FileRetriever:
         if not raw_index:
             raise ValueError(
                 f"FileRetriever: no 'queries' key found in {file_path}. "
-                "Expected format: {\"queries\": {\"query text\": {\"chunks\": [...], \"metadata\": [...]}}}"
+                'Expected format: {"queries": {"query text": {"chunks": [...], "metadata": [...]}}}'
             )
 
         self._norm_index: dict[str, dict] = {}
@@ -264,8 +262,7 @@ class FileRetriever:
 
         coverage = (total - len(misses)) / total
         if misses:
-            print(f"  [FileRetriever] Coverage: {coverage:.1%} "
-                  f"({total - len(misses)}/{total} queries matched)")
+            print(f"  [FileRetriever] Coverage: {coverage:.1%} " f"({total - len(misses)}/{total} queries matched)")
             for q in misses[:10]:
                 print(f"    MISS: {q!r}")
             if len(misses) > 10:

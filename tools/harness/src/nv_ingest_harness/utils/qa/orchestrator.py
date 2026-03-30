@@ -117,10 +117,15 @@ class QAEvalPipeline:
                     from nv_ingest_harness.utils.qa.types import JudgeResult
 
                     query_result.judgements[name] = JudgeResult(
-                        score=0, reasoning="Skipped: thinking truncated", error="thinking_truncated",
+                        score=0,
+                        reasoning="Skipped: thinking truncated",
+                        error="thinking_truncated",
                     )
                     query_result.token_f1[name] = {
-                        "exact_match": False, "f1": 0.0, "precision": 0.0, "recall": 0.0,
+                        "exact_match": False,
+                        "f1": 0.0,
+                        "precision": 0.0,
+                        "recall": 0.0,
                     }
                     query_result.failure_mode[name] = "thinking_truncated"
                     continue
@@ -278,9 +283,7 @@ def _query_result_to_dict(
         result["failure_mode"] = qr.failure_mode
 
     if include_chunks:
-        result["retrieved_chunks"] = [
-            _truncate(c, chunk_char_limit) for c in qr.retrieval.chunks
-        ]
+        result["retrieved_chunks"] = [_truncate(c, chunk_char_limit) for c in qr.retrieval.chunks]
         result["retrieval_metadata"] = qr.retrieval.metadata
 
     result["generations"] = {

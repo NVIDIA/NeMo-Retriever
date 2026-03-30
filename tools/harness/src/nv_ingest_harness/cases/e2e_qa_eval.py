@@ -125,8 +125,9 @@ def main(config=None, log_path: str = "test_results") -> int:
 
     by_model = qa_results.get("by_model", {})
     for name, stats in by_model.items():
-        print(f"  {name}: mean_score={stats.get('mean_score', 0):.3f} "
-              f"latency={stats.get('mean_latency_s', 0):.2f}s")
+        print(
+            f"  {name}: mean_score={stats.get('mean_score', 0):.3f} " f"latency={stats.get('mean_latency_s', 0):.2f}s"
+        )
 
     return 0 if qa_rc == 0 else qa_rc
 

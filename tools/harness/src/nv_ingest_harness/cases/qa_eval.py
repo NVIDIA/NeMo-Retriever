@@ -43,9 +43,7 @@ def _build_retriever(config, collection_name: str, model_name: str):
     if qa_retriever == "file":
         file_path = qa_retriever_config.get("file_path")
         if not file_path:
-            raise ValueError(
-                "qa_retriever=file requires qa_retriever_config.file_path to be set"
-            )
+            raise ValueError("qa_retriever=file requires qa_retriever_config.file_path to be set")
         return FileRetriever(file_path=file_path)
 
     # Default: topk -- only import the heavy harness utils when actually needed.
@@ -170,9 +168,11 @@ def main(config=None, log_path: str = "test_results") -> int:
         if hasattr(retriever, "check_coverage"):
             coverage = retriever.check_coverage(qa_pairs)
             if coverage < 0.5:
-                print(f"WARNING: retrieval file covers only {coverage:.0%} of queries -- "
-                      "results will be unreliable. Check that the retrieval JSON was "
-                      "generated from the same query set.")
+                print(
+                    f"WARNING: retrieval file covers only {coverage:.0%} of queries -- "
+                    "results will be unreliable. Check that the retrieval JSON was "
+                    "generated from the same query set."
+                )
 
         llm_clients = _build_llm_clients(qa_llm_configs)
         judge = _build_judge(qa_judge_config)
@@ -225,6 +225,7 @@ def main(config=None, log_path: str = "test_results") -> int:
     except Exception as exc:
         print(f"ERROR: QA evaluation failed: {exc}")
         import traceback
+
         traceback.print_exc()
         return 1
 

@@ -26,10 +26,12 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 def main() -> int:
     parquet_dir = os.environ.get(
-        "PARQUET_DIR", os.path.join(_HERE, "data", "bo767_extracted"),
+        "PARQUET_DIR",
+        os.path.join(_HERE, "data", "bo767_extracted"),
     )
     output_file = os.environ.get(
-        "OUTPUT_FILE", os.path.join(_HERE, "data", "bo767_page_markdown.json"),
+        "OUTPUT_FILE",
+        os.path.join(_HERE, "data", "bo767_page_markdown.json"),
     )
 
     print("=" * 60)
