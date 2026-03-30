@@ -96,6 +96,23 @@ class TestConfig:
     ground_truth_dir: Optional[str] = None
     recall_dataset: Optional[str] = None
 
+    # QA evaluation configuration
+    # qa_dataset: dataset key ("bo767_infographic") or HF dataset id ("vidore/vidore_v3_finance_en")
+    qa_dataset: Optional[str] = None
+    # qa_top_k: number of chunks to retrieve per query
+    qa_top_k: int = 5
+    # qa_max_workers: thread pool size for concurrent API calls
+    qa_max_workers: int = 8
+    # qa_retriever: "topk" (queries an existing VDB collection) or "file" (reads JSON)
+    qa_retriever: str = "topk"
+    # qa_retriever_config: extra config for the retriever (e.g. {"file_path": "..."} for FileRetriever)
+    qa_retriever_config: Optional[dict] = None
+    # qa_llm_configs: list of LLM configs, each with {name, model, api_base, extra_params, ...}
+    # model uses litellm provider-prefix routing (nvidia_nim/..., openai/..., huggingface/...)
+    qa_llm_configs: Optional[List[dict]] = None
+    # qa_judge_config: judge LLM config {model, api_base, ...}
+    qa_judge_config: Optional[dict] = None
+
     def validate(self) -> List[str]:
         """Validate configuration and return list of errors"""
         errors = []
@@ -240,6 +257,12 @@ def load_config(config_file: str = "test_configs.yaml", case: Optional[str] = No
             # Merge recall section (recall section overrides active section for conflicts)
             config_dict.update(recall_section)
 
+    # Merge qa_eval section when running QA evaluation test cases
+    if case in ("qa_eval", "e2e_qa_eval"):
+        qa_eval_section = yaml_data.get("qa_eval", {})
+        if qa_eval_section:
+            config_dict.update(qa_eval_section)
+
     # Handle dataset shortcuts and apply dataset-specific extraction configs
     if "dataset" in cli_overrides:
         dataset_name = cli_overrides.pop("dataset")
@@ -346,6 +369,10 @@ def _load_env_overrides() -> dict:
         "RECALL_TOP_K": ("recall_top_k", parse_int),
         "GROUND_TRUTH_DIR": ("ground_truth_dir", str),
         "RECALL_DATASET": ("recall_dataset", str),
+        "QA_DATASET": ("qa_dataset", str),
+        "QA_TOP_K": ("qa_top_k", parse_int),
+        "QA_MAX_WORKERS": ("qa_max_workers", parse_int),
+        "QA_RETRIEVER": ("qa_retriever", str),
     }
 
     overrides = {}

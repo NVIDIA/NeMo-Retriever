@@ -20,6 +20,8 @@ CASES = [
     "e2e_with_llm_summary",
     "recall",
     "e2e_recall",
+    "qa_eval",
+    "e2e_qa_eval",
     "page_elements",
     "table_structure",
     "graphic_elements",
@@ -317,6 +319,26 @@ def run_datasets(
                     from nv_ingest_harness.utils.recall import get_recall_collection_name
 
                     # Use same logic as recall.py: test_name from config, or basename of dataset_dir
+                    test_name_for_collection = config.test_name or os.path.basename(config.dataset_dir.rstrip("/"))
+                    config.collection_name = get_recall_collection_name(test_name_for_collection)
+
+            # For qa_eval case, validate qa_dataset
+            if case in ("qa_eval", "e2e_qa_eval"):
+                qa_dataset = getattr(config, "qa_dataset", None)
+                if not qa_dataset:
+                    print(f"ERROR: Dataset '{dataset_name}' does not have qa_dataset configured", file=sys.stderr)
+                    print(f"  This dataset cannot be used with --case={case}", file=sys.stderr)
+                    print(
+                        "  Set qa_dataset in test_configs.yaml datasets section or qa_eval section",
+                        file=sys.stderr,
+                    )
+                    results.append({"dataset": dataset_name, "status": "config_error", "rc": 1, "artifact_dir": "N/A"})
+                    continue
+
+                # Set collection_name for standalone qa_eval (no preceding e2e run)
+                if case == "qa_eval" and not config.collection_name:
+                    from nv_ingest_harness.utils.recall import get_recall_collection_name
+
                     test_name_for_collection = config.test_name or os.path.basename(config.dataset_dir.rstrip("/"))
                     config.collection_name = get_recall_collection_name(test_name_for_collection)
 
