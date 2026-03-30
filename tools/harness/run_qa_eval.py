@@ -28,7 +28,8 @@ Optional env vars:
   GEN_API_BASE     Override endpoint for generator model
   GEN_MODELS       Multi-model sweep: comma-separated name:model pairs.
                    Overrides GEN_MODEL/GEN_MODEL_NAME when set.
-                   e.g. "nemotron:nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5,qwen3:nvidia_nim/qwen/qwen3-235b-a22b"
+                   e.g. "nemotron:nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5,
+                          qwen3:nvidia_nim/qwen/qwen3-235b-a22b"
   LITELLM_DEBUG    Set to 1 to enable full litellm request/response logging
 """
 
@@ -83,12 +84,12 @@ def _print_multi_tier_summary(eval_results: dict, total_queries: int) -> None:
     aic_rate = tier1.get("answer_in_context_rate", 0)
     aic_count = tier1.get("answer_in_context_count", 0)
     aic_total = tier1.get("total", total_queries)
-    print(f"\nTier 1 - Retrieval Quality:")
+    print("\nTier 1 - Retrieval Quality:")
     print(f"  Answer-in-Context rate:  {aic_rate:.1%} ({aic_count}/{aic_total})")
 
     tier2 = eval_results.get("tier2_programmatic", {})
     if tier2:
-        print(f"\nTier 2 - Programmatic Answer Quality:")
+        print("\nTier 2 - Programmatic Answer Quality:")
         for name, metrics in tier2.items():
             em = metrics.get("mean_exact_match", 0)
             f1 = metrics.get("mean_token_f1", 0)
@@ -96,7 +97,7 @@ def _print_multi_tier_summary(eval_results: dict, total_queries: int) -> None:
 
     by_model = eval_results.get("by_model", {})
     if by_model:
-        print(f"\nTier 3 - LLM Judge:")
+        print("\nTier 3 - LLM Judge:")
         for name, stats in by_model.items():
             ms = stats.get("mean_score", 0)
             ml = stats.get("mean_latency_s", 0)
@@ -109,7 +110,7 @@ def _print_multi_tier_summary(eval_results: dict, total_queries: int) -> None:
 
     fb = eval_results.get("failure_breakdown", {})
     if fb:
-        print(f"\nFailure Breakdown:")
+        print("\nFailure Breakdown:")
         for name, counts in fb.items():
             parts = "  ".join(f"{k}:{v}" for k, v in sorted(counts.items()))
             print(f"  {name:20s} {parts}")

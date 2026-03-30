@@ -200,7 +200,7 @@ def main(config=None, log_path: str = "test_results") -> int:
             print(f"  Scored:        {stats['scored_count']} / {len(qa_pairs)}")
             print(f"  Errors:        {stats['error_count']}")
             dist = stats.get("score_distribution", {})
-            print(f"  Distribution:  " + "  ".join(f"{k}:{v}" for k, v in sorted(dist.items())))
+            print("  Distribution:  " + "  ".join(f"{k}:{v}" for k, v in sorted(dist.items())))
 
         # Write results
         os.makedirs(log_path, exist_ok=True)

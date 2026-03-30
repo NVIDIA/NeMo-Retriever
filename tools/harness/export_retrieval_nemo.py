@@ -183,7 +183,7 @@ def main() -> int:
     print("=" * 60)
 
     if use_fullpage:
-        print(f"\nLoading page markdown index ...")
+        print("\nLoading page markdown index ...")
         page_index = _load_page_index(page_markdown_index_path)
         total_pages = sum(len(pages) for pages in page_index.values())
         print(f"  {len(page_index)} documents, {total_pages} pages")
