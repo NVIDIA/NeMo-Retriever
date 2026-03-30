@@ -73,4 +73,4 @@ and run only the embedder, reranker, and your vector database.
 - [Prerequisites](prerequisites.md)
 - [Release Notes](releasenotes-nv-ingest.md)
 - [NVIDIA NIM for Vision Language Models Support Matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html)
-- [NVIDIA Speech NIM Microservices](https://docs.nvidia.com/nim/speech/latest/index.html)
+- [NVIDIA Speech NIM Microservices](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html)
