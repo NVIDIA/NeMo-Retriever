@@ -1025,7 +1025,6 @@ def nemotron_parse_page_elements(
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
-                        max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
@@ -1089,7 +1088,6 @@ def nemotron_parse_page_elements(
                             api_key=api_key,
                             timeout_s=float(request_timeout_s),
                             max_batch_size=1,
-                            max_pool_workers=int(retry.remote_max_pool_workers),
                             max_retries=int(retry.remote_max_retries),
                             max_429_retries=int(retry.remote_max_429_retries),
                         )

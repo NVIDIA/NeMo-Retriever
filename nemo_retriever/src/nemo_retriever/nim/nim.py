@@ -217,7 +217,6 @@ def invoke_nemotron_parse_batches(
     api_key: Optional[str] = None,
     timeout_s: float = 120.0,
     max_batch_size: int = 8,
-    max_pool_workers: int = 16,
     max_retries: int = 10,
     max_429_retries: int = 5,
 ) -> List[Any]:
@@ -239,13 +238,13 @@ def invoke_nemotron_parse_batches(
         return []
 
     ranges = _chunk_ranges(n, int(max_batch_size))
-    flattened: List[Optional[Any]] = [None] * n
+    out: List[Any] = []
 
     tool_spec = [{"type": "function", "function": {"name": str(tool_name)}}]
     tool_choice = {"type": "function", "function": {"name": str(tool_name)}}
 
-    def _invoke_one_batch(start: int, end: int, endpoint_url: str) -> Tuple[int, int, List[Any]]:
-        per_image: List[Any] = []
+    for idx, (start, end) in enumerate(ranges):
+        endpoint_url = invoke_urls[idx % len(invoke_urls)]
         for b64 in image_b64_list[start:end]:
             mime = _mime_from_b64(b64)
             payload = {
@@ -263,32 +262,8 @@ def invoke_nemotron_parse_batches(
                 max_retries=int(max_retries),
                 max_429_retries=int(max_429_retries),
             )
-            per_image.append(_normalize_chat_completions_response(response_json))
-        return start, end, per_image
+            out.append(_normalize_chat_completions_response(response_json))
 
-    with ThreadPoolExecutor(max_workers=max(1, int(max_pool_workers))) as executor:
-        futures = {
-            executor.submit(
-                _invoke_one_batch,
-                start,
-                end,
-                invoke_urls[idx % len(invoke_urls)],
-            ): (start, end)
-            for idx, (start, end) in enumerate(ranges)
-        }
-        for future in as_completed(futures):
-            start, end = futures[future]
-            _s, _e, per_image = future.result()
-            if _s != start or _e != end:
-                raise RuntimeError("Internal batch ordering mismatch.")
-            for i, item in enumerate(per_image):
-                flattened[start + i] = item
-
-    out: List[Any] = []
-    for idx, item in enumerate(flattened):
-        if item is None:
-            raise RuntimeError(f"Missing response for item index {idx}")
-        out.append(item)
     return out
 
 
