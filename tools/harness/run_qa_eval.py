@@ -132,16 +132,12 @@ def main() -> int:
     output_file = os.environ.get("OUTPUT_FILE", "/tmp/qa_results.json")
     litellm_debug = os.environ.get("LITELLM_DEBUG", "0").strip() in ("1", "true", "yes")
 
-    judge_model = os.environ.get(
-        "JUDGE_MODEL", "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
-    )
+    judge_model = os.environ.get("JUDGE_MODEL", "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
     judge_api_base = os.environ.get("JUDGE_API_BASE")
 
     gen_models_str = os.environ.get("GEN_MODELS", "")
     gen_name = os.environ.get("GEN_MODEL_NAME", "generator")
-    gen_model = os.environ.get(
-        "GEN_MODEL", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
-    )
+    gen_model = os.environ.get("GEN_MODEL", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
     gen_api_base = os.environ.get("GEN_API_BASE")
 
     # Validate API key looks real before spending time loading everything
@@ -149,11 +145,11 @@ def main() -> int:
     if not api_key:
         print("WARNING: NVIDIA_API_KEY is not set. API calls will fail.", file=sys.stderr)
     elif api_key.startswith("nvapi-") and len(api_key) < 20:
-        print("WARNING: NVIDIA_API_KEY looks like a placeholder. Did you paste the real key?",
-              file=sys.stderr)
+        print("WARNING: NVIDIA_API_KEY looks like a placeholder. Did you paste the real key?", file=sys.stderr)
 
     if litellm_debug:
         import litellm
+
         litellm._turn_on_debug()
 
     from nv_ingest_harness.utils.qa.retrievers import FileRetriever
@@ -201,9 +197,12 @@ def main() -> int:
     retriever = FileRetriever(file_path=retrieval_file)
     coverage = retriever.check_coverage(qa_pairs)
     if coverage < 0.5:
-        print(f"WARNING: retrieval file covers only {coverage:.0%} of queries -- "
-              "results will be unreliable. Check that the retrieval JSON was "
-              "generated from the same query set.", file=sys.stderr)
+        print(
+            f"WARNING: retrieval file covers only {coverage:.0%} of queries -- "
+            "results will be unreliable. Check that the retrieval JSON was "
+            "generated from the same query set.",
+            file=sys.stderr,
+        )
 
     llm_clients = {}
     for gn, gm in gen_model_pairs:

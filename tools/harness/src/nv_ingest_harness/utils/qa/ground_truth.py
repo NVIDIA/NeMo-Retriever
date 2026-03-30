@@ -105,8 +105,7 @@ def load_vidore_v3_qa(dataset_name: str, cache_dir: Optional[str] = None) -> lis
         from datasets import load_dataset
     except ImportError as exc:
         raise ImportError(
-            "The 'datasets' library is required for ViDoRe v3 loading. "
-            "Install it: pip install datasets>=2.19.0"
+            "The 'datasets' library is required for ViDoRe v3 loading. " "Install it: pip install datasets>=2.19.0"
         ) from exc
 
     load_kwargs: dict = {"split": "queries"}
@@ -172,8 +171,7 @@ def load_generic_csv(csv_path: str) -> list[dict]:
         missing = required - set(reader.fieldnames or [])
         if missing:
             raise ValueError(
-                f"CSV {csv_path} missing required columns: {missing}. "
-                f"Available columns: {reader.fieldnames}"
+                f"CSV {csv_path} missing required columns: {missing}. " f"Available columns: {reader.fieldnames}"
             )
         for row in reader:
             query = row.get("query", "").strip()

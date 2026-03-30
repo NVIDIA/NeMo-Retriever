@@ -99,11 +99,13 @@ def _expand_hits_to_pages(
             miss_count += 1
             continue
         chunks.append(md)
-        metadata.append({
-            "source_id": source_id,
-            "page_number": page_number,
-            "distance": seen[(source_id, page_number)],
-        })
+        metadata.append(
+            {
+                "source_id": source_id,
+                "page_number": page_number,
+                "distance": seen[(source_id, page_number)],
+            }
+        )
 
     return chunks, metadata, miss_count
 
@@ -228,11 +230,13 @@ def main() -> int:
                     source = parse_json_field(hit.get("source", "{}"))
                     meta = parse_json_field(hit.get("metadata", "{}"))
 
-                    metadata.append({
-                        "source_id": source.get("source_id", ""),
-                        "page_number": meta.get("page_number", hit.get("page_number", "")),
-                        "distance": hit.get("_distance"),
-                    })
+                    metadata.append(
+                        {
+                            "source_id": source.get("source_id", ""),
+                            "page_number": meta.get("page_number", hit.get("page_number", "")),
+                            "distance": hit.get("_distance"),
+                        }
+                    )
 
             all_results[query] = {"chunks": chunks, "metadata": metadata}
 

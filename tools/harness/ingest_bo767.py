@@ -19,15 +19,18 @@ import time
 
 def main():
     parser = argparse.ArgumentParser(description="Ingest bo767 via nemo-retriever library")
-    parser.add_argument("--dataset-dir",
-                        default=os.environ.get("DATASET_DIR", ""),
-                        help="Path to bo767 PDF directory (or set DATASET_DIR env var)")
-    parser.add_argument("--lancedb-uri", default="lancedb",
-                        help="LanceDB URI (directory)")
-    parser.add_argument("--lancedb-table", default="nv-ingest",
-                        help="LanceDB table name (must match export_retrieval_nemo.py LANCEDB_TABLE)")
-    parser.add_argument("--smoke-test", action="store_true",
-                        help="Ingest only the first file as a quick check")
+    parser.add_argument(
+        "--dataset-dir",
+        default=os.environ.get("DATASET_DIR", ""),
+        help="Path to bo767 PDF directory (or set DATASET_DIR env var)",
+    )
+    parser.add_argument("--lancedb-uri", default="lancedb", help="LanceDB URI (directory)")
+    parser.add_argument(
+        "--lancedb-table",
+        default="nv-ingest",
+        help="LanceDB table name (must match export_retrieval_nemo.py LANCEDB_TABLE)",
+    )
+    parser.add_argument("--smoke-test", action="store_true", help="Ingest only the first file as a quick check")
     args = parser.parse_args()
 
     if not args.dataset_dir:
