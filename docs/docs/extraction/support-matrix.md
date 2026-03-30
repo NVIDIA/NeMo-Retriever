@@ -64,6 +64,12 @@ The following are the hardware requirements to run NeMo Retriever Library.
 | Reranker       | With Core Pipeline        | Yes           | Yes           | Yes           | Yes         | Yes         | No*           | No*           | No*    | No*                    |
 | Reranker       | Standalone (recall only)  | Yes           | Yes           | Yes           | Yes         | Yes         | Yes           | Yes           | Yes    | Yes                    |
 
+¹ Audio runs but requires runtime engine build — no pre-defined model profile.
+
+² Nemotron Parse fails to start on 32GB, pending engineering investigation.
+
+³ VLM fails to load on 32GB, 32GB is below the minimum threshold.
+
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
 and run only the embedder, reranker, and your vector database.
