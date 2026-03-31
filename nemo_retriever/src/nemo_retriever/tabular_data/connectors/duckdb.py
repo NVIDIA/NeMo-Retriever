@@ -201,4 +201,3 @@ class DuckDB(SQLDatabase):
     def close(self) -> None:
         """Close the DuckDB connection."""
         self.conn.close()
-
