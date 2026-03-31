@@ -696,7 +696,7 @@ def main(
 
         # This processing has nothing to do with processing or performance so we exclude
         # it from the runtimes. Just getting row counts for metrics ...
-        num_rows = ingest_results.groupby("source_id").count().count()
+        num_rows = result_ds.groupby("source_id").count().count()
 
         # ---------------------------------------------------------------------------
         # Recall calculation (optional — requires a query CSV)
