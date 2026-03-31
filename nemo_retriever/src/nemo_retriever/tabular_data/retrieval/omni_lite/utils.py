@@ -1,4 +1,25 @@
 from enum import StrEnum
+from itertools import groupby
+
+# ==================== CONSTANTS ====================
+
+# Hard ceiling on how many candidate snippets we want to reason over for a single question.
+# Larger numbers tend to confuse the LLM and increase latency.
+MAX_CALCULATION_CANDIDATES = 9
+
+# Per-attempt batch size when pulling semantic candidates. We keep this modest
+# to balance recall with response time and to leave room for deduping.
+ATTR_CANDIDATE_BATCH_SIZE = 6
+
+# Maximum number of batch pulls before we give up looking for fresh attributes;
+# empirically, three rounds either fill the quota or show the backend is stuck on duplicates.
+ATTR_CANDIDATE_MAX_ATTEMPTS = 3
+
+# Budget for entity-specific candidate searches. This limits how many candidates we fetch
+# per entity when ensuring entity coverage. Distributed evenly across entities (at least 1 per entity).
+# This prevents over-fetching when there are many entities while ensuring each gets coverage.
+ENTITY_CANDIDATE_BUDGET = 4
+
 
 
 class Labels(StrEnum):
@@ -11,8 +32,205 @@ class Labels(StrEnum):
     BT = "bt"
 
 
+def expand_info(ids_and_labels):
+    # define a function for key
+    def key_func(k):
+        return k["label"]
+
+    results = {}
+
+    (
+        queries_percentile_25,
+        queries_percentile_75,
+        cnt_str,
+    ) = get_queries_usage_percentiles("sql_node")
+
+    for label, ids in groupby(ids_and_labels, key_func):
+        label_id_pairs_for_current_label = list(ids)
+        query = f"""UNWIND $label_id_pairs as label_id
+                    MATCH (n:{label} {{id:label_id.id}})
+                    CALL apoc.case([
+                        n:term,
+                            'MATCH (n)-[:term_of]->(attr:attribute)
+                            WITH n, collect(properties(attr)) as attributes
+                            RETURN apoc.map.setKey(properties(n), "attributes", attributes) as item',
+                        n:attribute,
+                            'MATCH(term:term)-[:term_of]->(n)
+                             CALL {{
+                                WITH n
+                                MATCH (n)-[snippet:attr_of]->(item:column|error_node|sql|alias)
+                                WITH n, snippet, item,
+                                     CASE WHEN item:sql OR item:alias THEN TRUE ELSE FALSE END AS complex_snippet
+                                CALL apoc.case([
+                                        item:column, "match(item)<-[:schema]-(table:table) {get_queries_for_column("table", "item", cnt_str)} return  usage",
+                                        item:sql or item:alias , "{get_sql_or_alias_roots(cnt_str)}"
+                                        ],
+                                    "return 0 AS usage",
+                                    {{item:item, account_id:$account_id, usage_percentile_25: $usage_percentile_25,
+                                      usage_percentile_75: $usage_percentile_75, {queries_for_columns_params_keys} }})
+                                    YIELD value as usage
+                                WITH n, snippet, usage.usage as usage, complex_snippet
+                                RETURN collect(distinct {{sql_code: snippet.sql_snippet, snippet_id: snippet.sql_snippet_id, usage: usage}}) as sql,
+                                       reduce(res=FALSE, flag IN collect(complex_snippet) |res OR flag) as complex_attribute
+                                UNION
+                                WITH n
+                                OPTIONAL MATCH (n)-[:attr_of]->(dummy:column|error_node|sql|alias)
+                                WITH n, count(dummy) as snippet_count
+                                WHERE snippet_count = 0
+                                RETURN [] as sql, false as complex_attribute
+                             }}
+                             RETURN apoc.map.setPairs(properties(n),[["owner_id", term.owner_id],["term_name", term.name], ["sql", sql], ["complex_attribute", complex_attribute]]) as item',
+                        n:analysis,
+                            'MATCH(n)-[:analysis_of]->(sql:sql)
+                            WITH n, collect(distinct {{sql_code: sql.sql_full_query}}) as sql
+                            RETURN apoc.map.setKey(properties(n), "sql", sql) as item',
+                        n:metric,
+                            'OPTIONAL MATCH(n)-[metric_sql:metric_sql]->(attribute:attribute)
+                            WITH n, collect(distinct {{sql_code: metric_sql.sql}}) as sql
+                            RETURN apoc.map.setKey(properties(n), "sql", sql) as item',
+                        n:field,
+                            'MATCH(n)<-[:{"|".join(fields_relationships)}]-(parent) 
+                            RETURN apoc.map.setPairs(properties(n),[["table_name", parent.name],["table_type", parent.type], ["parent_id", parent.id]]) as item',
+                        n:column,
+                            'MATCH(n)<-[:schema]-(parent) 
+                            RETURN apoc.map.setPairs(properties(n),[["table_name", parent.name],["table_type", parent.type], ["parent_id", parent.id]]) as item'
+                        ],
+                        
+                        'with n RETURN n{{ .*}} as item ',
+                        {{n:n, account_id:$account_id, sql_type: $sql_type, usage_percentile_25: $usage_percentile_25,
+                        usage_percentile_75: $usage_percentile_75, {queries_for_columns_params_keys} }}
+                        )
+                    YIELD value as response
+                    WITH collect(response.item) as all_items
+                    RETURN apoc.map.groupBy(all_items,'id') as ids_to_props
+                    """
+        params = {
+            "account_id": account_id,
+            "label_id_pairs": label_id_pairs_for_current_label,
+            "sql_type": SQLType.QUERY,
+            "usage_percentile_25": queries_percentile_25,
+            "usage_percentile_75": queries_percentile_75,
+        }
+        params.update(queries_for_columns_params)
+        result = conn.query_read_only(
+            query=query,
+            parameters=params,
+        )
+        if len(result) > 0:
+            # Add additional info
+            for id, item in result[0]["ids_to_props"].items():
+                if item["type"] == Labels.BT:
+                    term_tables = get_term_tables(
+                        account_id, user_participants, item["id"], 0, 100
+                    )
+                    item["tables"] = term_tables
+                elif item["type"] == Labels.ATTR:
+                    attr_columns = get_attr_columns(
+                        account_id, user_participants, item["id"], 0, 100
+                    )
+                    item["columns"] = attr_columns
+
+            results = results | result[0]["ids_to_props"]
+
+    return results
+
+
+def get_semantic_candidates_information(
+    entity: str,
+    k: int = 5,
+    threshold: float = 0,
+    list_of_semantic: list = Labels.LIST_OF_SEMANTIC,
+    exclude_ids: list[str] | None = None,
+):
+    labels = list_of_semantic
+    results = []
+    if exclude_ids:
+        exclude_set = set(exclude_ids)
+        allowed_ids = [node_id for node_id in allowed_ids if node_id not in exclude_set]
+
+    # TODO: use Retriever class to search semantic vector index
+    # nodes_results = search_vector_index(
+    #     "nodes_vector_store",
+    #     allowed_ids,
+    #     entity,
+    #     k=k,
+    #     label_filter=labels,
+    # )
+    # results.extend([item["metadata"] for item in nodes_results])
+
+    ids_and_labels = [{"label": x["label"], "id": x["id"]} for x in results]
+    candidates_properties = expand_info(ids_and_labels)
+    for c in results:
+        update_candidate_properties(account_id, c, candidates_properties)
+    results = [
+        c
+        for c in results
+        if (c["label"] == Labels.ATTR and "sql" in c) or c["label"] != Labels.ATTR
+    ]
+    # score is similarity, higher is better
+    results.sort(key=lambda item: item.get("score", 0), reverse=True)
+    return results
+
+
+def _fetch_unique_attr_candidates(
+    query: str,
+    semantic_labels: list[str],
+    max_results: int,
+) -> list[dict]:
+    """
+    Repeatedly pull batches of semantic candidates until we have `max_results`
+    distinct items (by ID) while also de-duplicating attributes that share the
+    same (name, single snippet) pair. This avoids returning multiple copies of
+    the same metric/attribute while still keeping the search responsive by
+    capping the number of backend calls.
+
+    Args:
+        account_id: Account ID
+        user_participants: User participants list
+        query: Search query string
+        semantic_labels: List of semantic labels to search for (e.g., [Labels.ATTR, Labels.METRIC])
+        max_results: Maximum number of results to return
+
+    Returns:
+        List of unique candidate dictionaries
+    """
+    results: list[dict] = []
+    seen_attr_keys: set[tuple[str, str]] = set()
+    seen_ids: set[str] = set()
+    attempts = 0
+
+    while len(results) < max_results and attempts < ATTR_CANDIDATE_MAX_ATTEMPTS:
+        batch_size = max(ATTR_CANDIDATE_BATCH_SIZE, max_results - len(results))
+        chunk = get_semantic_candidates_information(
+            query,
+            k=batch_size,
+            list_of_semantic=semantic_labels,
+            exclude_ids=list(seen_ids) if seen_ids else None,
+        )
+        attempts += 1
+        if not chunk:
+            break
+
+        added_this_round = False
+        for candidate in chunk:
+            candidate_id = candidate.get("id")
+            if candidate_id in seen_ids:
+                continue
+
+            seen_ids.add(candidate_id)
+            results.append(candidate)
+            added_this_round = True
+
+            if len(results) >= max_results:
+                break
+
+        if not added_this_round:
+            break
+
+    return results[:max_results]
+
+
 def extract_candidates(
-    user_participants: list,
     entities: list[str],
     query_no_values: str,
 ) -> list[dict]:

@@ -18,9 +18,8 @@ Design Decisions:
 import logging
 from typing import Dict, Any
 
-from search.api.omni.agent.agents.calculation.utils import get_question_for_processing
-from search.api.omni.agent.agents.shared.types import AgentState
-from search.api.omni.agent.agents.base import BaseAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from search.api.omni.agent.agents.shared.helpers import (
     get_semantic_candidates_information,
     clean_results,
@@ -35,6 +34,29 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+def get_question_for_processing(state: Dict[str, Any]) -> str:
+    """
+    Get the appropriate question for SQL processing.
+
+    Uses normalized_question if available in path_state (for calculation_sql flow),
+    otherwise falls back to initial_question.
+
+    Args:
+        state: Agent state containing path_state and initial_question
+
+    Returns:
+        The question to use for processing (normalized or original)
+    """
+    path_state = state.get("path_state", {})
+    normalized_question = path_state.get("normalized_question")
+
+    if normalized_question:
+        return normalized_question
+
+    initial_question = state.get("initial_question", "")
+    return initial_question
+
 
 
 class CandidateRetrievalAgent(BaseAgent):
@@ -87,8 +109,6 @@ class CandidateRetrievalAgent(BaseAgent):
             Dictionary with:
             - path_state: Contains retrieved candidates and categorization
         """
-        account_id = state["account_id"]
-        user_participants = state.get("user_participants", [])
         path_state = state.get("path_state", {})
 
         question = get_question_for_processing(state)
@@ -104,8 +124,6 @@ class CandidateRetrievalAgent(BaseAgent):
             )
 
             candidates_with_entities = extract_candidates(
-                account_id,
-                user_participants,
                 entities,
                 query_no_values,
             )
