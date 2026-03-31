@@ -2,6 +2,8 @@
 
 **This document is the canonical QA evaluation guide** for the harness. The top-level [harness README](../../../../README.md) (`tools/harness/README.md`) only summarizes and links here so we avoid duplicating steps and env vars in two places.
 
+The evaluation framework lives in **`nemo_retriever.evaluation`** (install with `pip install nemo-retriever[eval]`). The harness `utils/qa/` package only retains `TopKRetriever` (which depends on harness-specific recall utilities). All other evaluation components -- types, scoring, generators, judges, orchestrator, operators -- are imported from `nemo_retriever.evaluation`.
+
 Measures LLM answer quality over a RAG pipeline: retrieve context from a VDB, generate answers with one or more LLMs, and score each answer against ground-truth references using multi-tier scoring and an LLM-as-judge.
 
 **Pluggable retrieval:** The eval harness does not care how you retrieved chunks -- only that you produce a JSON file that matches the **[retrieval JSON specification](#retrieval-json-format-interface-contract)** expected by `run_qa_eval.py` / `FileRetriever`. Vector search, hybrid, agentic pipelines, or any custom system can plug in as long as the file format and query strings align with your chosen ground-truth dataset.
@@ -12,112 +14,109 @@ Designed to be **plug-and-play** -- swap retrievers, generators, or judges indep
 
 ## Table of Contents
 
-- [Scripts (standalone)](#scripts-standalone)
-- [Pipeline file map and data flow](#pipeline-file-map-and-data-flow)
-- [Multi-Tier Scoring](#multi-tier-scoring)
+- [Pipeline File Map and Data Flow](#pipeline-file-map-and-data-flow)
 - [Reproducing the bo767 Run](#reproducing-the-bo767-run)
-  - [Bring your own retrieval (skip steps 1-4)](#bring-your-own-retrieval-skip-steps-1-4)
-- [Python environment](#python-environment)
 - [Quick Start (Harness CLI)](#quick-start-harness-cli)
 - [Retrieval JSON Format (Interface Contract)](#retrieval-json-format-interface-contract)
 - [Custom Datasets (CSV Loader)](#custom-datasets-csv-loader)
-- [Pipeline Overview](#pipeline-overview)
 - [Architecture](#architecture)
 - [Configuration](#configuration)
-- [Features](#features)
+- [Scoring System (Three-Tier Hierarchy)](#scoring-system-three-tier-hierarchy)
 - [Adding a New Component](#adding-a-new-component)
 - [Output Format](#output-format)
 - [Dataset Limitations](#dataset-limitations)
 - [Standalone Runner (Docker / CI)](#standalone-runner)
 
-## Multi-Tier Scoring
-
-A single LLM-as-judge score conflates retrieval quality, text extraction quality, and LLM comprehension into one number. Multi-tier scoring isolates each layer so you can pinpoint where the pipeline fails.
-
-| Tier | What it measures | Cost |
-|------|------------------|------|
-| **Tier 1 -- Retrieval** | Reference answer key terms present in retrieved chunks? (`answer_in_context`) | Zero |
-| **Tier 2 -- Programmatic** | Exact match and SQuAD-style token F1 vs reference | Zero |
-| **Tier 3 -- LLM Judge** | 1-5 score with key-term anchoring rubric | One judge call per query |
-
-### Tier 1 -- Retrieval Quality (zero LLM cost)
-
-`answer_in_context`: Are >= 50% of the reference answer's content words present in the retrieved chunks? This catches retrieval misses before any LLM is involved.
-
-### Tier 2 -- Programmatic Answer Quality (zero judge cost)
-
-- `exact_match`: Does the generated answer contain the reference string (after normalization)?
-- `token_f1`: SQuAD-style token-level precision/recall/F1 between generated and reference answers.
-
-These metrics are fast, deterministic, and free. They provide a stable baseline that doesn't fluctuate with judge model behavior.
-
-### Tier 3 -- LLM Judge
-
-The existing 1-5 judge score, now with a key-term anchoring rubric that decomposes the reference into required facts and checks each one in the candidate. Short correct answers are not penalized.
-
-### Per-Query Failure Classification
-
-Each query is classified into one of:
-- `correct`: judge score >= 4
-- `partial`: judge score 2-3
-- `retrieval_miss`: reference not in chunks AND score <= 2
-- `generation_miss`: reference in chunks but score <= 2
-- `thinking_truncated`: model hit token limit during reasoning
-- `no_context`: candidate says "no information" when reference exists
-
-### Multi-Model Sweep
-
-Set `GEN_MODELS` to compare multiple generators in a single run:
-
-```bash
-export GEN_MODELS="nemotron:nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5,qwen3:nvidia_nim/qwen/qwen3-235b-a22b"
-```
-
-All tiers are computed per-model. The summary shows side-by-side comparisons.
-
-## Scripts (standalone)
-
-All of these live under `tools/harness/` and are configured with environment variables unless noted.
-
-| Script | Purpose |
-|--------|---------|
-| `ingest_bo767.py` | Ingest PDFs into LanceDB (extract + embed + VDB upload) |
-| `extract_bo767_parquet.py` | Extract-only ingest to Parquet (tables, charts, infographics) |
-| `build_page_markdown_index.py` | Parquet to full-page markdown JSON index |
-| `export_retrieval_nemo.py` | LanceDB top-k per query to FileRetriever JSON; optional full-page mode |
-| `run_qa_eval.py` | Multi-tier QA eval from a retrieval JSON |
-| `retrieve_and_export.py` | Export via harness VDB stack (Milvus or LanceDB), not NeMo Retriever-only |
-
-### Pipeline file map and data flow
+## Pipeline File Map and Data Flow
 
 End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and **library code**:
 
 | Stage | Artifacts produced | Code / APIs involved |
 |-------|-------------------|----------------------|
-| **1. Vector index (retrieval)** | `lancedb/<uri>/<table>/` (embedded sub-page chunks) | `ingest_bo767.py` → `nemo_retriever` ingest (extract, embed, `vdb_upload` to LanceDB). **Table name must match** `export_retrieval_nemo.py` (`LANCEDB_TABLE`, default `nv-ingest`). |
-| **2. Rich extract (parallel path)** | `tools/harness/data/bo767_extracted/*.parquet` | `extract_bo767_parquet.py` → same extract flags, **no** embed/VDB; `save_intermediate_results` preserves table/chart/infographic columns for rendering. |
+| **1. Vector index (retrieval)** | `lancedb/<uri>/<table>/` (embedded sub-page chunks) | `python -m nemo_retriever.examples.batch_pipeline` (extract, embed, VDB upload to LanceDB). **Table name must match** `export_retrieval_nemo.py` (`LANCEDB_TABLE`, default `nv-ingest`). |
+| **2. Rich extract (parallel path)** | `data/bo767_extracted/*.parquet` | `python -m nemo_retriever.examples.batch_pipeline /path/to/bo767 --extract-only --save-intermediate data/bo767_extracted` — same extract flags, **no** embed/VDB; `save_intermediate_results` preserves table/chart/infographic columns for rendering. |
 | **3. Full-page markdown index** | `data/bo767_page_markdown.json` (`source_id` → page → markdown) | `build_page_markdown_index.py` → `nemo_retriever.io.markdown.to_markdown_by_page()`; numpy list columns are coerced so structured content is not dropped. |
 | **4. Retrieval export** | `data/test_retrieval/bo767_retrieval_fullpage.json` (or sub-page JSON) | `export_retrieval_nemo.py` → `nemo_retriever.retriever.Retriever` queries LanceDB; if `PAGE_MARKDOWN_INDEX` is set, hits are expanded/deduped by `(source_id, page)` and replaced with full-page markdown strings. |
 | **5. Ground truth** | `data/bo767_annotations.csv` (repo root) | Questions/answers for export and eval; must align with **query string normalization** in `FileRetriever` (see retrieval JSON rules). |
-| **6. Evaluation** | `qa_results_*.json` | `run_qa_eval.py` → `nv_ingest_harness.utils.qa`: `FileRetriever`, `QAEvalPipeline`, `LiteLLMClient`, `LLMJudge`, `scoring.py` (tier 1–2 + failure modes). |
+| **6. Evaluation** | `qa_results_*.json` | `run_qa_eval.py` → `nemo_retriever.evaluation`: `FileRetriever`, `QAEvalPipeline`, `LiteLLMClient`, `LLMJudge`, scoring functions (tier 1-2 + failure modes). |
 
-**Data flow (conceptual):** PDFs → (A) **chunked embeddings in LanceDB** for similarity search; (B) **Parquet** for full-page reconstruction. **Export** runs search on (A), then **replaces** hit chunks with pages from (B) via the index. **Eval** never talks to LanceDB—it only reads the retrieval JSON + ground-truth CSV.
+**Data flow (conceptual):** PDFs → (A) **chunked embeddings in LanceDB** for similarity search; (B) **Parquet** for full-page reconstruction. **Export** runs search on (A), then **replaces** hit chunks with pages from (B) via the index. **Eval** never talks to LanceDB -- it only reads the retrieval JSON + ground-truth CSV.
+
+```
+ NeMo Retriever (steps 1-3)                        Universal (step 4)
+ ──────────────────────────                         ──────────────────
+ Step 1                         Step 2     Step 3
+ Ingest + Extract               Index      Export        QA Eval
++-------------------------+  +----------+ +----------+  +-----------------+
+| batch_pipeline          |  | Parquet  | | LanceDB  |  | For each query: |
+|  --save-intermediate    |->| -> page  | | queries  |->|  generate(LLM)  |
+|  --lancedb-uri lancedb  |  | markdown | | + pages  |  |  judge(LLM)     |
+| (extract+embed+upload)  |  | index    | | -> JSON  |  |  score (3 tiers)|
++-------------------------+  +----------+ +----------+  +-----------------+
+  |             |                |              |               |
+lancedb/  *.parquet     page_markdown.json retrieval.json qa_results.json
+
+ Bring Your Own Retrieval    +---------+--------+
+ ─────────────────────────   | Any pipeline that |
+ Skip steps 1-3 entirely.   | outputs retrieval |
+ Produce a JSON matching     | JSON (see spec)  |
+ the interface contract. --> +---------+--------+
+```
+
+Steps 1-3 are one reference implementation (NeMo Retriever + LanceDB).
+Any retrieval system that produces a conforming JSON can replace them.
+Step 4 can be re-run with different LLM configs without repeating retrieval.
 
 **Harness CLI alternative:** `cases/qa_eval.py` + `test_configs.yaml` can drive the same eval with different defaults; align `qa_dataset` and `file_path` with the standalone flow when comparing results.
 
 ## Reproducing the bo767 Run
 
 Exact commands to reproduce the full-page markdown QA evaluation from scratch.
-All scripts below are run from `tools/harness/` unless noted.
 
-### Bring your own retrieval (skip steps 1-4)
+**Working directory:** Step 1 (`batch_pipeline.py`) runs from the **repo root**; Steps 2-4 run from `tools/harness/`.
 
-Steps 1-4 below are the **NeMo Retriever + LanceDB** reference implementation
+<details>
+<summary><strong>Quick reference (all commands)</strong></summary>
+
+```bash
+# ── repo root ──
+cd /path/to/nv-ingest
+
+# 1. Ingest + extract in one pass (~45-90 min)
+#    Produces LanceDB index AND Parquet files (needed by steps 2 and 3).
+python -m nemo_retriever.examples.batch_pipeline /path/to/bo767 \
+  --lancedb-uri lancedb \
+  --save-intermediate tools/harness/data/bo767_extracted
+
+# ── tools/harness ──
+cd tools/harness
+
+# 2. Build page markdown index (~5-10 min)
+python build_page_markdown_index.py
+
+# 3. Export retrieval results (~5-15 min)
+export PAGE_MARKDOWN_INDEX=data/bo767_page_markdown.json
+export OUTPUT_FILE=data/test_retrieval/bo767_retrieval_fullpage.json
+python export_retrieval_nemo.py
+
+# 4. Run QA evaluation (~1-2 hrs)
+export NVIDIA_API_KEY="nvapi-..."
+export RETRIEVAL_FILE=data/test_retrieval/bo767_retrieval_fullpage.json
+export OUTPUT_FILE=data/test_retrieval/qa_results_bo767_annotations.json
+export QA_MAX_WORKERS=8
+python run_qa_eval.py
+```
+
+</details>
+
+### Bring your own retrieval (skip steps 1-3)
+
+Steps 1-3 below are the **NeMo Retriever + LanceDB** reference implementation
 for ingestion, extraction, indexing, and retrieval. If your team already has a
 retrieval pipeline (agentic, hybrid, BM25, or any custom system), **skip
-steps 1-4 entirely** and produce a retrieval JSON file that conforms to the
+steps 1-3 entirely** and produce a retrieval JSON file that conforms to the
 [Retrieval JSON Format (Interface Contract)](#retrieval-json-format-interface-contract).
-Then proceed directly to [Step 5: Run QA evaluation](#step-5-run-qa-evaluation).
+Then proceed directly to [Step 4: Run QA evaluation](#step-4-run-qa-evaluation).
 
 The only requirement is that your JSON contains a top-level `queries` object
 mapping each ground-truth question string to `{ "chunks": ["...", ...] }`.
@@ -126,19 +125,19 @@ full schema, required fields, and a worked example.
 
 ### Python environment
 
-Steps 1-4 (ingest, extract, build index, export) require the **`nemo_retriever`** library with LanceDB, CUDA, and Ray support. Step 5 (QA eval) additionally requires **`litellm`**. These are **not** part of the minimal harness install (`uv pip install -e .`).
+Steps 1-3 (ingest, build index, export) require the **`nemo_retriever`** library with LanceDB, CUDA, and Ray support. Step 4 (QA eval) additionally requires **`litellm`**. These are **not** part of the minimal harness install (`uv pip install -e .`).
 
 **Recommended setup:** create an isolated Python 3.12 virtual environment and install both stacks:
 
 ```bash
 uv venv qa-retriever --python 3.12
 source qa-retriever/bin/activate
-uv pip install nemo_retriever litellm
+uv pip install "nemo_retriever[eval]"
 ```
 
-For the full harness install (includes Milvus-lite, nemotron models, etc.), see **Installation** in the [harness README](../../../../README.md) and [`tools/harness/pyproject.toml`](../../pyproject.toml).
+The `[eval]` extra installs `litellm` for LLM generation and judging. For the full harness install (includes Milvus-lite, nemotron models, etc.), see **Installation** in the [harness README](../../../../README.md) and [`tools/harness/pyproject.toml`](../../pyproject.toml).
 
-**Eval-only path:** if you already have a retrieval JSON and only need to run `run_qa_eval.py`, an environment with `litellm` and the harness package (`cd tools/harness && uv pip install -e .`) is sufficient.
+**Eval-only path:** if you already have a retrieval JSON and only need to run `run_qa_eval.py`, an environment with `nemo_retriever[eval]` and the harness package (`cd tools/harness && uv pip install -e .`) is sufficient.
 
 ### Prerequisites (data and keys)
 
@@ -150,33 +149,45 @@ ls /path/to/bo767/*.pdf | wc -l   # should be 767
 # Located at the repo root: <repo>/data/bo767_annotations.csv
 ```
 
-### Step 1: Ingest PDFs into LanceDB (NeMo Retriever)
+### Step 1: Ingest and extract PDFs (NeMo Retriever)
 
-Runs extraction, embedding, and VDB upload in a single pass.
+A single `batch_pipeline` invocation performs extraction, embedding, VDB
+upload, **and** saves the raw Parquet files needed by step 2. Add
+`--save-intermediate` to the same command -- no separate extraction run is
+required.
 **Estimated time: ~45-90 min** (767 PDFs, GPU-accelerated extraction + embedding).
+Run from the **repo root**:
 
 ```bash
-cd tools/harness
-# Use the same table name as export_retrieval_nemo.py (LANCEDB_TABLE, default nv-ingest).
-python ingest_bo767.py --dataset-dir /path/to/bo767 --lancedb-table nv-ingest
+# from repo root -- one command produces both LanceDB index and Parquet files
+python -m nemo_retriever.examples.batch_pipeline /path/to/bo767 \
+  --lancedb-uri lancedb \
+  --save-intermediate tools/harness/data/bo767_extracted
 ```
 
-Output: `lancedb/nv-ingest/` (~84k chunks).
+Output:
+- `lancedb/nv-ingest/` (~84k chunks) -- used by step 3 for retrieval queries.
+- `tools/harness/data/bo767_extracted/*.parquet` -- used by step 2 for page markdown.
 
-### Step 2: Extract to Parquet (NeMo Retriever)
+<details>
+<summary><strong>Extract-only alternative</strong> (skip embed + LanceDB)</summary>
 
-Runs extraction only (no embed/upload) and saves the full records including
-table, chart, and infographic columns as Parquet files. These are needed by
-step 3 to reconstruct full-page markdown.
-**Estimated time: ~30-60 min** (extraction only, no embedding).
+Use this if you already have your own retrieval stack (agentic, hybrid,
+BM25, etc.) and only need the raw Parquet records to build the page markdown
+index. Since embedding and LanceDB upload are skipped, this runs faster
+(~30-60 min vs ~45-90 min). You would then skip step 3 (export retrieval)
+and supply your own retrieval JSON for step 4.
 
 ```bash
-python extract_bo767_parquet.py --dataset-dir /path/to/bo767
+python -m nemo_retriever.examples.batch_pipeline /path/to/bo767 \
+  --extract-only --save-intermediate tools/harness/data/bo767_extracted
 ```
 
-Output: `data/bo767_extracted/*.parquet`
+</details>
 
-### Step 3: Build page markdown index (NeMo Retriever)
+### Step 2: Build page markdown index (NeMo Retriever)
+
+Steps 2-4 are run from `tools/harness/`.
 
 Groups Parquet records by (document, page number) and renders each page via
 `nemo_retriever.io.markdown.to_markdown_by_page()`. Outputs a JSON index
@@ -189,7 +200,7 @@ python build_page_markdown_index.py
 
 Output: `data/bo767_page_markdown.json` (~180 MB, ~6k pages across 767 docs).
 
-### Step 4: Export retrieval results (NeMo Retriever)
+### Step 3: Export retrieval results (NeMo Retriever)
 
 Queries LanceDB for each ground-truth question, then looks up the full-page
 markdown for each hit's page. Multiple sub-page hits from the same page are
@@ -214,7 +225,7 @@ python export_retrieval_nemo.py
 
 Output: `data/test_retrieval/bo767_retrieval_fullpage.json` (~50 MB, 1005 queries).
 
-### Step 5: Run QA evaluation
+### Step 4: Run QA evaluation
 
 **Estimated time: ~1-2 hours** (1005 queries, ~12s per query for generation + judge, 8 concurrent workers).
 
@@ -228,7 +239,7 @@ python run_qa_eval.py
 
 | Env Var | Default | Purpose |
 |---------|---------|---------|
-| `RETRIEVAL_FILE` | _(required)_ | Retrieval JSON from step 4 |
+| `RETRIEVAL_FILE` | _(required)_ | Retrieval JSON from step 3 |
 | `NVIDIA_API_KEY` | _(required)_ | API key for NVIDIA NIM endpoints |
 | `QA_DATASET` | `csv:data/bo767_annotations.csv` (repo root) | Ground-truth dataset |
 | `QA_TOP_K` | `5` | Chunks per query |
@@ -269,8 +280,8 @@ and `generation_miss` (model had the context but answered incorrectly).
 
 ### Sub-page chunk mode
 
-To skip full-page markdown and use raw sub-page chunks instead, omit steps 2-3
-and do not set `PAGE_MARKDOWN_INDEX` in step 4. This produces smaller context
+To skip full-page markdown and use raw sub-page chunks instead, omit step 2
+and do not set `PAGE_MARKDOWN_INDEX` in step 3. This produces smaller context
 windows and may result in lower scores for queries that span structured content
 (tables, charts, infographics).
 
@@ -384,72 +395,58 @@ All columns beyond `query` and `answer` are preserved as metadata in the output.
 
 Built-in datasets: `bo767_infographic`, `vidore/<hf_dataset_id>`, `csv:/path/to/file.csv`. The default dataset is `csv:data/bo767_annotations.csv` (1007 Q&A pairs across text, table, chart, and infographic modalities).
 
-## Pipeline Overview
-
-```
- NeMo Retriever (steps 1-4)                        Universal (step 5)
- ──────────────────────────                         ──────────────────
- Step 1       Steps 2-3          Step 4
- Ingest       Build Index        Export               QA Eval
-+-----------+ +-----------------+ +--------------+    +-----------------+
-| PDFs      | | extract_parquet | | Query LanceDB|    | For each query: |
-| extract + | | build_page_index| | + full-page  |--->|  generate(LLM)  |
-| embed +   | | (Parquet -> JSON| | markdown     |    |  judge(LLM)     |
-| VDB upload| |  page index)    | | -> JSON      |    |  score (3 tiers)|
-+-----------+ +-----------------+ +--------------+    +-----------------+
-     |               |                 |                      |
-  lancedb/    page_markdown.json  retrieval.json       qa_results.json
-                                       ^
-                                       |
- Bring Your Own Retrieval    +---------+--------+
- ─────────────────────────   | Any pipeline that |
- Skip steps 1-4 entirely.   | outputs retrieval |
- Produce a JSON matching     | JSON (see spec)  |
- the interface contract. --> +---------+--------+
-```
-
-Steps 1-4 are one reference implementation (NeMo Retriever + LanceDB).
-Any retrieval system that produces a conforming JSON can replace them.
-Step 5 can be re-run with different LLM configs without repeating retrieval.
-
 ## Architecture
 
 ```
-orchestrator.py (QAEvalPipeline)
+nemo_retriever.evaluation.orchestrator (QAEvalPipeline)
     |
     |-- retriever  : RetrieverStrategy protocol
-    |     |-- TopKRetriever   (live VDB query)
-    |     |-- FileRetriever   (cached JSON -- recommended)
+    |     |-- FileRetriever   (cached JSON -- recommended, in nemo_retriever.evaluation)
+    |     |-- TopKRetriever   (live VDB query -- in nv_ingest_harness.utils.qa)
     |
     |-- llm_clients : dict[str, LLMClient protocol]
     |     |-- LiteLLMClient   (NVIDIA NIM, OpenAI, vLLM, Ollama)
     |
     |-- judge : AnswerJudge protocol
           |-- LLMJudge        (1-5 rubric via LLM-as-judge)
+
+Standalone operators (DataFrame-in/out, usable without the pipeline):
+    |-- QAGenerationOperator  (wraps LiteLLMClient for batch generation)
+    |-- JudgingOperator       (wraps LLMJudge for batch judging)
+    |-- score_dataframe()     (programmatic scoring -- no LLM cost)
 ```
 
-All three interfaces are Python `Protocol` classes defined in `types.py`.
+All three interfaces are Python `Protocol` classes defined in `nemo_retriever.evaluation.types`.
 Any object that implements the right method signature works -- no inheritance
 required.
 
-### Files
+### Files (`nemo_retriever.evaluation`)
 
-| File | Purpose |
-|------|---------|
+The evaluation framework lives in `nemo_retriever/src/nemo_retriever/evaluation/`. The harness `utils/qa/` package only contains `TopKRetriever` (which depends on harness-specific recall utilities).
+
+| Module | Purpose |
+|--------|---------|
 | `types.py` | Protocol definitions (`RetrieverStrategy`, `LLMClient`, `AnswerJudge`) and dataclasses |
-| `retrievers.py` | `TopKRetriever` (live VDB) and `FileRetriever` (cached JSON with normalized matching) |
+| `operator.py` | `AbstractOperator` base class (DataFrame-in/out contract, `setup`/`process`/`teardown` lifecycle) |
+| `retrievers.py` | `FileRetriever` (cached JSON with normalized query matching) |
 | `generators.py` | `LiteLLMClient` -- unified LLM client via litellm (NIM, OpenAI, vLLM, HF) |
 | `judges.py` | `LLMJudge` -- 1-5 scoring with key-term anchoring rubric |
-| `scoring.py` | Programmatic scoring: `answer_in_context`, `token_f1`, `classify_failure` (zero LLM cost) |
-| `orchestrator.py` | `QAEvalPipeline` -- multi-tier orchestrator with failure classification |
+| `scoring.py` | Programmatic scoring: `answer_in_context`, `token_f1`, `classify_failure`, `score_dataframe` |
+| `orchestrator.py` | `QAEvalPipeline` -- multi-tier orchestrator with `evaluate()` (dict API) and `process()` (DataFrame API) |
+| `generation.py` | `QAGenerationOperator` -- standalone DataFrame-in/out answer generation operator |
+| `judging.py` | `JudgingOperator` -- standalone DataFrame-in/out LLM-as-judge operator |
 | `ground_truth.py` | Dataset loaders: `bo767_infographic`, `vidore/*`, and generic `csv:` loader |
+| `text_utils.py` | Shared text processing (`strip_think_tags`) |
+
+| Harness module | Purpose |
+|----------------|---------|
+| `nv_ingest_harness.utils.qa.TopKRetriever` | Live VDB retriever (Milvus/LanceDB, depends on harness recall utilities) |
 
 ### Entry Points
 
 | Entry Point | Use Case |
 |-------------|----------|
-| `ingest_bo767.py` | Ingest PDFs into LanceDB (extract + embed + VDB upload) |
-| `extract_bo767_parquet.py` | Extract-only ingest, save rich records as Parquet |
+| `python -m nemo_retriever.examples.batch_pipeline` | Ingest PDFs into LanceDB (extract + embed + VDB upload). Use `--extract-only --save-intermediate` for Parquet-only extraction. |
 | `build_page_markdown_index.py` | Build full-page markdown index from Parquet |
 | `export_retrieval_nemo.py` | Export retrieval from NeMo Retriever LanceDB (supports full-page markdown) |
 | `run_qa_eval.py` | Standalone QA eval runner -- reads env vars, no harness CLI needed |
@@ -501,40 +498,160 @@ For local vLLM/Ollama, use `openai/<model>` with `api_base: http://localhost:800
 | `NVIDIA_API_KEY` | Config expansion (`${NVIDIA_API_KEY}`) | API key for NIM models |
 | `NVIDIA_NIM_API_KEY` | litellm's `nvidia_nim` provider | Alias -- set to same value as above |
 
-## Features
+## Scoring System (Three-Tier Hierarchy)
 
-**Pluggable components** -- Retriever, generator, and judge are swapped via config
-without code changes. Implement the Protocol to add a custom component.
+Each (query, model) pair is scored by three independent tiers. Each tier tests a different layer of the RAG pipeline:
 
-**Multi-LLM sweeping** -- Configure multiple LLMs in `qa_llm_configs`; each gets
-its own score, latency, and distribution in a single run.
+| Tier | Name | What it measures | Method | Key question |
+|------|------|-----------------|--------|-------------|
+| **1** | Retrieval quality | Did the retriever return chunks containing the answer? | Programmatic | "Are the reference answer's content words present in the retrieved context?" |
+| **2** | Answer quality (token) | Does the generated answer overlap with the reference at the token level? | Programmatic | "How precisely did the model reproduce the expected facts?" |
+| **3** | Answer quality (semantic) | Is the generated answer factually correct given the reference? | LLM-as-judge | "Did the model get the right facts, allowing paraphrasing and numeric equivalence?" |
 
-**Normalized query matching** -- FileRetriever uses NFKC unicode normalization,
-case-folding, and whitespace collapsing so trivial formatting differences
-between the ground-truth CSV and retrieval JSON don't cause silent misses.
+### Tier 1: `answer_in_context` (retrieval signal)
 
-**Pre-flight coverage check** -- Before the pipeline starts, FileRetriever
-validates what percentage of ground-truth queries have retrieval results and
-logs any misses.
+Returns `True` if >= 50% of the reference answer's **content words** (stopwords removed, normalized) appear in the concatenated retrieved chunks. If `False`, the retriever failed to surface the answer -- any generation failure is a retrieval miss, not a model miss.
 
-**Concurrent execution** -- `ThreadPoolExecutor` with configurable worker count
-(default 8). All work is I/O-bound (API calls), so threads are appropriate.
+### Tier 2: `token_f1` (SQuAD-style token metrics)
 
-**Chunk text in results** -- Per-query output includes the actual retrieved chunk
-text (truncated to 500 chars by default) for debugging, not just counts.
+After normalizing both reference and candidate (lowercase, strip punctuation, numeric equivalence like `16.00%` -> `16%`):
 
-**Structured error reporting** -- Generation and judge errors are recorded per-query
-with error strings; aggregates report error counts separately from scores.
+| Field | Formula | Meaning |
+|-------|---------|---------|
+| `precision` | `common_tokens / candidate_tokens` | Fraction of the model's output tokens that are relevant |
+| `recall` | `common_tokens / reference_tokens` | Fraction of the reference's tokens the model captured |
+| `f1` | `2 * P * R / (P + R)` | Harmonic mean of precision and recall |
+| `exact_match` | `normalized_ref == normalized_candidate` | Strict string equality after normalization |
 
-**ViDoRe v3 support** -- Load any ViDoRe v3 dataset from HuggingFace by setting
-`qa_dataset: vidore/<dataset_id>`.
+### Tier 3: `judge_score` (LLM-as-judge, 1-5 scale)
+
+An LLM scores the candidate against the reference using a structured rubric:
+
+| Score | Label | Criteria |
+|-------|-------|----------|
+| **5** | Fully correct | All required facts present |
+| **4** | Nearly correct | Nearly all facts present; one minor trivial difference |
+| **3** | Mostly correct | Most facts present but at least one non-trivial fact missing or slightly wrong |
+| **2** | Partially correct | Some facts present but core answer incomplete or has a significant error |
+| **1** | Incorrect | None/almost none of the required facts; includes wrong answer, irrelevant response, or "context does not contain" when the answer exists |
+
+<details>
+<summary><strong>Current judge prompt</strong></summary>
+
+**System:**
+
+```
+You are an expert evaluator for factual question answering.
+
+You will receive a QUESTION, a REFERENCE answer, and a CANDIDATE answer.
+
+Step 1 -- Identify required facts:
+  Break the REFERENCE into its key terms: specific numbers, names, dates,
+  percentages, units, or short phrases that constitute the factual core.
+  Example: "16% of adults" -> required facts = ["16%", "adults"].
+
+Step 2 -- Check each required fact in the CANDIDATE:
+  - Allow numeric equivalence: "16.00%" = "16%", "1,000" = "1000".
+  - Allow paraphrasing: "Peers" matches "Peers of those adults".
+  - Allow additional correct detail: extra facts do NOT reduce the score.
+  - Short but correct answers are fine: "Peers" is valid for "Peers".
+
+Step 3 -- Score on a 1-5 scale based on the fraction of required facts present:
+  5 - All required facts present. Answer is fully correct.
+  4 - Nearly all required facts present. One minor fact may differ trivially.
+  3 - Most required facts present but at least one non-trivial fact is missing
+      or slightly wrong.
+  2 - Some required facts present but the core answer is incomplete or has a
+      significant factual error.
+  1 - None or almost none of the required facts present.
+
+Respond ONLY with valid JSON:
+{"score": <integer 1-5>, "reasoning": "<one sentence>"}
+```
+
+**User:**
+
+```
+Question: {query}
+
+Reference answer: {reference}
+
+Candidate answer: {candidate}
+```
+
+</details>
+
+### Output fields per query
+
+| Field | Source | Type | Description |
+|-------|--------|------|-------------|
+| `query` | Input | `str` | The ground-truth question |
+| `reference_answer` | Input | `str` | Ground-truth answer from the dataset |
+| `context` | Tier 1 | `list[str]` | Retrieved chunks passed to the generator |
+| `answer_in_context` | **Tier 1** | `bool` | >= 50% of reference content words found in chunks |
+| `answer` | Generation | `str` | The model's generated answer |
+| `gen_latency_s` | Generation | `float` | Generation API call latency (seconds) |
+| `gen_error` | Generation | `str?` | Error string if generation failed, else `null` |
+| `token_f1` | **Tier 2** | `float` | SQuAD-style F1 (0.0-1.0) |
+| `exact_match` | **Tier 2** | `bool` | Normalized exact string match |
+| `judge_score` | **Tier 3** | `int` | LLM judge score (1-5) |
+| `judge_reasoning` | **Tier 3** | `str` | One-sentence explanation from the judge |
+| `judge_error` | Tier 3 | `str?` | Error string if judging failed, else `null` |
+| `failure_mode` | Derived | `str` | Classification (see below) |
+
+### Failure mode classification
+
+Combines Tier 1 + Tier 3 to diagnose **where** a failure occurred:
+
+| `failure_mode` | Condition |
+|----------------|-----------|
+| `correct` | `judge_score >= 4` |
+| `partial` | `judge_score` 2-3, answer does not say "no context" |
+| `no_context` | `judge_score` 1-3, answer says "context does not contain..." |
+| `retrieval_miss` | `judge_score <= 1` AND `answer_in_context == False` |
+| `generation_miss` | `judge_score <= 1` AND `answer_in_context == True` (retriever had it, model missed) |
+| `thinking_truncated` | `gen_error == "thinking_truncated"` or `judge_score` is `null` |
+
+### Extending the scoring system
+
+All scoring is applied by `score_dataframe()` in `nemo_retriever.evaluation.scoring`. To add a custom metric:
+
+1. **Add a scoring function** in `scoring.py` (or your own module) that takes a reference answer, candidate answer, and/or context and returns a value:
+
+```python
+def my_custom_metric(reference: str, candidate: str) -> float:
+    """Example: character-level Levenshtein similarity."""
+    # your logic here
+    return similarity_score
+```
+
+2. **Wire it into `score_dataframe()`** by appending a new column in the iteration loop, or create your own post-processing function that takes the output DataFrame and adds columns:
+
+```python
+def add_custom_scores(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["my_metric"] = df.apply(
+        lambda row: my_custom_metric(row["reference_answer"], row["answer"]),
+        axis=1,
+    )
+    return df
+```
+
+3. **Apply after the pipeline** -- `QAEvalPipeline.process()` returns a DataFrame. Chain your scoring on top:
+
+```python
+result_df = pipeline.process(input_df)
+result_df = add_custom_scores(result_df)
+```
+
+The same pattern works for custom failure classifiers, alternative judge prompts (subclass `LLMJudge` and override the system prompt), or entirely new tiers. All components follow the Protocol pattern -- no inheritance or registration required.
 
 ## Adding a New Component
 
 ### Custom Retriever
 
 ```python
-from nv_ingest_harness.utils.qa.types import RetrieverStrategy, RetrievalResult
+from nemo_retriever.evaluation.types import RetrieverStrategy, RetrievalResult
 
 class MyRetriever:
     def retrieve(self, query: str, top_k: int) -> RetrievalResult:
@@ -545,7 +662,7 @@ class MyRetriever:
 ### Custom LLM Client
 
 ```python
-from nv_ingest_harness.utils.qa.types import LLMClient, GenerationResult
+from nemo_retriever.evaluation.types import LLMClient, GenerationResult
 
 class MyClient:
     def generate(self, query: str, chunks: list[str]) -> GenerationResult:
@@ -556,7 +673,7 @@ class MyClient:
 ### Custom Judge
 
 ```python
-from nv_ingest_harness.utils.qa.types import AnswerJudge, JudgeResult
+from nemo_retriever.evaluation.types import AnswerJudge, JudgeResult
 
 class MyJudge:
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:
@@ -637,7 +754,7 @@ across all modalities (text, table, chart, infographic) for 767 bo767 PDFs.
 
 2. **Retrieval =/= QA quality**: A retrieval method that returns the correct page may still get a low QA score if the extracted text is garbled or incomplete. Always check Tier 1 first -- if `answer_in_context_rate` is low, the problem is retrieval or extraction, not the generator.
 
-3. **Full-page markdown recommended**: Sub-page chunks may split structured content (tables, charts) across multiple records. The full-page markdown pipeline (steps 2-3 in reproduction) reconstructs complete pages, matching the research team's approach and improving generation accuracy.
+3. **Full-page markdown recommended**: Sub-page chunks may split structured content (tables, charts) across multiple records. The full-page markdown pipeline (step 2 in reproduction) reconstructs complete pages, matching the research team's approach and improving generation accuracy.
 
 4. **Reasoning model truncation**: Models with extended thinking (e.g., Nemotron Super) may spend their token budget reasoning and never produce a final answer. The pipeline detects this (`thinking_truncated`) and nullifies the score.
 
