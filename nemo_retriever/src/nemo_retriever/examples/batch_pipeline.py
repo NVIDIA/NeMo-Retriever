@@ -448,7 +448,7 @@ def main(
 
         file_patterns = _input_file_patterns(Path(input_path), input_type)
         extract_batch_tuning_kwargs = {
-            "pdf_split_batch_size": pdf_split_batch_size or None,
+            "pdf_split_batch_size": pdf_split_batch_size,
             "pdf_extract_batch_size": pdf_extract_batch_size or None,
             "pdf_extract_workers": pdf_extract_tasks or None,
             "pdf_extract_num_cpus": pdf_extract_cpus_per_task or None,

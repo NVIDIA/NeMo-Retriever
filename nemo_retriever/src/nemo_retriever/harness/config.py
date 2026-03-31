@@ -78,6 +78,7 @@ class HarnessConfig:
     extract_page_as_image: bool = True
     extract_infographics: bool = False
     write_detection_file: bool = False
+    use_heuristics: bool = False
 
     pdf_extract_workers: int = 8
     pdf_extract_num_cpus: float = 2.0
@@ -148,12 +149,15 @@ class HarnessConfig:
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
 
+        _ZERO_ALLOWED_WORKERS = {"page_elements_workers"}
         for name in TUNING_FIELDS:
             val = getattr(self, name)
             if name.startswith("gpu_") and float(val) < 0.0:
                 errors.append(f"{name} must be >= 0.0")
-            elif name.endswith("_workers") and int(val) < 0:
-                errors.append(f"{name} must be >= 0")
+            elif name.endswith("_workers"):
+                min_val = 0 if name in _ZERO_ALLOWED_WORKERS else 1
+                if int(val) < min_val:
+                    errors.append(f"{name} must be >= {min_val}")
 
         return errors
 
