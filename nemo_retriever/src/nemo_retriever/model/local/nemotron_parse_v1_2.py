@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, List, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -15,65 +15,119 @@ from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
 from ..model import BaseModel, RunMode
 
+# Type alias for all supported single-image input formats.
+ImageInput = Union[torch.Tensor, np.ndarray, Image.Image, str, Path]
+
+
+# ---------------------------------------------------------------------------
+# vLLM processor bug workaround
+# ---------------------------------------------------------------------------
+# vLLM's bundled NemotronParseProcessor.__call__ passes add_special_tokens=False
+# explicitly to the tokenizer AND also forwards it via **kwargs from the vLLM
+# pipeline, causing a duplicate keyword argument TypeError.  We monkey-patch
+# the processor class at import time to pop the conflicting kwarg.
+
+_VLLM_PROCESSOR_PATCHED = False
+
+
+def _patch_vllm_nemotron_parse_processor() -> None:
+    """Fix duplicate-kwarg bug in vLLM's NemotronParseProcessor.__call__."""
+    global _VLLM_PROCESSOR_PATCHED
+    if _VLLM_PROCESSOR_PATCHED:
+        return
+
+    try:
+        from vllm.model_executor.models.nemotron_parse import NemotronParseProcessor
+    except ImportError:
+        return
+
+    _orig_call = NemotronParseProcessor.__call__
+
+    def _fixed_call(self, text=None, images=None, return_tensors=None, **kwargs):
+        kwargs.pop("add_special_tokens", None)
+        return _orig_call(self, text=text, images=images, return_tensors=return_tensors, **kwargs)
+
+    NemotronParseProcessor.__call__ = _fixed_call
+    _VLLM_PROCESSOR_PATCHED = True
+
+
+# ---------------------------------------------------------------------------
+# Model wrapper
+# ---------------------------------------------------------------------------
 
 class NemotronParseV12(BaseModel):
     """
-    NVIDIA Nemotron Parse v1.2 local wrapper.
+    NVIDIA Nemotron Parse v1.2 local wrapper backed by vLLM.
 
-    This wrapper loads `nvidia/NVIDIA-Nemotron-Parse-v1.2` from Hugging Face and
-    runs image-to-structured-text generation for document parsing.
+    This wrapper loads ``nvidia/NVIDIA-Nemotron-Parse-v1.2`` via vLLM's offline
+    ``LLM`` engine for image-to-structured-text generation (document parsing).
+    vLLM handles KV-cache management, continuous batching, and GPU scheduling
+    internally, avoiding the transformers cache-API incompatibility that affects
+    the HuggingFace ``trust_remote_code`` model code with transformers >= 4.52.
     """
+
+    _DEFAULT_TASK_PROMPT: str = (
+        "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
+    )
 
     def __init__(
         self,
         model_path: str = "nvidia/NVIDIA-Nemotron-Parse-v1.2",
         device: Optional[str] = None,
         hf_cache_dir: Optional[str] = None,
-        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        task_prompt: str = _DEFAULT_TASK_PROMPT,
+        gpu_memory_utilization: float = 0.8,
+        max_num_seqs: int = 64,
+        max_tokens: int = 9000,
     ) -> None:
         super().__init__()
 
-        from transformers import AutoModel, AutoProcessor, AutoTokenizer, GenerationConfig
+        try:
+            from vllm import LLM, SamplingParams  # noqa: F401
+        except ImportError as e:
+            raise ImportError(
+                "Local Nemotron Parse requires vLLM. "
+                'Install with: pip install "nemo-retriever[vllm]"'
+            ) from e
+
+        _patch_vllm_nemotron_parse_processor()
 
         self._model_path = model_path
         self._task_prompt = task_prompt
-        self._device = torch.device(device or ("cuda:0" if torch.cuda.is_available() else "cpu"))
-        self._dtype = torch.bfloat16 if self._device.type == "cuda" else torch.float32
-        hf_cache_dir = configure_global_hf_cache_base(hf_cache_dir)
-        _revision = get_hf_revision(self._model_path)
+        self._max_tokens = max_tokens
 
-        self._model = AutoModel.from_pretrained(
-            self._model_path,
-            revision=_revision,
-            trust_remote_code=True,
-            torch_dtype=self._dtype,
-            cache_dir=hf_cache_dir,
-        ).to(self._device)
-        self._model.eval()
+        if device is not None:
+            import os
+            dev_id = device.split(":")[-1] if ":" in device else device
+            os.environ["CUDA_VISIBLE_DEVICES"] = dev_id
 
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            self._model_path,
-            revision=_revision,
-            cache_dir=hf_cache_dir,
+        configure_global_hf_cache_base(hf_cache_dir)
+        revision = get_hf_revision(model_path)
+
+        self._llm = LLM(
+            model=model_path,
+            revision=revision,
             trust_remote_code=True,
-        )
-        self._processor = AutoProcessor.from_pretrained(
-            self._model_path,
-            revision=_revision,
-            trust_remote_code=True,
-            cache_dir=hf_cache_dir,
-        )
-        self._generation_config = GenerationConfig.from_pretrained(
-            self._model_path,
-            revision=_revision,
-            trust_remote_code=True,
-            cache_dir=hf_cache_dir,
+            dtype="bfloat16",
+            max_num_seqs=max_num_seqs,
+            limit_mm_per_prompt={"image": 1},
+            gpu_memory_utilization=gpu_memory_utilization,
         )
 
-    def preprocess(self, input_data: Union[torch.Tensor, np.ndarray, Image.Image, str, Path]) -> Image.Image:
-        """
-        Normalize supported input formats to a RGB PIL image.
-        """
+        self._sampling_params = SamplingParams(
+            temperature=0,
+            top_k=1,
+            repetition_penalty=1.1,
+            max_tokens=self._max_tokens,
+            skip_special_tokens=False,
+        )
+
+    # ------------------------------------------------------------------
+    # Input normalisation
+    # ------------------------------------------------------------------
+
+    def preprocess(self, input_data: ImageInput) -> Image.Image:
+        """Normalize supported input formats to an RGB PIL image."""
         if isinstance(input_data, Image.Image):
             return input_data.convert("RGB")
 
@@ -116,57 +170,68 @@ class NemotronParseV12(BaseModel):
 
         raise TypeError(f"Unsupported input type for Nemotron Parse: {type(input_data)!r}")
 
+    # ------------------------------------------------------------------
+    # Inference
+    # ------------------------------------------------------------------
+
     def invoke(
         self,
-        input_data: Union[torch.Tensor, np.ndarray, Image.Image, str, Path],
+        input_data: ImageInput,
         task_prompt: Optional[str] = None,
     ) -> str:
+        """Run Nemotron Parse on a single image and return the decoded text."""
+        return self.invoke_batch([input_data], task_prompt=task_prompt)[0]
+
+    def invoke_batch(
+        self,
+        inputs: Sequence[ImageInput],
+        task_prompt: Optional[str] = None,
+    ) -> List[str]:
+        """Run Nemotron Parse on a batch of images via vLLM.
+
+        vLLM handles continuous batching and GPU scheduling internally,
+        making this significantly faster than sequential single-image calls
+        for large batches.
         """
-        Run local Nemotron Parse inference and return decoded model text.
-        """
-        image = self.preprocess(input_data)
         prompt = task_prompt or self._task_prompt
-
-        inputs = self._processor(
-            images=[image],
-            text=prompt,
-            return_tensors="pt",
-            add_special_tokens=False,
-        ).to(self._device)
-
-        with torch.inference_mode():
-            outputs = self._model.generate(**inputs, generation_config=self._generation_config)
-
-        decoded = self._processor.batch_decode(outputs, skip_special_tokens=True)
-        return decoded[0] if decoded else ""
+        prompts = [
+            {
+                "encoder_prompt": {
+                    "prompt": "",
+                    "multi_modal_data": {"image": self.preprocess(img)},
+                },
+                "decoder_prompt": prompt,
+            }
+            for img in inputs
+        ]
+        outputs = self._llm.generate(prompts, self._sampling_params)
+        return [out.outputs[0].text.strip() for out in outputs]
 
     def __call__(
         self,
-        input_data: Union[torch.Tensor, np.ndarray, Image.Image, str, Path],
+        input_data: ImageInput,
         task_prompt: Optional[str] = None,
     ) -> str:
         return self.invoke(input_data, task_prompt=task_prompt)
 
+    # ------------------------------------------------------------------
+    # BaseModel abstract interface
+    # ------------------------------------------------------------------
+
     @property
     def model_name(self) -> str:
-        """Human-readable model name."""
         return "NVIDIA-Nemotron-Parse-v1.2"
 
     @property
     def model_type(self) -> str:
-        """Model category/type."""
         return "document-parse"
 
     @property
     def model_runmode(self) -> RunMode:
-        """Execution mode: local, NIM, or build-endpoint."""
         return "local"
 
     @property
     def input(self) -> Any:
-        """
-        Input schema for the model.
-        """
         return {
             "type": "image",
             "format": "RGB",
@@ -176,9 +241,6 @@ class NemotronParseV12(BaseModel):
 
     @property
     def output(self) -> Any:
-        """
-        Output schema for the model.
-        """
         return {
             "type": "text",
             "format": "string",
@@ -187,5 +249,4 @@ class NemotronParseV12(BaseModel):
 
     @property
     def input_batch_size(self) -> int:
-        """Maximum or default input batch size."""
-        return 1
+        return 64
