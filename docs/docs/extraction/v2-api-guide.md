@@ -42,9 +42,10 @@ ingestor = Ingestor(
 results = ingestor.files(["large_document.pdf"]) \
     .extract(extract_text=True, extract_tables=True) \
     .pdf_split_config(pages_per_chunk=64) \  # ← Step 2: Configure splitting
-    .ingest()
+    .ingest(return_full_response=True)  # Full HTTP-style envelope per job (includes metadata)
 
-print(f"Processed {results['metadata']['total_pages']} pages")
+# ingest() returns a list with one entry per input file. Top-level metadata (e.g. total_pages) is only present when return_full_response=True.
+print(f"Processed {results[0]['metadata']['total_pages']} pages")
 ```
 
 ### CLI Usage
