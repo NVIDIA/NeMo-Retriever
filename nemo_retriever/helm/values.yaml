@@ -10,7 +10,7 @@ replicaCount: 1
 image:
   repository: nemo-retriever
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 ## @section Image Pull Secrets
 ## @param imagePullSecrets List of secret names for pulling container images
@@ -61,7 +61,10 @@ service:
 ingress:
   enabled: true
   className: ""
-  annotations: {}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
   hosts:
     - host: ""
       paths:

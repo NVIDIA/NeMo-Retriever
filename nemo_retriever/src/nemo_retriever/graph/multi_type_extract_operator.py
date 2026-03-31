@@ -167,8 +167,8 @@ class MultiTypeExtractOperator(AbstractOperator):
         extract_params = self.extract_params
         split_actor = PDFSplitActor(
             split_params=PdfSplitParams(
-                start_page=extract_params.start_page,
-                end_page=extract_params.end_page,
+                start_page=getattr(extract_params, "start_page", None),
+                end_page=getattr(extract_params, "end_page", None),
             )
         )
         batch_df = DocToPdfConversionActor().run(batch_df)

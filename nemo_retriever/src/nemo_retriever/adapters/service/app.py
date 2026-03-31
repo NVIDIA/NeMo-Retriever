@@ -16,13 +16,14 @@ import json
 import logging
 import os
 import tempfile
+import threading
 import time
 import uuid
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -344,13 +345,345 @@ def _parse_detections(raw: Any) -> list["BoundingBoxDetection"]:
         bbox = item.get("bbox_xyxy_norm")
         if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
             continue
-        out.append(BoundingBoxDetection(
-            bbox_xyxy_norm=[float(c) for c in bbox],
-            label_name=str(item.get("label_name", "")),
-            score=float(item["score"]) if item.get("score") is not None else None,
-            text=str(item.get("text", "")),
-        ))
+        out.append(
+            BoundingBoxDetection(
+                bbox_xyxy_norm=[float(c) for c in bbox],
+                label_name=str(item.get("label_name", "")),
+                score=float(item["score"]) if item.get("score") is not None else None,
+                text=str(item.get("text", "")),
+            )
+        )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Pipeline stage configuration models (/api/v1/ingest)
+# ---------------------------------------------------------------------------
+
+
+class ExtractStageConfig(BaseModel):
+    enabled: bool = Field(True, description="Enable extraction stage.")
+    extract_text: bool = Field(True, description="Extract text from pages.")
+    extract_images: bool = Field(True, description="Extract images.")
+    extract_tables: bool = Field(True, description="Detect and extract tables.")
+    extract_charts: bool = Field(True, description="Detect and extract charts.")
+    extract_infographics: bool = Field(True, description="Detect and extract infographics.")
+    method: str = Field("pdfium", description="Extraction method: pdfium, pdfium_hybrid, nemotron_parse.")
+    dpi: int = Field(200, description="Render DPI for detection models.")
+    use_table_structure: bool = Field(False, description="Use table structure detection model.")
+    table_output_format: Optional[str] = Field(None, description="pseudo_markdown or markdown.")
+    use_graphic_elements: bool = Field(False, description="Use graphic elements detection model.")
+    inference_batch_size: int = Field(8, description="Inference batch size for detection.")
+    page_elements_invoke_url: Optional[str] = Field(None, description="NIM endpoint for page element detection.")
+    ocr_invoke_url: Optional[str] = Field(None, description="NIM endpoint for OCR.")
+    table_structure_invoke_url: Optional[str] = Field(None, description="NIM endpoint for table structure.")
+    graphic_elements_invoke_url: Optional[str] = Field(None, description="NIM endpoint for graphic elements.")
+    api_key: Optional[str] = Field(None, description="API key for NIM endpoints.")
+
+
+class DedupStageConfig(BaseModel):
+    enabled: bool = Field(False, description="Enable image deduplication.")
+    content_hash: bool = Field(True, description="Deduplicate by content hash.")
+    bbox_iou: bool = Field(True, description="Deduplicate by bounding box IoU.")
+    iou_threshold: float = Field(0.45, ge=0.0, le=1.0, description="IoU threshold for dedup.")
+
+
+class CaptionStageConfig(BaseModel):
+    enabled: bool = Field(False, description="Enable VLM captioning.")
+    endpoint_url: Optional[str] = Field(None, description="Remote VLM endpoint URL.")
+    model_name: str = Field("nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16", description="Caption model name.")
+    api_key: Optional[str] = Field(None, description="API key for remote captioning endpoint.")
+    prompt: str = Field("Caption the content of this image:", description="Captioning prompt.")
+    temperature: float = Field(1.0, description="Sampling temperature.")
+    batch_size: int = Field(8, description="Captioning batch size.")
+
+
+class SplitStageConfig(BaseModel):
+    enabled: bool = Field(False, description="Enable text chunking.")
+    max_tokens: int = Field(1024, description="Maximum tokens per chunk.")
+    overlap_tokens: int = Field(0, description="Token overlap between chunks.")
+    tokenizer_model_id: Optional[str] = Field(None, description="HuggingFace tokenizer model ID.")
+
+
+class EmbedStageConfig(BaseModel):
+    enabled: bool = Field(True, description="Enable text/image embedding.")
+    model_name: Optional[str] = Field(None, description="Embedding model name (defaults to server config).")
+    embedding_endpoint: Optional[str] = Field(None, description="Remote NIM embedding endpoint.")
+    api_key: Optional[str] = Field(None, description="API key for remote embedding endpoint.")
+    embed_modality: str = Field("text", description="Modality: text, image, or text_image.")
+    embed_granularity: Literal["element", "page"] = Field(
+        "element", description="Granularity: element (per-element) or page (per-page)."
+    )
+    inference_batch_size: int = Field(32, description="Embedding inference batch size.")
+
+
+class VdbUploadStageConfig(BaseModel):
+    enabled: bool = Field(True, description="Enable LanceDB upload.")
+    lancedb_uri: Optional[str] = Field(None, description="LanceDB URI (defaults to server config).")
+    table_name: Optional[str] = Field(None, description="LanceDB table name (defaults to server config).")
+    overwrite: bool = Field(True, description="Overwrite existing table data.")
+    create_index: bool = Field(True, description="Create vector index after upload.")
+    hybrid: bool = Field(False, description="Create FTS index for hybrid search.")
+
+
+class IngestPipelineConfig(BaseModel):
+    extract: Optional[ExtractStageConfig] = Field(default_factory=ExtractStageConfig)
+    dedup: Optional[DedupStageConfig] = None
+    caption: Optional[CaptionStageConfig] = None
+    split: Optional[SplitStageConfig] = None
+    embed: Optional[EmbedStageConfig] = Field(default_factory=EmbedStageConfig)
+    vdb_upload: Optional[VdbUploadStageConfig] = Field(default_factory=VdbUploadStageConfig)
+
+
+class IngestJobResponse(BaseModel):
+    job_id: str = Field(..., description="Unique job identifier.")
+    status: str = Field(..., description="Job status.")
+    num_documents: int = Field(..., description="Number of documents submitted.")
+    created_at: int = Field(..., description="Unix timestamp of job creation.")
+
+
+class IngestJobProgress(BaseModel):
+    documents_total: int = 0
+    documents_completed: int = 0
+    current_stage: Optional[str] = None
+    elapsed_seconds: float = 0.0
+
+
+class IngestJobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    num_documents: int
+    created_at: int
+    progress: Optional[IngestJobProgress] = None
+    error: Optional[str] = None
+
+
+class IngestJobResultResponse(BaseModel):
+    job_id: str
+    status: str
+    num_documents: int
+    elapsed_seconds: float = 0.0
+    records: List[Dict[str, Any]] = Field(default_factory=list, description="Extracted records.")
+
+
+# ---------------------------------------------------------------------------
+# Pipeline graph builder
+# ---------------------------------------------------------------------------
+
+
+def _build_serve_graph(
+    config: IngestPipelineConfig,
+    *,
+    default_embed_model: str = "nvidia/llama-nemotron-embed-1b-v2",
+    default_embed_endpoint: Optional[str] = None,
+    default_embed_api_key: str = "",
+    default_lancedb_uri: str = "lancedb",
+    default_lancedb_table: str = "nv-ingest",
+):
+    """Build a pipeline Graph from API stage configuration.
+
+    Returns a linear graph:
+    MultiTypeExtract -> [Dedup] -> [Caption] -> [Reshape] -> [Split] -> [Embed] -> [VDBUpload]
+    """
+    from functools import partial
+
+    from nemo_retriever.graph import Graph, UDFOperator
+    from nemo_retriever.graph.content_transforms import (
+        _CONTENT_COLUMNS,
+        collapse_content_to_page_rows,
+        explode_content_to_rows,
+    )
+    from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
+    from nemo_retriever.params import (
+        CaptionParams,
+        EmbedParams,
+        ExtractParams,
+        TextChunkParams,
+    )
+
+    extract_cfg = config.extract or ExtractStageConfig()
+    extract_params = ExtractParams(
+        extract_text=extract_cfg.extract_text,
+        extract_images=extract_cfg.extract_images,
+        extract_tables=extract_cfg.extract_tables,
+        extract_charts=extract_cfg.extract_charts,
+        extract_infographics=extract_cfg.extract_infographics,
+        method=extract_cfg.method,
+        dpi=extract_cfg.dpi,
+        use_table_structure=extract_cfg.use_table_structure,
+        table_output_format=extract_cfg.table_output_format,
+        use_graphic_elements=extract_cfg.use_graphic_elements,
+        inference_batch_size=extract_cfg.inference_batch_size,
+        page_elements_invoke_url=extract_cfg.page_elements_invoke_url,
+        ocr_invoke_url=extract_cfg.ocr_invoke_url,
+        table_structure_invoke_url=extract_cfg.table_structure_invoke_url,
+        graphic_elements_invoke_url=extract_cfg.graphic_elements_invoke_url,
+        api_key=extract_cfg.api_key,
+    )
+
+    graph = Graph() >> MultiTypeExtractOperator(
+        extraction_mode="auto",
+        extract_params=extract_params,
+    )
+
+    dedup_cfg = config.dedup
+    if dedup_cfg is not None and dedup_cfg.enabled:
+        from nemo_retriever.dedup.dedup import dedup_images
+
+        graph = graph >> UDFOperator(
+            partial(
+                dedup_images,
+                content_hash=dedup_cfg.content_hash,
+                bbox_iou=dedup_cfg.bbox_iou,
+                iou_threshold=dedup_cfg.iou_threshold,
+            ),
+            name="Dedup",
+        )
+
+    caption_params = None
+    caption_cfg = config.caption
+    if caption_cfg is not None and caption_cfg.enabled:
+        caption_params = CaptionParams(
+            endpoint_url=caption_cfg.endpoint_url,
+            model_name=caption_cfg.model_name,
+            api_key=caption_cfg.api_key,
+            prompt=caption_cfg.prompt,
+            temperature=caption_cfg.temperature,
+            batch_size=caption_cfg.batch_size,
+        )
+        from nemo_retriever.caption.caption import CaptionActor
+
+        graph = graph >> CaptionActor(caption_params)
+
+    embed_params = None
+    embed_cfg = config.embed
+    if embed_cfg is not None and embed_cfg.enabled:
+        embed_params = EmbedParams(
+            model_name=embed_cfg.model_name or default_embed_model,
+            embedding_endpoint=embed_cfg.embedding_endpoint or default_embed_endpoint,
+            api_key=embed_cfg.api_key or default_embed_api_key,
+            embed_modality=embed_cfg.embed_modality,
+            embed_granularity=embed_cfg.embed_granularity,
+            inference_batch_size=embed_cfg.inference_batch_size,
+        )
+
+        content_columns = (_CONTENT_COLUMNS + ("images",)) if caption_params is not None else _CONTENT_COLUMNS
+        if embed_params.embed_granularity == "page":
+            graph = graph >> UDFOperator(
+                partial(
+                    collapse_content_to_page_rows,
+                    modality=embed_params.embed_modality,
+                    content_columns=content_columns,
+                ),
+                name="CollapseContentToPageRows",
+            )
+        else:
+            graph = graph >> UDFOperator(
+                partial(
+                    explode_content_to_rows,
+                    modality=embed_params.embed_modality,
+                    text_elements_modality=(embed_params.text_elements_modality or embed_params.embed_modality),
+                    structured_elements_modality=(
+                        embed_params.structured_elements_modality or embed_params.embed_modality
+                    ),
+                    content_columns=content_columns,
+                ),
+                name="ExplodeContentToRows",
+            )
+
+    split_cfg = config.split
+    if split_cfg is not None and split_cfg.enabled:
+        split_params = TextChunkParams(
+            max_tokens=split_cfg.max_tokens,
+            overlap_tokens=split_cfg.overlap_tokens,
+            tokenizer_model_id=split_cfg.tokenizer_model_id,
+        )
+        from nemo_retriever.txt.ray_data import TextChunkActor
+
+        graph = graph >> TextChunkActor(split_params)
+
+    if embed_params is not None:
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
+
+        graph = graph >> _BatchEmbedActor(params=embed_params)
+
+    vdb_cfg = config.vdb_upload
+    if vdb_cfg is not None and vdb_cfg.enabled:
+        from nemo_retriever.ingest_modes.inprocess import upload_embeddings_to_lancedb_inprocess
+
+        graph = graph >> UDFOperator(
+            partial(
+                upload_embeddings_to_lancedb_inprocess,
+                lancedb_uri=vdb_cfg.lancedb_uri or default_lancedb_uri,
+                table_name=vdb_cfg.table_name or default_lancedb_table,
+                overwrite=vdb_cfg.overwrite,
+                create_index=vdb_cfg.create_index,
+                hybrid=vdb_cfg.hybrid,
+            ),
+            name="VDBUpload",
+        )
+
+    return graph
+
+
+def _load_files_to_df(paths: list[str]):
+    """Read files as raw bytes into a DataFrame with ``bytes`` and ``path`` columns."""
+    import pandas as pd
+
+    rows = []
+    for p in paths:
+        fp = Path(p)
+        if fp.is_file():
+            rows.append({"bytes": fp.read_bytes(), "path": str(fp.resolve())})
+    if not rows:
+        return pd.DataFrame(columns=["bytes", "path"])
+    return pd.DataFrame(rows)
+
+
+_BINARY_COLUMNS = frozenset(
+    {
+        "bytes",
+        "page_image",
+        "_image_b64",
+        "text_embeddings_1b_v2",
+        "text_embeddings_1b_v2_dim",
+        "text_embeddings_1b_v2_has_embedding",
+    }
+)
+
+
+def _serialize_df_records(df) -> list[dict[str, Any]]:
+    """Convert a DataFrame to JSON-safe records, omitting large binary columns."""
+    import numpy as np
+
+    records = df.to_dict(orient="records")
+    safe: list[dict[str, Any]] = []
+    for record in records:
+        cleaned: dict[str, Any] = {}
+        for k, v in record.items():
+            if k in _BINARY_COLUMNS:
+                continue
+            if isinstance(v, (np.integer,)):
+                cleaned[k] = int(v)
+            elif isinstance(v, (np.floating,)):
+                cleaned[k] = float(v)
+            elif isinstance(v, np.ndarray):
+                continue
+            elif isinstance(v, bytes):
+                continue
+            else:
+                try:
+                    json.dumps(v)
+                    cleaned[k] = v
+                except (TypeError, ValueError):
+                    cleaned[k] = str(v)
+        safe.append(cleaned)
+    return safe
+
+
+def _ndjson_line(obj: dict) -> bytes:
+    """Encode a dict as a single NDJSON line (UTF-8 bytes with trailing newline)."""
+    return (json.dumps(obj, ensure_ascii=False, default=str) + "\n").encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +814,79 @@ if serve is not None:
             self._pdf_dir = Path(tempfile.mkdtemp(prefix="retriever_pdf_"))
             self._pdf_store: dict[str, PdfObject] = {}
 
+            self._ingest_dir = Path(tempfile.mkdtemp(prefix="retriever_ingest_"))
+            self._jobs: dict[str, dict[str, Any]] = {}
+            self._job_lock = threading.Lock()
+
+        def _create_job(self, num_documents: int, config: dict) -> str:
+            job_id = f"job-{uuid.uuid4().hex[:16]}"
+            with self._job_lock:
+                self._jobs[job_id] = {
+                    "job_id": job_id,
+                    "status": "queued",
+                    "num_documents": num_documents,
+                    "created_at": time.time(),
+                    "started_at": None,
+                    "completed_at": None,
+                    "error": None,
+                    "results": None,
+                    "temp_dir": None,
+                    "config": config,
+                    "current_stage": None,
+                    "documents_completed": 0,
+                }
+            return job_id
+
+        def _run_ingest_job(self, job_id: str, file_paths: list[str], config: IngestPipelineConfig) -> None:
+            """Background worker: build the pipeline graph, execute it, store results."""
+            with self._job_lock:
+                job = self._jobs.get(job_id)
+                if job is None:
+                    return
+                job["status"] = "running"
+                job["started_at"] = time.time()
+
+            try:
+                graph = _build_serve_graph(
+                    config,
+                    default_embed_model=self._embedding_model,
+                    default_embed_endpoint=self._embedding_endpoint,
+                    default_embed_api_key=self._embedding_api_key,
+                    default_lancedb_uri=self._lancedb_uri,
+                    default_lancedb_table=self._lancedb_table,
+                )
+
+                df = _load_files_to_df(file_paths)
+                if df.empty:
+                    raise ValueError("No valid files to process.")
+
+                results = graph.execute(df)
+                result_df = results[0] if results else df
+
+                import pandas as pd
+
+                if isinstance(result_df, pd.DataFrame):
+                    records = _serialize_df_records(result_df)
+                elif isinstance(result_df, list):
+                    records = result_df
+                else:
+                    records = []
+
+                with self._job_lock:
+                    job = self._jobs[job_id]
+                    job["status"] = "completed"
+                    job["completed_at"] = time.time()
+                    job["results"] = records
+                    job["documents_completed"] = job["num_documents"]
+
+            except Exception as exc:
+                logger.exception("Ingest job %s failed", job_id)
+                with self._job_lock:
+                    job = self._jobs[job_id]
+                    job["status"] = "failed"
+                    job["completed_at"] = time.time()
+                    job["error"] = str(exc)
+
         def _get_retriever(self):
             if self._retriever is None:
                 from nemo_retriever.retriever import Retriever
@@ -543,15 +949,17 @@ if serve is not None:
                                 continue
 
                             row = r if isinstance(r, dict) else r.to_dict()
-                            pages.append(IngestPageResult(
-                                page_number=int(row.get("page_number", 0)),
-                                filename=Path(doc_path).name,
-                                text=str(row.get("text", "")),
-                                elapsed_seconds=round(page_elapsed, 4),
-                                tables=_parse_detections(row.get("table")),
-                                charts=_parse_detections(row.get("chart")),
-                                infographics=_parse_detections(row.get("infographic")),
-                            ))
+                            pages.append(
+                                IngestPageResult(
+                                    page_number=int(row.get("page_number", 0)),
+                                    filename=Path(doc_path).name,
+                                    text=str(row.get("text", "")),
+                                    elapsed_seconds=round(page_elapsed, 4),
+                                    tables=_parse_detections(row.get("table")),
+                                    charts=_parse_detections(row.get("chart")),
+                                    infographics=_parse_detections(row.get("infographic")),
+                                )
+                            )
                 except Exception as exc:
                     logger.exception("Ingestion failed")
                     raise HTTPException(500, detail=f"Ingestion failed: {exc}") from exc
@@ -673,7 +1081,7 @@ if serve is not None:
             if after:
                 skip = next((i for i, f in enumerate(files) if f.id == after), -1)
                 if skip >= 0:
-                    files = files[skip + 1:]
+                    files = files[skip + 1 :]
 
             has_more = len(files) > limit
             files = files[:limit]
@@ -717,7 +1125,7 @@ if serve is not None:
             return StreamingResponse(
                 BytesIO(content),
                 media_type="application/octet-stream",
-                headers={"Content-Disposition": f"attachment; filename=\"{obj.filename}\""},
+                headers={"Content-Disposition": f'attachment; filename="{obj.filename}"'},
             )
 
         # ---------------------------------------------------------------
@@ -932,7 +1340,7 @@ if serve is not None:
             if after:
                 skip = next((i for i, p in enumerate(pdfs) if p.id == after), -1)
                 if skip >= 0:
-                    pdfs = pdfs[skip + 1:]
+                    pdfs = pdfs[skip + 1 :]
 
             has_more = len(pdfs) > limit
             pdfs = pdfs[:limit]
@@ -976,7 +1384,7 @@ if serve is not None:
             return StreamingResponse(
                 BytesIO(content),
                 media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename=\"{obj.filename}\""},
+                headers={"Content-Disposition": f'attachment; filename="{obj.filename}"'},
             )
 
         # ---------------------------------------------------------------
@@ -1046,14 +1454,16 @@ if serve is not None:
                         continue
 
                     row = r if isinstance(r, dict) else r.to_dict()
-                    pages.append(PdfPageExtraction(
-                        page=int(row.get("page_number", row_idx + 1)),
-                        text=str(row.get("text", "")),
-                        tables=_parse_detections(row.get("table")),
-                        charts=_parse_detections(row.get("chart")),
-                        infographics=_parse_detections(row.get("infographic")),
-                        elapsed_seconds=round(page_elapsed, 4),
-                    ))
+                    pages.append(
+                        PdfPageExtraction(
+                            page=int(row.get("page_number", row_idx + 1)),
+                            text=str(row.get("text", "")),
+                            tables=_parse_detections(row.get("table")),
+                            charts=_parse_detections(row.get("chart")),
+                            infographics=_parse_detections(row.get("infographic")),
+                            elapsed_seconds=round(page_elapsed, 4),
+                        )
+                    )
             except Exception as exc:
                 logger.exception("PDF extraction failed")
                 raise HTTPException(500, detail=f"PDF extraction failed: {exc}") from exc
@@ -1154,8 +1564,7 @@ if serve is not None:
             if context_snippets:
                 stub_text = (
                     f"[LLM backend not configured. Retrieved {len(context_snippets)} "
-                    f"chunk(s) for context.]\n\n"
-                    + "\n---\n".join(context_snippets)
+                    f"chunk(s) for context.]\n\n" + "\n---\n".join(context_snippets)
                 )
             else:
                 stub_text = "[LLM backend not configured. No context retrieved.]"
@@ -1166,6 +1575,7 @@ if serve is not None:
             completion_tokens = len(stub_text.split())
 
             if request.stream:
+
                 async def _sse_stream():
                     # First chunk: role
                     chunk = ChatCompletionChunk(
@@ -1248,3 +1658,377 @@ if serve is not None:
                 safe_hits.append(cleaned)
 
             return RetrieveResponse(query=request.query, results=safe_hits)
+
+        # ---------------------------------------------------------------
+        # Pipeline: POST /api/v1/ingest
+        # ---------------------------------------------------------------
+
+        @app.post("/api/v1/ingest", response_model=IngestJobResponse, tags=["ingest"], status_code=202)
+        async def ingest_pipeline(
+            self,
+            files: List[UploadFile] = File(..., description="Documents to ingest."),
+            config: Optional[str] = Form(None, description="Pipeline config as JSON string."),
+        ) -> IngestJobResponse:
+            """Submit documents for async pipeline ingestion.
+
+            Upload one or more files and optionally provide a JSON pipeline
+            configuration via the ``config`` form field. The server builds a
+            processing graph (extract -> dedup -> caption -> split -> embed ->
+            vdb_upload) and executes it in the background.  Returns a job ID
+            that can be polled via ``GET /api/v1/jobs/{job_id}``.
+            """
+            pipeline_config = IngestPipelineConfig()
+            if config:
+                try:
+                    pipeline_config = IngestPipelineConfig(**json.loads(config))
+                except (json.JSONDecodeError, Exception) as exc:
+                    raise HTTPException(400, detail=f"Invalid pipeline config JSON: {exc}") from exc
+
+            job_dir = self._ingest_dir / f"job-{uuid.uuid4().hex[:8]}"
+            job_dir.mkdir(parents=True, exist_ok=True)
+            saved_paths: list[str] = []
+            for upload in files:
+                dest = job_dir / (upload.filename or f"upload-{uuid.uuid4().hex[:8]}")
+                dest.write_bytes(await upload.read())
+                saved_paths.append(str(dest))
+
+            job_id = self._create_job(
+                num_documents=len(saved_paths),
+                config=pipeline_config.model_dump(mode="json"),
+            )
+            with self._job_lock:
+                self._jobs[job_id]["temp_dir"] = str(job_dir)
+
+            thread = threading.Thread(
+                target=self._run_ingest_job,
+                args=(job_id, saved_paths, pipeline_config),
+                daemon=True,
+            )
+            thread.start()
+
+            return IngestJobResponse(
+                job_id=job_id,
+                status="queued",
+                num_documents=len(saved_paths),
+                created_at=int(self._jobs[job_id]["created_at"]),
+            )
+
+        # ---------------------------------------------------------------
+        # Pipeline: GET /api/v1/jobs
+        # ---------------------------------------------------------------
+
+        @app.get("/api/v1/jobs", tags=["ingest"])
+        async def list_jobs(
+            self,
+            status: Optional[str] = None,
+            limit: int = 100,
+            offset: int = 0,
+        ) -> dict:
+            """List all ingest jobs, optionally filtered by status."""
+            with self._job_lock:
+                jobs = list(self._jobs.values())
+            if status:
+                jobs = [j for j in jobs if j["status"] == status]
+            jobs.sort(key=lambda j: j["created_at"], reverse=True)
+            total = len(jobs)
+            page = jobs[offset : offset + limit]
+            return {
+                "jobs": [
+                    IngestJobStatusResponse(
+                        job_id=j["job_id"],
+                        status=j["status"],
+                        num_documents=j["num_documents"],
+                        created_at=int(j["created_at"]),
+                        progress=(
+                            IngestJobProgress(
+                                documents_total=j["num_documents"],
+                                documents_completed=j.get("documents_completed", 0),
+                                current_stage=j.get("current_stage"),
+                                elapsed_seconds=round(
+                                    (j.get("completed_at") or time.time()) - (j.get("started_at") or j["created_at"]),
+                                    2,
+                                ),
+                            )
+                            if j["status"] in ("running", "completed")
+                            else None
+                        ),
+                        error=j.get("error"),
+                    ).model_dump(mode="json")
+                    for j in page
+                ],
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
+
+        # ---------------------------------------------------------------
+        # Pipeline: GET /api/v1/jobs/{job_id}
+        # ---------------------------------------------------------------
+
+        @app.get("/api/v1/jobs/{job_id}", response_model=IngestJobStatusResponse, tags=["ingest"])
+        async def get_job_status(self, job_id: str) -> IngestJobStatusResponse:
+            """Get the status and progress of an ingest job."""
+            with self._job_lock:
+                job = self._jobs.get(job_id)
+            if job is None:
+                raise HTTPException(404, detail=f"No job with id '{job_id}'.")
+
+            progress = None
+            if job["status"] in ("running", "completed"):
+                progress = IngestJobProgress(
+                    documents_total=job["num_documents"],
+                    documents_completed=job.get("documents_completed", 0),
+                    current_stage=job.get("current_stage"),
+                    elapsed_seconds=round(
+                        (job.get("completed_at") or time.time()) - (job.get("started_at") or job["created_at"]),
+                        2,
+                    ),
+                )
+
+            return IngestJobStatusResponse(
+                job_id=job["job_id"],
+                status=job["status"],
+                num_documents=job["num_documents"],
+                created_at=int(job["created_at"]),
+                progress=progress,
+                error=job.get("error"),
+            )
+
+        # ---------------------------------------------------------------
+        # Pipeline: GET /api/v1/jobs/{job_id}/results
+        # ---------------------------------------------------------------
+
+        @app.get("/api/v1/jobs/{job_id}/results", response_model=IngestJobResultResponse, tags=["ingest"])
+        async def get_job_results(self, job_id: str) -> IngestJobResultResponse:
+            """Retrieve results from a completed ingest job."""
+            with self._job_lock:
+                job = self._jobs.get(job_id)
+            if job is None:
+                raise HTTPException(404, detail=f"No job with id '{job_id}'.")
+            if job["status"] not in ("completed", "failed"):
+                raise HTTPException(409, detail=f"Job '{job_id}' is not yet completed (status={job['status']}).")
+
+            elapsed = 0.0
+            if job.get("started_at") and job.get("completed_at"):
+                elapsed = round(job["completed_at"] - job["started_at"], 4)
+
+            return IngestJobResultResponse(
+                job_id=job["job_id"],
+                status=job["status"],
+                num_documents=job["num_documents"],
+                elapsed_seconds=elapsed,
+                records=job.get("results") or [],
+            )
+
+        # ---------------------------------------------------------------
+        # Pipeline: DELETE /api/v1/jobs/{job_id}
+        # ---------------------------------------------------------------
+
+        @app.delete("/api/v1/jobs/{job_id}", tags=["ingest"])
+        async def delete_job(self, job_id: str) -> dict:
+            """Cancel a running job or delete a completed job and its temp files."""
+            with self._job_lock:
+                job = self._jobs.pop(job_id, None)
+            if job is None:
+                raise HTTPException(404, detail=f"No job with id '{job_id}'.")
+
+            temp_dir = job.get("temp_dir")
+            if temp_dir:
+                import shutil
+
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+            return {"job_id": job_id, "deleted": True}
+
+        # ---------------------------------------------------------------
+        # Pipeline: POST /api/v1/ingest/stream
+        # ---------------------------------------------------------------
+
+        _SPLITTABLE_EXTENSIONS = frozenset({".pdf", ".docx", ".pptx"})
+
+        @app.post("/api/v1/ingest/stream", tags=["ingest"])
+        async def ingest_pipeline_stream(
+            self,
+            files: List[UploadFile] = File(..., description="Documents to ingest."),
+            config: Optional[str] = Form(None, description="Pipeline config as JSON string."),
+        ) -> StreamingResponse:
+            """Stream ingestion results page-by-page as NDJSON.
+
+            Each output line is a JSON object for one processed page or chunk.
+            PDF/DOCX/PPTX documents are split into individual pages and each
+            page is run through the full pipeline graph independently so that
+            results arrive as soon as a page finishes.
+
+            Non-PDF files (text, HTML, images, audio) are processed as a
+            single unit and streamed once complete.
+
+            If VDB upload is enabled, it runs as a batch operation after all
+            pages have been streamed back, and a final ``_summary`` line is
+            emitted.
+
+            Error lines have ``"_error": true``.  The last line has
+            ``"_summary": true`` with aggregate timing and VDB status.
+            """
+            pipeline_config = IngestPipelineConfig()
+            if config:
+                try:
+                    pipeline_config = IngestPipelineConfig(**json.loads(config))
+                except (json.JSONDecodeError, Exception) as exc:
+                    raise HTTPException(400, detail=f"Invalid pipeline config: {exc}") from exc
+
+            job_dir = self._ingest_dir / f"stream-{uuid.uuid4().hex[:8]}"
+            job_dir.mkdir(parents=True, exist_ok=True)
+            saved: list[tuple[str, str]] = []
+            for upload in files:
+                filename = upload.filename or f"upload-{uuid.uuid4().hex[:8]}"
+                dest = job_dir / filename
+                dest.write_bytes(await upload.read())
+                saved.append((str(dest), filename))
+
+            vdb_cfg = pipeline_config.vdb_upload
+            stream_config = pipeline_config.model_copy(update={"vdb_upload": None})
+
+            embed_model = self._embedding_model
+            embed_endpoint = self._embedding_endpoint
+            embed_api_key = self._embedding_api_key
+            lancedb_uri = self._lancedb_uri
+            lancedb_table = self._lancedb_table
+
+            def _generate():
+                import shutil
+
+                import pandas as pd
+
+                from nemo_retriever.ingest_modes.inprocess import pdf_to_pages_df
+
+                graph = _build_serve_graph(
+                    stream_config,
+                    default_embed_model=embed_model,
+                    default_embed_endpoint=embed_endpoint,
+                    default_embed_api_key=embed_api_key,
+                    default_lancedb_uri=lancedb_uri,
+                    default_lancedb_table=lancedb_table,
+                )
+
+                accumulated_dfs: list[pd.DataFrame] = []
+                t_start = time.perf_counter()
+                page_count = 0
+
+                for file_path, filename in saved:
+                    ext = Path(file_path).suffix.lower()
+
+                    if ext in self._SPLITTABLE_EXTENSIONS:
+                        try:
+                            pages_df = pdf_to_pages_df(file_path)
+                        except Exception as exc:
+                            yield _ndjson_line({"_error": True, "filename": filename, "detail": str(exc)})
+                            continue
+
+                        for row_idx in range(len(pages_df)):
+                            single = pages_df.iloc[[row_idx]].copy()
+                            original_page = int(single.iloc[0].get("page_number", row_idx + 1))
+
+                            try:
+                                t_page = time.perf_counter()
+                                results = graph.execute(single)
+                                result_df = results[0] if results else single
+                                elapsed = time.perf_counter() - t_page
+
+                                if isinstance(result_df, pd.DataFrame):
+                                    accumulated_dfs.append(result_df)
+                                    records = _serialize_df_records(result_df)
+                                else:
+                                    records = []
+
+                                for record in records:
+                                    record["page_number"] = original_page
+                                    record["_filename"] = filename
+                                    record["_elapsed_seconds"] = round(elapsed, 4)
+                                    page_count += 1
+                                    yield _ndjson_line(record)
+
+                            except Exception as exc:
+                                logger.exception("Page %d of %s failed", original_page, filename)
+                                yield _ndjson_line(
+                                    {
+                                        "_error": True,
+                                        "filename": filename,
+                                        "page_number": original_page,
+                                        "detail": str(exc),
+                                    }
+                                )
+                    else:
+                        try:
+                            df = _load_files_to_df([file_path])
+                            t_file = time.perf_counter()
+                            results = graph.execute(df)
+                            result_df = results[0] if results else df
+                            elapsed = time.perf_counter() - t_file
+
+                            if isinstance(result_df, pd.DataFrame):
+                                accumulated_dfs.append(result_df)
+                                records = _serialize_df_records(result_df)
+                            else:
+                                records = []
+
+                            for record in records:
+                                record["_filename"] = filename
+                                record["_elapsed_seconds"] = round(elapsed, 4)
+                                page_count += 1
+                                yield _ndjson_line(record)
+
+                        except Exception as exc:
+                            logger.exception("File %s failed", filename)
+                            yield _ndjson_line(
+                                {
+                                    "_error": True,
+                                    "filename": filename,
+                                    "detail": str(exc),
+                                }
+                            )
+
+                vdb_uploaded = False
+                if vdb_cfg is not None and vdb_cfg.enabled and accumulated_dfs:
+                    try:
+                        from nemo_retriever.ingest_modes.inprocess import (
+                            upload_embeddings_to_lancedb_inprocess,
+                        )
+
+                        combined = pd.concat(accumulated_dfs, ignore_index=True)
+                        upload_embeddings_to_lancedb_inprocess(
+                            combined,
+                            lancedb_uri=vdb_cfg.lancedb_uri or lancedb_uri,
+                            table_name=vdb_cfg.table_name or lancedb_table,
+                            overwrite=vdb_cfg.overwrite,
+                            create_index=vdb_cfg.create_index,
+                            hybrid=vdb_cfg.hybrid,
+                        )
+                        vdb_uploaded = True
+                    except Exception as exc:
+                        logger.exception("VDB upload failed during streaming ingest")
+                        yield _ndjson_line(
+                            {
+                                "_error": True,
+                                "stage": "vdb_upload",
+                                "detail": str(exc),
+                            }
+                        )
+
+                total_elapsed = round(time.perf_counter() - t_start, 4)
+                yield _ndjson_line(
+                    {
+                        "_summary": True,
+                        "num_documents": len(saved),
+                        "num_pages": page_count,
+                        "elapsed_seconds": total_elapsed,
+                        "vdb_uploaded": vdb_uploaded,
+                    }
+                )
+
+                shutil.rmtree(job_dir, ignore_errors=True)
+
+            return StreamingResponse(
+                _generate(),
+                media_type="application/x-ndjson",
+                headers={"Content-Disposition": "inline; filename=ingest.ndjson"},
+            )
