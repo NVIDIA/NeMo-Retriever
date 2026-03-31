@@ -1,3 +1,4 @@
+from nemo_retriever.tabular_data.connectors.sql_database import SQLDatabase
 from nemo_retriever.tabular_data.connectors.duckdb import DuckDB
 from nemo_retriever.tabular_data.ingestion.graph.utils import (
     normalize_fks,
@@ -7,22 +8,20 @@ from nemo_retriever.tabular_data.ingestion.graph.utils import (
 )
 
 
-def create_dataframe(settings):
-    duck = DuckDB(settings.get("connection_string", "./spider2.duckdb"))
-
-    queries = duck.get_queries()
-    tables = duck.get_tables()
-    columns = duck.get_columns()
-    views = duck.get_views()
-    pks = duck.get_pks()
-    fks = duck.get_fks()
-
+def create_dataframe(connector: SQLDatabase):
+    """Extract raw schema DataFrames from any SQLDatabase connector."""
+    tables = connector.get_tables()
+    columns = connector.get_columns()
+    views = connector.get_views()
+    queries = connector.get_queries()
+    pks = connector.get_pks()
+    fks = connector.get_fks()
     return tables, columns, views, queries, pks, fks
 
 
-def data_for_populate_tabular(settings):
-    """Build the `data` dict expected by populate_tabular_data() from create_dataframe output."""
-    tables, columns, views, queries, pks, fks = create_dataframe(settings)
+def data_for_populate_tabular(connector: SQLDatabase):
+    """Build the `data` dict expected by populate_tabular_data() from a SQLDatabase connector."""
+    tables, columns, views, queries, pks, fks = create_dataframe(connector)
     tables = normalize_tables(tables)
     columns = normalize_columns(columns)
     pks = normalize_pks(pks)
@@ -38,21 +37,27 @@ def data_for_populate_tabular(settings):
     return data
 
 
-def extract_tabular_db_data(params=None):
+def extract_tabular_db_data(params=None, connector: SQLDatabase = None):
     """Step 1 — Pull schema entities from the relational DB into a data dict.
 
     Args:
-        params: TabularExtractParams instance. When provided,
-            ``params.connection_string`` overrides the default database path.
+        params:    TabularExtractParams instance. When provided,
+                   ``params.connection_string`` overrides the default database path.
+                   Ignored when ``connector`` is supplied.
+        connector: An instantiated SQLDatabase connector.  When omitted a
+                   DuckDB connector is created from ``params.connection_string``.
 
     Returns:
         data dict with keys: tables, columns, views, pks, fks.
     """
-    db_path = (
-        params.connection_string if params is not None and params.connection_string is not None else "./spider2.duckdb"
-    )
-    settings = {"connection_string": db_path}
-    return data_for_populate_tabular(settings)
+    if connector is None:
+        db_path = (
+            params.connection_string
+            if params is not None and params.connection_string is not None
+            else "./spider2.duckdb"
+        )
+        connector = DuckDB(db_path)
+    return data_for_populate_tabular(connector)
 
 
 def store_relational_db_in_neo4j(data, neo4j_conn=None):

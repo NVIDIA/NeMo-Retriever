@@ -8,13 +8,16 @@ Wraps ``duckdb.connect()`` with helpers to register pandas DataFrames or
 scan CSV/Parquet/JSON files directly from the filesystem.  No server or Docker
 service is required — DuckDB runs fully in-process.
 
+This is the reference implementation of
+:class:`~nemo_retriever.tabular_data.connectors.sql_database.SQLDatabase`.
+
 Example
 -------
 ::
 
     from nemo_retriever.tabular_data.connectors.duckdb import DuckDB
 
-    conn = DuckDB({"database": "./spider2.duckdb"})
+    conn = DuckDB("./spider2.duckdb")
     rows = conn.execute("SELECT * FROM Airlines.flights LIMIT 5")
     # rows -> [{"flight_id": 1, ...}]
 """
@@ -27,10 +30,12 @@ import duckdb
 import pandas as pd
 from typing import Optional
 
+from nemo_retriever.tabular_data.connectors.sql_database import SQLDatabase
+
 logger = logging.getLogger(__name__)
 
 
-class DuckDB:
+class DuckDB(SQLDatabase):
     """In-process DuckDB connection with convenience helpers.
 
     Parameters
@@ -197,8 +202,3 @@ class DuckDB:
         """Close the DuckDB connection."""
         self.conn.close()
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
