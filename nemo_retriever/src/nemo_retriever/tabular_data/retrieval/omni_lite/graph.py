@@ -207,7 +207,6 @@ def create_graph():
  # ==================== CREATE AGENT INSTANCES ====================
 
     # Routing agents
-    language_agent = LanguageDetectionAgent()
     retrieval_agent = CandidateRetrievalAgent()
     action_extraction_agent = ActionInputExtractionAgent() # TODO:take only action input
     calculation_search_agent = CalculationSearchAgent() #TODO:take only extract candidates + preretrieved
@@ -228,9 +227,7 @@ def create_graph():
     # ==================== CREATE NODES ====================
 
     # Routing nodes (using agent_wrapper)
-    language_detection_node = _make_node(
-        "detect_language", agent_wrapper(language_agent)
-    )
+
     retrieve_candidates_node = _make_node(
         "retrieve_candidates", agent_wrapper(retrieval_agent)
     )
@@ -283,10 +280,9 @@ def create_graph():
     graph = StateGraph(AgentState)
 
     # -----------------    ENTRY POINT   ------------------
-    graph.set_entry_point("detect_language")
+    graph.set_entry_point("retrieve_candidates")
 
     # Add only nodes instantiated above.
-    graph.add_node("detect_language", language_detection_node)
     graph.add_node("retrieve_candidates", retrieve_candidates_node)
     graph.add_node("extract_action_input", extract_action_input_node)
     graph.add_node("calculation_search", calculation_search_node)
@@ -303,7 +299,6 @@ def create_graph():
     graph.add_node("unconstructable_sql_response", unconstructable_sql_response_node)
 
     # Minimal flow using only the defined nodes.
-    graph.add_edge("detect_language", "retrieve_candidates")
     graph.add_edge("retrieve_candidates", "extract_action_input")
     graph.add_edge("extract_action_input", "calculation_search")
     graph.add_edge("calculation_search", "prepare_candidates")
@@ -354,23 +349,8 @@ def create_graph():
     graph.add_edge("reconstruct_sql", "validate_sql_query")
     graph.add_edge("finalize_text_based_answer", "calc_respond")
 
-    graph.add_edge(
-        "unconstructable_sql_response", "route_translation"
-    )  # Label: sql_unconstructable_complete
-
-
-    graph.add_edge(
-        "calc_respond", "route_translation"
-    )  # Label: calculation_feedback_unclear_complete
-
-    graph.add_conditional_edges(
-        "route_translation",
-        route_translation,
-        {
-            "translate": "translate_answer",
-            "end": END,
-        },
-    )
+    graph.add_edge("unconstructable_sql_response", END)
+    graph.add_edge("calc_respond", END)
 
 
     return graph
