@@ -23,20 +23,26 @@ from typing import Union
 
 import ray
 import ray.data as rd
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.utils.convert import DocToPdfConversionActor
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
-from nemo_retriever.page_elements import PageElementDetectionActor
+from nemo_retriever.dedup.dedup import DedupActor
+from nemo_retriever.ingest_modes.inprocess import collapse_content_to_page_rows, explode_content_to_rows
 from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
-from nemo_retriever.table.table_detection import TableStructureActor
+from nemo_retriever.page_elements import PageElementDetectionActor
+from nemo_retriever.params import DedupParams
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
+from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.utils.hf_cache import resolve_hf_cache_dir
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
     resolve_requested_plan,
 )
-from nemo_retriever.ingest_modes.inprocess import collapse_content_to_page_rows, explode_content_to_rows
+
 
 from ..image.load import SUPPORTED_IMAGE_EXTENSIONS
 from ..ingestor import Ingestor
@@ -48,6 +54,7 @@ from ..params import HtmlChunkParams
 from ..params import IngestExecuteParams
 from ..params import PdfSplitParams
 from ..params import TextChunkParams
+from ..params import CaptionParams
 from ..params import VdbUploadParams
 
 logger = logging.getLogger(__name__)
@@ -144,7 +151,41 @@ class _LanceDBWriteActor:
         return batch_df
 
 
-class _BatchEmbedActor:
+class ExplodeContentActor(AbstractOperator, CPUOperator):
+    """Expand page-level rows into per-element rows for finer-grained embedding.
+
+    Wraps :func:`explode_content_to_rows` as an :class:`AbstractOperator` so it
+    can be used as a node in a pipeline :class:`Graph`.
+    """
+
+    def __init__(
+        self,
+        *,
+        modality: str = "text",
+        text_elements_modality: str | None = None,
+        structured_elements_modality: str | None = None,
+    ) -> None:
+        super().__init__()
+        self._modality = modality
+        self._text_elements_modality = text_elements_modality
+        self._structured_elements_modality = structured_elements_modality
+
+    def preprocess(self, data, **kwargs):
+        return data
+
+    def process(self, data, **kwargs):
+        return explode_content_to_rows(
+            data,
+            modality=self._modality,
+            text_elements_modality=self._text_elements_modality,
+            structured_elements_modality=self._structured_elements_modality,
+        )
+
+    def postprocess(self, data, **kwargs):
+        return data
+
+
+class _BatchEmbedActor(AbstractOperator, GPUOperator):
     """Ray Data actor that holds a local text embedder on a single GPU.
 
     When ``embedding_endpoint`` is provided in kwargs, the actor skips local
@@ -152,6 +193,7 @@ class _BatchEmbedActor:
     """
 
     def __init__(self, params: EmbedParams) -> None:
+        super().__init__()
         import warnings
 
         warnings.filterwarnings(
@@ -184,10 +226,55 @@ class _BatchEmbedActor:
             max_length=int(self._kwargs.get("max_length", 8192)),
         )
 
-    def __call__(self, batch_df: Any) -> Any:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
         from nemo_retriever.ingest_modes.inprocess import embed_text_main_text_embed
 
-        return embed_text_main_text_embed(batch_df, model=self._model, **self._kwargs)
+        return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any) -> Any:
+        return self.run(batch_df)
+
+
+class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only variant of :class:`_BatchEmbedActor`.
+
+    Defaults to the build.nvidia.com endpoint for
+    ``nvidia/llama-nemotron-embed-1b-v2``.  No local GPU embedder is loaded.
+    """
+
+    DEFAULT_EMBED_INVOKE_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+
+    def __init__(self, params: "EmbedParams") -> None:
+        super().__init__()
+        self._params = params
+        self._kwargs = {
+            **params.model_dump(mode="python", exclude={"runtime", "batch_tuning", "fused_tuning"}, exclude_none=True),
+            **params.runtime.model_dump(mode="python", exclude_none=True),
+        }
+        if "embedding_endpoint" not in self._kwargs:
+            self._kwargs["embedding_endpoint"] = self._kwargs.get("embed_invoke_url") or self.DEFAULT_EMBED_INVOKE_URL
+
+        endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
+        if not endpoint:
+            self._kwargs["embedding_endpoint"] = self.DEFAULT_EMBED_INVOKE_URL
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        from nemo_retriever.ingest_modes.inprocess import embed_text_main_text_embed
+
+        return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
 
 class BatchIngestor(Ingestor):
@@ -199,6 +286,7 @@ class BatchIngestor(Ingestor):
         ray_address: Optional[str] = None,
         ray_log_to_driver: bool = True,
         debug: bool = False,
+        allow_no_gpu: bool = False,
     ) -> None:
         super().__init__(documents=documents)
 
@@ -240,7 +328,10 @@ class BatchIngestor(Ingestor):
         logger.info(self._cluster_resources)
 
         # 2. Resolve requested plan for the Ray DAG that will be built
-        self._requested_plan = resolve_requested_plan(cluster_resources=self._cluster_resources)
+        self._requested_plan = resolve_requested_plan(
+            cluster_resources=self._cluster_resources,
+            allow_no_gpu=allow_no_gpu,
+        )
         logger.info(self._requested_plan)
 
         # Builder-style task configuration recorded for later execution.
@@ -521,24 +612,33 @@ class BatchIngestor(Ingestor):
                 fn_constructor_kwargs=parse_flags,
             )
         else:
-            # Set the target number of rows per block to the page-elements batch size
-            self._rd_dataset = self._rd_dataset.repartition(
-                target_num_rows_per_block=self._requested_plan.get_page_elements_batch_size()
+            # Page-elements detection is needed for tables/charts/infographics,
+            # and for text only when the method requires OCR (not plain pdfium).
+            _method = kwargs.get("method", "pdfium")
+            _need_pe_for_text = kwargs.get("extract_text") is True and _method in ("pdfium_hybrid", "ocr")
+            _need_pe = _need_pe_for_text or any(
+                kwargs.get(k) is True for k in ("extract_tables", "extract_charts", "extract_infographics")
             )
 
-            # Page-element detection with a GPU actor pool.
-            self._rd_dataset = self._rd_dataset.map_batches(
-                PageElementDetectionActor,
-                batch_size=self._requested_plan.get_page_elements_batch_size(),
-                batch_format="pandas",
-                num_gpus=self._requested_plan.get_page_elements_gpus_per_actor(),
-                compute=rd.ActorPoolStrategy(
-                    initial_size=self._requested_plan.get_page_elements_initial_actors(),
-                    min_size=self._requested_plan.get_page_elements_min_actors(),
-                    max_size=self._requested_plan.get_page_elements_max_actors(),
-                ),
-                fn_constructor_kwargs=dict(detect_kwargs),
-            )
+            if _need_pe:
+                # Set the target number of rows per block to the page-elements batch size
+                self._rd_dataset = self._rd_dataset.repartition(
+                    target_num_rows_per_block=self._requested_plan.get_page_elements_batch_size()
+                )
+
+                # Page-element detection with a GPU actor pool.
+                self._rd_dataset = self._rd_dataset.map_batches(
+                    PageElementDetectionActor,
+                    batch_size=self._requested_plan.get_page_elements_batch_size(),
+                    batch_format="pandas",
+                    num_gpus=self._requested_plan.get_page_elements_gpus_per_actor(),
+                    compute=rd.ActorPoolStrategy(
+                        initial_size=self._requested_plan.get_page_elements_initial_actors(),
+                        min_size=self._requested_plan.get_page_elements_min_actors(),
+                        max_size=self._requested_plan.get_page_elements_max_actors(),
+                    ),
+                    fn_constructor_kwargs=dict(detect_kwargs),
+                )
 
             # Graphic elements detection for charts (runs before OCR).
             use_graphic_elements = bool(kwargs.get("use_graphic_elements", False))
@@ -659,7 +759,11 @@ class BatchIngestor(Ingestor):
 
             ocr_flags["inference_batch_size"] = self._requested_plan.get_ocr_batch_size()
 
-            if ocr_flags:
+            # Only append OCR stage if at least one content type needs it.
+            needs_ocr = any(
+                ocr_flags.get(k) for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            )
+            if needs_ocr:
                 self._rd_dataset = self._rd_dataset.map_batches(
                     OCRActor,
                     batch_size=self._requested_plan.get_ocr_batch_size(),
@@ -889,10 +993,17 @@ class BatchIngestor(Ingestor):
         # We want to create Ray batches that are of the same size as the embed_batch_size.
         self._rd_dataset = self._rd_dataset.repartition(target_num_rows_per_block=embed_batch_size)
 
+        from nemo_retriever.ingest_modes.inprocess import _CONTENT_COLUMNS
+
+        content_columns = (
+            (_CONTENT_COLUMNS + ("images",)) if getattr(self, "_caption_enabled", False) else _CONTENT_COLUMNS
+        )
+
         if embed_granularity == "page":
             _row_fn = partial(
                 collapse_content_to_page_rows,
                 modality=embed_modality,
+                content_columns=content_columns,
             )
         else:
             text_elements_modality = resolved.text_elements_modality or embed_modality
@@ -902,6 +1013,7 @@ class BatchIngestor(Ingestor):
                 modality=embed_modality,
                 text_elements_modality=text_elements_modality,
                 structured_elements_modality=structured_elements_modality,
+                content_columns=content_columns,
             )
         self._rd_dataset = self._rd_dataset.map_batches(
             _row_fn,
@@ -932,6 +1044,52 @@ class BatchIngestor(Ingestor):
             fn_constructor_kwargs={"params": resolved},
         )
 
+        return self
+
+    def dedup(self, params: "DedupParams | None" = None, **kwargs: Any) -> "BatchIngestor":
+        """Remove duplicate and overlapping images before captioning."""
+        if self._rd_dataset is None:
+            raise RuntimeError("No Ray Dataset to dedup. Run .files(...) / .extract(...) first.")
+
+        resolved = _coerce_params(params, DedupParams, kwargs)
+        self._rd_dataset = self._rd_dataset.map_batches(
+            DedupActor,
+            batch_size=64,
+            batch_format="pandas",
+            num_gpus=0,
+            concurrency=1,
+            fn_constructor_kwargs={"params": resolved},
+        )
+        return self
+
+    def caption(self, params: CaptionParams | None = None, **kwargs: Any) -> "BatchIngestor":
+        """
+        Add an image-captioning stage to the batch pipeline.
+
+        Uses a GPU actor pool with a local VLM (vLLM) or delegates to a
+        remote VLM endpoint when ``endpoint_url`` is set.
+        """
+        if self._rd_dataset is None:
+            raise RuntimeError("No Ray Dataset to caption. Run .files(...) / .extract(...) first.")
+
+        resolved = _coerce_params(params, CaptionParams, kwargs)
+        if resolved.endpoint_url and not resolved.api_key:
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+
+        from nemo_retriever.caption.caption import CaptionActor
+
+        caption_num_gpus = 0.0 if resolved.endpoint_url else resolved.gpu_memory_utilization
+
+        self._rd_dataset = self._rd_dataset.map_batches(
+            CaptionActor,
+            batch_size=resolved.batch_size or 8,
+            batch_format="pandas",
+            num_gpus=caption_num_gpus,
+            concurrency=1,
+            fn_constructor_kwargs={"params": resolved},
+        )
+
+        self._caption_enabled = True
         return self
 
     def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "BatchIngestor":
@@ -1175,3 +1333,342 @@ class BatchIngestor(Ingestor):
             table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
 
         print(f"Wrote {n_vecs} rows to LanceDB uri={lancedb_uri!r} table={table_name!r}")
+
+
+_LegacyBatchIngestor = BatchIngestor
+
+
+class GraphBatchIngestor(_LegacyBatchIngestor):
+    """Batch ingestor that uses the graph runtime for the PDF/doc pipeline."""
+
+    def __init__(
+        self,
+        documents: Optional[List[str]] = None,
+        ray_address: Optional[str] = None,
+        ray_log_to_driver: bool = True,
+        debug: bool = False,
+        allow_no_gpu: bool = False,
+    ) -> None:
+        super().__init__(
+            documents=documents,
+            ray_address=ray_address,
+            ray_log_to_driver=ray_log_to_driver,
+            debug=debug,
+            allow_no_gpu=allow_no_gpu,
+        )
+        self._graph_source_dataset: rd.Dataset | None = None
+        self._graph_extraction_mode: str = "pdf"
+        self._graph_extract_params: ExtractParams | None = None
+        self._graph_text_params: TextChunkParams | None = None
+        self._graph_html_params: HtmlChunkParams | None = None
+        self._graph_audio_chunk_params: AudioChunkParams | None = None
+        self._graph_asr_params: ASRParams | None = None
+        self._graph_embed_params: EmbedParams | None = None
+        self._graph_split_params: TextChunkParams | None = None
+        self._graph_caption_params: CaptionParams | None = None
+
+    def files(self, documents: Union[str, List[str]]) -> "GraphBatchIngestor":
+        super().files(documents)
+        self._graph_source_dataset = self._rd_dataset
+        return self
+
+    def extract(self, params: ExtractParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        resolved = _coerce_params(params, ExtractParams, kwargs)
+        if (
+            any(
+                (
+                    resolved.invoke_url,
+                    resolved.page_elements_invoke_url,
+                    resolved.ocr_invoke_url,
+                    resolved.graphic_elements_invoke_url,
+                    resolved.table_structure_invoke_url,
+                )
+            )
+            and not resolved.api_key
+        ):
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+        super().extract(params=resolved)
+        if self._pipeline_type == "pdf":
+            self._graph_extraction_mode = "pdf"
+            self._graph_extract_params = resolved
+        return self
+
+    def extract_image_files(self, params: ExtractParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        resolved = _coerce_params(params, ExtractParams, kwargs)
+        if (
+            any(
+                (
+                    resolved.invoke_url,
+                    resolved.page_elements_invoke_url,
+                    resolved.ocr_invoke_url,
+                    resolved.graphic_elements_invoke_url,
+                    resolved.table_structure_invoke_url,
+                )
+            )
+            and not resolved.api_key
+        ):
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+        super().extract_image_files(params=resolved)
+        self._graph_extraction_mode = "image"
+        self._graph_extract_params = resolved
+        return self
+
+    def extract_txt(self, params: TextChunkParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        resolved = _coerce_params(params, TextChunkParams, kwargs)
+        super().extract_txt(params=resolved)
+        self._graph_extraction_mode = "text"
+        self._graph_text_params = resolved
+        return self
+
+    def extract_html(self, params: HtmlChunkParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        resolved = _coerce_params(params, HtmlChunkParams, kwargs)
+        super().extract_html(params=resolved)
+        self._graph_extraction_mode = "html"
+        self._graph_html_params = resolved
+        return self
+
+    def extract_audio(
+        self,
+        params: AudioChunkParams | None = None,
+        asr_params: ASRParams | None = None,
+        **kwargs: Any,
+    ) -> "GraphBatchIngestor":
+        chunk_resolved = _coerce_params(params, AudioChunkParams, kwargs)
+        asr_resolved = _coerce_params(asr_params, ASRParams, kwargs)
+        super().extract_audio(params=chunk_resolved, asr_params=asr_resolved)
+        self._graph_extraction_mode = "audio"
+        self._graph_audio_chunk_params = chunk_resolved
+        self._graph_asr_params = asr_resolved
+        return self
+
+    def split(self, params: TextChunkParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        resolved = _coerce_params(params, TextChunkParams, kwargs)
+        super().split(params=resolved)
+        self._graph_split_params = resolved
+        return self
+
+    def caption(self, params: CaptionParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        resolved = _coerce_params(params, CaptionParams, kwargs)
+        if resolved.endpoint_url and not resolved.api_key:
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+        super().caption(params=resolved)
+        self._graph_caption_params = resolved
+        return self
+
+    def embed(
+        self,
+        params: EmbedParams | None = None,
+        input_dataset: rd.Dataset | None = None,
+        **kwargs: Any,
+    ) -> "GraphBatchIngestor":
+        resolved = _coerce_params(params, EmbedParams, kwargs)
+        if any((resolved.embedding_endpoint, resolved.embed_invoke_url)) and not resolved.api_key:
+            resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
+        super().embed(params=resolved, input_dataset=input_dataset)
+        self._graph_embed_params = resolved
+        return self
+
+    def _can_use_graph_runtime(self) -> bool:
+        unsupported_task_names = {"vdb_upload"}
+        return (
+            self._graph_source_dataset is not None
+            and (
+                self._graph_extract_params is not None
+                or self._graph_text_params is not None
+                or self._graph_html_params is not None
+                or self._graph_audio_chunk_params is not None
+            )
+            and not any(task_name in unsupported_task_names for task_name, _ in self._tasks)
+        )
+
+    def _build_graph_node_overrides(self) -> dict[str, dict[str, Any]]:
+        extract_params = self._graph_extract_params
+        embed_params = self._graph_embed_params
+        split_params = self._graph_split_params
+        caption_params = self._graph_caption_params
+        extraction_mode = self._graph_extraction_mode
+        assert extract_params is not None or extraction_mode in {"text", "html", "audio"}
+
+        tuning = extract_params.batch_tuning if extract_params is not None else None
+        embed_tuning = embed_params.batch_tuning if embed_params is not None else None
+
+        pdf_split_batch_size = int(getattr(tuning, "pdf_split_batch_size", 1) or 1)
+        pdf_extract_batch_size = (
+            self._positive_int(getattr(tuning, "pdf_extract_batch_size", None))
+            or self._requested_plan.get_pdf_extract_batch_size()
+        )
+        pdf_extract_cpus = (
+            self._positive_float(getattr(tuning, "pdf_extract_num_cpus", None))
+            or self._requested_plan.get_pdf_extract_cpus_per_task()
+        )
+        pdf_extract_tasks = (
+            self._positive_int(getattr(tuning, "pdf_extract_workers", None))
+            or self._requested_plan.get_pdf_extract_tasks()
+        )
+
+        page_elements_batch_size = (
+            self._positive_int(getattr(tuning, "page_elements_batch_size", None))
+            or self._requested_plan.get_page_elements_batch_size()
+        )
+        page_elements_cpus = self._positive_float(getattr(tuning, "page_elements_cpus_per_actor", None)) or 1
+        page_elements_gpus = (
+            0.0
+            if extract_params is not None and extract_params.page_elements_invoke_url
+            else (
+                self._positive_float(getattr(tuning, "gpu_page_elements", None))
+                or self._requested_plan.get_page_elements_gpus_per_actor()
+            )
+        )
+        page_elements_concurrency = (
+            self._positive_int(getattr(tuning, "page_elements_workers", None))
+            or self._requested_plan.get_page_elements_initial_actors()
+        )
+
+        ocr_batch_size = (
+            self._positive_int(getattr(tuning, "ocr_inference_batch_size", None))
+            or self._positive_int(getattr(tuning, "detect_batch_size", None))
+            or self._requested_plan.get_ocr_batch_size()
+        )
+        ocr_cpus = self._positive_float(getattr(tuning, "ocr_cpus_per_actor", None)) or 1
+        ocr_gpus = (
+            0.0
+            if extract_params is not None and extract_params.ocr_invoke_url
+            else (
+                self._positive_float(getattr(tuning, "gpu_ocr", None)) or self._requested_plan.get_ocr_gpus_per_actor()
+            )
+        )
+        ocr_concurrency = (
+            self._positive_int(getattr(tuning, "ocr_workers", None))
+            or self._positive_int(getattr(tuning, "detect_workers", None))
+            or self._requested_plan.get_ocr_initial_actors()
+        )
+
+        nemotron_parse_batch_size = (
+            self._positive_int(getattr(tuning, "nemotron_parse_batch_size", None))
+            or page_elements_batch_size
+            or self._requested_plan.get_nemotron_parse_batch_size()
+        )
+        nemotron_parse_gpus = (
+            self._positive_float(getattr(tuning, "gpu_nemotron_parse", None))
+            or self._requested_plan.get_nemotron_parse_gpus_per_actor()
+        )
+        nemotron_parse_concurrency = (
+            self._positive_int(getattr(tuning, "nemotron_parse_workers", None))
+            or self._requested_plan.get_nemotron_parse_initial_actors()
+        )
+
+        if embed_params is not None:
+            embed_batch_size = (
+                self._positive_int(getattr(embed_tuning, "embed_batch_size", None))
+                or self._requested_plan.get_embed_batch_size()
+            )
+            embed_cpus = self._positive_float(getattr(embed_tuning, "embed_cpus_per_actor", None)) or 1
+            embed_gpus = (
+                0.0
+                if embed_params.embed_invoke_url
+                else (
+                    self._positive_float(getattr(embed_tuning, "gpu_embed", None))
+                    or self._requested_plan.get_embed_gpus_per_actor()
+                )
+            )
+            embed_concurrency = (
+                self._positive_int(getattr(embed_tuning, "embed_workers", None))
+                or self._requested_plan.get_embed_initial_actors()
+            )
+        else:
+            embed_batch_size = self._requested_plan.get_embed_batch_size()
+            embed_cpus = 1
+            embed_gpus = self._requested_plan.get_embed_gpus_per_actor()
+            embed_concurrency = self._requested_plan.get_embed_initial_actors()
+
+        overrides: dict[str, dict[str, Any]] = {
+            "DocToPdfConversionActor": {"batch_size": 1, "num_cpus": 1},
+            "PDFSplitActor": {"batch_size": pdf_split_batch_size, "num_cpus": 1},
+            "PDFExtractionActor": {
+                "batch_size": pdf_extract_batch_size,
+                "num_cpus": pdf_extract_cpus,
+                "concurrency": pdf_extract_tasks,
+            },
+            "PageElementDetectionActor": {
+                "batch_size": page_elements_batch_size,
+                "target_num_rows_per_block": page_elements_batch_size,
+                "num_cpus": page_elements_cpus,
+                "num_gpus": page_elements_gpus,
+                "concurrency": page_elements_concurrency,
+            },
+            "TableStructureActor": {
+                "batch_size": ocr_batch_size,
+                "num_cpus": ocr_cpus,
+                "num_gpus": 0.0 if extract_params.table_structure_invoke_url else ocr_gpus,
+            },
+            "GraphicElementsActor": {
+                "batch_size": ocr_batch_size,
+                "num_cpus": ocr_cpus,
+                "num_gpus": 0.0 if extract_params.graphic_elements_invoke_url else ocr_gpus,
+            },
+            "OCRActor": {
+                "batch_size": ocr_batch_size,
+                "num_cpus": ocr_cpus,
+                "num_gpus": ocr_gpus,
+                "concurrency": ocr_concurrency,
+            },
+            "NemotronParseActor": {
+                "batch_size": nemotron_parse_batch_size,
+                "target_num_rows_per_block": nemotron_parse_batch_size,
+                "num_cpus": 1,
+                "num_gpus": nemotron_parse_gpus,
+                "concurrency": nemotron_parse_concurrency,
+            },
+            "ExplodeContentToRows": {"batch_size": 256, "num_cpus": 1, "num_gpus": 0.0},
+            "CollapseContentToPageRows": {"batch_size": 256, "num_cpus": 1, "num_gpus": 0.0},
+        }
+        if extraction_mode in {"text", "html", "audio", "image", "auto"}:
+            multi_type_gpu = 0.0
+            if extraction_mode == "audio" and self._graph_asr_params is not None:
+                endpoints = getattr(self._graph_asr_params, "audio_endpoints", (None, None))
+                multi_type_gpu = 0.0 if any(endpoint for endpoint in endpoints if endpoint) else 0.5
+            overrides["MultiTypeExtractOperator"] = {"batch_size": 4, "num_cpus": 1, "num_gpus": multi_type_gpu}
+        if split_params is not None:
+            overrides["TextChunkActor"] = {"batch_size": 256, "num_cpus": 1, "num_gpus": 0.0}
+        if caption_params is not None:
+            overrides["CaptionActor"] = {
+                "batch_size": getattr(caption_params, "batch_size", None) or 8,
+                "num_cpus": 1,
+                "num_gpus": 0.0 if caption_params.endpoint_url else (caption_params.gpu_memory_utilization or 1.0),
+            }
+        if embed_params is not None:
+            overrides["_BatchEmbedActor"] = {
+                "batch_size": embed_batch_size,
+                "target_num_rows_per_block": embed_batch_size,
+                "num_cpus": embed_cpus,
+                "num_gpus": embed_gpus,
+                "concurrency": embed_concurrency,
+            }
+        return overrides
+
+    def ingest(self, params: IngestExecuteParams | None = None, **kwargs: Any) -> int:
+        if not self._can_use_graph_runtime():
+            return super().ingest(params=params, **kwargs)
+
+        from nemo_retriever.graph.executor import RayDataExecutor
+        from nemo_retriever.graph.ingestor_runtime import build_batch_graph
+
+        graph = build_batch_graph(
+            extraction_mode=self._graph_extraction_mode,
+            extract_params=self._graph_extract_params,
+            text_params=self._graph_text_params,
+            html_params=self._graph_html_params,
+            audio_chunk_params=self._graph_audio_chunk_params,
+            asr_params=self._graph_asr_params,
+            embed_params=self._graph_embed_params,
+            split_params=self._graph_split_params,
+            caption_params=self._graph_caption_params,
+        )
+        executor = RayDataExecutor(
+            graph, ray_address=None, batch_size=1, node_overrides=self._build_graph_node_overrides()
+        )
+        self._rd_dataset = executor.ingest(self._graph_source_dataset)
+        return self
+
+
+BatchIngestor = GraphBatchIngestor

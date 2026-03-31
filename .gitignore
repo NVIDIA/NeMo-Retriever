@@ -185,7 +185,6 @@ tags
 .tmp
 *.dirlock
 *.engine
-*.lock
 /build*/
 dask-worker-space
 data/*

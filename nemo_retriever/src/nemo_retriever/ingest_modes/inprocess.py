@@ -25,12 +25,16 @@ from io import BytesIO
 from collections.abc import Callable, Iterator
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
+from nemo_retriever.params import CaptionParams
+
 
 import pandas as pd
-from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
-from nemo_retriever.page_elements import detect_page_elements_v3
+from nemo_retriever.dedup.dedup import dedup_images
+from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox, nemotron_parse_page_elements, ocr_page_elements
+from nemo_retriever.page_elements import detect_page_elements_v3
+from nemo_retriever.params import DedupParams
 from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
@@ -958,6 +962,7 @@ class InProcessIngestor(Ingestor):
         self._pipeline_type: Literal["pdf", "txt", "html", "image"] = "pdf"
         self._extract_txt_kwargs: Dict[str, Any] = {}
         self._extract_html_kwargs: Dict[str, Any] = {}
+        self._caption_enabled: bool = False
 
     def files(self, documents: Union[str, List[str]]) -> "InProcessIngestor":
         """
@@ -1110,12 +1115,12 @@ class InProcessIngestor(Ingestor):
             else:
                 self._tasks.append((nemotron_parse_page_elements, {"model": NemotronParseV12(), **parse_flags}))
         else:
-            # NOTE: Page element detection is a common prerequisite for downstream
-            # structure stages (tables/charts/infographics). We enable it whenever
-            # any downstream extraction is requested.
-            if any(
-                kwargs.get(k) is True
-                for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            # Page-elements detection is needed for tables/charts/infographics,
+            # and for text only when the method requires OCR (not plain pdfium).
+            _method = kwargs.get("method", "pdfium")
+            _need_pe_for_text = kwargs.get("extract_text") is True and _method in ("pdfium_hybrid", "ocr")
+            if _need_pe_for_text or any(
+                kwargs.get(k) is True for k in ("extract_tables", "extract_charts", "extract_infographics")
             ):
                 print("Adding page elements task")
                 pe_invoke_url = kwargs.get("page_elements_invoke_url", kwargs.get("invoke_url", ""))
@@ -1332,6 +1337,53 @@ class InProcessIngestor(Ingestor):
         self._tasks.append((apply_asr_to_df, {"asr_params": self._extract_audio_asr_kwargs}))
         return self
 
+    def dedup(self, params: "DedupParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
+        """Remove duplicate and overlapping images before captioning."""
+
+        resolved = _coerce_params(params, DedupParams, kwargs)
+        self._tasks.append((dedup_images, resolved.model_dump(mode="python")))
+        return self
+
+    def caption(self, params: "CaptionParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
+        """
+        Configure image captioning via a local VLM model or remote endpoint.
+
+        Sends cropped images (from the ``images`` column populated by
+        ``extract(extract_images=True)``) to a VLM and writes the returned
+        captions back as ``images[i]["text"]``.
+
+        When ``endpoint_url`` is set, a remote NIM endpoint is used.
+        Otherwise a local ``NemotronVLMCaptioner`` is loaded from HF.
+        """
+        from nemo_retriever.caption.caption import caption_images
+        from nemo_retriever.params import CaptionParams
+
+        resolved = _coerce_params(params, CaptionParams, kwargs)
+        caption_kwargs = resolved.model_dump(mode="python")
+
+        if resolved.endpoint_url:
+            # Remote mode.
+            if not resolved.api_key:
+                caption_kwargs["api_key"] = resolve_remote_api_key()
+        else:
+            # Local mode: defer model creation so the VLM is loaded lazily
+            # on the device specified by CaptionParams.device.
+            if not resolved.device:
+                import warnings
+
+                warnings.warn(
+                    "No caption device specified. The VLM will load on cuda:0, which "
+                    "may conflict with other models. Use device='cuda:1' (or "
+                    "--caption-device from the CLI) to place the captioner on a "
+                    "separate GPU.",
+                    stacklevel=2,
+                )
+            caption_kwargs["model"] = None
+
+        self._caption_enabled = True
+        self._tasks.append((caption_images, caption_kwargs))
+        return self
+
     def embed(self, params: EmbedParams | None = None, **kwargs: Any) -> "InProcessIngestor":
         """
         Configure embedding for in-process execution.
@@ -1349,12 +1401,14 @@ class InProcessIngestor(Ingestor):
         embed_modality = resolved.embed_modality
         embed_granularity = resolved.embed_granularity
 
+        content_columns = (_CONTENT_COLUMNS + ("images",)) if self._caption_enabled else _CONTENT_COLUMNS
+
         if embed_granularity == "page":
             # Page-level: one row per page with concatenated text and full page image.
             self._tasks.append(
                 (
                     collapse_content_to_page_rows,
-                    {"modality": embed_modality},
+                    {"modality": embed_modality, "content_columns": content_columns},
                 )
             )
         else:
@@ -1368,6 +1422,7 @@ class InProcessIngestor(Ingestor):
                         "modality": embed_modality,
                         "text_elements_modality": text_elements_modality,
                         "structured_elements_modality": structured_elements_modality,
+                        "content_columns": content_columns,
                     },
                 )
             )
@@ -1487,12 +1542,21 @@ class InProcessIngestor(Ingestor):
 
         _start = time.perf_counter()
 
-        # -- Three-way task classification --------------------------------
+        # -- Task classification -------------------------------------------
+        from nemo_retriever.caption.caption import caption_images as _caption_images_fn
+
         _post_task_fns = (upload_embeddings_to_lancedb_inprocess, save_dataframe_to_disk_json)
         _cpu_task_fns = (pdf_extraction,)
+        # Caption runs on its own device (--caption-device), not in the GPU pool.
+        _own_device_fns = (_caption_images_fn,)
 
         cpu_tasks = [(f, k) for f, k in self._tasks if f in _cpu_task_fns]
-        gpu_tasks = [(f, k) for f, k in self._tasks if f not in _cpu_task_fns and f not in _post_task_fns]
+        gpu_tasks = [
+            (f, k)
+            for f, k in self._tasks
+            if f not in _cpu_task_fns and f not in _post_task_fns and f not in _own_device_fns
+        ]
+        own_device_tasks = [(f, k) for f, k in self._tasks if f in _own_device_fns]
         post_tasks = [(f, k) for f, k in self._tasks if f in _post_task_fns]
 
         docs = list(self._documents)
@@ -1545,6 +1609,8 @@ class InProcessIngestor(Ingestor):
                             try:
                                 result = future.result()
                                 if isinstance(result, pd.DataFrame) and not result.empty:
+                                    for func, kw in own_device_tasks:
+                                        result = func(result, **kw)
                                     shard_to_doc[shard_id] = doc
                                     gpu_pool.submit(shard_id, result)
                                     shard_id += 1
@@ -1639,6 +1705,8 @@ class InProcessIngestor(Ingestor):
                     return results
 
                 combined = pd.concat(cpu_results, ignore_index=True)
+                for func, kwargs in own_device_tasks:
+                    combined = func(combined, **kwargs)
                 for func, kwargs in gpu_tasks:
                     combined = func(combined, **kwargs)
 
@@ -1678,6 +1746,8 @@ class InProcessIngestor(Ingestor):
                             else:
                                 current = func(current, **kwargs)
                         if isinstance(current, pd.DataFrame) and not current.empty:
+                            for func, kw in own_device_tasks:
+                                current = func(current, **kw)
                             shard_to_doc[shard_id] = doc_path
                             gpu_pool.submit(shard_id, current)
                             shard_id += 1
@@ -1777,7 +1847,7 @@ class InProcessIngestor(Ingestor):
             results.append(current)
 
         # Run upload/save once on combined results so overwrite=True keeps full corpus.
-        if post_tasks and results and all(isinstance(r, pd.DataFrame) for r in results):
+        if results and all(isinstance(r, pd.DataFrame) for r in results):
             combined = pd.concat(results, ignore_index=True)
             for func, kwargs in post_tasks:
                 combined = func(combined, **kwargs)
