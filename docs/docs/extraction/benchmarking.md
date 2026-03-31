@@ -68,7 +68,7 @@ active:
   test_name: null  # Auto-generated if null
   
   # API Configuration
-  api_version: v2  # v1 or v2
+  api_version: v2  # v2
   pdf_split_page_count: null  # V2 only: pages per chunk (null = default 32)
   
   # Infrastructure
@@ -179,7 +179,7 @@ Example:
 # YAML active section has api_version: v2
 # Dataset bo767 has extract_images: false
 # Override via environment variable (highest priority)
-EXTRACT_IMAGES=true API_VERSION=v1 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 # Result: Uses bo767 path, but extract_images=true (env override) and api_version=v1 (env override)
 ```
 
