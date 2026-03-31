@@ -5,7 +5,7 @@ A configurable, dataset-agnostic testing framework for end-to-end validation of 
 ## Dataset Prerequisites
 
     
-Before you run any benchmarking or evaluation tests, you must first download the benchmark datasets. The three primary datasets used in nv-ingest benchmarking and evaluations are the following:
+Before you run any benchmarking or evaluation tests, you must first download the benchmark datasets. The three primary datasets used in nv-ingest benchmarking and evaluations include:
     
 - **Bo20** - 20 PDFs for quick testing
 - **Bo767** - 767 PDFs for comprehensive benchmarking
@@ -13,7 +13,7 @@ Before you run any benchmarking or evaluation tests, you must first download the
     
 ### How to Download the Datasets
     
-Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/nv-ingest/blob/main/evaluation/digital_corpora_download.ipynb) to download these datasets from the public Digital Corpora source. This notebook provides automated download functions that do the following:
+Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/nv-ingest/blob/main/evaluation/digital_corpora_download.ipynb) to download these datasets from the public Digital Corpora source. This notebook provides automated download functions that enable the following:
     
 - Download PDFs directly from Digital Corpora's public repository.
 - Support all three dataset sizes (Bo20, Bo767, Bo10k).
@@ -59,6 +59,8 @@ The framework uses a structured YAML file for all test configuration. Configurat
 
 #### Active Configuration
 
+`api_version` `v2` is the default configuration. Use `v1` only when it is necessary to explicitly override this default value.
+
 The `active` section contains your current test settings. Edit these values directly for your test runs:
 
 ```yaml
@@ -68,16 +70,19 @@ active:
   test_name: null  # Auto-generated if null
   
   # API Configuration
-  api_version: v1  # v1 or v2
+  api_version: v2  # v1 or v2
   pdf_split_page_count: null  # V2 only: pages per chunk (null = default 32)
   
   # Infrastructure
   hostname: localhost
   readiness_timeout: 600
-  profiles: [retrieval]
+  compose:
+    profiles:
+      - retrieval
+      - reranker  # Required for recall evaluation
   
   # Runtime
-  sparse: true
+  sparse: false
   gpu_search: false
   embedding_model: auto
   
@@ -109,7 +114,7 @@ Each dataset includes its path, extraction settings, and recall evaluator in one
 ```yaml
 datasets:
   bo767:
-    path: /raid/jioffe/bo767
+    path: /datasets/nv-ingest/bo767
     extract_text: true
     extract_tables: true
     extract_charts: true
@@ -118,16 +123,16 @@ datasets:
     recall_dataset: bo767  # Evaluator for recall testing
   
   bo20:
-    path: /raid/jioffe/bo20
+    path: /datasets/nv-ingest/bo20
     extract_text: true
     extract_tables: true
     extract_charts: true
     extract_images: true
-    extract_infographics: false
+    extract_infographics: true
     recall_dataset: null  # bo20 does not have recall
   
   earnings:
-    path: /raid/jioffe/earnings_conusulting
+    path: /datasets/nv-ingest/earnings_consulting
     extract_text: true
     extract_tables: true
     extract_charts: true
@@ -159,7 +164,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=/custom/path
 |---------|------|--------|--------|--------|--------------|--------|
 | `bo767` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
 | `earnings` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| `bo20` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `bo20` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `financebench` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `single` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
@@ -173,11 +178,11 @@ Settings are applied in order of priority:
 
 Example:
 ```bash
-# YAML active section has api_version: v1
+# YAML active section has api_version: v2
 # Dataset bo767 has extract_images: false
 # Override via environment variable (highest priority)
-EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
-# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v2 (env override)
+EXTRACT_IMAGES=true API_VERSION=v1 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v1 (env override)
 ```
 
 **Precedence Details:**
@@ -211,7 +216,7 @@ EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dat
 #### Infrastructure Options
 - `hostname` (string): Service hostname
 - `readiness_timeout` (integer): Docker startup timeout in seconds
-- `profiles` (list): Docker compose profiles
+- `compose.profiles` (list): Docker Compose profiles, nested under `compose` in YAML (loaded as top-level `profiles`)
 
 #### Runtime Options
 - `sparse` (boolean): Use sparse embeddings
@@ -631,7 +636,7 @@ tools/harness/artifacts/<test_name>_<timestamp>_UTC/
 Enable per-document element breakdown:
 
 ```bash
-uv run nv-ingest-harness-run --case=e2e --doc-analysis
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --doc-analysis
 ```
 
 **Sample Output:**
