@@ -125,7 +125,8 @@ class GPUTaskDescriptor:
 def _extract_model_config(func: Callable, kwargs: dict[str, Any]) -> Any:
     """Extract a picklable model config from live kwargs, or None."""
     from nemo_retriever.page_elements import detect_page_elements_v3
-    from nemo_retriever.ocr.ocr import nemotron_parse_page_elements, ocr_page_elements
+    from nemo_retriever.ocr.ocr import ocr_page_elements
+    from nemo_retriever.parse.nemotron_parse import nemotron_parse_pages
     from .inprocess import collapse_content_to_page_rows, embed_text_main_text_embed, explode_content_to_rows
 
     if func is detect_page_elements_v3:
@@ -142,7 +143,7 @@ def _extract_model_config(func: Callable, kwargs: dict[str, Any]) -> Any:
             model_dir = str(model._model_dir)
         return OCRModelConfig(model_dir=model_dir)
 
-    if func is nemotron_parse_page_elements:
+    if func is nemotron_parse_pages:
         if kwargs.get("invoke_url"):
             return None  # Remote endpoint, no local model
         return NemotronParseModelConfig(

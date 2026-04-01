@@ -19,16 +19,16 @@ EMBED_INITIAL_ACTORS = 1  # Hueristic initial num actors per GPU (initial_size o
 EMBED_MIN_ACTORS = 1  # Hueristic minimum num actors per GPU (min_size of ActorPoolStrategy). Ray tries to never let running actors fall below this number.  # noqa: E501
 EMBED_MAX_ACTORS = 2  # Hueristic baseline num actors per GPU (max_size of ActorPoolStrategy). Ray will grow to this size when resources are available.  # noqa: E501
 EMBED_GPUS_PER_ACTOR = (
-    0.5  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on.
+    1.0  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on.
 )
 EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 
 # Nemotron Parse Actor constants (PER-GPU)
-NEMOTRON_PARSE_INITIAL_ACTORS = 1  # Hueristic initial num actors per GPU (initial_size of ActorPoolStrategy). Ray starts up this many actors on start-up.  # noqa: E501
-NEMOTRON_PARSE_MIN_ACTORS = 1  # Hueristic minimum num actors per GPU (min_size of ActorPoolStrategy). Ray tries to never let running actors fall below this number.  # noqa: E501
-NEMOTRON_PARSE_MAX_ACTORS = 4  # Hueristic baseline num actors per GPU (max_size of ActorPoolStrategy). Ray will grow to this size when resources are available.  # noqa: E501
+NEMOTRON_PARSE_INITIAL_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
+NEMOTRON_PARSE_MIN_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
+NEMOTRON_PARSE_MAX_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
 NEMOTRON_PARSE_GPUS_PER_ACTOR = (
-    0.1  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on. # noqa: E501
+    1.0  # vLLM owns the full GPU for KV-cache management and continuous batching.  # noqa: E501
 )
 NEMOTRON_PARSE_BATCH_SIZE = 64  # Ray batch size AND Nemotron Parse inference batch size
 

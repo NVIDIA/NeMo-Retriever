@@ -26,7 +26,8 @@ import ray.data as rd
 from nemo_retriever.utils.convert import DocToPdfConversionActor
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.page_elements import PageElementDetectionActor
-from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
+from nemo_retriever.ocr.ocr import OCRActor
+from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
@@ -493,6 +494,8 @@ class BatchIngestor(Ingestor):
             )
 
             parse_flags: dict[str, Any] = {}
+            if kwargs.get("extract_text") is True:
+                parse_flags["extract_text"] = True
             if kwargs.get("extract_tables") is True:
                 parse_flags["extract_tables"] = True
             if kwargs.get("extract_charts") is True:

@@ -32,7 +32,8 @@ import pandas as pd
 from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
 from nemo_retriever.page_elements import detect_page_elements_v3
-from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox, nemotron_parse_page_elements, ocr_page_elements
+from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox, ocr_page_elements
+from nemo_retriever.parse.nemotron_parse import nemotron_parse_pages
 from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
@@ -1097,6 +1098,8 @@ class InProcessIngestor(Ingestor):
 
         if use_nemotron_parse_only:
             parse_flags: dict[str, Any] = {}
+            if kwargs.get("extract_text") is True:
+                parse_flags["extract_text"] = True
             if kwargs.get("extract_tables") is True:
                 parse_flags["extract_tables"] = True
             if kwargs.get("extract_charts") is True:
@@ -1109,9 +1112,9 @@ class InProcessIngestor(Ingestor):
             )
             if parse_invoke_url:
                 parse_flags["invoke_url"] = parse_invoke_url
-                self._tasks.append((nemotron_parse_page_elements, {"model": None, **parse_flags}))
+                self._tasks.append((nemotron_parse_pages, {"model": None, **parse_flags}))
             else:
-                self._tasks.append((nemotron_parse_page_elements, {"model": NemotronParseV12(), **parse_flags}))
+                self._tasks.append((nemotron_parse_pages, {"model": NemotronParseV12(), **parse_flags}))
         else:
             # NOTE: Page element detection is a common prerequisite for downstream
             # structure stages (tables/charts/infographics). We enable it whenever
