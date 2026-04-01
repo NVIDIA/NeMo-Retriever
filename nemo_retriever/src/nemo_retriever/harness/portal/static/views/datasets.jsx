@@ -2,6 +2,7 @@
 function DatasetsView({ managedDatasets, loading, onRefresh, runners }) {
   const [showForm, setShowForm] = useState(false);
   const [editDataset, setEditDataset] = useState(null);
+  const [importing, setImporting] = useState(false);
   const pg = usePagination(managedDatasets, 25);
 
   const runnerMap = useMemo(() => {
@@ -20,6 +21,39 @@ function DatasetsView({ managedDatasets, loading, onRefresh, runners }) {
     } catch {}
   }
 
+  function handleExport() {
+    window.location.href = "/api/managed-datasets/export.yaml";
+  }
+
+  function handleImport() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".yaml,.yml";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      setImporting(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/managed-datasets/import", { method: "POST", body: formData });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert("Import failed: " + (data.detail || `HTTP ${res.status}`));
+          return;
+        }
+        const data = await res.json();
+        alert(`Import complete: ${data.created} created, ${data.updated} updated`);
+        onRefresh();
+      } catch (err) {
+        alert("Import failed: " + err.message);
+      } finally {
+        setImporting(false);
+      }
+    };
+    input.click();
+  }
+
   function runnerLabel(rid) {
     const r = runnerMap[rid];
     return r ? (r.name || r.hostname || `#${rid}`) : `#${rid}`;
@@ -28,7 +62,13 @@ function DatasetsView({ managedDatasets, loading, onRefresh, runners }) {
   return (
     <>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
-        <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Add Dataset</button>
+        <div style={{display:'flex',gap:'8px'}}>
+          <button className="btn btn-primary" onClick={handleCreate}><IconPlus /> Add Dataset</button>
+          <button className="btn btn-secondary" onClick={handleExport} disabled={managedDatasets.length===0} title="Export all datasets to YAML"><IconDownload /> Export YAML</button>
+          <button className="btn btn-secondary" onClick={handleImport} disabled={importing} title="Import datasets from a YAML file">
+            {importing ? <><span className="spinner" style={{marginRight:'6px'}}></span>Importing…</> : <><IconUpload /> Import YAML</>}
+          </button>
+        </div>
         <button className="btn btn-secondary btn-icon" onClick={onRefresh} title="Refresh"><IconRefresh /></button>
       </div>
 

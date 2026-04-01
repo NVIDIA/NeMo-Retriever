@@ -1508,6 +1508,74 @@ async def create_managed_dataset(req: DatasetCreateRequest):
     return ds
 
 
+@app.get("/api/managed-datasets/export.yaml")
+async def export_datasets_yaml():
+    """Export all managed datasets as a downloadable YAML file."""
+    import yaml as _yaml
+
+    datasets = history.get_all_datasets()
+    export: dict[str, Any] = {}
+    _SKIP = {"id", "created_at", "updated_at", "runner_ids"}
+    for ds in datasets:
+        entry: dict[str, Any] = {}
+        for k, v in ds.items():
+            if k in _SKIP or k == "name":
+                continue
+            if v is None or v == "" or v == [] or v is False:
+                continue
+            if k == "recall_required" and v is True:
+                entry[k] = True
+            elif v is not True and v is not False:
+                entry[k] = v
+            else:
+                entry[k] = v
+        export[ds["name"]] = entry
+
+    content = _yaml.dump(export, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    return Response(
+        content=content,
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": "attachment; filename=datasets.yaml"},
+    )
+
+
+@app.post("/api/managed-datasets/import")
+async def import_datasets_yaml(file: UploadFile = File(...)):
+    """Import datasets from an uploaded YAML file.
+
+    Each top-level key is a dataset name.  Existing datasets with the same
+    name are updated; new names are inserted.
+    """
+    import yaml as _yaml
+
+    raw = await file.read()
+    try:
+        data = _yaml.safe_load(raw)
+    except _yaml.YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {exc}")
+
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="YAML root must be a mapping of dataset names to their config")
+
+    created = 0
+    updated = 0
+    for name, body in data.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+        body = body if isinstance(body, dict) else {}
+        payload = {"name": name.strip(), **body}
+        payload.setdefault("path", "")
+        existing = history.get_dataset_by_name(name.strip())
+        if existing:
+            history.update_dataset(existing["id"], payload)
+            updated += 1
+        else:
+            history.create_dataset(payload)
+            created += 1
+
+    return {"ok": True, "created": created, "updated": updated}
+
+
 @app.get("/api/managed-datasets/{dataset_id}")
 async def get_managed_dataset(dataset_id: int):
     row = history.get_dataset_by_id(dataset_id)

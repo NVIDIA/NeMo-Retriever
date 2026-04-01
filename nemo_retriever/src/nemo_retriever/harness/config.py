@@ -78,6 +78,7 @@ class HarnessConfig:
     extract_page_as_image: bool = True
     extract_infographics: bool = False
     write_detection_file: bool = False
+    use_heuristics: bool = False
 
     pdf_extract_workers: int = 8
     pdf_extract_num_cpus: float = 2.0

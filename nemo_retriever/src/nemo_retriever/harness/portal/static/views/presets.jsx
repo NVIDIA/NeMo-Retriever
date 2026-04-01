@@ -520,14 +520,14 @@ function PresetFormModal({ preset, onClose, onSaved }) {
   });
   const [extraConfig, setExtraConfig] = useState(() => {
     return Object.entries(existingConfig)
-      .filter(([k]) => !tuningKeySet.has(k))
+      .filter(([k]) => !tuningKeySet.has(k) && k !== "use_heuristics")
       .map(([k, v]) => ({ key: k, value: String(v) }));
   });
   const [overrides, setOverrides] = useState(() => {
     return Object.entries(existingOverrides).map(([k, v]) => ({ key: k, value: String(v) }));
   });
   const [useDefaults, setUseDefaults] = useState(() => {
-    return isEdit && TUNING_FIELDS.every(f => existingConfig[f.key] == null);
+    return isEdit && existingConfig.use_heuristics === true;
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -569,12 +569,16 @@ function PresetFormModal({ preset, onClose, onSaved }) {
     setSaving(true);
     setError("");
     const parsedConfig = {};
-    TUNING_FIELDS.forEach(f => {
-      const raw = config[f.key];
-      if (raw !== "" && raw != null) {
-        parsedConfig[f.key] = f.type === "int" ? parseInt(raw, 10) : parseFloat(raw);
-      }
-    });
+    if (useDefaults) {
+      parsedConfig["use_heuristics"] = true;
+    } else {
+      TUNING_FIELDS.forEach(f => {
+        const raw = config[f.key];
+        if (raw !== "" && raw != null) {
+          parsedConfig[f.key] = f.type === "int" ? parseInt(raw, 10) : parseFloat(raw);
+        }
+      });
+    }
     extraConfig.forEach(o => {
       const k = o.key.trim();
       if (k) parsedConfig[k] = _parseValue(o.value);
