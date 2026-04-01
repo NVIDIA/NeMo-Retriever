@@ -185,6 +185,7 @@ class TriggerRequest(BaseModel):
     git_commit: str | None = None
     nsys_profile: bool = False
     graph_id: int | None = None
+    extra_packages: list[str] | None = None
 
 
 class TriggerResponse(BaseModel):
@@ -642,7 +643,10 @@ async def get_rerun_info(run_id: int):
         "original_hostname": original_hostname,
         "original_commit": original_commit,
         "original_runner": original_runner,
-        "online_runners": [{"id": r["id"], "name": r["name"], "hostname": r.get("hostname"), "gpu_type": r.get("gpu_type")} for r in online_runners],
+        "online_runners": [
+            {"id": r["id"], "name": r["name"], "hostname": r.get("hostname"), "gpu_type": r.get("gpu_type")}
+            for r in online_runners
+        ],
     }
 
 
@@ -719,17 +723,19 @@ async def rerun_run(run_id: int, req: RerunRequest | None = None):
     rerun_tags = [t for t in original_tags if not t.startswith("rerun:")]
     rerun_tags.append(f"rerun:of_run_{run_id}")
 
-    job = history.create_job({
-        "trigger_source": "rerun",
-        "dataset": row.get("dataset") or test_config.get("dataset_label", "unknown"),
-        "dataset_path": test_config.get("dataset_dir"),
-        "dataset_overrides": overrides if overrides else None,
-        "preset": None,
-        "assigned_runner_id": runner_id,
-        "git_commit": original_commit,
-        "git_ref": original_commit,
-        "tags": rerun_tags,
-    })
+    job = history.create_job(
+        {
+            "trigger_source": "rerun",
+            "dataset": row.get("dataset") or test_config.get("dataset_label", "unknown"),
+            "dataset_path": test_config.get("dataset_dir"),
+            "dataset_overrides": overrides if overrides else None,
+            "preset": None,
+            "assigned_runner_id": runner_id,
+            "git_commit": original_commit,
+            "git_ref": original_commit,
+            "tags": rerun_tags,
+        }
+    )
 
     return {
         "job_id": job["id"],
@@ -1953,6 +1959,7 @@ async def trigger_run(req: TriggerRequest):
                 "git_ref": pinned_ref,
                 "tags": req.tags or [],
                 "nsys_profile": int(req.nsys_profile),
+                "extra_packages": req.extra_packages or [],
             }
         )
 
@@ -2170,8 +2177,12 @@ async def complete_job_endpoint(job_id: str, req: JobCompleteRequest):
     effective_success = req.success and not was_cancelling
     effective_error = req.error or ("Cancelled by user" if was_cancelling else None)
     run_id = _record_run_from_job(
-        job, effective_success, req.result, effective_error,
-        execution_commit=req.execution_commit, num_gpus=req.num_gpus,
+        job,
+        effective_success,
+        req.result,
+        effective_error,
+        execution_commit=req.execution_commit,
+        num_gpus=req.num_gpus,
     )
 
     return {"ok": True, "run_id": run_id}
@@ -2774,9 +2785,7 @@ def _resolve_run_code_ref_sha() -> tuple[str | None, str | None]:
         return ref, ref
 
 
-def _resolve_git_override(
-    git_ref: str | None, git_commit: str | None
-) -> tuple[str | None, str | None]:
+def _resolve_git_override(git_ref: str | None, git_commit: str | None) -> tuple[str | None, str | None]:
     """Resolve explicit per-trigger git overrides, falling back to the global setting.
 
     Returns ``(sha, ref)``.
@@ -3323,9 +3332,7 @@ def _scan_nemo_retriever_package() -> None:
         return
     if not hasattr(_pkg, "__path__"):
         return
-    for _importer, modname, _ispkg in pkgutil.walk_packages(
-        _pkg.__path__, prefix="nemo_retriever."
-    ):
+    for _importer, modname, _ispkg in pkgutil.walk_packages(_pkg.__path__, prefix="nemo_retriever."):
         try:
             importlib.import_module(modname)
         except Exception:
@@ -3432,9 +3439,7 @@ def _discover_operators() -> list[dict[str, Any]]:
                         p_info["pydantic"] = True
                         p_info["pydantic_class"] = effective_type.__name__
                         p_info["pydantic_module"] = effective_type.__module__
-                        p_info["pydantic_import"] = (
-                            f"from {effective_type.__module__} import {effective_type.__name__}"
-                        )
+                        p_info["pydantic_import"] = f"from {effective_type.__module__} import {effective_type.__name__}"
                         p_info["fields"] = pydantic_fields
 
                 if param.default is not _inspect.Parameter.empty:

@@ -84,7 +84,9 @@ def _upload_artifacts(base_url: str, run_id: int, artifact_dir: str, timeout: in
                 if file_mb > _ARTIFACT_MAX_UPLOAD_MB:
                     logger.warning(
                         "Skipping large file %s (%.1f MB > %d MB limit)",
-                        fp.name, file_mb, _ARTIFACT_MAX_UPLOAD_MB,
+                        fp.name,
+                        file_mb,
+                        _ARTIFACT_MAX_UPLOAD_MB,
                     )
                     continue
                 compress = _zipfile.ZIP_STORED if fp.suffix == ".nsys-rep" else _zipfile.ZIP_DEFLATED
@@ -97,10 +99,14 @@ def _upload_artifacts(base_url: str, run_id: int, artifact_dir: str, timeout: in
 
     boundary = f"----RunnerUpload{run_id}"
     body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="artifacts.zip"\r\n'
-        f"Content-Type: application/zip\r\n\r\n"
-    ).encode("utf-8") + raw + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="artifacts.zip"\r\n'
+            f"Content-Type: application/zip\r\n\r\n"
+        ).encode("utf-8")
+        + raw
+        + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    )
 
     url = f"{base_url}/api/runs/{run_id}/upload-artifacts"
     req = urllib.request.Request(
@@ -245,14 +251,16 @@ def _write_update_marker(previous_commit: str, new_commit: str) -> None:
     """
     try:
         _UPDATE_MARKER_FILE.write_text(
-            json_module.dumps({
-                "previous_commit": previous_commit,
-                "new_commit": new_commit,
-                "ts": time.time(),
-                "ray_address": _runner_ray_address,
-                "run_code_ref": _runner_run_code_ref,
-                "num_gpus": _runner_num_gpus,
-            }),
+            json_module.dumps(
+                {
+                    "previous_commit": previous_commit,
+                    "new_commit": new_commit,
+                    "ts": time.time(),
+                    "ray_address": _runner_ray_address,
+                    "run_code_ref": _runner_run_code_ref,
+                    "num_gpus": _runner_num_gpus,
+                }
+            ),
         )
     except Exception as exc:
         logger.warning("Failed to write update marker: %s", exc)
@@ -375,7 +383,7 @@ def _git_restore(prev_ref: str | None) -> None:
 # Per-job virtual environment
 # ---------------------------------------------------------------------------
 
-_VENV_BASE_DIR = Path("/tmp/.nemo_runner_venvs")
+_VENV_BASE_DIR = Path(f"/tmp/.nemo_runner_venvs_{os.getenv('USER', os.getenv('LOGNAME', str(os.getuid())))}")
 
 _JOB_WRAPPER_SCRIPT = """\
 import json, sys, traceback, inspect
@@ -597,10 +605,13 @@ def _nsys_prefix(output_path: str) -> list[str]:
     sizes manageable (typically tens of MB) while capturing all GPU activity.
     """
     return [
-        "nsys", "profile",
-        "-o", output_path,
+        "nsys",
+        "profile",
+        "-o",
+        output_path,
         "--force-overwrite=true",
-        "-t", "cuda,nvtx",
+        "-t",
+        "cuda,nvtx",
     ]
 
 
@@ -620,8 +631,7 @@ def _collect_nsys_report_info(nsys_output_dir: Path | None) -> dict[str, Any]:
         all_files = list(nsys_output_dir.iterdir())
         if all_files:
             info["error"] = (
-                f"No .nsys-rep files found in {nsys_output_dir}. "
-                f"Files present: {[f.name for f in all_files[:10]]}"
+                f"No .nsys-rep files found in {nsys_output_dir}. " f"Files present: {[f.name for f in all_files[:10]]}"
             )
         else:
             info["error"] = (
@@ -670,6 +680,13 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
     venv_dir = _VENV_BASE_DIR / job_id
     _VENV_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
+    if venv_dir.exists():
+        try:
+            shutil.rmtree(venv_dir)
+            logger.info("Removed stale venv dir for job %s", job_id)
+        except Exception as exc:
+            logger.warning("Could not remove stale venv dir %s: %s", venv_dir, exc)
+
     try:
         print(f"[venv] Creating isolated uv venv for job {job_id} at {venv_dir} …")
         result = subprocess.run(
@@ -684,6 +701,9 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
         logger.info("Created venv for job %s at %s", job_id, venv_dir)
     except FileNotFoundError:
         logger.error("uv is not installed — cannot create job venv")
+        return None
+    except subprocess.CalledProcessError as exc:
+        logger.error("Failed to create venv for job %s: %s\nstderr: %s", job_id, exc, exc.stderr or "")
         return None
     except Exception as exc:
         logger.error("Failed to create venv for job %s: %s", job_id, exc)
@@ -715,7 +735,9 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
             stderr_text = getattr(exc, "stderr", "") or ""
             logger.warning(
                 "uv sync failed for job %s, falling back to uv pip install: %s\n%s",
-                job_id, exc, stderr_text[:1000],
+                job_id,
+                exc,
+                stderr_text[:1000],
             )
             print(f"[venv] uv sync failed, falling back to uv pip install …")
 
@@ -723,8 +745,7 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
     try:
         print(f"[venv] Running uv pip install -e ./nemo_retriever …")
         result = subprocess.run(
-            ["uv", "pip", "install", "-e", "./nemo_retriever",
-             "--python", venv_python],
+            ["uv", "pip", "install", "-e", "./nemo_retriever", "--python", venv_python],
             cwd=str(repo_root),
             capture_output=True,
             text=True,
@@ -978,27 +999,37 @@ def _enrich_standalone_graph_result(result: dict[str, Any], job: dict[str, Any])
     pps = round(rows / elapsed, 2) if rows and elapsed and elapsed > 0 else None
 
     result["timestamp"] = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_UTC")
-    result.setdefault("test_config", {
-        "dataset_label": job.get("dataset", "graph-run"),
-        "preset": job.get("preset"),
-        "input_type": "graph",
-        "graph_pipeline": True,
-    })
-    result.setdefault("metrics", {
-        "pages": rows,
-        "files": rows,
-        "ingest_secs": elapsed,
-        "pages_per_sec_ingest": pps,
-        "rows_processed": rows,
-    })
-    result.setdefault("summary_metrics", {
-        "pages": rows,
-        "files": rows,
-        "ingest_secs": elapsed,
-        "pages_per_sec_ingest": pps,
-    })
+    result.setdefault(
+        "test_config",
+        {
+            "dataset_label": job.get("dataset", "graph-run"),
+            "preset": job.get("preset"),
+            "input_type": "graph",
+            "graph_pipeline": True,
+        },
+    )
+    result.setdefault(
+        "metrics",
+        {
+            "pages": rows,
+            "files": rows,
+            "ingest_secs": elapsed,
+            "pages_per_sec_ingest": pps,
+            "rows_processed": rows,
+        },
+    )
+    result.setdefault(
+        "summary_metrics",
+        {
+            "pages": rows,
+            "files": rows,
+            "ingest_secs": elapsed,
+            "pages_per_sec_ingest": pps,
+        },
+    )
     try:
         import socket as _sock
+
         host = _sock.gethostname().strip() or "unknown"
     except Exception:
         host = "unknown"
@@ -1049,6 +1080,23 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     if git_commit:
         logger.info("Job %s requests commit %s (ref=%s) — pulling latest code", job_id, git_commit[:12], git_ref)
         prev_head = _git_checkout_commit(git_commit, git_ref)
+        repo_root = _find_repo_root()
+        if repo_root is not None:
+            import shutil
+
+            uv_bin = shutil.which("uv")
+            pkg_dir = str(repo_root / "nemo_retriever")
+            if uv_bin:
+                reinstall_cmd = [uv_bin, "pip", "install", "--python", sys.executable, "-e", pkg_dir]
+            else:
+                reinstall_cmd = [sys.executable, "-m", "pip", "install", "-e", pkg_dir]
+            logger.info("Job %s — reinstalling nemo_retriever from %s", job_id, pkg_dir)
+            try:
+                subprocess.run(reinstall_cmd, check=True, timeout=300, capture_output=True)
+            except subprocess.CalledProcessError as exc:
+                logger.warning("Job %s — nemo_retriever reinstall failed: %s", job_id, exc)
+
+    extra_packages = job.get("extra_packages") or []
 
     execution_commit = _get_current_git_commit()
 
@@ -1092,6 +1140,44 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
             logger.info("Job %s — venv ready at %s", job_id, venv_dir)
         else:
             logger.warning("Job %s — venv creation failed, falling back to current environment", job_id)
+
+    if extra_packages:
+        import shlex
+        import shutil
+
+        # Determine which Python to install into: the job venv if available,
+        # otherwise fall back to the runner's own interpreter.
+        if venv_dir is not None:
+            target_python = str(venv_dir / "bin" / "python")
+        else:
+            target_python = sys.executable
+
+        logger.info("Job %s — installing extra packages into %s: %s", job_id, target_python, extra_packages)
+        try:
+            # Each entry may be a plain package spec or a full pip arg string
+            # (e.g. "-i https://test.pypi.org/simple/ pkg==1.0"), so shlex-split
+            # each line and flatten into a single install invocation.
+            pip_args = [token for entry in extra_packages for token in shlex.split(entry)]
+            uv_bin = shutil.which("uv")
+            if uv_bin:
+                cmd = [uv_bin, "pip", "install", "--python", target_python, *pip_args]
+            else:
+                cmd = [target_python, "-m", "pip", "install", *pip_args]
+            subprocess.run(cmd, check=True, timeout=300)
+        except subprocess.CalledProcessError as exc:
+            logger.error("Job %s — extra_packages install failed: %s", job_id, exc)
+            try:
+                _post_json(
+                    f"{base_url}/api/jobs/{job_id}/complete",
+                    {"success": False, "error": f"extra_packages install failed: {exc}"},
+                )
+            except Exception:
+                pass
+            _job_tracker.finish_job()
+            if prev_head:
+                _git_restore(prev_head)
+            _destroy_job_venv(job_id)
+            return
 
     is_graph_job = job.get("trigger_source") == "graph"
     graph_code = job.get("graph_code") or ""
@@ -1519,8 +1605,12 @@ def runner_start_command(
     if manager_url:
         base_url = manager_url.rstrip("/")
         reg_payload = _build_registration_payload(
-            runner_name, meta, tag or [], heartbeat_interval,
-            ray_address=_runner_ray_address, num_gpus=_runner_num_gpus,
+            runner_name,
+            meta,
+            tag or [],
+            heartbeat_interval,
+            ray_address=_runner_ray_address,
+            num_gpus=_runner_num_gpus,
         )
         typer.echo(f"\nRegistering with {base_url} ...")
         runner_id = _register_with_portal(base_url, reg_payload)

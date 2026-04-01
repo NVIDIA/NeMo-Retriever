@@ -18,6 +18,7 @@ function TriggerModal({ onClose, onTriggered }) {
   const [remoteBranches, setRemoteBranches] = useState([]);
   const [defaultRef, setDefaultRef] = useState("");
   const [nsysProfile, setNsysProfile] = useState(false);
+  const [extraPackages, setExtraPackages] = useState("");
 
   useEffect(() => {
     fetch("/api/config").then(r=>r.json()).then(cfg => {
@@ -48,11 +49,13 @@ function TriggerModal({ onClose, onTriggered }) {
     if (pipelineMode === "graph" && !graphId) return;
     setSubmitting(true);
     try {
+      const pkgs = extraPackages.split('\n').map(s => s.trim()).filter(Boolean);
       const payload = {
         dataset,
         preset: pipelineMode === "preset" ? (preset || null) : null,
         runner_id: runnerId ? parseInt(runnerId, 10) : null,
         nsys_profile: nsysProfile,
+        extra_packages: pkgs.length ? pkgs : null,
       };
       if (pipelineMode === "graph") {
         payload.graph_id = parseInt(graphId, 10);
@@ -252,6 +255,24 @@ function TriggerModal({ onClose, onTriggered }) {
                 </div>
               )}
             </div>
+
+            {/* Extra Packages */}
+            {pipelineMode === "preset" && (
+              <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
+                <label style={labelStyle}>Extra Packages <span style={{textTransform:'none',fontWeight:400,color:'var(--nv-text-dim)'}}>(optional)</span></label>
+                <textarea
+                  placeholder={"somepackage>=1.0\n/path/to/local.whl\ngit+https://github.com/org/repo"}
+                  value={extraPackages}
+                  onChange={e => setExtraPackages(e.target.value)}
+                  className="input"
+                  rows={3}
+                  style={{width:'100%',resize:'vertical',fontFamily:'monospace',fontSize:'12px'}}
+                />
+                <div style={hintStyle}>
+                  One package spec per line. Accepts PyPI names, version specifiers, local wheel paths, or VCS URLs.
+                </div>
+              </div>
+            )}
 
             {/* Profiling */}
             <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
