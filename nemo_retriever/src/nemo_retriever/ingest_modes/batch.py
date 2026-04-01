@@ -15,6 +15,7 @@ import glob
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from datetime import timedelta
 from functools import partial
@@ -37,6 +38,7 @@ from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.utils.hf_cache import resolve_hf_cache_dir
+from nemo_retriever.ingest_modes._plans import BaseIngestPlan
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
@@ -1130,11 +1132,14 @@ class BatchIngestor(Ingestor):
         if self._rd_dataset is None:
             raise RuntimeError("No Ray Dataset to write. Call .files(...) (and optionally .extract(...)) first.")
 
+        self._intermediate_output_dir = self._write_dataset_parquet(self._rd_dataset, output_dir)
+        return self
+
+    @staticmethod
+    def _resolve_output_dir(output_dir: str) -> str:
         base_dir = os.path.abspath(output_dir)
         os.makedirs(base_dir, exist_ok=True)
 
-        # Ray's writers typically expect a directory that does not already contain output.
-        # To avoid destructive behavior, if the directory is non-empty we write to a timestamped subdir.
         target_dir = base_dir
         try:
             if os.listdir(base_dir):
@@ -1142,14 +1147,15 @@ class BatchIngestor(Ingestor):
                 target_dir = os.path.join(base_dir, f"ray_dataset_{ts}")
                 os.makedirs(target_dir, exist_ok=False)
         except FileNotFoundError:
-            # Rare race: directory disappeared between abspath and listdir.
             os.makedirs(base_dir, exist_ok=True)
 
-        # Trigger execution and write results.
-        # Parquet supports nested list/struct columns used by our stages (e.g. detections payloads).
-        self._rd_dataset.write_parquet(target_dir)
-        self._intermediate_output_dir = target_dir
-        return self
+        return target_dir
+
+    @classmethod
+    def _write_dataset_parquet(cls, dataset: rd.Dataset, output_dir: str) -> str:
+        target_dir = cls._resolve_output_dir(output_dir)
+        dataset.write_parquet(target_dir)
+        return target_dir
 
     # Backwards-compatibility: some examples call `write_to_disk(...)`.
     def write_to_disk(self, output_dir: str) -> "BatchIngestor":
@@ -1329,6 +1335,15 @@ class BatchIngestor(Ingestor):
 _LegacyBatchIngestor = BatchIngestor
 
 
+@dataclass
+class _GraphBatchPlan(BaseIngestPlan):
+    """Single source of truth for graph-backed batch execution."""
+
+    source_dataset: rd.Dataset | None = None
+    save_intermediate_results_dir: str | None = None
+    unsupported_tasks: set[str] = field(default_factory=set)
+
+
 class GraphBatchIngestor(_LegacyBatchIngestor):
     """Batch ingestor that uses the graph runtime for the PDF/doc pipeline."""
 
@@ -1347,24 +1362,28 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             debug=debug,
             allow_no_gpu=allow_no_gpu,
         )
-        self._graph_source_dataset: rd.Dataset | None = None
-        self._graph_extraction_mode: str = "pdf"
-        self._graph_extract_params: ExtractParams | None = None
-        self._graph_text_params: TextChunkParams | None = None
-        self._graph_html_params: HtmlChunkParams | None = None
-        self._graph_audio_chunk_params: AudioChunkParams | None = None
-        self._graph_asr_params: ASRParams | None = None
-        self._graph_embed_params: EmbedParams | None = None
-        self._graph_split_params: TextChunkParams | None = None
-        self._graph_caption_params: CaptionParams | None = None
+        self._graph_plan = _GraphBatchPlan()
+        self._legacy_init_kwargs = {
+            "documents": [],
+            "ray_address": ray_address,
+            "ray_log_to_driver": ray_log_to_driver,
+            "debug": debug,
+            "allow_no_gpu": allow_no_gpu,
+        }
 
     def files(self, documents: Union[str, List[str]]) -> "GraphBatchIngestor":
         super().files(documents)
-        self._graph_source_dataset = self._rd_dataset
+        self._graph_plan.source_dataset = self._rd_dataset
         return self
 
     def extract(self, params: ExtractParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
         resolved = _coerce_params(params, ExtractParams, kwargs)
+        if self._input_documents and all(f.lower().endswith(".txt") for f in self._input_documents):
+            return self.extract_txt(TextChunkParams())
+        if self._input_documents and all(
+            os.path.splitext(f)[1].lower() in SUPPORTED_IMAGE_EXTENSIONS for f in self._input_documents
+        ):
+            return self.extract_image_files(params=resolved)
         if (
             any(
                 (
@@ -1378,10 +1397,8 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             and not resolved.api_key
         ):
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
-        super().extract(params=resolved)
-        if self._pipeline_type == "pdf":
-            self._graph_extraction_mode = "pdf"
-            self._graph_extract_params = resolved
+        self._pipeline_type = "pdf"
+        self._graph_plan.set_extraction(mode="pdf", extract_params=resolved)
         return self
 
     def extract_image_files(self, params: ExtractParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
@@ -1399,23 +1416,20 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             and not resolved.api_key
         ):
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
-        super().extract_image_files(params=resolved)
-        self._graph_extraction_mode = "image"
-        self._graph_extract_params = resolved
+        self._pipeline_type = "image"
+        self._graph_plan.set_extraction(mode="image", extract_params=resolved)
         return self
 
     def extract_txt(self, params: TextChunkParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
         resolved = _coerce_params(params, TextChunkParams, kwargs)
-        super().extract_txt(params=resolved)
-        self._graph_extraction_mode = "text"
-        self._graph_text_params = resolved
+        self._pipeline_type = "txt"
+        self._graph_plan.set_extraction(mode="text", text_params=resolved)
         return self
 
     def extract_html(self, params: HtmlChunkParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
         resolved = _coerce_params(params, HtmlChunkParams, kwargs)
-        super().extract_html(params=resolved)
-        self._graph_extraction_mode = "html"
-        self._graph_html_params = resolved
+        self._pipeline_type = "html"
+        self._graph_plan.set_extraction(mode="html", html_params=resolved)
         return self
 
     def extract_audio(
@@ -1426,24 +1440,36 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
     ) -> "GraphBatchIngestor":
         chunk_resolved = _coerce_params(params, AudioChunkParams, kwargs)
         asr_resolved = _coerce_params(asr_params, ASRParams, kwargs)
-        super().extract_audio(params=chunk_resolved, asr_params=asr_resolved)
-        self._graph_extraction_mode = "audio"
-        self._graph_audio_chunk_params = chunk_resolved
-        self._graph_asr_params = asr_resolved
+        self._pipeline_type = "audio"
+        self._graph_plan.set_extraction(
+            mode="audio",
+            audio_chunk_params=chunk_resolved,
+            asr_params=asr_resolved,
+        )
         return self
 
     def split(self, params: TextChunkParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
         resolved = _coerce_params(params, TextChunkParams, kwargs)
-        super().split(params=resolved)
-        self._graph_split_params = resolved
+        self._graph_plan.split_params = resolved
+        self._graph_plan.record_stage("split")
+        return self
+
+    def dedup(self, params: DedupParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        if self._graph_plan.source_dataset is None:
+            raise RuntimeError("No Ray Dataset to dedup. Run .files(...) / .extract(...) first.")
+        resolved = _coerce_params(params, DedupParams, kwargs)
+        self._graph_plan.dedup_params = resolved
+        self._graph_plan.record_stage("dedup")
         return self
 
     def caption(self, params: CaptionParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        if self._graph_plan.source_dataset is None:
+            raise RuntimeError("No Ray Dataset to caption. Run .files(...) / .extract(...) first.")
         resolved = _coerce_params(params, CaptionParams, kwargs)
         if resolved.endpoint_url and not resolved.api_key:
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
-        super().caption(params=resolved)
-        self._graph_caption_params = resolved
+        self._graph_plan.caption_params = resolved
+        self._graph_plan.record_stage("caption")
         return self
 
     def embed(
@@ -1455,29 +1481,112 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
         resolved = _coerce_params(params, EmbedParams, kwargs)
         if any((resolved.embedding_endpoint, resolved.embed_invoke_url)) and not resolved.api_key:
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
-        super().embed(params=resolved, input_dataset=input_dataset)
-        self._graph_embed_params = resolved
+        if input_dataset is not None:
+            self._graph_plan.source_dataset = input_dataset
+        if self._graph_plan.source_dataset is None:
+            raise RuntimeError(
+                "No Ray Dataset to embed. Provide input_dataset or run .files(...) / .extract(...) first."
+            )
+        self._graph_plan.embed_params = resolved
+        self._graph_plan.record_stage("embed")
         return self
 
+    def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "GraphBatchIngestor":
+        if self._graph_plan.source_dataset is None:
+            raise RuntimeError("No Ray Dataset to upload. Run .files(...) / .extract(...) first.")
+        resolved = params or VdbUploadParams()
+        if kwargs:
+            lancedb_kwargs = {k: v for k, v in kwargs.items() if k != "purge_results_after_upload"}
+            if lancedb_kwargs:
+                resolved = resolved.model_copy(update={"lancedb": resolved.lancedb.model_copy(update=lancedb_kwargs)})
+            if "purge_results_after_upload" in kwargs:
+                resolved = resolved.model_copy(
+                    update={"purge_results_after_upload": bool(kwargs["purge_results_after_upload"])}
+                )
+        self._graph_plan.vdb_upload_params = resolved
+        self._graph_plan.record_sink("vdb_upload")
+        self._graph_plan.unsupported_tasks.add("vdb_upload")
+        return self
+
+    def save_intermediate_results(self, output_dir: str) -> "GraphBatchIngestor":
+        if not isinstance(output_dir, str) or not output_dir.strip():
+            raise ValueError(f"output_dir must be a non-empty string, got {output_dir!r}")
+        if self._graph_plan.source_dataset is None:
+            raise RuntimeError("No Ray Dataset to write. Call .files(...) (and optionally .extract(...)) first.")
+        self._graph_plan.save_intermediate_results_dir = os.path.abspath(output_dir)
+        self._graph_plan.record_sink("save_intermediate_results")
+        return self
+
+    def _replay_legacy_plan(self) -> _LegacyBatchIngestor:
+        legacy = _LegacyBatchIngestor(**self._legacy_init_kwargs)
+
+        if self._documents:
+            legacy.files(list(self._documents))
+
+        plan = self._graph_plan
+        execution_plan = plan.build_execution_plan()
+        if execution_plan.extract_params is not None:
+            if execution_plan.extraction_mode == "image":
+                legacy.extract_image_files(execution_plan.extract_params)
+            else:
+                legacy.extract(execution_plan.extract_params)
+        elif execution_plan.text_params is not None:
+            legacy.extract_txt(execution_plan.text_params)
+        elif execution_plan.html_params is not None:
+            legacy.extract_html(execution_plan.html_params)
+        elif execution_plan.audio_chunk_params is not None:
+            legacy.extract_audio(execution_plan.audio_chunk_params, asr_params=execution_plan.asr_params)
+
+        for stage in execution_plan.stages:
+            if stage.name == "dedup":
+                legacy.dedup(stage.params)
+            elif stage.name == "split":
+                legacy.split(stage.params)
+            elif stage.name == "caption":
+                legacy.caption(stage.params)
+            elif stage.name == "embed":
+                legacy.embed(stage.params)
+
+        return legacy
+
+    def _run_graph_sinks(self, dataset: rd.Dataset) -> rd.Dataset:
+        for sink_name in self._graph_plan.sink_order:
+            if sink_name == "save_intermediate_results" and self._graph_plan.save_intermediate_results_dir is not None:
+                self._intermediate_output_dir = self._write_dataset_parquet(
+                    dataset, self._graph_plan.save_intermediate_results_dir
+                )
+        return dataset
+
+    def _run_legacy_sinks(self, legacy: _LegacyBatchIngestor) -> None:
+        execution_plan = self._graph_plan.build_execution_plan()
+        for sink in execution_plan.sinks:
+            if sink.name == "vdb_upload":
+                legacy.vdb_upload(sink.params)
+
+        for sink_name in self._graph_plan.sink_order:
+            if sink_name == "save_intermediate_results" and self._graph_plan.save_intermediate_results_dir is not None:
+                dataset = legacy.get_dataset()
+                if dataset is None:
+                    raise RuntimeError("No Ray Dataset to write after legacy fallback execution.")
+                self._intermediate_output_dir = self._write_dataset_parquet(
+                    dataset, self._graph_plan.save_intermediate_results_dir
+                )
+
     def _can_use_graph_runtime(self) -> bool:
-        unsupported_task_names = {"vdb_upload"}
+        execution_plan = self._graph_plan.build_execution_plan()
         return (
-            self._graph_source_dataset is not None
-            and (
-                self._graph_extract_params is not None
-                or self._graph_text_params is not None
-                or self._graph_html_params is not None
-                or self._graph_audio_chunk_params is not None
-            )
-            and not any(task_name in unsupported_task_names for task_name, _ in self._tasks)
+            self._graph_plan.source_dataset is not None
+            and execution_plan.has_extraction()
+            and not self._graph_plan.unsupported_tasks
         )
 
     def _build_graph_node_overrides(self) -> dict[str, dict[str, Any]]:
-        extract_params = self._graph_extract_params
-        embed_params = self._graph_embed_params
-        split_params = self._graph_split_params
-        caption_params = self._graph_caption_params
-        extraction_mode = self._graph_extraction_mode
+        extract_params = self._graph_plan.extract_params
+        embed_params = self._graph_plan.embed_params
+        split_params = self._graph_plan.split_params
+        dedup_params = self._graph_plan.dedup_params
+        caption_params = self._graph_plan.caption_params
+        extraction_mode = self._graph_plan.extraction_mode
         assert extract_params is not None or extraction_mode in {"text", "html", "audio"}
 
         tuning = extract_params.batch_tuning if extract_params is not None else None
@@ -1590,12 +1699,16 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             "TableStructureActor": {
                 "batch_size": ocr_batch_size,
                 "num_cpus": ocr_cpus,
-                "num_gpus": 0.0 if extract_params.table_structure_invoke_url else ocr_gpus,
+                "num_gpus": 0.0
+                if extract_params is not None and extract_params.table_structure_invoke_url
+                else ocr_gpus,
             },
             "GraphicElementsActor": {
                 "batch_size": ocr_batch_size,
                 "num_cpus": ocr_cpus,
-                "num_gpus": 0.0 if extract_params.graphic_elements_invoke_url else ocr_gpus,
+                "num_gpus": 0.0
+                if extract_params is not None and extract_params.graphic_elements_invoke_url
+                else ocr_gpus,
             },
             "OCRActor": {
                 "batch_size": ocr_batch_size,
@@ -1615,12 +1728,14 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
         }
         if extraction_mode in {"text", "html", "audio", "image", "auto"}:
             multi_type_gpu = 0.0
-            if extraction_mode == "audio" and self._graph_asr_params is not None:
-                endpoints = getattr(self._graph_asr_params, "audio_endpoints", (None, None))
+            if extraction_mode == "audio" and self._graph_plan.asr_params is not None:
+                endpoints = getattr(self._graph_plan.asr_params, "audio_endpoints", (None, None))
                 multi_type_gpu = 0.0 if any(endpoint for endpoint in endpoints if endpoint) else 0.5
             overrides["MultiTypeExtractOperator"] = {"batch_size": 4, "num_cpus": 1, "num_gpus": multi_type_gpu}
         if split_params is not None:
             overrides["TextChunkActor"] = {"batch_size": 256, "num_cpus": 1, "num_gpus": 0.0}
+        if dedup_params is not None:
+            overrides["DedupImages"] = {"batch_size": 64, "num_cpus": 1, "num_gpus": 0.0}
         if caption_params is not None:
             overrides["CaptionActor"] = {
                 "batch_size": getattr(caption_params, "batch_size", None) or 8,
@@ -1639,26 +1754,26 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
 
     def ingest(self, params: IngestExecuteParams | None = None, **kwargs: Any) -> int:
         if not self._can_use_graph_runtime():
-            return super().ingest(params=params, **kwargs)
+            legacy = self._replay_legacy_plan()
+            result = legacy.ingest(params=params, **kwargs)
+            self._run_legacy_sinks(legacy)
+            self._rd_dataset = legacy.get_dataset()
+            if hasattr(legacy, "_vdb_upload_kwargs"):
+                self._vdb_upload_kwargs = legacy._vdb_upload_kwargs
+            return result
 
         from nemo_retriever.graph.executor import RayDataExecutor
         from nemo_retriever.graph.ingestor_runtime import build_batch_graph
 
+        execution_plan = self._graph_plan.build_execution_plan()
         graph = build_batch_graph(
-            extraction_mode=self._graph_extraction_mode,
-            extract_params=self._graph_extract_params,
-            text_params=self._graph_text_params,
-            html_params=self._graph_html_params,
-            audio_chunk_params=self._graph_audio_chunk_params,
-            asr_params=self._graph_asr_params,
-            embed_params=self._graph_embed_params,
-            split_params=self._graph_split_params,
-            caption_params=self._graph_caption_params,
+            execution_plan=execution_plan,
         )
         executor = RayDataExecutor(
             graph, ray_address=None, batch_size=1, node_overrides=self._build_graph_node_overrides()
         )
-        self._rd_dataset = executor.ingest(self._graph_source_dataset)
+        self._rd_dataset = executor.ingest(self._graph_plan.source_dataset)
+        self._rd_dataset = self._run_graph_sinks(self._rd_dataset)
         return self
 
 

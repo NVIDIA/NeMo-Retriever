@@ -12,6 +12,7 @@ about surrounding framework/runtime.
 from __future__ import annotations
 
 import glob
+import importlib
 import json
 import multiprocessing
 import os
@@ -19,11 +20,13 @@ import re
 import time
 import uuid
 from collections import defaultdict
+from functools import partial
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
 from collections.abc import Callable, Iterator
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from nemo_retriever.params import CaptionParams
 
@@ -66,11 +69,17 @@ from ..pdf.split import _split_pdf_to_single_page_bytes, pdf_path_to_pages_df
 from ..utils.remote_auth import resolve_remote_api_key
 from ..txt import txt_file_to_chunks_df
 from ..html import html_file_to_chunks_df
+from ._plans import BaseIngestPlan
 
 _CONTENT_COLUMNS = ("table", "chart", "infographic")
 
 
 from nemo_retriever.params.utils import coerce_params as _coerce_params
+
+
+class _InProcessPlan(BaseIngestPlan):
+    """Normalized in-process pipeline plan recorded by the fluent API."""
+    save_to_disk_kwargs: dict[str, Any] | None = None
 
 
 def _combine_text_with_content(row, text_column, content_columns):
@@ -945,6 +954,79 @@ def _print_ingest_summary(results: list, elapsed_s: float) -> None:
         print(f"\nIngest time: {elapsed_s:.2f}s")
 
 
+def _resolve_qualname(module_name: str, qualname: str) -> Any:
+    obj: Any = importlib.import_module(module_name)
+    for part in qualname.split("."):
+        obj = getattr(obj, part)
+    return obj
+
+
+@dataclass(frozen=True)
+class GraphOperatorDescriptor:
+    operator_module: str
+    operator_qualname: str
+    operator_kwargs: dict[str, Any]
+
+    def resolve(self) -> Callable[[Any], Any]:
+        operator_class = _resolve_qualname(self.operator_module, self.operator_qualname)
+        operator = operator_class(**self.operator_kwargs)
+        return operator.run
+
+
+def _run_operator_descriptors(current: Any, descriptors: Sequence[GraphOperatorDescriptor]) -> Any:
+    resolved = [descriptor.resolve() for descriptor in descriptors]
+    for run_stage in resolved:
+        current = run_stage(current)
+    return current
+
+
+def _process_chunk_cpu_with_descriptors(
+    chunk_df: pd.DataFrame,
+    operator_descriptors: Sequence[GraphOperatorDescriptor],
+) -> pd.DataFrame:
+    try:
+        current = _run_operator_descriptors(chunk_df, operator_descriptors)
+        if isinstance(current, pd.DataFrame):
+            return current
+        return pd.DataFrame([{"bytes": b"", "path": "", "page_number": 0, "error": "Unexpected non-DataFrame result"}])
+    except Exception as e:
+        return pd.DataFrame([{"bytes": b"", "path": "", "page_number": 0, "error": f"{type(e).__name__}: {e}"}])
+
+
+def _build_root_input_dataframe(doc_path: str, root_descriptor: GraphOperatorDescriptor) -> pd.DataFrame:
+    operator_class = _resolve_qualname(root_descriptor.operator_module, root_descriptor.operator_qualname)
+    operator_name = getattr(operator_class, "__name__", "")
+    abs_path = os.path.abspath(doc_path)
+
+    if operator_name in {"TxtSplitActor", "HtmlSplitActor", "ImageLoadActor"}:
+        with open(abs_path, "rb") as f:
+            payload = f.read()
+        return pd.DataFrame([{"bytes": payload, "path": abs_path}])
+
+    if operator_name == "MediaChunkActor":
+        return pd.DataFrame([{"path": abs_path, "bytes": b""}])
+
+    raise ValueError(f"Unsupported root operator for document loading: {operator_name}")
+
+
+def _process_doc_with_descriptors(
+    doc_path: str,
+    root_descriptor: GraphOperatorDescriptor,
+    cpu_descriptors: Sequence[GraphOperatorDescriptor],
+) -> pd.DataFrame:
+    try:
+        current = _build_root_input_dataframe(doc_path, root_descriptor)
+        current = root_descriptor.resolve()(current)
+        current = _run_operator_descriptors(current, cpu_descriptors)
+        if isinstance(current, pd.DataFrame):
+            return current
+        return pd.DataFrame(
+            [{"bytes": b"", "path": doc_path, "page_number": 0, "error": "Unexpected non-DataFrame result"}]
+        )
+    except Exception as e:
+        return pd.DataFrame([{"bytes": b"", "path": doc_path, "page_number": 0, "error": f"{type(e).__name__}: {e}"}])
+
+
 class InProcessIngestor(Ingestor):
     RUN_MODE = "inprocess"
 
@@ -955,13 +1037,7 @@ class InProcessIngestor(Ingestor):
         # by ensuring both names refer to the same list.
         self._input_documents: List[str] = self._documents
 
-        # Builder-style configuration recorded for later execution (TBD).
-        self._tasks: List[tuple[Callable[..., Any], dict[str, Any]]] = []
-
-        # Pipeline type: "pdf" (extract), "txt" (extract_txt), "html" (extract_html), or "image" (extract_image_files).
-        self._pipeline_type: Literal["pdf", "txt", "html", "image"] = "pdf"
-        self._extract_txt_kwargs: Dict[str, Any] = {}
-        self._extract_html_kwargs: Dict[str, Any] = {}
+        self._plan = _InProcessPlan()
         self._caption_enabled: bool = False
 
     def files(self, documents: Union[str, List[str]]) -> "InProcessIngestor":
@@ -1043,23 +1119,21 @@ class InProcessIngestor(Ingestor):
                 for k in ("extract_text", "extract_images", "extract_tables", "extract_charts", "extract_infographics")
             ):
                 extract_kwargs["extract_page_as_image"] = True
-        self._pipeline_type = "pdf"
-        self._tasks.append((pdf_extraction, extract_kwargs))
-
-        self._append_detection_tasks(kwargs, use_nemotron_parse_only=use_nemotron_parse_only)
-
+        self._plan.set_extraction(mode="pdf", extract_params=resolved)
         return self
 
-    def _append_detection_tasks(
+    def _build_detection_tasks(
         self,
         kwargs: dict[str, Any],
         *,
         use_nemotron_parse_only: bool = False,
-    ) -> None:
+    ) -> list[tuple[Callable[..., Any], dict[str, Any]]]:
         """Append page-element detection, OCR, table/chart/infographic tasks.
 
         Shared by ``extract()`` (PDF) and ``extract_image_files()`` (standalone images).
         """
+        tasks: list[tuple[Callable[..., Any], dict[str, Any]]] = []
+
         # Common, optional knobs shared by our detect_* helpers.
         detect_passthrough_keys = {
             "inference_batch_size",
@@ -1111,9 +1185,9 @@ class InProcessIngestor(Ingestor):
             )
             if parse_invoke_url:
                 parse_flags["invoke_url"] = parse_invoke_url
-                self._tasks.append((nemotron_parse_page_elements, {"model": None, **parse_flags}))
+                tasks.append((nemotron_parse_page_elements, {"model": None, **parse_flags}))
             else:
-                self._tasks.append((nemotron_parse_page_elements, {"model": NemotronParseV12(), **parse_flags}))
+                tasks.append((nemotron_parse_page_elements, {"model": NemotronParseV12(), **parse_flags}))
         else:
             # NOTE: Page element detection is a common prerequisite for downstream
             # structure stages (tables/charts/infographics). We enable it whenever
@@ -1125,7 +1199,7 @@ class InProcessIngestor(Ingestor):
                 print("Adding page elements task")
                 pe_invoke_url = kwargs.get("page_elements_invoke_url", kwargs.get("invoke_url", ""))
                 pe_model = None if pe_invoke_url else NemotronPageElementsV3()
-                self._tasks.append(
+                tasks.append(
                     (
                         detect_page_elements_v3,
                         _detect_kwargs_with_model(
@@ -1168,7 +1242,7 @@ class InProcessIngestor(Ingestor):
                     ge_ocr_kwargs["ocr_model"] = ocr_model
 
                 ge_ocr_kwargs.update(_stage_remote_kwargs("ocr"))
-                self._tasks.append((graphic_elements_ocr_page_elements, ge_ocr_kwargs))
+                tasks.append((graphic_elements_ocr_page_elements, ge_ocr_kwargs))
 
             use_table_structure = bool(kwargs.get("use_table_structure", False))
             from nemo_retriever.application.pipeline.build_plan import validate_table_structure_flags
@@ -1207,7 +1281,7 @@ class InProcessIngestor(Ingestor):
                     ts_ocr_kwargs["ocr_model"] = ocr_model
 
                 ts_ocr_kwargs.update(_stage_remote_kwargs("ocr"))
-                self._tasks.append((table_structure_ocr_page_elements, ts_ocr_kwargs))
+                tasks.append((table_structure_ocr_page_elements, ts_ocr_kwargs))
 
             # OCR-based extraction for tables/charts/infographics.
             # When use_graphic_elements is True, charts are handled above;
@@ -1228,7 +1302,7 @@ class InProcessIngestor(Ingestor):
                 print("Adding OCR extraction task")
                 ocr_invoke_url = kwargs.get("ocr_invoke_url", kwargs.get("invoke_url", ""))
                 if ocr_invoke_url:
-                    self._tasks.append((ocr_page_elements, {"model": None, **ocr_flags}))
+                    tasks.append((ocr_page_elements, {"model": None, **ocr_flags}))
                 else:
                     ocr_model_dir = (
                         kwargs.get("ocr_model_dir")
@@ -1237,7 +1311,9 @@ class InProcessIngestor(Ingestor):
                         or os.environ.get("NEMOTRON_OCR_V1_MODEL_DIR", "").strip()
                     )
                     model = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
-                    self._tasks.append((ocr_page_elements, {"model": model, **ocr_flags}))
+                    tasks.append((ocr_page_elements, {"model": model, **ocr_flags}))
+
+        return tasks
 
     def extract_image_files(self, params: ExtractParams | None = None, **kwargs: Any) -> "InProcessIngestor":
         """
@@ -1262,8 +1338,7 @@ class InProcessIngestor(Ingestor):
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
         kwargs = resolved.model_dump(mode="python")
         use_nemotron_parse_only = kwargs.get("method") == "nemotron_parse"
-        self._pipeline_type = "image"
-        self._append_detection_tasks(kwargs, use_nemotron_parse_only=use_nemotron_parse_only)
+        self._plan.set_extraction(mode="image", extract_params=resolved)
         return self
 
     def split(self, params: TextChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1278,7 +1353,8 @@ class InProcessIngestor(Ingestor):
         resolved = _coerce_params(params, TextChunkParams, kwargs)
         split_kwargs = resolved.model_dump(mode="python")
         split_kwargs.pop("encoding", None)
-        self._tasks.append((split_df, split_kwargs))
+        self._plan.split_params = resolved
+        self._plan.record_stage("split")
         return self
 
     def extract_txt(self, params: TextChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1290,11 +1366,8 @@ class InProcessIngestor(Ingestor):
         """
         from nemo_retriever.txt.ray_data import TxtSplitActor
 
-        self._pipeline_type = "txt"
         resolved = _coerce_params(params, TextChunkParams, kwargs)
-        self._extract_txt_kwargs = resolved.model_dump(mode="python")
-        text_split = TxtSplitActor(params=TextChunkParams(**self._extract_txt_kwargs))
-        self._tasks.append((text_split, {}))
+        self._plan.set_extraction(mode="text", text_params=resolved)
         return self
 
     def extract_html(self, params: HtmlChunkParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1306,13 +1379,8 @@ class InProcessIngestor(Ingestor):
         """
         from nemo_retriever.html.ray_data import HtmlSplitActor
 
-        self._pipeline_type = "html"
         resolved = _coerce_params(params, HtmlChunkParams, kwargs)
-        self._extract_html_kwargs = resolved.model_dump(mode="python")
-        html_split = HtmlSplitActor(
-            params=HtmlChunkParams(**self._extract_html_kwargs),
-        )
-        self._tasks.append((html_split, {}))
+        self._plan.set_extraction(mode="html", html_params=resolved)
         return self
 
     def extract_audio(
@@ -1329,19 +1397,21 @@ class InProcessIngestor(Ingestor):
         """
         from nemo_retriever.audio.asr_actor import apply_asr_to_df
 
-        self._pipeline_type = "audio"
         chunk_resolved = _coerce_params(params, AudioChunkParams, kwargs)
         asr_resolved = _coerce_params(asr_params, ASRParams, kwargs)
-        self._extract_audio_chunk_kwargs = chunk_resolved.model_dump(mode="python")
-        self._extract_audio_asr_kwargs = asr_resolved.model_dump(mode="python")
-        self._tasks.append((apply_asr_to_df, {"asr_params": self._extract_audio_asr_kwargs}))
+        self._plan.set_extraction(
+            mode="audio",
+            audio_chunk_params=chunk_resolved,
+            asr_params=asr_resolved,
+        )
         return self
 
     def dedup(self, params: "DedupParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
         """Remove duplicate and overlapping images before captioning."""
 
         resolved = _coerce_params(params, DedupParams, kwargs)
-        self._tasks.append((dedup_images, resolved.model_dump(mode="python")))
+        self._plan.dedup_params = resolved
+        self._plan.record_stage("dedup")
         return self
 
     def caption(self, params: "CaptionParams | None" = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1360,6 +1430,7 @@ class InProcessIngestor(Ingestor):
 
         resolved = _coerce_params(params, CaptionParams, kwargs)
         caption_kwargs = resolved.model_dump(mode="python")
+        self._plan.caption_params = resolved
 
         if resolved.endpoint_url:
             # Remote mode.
@@ -1381,7 +1452,7 @@ class InProcessIngestor(Ingestor):
             caption_kwargs["model"] = None
 
         self._caption_enabled = True
-        self._tasks.append((caption_images, caption_kwargs))
+        self._plan.record_stage("caption")
         return self
 
     def embed(self, params: EmbedParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1398,67 +1469,8 @@ class InProcessIngestor(Ingestor):
         resolved = _coerce_params(params, EmbedParams, kwargs)
         if any((resolved.embedding_endpoint, resolved.embed_invoke_url)) and not resolved.api_key:
             resolved = resolved.model_copy(update={"api_key": resolve_remote_api_key()})
-        embed_modality = resolved.embed_modality
-        embed_granularity = resolved.embed_granularity
-
-        content_columns = (_CONTENT_COLUMNS + ("images",)) if self._caption_enabled else _CONTENT_COLUMNS
-
-        if embed_granularity == "page":
-            # Page-level: one row per page with concatenated text and full page image.
-            self._tasks.append(
-                (
-                    collapse_content_to_page_rows,
-                    {"modality": embed_modality, "content_columns": content_columns},
-                )
-            )
-        else:
-            # Element-level (default): one row per table/chart/infographic.
-            text_elements_modality = resolved.text_elements_modality or embed_modality
-            structured_elements_modality = resolved.structured_elements_modality or embed_modality
-            self._tasks.append(
-                (
-                    explode_content_to_rows,
-                    {
-                        "modality": embed_modality,
-                        "text_elements_modality": text_elements_modality,
-                        "structured_elements_modality": structured_elements_modality,
-                        "content_columns": content_columns,
-                    },
-                )
-            )
-
-        from nemo_retriever.params.utils import build_embed_kwargs
-
-        embed_kwargs = build_embed_kwargs(resolved)
-
-        # Ensure embed_modality is forwarded to the embedding function.
-        embed_kwargs["embed_modality"] = embed_modality
-
-        # If a remote NIM endpoint is configured, skip local model creation.
-        endpoint = (embed_kwargs.get("embedding_endpoint") or embed_kwargs.get("embed_invoke_url") or "").strip()
-        if endpoint:
-            embed_kwargs.setdefault("input_type", "passage")
-            self._tasks.append((embed_text_main_text_embed, embed_kwargs))
-            return self
-
-        # Local HF embedder path.
-        device = embed_kwargs.pop("device", None)
-        hf_cache_dir = embed_kwargs.pop("hf_cache_dir", None)
-        normalize = bool(embed_kwargs.pop("normalize", True))
-        max_length = int(embed_kwargs.pop("max_length", 8192))
-        model_name_raw = embed_kwargs.pop("model_name", None)
-
-        from nemo_retriever.model import create_local_embedder
-
-        embed_kwargs.setdefault("input_type", "passage")
-        embed_kwargs["model"] = create_local_embedder(
-            model_name_raw,
-            device=str(device) if device is not None else None,
-            hf_cache_dir=str(hf_cache_dir) if hf_cache_dir is not None else None,
-            normalize=normalize,
-            max_length=max_length,
-        )
-        self._tasks.append((embed_text_main_text_embed, embed_kwargs))
+        self._plan.embed_params = resolved
+        self._plan.record_stage("embed")
         return self
 
     def save_to_disk(
@@ -1477,7 +1489,8 @@ class InProcessIngestor(Ingestor):
         if output_directory is None:
             raise ValueError("output_directory is required for inprocess save_to_disk()")
 
-        self._tasks.append((save_dataframe_to_disk_json, {"output_directory": str(output_directory)}))
+        self._plan.save_to_disk_kwargs = {"output_directory": str(output_directory)}
+        self._plan.record_sink("save_to_disk")
         return self
 
     def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "InProcessIngestor":
@@ -1514,11 +1527,367 @@ class InProcessIngestor(Ingestor):
             if "purge_results_after_upload" in kwargs:
                 p = p.model_copy(update={"purge_results_after_upload": bool(kwargs["purge_results_after_upload"])})
         _ = p.purge_results_after_upload  # parity with interface; inprocess does not purge by default
-        self._tasks.append((upload_embeddings_to_lancedb_inprocess, p.lancedb.model_dump(mode="python")))
+        self._plan.vdb_upload_params = p
+        self._plan.record_sink("vdb_upload")
         return self
 
-    # Tasks that run once on combined results (after all docs). All others run per-doc.
-    _POST_TASKS = (upload_embeddings_to_lancedb_inprocess, save_dataframe_to_disk_json)
+    def _build_embed_tasks(self, resolved: EmbedParams, *, caption_enabled: bool) -> list[tuple[Callable[..., Any], dict[str, Any]]]:
+        tasks: list[tuple[Callable[..., Any], dict[str, Any]]] = []
+        embed_modality = resolved.embed_modality
+        embed_granularity = resolved.embed_granularity
+        content_columns = (_CONTENT_COLUMNS + ("images",)) if caption_enabled else _CONTENT_COLUMNS
+
+        if embed_granularity == "page":
+            tasks.append(
+                (
+                    collapse_content_to_page_rows,
+                    {"modality": embed_modality, "content_columns": content_columns},
+                )
+            )
+        else:
+            text_elements_modality = resolved.text_elements_modality or embed_modality
+            structured_elements_modality = resolved.structured_elements_modality or embed_modality
+            tasks.append(
+                (
+                    explode_content_to_rows,
+                    {
+                        "modality": embed_modality,
+                        "text_elements_modality": text_elements_modality,
+                        "structured_elements_modality": structured_elements_modality,
+                        "content_columns": content_columns,
+                    },
+                )
+            )
+
+        from nemo_retriever.params.utils import build_embed_kwargs
+
+        embed_kwargs = build_embed_kwargs(resolved)
+        embed_kwargs["embed_modality"] = embed_modality
+        endpoint = (embed_kwargs.get("embedding_endpoint") or embed_kwargs.get("embed_invoke_url") or "").strip()
+        if endpoint:
+            embed_kwargs.setdefault("input_type", "passage")
+            tasks.append((embed_text_main_text_embed, embed_kwargs))
+            return tasks
+
+        device = embed_kwargs.pop("device", None)
+        hf_cache_dir = embed_kwargs.pop("hf_cache_dir", None)
+        normalize = bool(embed_kwargs.pop("normalize", True))
+        max_length = int(embed_kwargs.pop("max_length", 8192))
+        model_name_raw = embed_kwargs.pop("model_name", None)
+
+        from nemo_retriever.model import create_local_embedder
+
+        embed_kwargs.setdefault("input_type", "passage")
+        embed_kwargs["model"] = create_local_embedder(
+            model_name_raw,
+            device=str(device) if device is not None else None,
+            hf_cache_dir=str(hf_cache_dir) if hf_cache_dir is not None else None,
+            normalize=normalize,
+            max_length=max_length,
+        )
+        tasks.append((embed_text_main_text_embed, embed_kwargs))
+        return tasks
+
+    def _build_embed_task(self, resolved: EmbedParams) -> tuple[Callable[..., Any], dict[str, Any]]:
+        embed_kwargs = self._build_embed_tasks(resolved, caption_enabled=False)[-1][1]
+        return embed_text_main_text_embed, embed_kwargs
+
+    def _linearize_graph_nodes(self, graph: Any) -> list[Any]:
+        if not graph.roots:
+            return []
+        if len(graph.roots) > 1:
+            raise ValueError("InProcessIngestor only supports single-root in-process graphs.")
+
+        ordered: list[Any] = []
+        node = graph.roots[0]
+        while node is not None:
+            ordered.append(node)
+            if len(node.children) > 1:
+                raise ValueError(f"InProcessIngestor does not support fan-out. Node {node.name!r} has fan-out.")
+            node = node.children[0] if node.children else None
+        return ordered
+
+    def _build_loader(self, execution_plan: Any, graph_nodes: list[Any]) -> Callable[[str], pd.DataFrame]:
+        from nemo_retriever.audio.chunk_actor import MediaChunkActor, audio_path_to_chunks_df
+        from nemo_retriever.graph.file_loader_operator import FileListLoaderOperator
+        from nemo_retriever.html.ray_data import HtmlSplitActor
+        from nemo_retriever.image.ray_data import ImageLoadActor
+        from nemo_retriever.pdf.split import PDFSplitActor
+        from nemo_retriever.txt.ray_data import TxtSplitActor
+
+        root_class = graph_nodes[0].operator_class if graph_nodes else FileListLoaderOperator
+
+        if root_class is PDFSplitActor:
+
+            def _loader(p: str) -> pd.DataFrame:
+                abs_path = os.path.abspath(p)
+                ext = os.path.splitext(abs_path)[1].lower()
+                if ext in SUPPORTED_EXTENSIONS and ext != ".pdf":
+                    try:
+                        with open(abs_path, "rb") as f:
+                            file_bytes = f.read()
+                        pdf_bytes = convert_to_pdf_bytes(file_bytes, ext)
+                        pages = _split_pdf_to_single_page_bytes(pdf_bytes)
+                        out_rows = [{"bytes": b, "path": abs_path, "page_number": i + 1} for i, b in enumerate(pages)]
+                        return pd.DataFrame(out_rows)
+                    except BaseException as e:
+                        return pd.DataFrame([{"bytes": b"", "path": abs_path, "page_number": 0, "error": str(e)}])
+                return pdf_path_to_pages_df(p)
+
+            return _loader
+
+        if root_class is HtmlSplitActor:
+
+            def _loader(p: str) -> pd.DataFrame:
+                assert execution_plan.html_params is not None
+                return html_file_to_chunks_df(p, params=execution_plan.html_params)
+
+            return _loader
+
+        if root_class is ImageLoadActor:
+
+            def _loader(p: str) -> pd.DataFrame:
+                from nemo_retriever.image.load import image_file_to_pages_df
+
+                return image_file_to_pages_df(p)
+
+            return _loader
+
+        if root_class is MediaChunkActor:
+
+            def _loader(p: str) -> pd.DataFrame:
+                assert execution_plan.audio_chunk_params is not None
+                return audio_path_to_chunks_df(p, params=execution_plan.audio_chunk_params)
+
+            return _loader
+
+        if root_class is TxtSplitActor:
+
+            def _loader(p: str) -> pd.DataFrame:
+                assert execution_plan.text_params is not None
+                return txt_file_to_chunks_df(p, params=execution_plan.text_params)
+
+            return _loader
+
+        raise ValueError(f"Unsupported in-process graph root: {root_class.__name__}")
+
+    def _translate_graph_node_to_tasks(
+        self,
+        node: Any,
+    ) -> list[tuple[Callable[..., Any], dict[str, Any]]]:
+        from nemo_retriever.audio.chunk_actor import MediaChunkActor
+        from nemo_retriever.audio.asr_actor import ASRActor, apply_asr_to_df
+        from nemo_retriever.caption.caption import CaptionActor, caption_images
+        from nemo_retriever.chart.chart_detection import GraphicElementsActor
+        from nemo_retriever.graph.custom_operator import UDFOperator
+        from nemo_retriever.html.ray_data import HtmlSplitActor
+        from nemo_retriever.image.ray_data import ImageLoadActor
+        from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor, nemotron_parse_page_elements, ocr_page_elements
+        from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
+        from nemo_retriever.pdf.extract import PDFExtractionActor
+        from nemo_retriever.pdf.split import PDFSplitActor
+        from nemo_retriever.table.table_detection import TableStructureActor, table_structure_ocr_page_elements
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
+        from nemo_retriever.txt.ray_data import TextChunkActor, TxtSplitActor
+        from nemo_retriever.txt.split import split_df
+
+        operator_class = node.operator_class
+        operator_kwargs = dict(node.operator_kwargs)
+
+        if operator_class in {PDFSplitActor, ImageLoadActor, MediaChunkActor, TxtSplitActor, HtmlSplitActor}:
+            return []
+
+        if operator_class is PDFExtractionActor:
+            return [(pdf_extraction, operator_kwargs)]
+
+        if operator_class is PageElementDetectionActor:
+            detect_kwargs = dict(operator_kwargs)
+            invoke_url = detect_kwargs.get("invoke_url")
+            detect_kwargs["model"] = None if invoke_url else NemotronPageElementsV3()
+            return [(detect_page_elements_v3, detect_kwargs)]
+
+        if operator_class is OCRActor:
+            ocr_kwargs = dict(operator_kwargs)
+            ocr_invoke_url = ocr_kwargs.get("ocr_invoke_url")
+            if ocr_invoke_url:
+                ocr_kwargs["model"] = None
+            else:
+                ocr_model_dir = (
+                    os.environ.get("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()
+                    or os.environ.get("NEMOTRON_OCR_MODEL_DIR", "").strip()
+                    or os.environ.get("NEMOTRON_OCR_V1_MODEL_DIR", "").strip()
+                )
+                ocr_kwargs["model"] = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
+            return [(ocr_page_elements, ocr_kwargs)]
+
+        if operator_class is NemotronParseActor:
+            parse_kwargs = dict(operator_kwargs)
+            parse_invoke_url = parse_kwargs.get("invoke_url") or parse_kwargs.get("nemotron_parse_invoke_url")
+            parse_kwargs["model"] = None if parse_invoke_url else NemotronParseV12()
+            return [(nemotron_parse_page_elements, parse_kwargs)]
+
+        if operator_class is TableStructureActor:
+            table_kwargs = dict(operator_kwargs)
+            if table_kwargs.get("table_structure_invoke_url"):
+                table_kwargs["table_structure_model"] = None
+            else:
+                from nemo_retriever.model.local import NemotronTableStructureV1
+
+                table_kwargs["table_structure_model"] = NemotronTableStructureV1()
+            if table_kwargs.get("ocr_invoke_url"):
+                table_kwargs["ocr_model"] = None
+            else:
+                ocr_model_dir = (
+                    os.environ.get("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()
+                    or os.environ.get("NEMOTRON_OCR_MODEL_DIR", "").strip()
+                    or os.environ.get("NEMOTRON_OCR_V1_MODEL_DIR", "").strip()
+                )
+                table_kwargs["ocr_model"] = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
+            return [(table_structure_ocr_page_elements, table_kwargs)]
+
+        if operator_class is GraphicElementsActor:
+            graphic_kwargs = dict(operator_kwargs)
+            if graphic_kwargs.get("graphic_elements_invoke_url"):
+                graphic_kwargs["graphic_elements_model"] = None
+            else:
+                from nemo_retriever.model.local import NemotronGraphicElementsV1
+
+                graphic_kwargs["graphic_elements_model"] = NemotronGraphicElementsV1()
+            if graphic_kwargs.get("ocr_invoke_url"):
+                graphic_kwargs["ocr_model"] = None
+            else:
+                ocr_model_dir = (
+                    os.environ.get("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()
+                    or os.environ.get("NEMOTRON_OCR_MODEL_DIR", "").strip()
+                    or os.environ.get("NEMOTRON_OCR_V1_MODEL_DIR", "").strip()
+                )
+                graphic_kwargs["ocr_model"] = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
+            return [(graphic_elements_ocr_page_elements, graphic_kwargs)]
+
+        if operator_class is ASRActor:
+            asr_params = operator_kwargs["params"]
+            return [(apply_asr_to_df, {"asr_params": asr_params.model_dump(mode="python")})]
+
+        if operator_class is TextChunkActor:
+            split_params = operator_kwargs["params"]
+            split_kwargs = split_params.model_dump(mode="python")
+            split_kwargs.pop("encoding", None)
+            return [(split_df, split_kwargs)]
+
+        if operator_class is CaptionActor:
+            caption_params = operator_kwargs["params"]
+            caption_kwargs = caption_params.model_dump(mode="python")
+            if caption_params.endpoint_url and not caption_params.api_key:
+                caption_kwargs["api_key"] = resolve_remote_api_key()
+            elif not caption_params.endpoint_url:
+                caption_kwargs["model"] = None
+            return [(caption_images, caption_kwargs)]
+
+        if operator_class is _BatchEmbedActor:
+            embed_params = operator_kwargs["params"]
+            return [self._build_embed_task(embed_params)]
+
+        if operator_class is UDFOperator:
+            udf_fn = getattr(node.operator, "fn", None)
+            if isinstance(udf_fn, partial):
+                target_fn = udf_fn.func
+                target_kwargs = dict(udf_fn.keywords or {})
+            else:
+                target_fn = udf_fn
+                target_kwargs = {}
+            if target_fn is None:
+                return []
+            return [(target_fn, target_kwargs)]
+
+        raise ValueError(f"Unsupported in-process graph node: {operator_class.__name__}")
+
+    def _build_post_tasks(
+        self,
+        execution_plan: Any,
+    ) -> List[Tuple[Callable[..., Any], Dict[str, Any]]]:
+        plan = self._plan
+        post_tasks: list[tuple[Callable[..., Any], dict[str, Any]]] = []
+        for sink in execution_plan.sinks:
+            if sink.name == "vdb_upload":
+                post_tasks.append((upload_embeddings_to_lancedb_inprocess, sink.params.lancedb.model_dump(mode="python")))
+
+        for sink_name in plan.sink_order:
+            if sink_name == "save_to_disk" and plan.save_to_disk_kwargs is not None:
+                post_tasks.append((save_dataframe_to_disk_json, dict(plan.save_to_disk_kwargs)))
+
+        return post_tasks
+
+    def _build_graph_pipeline(
+        self,
+    ) -> Tuple[
+        Callable[[str], pd.DataFrame],
+        List[Any],
+        List[Tuple[Callable[..., Any], Dict[str, Any]]],
+    ]:
+        from ..graph.ingestor_runtime import build_inprocess_graph
+
+        execution_plan = self._plan.build_execution_plan()
+        graph = build_inprocess_graph(execution_plan=execution_plan)
+        graph_nodes = self._linearize_graph_nodes(graph)
+        loader = self._build_loader(execution_plan, graph_nodes)
+        post_tasks = self._build_post_tasks(execution_plan)
+        return loader, graph_nodes, post_tasks
+
+    def _instantiate_graph_operators(self, graph_nodes: list[Any]) -> list[Any]:
+        scheduled_nodes = graph_nodes[1:] if graph_nodes else []
+        return [node.operator_class(**node.operator_kwargs) for node in scheduled_nodes]
+
+    def _graph_root_class(self, graph_nodes: Sequence[Any]) -> Any:
+        if not graph_nodes:
+            return None
+        return graph_nodes[0].operator_class
+
+    def _nodes_to_operator_descriptors(self, graph_nodes: Sequence[Any]) -> list[GraphOperatorDescriptor]:
+        return [
+            GraphOperatorDescriptor(
+                operator_module=node.operator_class.__module__,
+                operator_qualname=node.operator_class.__qualname__,
+                operator_kwargs=dict(node.operator_kwargs),
+            )
+            for node in graph_nodes
+        ]
+
+    def _classify_graph_nodes_for_parallel(
+        self,
+        graph_nodes: Sequence[Any],
+    ) -> tuple[list[Any], list[Any], list[Any]]:
+        from nemo_retriever.caption.caption import CaptionActor
+        from nemo_retriever.graph.gpu_operator import GPUOperator
+
+        cpu_nodes: list[Any] = []
+        gpu_nodes: list[Any] = []
+        own_device_nodes: list[Any] = []
+
+        for node in graph_nodes:
+            operator_class = node.operator_class
+            if operator_class is CaptionActor:
+                own_device_nodes.append(node)
+            elif issubclass(operator_class, GPUOperator):
+                gpu_nodes.append(node)
+            else:
+                cpu_nodes.append(node)
+
+        return cpu_nodes, gpu_nodes, own_device_nodes
+
+    def _build_plan_tasks(
+        self,
+    ) -> Tuple[
+        Callable[[str], pd.DataFrame],
+        List[Tuple[Callable[..., Any], Dict[str, Any]]],
+        List[Tuple[Callable[..., Any], Dict[str, Any]]],
+    ]:
+        loader, graph_nodes, post_tasks = self._build_graph_pipeline()
+
+        tasks: list[tuple[Callable[..., Any], dict[str, Any]]] = []
+        for node in graph_nodes[1:]:
+            tasks.extend(self._translate_graph_node_to_tasks(node))
+
+        return loader, tasks, post_tasks
 
     def get_pipeline_tasks(
         self,
@@ -1527,8 +1896,7 @@ class InProcessIngestor(Ingestor):
         Return (per_doc_tasks, post_tasks) for use by ingest() or by the online
         serve deployment to run the same pipeline on a single document.
         """
-        per_doc_tasks = [(f, k) for f, k in self._tasks if f not in self._POST_TASKS]
-        post_tasks = [(f, k) for f, k in self._tasks if f in self._POST_TASKS]
+        _, per_doc_tasks, post_tasks = self._build_plan_tasks()
         return per_doc_tasks, post_tasks
 
     def ingest(self, params: IngestExecuteParams | None = None, **kwargs: Any) -> list[Any]:
@@ -1550,29 +1918,238 @@ class InProcessIngestor(Ingestor):
         # Caption runs on its own device (--caption-device), not in the GPU pool.
         _own_device_fns = (_caption_images_fn,)
 
-        cpu_tasks = [(f, k) for f, k in self._tasks if f in _cpu_task_fns]
+        loader, graph_nodes, post_tasks = self._build_graph_pipeline()
+        _, per_doc_tasks, _ = self._build_plan_tasks()
+
+        cpu_tasks = [(f, k) for f, k in per_doc_tasks if f in _cpu_task_fns]
         gpu_tasks = [
             (f, k)
-            for f, k in self._tasks
-            if f not in _cpu_task_fns and f not in _post_task_fns and f not in _own_device_fns
+            for f, k in per_doc_tasks
+            if f not in _cpu_task_fns and f not in _own_device_fns
         ]
-        own_device_tasks = [(f, k) for f, k in self._tasks if f in _own_device_fns]
-        post_tasks = [(f, k) for f, k in self._tasks if f in _post_task_fns]
+        own_device_tasks = [(f, k) for f, k in per_doc_tasks if f in _own_device_fns]
 
         docs = list(self._documents)
+        scheduled_nodes = graph_nodes[1:] if graph_nodes else []
+        graph_root_class = self._graph_root_class(graph_nodes)
+        root_descriptor = self._nodes_to_operator_descriptors(graph_nodes[:1])[0] if graph_nodes else None
 
         # -- Parallel execution branch ------------------------------------
         if parallel:
+            from nemo_retriever.pdf.split import PDFSplitActor
+
+            cpu_graph_nodes, gpu_graph_nodes, own_device_graph_nodes = self._classify_graph_nodes_for_parallel(
+                scheduled_nodes
+            )
+            cpu_descriptors = self._nodes_to_operator_descriptors(cpu_graph_nodes)
+            gpu_descriptors = self._nodes_to_operator_descriptors(gpu_graph_nodes)
+            own_device_operators = [
+                node.operator_class(**node.operator_kwargs) for node in own_device_graph_nodes
+            ]
+
             if gpu_devices and len(gpu_devices) >= 1 and gpu_tasks:
                 # Pipelined: GPU workers load models while CPU runs,
                 # each completed chunk goes to GPU immediately.
-                from .gpu_pool import GPUWorkerPool, gpu_tasks_to_descriptors
+                from .gpu_pool import GPUWorkerPool
 
-                descriptors = gpu_tasks_to_descriptors(gpu_tasks)
+                descriptors = gpu_descriptors if graph_root_class is PDFSplitActor else None
                 errors: list[str] = []
 
-                with GPUWorkerPool(gpu_devices, descriptors) as gpu_pool:
+                if graph_root_class is PDFSplitActor and descriptors is not None:
+                    with GPUWorkerPool(gpu_devices, descriptors) as gpu_pool:
                     # Split all docs into page chunks (main thread, cheap PDF byte splitting)
+                        chunks: list[pd.DataFrame] = []
+                        chunk_to_doc: list[str] = []
+                        doc_chunk_total: dict[str, int] = defaultdict(int)
+                        for doc in docs:
+                            for chunk_df in _iter_page_chunks(doc, page_chunk_size):
+                                chunk_to_doc.append(doc)
+                                doc_chunk_total[doc] += 1
+                                chunks.append(chunk_df)
+
+                        shard_id = 0
+                        progress = None
+                        if show_progress and tqdm is not None:
+                            progress = tqdm(total=len(docs), desc="Processing files", unit="file")
+
+                        shard_to_doc: dict[int, str] = {}
+                        doc_done: dict[str, int] = defaultdict(int)
+
+                        def _check_file_done(doc_path: str) -> None:
+                            if doc_done[doc_path] >= doc_chunk_total[doc_path]:
+                                if progress is not None:
+                                    progress.update(1)
+
+                        with ProcessPoolExecutor(
+                            max_workers=max_workers,
+                            mp_context=multiprocessing.get_context("spawn"),
+                        ) as cpu_pool:
+                            future_to_idx = {
+                                cpu_pool.submit(_process_chunk_cpu_with_descriptors, chunk, cpu_descriptors): i
+                                for i, chunk in enumerate(chunks)
+                            }
+
+                            for future in as_completed(future_to_idx):
+                                idx = future_to_idx[future]
+                                doc = chunk_to_doc[idx]
+                                try:
+                                    result = future.result()
+                                    if isinstance(result, pd.DataFrame) and not result.empty:
+                                        for operator in own_device_operators:
+                                            result = operator.run(result)
+                                        shard_to_doc[shard_id] = doc
+                                        gpu_pool.submit(shard_id, result)
+                                        shard_id += 1
+                                    else:
+                                        doc_done[doc] += 1
+                                        _check_file_done(doc)
+                                except Exception as e:
+                                    errors.append(f"chunk {idx}: {type(e).__name__}: {e}")
+                                    print(f"Warning: failed to process chunk {idx}: {e}")
+                                    doc_done[doc] += 1
+                                    _check_file_done(doc)
+
+                        if errors:
+                            print(f"Warning: {len(errors)} chunk(s) failed CPU extraction")
+
+                        # All CPU done, collect remaining GPU results
+                        def _on_gpu_done(sid: int) -> None:
+                            d = shard_to_doc.get(sid, "")
+                            if d:
+                                doc_done[d] += 1
+                                _check_file_done(d)
+
+                        combined = gpu_pool.collect_all(on_shard_done=_on_gpu_done)
+
+                        if progress is not None:
+                            progress.close()
+
+                    if combined.empty:
+                        results: list = []
+                        if show_progress:
+                            _print_ingest_summary(results, time.perf_counter() - _start)
+                        return results
+
+                    for func, kwargs in post_tasks:
+                        combined = func(combined, **kwargs)
+
+                    results = [combined]
+                    if show_progress:
+                        _print_ingest_summary(results, time.perf_counter() - _start)
+                    return results
+                elif root_descriptor is not None:
+                    with GPUWorkerPool(gpu_devices, gpu_descriptors) as gpu_pool:
+                        shard_id = 0
+                        shard_to_doc: dict[int, str] = {}
+                        progress = None
+                        if show_progress and tqdm is not None:
+                            progress = tqdm(total=len(docs), desc="Processing files", unit="file")
+
+                        with ProcessPoolExecutor(
+                            max_workers=max_workers,
+                            mp_context=multiprocessing.get_context("spawn"),
+                        ) as cpu_pool:
+                            future_to_doc = {
+                                cpu_pool.submit(_process_doc_with_descriptors, doc, root_descriptor, cpu_descriptors): doc
+                                for doc in docs
+                            }
+
+                            for future in as_completed(future_to_doc):
+                                doc = future_to_doc[future]
+                                try:
+                                    result = future.result()
+                                    if isinstance(result, pd.DataFrame) and not result.empty:
+                                        for operator in own_device_operators:
+                                            result = operator.run(result)
+                                        shard_to_doc[shard_id] = doc
+                                        gpu_pool.submit(shard_id, result)
+                                        shard_id += 1
+                                    elif progress is not None:
+                                        progress.update(1)
+                                except Exception as e:
+                                    print(f"Warning: failed to process document {doc}: {e}")
+                                    if progress is not None:
+                                        progress.update(1)
+
+                        def _on_gpu_done(sid: int) -> None:
+                            if progress is not None:
+                                progress.update(1)
+
+                        combined = gpu_pool.collect_all(on_shard_done=_on_gpu_done)
+
+                        if progress is not None:
+                            progress.close()
+
+                    if combined.empty:
+                        results = []
+                        if show_progress:
+                            _print_ingest_summary(results, time.perf_counter() - _start)
+                        return results
+
+                    for func, kwargs in post_tasks:
+                        combined = func(combined, **kwargs)
+
+                    results = [combined]
+                    if show_progress:
+                        _print_ingest_summary(results, time.perf_counter() - _start)
+                    return results
+                else:
+                    parallel = False
+
+            else:
+                # Single-GPU or no-GPU path: CPU parallel on chunks, then sequential GPU
+                if graph_root_class is not PDFSplitActor:
+                    if root_descriptor is None:
+                        parallel = False
+                    else:
+                        cpu_results: list[pd.DataFrame] = []
+                        progress = None
+                        if show_progress and tqdm is not None:
+                            progress = tqdm(total=len(docs), desc="Processing files", unit="file")
+
+                        with ProcessPoolExecutor(
+                            max_workers=max_workers,
+                            mp_context=multiprocessing.get_context("spawn"),
+                        ) as pool:
+                            future_to_doc = {
+                                pool.submit(_process_doc_with_descriptors, doc, root_descriptor, cpu_descriptors): doc
+                                for doc in docs
+                            }
+
+                            for future in as_completed(future_to_doc):
+                                doc = future_to_doc[future]
+                                try:
+                                    result = future.result()
+                                    if isinstance(result, pd.DataFrame) and not result.empty:
+                                        cpu_results.append(result)
+                                except Exception as e:
+                                    print(f"Warning: failed to process document {doc}: {e}")
+                                if progress is not None:
+                                    progress.update(1)
+
+                        if progress is not None:
+                            progress.close()
+
+                        if not cpu_results:
+                            results = []
+                            if show_progress:
+                                _print_ingest_summary(results, time.perf_counter() - _start)
+                            return results
+
+                        combined = pd.concat(cpu_results, ignore_index=True)
+                        for operator in own_device_operators:
+                            combined = operator.run(combined)
+                        for node in gpu_graph_nodes:
+                            combined = node.operator_class(**node.operator_kwargs).run(combined)
+
+                        for func, kwargs in post_tasks:
+                            combined = func(combined, **kwargs)
+
+                        results = [combined]
+                        if show_progress:
+                            _print_ingest_summary(results, time.perf_counter() - _start)
+                        return results
+                else:
                     chunks: list[pd.DataFrame] = []
                     chunk_to_doc: list[str] = []
                     doc_chunk_total: dict[str, int] = defaultdict(int)
@@ -1582,25 +2159,22 @@ class InProcessIngestor(Ingestor):
                             doc_chunk_total[doc] += 1
                             chunks.append(chunk_df)
 
-                    shard_id = 0
+                    cpu_results: list[pd.DataFrame] = []
+                    errors: list[str] = []
+
                     progress = None
                     if show_progress and tqdm is not None:
                         progress = tqdm(total=len(docs), desc="Processing files", unit="file")
 
-                    shard_to_doc: dict[int, str] = {}
                     doc_done: dict[str, int] = defaultdict(int)
-
-                    def _check_file_done(doc_path: str) -> None:
-                        if doc_done[doc_path] >= doc_chunk_total[doc_path]:
-                            if progress is not None:
-                                progress.update(1)
 
                     with ProcessPoolExecutor(
                         max_workers=max_workers,
                         mp_context=multiprocessing.get_context("spawn"),
-                    ) as cpu_pool:
+                    ) as pool:
                         future_to_idx = {
-                            cpu_pool.submit(_process_chunk_cpu, chunk, cpu_tasks): i for i, chunk in enumerate(chunks)
+                            pool.submit(_process_chunk_cpu_with_descriptors, c, cpu_descriptors): i
+                            for i, c in enumerate(chunks)
                         }
 
                         for future in as_completed(future_to_idx):
@@ -1609,114 +2183,39 @@ class InProcessIngestor(Ingestor):
                             try:
                                 result = future.result()
                                 if isinstance(result, pd.DataFrame) and not result.empty:
-                                    for func, kw in own_device_tasks:
-                                        result = func(result, **kw)
-                                    shard_to_doc[shard_id] = doc
-                                    gpu_pool.submit(shard_id, result)
-                                    shard_id += 1
-                                else:
-                                    doc_done[doc] += 1
-                                    _check_file_done(doc)
+                                    cpu_results.append(result)
                             except Exception as e:
                                 errors.append(f"chunk {idx}: {type(e).__name__}: {e}")
                                 print(f"Warning: failed to process chunk {idx}: {e}")
-                                doc_done[doc] += 1
-                                _check_file_done(doc)
-
-                    if errors:
-                        print(f"Warning: {len(errors)} chunk(s) failed CPU extraction")
-
-                    # All CPU done, collect remaining GPU results
-                    def _on_gpu_done(sid: int) -> None:
-                        d = shard_to_doc.get(sid, "")
-                        if d:
-                            doc_done[d] += 1
-                            _check_file_done(d)
-
-                    combined = gpu_pool.collect_all(on_shard_done=_on_gpu_done)
+                            doc_done[doc] += 1
+                            if doc_done[doc] >= doc_chunk_total[doc] and progress is not None:
+                                progress.update(1)
 
                     if progress is not None:
                         progress.close()
 
-                if combined.empty:
-                    results: list = []
+                    if errors:
+                        print(f"Warning: {len(errors)} chunk(s) failed CPU extraction")
+
+                    if not cpu_results:
+                        results = []
+                        if show_progress:
+                            _print_ingest_summary(results, time.perf_counter() - _start)
+                        return results
+
+                    combined = pd.concat(cpu_results, ignore_index=True)
+                    for operator in own_device_operators:
+                        combined = operator.run(combined)
+                    for node in gpu_graph_nodes:
+                        combined = node.operator_class(**node.operator_kwargs).run(combined)
+
+                    for func, kwargs in post_tasks:
+                        combined = func(combined, **kwargs)
+
+                    results = [combined]
                     if show_progress:
                         _print_ingest_summary(results, time.perf_counter() - _start)
                     return results
-
-                for func, kwargs in post_tasks:
-                    combined = func(combined, **kwargs)
-
-                results = [combined]
-                if show_progress:
-                    _print_ingest_summary(results, time.perf_counter() - _start)
-                return results
-
-            else:
-                # Single-GPU or no-GPU path: CPU parallel on chunks, then sequential GPU
-                chunks: list[pd.DataFrame] = []
-                chunk_to_doc: list[str] = []
-                doc_chunk_total: dict[str, int] = defaultdict(int)
-                for doc in docs:
-                    for chunk_df in _iter_page_chunks(doc, page_chunk_size):
-                        chunk_to_doc.append(doc)
-                        doc_chunk_total[doc] += 1
-                        chunks.append(chunk_df)
-
-                cpu_results: list[pd.DataFrame] = []
-                errors: list[str] = []
-
-                progress = None
-                if show_progress and tqdm is not None:
-                    progress = tqdm(total=len(docs), desc="Processing files", unit="file")
-
-                doc_done: dict[str, int] = defaultdict(int)
-
-                with ProcessPoolExecutor(
-                    max_workers=max_workers,
-                    mp_context=multiprocessing.get_context("spawn"),
-                ) as pool:
-                    future_to_idx = {pool.submit(_process_chunk_cpu, c, cpu_tasks): i for i, c in enumerate(chunks)}
-
-                    for future in as_completed(future_to_idx):
-                        idx = future_to_idx[future]
-                        doc = chunk_to_doc[idx]
-                        try:
-                            result = future.result()
-                            if isinstance(result, pd.DataFrame) and not result.empty:
-                                cpu_results.append(result)
-                        except Exception as e:
-                            errors.append(f"chunk {idx}: {type(e).__name__}: {e}")
-                            print(f"Warning: failed to process chunk {idx}: {e}")
-                        doc_done[doc] += 1
-                        if doc_done[doc] >= doc_chunk_total[doc] and progress is not None:
-                            progress.update(1)
-
-                if progress is not None:
-                    progress.close()
-
-                if errors:
-                    print(f"Warning: {len(errors)} chunk(s) failed CPU extraction")
-
-                if not cpu_results:
-                    results = []
-                    if show_progress:
-                        _print_ingest_summary(results, time.perf_counter() - _start)
-                    return results
-
-                combined = pd.concat(cpu_results, ignore_index=True)
-                for func, kwargs in own_device_tasks:
-                    combined = func(combined, **kwargs)
-                for func, kwargs in gpu_tasks:
-                    combined = func(combined, **kwargs)
-
-                for func, kwargs in post_tasks:
-                    combined = func(combined, **kwargs)
-
-                results = [combined]
-                if show_progress:
-                    _print_ingest_summary(results, time.perf_counter() - _start)
-                return results
 
         # -- Sequential execution branch (default) ------------------------
         use_multi_gpu_seq = gpu_devices and len(gpu_devices) >= 1 and gpu_tasks
@@ -1724,7 +2223,7 @@ class InProcessIngestor(Ingestor):
         if use_multi_gpu_seq:
             # Pipelined: GPU workers process earlier chunks while CPU
             # extracts later chunks of the same (or next) document.
-            cpu_and_extract = [(f, k) for f, k in self._tasks if f in _cpu_task_fns]
+            cpu_and_extract = [(f, k) for f, k in per_doc_tasks if f in _cpu_task_fns]
 
             from .gpu_pool import GPUWorkerPool, gpu_tasks_to_descriptors
 
@@ -1789,61 +2288,17 @@ class InProcessIngestor(Ingestor):
             return results
 
         # Fully sequential: per-document CPU + GPU + post tasks
-        per_doc_tasks = [(f, k) for f, k in self._tasks if f not in _post_task_fns]
-
         results: list[Any] = []
         doc_iter = docs
         if show_progress and tqdm is not None:
             doc_iter = tqdm(docs, desc="Processing documents", unit="doc")
 
-        if self._pipeline_type == "pdf":
-
-            def _loader(p: str) -> pd.DataFrame:
-                """
-                Load a document as a per-page DataFrame. For .pdf use pdf_path_to_pages_df.
-                For .docx/.pptx convert to PDF via LibreOffice then split (same schema).
-                """
-                abs_path = os.path.abspath(p)
-                ext = os.path.splitext(abs_path)[1].lower()
-                if ext in SUPPORTED_EXTENSIONS and ext != ".pdf":
-                    try:
-                        with open(abs_path, "rb") as f:
-                            file_bytes = f.read()
-                        pdf_bytes = convert_to_pdf_bytes(file_bytes, ext)
-                        pages = _split_pdf_to_single_page_bytes(pdf_bytes)
-                        out_rows = [{"bytes": b, "path": abs_path, "page_number": i + 1} for i, b in enumerate(pages)]
-                        return pd.DataFrame(out_rows)
-                    except BaseException as e:
-                        return pd.DataFrame([{"bytes": b"", "path": abs_path, "page_number": 0, "error": str(e)}])
-                return pdf_path_to_pages_df(p)
-
-        elif self._pipeline_type == "html":
-
-            def _loader(p: str) -> pd.DataFrame:
-                return html_file_to_chunks_df(p, params=HtmlChunkParams(**self._extract_html_kwargs))
-
-        elif self._pipeline_type == "image":
-
-            def _loader(p: str) -> pd.DataFrame:
-                from nemo_retriever.image.load import image_file_to_pages_df
-
-                return image_file_to_pages_df(p)
-
-        elif self._pipeline_type == "audio":
-
-            def _loader(p: str) -> pd.DataFrame:
-                from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
-
-                return audio_path_to_chunks_df(p, params=AudioChunkParams(**self._extract_audio_chunk_kwargs))
-
-        else:
-
-            def _loader(p: str) -> pd.DataFrame:
-                return txt_file_to_chunks_df(p, params=TextChunkParams(**self._extract_txt_kwargs))
-
+        operators = self._instantiate_graph_operators(graph_nodes)
         for doc_path in doc_iter:
-            initial_df = _loader(doc_path)
-            current, _ = run_pipeline_tasks_on_df(initial_df, per_doc_tasks, None)
+            initial_df = loader(doc_path)
+            current: Any = initial_df
+            for operator in operators:
+                current = operator.run(current)
             results.append(current)
 
         # Run upload/save once on combined results so overwrite=True keeps full corpus.

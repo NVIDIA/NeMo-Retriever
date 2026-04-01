@@ -107,14 +107,14 @@ class GPUTaskDescriptor:
     kwargs: dict = field(default_factory=dict)
     model_config: Any = None  # One of the *ModelConfig dataclasses, or None
 
-    def resolve(self) -> tuple[Callable[..., Any], dict[str, Any]]:
-        """Import the function and rebuild kwargs with a live model."""
+    def resolve(self) -> Callable[[Any], Any]:
+        """Import the function, rebuild kwargs, and return a bound batch callable."""
         mod = importlib.import_module(self.module_name)
         func = getattr(mod, self.func_name)
         kwargs = dict(self.kwargs)
         if self.model_config is not None:
             kwargs["model"] = self.model_config.create()
-        return func, kwargs
+        return lambda batch_df, _func=func, _kwargs=kwargs: _func(batch_df, **_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -216,10 +216,9 @@ def _gpu_worker_entry(
 
     try:
         # Step 2: Resolve all tasks (imports torch, loads models)
-        resolved: list[tuple[Callable[..., Any], dict[str, Any]]] = []
+        resolved: list[Callable[[Any], Any]] = []
         for desc in task_descriptors:
-            func, kwargs = desc.resolve()
-            resolved.append((func, kwargs))
+            resolved.append(desc.resolve())
 
         # Step 3: Signal ready
         ready_event.set()
@@ -233,8 +232,8 @@ def _gpu_worker_entry(
             shard_id, shard_df = item
             try:
                 current = shard_df
-                for func, kwargs in resolved:
-                    current = func(current, **kwargs)
+                for run_stage in resolved:
+                    current = run_stage(current)
                 output_queue.put((shard_id, current, None))
             except Exception as e:
                 tb = traceback.format_exc()
