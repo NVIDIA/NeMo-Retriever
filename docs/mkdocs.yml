@@ -71,6 +71,7 @@ nav:
         - Notebooks: extraction/notebooks.md
         - Use the CLI: extraction/cli-reference.md
         - Use the API: extraction/python-api-reference.md
+        - NeMo Retriever API Reference: extraction/nemo-retriever-api-reference.md
         - Use the API (V2): extraction/v2-api-guide.md
         - Split Documents: extraction/chunking.md
         - Upload Data: extraction/data-store.md
