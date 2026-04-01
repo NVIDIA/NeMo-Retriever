@@ -5,10 +5,9 @@
 """SQL database connectors.
 
 ``SQLDatabase`` is the abstract base class all connectors must implement.
-``DuckDB`` is the bundled reference implementation.
+``DuckDB`` is a reference implementation available in ``tabular-dev-tools/duckdb.py``.
 """
 
 from nemo_retriever.tabular_data.connectors.sql_database import SQLDatabase
-from nemo_retriever.tabular_data.connectors.duckdb import DuckDB
 
-__all__ = ["SQLDatabase", "DuckDB"]
+__all__ = ["SQLDatabase"]

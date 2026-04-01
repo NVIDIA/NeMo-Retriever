@@ -1,4 +1,5 @@
 import os
+import json
 
 # Load .env from current working directory so LLM_API_KEY, LLM_INVOKE_URL are set (run from repo root)
 try:
@@ -8,10 +9,9 @@ try:
 except ImportError:
     pass
 
-os.environ.setdefault("PYDEVD_WARN_EVALUATION_TIMEOUT", "60")
-
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
-import json
+
+os.environ.setdefault("PYDEVD_WARN_EVALUATION_TIMEOUT", "60")
 
 
 def _make_llm() -> ChatNVIDIA:

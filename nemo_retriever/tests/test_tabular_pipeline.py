@@ -10,6 +10,7 @@ in-process stubs so the tests run without any infrastructure.
 import pandas as pd
 
 from nemo_retriever.params import TabularExtractParams
+from nemo_retriever.tabular_data.connectors.sql_database import SQLDatabase
 from nemo_retriever.tabular_data.ingestion.extract_data import (
     data_for_populate_tabular,
     extract_tabular_db_data,
@@ -73,11 +74,14 @@ _FAKE_FKS = pd.DataFrame(
 )
 
 
-class _DummyDuckDB:
+class _DummyDuckDB(SQLDatabase):
     """Drop-in replacement for DuckDB that returns pre-canned DataFrames."""
 
     def __init__(self, connection_string: str) -> None:
         pass
+
+    def execute(self, sql: str, parameters=None) -> pd.DataFrame:
+        return pd.DataFrame()
 
     def get_tables(self) -> pd.DataFrame:
         return _FAKE_TABLES.copy()
@@ -97,21 +101,20 @@ class _DummyDuckDB:
     def get_queries(self) -> pd.DataFrame:
         return pd.DataFrame(columns=["end_time", "query_text"])
 
+    def close(self) -> None:
+        pass
+
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
 EXPECTED_DATA_KEYS = {"tables", "columns", "views", "pks", "fks"}
 
 
-def test_pull_tabular_db_entities(monkeypatch):
-    """extract_tabular_db_data returns the expected schema dict, content, and tolerates params=None."""
-    monkeypatch.setattr(
-        "nemo_retriever.tabular_data.ingestion.extract_data.DuckDB",
-        _DummyDuckDB,
-    )
-
-    # ── with explicit params ───────────────────────────────────────────────────
-    data = extract_tabular_db_data(params=TabularExtractParams(connection_string="dummy.duckdb"))
+def test_pull_tabular_db_entities():
+    """extract_tabular_db_data returns the expected schema dict, content, and empty dict when connector is None."""
+    # ── with explicit connector in params ─────────────────────────────────────
+    connector = _DummyDuckDB("dummy.duckdb")
+    data = extract_tabular_db_data(params=TabularExtractParams(connector=connector))
 
     assert isinstance(data, dict)
     assert set(data.keys()) == EXPECTED_DATA_KEYS
@@ -123,11 +126,9 @@ def test_pull_tabular_db_entities(monkeypatch):
     assert data["views"]["table_name"].iloc[0] == "v_orders"
     assert data["fks"].empty
 
-    # ── params=None falls back to defaults and still returns the correct shape ─
+    # ── params=None returns an empty dict ─────────────────────────────────────
     data_default = extract_tabular_db_data(params=None)
-    assert set(data_default.keys()) == EXPECTED_DATA_KEYS
-    for key in EXPECTED_DATA_KEYS:
-        assert isinstance(data_default[key], pd.DataFrame)
+    assert data_default == {}
 
 
 # ── data_for_populate_tabular ──────────────────────────────────────────────────

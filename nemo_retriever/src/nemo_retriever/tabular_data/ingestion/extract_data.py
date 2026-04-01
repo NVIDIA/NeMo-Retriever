@@ -1,5 +1,4 @@
 from nemo_retriever.tabular_data.connectors.sql_database import SQLDatabase
-from nemo_retriever.tabular_data.connectors.duckdb import DuckDB
 from nemo_retriever.tabular_data.ingestion.graph.utils import (
     normalize_fks,
     normalize_pks,
@@ -37,30 +36,23 @@ def data_for_populate_tabular(connector: SQLDatabase):
     return data
 
 
-def extract_tabular_db_data(params=None, connector: SQLDatabase = None):
+def extract_tabular_db_data(params=None):
     """Step 1 — Pull schema entities from the relational DB into a data dict.
 
     Args:
-        params:    TabularExtractParams instance. When provided,
-                   ``params.connection_string`` overrides the default database path.
-                   Ignored when ``connector`` is supplied.
-        connector: An instantiated SQLDatabase connector.  When omitted a
-                   DuckDB connector is created from ``params.connection_string``.
+        params: TabularExtractParams instance. ``params.connector`` is used as
+                the SQLDatabase connector. When omitted or when
+                ``params.connector`` is ``None``, an empty data dict is returned.
 
     Returns:
         data dict with keys: tables, columns, views, pks, fks.
     """
-    if connector is None:
-        db_path = (
-            params.connection_string
-            if params is not None and params.connection_string is not None
-            else "./spider2.duckdb"
-        )
-        connector = DuckDB(db_path)
-    return data_for_populate_tabular(connector)
+    if params is None or params.connector is None:
+        return {}
+    return data_for_populate_tabular(params.connector)
 
 
-def store_relational_db_in_neo4j(data, neo4j_conn=None):
+def store_relational_db_in_neo4j(data):
     """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
 
     Args:
@@ -69,6 +61,9 @@ def store_relational_db_in_neo4j(data, neo4j_conn=None):
                     populate_tabular_data uses its own DAL connection, but
                     accepted for API consistency with the other ingest steps).
     """
+    if not data:
+        return
+
     from nemo_retriever.tabular_data.ingestion.write_to_graph import (
         populate_tabular_data,
     )

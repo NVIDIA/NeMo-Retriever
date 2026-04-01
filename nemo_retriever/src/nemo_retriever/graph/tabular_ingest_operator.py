@@ -69,17 +69,14 @@ class TabularIngestOperator(AbstractOperator, CPUOperator):
             store_relational_db_in_neo4j,
         )
         from nemo_retriever.tabular_data.ingestion.embeddings import fetch_tabular_embedding_dataframe
-        from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
         from nemo_retriever.utils.ray_resource_hueristics import (
             gather_cluster_resources,
             resolve_requested_plan,
         )
 
-        neo4j_conn = get_neo4j_conn()
-
         # Steps 1–2: extract from DB and populate Neo4j graph
         schema_data = extract_tabular_db_data(params=data)
-        store_relational_db_in_neo4j(data=schema_data, neo4j_conn=neo4j_conn)
+        store_relational_db_in_neo4j(data=schema_data)
 
         # Steps 3–5: semantic layer, usage weights, descriptions (not yet implemented)
 

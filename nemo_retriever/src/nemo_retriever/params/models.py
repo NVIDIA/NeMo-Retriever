@@ -9,6 +9,7 @@ from typing import Literal, Optional, Sequence, Tuple
 import warnings
 
 
+from nemo_retriever.tabular_data.connectors import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RunMode = Literal["inprocess", "batch", "fused", "online"]
@@ -349,7 +350,9 @@ class TabularExtractParams(_ParamsModel):
     tabular_data.neo4j) and is not configured here.
     """
 
-    connection_string: Optional[str] = None
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    connector: Optional[SQLDatabase] = None
 
 
 class TabularSemanticLayerParams(_ParamsModel):

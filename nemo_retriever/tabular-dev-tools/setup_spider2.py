@@ -20,8 +20,8 @@ Optional flags:
 
 After this completes, query via DuckDB:
 
-    from nemo_retriever.tabular_data.connectors.duckdb import DuckDB
-    conn = DuckDB({"database": "./spider2.duckdb"})
+    from duckdb import DuckDB  # run from tabular-dev-tools/
+    conn = DuckDB("./spider2.duckdb")
     rows = conn.execute("SELECT * FROM Airlines.flights LIMIT 5")
 """
 
