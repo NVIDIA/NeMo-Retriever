@@ -184,7 +184,7 @@ services:
       - reranker
 
   nemotron-parse:
-    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NEMOTRON_PARSE_TAG:-1.7}
+    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NEMOTRON_PARSE_TAG:-1.7.0-variant}
     shm_size: 16gb
     ports:
       - "${NEMOTRON_PARSE_HTTP_PORT:-8018}:8000"
