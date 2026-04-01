@@ -118,7 +118,9 @@ plugins:
             show_source: true
             show_if_no_docstring: true
           paths:
-            - ../api/*/src/nv_ingest_api
+            - ../api/src
+            - ../nemo_retriever/src
+
   - mkdocs-jupyter:
       theme: auto
       highlight_extra_classes: "jupyter-notebook"
