@@ -94,7 +94,13 @@ class _FusedModelActor:
             "has_embedding_column": str(kwargs.get("has_embedding_column", "text_embeddings_1b_v2_has_embedding")),
         }
 
-        self._page_elements_model = NemotronPageElementsV3()
+        # Page-elements detection is needed for tables/charts/infographics,
+        # and for text only when the method requires OCR (not plain pdfium).
+        _need_pe_for_text = self._extract_text and self._method in ("pdfium_hybrid", "ocr")
+        self._need_page_elements = _need_pe_for_text or any(
+            [self._extract_tables, self._extract_charts, self._extract_infographics]
+        )
+        self._page_elements_model = NemotronPageElementsV3() if self._need_page_elements else None
         self._ge_model = None
         if self._use_graphic_elements and self._extract_charts:
             from nemo_retriever.model.local import NemotronGraphicElementsV1
@@ -115,11 +121,14 @@ class _FusedModelActor:
         )
 
     def __call__(self, batch_df: Any) -> Any:
-        detected = detect_page_elements_v3(
-            batch_df,
-            model=self._page_elements_model,
-            **self._detect_kwargs,
-        )
+        if self._need_page_elements:
+            detected = detect_page_elements_v3(
+                batch_df,
+                model=self._page_elements_model,
+                **self._detect_kwargs,
+            )
+        else:
+            detected = batch_df
 
         # Determine if OCR should extract text for scanned pages.
         ocr_extract_text = self._extract_text and self._method in ("pdfium_hybrid", "ocr")
