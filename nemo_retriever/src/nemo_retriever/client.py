@@ -84,7 +84,7 @@ class RemoteIngestor:
         self,
         base_url: str = "http://localhost:7670",
         *,
-        timeout: float = 600.0,
+        timeout: float = 21600.0,
         documents: Optional[List[str]] = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -377,7 +377,7 @@ class RemoteJob:
     Returned by :meth:`RemoteIngestor.ingest_async`.
     """
 
-    def __init__(self, *, base_url: str, job_id: str, timeout: float = 600.0) -> None:
+    def __init__(self, *, base_url: str, job_id: str, timeout: float = 21600.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._job_id = job_id
         self._timeout = timeout
