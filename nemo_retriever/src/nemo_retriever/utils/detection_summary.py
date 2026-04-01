@@ -13,6 +13,7 @@ be shared.
 
 from __future__ import annotations
 
+import ast
 from datetime import datetime
 import json
 from collections import defaultdict
@@ -27,6 +28,33 @@ def _safe_int(value: object, default: int = 0) -> int:
         return int(value)
     except Exception:
         return default
+
+
+def _parse_metadata_dict(raw_metadata: object) -> Dict[str, Any]:
+    if isinstance(raw_metadata, dict):
+        return raw_metadata
+    if not isinstance(raw_metadata, str):
+        return {}
+
+    text = raw_metadata.strip()
+    if not text:
+        return {}
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    # Some older writers persisted metadata via `str(dict)` (single quotes / Python literals).
+    try:
+        parsed = ast.literal_eval(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return {}
 
 
 def compute_detection_summary(
@@ -102,24 +130,16 @@ def compute_detection_summary(
 
 def iter_lancedb_rows(uri: str, table_name: str):
     """Yield ``(page_key, meta, row_dict)`` tuples from a LanceDB table."""
-    import lancedb  # type: ignore
+    from nemo_retriever.vector_store.lancedb_store import open_lancedb_table_with_retry
 
-    db = lancedb.connect(uri)
-    table = db.open_table(table_name)
+    table = open_lancedb_table_with_retry(uri, table_name, retries=1, sleep_seconds=0.0)
     df = table.to_pandas()[["source_id", "page_number", "metadata"]]
 
     for row in df.itertuples(index=False):
         source_id = str(getattr(row, "source_id", "") or "")
         page_number = _safe_int(getattr(row, "page_number", -1), default=-1)
         raw_metadata = getattr(row, "metadata", None)
-        meta: dict = {}
-        if isinstance(raw_metadata, str) and raw_metadata.strip():
-            try:
-                parsed = json.loads(raw_metadata)
-                if isinstance(parsed, dict):
-                    meta = parsed
-            except Exception:
-                pass
+        meta = _parse_metadata_dict(raw_metadata)
         yield (source_id, page_number), meta, {}
 
 
@@ -130,14 +150,7 @@ def iter_dataframe_rows(df):
         path = str(row_dict.get("path") or row_dict.get("source_id") or "")
         page_number = _safe_int(row_dict.get("page_number", -1), default=-1)
 
-        meta = row_dict.get("metadata")
-        if isinstance(meta, str):
-            try:
-                meta = json.loads(meta)
-            except Exception:
-                meta = {}
-        if not isinstance(meta, dict):
-            meta = {}
+        meta = _parse_metadata_dict(row_dict.get("metadata"))
 
         yield (path, page_number), meta, row_dict
 

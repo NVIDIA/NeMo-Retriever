@@ -184,6 +184,65 @@ def test_load_harness_config_supports_recall_adapter_and_match_mode(tmp_path: Pa
     assert cfg.recall_match_mode == "pdf_page"
 
 
+def test_load_harness_config_supports_inprocess_run_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: false",
+                "    run_mode: inprocess",
+                "    max_workers: 4",
+                "    gpu_devices: 0,1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.run_mode == "inprocess"
+    assert cfg.max_workers == 4
+    assert cfg.gpu_devices == "0,1"
+
+
+def test_load_harness_config_rejects_invalid_run_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    recall_required: false",
+                "    run_mode: nope",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="run_mode must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
 def test_load_harness_config_supports_multimodal_embedding_options(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

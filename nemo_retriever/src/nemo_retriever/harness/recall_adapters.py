@@ -77,10 +77,10 @@ _ADAPTER_HANDLERS: dict[str, tuple[Callable[[Path, Path], Path], str]] = {
 }
 
 
-def prepare_recall_query_file(*, query_csv: Path | None, recall_adapter: str, output_dir: Path) -> Path:
+def prepare_recall_query_file(*, query_csv: Path | None, recall_adapter: str, output_dir: Path) -> Path | None:
     output_dir.mkdir(parents=True, exist_ok=True)
     if query_csv is None:
-        return output_dir / "__query_csv_missing__.csv"
+        return None
 
     adapter = str(recall_adapter or "none").strip().lower()
     if adapter not in VALID_RECALL_ADAPTERS:

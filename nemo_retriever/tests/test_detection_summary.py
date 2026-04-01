@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from nemo_retriever.utils.detection_summary import print_run_summary
+import pandas as pd
+
+from nemo_retriever.utils.detection_summary import collect_detection_summary_from_df, print_run_summary
 
 
 def test_print_run_summary_sorts_evaluation_metrics_by_numeric_k(capsys) -> None:
@@ -39,3 +41,36 @@ def test_print_run_summary_sorts_evaluation_metrics_by_numeric_k(capsys) -> None
         "recall@5: 0.4000",
         "recall@10: 0.7000",
     ]
+
+
+def test_collect_detection_summary_accepts_json_and_python_literal_metadata() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "path": "/tmp/doc_a.pdf",
+                "page_number": 0,
+                "metadata": (
+                    "{'page_elements_v3_num_detections': 3, "
+                    "'ocr_chart_detections': 1, "
+                    "'page_elements_v3_counts_by_label': {'text': 2}}"
+                ),
+            },
+            {
+                "path": "/tmp/doc_a.pdf",
+                "page_number": 0,
+                "metadata": (
+                    '{"page_elements_v3_num_detections": 5, '
+                    '"ocr_table_detections": 2, '
+                    '"page_elements_v3_counts_by_label": {"text": 4, "table": 1}}'
+                ),
+            },
+        ]
+    )
+
+    summary = collect_detection_summary_from_df(df)
+
+    assert summary["pages_seen"] == 1
+    assert summary["page_elements_v3_total_detections"] == 5
+    assert summary["ocr_chart_total_detections"] == 1
+    assert summary["ocr_table_total_detections"] == 2
+    assert summary["page_elements_v3_counts_by_label"] == {"table": 1, "text": 4}

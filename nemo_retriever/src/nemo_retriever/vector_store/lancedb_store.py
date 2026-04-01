@@ -4,12 +4,14 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple  # noqa: F401
+from typing import Any, Dict, List, Optional, Sequence
 from datetime import timedelta
+import time
 
 from nv_ingest_client.util.vdb.lancedb import LanceDB
 from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
@@ -41,6 +43,61 @@ class LanceDBConfig:
 
     hybrid: bool = False
     fts_language: str = "English"
+
+
+def ensure_lancedb_table(uri: str, table_name: str) -> None:
+    """Ensure the LanceDB URI exists and the target table can be opened."""
+    Path(uri).mkdir(parents=True, exist_ok=True)
+    db = lancedb.connect(uri=uri)
+    try:
+        db.open_table(table_name)
+        return
+    except Exception:
+        pass
+
+    import pyarrow as pa  # type: ignore
+
+    schema = lancedb_schema()
+    empty = pa.table({field.name: [] for field in schema}, schema=schema)
+    db.create_table(table_name, data=empty, schema=schema, mode="create")
+
+
+def open_lancedb_table_with_retry(
+    uri: str,
+    table_name: str,
+    *,
+    retries: int = 3,
+    sleep_seconds: float = 2.0,
+) -> Any:
+    db = lancedb.connect(uri=uri)
+    open_err: Exception | None = None
+    for _ in range(max(1, retries)):
+        try:
+            return db.open_table(table_name)
+        except Exception as exc:
+            open_err = exc
+            ensure_lancedb_table(uri, table_name)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+    raise RuntimeError(f"Could not open LanceDB table {table_name!r} at {uri!r}") from open_err
+
+
+def count_lancedb_rows(uri: str, table_name: str) -> int | None:
+    try:
+        table = open_lancedb_table_with_retry(uri, table_name, retries=1, sleep_seconds=0.0)
+        return int(table.count_rows())
+    except Exception:
+        return None
+
+
+def estimate_processed_pages(uri: str, table_name: str) -> int | None:
+    """Estimate processed pages from unique `(source_id, page_number)` pairs."""
+    try:
+        table = open_lancedb_table_with_retry(uri, table_name, retries=1, sleep_seconds=0.0)
+        df = table.to_pandas()[["source_id", "page_number"]]
+        return int(df.dropna(subset=["source_id", "page_number"]).drop_duplicates().shape[0])
+    except Exception:
+        return count_lancedb_rows(uri, table_name)
 
 
 def _read_text_embeddings_json_df(path: Path) -> pd.DataFrame:
@@ -86,38 +143,58 @@ def _iter_text_embeddings_json_files(input_dir: Path, *, recursive: bool) -> Lis
     return sorted([p for p in files if p.is_file()])
 
 
-def _safe_str(x: Any) -> str:
-    return "" if x is None else str(x)
-
-
-def _extract_source_path_and_id(meta: Dict[str, Any]) -> Tuple[str, str]:
-    """
-    Extract a stable source path/id from metadata.
-
-    Prefers:
-      - metadata.source_metadata.source_id
-      - metadata.source_metadata.source_name
-      - metadata.custom_content.path
-    """
-    source = meta.get("source_metadata") if isinstance(meta.get("source_metadata"), dict) else {}
-    source_id = source.get("source_id") or ""
-    source_name = source.get("source_name") or ""
-
-    custom = meta.get("custom_content") if isinstance(meta.get("custom_content"), dict) else {}
-    custom_path = custom.get("path") or custom.get("input_pdf") or custom.get("pdf_path") or ""
-
-    path = _safe_str(custom_path or source_id or source_name)
-    sid = _safe_str(source_id or path or source_name)
-    return path, sid
-
-
-def _extract_page_number(meta: Dict[str, Any]) -> int:
-    cm = meta.get("content_metadata") if isinstance(meta.get("content_metadata"), dict) else {}
-    page = cm.get("hierarchy", {}).get("page", -1)
+def _parse_metadata_dict(raw_metadata: Any) -> Dict[str, Any]:
+    if isinstance(raw_metadata, dict):
+        return dict(raw_metadata)
+    if not isinstance(raw_metadata, str):
+        return {}
+    text = raw_metadata.strip()
+    if not text:
+        return {}
     try:
-        return int(page)
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
-        return -1
+        pass
+    try:
+        parsed = ast.literal_eval(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return {}
+
+
+def _extract_detection_metadata(row: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+
+    pe_num = row.get("page_elements_v3_num_detections")
+    if pe_num is not None:
+        try:
+            out["page_elements_v3_num_detections"] = int(pe_num)
+        except Exception:
+            pass
+
+    pe_counts = row.get("page_elements_v3_counts_by_label")
+    if isinstance(pe_counts, dict):
+        normalized_counts: Dict[str, int] = {}
+        for label, count in pe_counts.items():
+            if count is None:
+                continue
+            try:
+                normalized_counts[str(label)] = int(count)
+            except Exception:
+                continue
+        if normalized_counts:
+            out["page_elements_v3_counts_by_label"] = normalized_counts
+
+    for field in ("table", "chart", "infographic"):
+        entries = row.get(field)
+        if isinstance(entries, list):
+            out[f"ocr_{field}_detections"] = len(entries)
+
+    return out
 
 
 def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -135,11 +212,11 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
     out: List[Dict[str, Any]] = []
 
     for row in rows:
-        meta = row.get("metadata")
-        if not isinstance(meta, dict):
+        metadata = _parse_metadata_dict(row.get("metadata"))
+        if not metadata:
             continue
 
-        embedding = meta.get("embedding")
+        embedding = metadata.get("embedding")
         if embedding is None:
             continue
 
@@ -149,11 +226,10 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 embedding = list(embedding)  # type: ignore[arg-type]
             except Exception:
                 continue
-        meta.pop("embedding", None)  # Remove embedding from metadata to save space in LanceDB.
-        # path, source_id = _extract_source_path_and_id(meta)
-        path = row.get("path", "")
-        source_id = meta.get("source_path", path)
-        # page_number = _extract_page_number(meta)
+        metadata.pop("embedding", None)  # Remove embedding from metadata to save space in LanceDB.
+        metadata.update(_extract_detection_metadata(row))
+        path = str(row.get("path", "") or "")
+        source_id = str(metadata.get("source_path") or path)
         page_number = row.get("page_number", -1)
         p = Path(path) if path else None
         filename = p.name if p is not None else ""
@@ -174,7 +250,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 "source_id": source_id,
                 "path": path,
                 "text": row.get("text", ""),
-                "metadata": str(meta),
+                "metadata": json.dumps(metadata, ensure_ascii=False, default=str),
             }
         )
 
@@ -307,25 +383,26 @@ def write_text_embeddings_dir_to_lancedb(
 
 
 def handle_lancedb(
-    rows: Path,
+    rows: Sequence[Dict[str, Any]],
     uri: str,
     table_name: str,
     hybrid: bool = False,
     mode: str = "overwrite",
-) -> Dict[str, Any]:
+) -> None:
     """
-        Handle LanceDB writing for a batch pipeline run.
+    Write materialized embedding rows to LanceDB.
 
-        This is used by `nemo_retriever.examples.batch_pipeline.run(...)` after the embedding stage.
-
-        Reads `*.text_embeddings.json` files from `input_dir`, extracts embeddings, and uploads to LanceDB.
-    )
+    Used by batch/inprocess pipelines after ingestion has produced in-memory row dicts.
     """
+    normalized_mode = str(mode or "overwrite").strip().lower()
+    if normalized_mode not in {"overwrite", "append"}:
+        raise ValueError(f"Unsupported LanceDB mode: {mode!r}")
+
     lancedb_config = LanceDBConfig(
-        uri=uri, table_name=table_name, hybrid=hybrid
-    )  # Use the same LanceDB config for writing and recall.
-    db = lancedb.connect(uri=lancedb_config.uri)
-    cleaned_rows = _build_lancedb_rows_from_df(rows)
+        uri=uri,
+        table_name=table_name,
+        hybrid=hybrid,
+        overwrite=(normalized_mode == "overwrite"),
+    )
+    cleaned_rows = _build_lancedb_rows_from_df(list(rows))
     _write_rows_to_lancedb(cleaned_rows, cfg=lancedb_config)
-    table = db.open_table(lancedb_config.table_name)  # Ensure table is open and metadata is updated before proceeding.
-    create_lancedb_index(table, cfg=lancedb_config)

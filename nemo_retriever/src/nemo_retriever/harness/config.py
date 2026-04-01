@@ -15,6 +15,7 @@ NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
+VALID_RUN_MODES = {"batch", "inprocess"}
 VALID_EVALUATION_MODES = {"recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
 VALID_BEIR_LOADERS = {"vidore_hf"}
@@ -29,7 +30,7 @@ DEFAULT_NIGHTLY_SLACK_METRIC_KEYS = [
     "recall_5",
 ]
 
-TUNING_FIELDS = {
+BATCH_TUNING_FIELDS = {
     "pdf_extract_workers",
     "pdf_extract_num_cpus",
     "pdf_extract_batch_size",
@@ -47,6 +48,16 @@ TUNING_FIELDS = {
     "gpu_ocr",
     "gpu_embed",
 }
+INPROCESS_TUNING_FIELDS = {
+    "max_workers",
+    "gpu_devices",
+}
+
+
+def tuning_fields_for_run_mode(run_mode: str) -> set[str]:
+    if run_mode == "inprocess":
+        return set(INPROCESS_TUNING_FIELDS)
+    return set(BATCH_TUNING_FIELDS)
 
 
 @dataclass
@@ -54,6 +65,7 @@ class HarnessConfig:
     dataset_dir: str
     dataset_label: str
     preset: str
+    run_mode: str = "batch"
 
     query_csv: str | None = None
     input_type: str = "pdf"
@@ -72,6 +84,8 @@ class HarnessConfig:
     ray_address: str | None = None
     lancedb_uri: str = "lancedb"
     hybrid: bool = False
+    max_workers: int = 16
+    gpu_devices: str | None = None
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
     embed_granularity: str = "element"
@@ -105,6 +119,9 @@ class HarnessConfig:
 
         if self.query_csv is not None and not Path(self.query_csv).exists():
             errors.append(f"query_csv does not exist: {self.query_csv}")
+
+        if self.run_mode not in VALID_RUN_MODES:
+            errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
 
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
@@ -148,11 +165,15 @@ class HarnessConfig:
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
 
-        for name in TUNING_FIELDS:
+        for name in tuning_fields_for_run_mode(self.run_mode):
             val = getattr(self, name)
+            if name == "gpu_devices":
+                continue
             if name.startswith("gpu_") and float(val) < 0.0:
                 errors.append(f"{name} must be >= 0.0")
             elif name.endswith("_workers") and int(val) < 1:
+                errors.append(f"{name} must be >= 1")
+            elif name == "max_workers" and int(val) < 1:
                 errors.append(f"{name} must be >= 1")
 
         return errors
@@ -246,6 +267,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_DATASET": ("dataset", str),
         "HARNESS_DATASET_DIR": ("dataset_dir", str),
         "HARNESS_PRESET": ("preset", str),
+        "HARNESS_RUN_MODE": ("run_mode", str),
         "HARNESS_QUERY_CSV": ("query_csv", str),
         "HARNESS_INPUT_TYPE": ("input_type", str),
         "HARNESS_RECALL_REQUIRED": ("recall_required", _parse_bool),
@@ -261,6 +283,8 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_RAY_ADDRESS": ("ray_address", str),
         "HARNESS_LANCEDB_URI": ("lancedb_uri", str),
         "HARNESS_HYBRID": ("hybrid", _parse_bool),
+        "HARNESS_MAX_WORKERS": ("max_workers", _parse_number),
+        "HARNESS_GPU_DEVICES": ("gpu_devices", str),
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
@@ -269,7 +293,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
     }
 
-    for key in TUNING_FIELDS:
+    for key in BATCH_TUNING_FIELDS:
         env_map[f"HARNESS_{key.upper()}"] = (key, _parse_number)
 
     for env_key, (cfg_key, parser) in env_map.items():

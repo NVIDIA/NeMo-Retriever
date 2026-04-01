@@ -9,7 +9,7 @@ It captures what exists now, what was intentionally chosen, and what to iterate 
 ## Current Scope and Intent
 
 - Harness is standalone under `nemo_retriever` (not based on `tools/harness`).
-- It wraps `nemo_retriever.examples.batch_pipeline`.
+- It orchestrates structured `batch`/`inprocess` mode runners and also writes equivalent example CLI commands for replay.
 - Primary use case is benchmark orchestration for local/cluster runs without Docker orchestration.
 - Vector DB is LanceDB only.
 - Recall gating is supported and enforced by config (`recall_required`).
@@ -17,7 +17,7 @@ It captures what exists now, what was intentionally chosen, and what to iterate 
 ## Key Files
 
 - `nemo_retriever/src/nemo_retriever/harness/run.py`
-  - CLI run/sweep/nightly orchestration, subprocess execution, metrics extraction, artifact writes.
+  - CLI run/sweep/nightly orchestration, runner execution, metrics extraction, artifact writes.
 - `nemo_retriever/src/nemo_retriever/harness/config.py`
   - YAML + CLI/env merge logic and `HarnessConfig`.
 - `nemo_retriever/src/nemo_retriever/harness/parsers.py`
@@ -103,6 +103,40 @@ Notes:
 - Standalone `detection_summary.json` is optional via `write_detection_file: true`.
 - `sweep_results.json` was removed to avoid duplicated session outputs.
 
+### `results.json` contract (evaluation + historical dashboard)
+
+Treat **`results.json` as the single source of truth** for a harness run: outcome, configuration snapshot, metrics, and paths to sidecar files. Session-level `session_summary.json` only carries **per-run summaries** (`run_name`, `dataset`, `preset`, `artifact_dir`, `success`, `metrics`); ingest full detail from each run’s `artifact_dir/results.json` when building history or dashboards.
+
+The payload shape is defined by `nemo_retriever/harness/run.py` and the `RunReport` model; this section and those sources are the contract—no separate JSON schema version field.
+
+**Stable fields for time series and comparison (prefer these keys)**
+
+| Area | Keys | Notes |
+|------|------|--------|
+| Identity | `timestamp`, `latest_commit` | `latest_commit` may be `"unknown"` outside a git checkout. |
+| Outcome | `success`, `return_code`, `failure_reason` | `failure_reason` is a short machine string when `success` is false. |
+| Harness config | `test_config` | Dataset path, preset, `evaluation_mode`, recall/BEIR options, tuning, embedding flags. |
+| Environment | `run_metadata` | `host`, `gpu_count`, `cuda_driver`, `ray_version`, `python_version`. |
+| Default dashboard strip | `summary_metrics` | Small curated set: `pages`, `ingest_secs`, `pages_per_sec_ingest`, `recall_5`, `ndcg_10`. **Preferred for default tiles and sparklines** when present. |
+| Full metrics | `metrics` | Flattened throughput, counts, and evaluation metrics (e.g. all `recall_*` from the run). Use for drill-down and non-summary KPIs. |
+| Structured report | `run_report` | Same content as `runtime_metrics/<prefix>.run_report.json` when written. Embeds `evaluation.metrics` (e.g. `recall@5`) and nested `artifacts` paths. |
+
+**Denormalization (intentional)**
+
+- **`runtime_summary`**: timing-oriented view; overlaps `metrics` / `run_report.metrics` (e.g. wall-clock as `elapsed_secs` here vs `total_secs` in `metrics`). Same underlying run; naming differs by sub-system.
+- **`metrics`**: flat merge of ingest stats + normalized evaluation keys (`recall_1`, … from `recall@1`, …).
+- **`run_report`**: full `RunReport` model dump for tools that want one JSON file without opening `runtime_metrics/*.json`.
+
+**Optional / conditional**
+
+- **`tags`**: CLI `--tag` values when provided.
+- **`error`**: `{ "type", "message" }` when the runner raises before a normal report.
+- **`artifacts`**: always includes `command_file`, `runtime_metrics_dir`; may include `mode_run_report_file`, `runtime_summary_file`, `detection_summary_file`.
+
+**On-disk mirrors**
+
+- `runtime_metrics/<prefix>.run_report.json` and `*.runtime.summary.json` duplicate subsets of `results.json` for debugging and pipeline tooling. For **portable archival or dashboard ingestion of a single path**, prefer **`results.json`**.
+
 ## Recent Cleanup Decisions
 
 1. **Session naming cleaned**
@@ -113,8 +147,8 @@ Notes:
    - Kept `session_summary.json`.
    - Removed `sweep_results.json` generation.
 
-3. **TTY-backed subprocess retained**
-   - Harness runs batch pipeline through a PTY so Ray progress remains rich/pretty by default.
+3. **Command replay artifact retained**
+   - Harness writes `command.txt` as a reproducible CLI equivalent for debugging/handoffs, while execution uses structured runner configs.
 
 ## Known Behavior to Remember
 
