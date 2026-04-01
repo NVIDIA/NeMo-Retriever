@@ -1,60 +1,20 @@
-"""Unit tests for the tabular ingestion flow in BatchIngestor.
+"""Unit tests for the tabular ingestion pipeline functions.
+
+Covers the standalone functions that ``TabularIngestOperator`` composes:
+extract from DB, normalize, store in Neo4j.
 
 All external databases (DuckDB, Neo4j, etc.) are replaced with lightweight
 in-process stubs so the tests run without any infrastructure.
 """
 
-from types import SimpleNamespace
-
 import pandas as pd
-import pytest
 
-pytest.importorskip("ray")
-
-from nemo_retriever.ingest_modes.batch import BatchIngestor
 from nemo_retriever.params import TabularExtractParams
 from nemo_retriever.tabular_data.ingestion.extract_data import (
     data_for_populate_tabular,
+    extract_tabular_db_data,
     store_relational_db_in_neo4j,
 )
-
-
-# ── Ray / Ray-Data stubs ───────────────────────────────────────────────────────
-
-
-class _DummyClusterResources:
-    def total_cpu_count(self) -> int:
-        return 4
-
-    def total_gpu_count(self) -> int:
-        return 0
-
-    def available_cpu_count(self) -> int:
-        return 4
-
-    def available_gpu_count(self) -> int:
-        return 0
-
-
-@pytest.fixture()
-def batch_ingestor(monkeypatch):
-    """Return a BatchIngestor with all Ray / Ray-Data side-effects patched out."""
-    dummy_ctx = SimpleNamespace(enable_rich_progress_bars=False, use_ray_tqdm=True)
-
-    monkeypatch.setattr("nemo_retriever.ingest_modes.batch.ray.init", lambda **kwargs: None)
-    monkeypatch.setattr(
-        "nemo_retriever.ingest_modes.batch.rd.DataContext.get_current",
-        lambda: dummy_ctx,
-    )
-    monkeypatch.setattr(
-        "nemo_retriever.ingest_modes.batch.gather_cluster_resources",
-        lambda _ray: _DummyClusterResources(),
-    )
-    monkeypatch.setattr(
-        "nemo_retriever.ingest_modes.batch.resolve_requested_plan",
-        lambda cluster_resources, allow_no_gpu=False: {"plan": "dummy"},
-    )
-    return BatchIngestor(documents=[])
 
 
 # ── Fake DB row data matching the column names DuckDB connector returns ────────
@@ -143,15 +103,15 @@ class _DummyDuckDB:
 EXPECTED_DATA_KEYS = {"tables", "columns", "views", "pks", "fks"}
 
 
-def test_pull_tabular_db_entities(batch_ingestor, monkeypatch):
-    """pull_tabular_db_entities returns the expected schema dict, content, and tolerates params=None."""
+def test_pull_tabular_db_entities(monkeypatch):
+    """extract_tabular_db_data returns the expected schema dict, content, and tolerates params=None."""
     monkeypatch.setattr(
         "nemo_retriever.tabular_data.ingestion.extract_data.DuckDB",
         _DummyDuckDB,
     )
 
     # ── with explicit params ───────────────────────────────────────────────────
-    data = batch_ingestor.pull_tabular_db_entities(params=TabularExtractParams(connection_string="dummy.duckdb"))
+    data = extract_tabular_db_data(params=TabularExtractParams(connection_string="dummy.duckdb"))
 
     assert isinstance(data, dict)
     assert set(data.keys()) == EXPECTED_DATA_KEYS
@@ -164,7 +124,7 @@ def test_pull_tabular_db_entities(batch_ingestor, monkeypatch):
     assert data["fks"].empty
 
     # ── params=None falls back to defaults and still returns the correct shape ─
-    data_default = batch_ingestor.pull_tabular_db_entities(params=None)
+    data_default = extract_tabular_db_data(params=None)
     assert set(data_default.keys()) == EXPECTED_DATA_KEYS
     for key in EXPECTED_DATA_KEYS:
         assert isinstance(data_default[key], pd.DataFrame)
