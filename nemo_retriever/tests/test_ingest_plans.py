@@ -1,3 +1,6 @@
+import pytest
+
+from nemo_retriever.audio.media_interface import is_media_available
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
 from nemo_retriever.ingest_plans import BaseIngestPlan
@@ -8,6 +11,11 @@ from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VdbUploadParams
+
+try:
+    import torch
+except Exception:  # pragma: no cover
+    torch = None  # type: ignore[assignment]
 
 
 def test_base_ingest_plan_builds_ordered_execution_plan() -> None:
@@ -74,6 +82,7 @@ def test_build_graph_accepts_execution_plan() -> None:
     assert names == ["MultiTypeExtractOperator", "TextChunkActor", "_BatchEmbedActor"]
 
 
+@pytest.mark.skipif(torch is None or not torch.cuda.is_available(), reason="CUDA not available")
 def test_build_inprocess_graph_accepts_execution_plan() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(mode="pdf", extract_params=ExtractParams(extract_text=True))
@@ -134,6 +143,7 @@ def test_build_inprocess_graph_supports_text_execution_plan() -> None:
     assert names == ["MultiTypeExtractOperator", "TextChunkActor", "_BatchEmbedActor"]
 
 
+@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
 def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(
@@ -155,6 +165,7 @@ def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
     assert names == ["MediaChunkActor", "ASRActor"]
 
 
+@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
 def test_build_graph_uses_explicit_audio_graph_for_audio_extract_method() -> None:
     graph = build_graph(
         extract_params=ExtractParams(method="audio"),
