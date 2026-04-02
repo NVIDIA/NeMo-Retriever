@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
+from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
 from nemo_retriever.ingestor import ingestor
 from nemo_retriever.params import (
     ASRParams,
@@ -235,6 +236,12 @@ class GraphIngestor(ingestor):
         post_extract_order = tuple(s for s in self._stage_order if s != "extract")
 
         if self._run_mode == "batch":
+            import ray
+
+            if self._ray_address or not ray.is_initialized():
+                ray.init(address=self._ray_address, ignore_reinit_error=True)
+            cluster_resources = gather_cluster_resources(ray)
+
             graph = build_graph(
                 extraction_mode=self._extraction_mode,
                 extract_params=self._extract_params,
@@ -248,9 +255,12 @@ class GraphIngestor(ingestor):
                 dedup_params=self._dedup_params,
                 stage_order=post_extract_order,
             )
-            # Derive per-node Ray scheduling config from BatchTuningParams, then
-            # let any explicit node_overrides passed to __init__ take precedence.
-            derived_overrides = batch_tuning_to_node_overrides(self._extract_params, self._embed_params)
+            # Derive per-node Ray scheduling config from BatchTuningParams plus
+            # cluster-scaled heuristic defaults, then let any explicit
+            # node_overrides passed to __init__ take precedence.
+            derived_overrides = batch_tuning_to_node_overrides(
+                self._extract_params, self._embed_params, cluster_resources=cluster_resources
+            )
             merged_overrides: Dict[str, Dict[str, Any]] = {}
             for node_name in set(derived_overrides) | set(self._node_overrides):
                 merged_overrides[node_name] = {

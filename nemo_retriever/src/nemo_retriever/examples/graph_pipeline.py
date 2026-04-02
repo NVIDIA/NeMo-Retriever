@@ -287,6 +287,11 @@ def main(
 
         if run_mode == "batch":
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
+            import ray.data as _rd
+
+            _ctx = _rd.DataContext.get_current()
+            _ctx.enable_rich_progress_bars = True
+            _ctx.use_ray_tqdm = False
 
         lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
         _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
