@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import base64
@@ -15,10 +14,14 @@ import cv2
 
 from nv_ingest_api.util.pdf.pdfium import (
     convert_bitmap_to_corrected_numpy,
+    extract_image_like_objects_from_pdfium_page,
     is_scanned_page as _is_scanned_page,
 )
 
 import pandas as pd
+
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 
 try:
     import pypdfium2 as pdfium
@@ -296,13 +299,37 @@ def pdf_extraction(
                             render_mode=render_mode,
                         )
 
+                    # Extract cropped images from pdfium page objects.
+                    detected_images: List[Dict[str, Any]] = []
+                    if extract_images:
+                        try:
+                            base64_images = extract_image_like_objects_from_pdfium_page(page)
+                            for img in base64_images:
+                                max_w = float(img.max_width) if img.max_width else 1.0
+                                max_h = float(img.max_height) if img.max_height else 1.0
+                                x0, y0, x1, y1 = img.bbox
+                                detected_images.append(
+                                    {
+                                        "bbox_xyxy_norm": [
+                                            x0 / max_w,
+                                            y0 / max_h,
+                                            x1 / max_w,
+                                            y1 / max_h,
+                                        ],
+                                        "text": "",
+                                        "image_b64": img.image,
+                                    }
+                                )
+                        except Exception:
+                            pass  # Image extraction failure should not crash the pipeline.
+
                     page_record: Dict[str, Any] = {
                         "path": pdf_path,
                         "page_number": page_number,
                         "source_id": source_id,
                         "text": text if extract_text else "",
                         "page_image": None,
-                        "images": [],
+                        "images": detected_images,
                         "tables": [],
                         "charts": [],
                         "infographics": [],
@@ -349,8 +376,7 @@ def pdf_extraction(
         raise NotImplementedError("pdf_extraction currently only supports pandas.DataFrame input.")
 
 
-@dataclass(slots=True)
-class PDFExtractionActor:
+class PDFExtractionActor(AbstractOperator, CPUOperator):
     """
     Skeleton PDF extraction callable.
 
@@ -358,14 +384,22 @@ class PDFExtractionActor:
     before running the (not yet implemented) extraction logic.
     """
 
-    extract_kwargs: Dict[str, Any]
-
     def __init__(self, **extract_kwargs: Any) -> None:
+        super().__init__(**extract_kwargs)
         self.extract_kwargs = dict(extract_kwargs)
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return pdf_extraction(data, **self.extract_kwargs, **kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
     def __call__(self, pdf: Any, **override_kwargs: Any) -> Optional[Any]:
         try:
-            return pdf_extraction(pdf, **self.extract_kwargs, **override_kwargs)
+            return self.run(pdf, **override_kwargs)
         except BaseException as e:
             # As a last line of defense, never let the Ray UDF raise.
             source_path = None

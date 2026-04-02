@@ -9,4 +9,4 @@ examples/                @NVIDIA/nv-ingest-docs
 .ci/                     @NVIDIA/nv-ingest-ops
 
 # Global owners (required for all PRs)
-*                        @NVIDIA/nv-ingest-maintainers
+*                        @NVIDIA/nv-ingest-maintainers @NVIDIA/nemo-retriever-research

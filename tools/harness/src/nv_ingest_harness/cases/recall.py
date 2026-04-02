@@ -7,7 +7,7 @@ import os
 import time
 from typing import Callable, Dict, Tuple
 
-from nv_ingest_harness.utils.interact import embed_info, kv_event_log
+from nv_ingest_harness.utils.interact import embed_info, kv_event_log, reranker_info
 from nv_ingest_harness.utils.recall import get_dataset_evaluator, get_recall_collection_name
 from nv_ingest_harness.utils.vdb import get_lancedb_path
 
@@ -130,6 +130,7 @@ def main(config=None, log_path: str = "test_results") -> int:
         recall_results = {}
 
         # Prepare evaluation parameters
+        nv_ranker_model_name = reranker_info(hostname=hostname) if reranker_mode in ["with", "both"] else None
         evaluation_params = {
             "hostname": hostname,
             "sparse": sparse,
@@ -141,7 +142,7 @@ def main(config=None, log_path: str = "test_results") -> int:
             "dataset_dir": config.dataset_dir,
             "vdb_backend": vdb_backend,
             "nv_ranker_endpoint": f"http://{hostname}:8015/v1/ranking",
-            "nv_ranker_model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+            "nv_ranker_model_name": nv_ranker_model_name,
         }
         if vdb_backend == "lancedb":
             evaluation_params["table_path"] = lancedb_path

@@ -5,6 +5,11 @@ build-backend = "setuptools.build_meta"
 [tool.uv]
 managed = true
 package = true
+no-build-package = ["nemotron-ocr"]
+# fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
+override-dependencies = [
+  "fastparquet>=2024.11.0,<2026",
+]
 
 [project]
 name = "nemo-retriever"
@@ -46,10 +51,8 @@ dependencies = [
   "urllib3==2.6.3",
   "debugpy>=1.8.0",
   "python-multipart>=0.0.9",
-  # transformers>=5 enables loading nvidia/parakeet-ctc-1.1b via pipeline (see
-  # parakeet-ctc-1.1b README). If using llama_nemotron_embed_1b_v2, verify
-  # compatibility with transformers 5 (it previously relied on HybridCache).
-  "transformers>=5.0.0",
+  # transformers>=4.57 includes native nvidia/parakeet-ctc-1.1b support.
+  "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",
   "accelerate>=1.1.0",
   "torch~=2.9.1",
@@ -67,11 +70,13 @@ dependencies = [
   "accelerate==1.12.0",
   "albumentations==2.0.8",
   "scikit-learn>=1.6.0",
+  "datasets>=4.8.2",
   "open-clip-torch==3.2.0",
   # Local ASR (Parakeet): read chunk files and resample to 16 kHz mono
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
+  "vllm==0.16.0",
 ]
 
 [project.optional-dependencies]
@@ -85,6 +90,7 @@ dev = [
 
 [project.scripts]
 retriever = "nemo_retriever.__main__:main"
+retriever-harness = "nemo_retriever.harness:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "nemo_retriever.version.get_build_version"}
@@ -99,6 +105,10 @@ nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
 torch = { index = "torch-cuda"}
 torchvision = { index ="torch-cuda"}
+vllm = [
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
+]
 
 [[tool.uv.index]]
 name = "test-pypi"

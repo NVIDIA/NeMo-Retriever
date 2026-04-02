@@ -120,7 +120,7 @@ tmpDirSize: 50Gi
 ## @param envVars.IMAGE_STORAGE_PUBLIC_BASE_URL [default: ""] Optional HTTP base URL for serving stored images when using object storage
 ## @param envVars.NEMOTRON_PARSE_HTTP_ENDPOINT [default: "http://nemotron-parse:8000/v1/chat/completions"] HTTP endpoint for Nemotron Parse service
 ## @param envVars.NEMOTRON_PARSE_INFER_PROTOCOL [default: "http"] Protocol for Nemotron Parse service
-## @param envVars.NEMOTRON_PARSE_MODEL_NAME [default: "nvidia/nemotron-parse"] Model name for Nemotron Parse
+## @param envVars.NEMOTRON_PARSE_MODEL_NAME [default: "nvidia/nemotron-parse-v1.2"] Model name for Nemotron Parse
 ## @param envVars.YOLOX_GRPC_ENDPOINT [default: "nemotron-page-elements-v3:8001"] gRPC endpoint for YOLOX page elements
 ## @param envVars.YOLOX_HTTP_ENDPOINT [default: "http://nemotron-page-elements-v3:8000/v1/infer"] HTTP endpoint for YOLOX page elements
 ## @param envVars.YOLOX_INFER_PROTOCOL [default: "grpc"] Protocol for YOLOX page elements
@@ -175,7 +175,7 @@ envVars:
 
   NEMOTRON_PARSE_HTTP_ENDPOINT: http://nemotron-parse:8000/v1/chat/completions
   NEMOTRON_PARSE_INFER_PROTOCOL: http
-  NEMOTRON_PARSE_MODEL_NAME: nvidia/nemotron-parse
+  NEMOTRON_PARSE_MODEL_NAME: nvidia/nemotron-parse-v1.2
 
   YOLOX_PAGE_IMAGE_FORMAT: JPEG
   YOLOX_GRPC_ENDPOINT: nemotron-page-elements-v3:8001
@@ -971,8 +971,8 @@ nimOperator:
   nemotron_parse:
     enabled: false
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-parse
-      tag: 1.5.0
+      repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
+      tag: 1.7.0-variant
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret

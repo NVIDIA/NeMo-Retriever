@@ -8,11 +8,22 @@ active:
   recall_required: true
   recall_match_mode: pdf_page
   recall_adapter: none
+  evaluation_mode: recall
+  beir_loader: null
+  beir_dataset_name: null
+  beir_split: test
+  beir_query_language: null
+  beir_doc_id_field: pdf_basename
+  beir_ks: [1, 3, 5, 10]
   artifacts_dir: null
   ray_address: null
   lancedb_uri: lancedb
   hybrid: false
   embed_model_name: nvidia/llama-nemotron-embed-1b-v2
+  embed_modality: text
+  embed_granularity: element
+  extract_page_as_image: false
+  extract_infographics: false
   write_detection_file: false
 
 presets:
@@ -99,3 +110,131 @@ datasets:
     recall_required: true
     recall_match_mode: pdf_only
     recall_adapter: financebench_json
+
+  vidore_v3_computer_science:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_computer_science
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_computer_science
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true
+
+  vidore_v3_energy:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_energy
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_energy
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true
+
+  vidore_v3_finance_en:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_finance_en
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_finance_en
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true
+
+  vidore_v3_finance_fr:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_finance_fr
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_finance_fr
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true
+
+  vidore_v3_hr:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_hr
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_hr
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true
+
+  vidore_v3_industrial:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_industrial
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_industrial
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true
+
+  vidore_v3_pharmaceuticals:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_pharmaceuticals
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_pharmaceuticals
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true
+
+  vidore_v3_physics:
+    path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_physics
+    query_csv: null
+    recall_required: false
+    recall_match_mode: pdf_page
+    recall_adapter: none
+    evaluation_mode: beir
+    beir_loader: vidore_hf
+    beir_dataset_name: vidore_v3_physics
+    beir_doc_id_field: pdf_basename
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    embed_modality: text_image
+    embed_granularity: page
+    extract_page_as_image: true
+    extract_infographics: true

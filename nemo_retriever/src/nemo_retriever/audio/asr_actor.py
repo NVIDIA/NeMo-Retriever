@@ -9,12 +9,16 @@ Supports remote (Parakeet/Riva gRPC) or local (HuggingFace nvidia/parakeet-ctc-1
 When audio_endpoints are both null/empty, uses local model; otherwise uses remote client.
 
 Consumes chunk rows (path, bytes, source_path, duration, chunk_index, metadata)
-and produces rows with text (transcript) for downstream embed/VDB.
+and produces rows with text (transcript) for downstream embed/VDB. For now,
+``segment_audio=True`` only fans out rows when using a hosted/remote Parakeet
+client, because the local Hugging Face Parakeet model does not emit
+punctuation-aware transcripts that can be segmented into sentences.
 """
 
 from __future__ import annotations
 
 import base64
+import copy
 import logging
 import tempfile
 from pathlib import Path
@@ -22,6 +26,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.params import ASRParams
 
 
@@ -116,16 +122,19 @@ def _get_client(params: ASRParams):  # noqa: ANN201
     )
 
 
-class ASRActor:
+class ASRActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: chunk rows (path/bytes) -> rows with text (transcript).
 
     When audio_endpoints are set, uses Parakeet (Riva ASR) via gRPC. When both are
     null/empty, uses local HuggingFace/NeMo Parakeet (nvidia/parakeet-ctc-1.1b).
-    Output rows have path, text, page_number, metadata for downstream embed.
+    Output rows have path, text, page_number, metadata for downstream embed. When
+    ``params.segment_audio`` is enabled for remote Parakeet, punctuation-delimited
+    segments are emitted as multiple rows per chunk.
     """
 
     def __init__(self, params: ASRParams | None = None) -> None:
+        super().__init__(params=params)
         self._params = params or ASRParams()
         if _use_remote(self._params):
             self._client = _get_client(self._params)
@@ -136,7 +145,10 @@ class ASRActor:
 
             self._model = ParakeetCTC1B1ASR()
 
-    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
             return pd.DataFrame(
                 columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
@@ -146,14 +158,15 @@ class ASRActor:
             return self._call_remote_batch(batch_df)
         return self._call_local_batch(batch_df)
 
+    def postprocess(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
+        return data
+
     def _call_remote_batch(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         """Remote ASR: one infer call per row (no batching on server side)."""
         out_rows: List[Dict[str, Any]] = []
         for _, row in batch_df.iterrows():
             try:
-                out_row = self._transcribe_one(row)
-                if out_row is not None:
-                    out_rows.append(out_row)
+                out_rows.extend(self._transcribe_one(row))
             except Exception as e:
                 logger.exception("ASR failed for row path=%s: %s", row.get("path"), e)
                 continue
@@ -223,25 +236,7 @@ class ASRActor:
 
         out_rows: List[Dict[str, Any]] = []
         for row, transcript in zip(rows_list, transcripts):
-            path = row.get("path")
-            source_path = row.get("source_path", path)
-            duration = row.get("duration")
-            chunk_index = row.get("chunk_index", 0)
-            metadata = row.get("metadata")
-            if not isinstance(metadata, dict):
-                metadata = {"source_path": source_path, "chunk_index": chunk_index, "duration": duration}
-            page_number = row.get("page_number", chunk_index)
-            out_rows.append(
-                {
-                    "path": path,
-                    "source_path": source_path,
-                    "duration": duration,
-                    "chunk_index": chunk_index,
-                    "metadata": metadata,
-                    "page_number": page_number,
-                    "text": transcript or "",
-                }
-            )
+            out_rows.extend(self._build_output_rows(row, transcript or ""))
 
         if not out_rows:
             return pd.DataFrame(
@@ -249,15 +244,17 @@ class ASRActor:
             )
         return pd.DataFrame(out_rows)
 
-    def _transcribe_remote(self, raw: bytes, path: Optional[str]) -> Optional[str]:
-        """Use remote gRPC client to transcribe audio bytes."""
+    def _transcribe_remote(self, raw: bytes, path: Optional[str]) -> Optional[tuple[List[Dict[str, Any]], str]]:
+        """Use remote Parakeet client to transcribe audio bytes and return segments + transcript."""
         audio_b64 = base64.b64encode(raw).decode("ascii")
         try:
             segments, transcript = self._client.infer(
                 audio_b64,
                 model_name="parakeet",
             )
-            return transcript if transcript else ""
+            safe_segments = segments if isinstance(segments, list) else []
+            safe_transcript = transcript if isinstance(transcript, str) else ""
+            return safe_segments, safe_transcript
         except Exception as e:
             logger.warning("Parakeet infer failed for path=%s: %s", path, e)
             return None
@@ -281,7 +278,71 @@ class ASRActor:
             transcripts = self._model.transcribe([path_to_use])
             return transcripts[0] if transcripts else ""
 
-    def _transcribe_one(self, row: pd.Series) -> Optional[Dict[str, Any]]:
+    def _build_output_rows(
+        self,
+        row: pd.Series,
+        transcript: str,
+        *,
+        segments: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Build one or more output rows for a chunk, optionally exploding remote punctuation segments."""
+        path = row.get("path")
+        source_path = row.get("source_path", path)
+        duration = row.get("duration")
+        chunk_index = row.get("chunk_index", 0)
+        metadata = row.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {"source_path": source_path, "chunk_index": chunk_index, "duration": duration}
+        else:
+            metadata = copy.deepcopy(metadata)
+        metadata.setdefault("source_path", source_path)
+        metadata.setdefault("chunk_index", chunk_index)
+        metadata.setdefault("duration", duration)
+        page_number = row.get("page_number", chunk_index)
+
+        if self._params.segment_audio and segments:
+            out_rows: List[Dict[str, Any]] = []
+            segment_count = len(segments)
+            for segment_index, segment in enumerate(segments):
+                if not isinstance(segment, dict):
+                    continue
+                segment_text = str(segment.get("text") or "").strip()
+                if not segment_text:
+                    continue
+                segment_metadata = copy.deepcopy(metadata)
+                segment_metadata["segment_index"] = segment_index
+                segment_metadata["segment_count"] = segment_count
+                if segment.get("start") is not None:
+                    segment_metadata["segment_start"] = segment.get("start")
+                if segment.get("end") is not None:
+                    segment_metadata["segment_end"] = segment.get("end")
+                out_rows.append(
+                    {
+                        "path": path,
+                        "source_path": source_path,
+                        "duration": duration,
+                        "chunk_index": chunk_index,
+                        "metadata": segment_metadata,
+                        "page_number": page_number,
+                        "text": segment_text,
+                    }
+                )
+            if out_rows:
+                return out_rows
+
+        return [
+            {
+                "path": path,
+                "source_path": source_path,
+                "duration": duration,
+                "chunk_index": chunk_index,
+                "metadata": metadata,
+                "page_number": page_number,
+                "text": transcript,
+            }
+        ]
+
+    def _transcribe_one(self, row: pd.Series) -> List[Dict[str, Any]]:
         raw = row.get("bytes")
         path = row.get("path")
         if raw is None and path:
@@ -290,34 +351,21 @@ class ASRActor:
                     raw = f.read()
             except Exception as e:
                 logger.warning("Could not read %s: %s", path, e)
-                return None
+                return []
         if raw is None:
-            return None
+            return []
 
         if self._client is not None:
-            transcript = self._transcribe_remote(raw, path)
+            remote_result = self._transcribe_remote(raw, path)
+            if remote_result is None:
+                return []
+            segments, transcript = remote_result
+            return self._build_output_rows(row, transcript, segments=segments)
         else:
             transcript = self._transcribe_local(raw, path)
-
-        if transcript is None:
-            return None
-        source_path = row.get("source_path", path)
-        duration = row.get("duration")
-        chunk_index = row.get("chunk_index", 0)
-        metadata = row.get("metadata")
-        if not isinstance(metadata, dict):
-            metadata = {"source_path": source_path, "chunk_index": chunk_index, "duration": duration}
-        page_number = row.get("page_number", chunk_index)
-
-        return {
-            "path": path,
-            "source_path": source_path,
-            "duration": duration,
-            "chunk_index": chunk_index,
-            "metadata": metadata,
-            "page_number": page_number,
-            "text": transcript,
-        }
+            if transcript is None:
+                return []
+            return self._build_output_rows(row, transcript)
 
 
 def apply_asr_to_df(
