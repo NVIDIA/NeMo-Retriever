@@ -332,7 +332,8 @@ class BatchIngestor(Ingestor):
             cluster_resources=self._cluster_resources,
             allow_no_gpu=allow_no_gpu,
         )
-        logger.info(self._requested_plan)
+        # This is the baseline plan from cluster heuristics before CLI/stage overrides are applied.
+        logger.info("BaselineRequestedPlan(before_overrides)=%s", self._requested_plan)
 
         # Builder-style task configuration recorded for later execution.
         # Keep backwards-compatibility with code that inspects `Ingestor._documents`
@@ -1574,6 +1575,13 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             embed_concurrency = (
                 self._positive_int(getattr(embed_tuning, "embed_workers", None))
                 or self._requested_plan.get_embed_initial_actors()
+            )
+            # Log effective values after overrides so diagnostics do not rely on baseline plan defaults.
+            logger.info(
+                "EffectiveEmbedConfig(embed_actors=%d, embed_batch_size=%d, embed_gpus_per_actor=%.3f)",
+                embed_concurrency,
+                embed_batch_size,
+                embed_gpus,
             )
         else:
             embed_batch_size = self._requested_plan.get_embed_batch_size()
