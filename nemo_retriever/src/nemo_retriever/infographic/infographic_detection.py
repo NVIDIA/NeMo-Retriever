@@ -11,7 +11,6 @@ This prioritizes `infographics` crops when present and uses
 infographic-specific output column defaults.
 """
 
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 import base64
@@ -20,6 +19,8 @@ import time
 import traceback
 
 import pandas as pd
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.nim.nim import invoke_image_inference_batches
 
@@ -734,15 +735,13 @@ def detect_infographic_elements_v1_from_page_elements_v3(
     return out
 
 
-@dataclass(slots=True)
-class InfographicDetectionActor:
+class InfographicDetectionActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Graphic Elements v1 once.
     """
 
-    detect_kwargs: Dict[str, Any]
-
     def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = str(
             self.detect_kwargs.get("infographic_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
@@ -756,19 +755,27 @@ class InfographicDetectionActor:
 
             self._model = NemotronGraphicElementsV1()
 
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        if isinstance(batch_df, pd.DataFrame) and (
+            "page_elements_v3" in batch_df.columns or "page_elements_v3_counts_by_label" in batch_df.columns
+        ):
+            return detect_infographic_elements_v1_from_page_elements_v3(
+                batch_df,
+                model=self._model,
+                **self.detect_kwargs,
+                **override_kwargs,
+            )
+        return detect_infographic_elements_v1(batch_df, model=self._model, **self.detect_kwargs, **override_kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
-            # Prefer crop-based execution when page-elements are present.
-            if isinstance(batch_df, pd.DataFrame) and (
-                "page_elements_v3" in batch_df.columns or "page_elements_v3_counts_by_label" in batch_df.columns
-            ):
-                return detect_infographic_elements_v1_from_page_elements_v3(
-                    batch_df,
-                    model=self._model,
-                    **self.detect_kwargs,
-                    **override_kwargs,
-                )
-            return detect_infographic_elements_v1(batch_df, model=self._model, **self.detect_kwargs, **override_kwargs)
+            return self.run(batch_df, **override_kwargs)
         except BaseException as e:
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()

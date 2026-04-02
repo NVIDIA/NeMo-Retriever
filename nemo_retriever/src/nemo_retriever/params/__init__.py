@@ -7,6 +7,7 @@ from .models import AudioChunkParams
 from .models import BatchTuningParams
 from .models import CaptionParams
 from .models import ChartParams
+from .models import DedupParams
 from .models import EmbedParams
 from .models import ExtractParams
 from .models import FusedTuningParams
@@ -33,6 +34,7 @@ __all__ = [
     "BatchTuningParams",
     "CaptionParams",
     "ChartParams",
+    "DedupParams",
     "EmbedParams",
     "ExtractParams",
     "FusedTuningParams",

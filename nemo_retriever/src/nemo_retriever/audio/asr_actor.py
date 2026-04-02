@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.params import ASRParams
 
 
@@ -120,7 +122,7 @@ def _get_client(params: ASRParams):  # noqa: ANN201
     )
 
 
-class ASRActor:
+class ASRActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: chunk rows (path/bytes) -> rows with text (transcript).
 
@@ -132,6 +134,7 @@ class ASRActor:
     """
 
     def __init__(self, params: ASRParams | None = None) -> None:
+        super().__init__(params=params)
         self._params = params or ASRParams()
         if _use_remote(self._params):
             self._client = _get_client(self._params)
@@ -142,7 +145,10 @@ class ASRActor:
 
             self._model = ParakeetCTC1B1ASR()
 
-    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
             return pd.DataFrame(
                 columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
@@ -151,6 +157,9 @@ class ASRActor:
         if self._client is not None:
             return self._call_remote_batch(batch_df)
         return self._call_local_batch(batch_df)
+
+    def postprocess(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
+        return data
 
     def _call_remote_batch(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         """Remote ASR: one infer call per row (no batching on server side)."""

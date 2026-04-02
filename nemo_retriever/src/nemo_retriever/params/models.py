@@ -319,6 +319,12 @@ class CaptionParams(_ParamsModel):
     gpu_memory_utilization: float = 0.5
 
 
+class DedupParams(_ParamsModel):
+    content_hash: bool = True
+    bbox_iou: bool = True
+    iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
+
+
 class InfographicParams(_ParamsModel):
     remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
