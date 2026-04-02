@@ -1,4 +1,5 @@
 import sys
+import json
 from types import SimpleNamespace
 
 from typer.testing import CliRunner
@@ -195,3 +196,49 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
     assert captured["cfg"].loader == "vidore_hf"
     assert captured["cfg"].dataset_name == "vidore_v3_computer_science"
     assert tuple(captured["cfg"].ks) == (5, 10)
+
+
+def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+    missing_query_csv = tmp_path / "missing.csv"
+    runtime_dir = tmp_path / "runtime_metrics"
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(batch_pipeline, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(batch_pipeline, "_ensure_lancedb_table", lambda *args, **kwargs: None)
+    monkeypatch.setattr(batch_pipeline, "handle_lancedb", lambda *args, **kwargs: None)
+    monkeypatch.setitem(sys.modules, "ray", SimpleNamespace(shutdown=lambda: None))
+
+    class _FakeTable:
+        def count_rows(self) -> int:
+            return 1
+
+    class _FakeDb:
+        def open_table(self, _name):
+            return _FakeTable()
+
+    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--query-csv",
+            str(missing_query_csv),
+            "--runtime-metrics-dir",
+            str(runtime_dir),
+            "--runtime-metrics-prefix",
+            "sample-run",
+            "--no-recall-details",
+        ],
+    )
+
+    assert result.exit_code == 0
+    summary_path = runtime_dir / "sample-run.runtime.summary.json"
+    assert summary_path.exists()
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["recall_details"] is False
+    assert payload["evaluation_mode"] == "recall"

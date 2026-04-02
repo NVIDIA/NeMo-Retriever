@@ -30,6 +30,7 @@ Examples::
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -130,6 +131,21 @@ def _ensure_lancedb_table(uri: str, table_name: str) -> None:
     schema = lancedb_schema()
     empty = pa.table({f.name: [] for f in schema}, schema=schema)
     db.create_table(table_name, data=empty, schema=schema, mode="create")
+
+
+def _write_runtime_summary(
+    runtime_metrics_dir: Optional[Path],
+    runtime_metrics_prefix: Optional[str],
+    payload: dict[str, object],
+) -> None:
+    if runtime_metrics_dir is None and not runtime_metrics_prefix:
+        return
+
+    target_dir = Path(runtime_metrics_dir or Path.cwd()).expanduser().resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    prefix = (runtime_metrics_prefix or "run").strip() or "run"
+    target = target_dir / f"{prefix}.runtime.summary.json"
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
@@ -253,6 +269,9 @@ def main(
     beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language"),
     beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field"),
     beir_k: list[int] = typer.Option([], "--beir-k"),
+    recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details"),
+    runtime_metrics_dir: Optional[Path] = typer.Option(None, "--runtime-metrics-dir", path_type=Path),
+    runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix"),
     detection_summary_file: Optional[Path] = typer.Option(None, "--detection-summary-file", path_type=Path),
     log_file: Optional[Path] = typer.Option(None, "--log-file", path_type=Path, dir_okay=False),
 ) -> None:
@@ -509,6 +528,27 @@ def main(
 
         if int(table.count_rows()) == 0:
             logger.warning("LanceDB table is empty; skipping %s evaluation.", evaluation_mode)
+            _write_runtime_summary(
+                runtime_metrics_dir,
+                runtime_metrics_prefix,
+                {
+                    "run_mode": run_mode,
+                    "input_path": str(Path(input_path).resolve()),
+                    "input_pages": int(num_rows),
+                    "num_pages": int(num_rows),
+                    "num_rows": int(len(result_df.index)),
+                    "ingestion_only_secs": float(ingestion_only_total_time),
+                    "ray_download_secs": float(ray_download_time),
+                    "lancedb_write_secs": float(lancedb_write_time),
+                    "evaluation_secs": 0.0,
+                    "total_secs": float(time.perf_counter() - ingest_start),
+                    "evaluation_mode": evaluation_mode,
+                    "evaluation_metrics": {},
+                    "recall_details": bool(recall_details),
+                    "lancedb_uri": str(lancedb_uri),
+                    "lancedb_table": str(LANCEDB_TABLE),
+                },
+            )
             if run_mode == "batch":
                 ray.shutdown()
             return
@@ -555,6 +595,27 @@ def main(
             query_csv_path = Path(query_csv)
             if not query_csv_path.exists():
                 logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv_path)
+                _write_runtime_summary(
+                    runtime_metrics_dir,
+                    runtime_metrics_prefix,
+                    {
+                        "run_mode": run_mode,
+                        "input_path": str(Path(input_path).resolve()),
+                        "input_pages": int(num_rows),
+                        "num_pages": int(num_rows),
+                        "num_rows": int(len(result_df.index)),
+                        "ingestion_only_secs": float(ingestion_only_total_time),
+                        "ray_download_secs": float(ray_download_time),
+                        "lancedb_write_secs": float(lancedb_write_time),
+                        "evaluation_secs": 0.0,
+                        "total_secs": float(time.perf_counter() - ingest_start),
+                        "evaluation_mode": evaluation_mode,
+                        "evaluation_metrics": {},
+                        "recall_details": bool(recall_details),
+                        "lancedb_uri": str(lancedb_uri),
+                        "lancedb_table": str(LANCEDB_TABLE),
+                    },
+                )
                 if run_mode == "batch":
                     ray.shutdown()
                 return
@@ -581,6 +642,29 @@ def main(
             evaluation_query_count = len(_df_query.index)
 
         total_time = time.perf_counter() - ingest_start
+
+        _write_runtime_summary(
+            runtime_metrics_dir,
+            runtime_metrics_prefix,
+            {
+                "run_mode": run_mode,
+                "input_path": str(Path(input_path).resolve()),
+                "input_pages": int(num_rows),
+                "num_pages": int(num_rows),
+                "num_rows": int(len(result_df.index)),
+                "ingestion_only_secs": float(ingestion_only_total_time),
+                "ray_download_secs": float(ray_download_time),
+                "lancedb_write_secs": float(lancedb_write_time),
+                "evaluation_secs": float(evaluation_total_time),
+                "total_secs": float(total_time),
+                "evaluation_mode": evaluation_mode,
+                "evaluation_metrics": dict(evaluation_metrics),
+                "evaluation_count": evaluation_query_count,
+                "recall_details": bool(recall_details),
+                "lancedb_uri": str(lancedb_uri),
+                "lancedb_table": str(LANCEDB_TABLE),
+            },
+        )
 
         if run_mode == "batch":
             ray.shutdown()
