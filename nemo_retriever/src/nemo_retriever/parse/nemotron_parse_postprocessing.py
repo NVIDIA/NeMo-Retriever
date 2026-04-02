@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup
 # latex2html – LaTeX tabular → HTML → Markdown conversion
 # ---------------------------------------------------------------------------
 
+
 def _skip_whitespace(text: str, i: int) -> int:
     while i < len(text) and text[i].isspace():
         i += 1
@@ -255,9 +256,7 @@ def _latex_table_to_html(latex_str: str, add_head_body: bool = False) -> str:
                 html.append("  <tr>")
                 current_col = 0
                 for col_idx, cell in enumerate(processed_cells):
-                    content_segment = (
-                        line_lists[col_idx][line_idx] if line_idx < len(line_lists[col_idx]) else ""
-                    )
+                    content_segment = line_lists[col_idx][line_idx] if line_idx < len(line_lists[col_idx]) else ""
                     attrs = []
                     if cell["colspan"] > 1:
                         attrs.append(f'colspan="{cell["colspan"]}"')
@@ -328,8 +327,7 @@ def _convert_html_tables_to_markdown(html_content: str) -> str:
 # ---------------------------------------------------------------------------
 
 _RE_EXTRACT_CLASS_BBOX = re.compile(
-    r"<x_(\d+(?:\.\d+)?)><y_(\d+(?:\.\d+)?)>(.*?)"
-    r"<x_(\d+(?:\.\d+)?)><y_(\d+(?:\.\d+)?)><class_([^>]+)>",
+    r"<x_(\d+(?:\.\d+)?)><y_(\d+(?:\.\d+)?)>(.*?)" r"<x_(\d+(?:\.\d+)?)><y_(\d+(?:\.\d+)?)><class_([^>]+)>",
     re.DOTALL,
 )
 

@@ -22,7 +22,7 @@ import traceback
 import numpy as np
 import pandas as pd
 
-from nemo_retriever.model.local.nemotron_parse_postprocessing import (
+from nemo_retriever.parse.nemotron_parse_postprocessing import (
     extract_classes_bboxes,
     postprocess_text as _postprocess_element_text,
 )
