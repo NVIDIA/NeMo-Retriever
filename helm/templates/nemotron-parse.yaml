@@ -17,6 +17,10 @@ spec:
       storageClass: {{ .Values.nimOperator.nemotron_parse.storage.pvc.storageClass }}
       size: {{ .Values.nimOperator.nemotron_parse.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.nemotron_parse.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_parse.nodeSelector | nindent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.nemotron_parse.tolerations | nindent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -34,6 +38,8 @@ spec:
     nimCache:
       name: nemotron-parse
   replicas: {{ .Values.nimOperator.nemotron_parse.replicas }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_parse.nodeSelector | nindent 4 }}
   resources:
 {{ toYaml .Values.nimOperator.nemotron_parse.resources | nindent 4 }}
   tolerations:
