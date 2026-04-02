@@ -89,6 +89,11 @@ def _post_with_retries(
                 attempt += 1
                 continue
 
+            if 400 <= status_code < 500:
+                raise requests.HTTPError(
+                    f"HTTP {status_code} from {invoke_url}: {response.text}",
+                    response=response,
+                )
             response.raise_for_status()
             return response.json()
 
@@ -98,7 +103,10 @@ def _post_with_retries(
             backoff_time = base_delay * (2**attempt)
             time.sleep(backoff_time)
             attempt += 1
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            resp = getattr(exc, "response", None)
+            if resp is not None and 400 <= resp.status_code < 500:
+                raise  # client errors are not retryable
             if attempt == int(max_retries) - 1:
                 raise
             backoff_time = base_delay * (2**attempt)
@@ -192,6 +200,93 @@ def invoke_image_inference_batches(
             raise RuntimeError(f"Missing response for item index {idx}")
         out.append(item)
     return out
+
+
+def _extract_chat_completion_text(response_json: Any) -> str:
+    """Extract generated text from an OpenAI-compatible chat completions response."""
+    try:
+        choice = response_json["choices"][0]["message"]
+        # Some models return output via tool_calls
+        tool_calls = choice.get("tool_calls")
+        if tool_calls:
+            return str(tool_calls[0]["function"]["arguments"]).strip()
+        content = choice.get("content")
+        if content:
+            return str(content).strip()
+    except (KeyError, IndexError, TypeError):
+        pass
+    return ""
+
+
+
+def invoke_chat_completions(
+    *,
+    invoke_url: str,
+    image_b64_list: Sequence[str],
+    model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    timeout_s: float = 120.0,
+    max_tokens: int = 9000,
+    max_pool_workers: int = 16,
+    max_retries: int = 10,
+    max_429_retries: int = 5,
+) -> List[str]:
+    """
+    Invoke an OpenAI-compatible chat completions endpoint for image inference.
+
+    Each image is sent as a separate request.  Returns one raw text string per
+    input image, in the same order.
+    """
+    if not image_b64_list:
+        return []
+
+    token = (api_key or "").strip()
+    headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    invoke_urls = _parse_invoke_urls(invoke_url)
+    results: List[Optional[str]] = [None] * len(image_b64_list)
+
+    def _invoke_one(idx: int, b64: str, endpoint_url: str) -> Tuple[int, str]:
+        mime = _mime_from_b64(b64)
+        payload: Dict[str, Any] = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{b64}"},
+                        },
+                    ],
+                }
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0,
+        }
+        if model:
+            payload["model"] = model
+        response_json = _post_with_retries(
+            invoke_url=endpoint_url,
+            payload=payload,
+            headers=headers,
+            timeout_s=float(timeout_s),
+            max_retries=int(max_retries),
+            max_429_retries=int(max_429_retries),
+        )
+        return idx, _extract_chat_completion_text(response_json)
+
+    with ThreadPoolExecutor(max_workers=max(1, int(max_pool_workers))) as executor:
+        futures = {
+            executor.submit(_invoke_one, i, b64, invoke_urls[i % len(invoke_urls)]): i
+            for i, b64 in enumerate(image_b64_list)
+        }
+        for future in as_completed(futures):
+            i, text = future.result()
+            results[i] = text
+
+    return [r if r is not None else "" for r in results]
 
 
 def invoke_page_elements_batches(

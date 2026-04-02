@@ -184,6 +184,7 @@ class ExtractParams(_ParamsModel):
     ocr_request_timeout_s: Optional[float] = None
     graphic_elements_invoke_url: Optional[str] = None
     table_structure_invoke_url: Optional[str] = None
+    nemotron_parse_model: Optional[str] = None
 
     # Output columns
     output_column: str = "page_elements_v3"

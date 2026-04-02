@@ -26,7 +26,7 @@ from nemo_retriever.model.local.nemotron_parse_postprocessing import (
     extract_classes_bboxes,
     postprocess_text as _postprocess_element_text,
 )
-from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.nim.nim import invoke_chat_completions, invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
 
 try:
@@ -38,6 +38,8 @@ except Exception:  # pragma: no cover
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
+NEMOTRON_PARSE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
 
 # Map Nemotron Parse class labels to the pipeline content channels.
 _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
@@ -157,6 +159,7 @@ def nemotron_parse_pages(
     extract_tables: bool = False,
     extract_charts: bool = False,
     extract_infographics: bool = False,
+    nemotron_parse_model: Optional[str] = None,
     task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
     remote_retry: RemoteRetryParams | None = None,
     **kwargs: Any,
@@ -220,17 +223,29 @@ def nemotron_parse_pages(
     if batch_images:
         try:
             if use_remote:
-                response_items = invoke_image_inference_batches(
-                    invoke_url=invoke_url,
-                    image_b64_list=batch_images,
-                    api_key=api_key,
-                    timeout_s=float(request_timeout_s),
-                    max_batch_size=int(kwargs.get("inference_batch_size", 8)),
-                    max_pool_workers=int(retry.remote_max_pool_workers),
-                    max_retries=int(retry.remote_max_retries),
-                    max_429_retries=int(retry.remote_max_429_retries),
-                )
-                raw_texts = [_extract_parse_text(item) for item in response_items]
+                if "/v1/chat/completions" in invoke_url:
+                    raw_texts = invoke_chat_completions(
+                        invoke_url=invoke_url,
+                        image_b64_list=batch_images,
+                        model=nemotron_parse_model or NEMOTRON_PARSE_DEFAULT_MODEL,
+                        api_key=api_key,
+                        timeout_s=float(request_timeout_s),
+                        max_pool_workers=int(retry.remote_max_pool_workers),
+                        max_retries=int(retry.remote_max_retries),
+                        max_429_retries=int(retry.remote_max_429_retries),
+                    )
+                else:
+                    response_items = invoke_image_inference_batches(
+                        invoke_url=invoke_url,
+                        image_b64_list=batch_images,
+                        api_key=api_key,
+                        timeout_s=float(request_timeout_s),
+                        max_batch_size=int(kwargs.get("inference_batch_size", 8)),
+                        max_pool_workers=int(retry.remote_max_pool_workers),
+                        max_retries=int(retry.remote_max_retries),
+                        max_429_retries=int(retry.remote_max_429_retries),
+                    )
+                    raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:

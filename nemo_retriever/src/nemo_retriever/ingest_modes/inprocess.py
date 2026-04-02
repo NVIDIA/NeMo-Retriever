@@ -29,7 +29,6 @@ from nemo_retriever.params import CaptionParams
 
 
 import pandas as pd
-from nemo_retriever.model.local import NemotronOCRV1, NemotronPageElementsV3, NemotronParseV12
 from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
 from nemo_retriever.page_elements import detect_page_elements_v3
 from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox, ocr_page_elements
@@ -1070,13 +1069,13 @@ class InProcessIngestor(Ingestor):
         def _stage_remote_kwargs(stage_name: str) -> dict[str, Any]:
             stage_prefix = f"{stage_name}_"
             out: dict[str, Any] = {}
-            invoke_url = kwargs.get(f"{stage_prefix}invoke_url", kwargs.get("invoke_url"))
+            invoke_url = kwargs.get(f"{stage_prefix}invoke_url") or kwargs.get("invoke_url")
             if invoke_url:
                 out["invoke_url"] = invoke_url
-            api_key = kwargs.get(f"{stage_prefix}api_key", kwargs.get("api_key"))
+            api_key = kwargs.get(f"{stage_prefix}api_key") or kwargs.get("api_key")
             if api_key:
                 out["api_key"] = api_key
-            timeout = kwargs.get(f"{stage_prefix}request_timeout_s", kwargs.get("request_timeout_s"))
+            timeout = kwargs.get(f"{stage_prefix}request_timeout_s") or kwargs.get("request_timeout_s")
             if timeout is not None:
                 out["request_timeout_s"] = timeout
             for k in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
@@ -1107,13 +1106,19 @@ class InProcessIngestor(Ingestor):
             if kwargs.get("extract_infographics") is True:
                 parse_flags["extract_infographics"] = True
             parse_flags.update(_stage_remote_kwargs("nemotron_parse"))
-            parse_invoke_url = kwargs.get(
-                "nemotron_parse_invoke_url", kwargs.get("ocr_invoke_url", kwargs.get("invoke_url", ""))
+            parse_invoke_url = (
+                kwargs.get("nemotron_parse_invoke_url")
+                or kwargs.get("invoke_url")
+                or ""
             )
             if parse_invoke_url:
                 parse_flags["invoke_url"] = parse_invoke_url
+                if kwargs.get("nemotron_parse_model"):
+                    parse_flags["nemotron_parse_model"] = kwargs["nemotron_parse_model"]
                 self._tasks.append((nemotron_parse_pages, {"model": None, **parse_flags}))
             else:
+                from nemo_retriever.model.local import NemotronParseV12
+
                 self._tasks.append((nemotron_parse_pages, {"model": NemotronParseV12(), **parse_flags}))
         else:
             # NOTE: Page element detection is a common prerequisite for downstream
@@ -1124,8 +1129,13 @@ class InProcessIngestor(Ingestor):
                 for k in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
             ):
                 print("Adding page elements task")
-                pe_invoke_url = kwargs.get("page_elements_invoke_url", kwargs.get("invoke_url", ""))
-                pe_model = None if pe_invoke_url else NemotronPageElementsV3()
+                pe_invoke_url = kwargs.get("page_elements_invoke_url") or kwargs.get("invoke_url") or ""
+                if pe_invoke_url:
+                    pe_model = None
+                else:
+                    from nemo_retriever.model.local import NemotronPageElementsV3
+
+                    pe_model = NemotronPageElementsV3()
                 self._tasks.append(
                     (
                         detect_page_elements_v3,
@@ -1144,7 +1154,7 @@ class InProcessIngestor(Ingestor):
             if use_graphic_elements and kwargs.get("extract_charts") is True:
                 print("Adding graphic-elements+OCR extraction task")
                 ge_invoke_url = kwargs.get("graphic_elements_invoke_url", "")
-                ocr_invoke_url = kwargs.get("ocr_invoke_url", kwargs.get("invoke_url", ""))
+                ocr_invoke_url = kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or ""
                 ocr_model_dir = (
                     kwargs.get("ocr_model_dir")
                     or os.environ.get("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()
@@ -1165,6 +1175,8 @@ class InProcessIngestor(Ingestor):
                     ge_ocr_kwargs["ocr_invoke_url"] = ocr_invoke_url
                     ge_ocr_kwargs["ocr_model"] = None
                 else:
+                    from nemo_retriever.model.local import NemotronOCRV1
+
                     ocr_model = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
                     ge_ocr_kwargs["ocr_model"] = ocr_model
 
@@ -1183,7 +1195,7 @@ class InProcessIngestor(Ingestor):
             if use_table_structure and kwargs.get("extract_tables") is True:
                 print("Adding table-structure+OCR extraction task")
                 ts_invoke_url = kwargs.get("table_structure_invoke_url", "")
-                ocr_invoke_url = kwargs.get("ocr_invoke_url", kwargs.get("invoke_url", ""))
+                ocr_invoke_url = kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or ""
                 ocr_model_dir = (
                     kwargs.get("ocr_model_dir")
                     or os.environ.get("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()
@@ -1204,6 +1216,8 @@ class InProcessIngestor(Ingestor):
                     ts_ocr_kwargs["ocr_invoke_url"] = ocr_invoke_url
                     ts_ocr_kwargs["ocr_model"] = None
                 else:
+                    from nemo_retriever.model.local import NemotronOCRV1
+
                     ocr_model = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
                     ts_ocr_kwargs["ocr_model"] = ocr_model
 
@@ -1227,7 +1241,7 @@ class InProcessIngestor(Ingestor):
 
             if ocr_flags:
                 print("Adding OCR extraction task")
-                ocr_invoke_url = kwargs.get("ocr_invoke_url", kwargs.get("invoke_url", ""))
+                ocr_invoke_url = kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or ""
                 if ocr_invoke_url:
                     self._tasks.append((ocr_page_elements, {"model": None, **ocr_flags}))
                 else:
@@ -1237,6 +1251,8 @@ class InProcessIngestor(Ingestor):
                         or os.environ.get("NEMOTRON_OCR_MODEL_DIR", "").strip()
                         or os.environ.get("NEMOTRON_OCR_V1_MODEL_DIR", "").strip()
                     )
+                    from nemo_retriever.model.local import NemotronOCRV1
+
                     model = NemotronOCRV1(model_dir=str(ocr_model_dir)) if ocr_model_dir else NemotronOCRV1()
                     self._tasks.append((ocr_page_elements, {"model": model, **ocr_flags}))
 
