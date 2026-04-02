@@ -55,6 +55,7 @@ def _patch_vllm_nemotron_parse_processor() -> None:
 # Model wrapper
 # ---------------------------------------------------------------------------
 
+
 class NemotronParseV12(BaseModel):
     """
     NVIDIA Nemotron Parse v1.2 local wrapper backed by vLLM.
@@ -66,9 +67,7 @@ class NemotronParseV12(BaseModel):
     the HuggingFace ``trust_remote_code`` model code with transformers >= 4.52.
     """
 
-    _DEFAULT_TASK_PROMPT: str = (
-        "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
-    )
+    _DEFAULT_TASK_PROMPT: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
     def __init__(
         self,
@@ -86,8 +85,7 @@ class NemotronParseV12(BaseModel):
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                "Local Nemotron Parse requires vLLM. "
-                'Install with: pip install "nemo-retriever[vllm]"'
+                "Local Nemotron Parse requires vLLM. " 'Install with: pip install "nemo-retriever[vllm]"'
             ) from e
 
         _patch_vllm_nemotron_parse_processor()
@@ -98,6 +96,7 @@ class NemotronParseV12(BaseModel):
 
         if device is not None:
             import os
+
             dev_id = device.split(":")[-1] if ":" in device else device
             os.environ["CUDA_VISIBLE_DEVICES"] = dev_id
 
