@@ -51,10 +51,21 @@ class DenseRetrievalPipeline(BasePipeline):
             print("Error: CUDA is not available. This pipeline requires a GPU.")
             sys.exit(1)
 
-    def index(self, corpus_ids: List[str], corpus_images: List[Any], corpus_texts: List[str]) -> None:
+    @property
+    def dataset_name(self):
+        return self._dataset_name
+
+    @dataset_name.setter
+    def dataset_name(self, value: str):
+        self._dataset_name = value
+
+    def index(
+        self, corpus_ids: List[str], corpus_images: List[Any], corpus_texts: List[str], dataset_name: str = None
+    ) -> None:
         super().index(corpus_ids=corpus_ids, corpus_images=corpus_images, corpus_texts=corpus_texts)
 
-        dataset_name = self.dataset_name
+        if dataset_name is not None:
+            self.dataset_name = dataset_name
         task_key = infer_bright_task_key(dataset_name)
 
         corpus = [{"image": img, "markdown": md} for img, md in zip(corpus_images, corpus_texts)]
