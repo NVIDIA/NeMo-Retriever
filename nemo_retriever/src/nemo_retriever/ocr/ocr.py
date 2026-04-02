@@ -26,6 +26,7 @@ from nemo_retriever.nim.nim import invoke_image_inference_batches
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
 
 try:
@@ -742,7 +743,7 @@ def ocr_page_elements(
 # ---------------------------------------------------------------------------
 
 
-class OCRActor(AbstractOperator, GPUOperator):
+class OCRGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron OCR v1 once per actor.
 
@@ -769,8 +770,8 @@ class OCRActor(AbstractOperator, GPUOperator):
 
         self.ocr_kwargs = dict(ocr_kwargs)
         invoke_url = str(self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or "").strip()
-        if invoke_url and "invoke_url" not in self.ocr_kwargs:
-            self.ocr_kwargs["invoke_url"] = invoke_url
+        if invoke_url:
+            raise ValueError("OCRGPUActor does not support remote endpoint execution. Use OCRCPUActor instead.")
 
         # Normalize common constructor kwargs to expected runtime types/defaults.
         self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
@@ -786,12 +787,9 @@ class OCRActor(AbstractOperator, GPUOperator):
             remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 10)),
             remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
         )
-        if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronOCRV1
+        from nemo_retriever.model.local import NemotronOCRV1
 
-            self._model = NemotronOCRV1()
+        self._model = NemotronOCRV1()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -872,6 +870,36 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="actor_call", exc=e)
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["chart"] = [[] for _ in range(n)]
+                out["infographic"] = [[] for _ in range(n)]
+                out["ocr_v1"] = [payload for _ in range(n)]
+                return out
+            return [{"ocr_v1": _error_payload(stage="actor_call", exc=e)}]
+
+
+class OCRActor(ArchetypeOperator):
+    """Graph-facing OCR archetype."""
+
+    _cpu_variant_class = OCRCPUActor
+    _gpu_variant_class = OCRGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **ocr_kwargs: Any) -> None:
+        super().__init__(**ocr_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -1115,7 +1143,7 @@ def nemotron_parse_page_elements(
     return out
 
 
-class NemotronParseActor(AbstractOperator, GPUOperator):
+class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Parse v1.2 once per actor.
 
@@ -1140,6 +1168,10 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
     ) -> None:
         super().__init__()
         self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        if self._invoke_url:
+            raise ValueError(
+                "NemotronParseGPUActor does not support remote endpoint execution. Use NemotronParseCPUActor instead."
+            )
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)
@@ -1148,12 +1180,9 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
             remote_max_retries=int(remote_max_retries),
             remote_max_429_retries=int(remote_max_429_retries),
         )
-        if self._invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronParseV12
+        from nemo_retriever.model.local import NemotronParseV12
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+        self._model = NemotronParseV12(task_prompt=self._task_prompt)
         self._extract_tables = bool(extract_tables)
         self._extract_charts = bool(extract_charts)
         self._extract_infographics = bool(extract_infographics)
@@ -1257,3 +1286,73 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="nemotron_parse_actor_call", exc=e)
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["chart"] = [[] for _ in range(n)]
+                out["infographic"] = [[] for _ in range(n)]
+                out["table_parse"] = [[] for _ in range(n)]
+                out["chart_parse"] = [[] for _ in range(n)]
+                out["infographic_parse"] = [[] for _ in range(n)]
+                out["nemotron_parse_v1_2"] = [payload for _ in range(n)]
+                return out
+            return [{"nemotron_parse_v1_2": _error_payload(stage="nemotron_parse_actor_call", exc=e)}]
+
+
+class NemotronParseActor(ArchetypeOperator):
+    """Graph-facing Nemotron Parse archetype."""
+
+    _cpu_variant_class = NemotronParseCPUActor
+    _gpu_variant_class = NemotronParseGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("nemotron_parse_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(
+        self,
+        *,
+        extract_tables: bool = False,
+        extract_charts: bool = False,
+        extract_infographics: bool = False,
+        nemotron_parse_invoke_url: Optional[str] = None,
+        invoke_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        request_timeout_s: float = 120.0,
+        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        remote_max_pool_workers: int = 16,
+        remote_max_retries: int = 10,
+        remote_max_429_retries: int = 5,
+    ) -> None:
+        super().__init__(
+            extract_tables=extract_tables,
+            extract_charts=extract_charts,
+            extract_infographics=extract_infographics,
+            nemotron_parse_invoke_url=nemotron_parse_invoke_url,
+            invoke_url=invoke_url,
+            api_key=api_key,
+            request_timeout_s=request_timeout_s,
+            task_prompt=task_prompt,
+            remote_max_pool_workers=remote_max_pool_workers,
+            remote_max_retries=remote_max_retries,
+            remote_max_429_retries=remote_max_429_retries,
+        )
+        self._extract_tables = bool(extract_tables)
+        self._extract_charts = bool(extract_charts)
+        self._extract_infographics = bool(extract_infographics)
+        self._nemotron_parse_invoke_url = nemotron_parse_invoke_url
+        self._invoke_url = invoke_url
+        self._api_key = api_key
+        self._request_timeout_s = float(request_timeout_s)
+        self._task_prompt = str(task_prompt)
+        self._remote_max_pool_workers = int(remote_max_pool_workers)
+        self._remote_max_retries = int(remote_max_retries)
+        self._remote_max_429_retries = int(remote_max_429_retries)

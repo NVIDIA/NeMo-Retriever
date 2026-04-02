@@ -327,11 +327,11 @@ class TestTableStructureActor:
 
     def test_actor_error_returns_dataframe_with_error(self) -> None:
         """Actor should never raise; errors go into metadata columns."""
-        from nemo_retriever.table.table_detection import TableStructureActor
+        from nemo_retriever.table.table_detection import TableStructureGPUActor
 
         # Patch model constructors to avoid loading real models.
-        with (patch("nemo_retriever.table.table_detection.TableStructureActor.__init__", return_value=None),):
-            actor = TableStructureActor.__new__(TableStructureActor)
+        with (patch("nemo_retriever.table.table_detection.TableStructureGPUActor.__init__", return_value=None),):
+            actor = TableStructureGPUActor.__new__(TableStructureGPUActor)
             actor._table_structure_model = None
             actor._ocr_model = None
             actor._table_structure_invoke_url = ""
