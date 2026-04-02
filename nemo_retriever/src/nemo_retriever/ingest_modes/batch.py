@@ -1584,13 +1584,17 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             embed_gpus = self._requested_plan.get_embed_gpus_per_actor()
             embed_concurrency = self._requested_plan.get_embed_initial_actors()
 
+        # In nemotron-parse mode the GPU actor is the bottleneck, so limit
+        # CPU-side PDF extraction to avoid starving downstream of resources.
+        effective_pdf_extract_tasks = min(pdf_extract_tasks, 4) if self._use_nemotron_parse_only else pdf_extract_tasks
+
         overrides: dict[str, dict[str, Any]] = {
             "DocToPdfConversionActor": {"batch_size": 1, "num_cpus": 1},
             "PDFSplitActor": {"batch_size": pdf_split_batch_size, "num_cpus": 1},
             "PDFExtractionActor": {
                 "batch_size": pdf_extract_batch_size,
                 "num_cpus": pdf_extract_cpus,
-                "concurrency": pdf_extract_tasks,
+                "concurrency": effective_pdf_extract_tasks,
             },
             "PageElementDetectionActor": {
                 "batch_size": page_elements_batch_size,

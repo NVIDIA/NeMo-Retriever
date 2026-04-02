@@ -82,14 +82,22 @@ def build_batch_graph(
         }
 
         if parse_mode:
+            # PDF extraction renders pages to images required by Nemotron Parse.
+            extract_kwargs["extract_page_as_image"] = True
+            graph = graph >> PDFExtractionActor(**extract_kwargs)
+
             parse_kwargs: dict[str, Any] = {
                 "extract_text": extract_params.extract_text,
                 "extract_tables": extract_params.extract_tables,
                 "extract_charts": extract_params.extract_charts,
                 "extract_infographics": extract_params.extract_infographics,
             }
+            if extract_params.invoke_url:
+                parse_kwargs["invoke_url"] = extract_params.invoke_url
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
+            if extract_params.nemotron_parse_model:
+                parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
             graph = graph >> NemotronParseActor(**parse_kwargs)
         else:
             detect_kwargs: dict[str, Any] = {}

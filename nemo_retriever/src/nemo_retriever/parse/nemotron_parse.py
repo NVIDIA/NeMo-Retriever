@@ -26,6 +26,8 @@ from nemo_retriever.model.local.nemotron_parse_postprocessing import (
     extract_classes_bboxes,
     postprocess_text as _postprocess_element_text,
 )
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.nim.nim import invoke_chat_completions, invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
 
@@ -322,22 +324,8 @@ def nemotron_parse_pages(
 # ---------------------------------------------------------------------------
 
 
-class NemotronParseActor:
+class NemotronParseActor(AbstractOperator, GPUOperator):
     """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
-
-    __slots__ = (
-        "_model",
-        "_extract_text",
-        "_extract_tables",
-        "_extract_charts",
-        "_extract_infographics",
-        "_invoke_url",
-        "_nemotron_parse_model",
-        "_api_key",
-        "_request_timeout_s",
-        "_task_prompt",
-        "_remote_retry",
-    )
 
     def __init__(
         self,
@@ -355,7 +343,9 @@ class NemotronParseActor:
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
+        **kwargs: Any,
     ) -> None:
+        super().__init__(**kwargs)
         self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
         self._api_key = api_key
@@ -366,34 +356,46 @@ class NemotronParseActor:
             remote_max_retries=int(remote_max_retries),
             remote_max_429_retries=int(remote_max_429_retries),
         )
-        if self._invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronParseV12
-
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+        self._model = None
         self._extract_text = bool(extract_text)
         self._extract_tables = bool(extract_tables)
         self._extract_charts = bool(extract_charts)
         self._extract_infographics = bool(extract_infographics)
 
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def _ensure_model(self) -> None:
+        """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
+        if self._model is None and not self._invoke_url:
+            from nemo_retriever.model.local import NemotronParseV12
+
+            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        self._ensure_model()
+        return nemotron_parse_pages(
+            data,
+            model=self._model,
+            invoke_url=self._invoke_url,
+            nemotron_parse_model=self._nemotron_parse_model,
+            api_key=self._api_key,
+            request_timeout_s=self._request_timeout_s,
+            task_prompt=self._task_prompt,
+            extract_text=self._extract_text,
+            extract_tables=self._extract_tables,
+            extract_charts=self._extract_charts,
+            extract_infographics=self._extract_infographics,
+            remote_retry=self._remote_retry,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
-            return nemotron_parse_pages(
-                batch_df,
-                model=self._model,
-                invoke_url=self._invoke_url,
-                nemotron_parse_model=self._nemotron_parse_model,
-                api_key=self._api_key,
-                request_timeout_s=self._request_timeout_s,
-                task_prompt=self._task_prompt,
-                extract_text=self._extract_text,
-                extract_tables=self._extract_tables,
-                extract_charts=self._extract_charts,
-                extract_infographics=self._extract_infographics,
-                remote_retry=self._remote_retry,
-                **override_kwargs,
-            )
+            return self.run(batch_df, **override_kwargs)
         except BaseException as e:
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
