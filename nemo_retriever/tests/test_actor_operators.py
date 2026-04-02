@@ -296,12 +296,12 @@ class TestOCRActor:
 # ---------------------------------------------------------------------------
 class TestNemotronParseActor:
     def _make(self):
-        from nemo_retriever.ocr.ocr import NemotronParseActor
+        from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 
         return NemotronParseActor(nemotron_parse_invoke_url="http://fake")
 
     def test_inherits(self):
-        from nemo_retriever.ocr.ocr import NemotronParseActor
+        from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 
         assert issubclass(NemotronParseActor, AbstractOperator)
 
@@ -310,7 +310,7 @@ class TestNemotronParseActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.ocr.ocr.nemotron_parse_page_elements")
+    @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"nemotron_parse_v1_2": ["res"]})
         mock_fn.return_value = expected
@@ -319,7 +319,7 @@ class TestNemotronParseActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.ocr.ocr.nemotron_parse_page_elements", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
