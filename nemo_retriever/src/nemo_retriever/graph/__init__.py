@@ -12,6 +12,7 @@ from nemo_retriever.graph.custom_operator import UDFOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.file_loader_operator import FileListLoaderOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.graph_pipeline_registry import GraphPipelineRegistry, default_registry
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 
 __all__ = [
@@ -21,11 +22,13 @@ __all__ = [
     "FileListLoaderOperator",
     "GPUOperator",
     "Graph",
+    "GraphPipelineRegistry",
     "InprocessExecutor",
     "MultiTypeExtractOperator",
     "Node",
     "RayDataExecutor",
     "UDFOperator",
+    "default_registry",
 ]
 
 
