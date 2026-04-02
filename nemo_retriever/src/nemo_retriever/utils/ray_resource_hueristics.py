@@ -484,7 +484,7 @@ def resolve_requested_plan(
 
     pdf_extract_batch_size = _resolve_int(override_pdf_extract_batch_size, PDF_EXTRACT_BATCH_SIZE, False)
     pdf_extract_cpus_per_task = _resolve_float(override_pdf_extract_cpus_per_task, PDF_EXTRACT_CPUS_PER_TASK, False)
-    pdf_extract_tasks = _resolve_int(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, False)
+    pdf_extract_tasks = _resolve_int_actors(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, True)
 
     return RequestedPlan(
         embed_initial_actors=embed_initial_actors,

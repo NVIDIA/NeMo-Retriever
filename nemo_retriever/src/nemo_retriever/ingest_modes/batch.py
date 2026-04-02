@@ -1505,10 +1505,6 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             self._positive_int(getattr(tuning, "pdf_extract_workers", None))
             or self._requested_plan.get_pdf_extract_tasks()
         )
-        pdf_extract_tasks = min(
-            pdf_extract_tasks,
-            max(1, int(self._total_cpu_count // pdf_extract_cpus)),
-        )
 
         page_elements_batch_size = (
             self._positive_int(getattr(tuning, "page_elements_batch_size", None))
@@ -1584,6 +1580,22 @@ class GraphBatchIngestor(_LegacyBatchIngestor):
             embed_cpus = 1
             embed_gpus = self._requested_plan.get_embed_gpus_per_actor()
             embed_concurrency = self._requested_plan.get_embed_initial_actors()
+
+        # Cap PDF extract actors so they don't exhaust the CPU budget.  The
+        # overhead here is the sum of CPUs that other persistent actors in the
+        # pipeline hold simultaneously: DocToPdf, PDFSplit, UDFOperator, and
+        # the ReadBinary task (4 total) plus the initial actors for
+        # page-elements, OCR, and embed.
+        non_pdf_cpu_overhead = (
+            4
+            + page_elements_concurrency * page_elements_cpus
+            + ocr_concurrency * ocr_cpus
+            + embed_concurrency * embed_cpus
+        )
+        pdf_extract_tasks = min(
+            pdf_extract_tasks,
+            max(1, int((self._total_cpu_count - non_pdf_cpu_overhead) // pdf_extract_cpus)),
+        )
 
         overrides: dict[str, dict[str, Any]] = {
             "DocToPdfConversionActor": {"batch_size": 1, "num_cpus": 1},
