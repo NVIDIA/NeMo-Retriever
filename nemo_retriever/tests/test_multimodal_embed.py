@@ -25,8 +25,8 @@ from nemo_retriever.text_embed.main_text_embed import (
 )
 
 # ---------------------------------------------------------------------------
-# Stub heavy internal modules so ``from nemo_retriever.ingest_modes.inprocess``
-# can be imported in lightweight CI (only pytest, pandas, pydantic, pyyaml).
+# Stub heavy internal modules so the content-transform helpers can be imported
+# in lightweight CI (only pytest, pandas, pydantic, pyyaml).
 #
 # The ``nemo_retriever.ingest_modes`` __init__.py eagerly imports batch/fused/online
 # which pull in ray, torch, nemotron_*, nv_ingest_api, etc.  And inprocess.py
@@ -86,7 +86,7 @@ for _mod_name in _HEAVY_INTERNAL:
         sys.modules[_mod_name] = MagicMock()
         _injected.append(_mod_name)
 
-from nemo_retriever.ingest_modes.inprocess import collapse_content_to_page_rows, explode_content_to_rows  # noqa: E402
+from nemo_retriever.graph.content_transforms import collapse_content_to_page_rows, explode_content_to_rows  # noqa: E402
 
 # Clean up injected mocks so they don't poison imports in other test files.
 for _mod_name in _injected:
@@ -204,7 +204,7 @@ class TestExplodeContentToRows:
         assert list(result["_embed_modality"]) == ["text", "text"]
         assert "_image_b64" not in result.columns
 
-    @patch("nemo_retriever.ingest_modes.inprocess._crop_b64_image_by_norm_bbox")
+    @patch("nemo_retriever.graph.content_transforms._crop_b64_image_by_norm_bbox")
     def test_text_image_carries_image(self, mock_crop):
         """text_image mode copies page image to _image_b64, crops for structured content."""
         mock_crop.return_value = ("cropped_b64", None)

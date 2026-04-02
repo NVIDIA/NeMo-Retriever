@@ -1,6 +1,6 @@
-from nemo_retriever.graph.ingestor_runtime import build_batch_graph
+from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
-from nemo_retriever.ingest_modes._plans import BaseIngestPlan
+from nemo_retriever.ingest_plans import BaseIngestPlan
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
 from nemo_retriever.params import CaptionParams
@@ -50,7 +50,7 @@ def test_base_ingest_plan_builds_audio_execution_plan() -> None:
     assert execution_plan.has_extraction() is True
 
 
-def test_build_batch_graph_accepts_execution_plan() -> None:
+def test_build_graph_accepts_execution_plan() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(mode="text", text_params=TextChunkParams(max_tokens=64))
     plan.split_params = TextChunkParams(max_tokens=32)
@@ -61,7 +61,7 @@ def test_build_batch_graph_accepts_execution_plan() -> None:
     plan.record_stage("split")
     plan.record_stage("embed")
 
-    graph = build_batch_graph(execution_plan=plan.build_execution_plan())
+    graph = build_graph(execution_plan=plan.build_execution_plan())
 
     node = graph.roots[0]
     names = []
@@ -97,7 +97,17 @@ def test_build_inprocess_graph_accepts_execution_plan() -> None:
             break
         node = node.children[0]
 
-    assert names[-4:] == ["TextChunkActor", "CaptionActor", "UDFOperator", "_BatchEmbedActor"]
+    assert names == [
+        "DocToPdfConversionActor",
+        "PDFSplitActor",
+        "PDFExtractionActor",
+        "PageElementDetectionActor",
+        "OCRActor",
+        "TextChunkActor",
+        "CaptionActor",
+        "UDFOperator",
+        "_BatchEmbedActor",
+    ]
 
 
 def test_build_inprocess_graph_supports_text_execution_plan() -> None:
@@ -121,7 +131,7 @@ def test_build_inprocess_graph_supports_text_execution_plan() -> None:
             break
         node = node.children[0]
 
-    assert names == ["TxtSplitActor", "TextChunkActor", "_BatchEmbedActor"]
+    assert names == ["MultiTypeExtractOperator", "TextChunkActor", "_BatchEmbedActor"]
 
 
 def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
@@ -133,6 +143,23 @@ def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
     )
 
     graph = build_inprocess_graph(execution_plan=plan.build_execution_plan())
+
+    node = graph.roots[0]
+    names = []
+    while True:
+        names.append(node.name)
+        if not node.children:
+            break
+        node = node.children[0]
+
+    assert names == ["MediaChunkActor", "ASRActor"]
+
+
+def test_build_graph_uses_explicit_audio_graph_for_audio_extract_method() -> None:
+    graph = build_graph(
+        extract_params=ExtractParams(method="audio"),
+        audio_chunk_params=AudioChunkParams(split_type="size", split_interval=42),
+    )
 
     node = graph.roots[0]
     names = []

@@ -22,8 +22,6 @@ from nemo_retriever.graph.content_transforms import (
     explode_content_to_rows,
 )
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
-from nemo_retriever.html.ray_data import HtmlSplitActor
-from nemo_retriever.image.ray_data import ImageLoadActor
 from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
@@ -31,9 +29,8 @@ from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.txt.ray_data import TextChunkActor
-from nemo_retriever.txt.ray_data import TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
-from nemo_retriever.ingest_modes._plans import IngestExecutionPlan
+from nemo_retriever.ingest_plans import IngestExecutionPlan
 
 
 def _batch_tuning(params: Any) -> Any:
@@ -58,7 +55,19 @@ def _resolve_execution_inputs(
     caption_params: Any | None,
     embed_params: Any | None,
     stage_order: tuple[str, ...],
-) -> tuple[str, Any | None, Any | None, Any | None, Any | None, Any | None, Any | None, Any | None, Any | None, Any | None, tuple[str, ...]]:
+) -> tuple[
+    str,
+    Any | None,
+    Any | None,
+    Any | None,
+    Any | None,
+    Any | None,
+    Any | None,
+    Any | None,
+    Any | None,
+    Any | None,
+    tuple[str, ...],
+]:
     """Resolve legacy builder args or a shared execution plan into one input tuple."""
 
     if execution_plan is None:
@@ -92,6 +101,19 @@ def _resolve_execution_inputs(
     )
 
 
+def _should_build_audio_graph(
+    *,
+    extract_params: Any | None,
+    asr_params: Any | None,
+) -> bool:
+    method = str(getattr(extract_params, "method", "") or "").strip().lower()
+    if method == "audio":
+        return True
+    if asr_params is not None:
+        return True
+    return False
+
+
 def _append_ordered_transform_stages(
     graph: Graph,
     *,
@@ -107,7 +129,9 @@ def _append_ordered_transform_stages(
     """Append post-extraction transform stages in the exact recorded plan order."""
 
     pending_stages = [
-        stage for stage in stage_order if stage in {"dedup", "split", "caption", "embed"} and (supports_dedup or stage != "dedup")
+        stage
+        for stage in stage_order
+        if stage in {"dedup", "split", "caption", "embed"} and (supports_dedup or stage != "dedup")
     ]
     if not pending_stages:
         if supports_dedup and dedup_params is not None:
@@ -157,7 +181,7 @@ def _append_ordered_transform_stages(
     return graph
 
 
-def build_batch_graph(
+def build_graph(
     *,
     execution_plan: IngestExecutionPlan | None = None,
     extraction_mode: str = "pdf",
@@ -201,7 +225,12 @@ def build_batch_graph(
         stage_order=stage_order,
     )
 
-    if extraction_mode in {"text", "html", "audio", "image", "auto"}:
+    if _should_build_audio_graph(
+        extract_params=extract_params,
+        asr_params=asr_params,
+    ):
+        graph = Graph() >> MediaChunkActor(params=audio_chunk_params) >> ASRActor(params=asr_params)
+    elif extraction_mode in {"text", "html", "audio", "image", "auto"}:
         graph = Graph() >> MultiTypeExtractOperator(
             extraction_mode=extraction_mode,
             extract_params=extract_params,
@@ -316,177 +345,7 @@ def build_batch_graph(
     )
 
 
-def build_inprocess_graph(
-    *,
-    execution_plan: IngestExecutionPlan | None = None,
-    extract_params: Any | None = None,
-    embed_params: Any | None = None,
-    split_params: Any | None = None,
-    caption_params: Any | None = None,
-    extraction_mode: str = "pdf",
-    text_params: Any | None = None,
-    html_params: Any | None = None,
-    audio_chunk_params: Any | None = None,
-    asr_params: Any | None = None,
-    dedup_params: Any | None = None,
-    stage_order: tuple[str, ...] = (),
-) -> Graph:
-    """Build the in-process graph shape from the same execution plan used by batch.
-
-    The in-process ingestor still has its own executor and scheduling strategy, but
-    this helper now consumes the shared execution plan so graph ordering stays aligned
-    with the batch path and the fluent API.
-    """
-
-    (
-        extraction_mode,
-        extract_params,
-        text_params,
-        html_params,
-        audio_chunk_params,
-        asr_params,
-        dedup_params,
-        split_params,
-        caption_params,
-        embed_params,
-        stage_order,
-    ) = _resolve_execution_inputs(
-        execution_plan=execution_plan,
-        extraction_mode=extraction_mode,
-        extract_params=extract_params,
-        text_params=text_params,
-        html_params=html_params,
-        audio_chunk_params=audio_chunk_params,
-        asr_params=asr_params,
-        dedup_params=dedup_params,
-        split_params=split_params,
-        caption_params=caption_params,
-        embed_params=embed_params,
-        stage_order=stage_order,
-    )
-
-    if extraction_mode == "text":
-        if text_params is None:
-            raise ValueError("build_inprocess_graph requires text_params for text extraction")
-        graph = Graph() >> TxtSplitActor(params=text_params)
-    elif extraction_mode == "html":
-        if html_params is None:
-            raise ValueError("build_inprocess_graph requires html_params for html extraction")
-        graph = Graph() >> HtmlSplitActor(params=html_params)
-    elif extraction_mode == "audio":
-        if audio_chunk_params is None or asr_params is None:
-            raise ValueError("build_inprocess_graph requires audio_chunk_params and asr_params for audio extraction")
-        graph = Graph() >> MediaChunkActor(params=audio_chunk_params) >> ASRActor(params=asr_params)
-    elif extraction_mode == "image":
-        if extract_params is None:
-            raise ValueError("build_inprocess_graph requires extract_params for image extraction")
-        graph = Graph() >> ImageLoadActor()
-        if extract_params.method == "nemotron_parse":
-            parse_kwargs: dict[str, Any] = {
-                "extract_text": extract_params.extract_text,
-                "extract_tables": extract_params.extract_tables,
-                "extract_charts": extract_params.extract_charts,
-                "extract_infographics": extract_params.extract_infographics,
-            }
-            if extract_params.api_key:
-                parse_kwargs["api_key"] = extract_params.api_key
-            graph = graph >> NemotronParseActor(**parse_kwargs)
-        else:
-            detect_kwargs: dict[str, Any] = {}
-            if extract_params.page_elements_invoke_url:
-                detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
-            if extract_params.api_key:
-                detect_kwargs["api_key"] = extract_params.api_key
-
-            ocr_kwargs: dict[str, Any] = {
-                "extract_text": bool(extract_params.extract_text),
-                "extract_tables": bool(extract_params.extract_tables),
-                "extract_charts": bool(extract_params.extract_charts),
-            }
-            if extract_params.extract_infographics:
-                ocr_kwargs["extract_infographics"] = True
-            if extract_params.ocr_invoke_url:
-                ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
-            if extract_params.api_key:
-                ocr_kwargs["api_key"] = extract_params.api_key
-
-            graph = graph >> PageElementDetectionActor(**detect_kwargs)
-            if extract_params.use_table_structure and extract_params.extract_tables:
-                table_kwargs: dict[str, Any] = {}
-                if extract_params.table_structure_invoke_url:
-                    table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
-                if extract_params.ocr_invoke_url:
-                    table_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
-                if extract_params.api_key:
-                    table_kwargs["api_key"] = extract_params.api_key
-                if extract_params.table_output_format:
-                    table_kwargs["table_output_format"] = extract_params.table_output_format
-                graph = graph >> TableStructureActor(**table_kwargs)
-            if extract_params.use_graphic_elements and extract_params.extract_charts:
-                graphic_kwargs: dict[str, Any] = {}
-                if extract_params.graphic_elements_invoke_url:
-                    graphic_kwargs["graphic_elements_invoke_url"] = extract_params.graphic_elements_invoke_url
-                if extract_params.ocr_invoke_url:
-                    graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
-                if extract_params.api_key:
-                    graphic_kwargs["api_key"] = extract_params.api_key
-                graph = graph >> GraphicElementsActor(**graphic_kwargs)
-            graph = graph >> OCRActor(**ocr_kwargs)
-    else:
-        graph = Graph() >> PDFSplitActor()
-
-        if extract_params is None:
-            raise ValueError("build_inprocess_graph requires extract_params or execution_plan with extract_params")
-
-        extract_kwargs: dict[str, Any] = {
-            "method": extract_params.method,
-            "dpi": extract_params.dpi,
-            "extract_text": extract_params.extract_text,
-            "extract_tables": extract_params.extract_tables,
-            "extract_charts": extract_params.extract_charts,
-            "extract_infographics": extract_params.extract_infographics,
-            "extract_page_as_image": extract_params.extract_page_as_image,
-        }
-        graph = graph >> PDFExtractionActor(**extract_kwargs)
-
-        if extract_params.method == "nemotron_parse":
-            parse_kwargs: dict[str, Any] = {
-                "extract_text": extract_params.extract_text,
-                "extract_tables": extract_params.extract_tables,
-                "extract_charts": extract_params.extract_charts,
-                "extract_infographics": extract_params.extract_infographics,
-            }
-            if extract_params.api_key:
-                parse_kwargs["api_key"] = extract_params.api_key
-            graph = graph >> NemotronParseActor(**parse_kwargs)
-        else:
-            detect_kwargs: dict[str, Any] = {}
-            if extract_params.page_elements_invoke_url:
-                detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
-            if extract_params.api_key:
-                detect_kwargs["api_key"] = extract_params.api_key
-
-            ocr_kwargs: dict[str, Any] = {
-                "extract_text": bool(extract_params.extract_text),
-                "extract_tables": bool(extract_params.extract_tables),
-                "extract_charts": bool(extract_params.extract_charts),
-            }
-            if extract_params.extract_infographics:
-                ocr_kwargs["extract_infographics"] = True
-            if extract_params.ocr_invoke_url:
-                ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
-            if extract_params.api_key:
-                ocr_kwargs["api_key"] = extract_params.api_key
-            graph = graph >> PageElementDetectionActor(**detect_kwargs) >> OCRActor(**ocr_kwargs)
-
-    return _append_ordered_transform_stages(
-        graph,
-        extraction_mode=extraction_mode,
-        dedup_params=dedup_params,
-        split_params=split_params,
-        caption_params=caption_params,
-        embed_params=embed_params,
-        stage_order=stage_order,
-        supports_dedup=False,
-        reshape_for_modal_content=True,
-    )
+# build_inprocess_graph previously maintained a separate graph shape.
+# In-process execution now intentionally reuses the shared graph builder so
+# both modes inherit the same defaults, node ordering, and optional stages.
+build_inprocess_graph = build_graph

@@ -3,15 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..params import ASRParams
-from ..params import AudioChunkParams
-from ..params import CaptionParams
-from ..params import DedupParams
-from ..params import EmbedParams
-from ..params import ExtractParams
-from ..params import HtmlChunkParams
-from ..params import TextChunkParams
-from ..params import VdbUploadParams
+from .params import ASRParams
+from .params import AudioChunkParams
+from .params import CaptionParams
+from .params import DedupParams
+from .params import EmbedParams
+from .params import ExtractParams
+from .params import HtmlChunkParams
+from .params import TextChunkParams
+from .params import VdbUploadParams
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ class IngestExecutionPlan:
 
 @dataclass
 class BaseIngestPlan:
-    """Shared ingestion plan state used by multiple run modes."""
+    """Shared ingestion plan state used by multiple execution frontends."""
 
     extraction_mode: str = "pdf"
     extract_params: ExtractParams | None = None
