@@ -485,7 +485,7 @@ Set `resources.requests` and `resources.limits` to the name of the MIG resource 
 nvingest:
   nvidiaNim:
     nemoretrieverPageElements:
-      modelName: "meta/llama3-8b-instruct"        # Example NIM model
+      modelName: "nvidia/nemotron-page-elements-v3"  # Page-elements NIM (not a text LLM)       # Example NIM model
       resources:
         limits:
           nvidia.com/mig-3g.20gb: 1               # MIG profile resource
