@@ -218,7 +218,6 @@ def _extract_chat_completion_text(response_json: Any) -> str:
     return ""
 
 
-
 def invoke_chat_completions(
     *,
     invoke_url: str,
@@ -227,6 +226,9 @@ def invoke_chat_completions(
     api_key: Optional[str] = None,
     timeout_s: float = 120.0,
     max_tokens: int = 9000,
+    task_prompt: Optional[str] = None,
+    temperature: float = 0.0,
+    repetition_penalty: float = 1.1,
     max_pool_workers: int = 16,
     max_retries: int = 10,
     max_429_retries: int = 5,
@@ -250,20 +252,19 @@ def invoke_chat_completions(
 
     def _invoke_one(idx: int, b64: str, endpoint_url: str) -> Tuple[int, str]:
         mime = _mime_from_b64(b64)
+        content: List[Dict[str, Any]] = []
+        if task_prompt:
+            content.append({"type": "text", "text": task_prompt})
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"},
+            }
+        )
         payload: Dict[str, Any] = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime};base64,{b64}"},
-                        },
-                    ],
-                }
-            ],
-            "max_tokens": max_tokens,
-            "temperature": 0,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": temperature,
+            "repetition_penalty": repetition_penalty,
         }
         if model:
             payload["model"] = model

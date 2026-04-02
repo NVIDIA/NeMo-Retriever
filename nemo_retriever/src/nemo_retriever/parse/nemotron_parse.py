@@ -12,7 +12,7 @@ replacing the page-elements → OCR multi-stage pipeline.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import base64
 import io
@@ -53,6 +53,7 @@ _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
     return {
@@ -148,6 +149,7 @@ def _decode_page_image(page_image_b64: str) -> np.ndarray:
 # Main stage function
 # ---------------------------------------------------------------------------
 
+
 def nemotron_parse_pages(
     batch_df: Any,
     *,
@@ -197,7 +199,7 @@ def nemotron_parse_pages(
 
     # -- Phase 1: collect page images that need inference ----------------
     batch_indices: List[int] = []  # index into batch_df
-    batch_images: List[Any] = []   # numpy arrays (local) or b64 strings (remote)
+    batch_images: List[Any] = []  # numpy arrays (local) or b64 strings (remote)
 
     for idx, row in enumerate(batch_df.itertuples(index=False)):
         page_image = getattr(row, "page_image", None) or {}
@@ -211,12 +213,15 @@ def nemotron_parse_pages(
                 batch_images.append(_decode_page_image(page_image_b64))
             batch_indices.append(idx)
         except Exception as e:
-            all_meta[idx] = {"timing": None, "error": {
-                "stage": "nemotron_parse_pages_decode",
-                "type": e.__class__.__name__,
-                "message": str(e),
-                "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-            }}
+            all_meta[idx] = {
+                "timing": None,
+                "error": {
+                    "stage": "nemotron_parse_pages_decode",
+                    "type": e.__class__.__name__,
+                    "message": str(e),
+                    "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+                },
+            }
 
     # -- Phase 2: run model inference in a single batch ------------------
     raw_texts: List[str] = [""] * len(batch_indices)
@@ -230,6 +235,7 @@ def nemotron_parse_pages(
                         model=nemotron_parse_model or NEMOTRON_PARSE_DEFAULT_MODEL,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
+                        task_prompt=task_prompt,
                         max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
@@ -249,15 +255,9 @@ def nemotron_parse_pages(
             else:
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:
-                    raw_texts = [
-                        str(t or "").strip()
-                        for t in invoke_batch(batch_images, task_prompt=task_prompt)
-                    ]
+                    raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
                 else:
-                    raw_texts = [
-                        str(model.invoke(img, task_prompt=task_prompt) or "").strip()
-                        for img in batch_images
-                    ]
+                    raw_texts = [str(model.invoke(img, task_prompt=task_prompt) or "").strip() for img in batch_images]
         except BaseException as e:
             print(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
             err = {
@@ -286,12 +286,15 @@ def nemotron_parse_pages(
             if fp_text is not None:
                 all_text[idx] = fp_text
         except BaseException as e:
-            all_meta[idx] = {"timing": None, "error": {
-                "stage": "nemotron_parse_pages_route",
-                "type": e.__class__.__name__,
-                "message": str(e),
-                "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-            }}
+            all_meta[idx] = {
+                "timing": None,
+                "error": {
+                    "stage": "nemotron_parse_pages_route",
+                    "type": e.__class__.__name__,
+                    "message": str(e),
+                    "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+                },
+            }
 
     elapsed = time.perf_counter() - t0_total
     for meta in all_meta:
@@ -318,6 +321,7 @@ def nemotron_parse_pages(
 # Ray actor
 # ---------------------------------------------------------------------------
 
+
 class NemotronParseActor:
     """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
 
@@ -328,6 +332,7 @@ class NemotronParseActor:
         "_extract_charts",
         "_extract_infographics",
         "_invoke_url",
+        "_nemotron_parse_model",
         "_api_key",
         "_request_timeout_s",
         "_task_prompt",
@@ -342,6 +347,7 @@ class NemotronParseActor:
         extract_charts: bool = False,
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
+        nemotron_parse_model: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -351,6 +357,7 @@ class NemotronParseActor:
         remote_max_429_retries: int = 5,
     ) -> None:
         self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        self._nemotron_parse_model = nemotron_parse_model
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)
@@ -376,6 +383,7 @@ class NemotronParseActor:
                 batch_df,
                 model=self._model,
                 invoke_url=self._invoke_url,
+                nemotron_parse_model=self._nemotron_parse_model,
                 api_key=self._api_key,
                 request_timeout_s=self._request_timeout_s,
                 task_prompt=self._task_prompt,

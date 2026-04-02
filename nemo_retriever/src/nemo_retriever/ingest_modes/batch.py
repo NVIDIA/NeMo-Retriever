@@ -511,11 +511,11 @@ class BatchIngestor(Ingestor):
             ):
                 if k in kwargs:
                     parse_flags[k] = kwargs[k]
-            parse_invoke_url = kwargs.get(
-                "nemotron_parse_invoke_url", kwargs.get("ocr_invoke_url", kwargs.get("invoke_url"))
-            )
+            parse_invoke_url = kwargs.get("nemotron_parse_invoke_url") or kwargs.get("invoke_url") or ""
             if parse_invoke_url:
                 parse_flags["invoke_url"] = parse_invoke_url
+            if kwargs.get("nemotron_parse_model"):
+                parse_flags["nemotron_parse_model"] = kwargs["nemotron_parse_model"]
             self._rd_dataset = self._rd_dataset.map_batches(
                 NemotronParseActor,
                 batch_size=self._requested_plan.get_nemotron_parse_batch_size(),
