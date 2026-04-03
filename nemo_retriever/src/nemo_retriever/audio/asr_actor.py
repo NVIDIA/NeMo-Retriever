@@ -28,6 +28,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import ASRParams
 
@@ -123,7 +124,13 @@ def _get_client(params: ASRParams):  # noqa: ANN201
     )
 
 
-class ASRCPUActor(AbstractOperator, CPUOperator):
+def _create_local_model():  # noqa: ANN201
+    from nemo_retriever.model.local import ParakeetCTC1B1ASR
+
+    return ParakeetCTC1B1ASR()
+
+
+class _ASRBaseActor(AbstractOperator):
     """
     Ray Data map_batches callable: chunk rows (path/bytes) -> rows with text (transcript).
 
@@ -134,17 +141,17 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
     segments are emitted as multiple rows per chunk.
     """
 
-    def __init__(self, params: ASRParams | None = None) -> None:
+    def __init__(
+        self,
+        params: ASRParams | None = None,
+        *,
+        client: Any = None,
+        model: Any = None,
+    ) -> None:
         super().__init__(params=params)
         self._params = params or ASRParams()
-        if _use_remote(self._params):
-            self._client = _get_client(self._params)
-            self._model = None
-        else:
-            self._client = None
-            from nemo_retriever.model.local import ParakeetCTC1B1ASR
-
-            self._model = ParakeetCTC1B1ASR()
+        self._client = client
+        self._model = model
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -369,10 +376,40 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
             return self._build_output_rows(row, transcript)
 
 
+class ASRCPUActor(_ASRBaseActor, CPUOperator):
+    """CPU actor for ASR.
+
+    Uses remote Parakeet when endpoints are configured; otherwise falls back to
+    the local Parakeet model so CPU-only environments continue to work.
+    """
+
+    def __init__(self, params: ASRParams | None = None) -> None:
+        resolved_params = params or ASRParams()
+        client = _get_client(resolved_params) if _use_remote(resolved_params) else None
+        model = None if client is not None else _create_local_model()
+        super().__init__(params=resolved_params, client=client, model=model)
+
+
+class ASRGPUActor(_ASRBaseActor, GPUOperator):
+    """GPU actor for ASR using the local Parakeet model."""
+
+    def __init__(self, params: ASRParams | None = None) -> None:
+        resolved_params = params or ASRParams()
+        if _use_remote(resolved_params):
+            raise ValueError("ASRGPUActor does not support remote endpoints. Use ASRCPUActor instead.")
+        super().__init__(params=resolved_params, client=None, model=_create_local_model())
+
+
 class ASRActor(ArchetypeOperator):
     """Graph-facing ASR archetype resolved to the best concrete runtime implementation."""
 
     _cpu_variant_class = ASRCPUActor
+    _gpu_variant_class = ASRGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        params = (operator_kwargs or {}).get("params")
+        return isinstance(params, ASRParams) and _use_remote(params)
 
     def __init__(self, params: ASRParams | None = None) -> None:
         resolved_params = params or ASRParams()
