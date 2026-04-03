@@ -60,6 +60,7 @@ class LlamaNemotronEmbed1BV2Embedder:
             revision=_revision,
             trust_remote_code=True,
             cache_dir=hf_cache_dir,
+            torch_dtype=torch.bfloat16,
         )
         self._model = self._model.to(dev)
         self._model.eval()
@@ -83,43 +84,46 @@ class LlamaNemotronEmbed1BV2Embedder:
         if self._tokenizer is None or self._model is None or self._device is None:
             raise RuntimeError("Local embedder was not initialized.")
         dev = self._device
+        bs = max(1, int(batch_size))
+
+        # Tokenize all texts in a single call to avoid repeated setup overhead.
+        full_batch = self._tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=max(1, int(self.max_length)),
+            return_tensors="pt",
+        )
 
         outs: List[torch.Tensor] = []
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
-            with torch.autocast(device_type="cuda"):
-                for i in range(0, len(texts), max(1, int(batch_size))):
-                    chunk = texts[i : i + max(1, int(batch_size))]
-                    batch = self._tokenizer(
-                        chunk,
-                        padding=True,
-                        truncation=True,
-                        max_length=max(1, int(self.max_length)),
-                        return_tensors="pt",
-                    ).to(dev)
-                    out = self._model(**batch, output_hidden_states=True)
-                    # The bidirectional model returns BaseModelOutputWithPast
-                    # (last_hidden_state), but some transformers versions or
-                    # model revisions return CausalLMOutputWithPast (hidden_states).
-                    lhs = getattr(out, "last_hidden_state", None)
-                    if lhs is None:
-                        # CausalLMOutputWithPast: use the last layer's hidden state.
-                        hs = getattr(out, "hidden_states", None)
-                        if hs is not None:
-                            lhs = hs[-1]
-                        else:
-                            raise AttributeError(
-                                f"Model output ({type(out).__name__}) has neither "
-                                "'last_hidden_state' nor 'hidden_states'. "
-                                "Ensure the model is loaded with trust_remote_code=True."
-                            )
-                    # lhs shape: [B, S, D]
-                    mask = batch["attention_mask"].unsqueeze(-1)  # [B, S, 1]
-                    vec = (lhs * mask).sum(dim=1) / mask.sum(dim=1)  # [B, D]
-                    vec = vec.detach().to("cpu")
-                    if self.normalize:
-                        vec = _l2_normalize(vec)
-                    outs.append(vec)
+            for i in range(0, len(texts), bs):
+                batch = {k: v[i : i + bs].to(dev) for k, v in full_batch.items()}
+                out = self._model(**batch, output_hidden_states=True)
+                # The bidirectional model returns BaseModelOutputWithPast
+                # (last_hidden_state), but some transformers versions or
+                # model revisions return CausalLMOutputWithPast (hidden_states).
+                lhs = getattr(out, "last_hidden_state", None)
+                if lhs is None:
+                    # CausalLMOutputWithPast: use the last layer's hidden state.
+                    hs = getattr(out, "hidden_states", None)
+                    if hs is not None:
+                        lhs = hs[-1]
+                    else:
+                        raise AttributeError(
+                            f"Model output ({type(out).__name__}) has neither "
+                            "'last_hidden_state' nor 'hidden_states'. "
+                            "Ensure the model is loaded with trust_remote_code=True."
+                        )
+                # Pool in float32 to avoid accumulation errors in bf16.
+                lhs = lhs.float()  # [B, S, D]
+                mask = batch["attention_mask"].unsqueeze(-1).float()  # [B, S, 1]
+                vec = (lhs * mask).sum(dim=1) / mask.sum(dim=1)  # [B, D]
+                vec = vec.detach().to("cpu")
+                if self.normalize:
+                    vec = _l2_normalize(vec)
+                outs.append(vec)
 
         return torch.cat(outs, dim=0) if outs else torch.empty((0, 0), dtype=torch.float32)
 

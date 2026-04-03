@@ -10,9 +10,16 @@ This package provides:
 - `PageElementDetectionActor`: Ray-friendly callable that initializes the model once
 """
 
-from .page_elements import PageElementDetectionActor, detect_page_elements_v3
+from .page_elements import (
+    PageElementDetectionActor,
+    PageElementDetectionCPUActor,
+    PageElementDetectionGPUActor,
+    detect_page_elements_v3,
+)
 
 __all__ = [
     "detect_page_elements_v3",
     "PageElementDetectionActor",
+    "PageElementDetectionCPUActor",
+    "PageElementDetectionGPUActor",
 ]

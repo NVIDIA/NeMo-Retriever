@@ -19,15 +19,15 @@ class _ParamsModel(BaseModel):
 
 
 class RemoteRetryParams(_ParamsModel):
-    remote_max_pool_workers: int = 16
-    remote_max_retries: int = 10
-    remote_max_429_retries: int = 5
+    remote_max_pool_workers: int = 8
+    remote_max_retries: int = 5
+    remote_max_429_retries: int = 3
 
 
 class RemoteInvokeParams(_ParamsModel):
     invoke_url: Optional[str] = None
     api_key: Optional[str] = None
-    request_timeout_s: float = 120.0
+    request_timeout_s: float = 60.0
 
 
 class ModelRuntimeParams(_ParamsModel):
@@ -175,7 +175,7 @@ class ExtractParams(_ParamsModel):
     # Service endpoints
     invoke_url: Optional[str] = None
     api_key: Optional[str] = None
-    request_timeout_s: float = 120.0
+    request_timeout_s: float = 60.0
     page_elements_invoke_url: Optional[str] = None
     page_elements_api_key: Optional[str] = None
     page_elements_request_timeout_s: Optional[float] = None
@@ -301,6 +301,27 @@ class ChartParams(_ParamsModel):
     remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
     inference_batch_size: int = 8
+
+
+class CaptionParams(_ParamsModel):
+    endpoint_url: Optional[str] = None
+    model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
+    api_key: Optional[str] = None
+    prompt: str = "Caption the content of this image:"
+    system_prompt: Optional[str] = "/no_think"
+    temperature: float = 1.0
+    batch_size: int = 8
+    device: Optional[str] = None
+    hf_cache_dir: Optional[str] = None
+    context_text_max_chars: int = 0
+    tensor_parallel_size: int = 1
+    gpu_memory_utilization: float = 0.5
+
+
+class DedupParams(_ParamsModel):
+    content_hash: bool = True
+    bbox_iou: bool = True
+    iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
 
 
 class InfographicParams(_ParamsModel):

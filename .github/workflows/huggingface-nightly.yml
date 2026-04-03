@@ -25,7 +25,19 @@ permissions:
   contents: read
 
 jobs:
+  # One dev suffix for the whole workflow so matrix legs (e.g. OCR x86 + aarch64) share
+  # the same version. UTC YYYYMMDDHHmmss (14 digits) is unique per second and stays
+  # within the uint64 limit that uv/Rust-based installers require for PEP 440 integers.
+  nightly_coordinate:
+    runs-on: ubuntu-latest
+    outputs:
+      nightly_date_suffix: ${{ steps.suffix.outputs.nightly_date_suffix }}
+    steps:
+      - id: suffix
+        run: echo "nightly_date_suffix=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: nightly_coordinate
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -80,6 +92,7 @@ jobs:
 
       - name: Build (and maybe upload)
         env:
+          NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
           TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         shell: bash
@@ -123,13 +136,25 @@ jobs:
           path: dist-out/${{ matrix.repo.id }}/*
 
   build_ocr_cuda:
+    needs: nightly_coordinate
     # nemotron-ocr-v1 needs nvcc/CUDA headers to build its extension.
     # Build with Python 3.12 to match upstream package constraints and
     # avoid producing an extension for the wrong Python ABI.
-    runs-on: ubuntu-latest
+    # Matrix across x86_64 and aarch64 so the wheel works on ARM hosts
+    # (e.g. DGX Spark) as well as conventional x86 machines.
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - runner: ubuntu-latest
+            cuda_image: nvidia/cuda:13.0.0-devel-ubuntu24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            cuda_image: nvidia/cuda:13.0.0-devel-ubuntu24.04
+            arch: aarch64
     container:
-      # Build extension with CUDA 13 toolchain (nvcc/headers from devel image).
-      image: nvidia/cuda:13.0.0-devel-ubuntu24.04
+      image: ${{ matrix.platform.cuda_image }}
     steps:
       - name: Install system deps (git, lfs, build tools)
         shell: bash
@@ -142,6 +167,7 @@ jobs:
             git-lfs \
             build-essential \
             ninja-build \
+            patchelf \
             python3 \
             python3-venv \
             python3-pip
@@ -172,6 +198,7 @@ jobs:
 
       - name: Build nemotron-ocr-v1 (and maybe upload)
         env:
+          NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
           TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
           CUDA_HOME: /usr/local/cuda
@@ -201,6 +228,13 @@ jobs:
             skip_existing_flag="--skip-existing"
           fi
 
+          # The upstream build script checks ARCH to skip x86-only SIMD
+          # flags (e.g. -mavx2) that are invalid on aarch64.
+          arch_env_arg=""
+          if [[ "$(uname -m)" == "aarch64" ]]; then
+            arch_env_arg="--build-env ARCH=arm64"
+          fi
+
           python --version
           python ci/scripts/nightly_build_publish.py \
             --repo-id "nemotron-ocr-v1" \
@@ -208,6 +242,14 @@ jobs:
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "nemotron-ocr" \
+            --hatch-force-platform-wheel \
+            --auditwheel-repair \
+            --auditwheel-exclude libtorch_cpu.so \
+            --auditwheel-exclude libtorch_cuda.so \
+            --auditwheel-exclude libtorch.so \
+            --auditwheel-exclude libc10.so \
+            --auditwheel-exclude libc10_cuda.so \
+            --auditwheel-exclude libtorch_python.so \
             --build-no-isolation \
             --venv-pip-install "hatchling" \
             --venv-pip-install "setuptools>=68" \
@@ -215,6 +257,7 @@ jobs:
             --venv-pip-install "torchvision==0.24.1" \
             --build-env "BUILD_CPP_EXTENSION=1" \
             --build-env "BUILD_CPP_FORCE=1" \
+            ${arch_env_arg} \
             ${upload_flag} \
             --repository-url "${repo_url}" \
             --token-env "${token_env}" \
@@ -246,6 +289,20 @@ jobs:
               raise SystemExit(
                   f"Built extension ABI does not match runner Python ({py_tag}). Found:\n{formatted}"
               )
+          for wheel in wheels:
+              if "py3-none-any" in wheel.name:
+                  raise SystemExit(
+                      "Wheel is tagged py3-none-any; pip cannot select x86_64 vs aarch64. "
+                      f"Got: {wheel.name}"
+                  )
+              if wheel.name.endswith("-linux_x86_64.whl") or wheel.name.endswith(
+                  "-linux_aarch64.whl"
+              ):
+                  raise SystemExit(
+                      "Wheel still has a bare linux_* tag; TestPyPI rejects these. "
+                      "auditwheel repair should emit manylinux_*. Got: "
+                      f"{wheel.name}"
+                  )
           print("Verified nemotron_ocr_cpp extension ABI:", py_tag)
           PY
 
@@ -253,5 +310,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dist-nemotron-ocr-v1
+          name: dist-nemotron-ocr-v1-${{ matrix.platform.arch }}
           path: dist-out/nemotron-ocr-v1/*

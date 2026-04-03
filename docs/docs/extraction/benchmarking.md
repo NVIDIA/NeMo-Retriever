@@ -1,11 +1,11 @@
-# NeMo Retriever Library Integration Testing Framework
+# NV-Ingest Integration Testing Framework
 
-A configurable, dataset-agnostic testing framework for end-to-end validation of NeMo Retriever Library pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
+A configurable, dataset-agnostic testing framework for end-to-end validation of nv-ingest pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
 
 ## Dataset Prerequisites
 
     
-Before you run any benchmarking or evaluation tests, you must first download the benchmark datasets. The three primary datasets used in NeMo Retriever Library benchmarking and evaluations are the following:
+Before you run any benchmarking or evaluation tests, you must first download the benchmark datasets. The three primary datasets used in nv-ingest benchmarking and evaluations include:
     
 - **Bo20** - 20 PDFs for quick testing
 - **Bo767** - 767 PDFs for comprehensive benchmarking
@@ -13,7 +13,7 @@ Before you run any benchmarking or evaluation tests, you must first download the
     
 ### How to Download the Datasets
     
-Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/digital_corpora_download.ipynb) to download these datasets from the public Digital Corpora source. This notebook provides automated download functions that do the following:
+Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/nv-ingest/blob/main/evaluation/digital_corpora_download.ipynb) to download these datasets from the public Digital Corpora source. This notebook provides automated download functions that enable the following:
     
 - Download PDFs directly from Digital Corpora's public repository.
 - Support all three dataset sizes (Bo20, Bo767, Bo10k).
@@ -29,26 +29,26 @@ Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/NeMo-Retri
 Before you use this documentation, you need the following:
 
 - Docker and Docker Compose are running
-- A Python environment with nemo-retriever installed
+- A Python environment with nv-ingest-client installed
 - The [benchmark datasets are downloaded](#dataset-prerequisites)
 
 ### Run Your First Test
 
 ```bash
-# 1. Navigate to the nemo-retriever-bench directory
+# 1. Navigate to the nv-ingest-harness directory
 cd tools/harness
 
 # 2. Install dependencies
 uv sync
 
 # 3. Run with a pre-configured dataset (assumes services are running)
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 # Or use a custom path that uses the "active" configuration
-uv run nemo-retriever-bench --case=e2e --dataset=/path/to/your/data
+uv run nv-ingest-harness-run --case=e2e --dataset=/path/to/your/data
 
 # With managed infrastructure (starts/stops services)
-uv run nemo-retriever-bench --case=e2e --dataset=bo767 --managed
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
 ```
 
 ## Configuration System
@@ -59,6 +59,8 @@ The framework uses a structured YAML file for all test configuration. Configurat
 
 #### Active Configuration
 
+`api_version` `v2` is the default configuration. Use `v1` only when it is necessary to explicitly override this default value.
+
 The `active` section contains your current test settings. Edit these values directly for your test runs:
 
 ```yaml
@@ -68,16 +70,19 @@ active:
   test_name: null  # Auto-generated if null
   
   # API Configuration
-  api_version: v1  # v1 or v2
+  api_version: v2  # v1 or v2
   pdf_split_page_count: null  # V2 only: pages per chunk (null = default 32)
   
   # Infrastructure
   hostname: localhost
   readiness_timeout: 600
-  profiles: [retrieval]
+  compose:
+    profiles:
+      - retrieval
+      - reranker  # Required for recall evaluation
   
   # Runtime
-  sparse: true
+  sparse: false
   gpu_search: false
   embedding_model: auto
   
@@ -123,7 +128,7 @@ datasets:
     extract_tables: true
     extract_charts: true
     extract_images: true
-    extract_infographics: false
+    extract_infographics: true
     recall_dataset: null  # bo20 does not have recall
   
   earnings:
@@ -144,13 +149,13 @@ datasets:
 **Usage:**
 ```bash
 # Single dataset - configs applied automatically
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 # Multiple datasets (sweeping) - each gets its own config
-uv run nemo-retriever-bench --case=e2e --dataset=bo767,earnings,bo20
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
 
 # Custom path still works (uses active section config)
-uv run nemo-retriever-bench --case=e2e --dataset=/custom/path
+uv run nv-ingest-harness-run --case=e2e --dataset=/custom/path
 ```
 
 **Dataset Extraction Settings:**
@@ -159,7 +164,7 @@ uv run nemo-retriever-bench --case=e2e --dataset=/custom/path
 |---------|------|--------|--------|--------|--------------|--------|
 | `bo767` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
 | `earnings` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| `bo20` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `bo20` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `financebench` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `single` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
@@ -173,11 +178,11 @@ Settings are applied in order of priority:
 
 Example:
 ```bash
-# YAML active section has api_version: v1
+# YAML active section has api_version: v2
 # Dataset bo767 has extract_images: false
 # Override via environment variable (highest priority)
-EXTRACT_IMAGES=true API_VERSION=v2 uv run nemo-retriever-bench --case=e2e --dataset=bo767
-# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v2 (env override)
+EXTRACT_IMAGES=true API_VERSION=v1 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v1 (env override)
 ```
 
 **Precedence Details:**
@@ -211,7 +216,7 @@ EXTRACT_IMAGES=true API_VERSION=v2 uv run nemo-retriever-bench --case=e2e --data
 #### Infrastructure Options
 - `hostname` (string): Service hostname
 - `readiness_timeout` (integer): Docker startup timeout in seconds
-- `profiles` (list): Docker compose profiles
+- `compose.profiles` (list): Docker Compose profiles, nested under `compose` in YAML (loaded as top-level `profiles`)
 
 #### Runtime Options
 - `sparse` (boolean): Use sparse embeddings
@@ -240,13 +245,13 @@ Configuration is validated on load with helpful error messages.
 
 ```bash
 # Run with default YAML configuration (assumes services are running)
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 # With document-level analysis
-uv run nemo-retriever-bench --case=e2e --dataset=bo767 --doc-analysis
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --doc-analysis
 
 # With managed infrastructure (starts/stops services)
-uv run nemo-retriever-bench --case=e2e --dataset=bo767 --managed
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
 ```
 
 ### Dataset Sweeping
@@ -255,7 +260,7 @@ Run multiple datasets in a single command - each dataset automatically gets its 
 
 ```bash
 # Sweep multiple datasets
-uv run nemo-retriever-bench --case=e2e --dataset=bo767,earnings,bo20
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
 
 # Each dataset runs sequentially with its own:
 # - Extraction settings (from dataset config)
@@ -263,13 +268,13 @@ uv run nemo-retriever-bench --case=e2e --dataset=bo767,earnings,bo20
 # - Results summary at the end
 
 # With managed infrastructure (services start once, shared across all datasets)
-uv run nemo-retriever-bench --case=e2e --dataset=bo767,earnings,bo20 --managed
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20 --managed
 
 # E2E+Recall sweep (each dataset ingests then evaluates recall)
-uv run nemo-retriever-bench --case=e2e_recall --dataset=bo767,earnings
+uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767,earnings
 
 # Recall-only sweep (evaluates existing collections)
-uv run nemo-retriever-bench --case=recall --dataset=bo767,earnings
+uv run nv-ingest-harness-run --case=recall --dataset=bo767,earnings
 ```
 
 **Sweep Behavior:**
@@ -283,10 +288,10 @@ uv run nemo-retriever-bench --case=recall --dataset=bo767,earnings
 
 ```bash
 # Override via environment (useful for CI/CD)
-API_VERSION=v2 EXTRACT_TABLES=false uv run nemo-retriever-bench --case=e2e
+API_VERSION=v2 EXTRACT_TABLES=false uv run nv-ingest-harness-run --case=e2e
 
 # Temporary changes without editing YAML
-DATASET_DIR=/custom/path uv run nemo-retriever-bench --case=e2e
+DATASET_DIR=/custom/path uv run nv-ingest-harness-run --case=e2e
 ```
 
 ## Test Scenarios
@@ -472,23 +477,23 @@ recall:
 ```bash
 # Evaluate existing bo767 collections (no reranker)
 # recall_dataset automatically set from dataset config
-uv run nemo-retriever-bench --case=recall --dataset=bo767
+uv run nv-ingest-harness-run --case=recall --dataset=bo767
 
 # With reranker only (set reranker_mode in YAML recall section)
-uv run nemo-retriever-bench --case=recall --dataset=bo767
+uv run nv-ingest-harness-run --case=recall --dataset=bo767
 
 # Sweep multiple datasets for recall evaluation
-uv run nemo-retriever-bench --case=recall --dataset=bo767,earnings
+uv run nv-ingest-harness-run --case=recall --dataset=bo767,earnings
 ```
 
 **E2E + Recall (fresh ingestion):**
 ```bash
 # Fresh ingestion with recall evaluation
 # recall_dataset automatically set from dataset config
-uv run nemo-retriever-bench --case=e2e_recall --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767
 
 # Sweep multiple datasets (each ingests then evaluates)
-uv run nemo-retriever-bench --case=e2e_recall --dataset=bo767,earnings
+uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767,earnings
 ```
 
 **Dataset configuration:**
@@ -536,7 +541,7 @@ The easiest way to test multiple datasets is using dataset sweeping:
 
 ```bash
 # Test multiple datasets - each gets its native config automatically
-uv run nemo-retriever-bench --case=e2e --dataset=bo767,earnings,bo20
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
 
 # Each dataset runs with its pre-configured extraction settings
 # Results are organized in separate artifact directories
@@ -547,7 +552,7 @@ uv run nemo-retriever-bench --case=e2e --dataset=bo767,earnings,bo20
 To sweep through different parameter values:
 
 1. **Edit** `test_configs.yaml` - Update values in the `active` section
-2. **Run** the test: `uv run nemo-retriever-bench --case=e2e --dataset=<name>`
+2. **Run** the test: `uv run nv-ingest-harness-run --case=e2e --dataset=<name>`
 3. **Analyze** results in `artifacts/<test_name>_<timestamp>/`
 4. **Repeat** steps 1-3 for next parameter combination
 
@@ -555,18 +560,18 @@ Example parameter sweep workflow:
 ```bash
 # Test 1: Baseline V1
 vim test_configs.yaml  # Set: api_version=v1, extract_tables=true
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 # Test 2: V2 with 32-page splitting
 vim test_configs.yaml  # Set: api_version=v2, pdf_split_page_count=32
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 # Test 3: V2 with 8-page splitting
 vim test_configs.yaml  # Set: pdf_split_page_count=8
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 # Test 4: Tables disabled (override via env var)
-EXTRACT_TABLES=false uv run nemo-retriever-bench --case=e2e --dataset=bo767
+EXTRACT_TABLES=false uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 ```
 
 **Note**: Each test run creates a new timestamped artifact directory, so you can compare results across sweeps.
@@ -576,7 +581,7 @@ EXTRACT_TABLES=false uv run nemo-retriever-bench --case=e2e --dataset=bo767
 ### Attach Mode (Default)
 
 ```bash
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 ```
 
 - **Default behavior**: Assumes services are already running
@@ -588,7 +593,7 @@ uv run nemo-retriever-bench --case=e2e --dataset=bo767
 ### Managed Mode
 
 ```bash
-uv run nemo-retriever-bench --case=e2e --dataset=bo767 --managed
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
 ```
 
 - Starts Docker services automatically
@@ -600,10 +605,10 @@ uv run nemo-retriever-bench --case=e2e --dataset=bo767 --managed
 **Managed mode options:**
 ```bash
 # Skip Docker image rebuild (faster startup)
-uv run nemo-retriever-bench --case=e2e --dataset=bo767 --managed --no-build
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --no-build
 
 # Keep services running after test (useful for multi-test scenarios)
-uv run nemo-retriever-bench --case=e2e --dataset=bo767 --managed --keep-up
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --keep-up
 ```
 
 ## Artifacts and Logging
@@ -631,7 +636,7 @@ tools/harness/artifacts/<test_name>_<timestamp>_UTC/
 Enable per-document element breakdown:
 
 ```bash
-uv run nemo-retriever-bench --case=e2e --doc-analysis
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --doc-analysis
 ```
 
 **Sample Output:**
@@ -655,21 +660,21 @@ This provides:
 - `test_configs.yaml` - Structured configuration file
   - Active test configuration (edit directly)
   - Dataset shortcuts for quick access
-- `src/nemo_retriever_harness/config.py` - Configuration management
+- `src/nv_ingest_harness/config.py` - Configuration management
   - YAML loading and parsing
   - Type-safe config dataclass
   - Validation logic with helpful errors
   - Environment variable override support
 
 **2. Test Runner**
-- `src/nemo_retriever_harness/cli/run.py` - Main orchestration
+- `src/nv_ingest_harness/cli/run.py` - Main orchestration
   - Configuration loading with precedence chain
   - Docker service management (managed mode)
   - Test case execution with config injection
   - Artifact collection and consolidation
 
 **3. Test Cases**
-- `src/nemo_retriever_harness/cases/e2e.py` - Primary E2E test (✅ YAML-based)
+- `src/nv_ingest_harness/cases/e2e.py` - Primary E2E test (✅ YAML-based)
   - Accepts config object directly
   - Type-safe parameter access
   - Full pipeline validation (extract → embed → VDB → retrieval)
@@ -677,19 +682,19 @@ This provides:
 - `cases/e2e_with_llm_summary.py` - E2E with LLM (✅ YAML-based)
   - Adds UDF-based LLM summarization
   - Same config-based architecture as e2e.py
-- `src/nemo_retriever_harness/cases/recall.py` - Recall evaluation (✅ YAML-based)
+- `src/nv_ingest_harness/cases/recall.py` - Recall evaluation (✅ YAML-based)
   - Evaluates retrieval accuracy against existing collections
   - Requires `recall_dataset` in config (from dataset config or env var)
   - Supports reranker comparison modes (none, with, both)
   - Multimodal-only evaluation against `{test_name}_multimodal` collection
-- `src/nemo_retriever_harness/cases/e2e_recall.py` - E2E + Recall (✅ YAML-based)
+- `src/nv_ingest_harness/cases/e2e_recall.py` - E2E + Recall (✅ YAML-based)
   - Combines ingestion (via e2e.py) with recall evaluation (via recall.py)
   - Automatically creates collection during ingestion
   - Requires `recall_dataset` in config (from dataset config or env var)
   - Merges ingestion and recall metrics in results
 
 **4. Shared Utilities**
-- `src/nemo_retriever_harness/utils/interact.py` - Common testing utilities
+- `src/nv_ingest_harness/utils/interact.py` - Common testing utilities
   - `embed_info()` - Embedding model detection
   - `milvus_chunks()` - Vector database statistics
   - `segment_results()` - Result categorization by type
@@ -812,7 +817,7 @@ The framework is dataset-agnostic and supports multiple approaches:
 **Option 1: Use pre-configured dataset (Recommended)**
 ```bash
 # Dataset configs automatically applied
-uv run nemo-retriever-bench --case=e2e --dataset=bo767
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 ```
 
 **Option 2: Add new dataset to YAML**
@@ -827,17 +832,17 @@ datasets:
     extract_infographics: false
     recall_dataset: null  # or set to evaluator name if applicable
 ```
-Then use: `uv run nemo-retriever-bench --case=e2e --dataset=my_dataset`
+Then use: `uv run nv-ingest-harness-run --case=e2e --dataset=my_dataset`
 
 **Option 3: Use custom path (uses active section config)**
 ```bash
-uv run nemo-retriever-bench --case=e2e --dataset=/path/to/your/dataset
+uv run nv-ingest-harness-run --case=e2e --dataset=/path/to/your/dataset
 ```
 
 **Option 4: Environment variable override**
 ```bash
 # Override specific settings via env vars
-EXTRACT_IMAGES=true uv run nemo-retriever-bench --case=e2e --dataset=bo767
+EXTRACT_IMAGES=true uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 ```
 
 **Best Practice**: For repeated testing, add your dataset to the `datasets` section with its native extraction settings. This ensures consistent configuration and enables dataset sweeping.
@@ -849,4 +854,4 @@ EXTRACT_IMAGES=true uv run nemo-retriever-bench --case=e2e --dataset=bo767
 - **Docker setup**: See project root README for service management commands
 - **API documentation**: See `docs/` for API version differences
 
-The framework prioritizes clarity, type safety, and validation to support reliable testing of NeMo Retriever pipelines.
+The framework prioritizes clarity, type safety, and validation to support reliable testing of nv-ingest pipelines.

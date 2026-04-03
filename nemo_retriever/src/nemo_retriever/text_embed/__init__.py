@@ -9,9 +9,9 @@ This stage calls `nv-ingest-api`'s `transform_create_text_embeddings_internal`
 to populate `metadata.embedding` (or a custom target field).
 """
 
-from .text_embed import TextEmbedActor, embed_text_1b_v2
+from .text_embed import TextEmbedActor, TextEmbedGPUActor, embed_text_1b_v2
 
-__all__ = ["TextEmbedActor", "embed_text_1b_v2"]
+__all__ = ["TextEmbedActor", "TextEmbedGPUActor", "embed_text_1b_v2"]
 
 # Optional imports: the "full" embedding stage depends on nv-ingest-api (and its deps).
 # Keep lightweight embedding importable even in minimal environments.

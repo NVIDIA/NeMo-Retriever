@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from nemo_retriever.audio.asr_actor import ASRActor
+from nemo_retriever.audio.asr_actor import ASRActor, ASRCPUActor
 from nemo_retriever.audio.asr_actor import apply_asr_to_df
 from nemo_retriever.params import ASRParams
 
@@ -204,7 +204,7 @@ def test_local_asr_does_not_call_get_client():
     try:
         with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
             params = ASRParams(audio_endpoints=(None, None))
-            actor = ASRActor(params=params)
+            actor = ASRCPUActor(params=params)
 
             mock_get.assert_not_called()
             assert actor._client is None

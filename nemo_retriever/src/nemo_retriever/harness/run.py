@@ -200,7 +200,7 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     cmd = [
         sys.executable,
         "-m",
-        "nemo_retriever.examples.batch_pipeline",
+        "nemo_retriever.examples.graph_pipeline",
         str(Path(cfg.dataset_dir).resolve()),
         "--input-type",
         cfg.input_type,

@@ -12,7 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple  # noqa:
 from datetime import timedelta
 
 from nv_ingest_client.util.vdb.lancedb import LanceDB
-from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema
+from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
 import pandas as pd
 import lancedb
 

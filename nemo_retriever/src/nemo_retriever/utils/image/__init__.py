@@ -3,13 +3,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .__main__ import app
-from .render import (
-    render_page_element_detections_for_image,
-    render_page_element_detections_for_dir,
-)
 
-__all__ = [
-    "app",
-    "render_page_element_detections_for_image",
-    "render_page_element_detections_for_dir",
-]
+try:
+    from .render import (
+        render_page_element_detections_for_dir,
+        render_page_element_detections_for_image,
+    )
+
+    __all__ = [
+        "app",
+        "render_page_element_detections_for_image",
+        "render_page_element_detections_for_dir",
+    ]
+except ModuleNotFoundError:
+    __all__ = ["app"]

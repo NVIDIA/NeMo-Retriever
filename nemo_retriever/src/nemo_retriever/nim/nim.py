@@ -120,11 +120,11 @@ def invoke_image_inference_batches(
     invoke_url: str,
     image_b64_list: Sequence[str],
     api_key: Optional[str] = None,
-    timeout_s: float = 120.0,
+    timeout_s: float = 60.0,
     max_batch_size: int = 8,
-    max_pool_workers: int = 16,
-    max_retries: int = 10,
-    max_429_retries: int = 5,
+    max_pool_workers: int = 8,
+    max_retries: int = 5,
+    max_429_retries: int = 3,
 ) -> List[Any]:
     """
     Invoke one or more image NIM HTTP endpoints with batched concurrent requests.
@@ -199,11 +199,11 @@ def invoke_page_elements_batches(
     invoke_url: str,
     image_b64_list: Sequence[str],
     api_key: Optional[str] = None,
-    timeout_s: float = 120.0,
+    timeout_s: float = 60.0,
     max_batch_size: int = 8,
-    max_pool_workers: int = 16,
-    max_retries: int = 10,
-    max_429_retries: int = 5,
+    max_pool_workers: int = 8,
+    max_retries: int = 5,
+    max_429_retries: int = 3,
 ) -> List[Any]:
     """Backward-compatible alias for page-elements callers."""
     return invoke_image_inference_batches(

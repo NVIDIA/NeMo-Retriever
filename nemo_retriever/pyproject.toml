@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [tool.uv]
 managed = true
 package = true
+no-build-package = ["nemotron-ocr"]
 # fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
@@ -75,6 +76,7 @@ dependencies = [
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
+  "vllm==0.16.0",
 ]
 
 [project.optional-dependencies]
@@ -103,6 +105,10 @@ nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
 torch = { index = "torch-cuda"}
 torchvision = { index ="torch-cuda"}
+vllm = [
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
+]
 
 [[tool.uv.index]]
 name = "test-pypi"

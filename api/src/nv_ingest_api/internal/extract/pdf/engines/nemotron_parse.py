@@ -478,6 +478,8 @@ def _extract_text_and_bounding_boxes(
 def _create_clients(nemotron_parse_config):
     model_interface = nemotron_parse_utils.NemotronParseModelInterface(
         model_name=nemotron_parse_config.nemotron_parse_model_name,
+        image_width=NEMOTRON_PARSE_MAX_WIDTH,
+        image_height=NEMOTRON_PARSE_MAX_HEIGHT,
     )
     nemotron_parse_client = create_inference_client(
         nemotron_parse_config.nemotron_parse_endpoints,

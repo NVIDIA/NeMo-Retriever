@@ -4,14 +4,26 @@
 
 from __future__ import annotations
 
+from importlib import import_module
+
 import typer
 
-from . import compare_json
-from . import compare_results
-
 app = typer.Typer(help="Comparison utilities")
-app.add_typer(compare_json.app, name="json")
-app.add_typer(compare_results.app, name="results")
+
+
+def _register_optional_compare_commands() -> None:
+    for module_name, command_name in (
+        ("compare_json", "json"),
+        ("compare_results", "results"),
+    ):
+        try:
+            module = import_module(f"{__package__}.{module_name}")
+        except ModuleNotFoundError:
+            continue
+        app.add_typer(module.app, name=command_name)
+
+
+_register_optional_compare_commands()
 
 
 def main() -> None:

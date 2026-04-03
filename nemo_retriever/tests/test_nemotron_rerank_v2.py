@@ -509,15 +509,15 @@ class TestNemotronRerankActor:
     """Test the Ray Data-compatible actor."""
 
     def test_actor_with_invoke_url_skips_local_model(self):
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
 
-        actor = NemotronRerankActor(invoke_url="http://localhost:8000")
+        actor = NemotronRerankCPUActor(invoke_url="http://localhost:8000")
         assert actor._model is None
 
     def test_actor_with_rerank_invoke_url_alias(self):
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
 
-        actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
+        actor = NemotronRerankCPUActor(rerank_invoke_url="http://localhost:8000")
         assert actor._model is None
         assert actor._kwargs.get("invoke_url") == "http://localhost:8000"
 

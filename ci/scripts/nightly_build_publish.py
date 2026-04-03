@@ -4,8 +4,10 @@ Nightly builder/publisher for Hugging Face-hosted NVIDIA OSS repos.
 
 Behavior:
 - Clones a HF git repo with Git LFS smudge disabled (so large weights are not downloaded).
-- Attempts to append a PEP 440 dev version suffix (YYYYMMDD) to pyproject.toml or setup.cfg.
+- Patches a PEP 440 dev version into pyproject.toml or setup.cfg (default suffix: UTC
+  YYYYMMDD; override with NIGHTLY_DATE_SUFFIX or NIGHTLY_DATE_YYYYMMDD, e.g. from CI).
 - Builds sdist + wheel via `python -m build`.
+- Optional ``--auditwheel-repair`` rewrites ``linux_*`` wheels to ``manylinux_*`` for PyPI.
 - Optionally uploads to (Test)PyPI via twine.
 
 This is intentionally best-effort across heterogeneous upstream projects.
@@ -36,9 +38,14 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _nightly_suffix_yyyymmdd() -> str:
-    # Allow overriding for reproducibility.
-    forced = os.environ.get("NIGHTLY_DATE_YYYYMMDD")
+def _nightly_suffix() -> str:
+    """Return the numeric part after ``.dev`` in the nightly PEP 440 version.
+
+    Default is UTC ``YYYYMMDD`` so parallel matrix legs (e.g. x86_64 + aarch64) publish
+    under the same version. Override with ``NIGHTLY_DATE_SUFFIX`` or
+    ``NIGHTLY_DATE_YYYYMMDD`` (e.g. set once per workflow run in CI).
+    """
+    forced = os.environ.get("NIGHTLY_DATE_SUFFIX") or os.environ.get("NIGHTLY_DATE_YYYYMMDD")
     if forced:
         return forced
     return _dt.datetime.now(_dt.UTC).strftime("%Y%m%d")
@@ -80,7 +87,7 @@ def _ensure_venv(venv_dir: Path, *, system_site_packages: bool) -> Path:
     return py
 
 
-def _pep440_nightly(base_version: str, yyyymmdd: str) -> str:
+def _pep440_nightly(base_version: str, suffix: str) -> str:
     """
     Convert a base version to a nightly dev version.
     Examples:
@@ -88,9 +95,8 @@ def _pep440_nightly(base_version: str, yyyymmdd: str) -> str:
       1.2.3+local -> 1.2.3.dev20260127
     """
     base = base_version.split("+", 1)[0].strip()
-    # If already has a .dev segment, replace it to keep it monotonic daily.
     base = re.sub(r"\.dev\d+$", "", base)
-    return f"{base}.dev{yyyymmdd}"
+    return f"{base}.dev{suffix}"
 
 
 def _patch_pyproject_version(repo_dir: Path) -> bool:
@@ -105,13 +111,82 @@ def _patch_pyproject_version(repo_dir: Path) -> bool:
         return False
 
     old_version = m.group(1)
-    new_version = _pep440_nightly(old_version, _nightly_suffix_yyyymmdd())
+    new_version = _pep440_nightly(old_version, _nightly_suffix())
     if new_version == old_version:
         return False
 
     text2 = text[: m.start(1)] + new_version + text[m.end(1) :]
     _write_text(pyproject, text2)
     print(f"Patched pyproject.toml version: {old_version} -> {new_version}")
+    return True
+
+
+def _patch_hatch_build_force_platform_wheel(project_dir: Path) -> bool:
+    """
+    Hatchling may emit py3-none-any for extension builds unless the hook sets
+    build_data[\"pure_python\"] = False and build_data[\"infer_tag\"] = True so the
+    wheel tag matches the current interpreter/platform. Patch upstream hatch_build.py
+    when we recognize the Nemotron OCR layout.
+    """
+    path = project_dir / "hatch_build.py"
+    if not path.is_file():
+        return False
+    text = _read_text(path)
+    has_pp = 'build_data["pure_python"]' in text or "build_data['pure_python']" in text
+    has_it = 'build_data["infer_tag"]' in text or "build_data['infer_tag']" in text
+    if has_pp and has_it:
+        return False
+    if "CustomBuildHook" not in text or "def initialize" not in text:
+        return False
+    needle = "def initialize(self, version: str, build_data: dict) -> None:"
+    idx = text.find(needle)
+    if idx < 0:
+        return False
+    body_start = idx + len(needle)
+    insert_at = body_start
+    while insert_at < len(text) and text[insert_at] in " \t":
+        insert_at += 1
+    if insert_at < len(text) and text[insert_at] == "\n":
+        insert_at += 1
+
+    block = '        build_data["pure_python"] = False\n' '        build_data["infer_tag"] = True\n'
+
+    if not has_pp and not has_it:
+        patched = text[:insert_at] + block + text[insert_at:]
+        _write_text(path, patched)
+        print("Patched hatch_build.py: pure_python=False, infer_tag=True")
+        return True
+
+    if has_pp and not has_it:
+        lines = text.splitlines(keepends=True)
+        out: list[str] = []
+        inserted = False
+        for line in lines:
+            out.append(line)
+            if inserted:
+                continue
+            if ('build_data["pure_python"]' in line or "build_data['pure_python']" in line) and "False" in line:
+                out.append('        build_data["infer_tag"] = True\n')
+                inserted = True
+        if not inserted:
+            return False
+        _write_text(path, "".join(out))
+        print('Patched hatch_build.py: build_data["infer_tag"] = True')
+        return True
+
+    # has_it and not has_pp: insert pure_python line before first infer_tag line
+    lines = text.splitlines(keepends=True)
+    out = []
+    inserted = False
+    for line in lines:
+        if not inserted and ('build_data["infer_tag"]' in line or "build_data['infer_tag']" in line):
+            out.append('        build_data["pure_python"] = False\n')
+            inserted = True
+        out.append(line)
+    if not inserted:
+        return False
+    _write_text(path, "".join(out))
+    print('Patched hatch_build.py: build_data["pure_python"] = False')
     return True
 
 
@@ -127,7 +202,7 @@ def _patch_setup_cfg_version(repo_dir: Path) -> bool:
         return False
 
     old_version = m.group(1).strip().strip('"').strip("'")
-    new_version = _pep440_nightly(old_version, _nightly_suffix_yyyymmdd())
+    new_version = _pep440_nightly(old_version, _nightly_suffix())
     if new_version == old_version:
         return False
 
@@ -244,7 +319,66 @@ def _build(
         shutil.copy2(artifact, out_dir / artifact.name)
 
 
-def _twine_upload(dist_dir: Path, repository_url: str, token: str, *, skip_existing: bool) -> None:
+def _auditwheel_repair_dist_dir(dist_dir: Path, *, exclude_libs: list[str] | None = None) -> None:
+    """
+    Rewrite linux_* wheels to manylinux_* so TestPyPI/PyPI accept the upload.
+    Requires ``patchelf`` on PATH (e.g. apt install patchelf).
+
+    *exclude_libs* is a list of shared library basenames (e.g. ``libtorch_cpu.so``)
+    that auditwheel should NOT bundle.  This is needed for wheels that link against
+    PyTorch: the torch libs are a runtime dependency, not something to vendor.
+    """
+    wheels = sorted(dist_dir.glob("*.whl"))
+    if not wheels:
+        return
+
+    venv_dir = Path(os.environ.get("ORCH_VENV_DIR", ".venv-build"))
+    py = _ensure_venv(venv_dir, system_site_packages=False)
+    env = os.environ.copy()
+    env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    env = _ensure_tmpdir(env)
+    _pip_install(py, ["auditwheel"], cwd=dist_dir.parent, env=env)
+
+    repair_out = dist_dir / ".auditwheel-out"
+    _ensure_clean_dir(repair_out)
+    exclude_flags: list[str] = []
+    for lib in exclude_libs or []:
+        exclude_flags += ["--exclude", lib]
+    cmd = [
+        str(py),
+        "-m",
+        "auditwheel",
+        "repair",
+        *[str(w) for w in wheels],
+        "-w",
+        str(repair_out),
+        *exclude_flags,
+    ]
+    _run(cmd, env=env)
+
+    repaired = sorted(repair_out.glob("*.whl"))
+    if not repaired:
+        raise RuntimeError("auditwheel repair produced no wheels")
+
+    for w in wheels:
+        w.unlink()
+
+    for rw in repaired:
+        dest = dist_dir / rw.name
+        shutil.move(str(rw), dest)
+        print(f"auditwheel: {dest.name}")
+
+    shutil.rmtree(repair_out)
+
+
+def _twine_upload(
+    dist_dir: Path,
+    repository_url: str,
+    token: str,
+    *,
+    skip_existing: bool,
+    verbose: bool,
+) -> None:
     venv_dir = Path(os.environ.get("ORCH_VENV_DIR", ".venv-build"))
     # Twine doesn't need system site packages; keep it off by default.
     py = _ensure_venv(venv_dir, system_site_packages=False)
@@ -265,6 +399,8 @@ def _twine_upload(dist_dir: Path, repository_url: str, token: str, *, skip_exist
     ]
     if skip_existing:
         cmd.append("--skip-existing")
+    if verbose:
+        cmd.append("--verbose")
     cmd.append(str(dist_dir / "*"))
     _run(cmd, env=env)
 
@@ -311,6 +447,29 @@ def main() -> int:
     ap.add_argument("--repository-url", default="https://test.pypi.org/legacy/", help="Twine repository URL")
     ap.add_argument("--token-env", default="TEST_PYPI_API_TOKEN", help="Env var containing API token")
     ap.add_argument("--skip-existing", action="store_true", help="Pass --skip-existing to twine")
+    ap.add_argument(
+        "--twine-verbose",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Pass --verbose to twine upload (default: true; use --no-twine-verbose to silence)",
+    )
+    ap.add_argument(
+        "--hatch-force-platform-wheel",
+        action="store_true",
+        help="Patch hatch_build.py so hatchling emits a platform-specific wheel (not py3-none-any)",
+    )
+    ap.add_argument(
+        "--auditwheel-repair",
+        action="store_true",
+        help="Run auditwheel repair on built wheels (manylinux tag; needed for PyPI/TestPyPI)",
+    )
+    ap.add_argument(
+        "--auditwheel-exclude",
+        action="append",
+        default=[],
+        help="Shared library to exclude from auditwheel bundling (repeatable). "
+        "Use for runtime deps like libtorch_cpu.so that should not be vendored.",
+    )
     args = ap.parse_args()
 
     root = Path.cwd()
@@ -337,6 +496,10 @@ def main() -> int:
     if not patched:
         print("No static version field found to patch (continuing).")
 
+    if args.hatch_force_platform_wheel:
+        if not _patch_hatch_build_force_platform_wheel(project_dir):
+            print("hatch-force-platform-wheel: no applicable hatch_build.py patch applied")
+
     print("=== Building sdist + wheel ===")
     out_dir = dist_root / args.repo_id
     _ensure_clean_dir(out_dir)
@@ -350,12 +513,22 @@ def main() -> int:
     )
     print(f"Artifacts in: {out_dir}")
 
+    if args.auditwheel_repair:
+        print("=== auditwheel repair ===")
+        _auditwheel_repair_dist_dir(out_dir, exclude_libs=args.auditwheel_exclude)
+
     if args.upload:
         token = os.environ.get(args.token_env)
         if not token:
             raise RuntimeError(f"Missing required env var: {args.token_env}")
         print(f"=== Uploading to {args.repository_url} ===")
-        _twine_upload(out_dir, args.repository_url, token, skip_existing=args.skip_existing)
+        _twine_upload(
+            out_dir,
+            args.repository_url,
+            token,
+            skip_existing=args.skip_existing,
+            verbose=args.twine_verbose,
+        )
 
     return 0
 

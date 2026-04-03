@@ -23,6 +23,10 @@ import numpy as np
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
 
 try:
@@ -450,7 +454,7 @@ def ocr_page_elements(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     extract_text: bool = False,
     extract_tables: bool = False,
     extract_charts: bool = False,
@@ -461,9 +465,9 @@ def ocr_page_elements(
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
     Run Nemotron OCR v1 on cropped regions detected by PageElements v3.
@@ -739,7 +743,7 @@ def ocr_page_elements(
 # ---------------------------------------------------------------------------
 
 
-class OCRActor:
+class OCRGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron OCR v1 once per actor.
 
@@ -757,9 +761,8 @@ class OCRActor:
         )
     """
 
-    __slots__ = ("ocr_kwargs", "_model", "_remote_retry")
-
     def __init__(self, **ocr_kwargs: Any) -> None:
+        super().__init__(**ocr_kwargs)
         import warnings
 
         if Image is not None:
@@ -767,8 +770,8 @@ class OCRActor:
 
         self.ocr_kwargs = dict(ocr_kwargs)
         invoke_url = str(self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or "").strip()
-        if invoke_url and "invoke_url" not in self.ocr_kwargs:
-            self.ocr_kwargs["invoke_url"] = invoke_url
+        if invoke_url:
+            raise ValueError("OCRGPUActor does not support remote endpoint execution. Use OCRCPUActor instead.")
 
         # Normalize common constructor kwargs to expected runtime types/defaults.
         self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
@@ -776,30 +779,36 @@ class OCRActor:
         self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
         self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
         self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
-        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
+        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 60.0))
         self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))
 
         self._remote_retry = RemoteRetryParams(
-            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 16)),
-            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 10)),
-            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
+            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 8)),
+            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 5)),
+            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 3)),
         )
-        if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronOCRV1
+        from nemo_retriever.model.local import NemotronOCRV1
 
-            self._model = NemotronOCRV1()
+        self._model = NemotronOCRV1()
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return ocr_page_elements(
+            data,
+            model=self._model,
+            remote_retry=self._remote_retry,
+            **self.ocr_kwargs,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
-            return ocr_page_elements(
-                batch_df,
-                model=self._model,
-                remote_retry=self._remote_retry,
-                **self.ocr_kwargs,
-                **override_kwargs,
-            )
+            return self.run(batch_df, **override_kwargs)
         except BaseException as e:
             # Never let the Ray UDF raise — return a DataFrame with error metadata.
             if isinstance(batch_df, pd.DataFrame):
@@ -812,6 +821,85 @@ class OCRActor:
                 out["ocr_v1"] = [payload for _ in range(n)]
                 return out
             return [{"ocr_v1": _error_payload(stage="actor_call", exc=e)}]
+
+
+class OCRCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only variant of :class:`OCRActor`.
+
+    Defaults to the build.nvidia.com endpoint for ``nemotron-ocr-v1``.
+    No local GPU model is loaded.
+    """
+
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+
+    def __init__(self, **ocr_kwargs: Any) -> None:
+        super().__init__(**ocr_kwargs)
+        self.ocr_kwargs = dict(ocr_kwargs)
+        invoke_url = str(
+            self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or self.DEFAULT_INVOKE_URL
+        ).strip()
+        if "invoke_url" not in self.ocr_kwargs:
+            self.ocr_kwargs["invoke_url"] = invoke_url
+
+        self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
+        self.ocr_kwargs["extract_tables"] = bool(self.ocr_kwargs.get("extract_tables", False))
+        self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
+        self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
+        self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
+        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 60.0))
+        self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))
+
+        self._remote_retry = RemoteRetryParams(
+            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 8)),
+            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 5)),
+            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 3)),
+        )
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return ocr_page_elements(
+            data,
+            model=self._model,
+            remote_retry=self._remote_retry,
+            **self.ocr_kwargs,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="actor_call", exc=e)
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["chart"] = [[] for _ in range(n)]
+                out["infographic"] = [[] for _ in range(n)]
+                out["ocr_v1"] = [payload for _ in range(n)]
+                return out
+            return [{"ocr_v1": _error_payload(stage="actor_call", exc=e)}]
+
+
+class OCRActor(ArchetypeOperator):
+    """Graph-facing OCR archetype."""
+
+    _cpu_variant_class = OCRCPUActor
+    _gpu_variant_class = OCRGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **ocr_kwargs: Any) -> None:
+        super().__init__(**ocr_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -854,7 +942,7 @@ def nemotron_parse_page_elements(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     extract_text: bool = False,
     extract_tables: bool = False,
     extract_charts: bool = False,
@@ -870,9 +958,9 @@ def nemotron_parse_page_elements(
     so this stage can replace the page-elements + OCR pair in pipeline wiring.
     """
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("nemotron_parse_page_elements currently only supports pandas.DataFrame input.")
@@ -1055,25 +1143,13 @@ def nemotron_parse_page_elements(
     return out
 
 
-class NemotronParseActor:
+class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Parse v1.2 once per actor.
 
     This actor is a drop-in map-batches stage intended for future pipeline
     wiring in batch/inprocess ingest modes.
     """
-
-    __slots__ = (
-        "_model",
-        "_extract_tables",
-        "_extract_charts",
-        "_extract_infographics",
-        "_invoke_url",
-        "_api_key",
-        "_request_timeout_s",
-        "_task_prompt",
-        "_remote_retry",
-    )
 
     def __init__(
         self,
@@ -1084,13 +1160,18 @@ class NemotronParseActor:
         nemotron_parse_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
+        request_timeout_s: float = 60.0,
         task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
     ) -> None:
+        super().__init__()
         self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        if self._invoke_url:
+            raise ValueError(
+                "NemotronParseGPUActor does not support remote endpoint execution. Use NemotronParseCPUActor instead."
+            )
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)
@@ -1099,31 +1180,37 @@ class NemotronParseActor:
             remote_max_retries=int(remote_max_retries),
             remote_max_429_retries=int(remote_max_429_retries),
         )
-        if self._invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronParseV12
+        from nemo_retriever.model.local import NemotronParseV12
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+        self._model = NemotronParseV12(task_prompt=self._task_prompt)
         self._extract_tables = bool(extract_tables)
         self._extract_charts = bool(extract_charts)
         self._extract_infographics = bool(extract_infographics)
 
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return nemotron_parse_page_elements(
+            data,
+            model=self._model,
+            invoke_url=self._invoke_url,
+            api_key=self._api_key,
+            request_timeout_s=self._request_timeout_s,
+            task_prompt=self._task_prompt,
+            extract_tables=self._extract_tables,
+            extract_charts=self._extract_charts,
+            extract_infographics=self._extract_infographics,
+            remote_retry=self._remote_retry,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
-            return nemotron_parse_page_elements(
-                batch_df,
-                model=self._model,
-                invoke_url=self._invoke_url,
-                api_key=self._api_key,
-                request_timeout_s=self._request_timeout_s,
-                task_prompt=self._task_prompt,
-                extract_tables=self._extract_tables,
-                extract_charts=self._extract_charts,
-                extract_infographics=self._extract_infographics,
-                remote_retry=self._remote_retry,
-                **override_kwargs,
-            )
+            return self.run(batch_df, **override_kwargs)
         except BaseException as e:
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
@@ -1138,3 +1225,134 @@ class NemotronParseActor:
                 out["nemotron_parse_v1_2"] = [payload for _ in range(n)]
                 return out
             return [{"nemotron_parse_v1_2": _error_payload(stage="nemotron_parse_actor_call", exc=e)}]
+
+
+class NemotronParseCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only variant of :class:`NemotronParseActor`.
+
+    Defaults to the build.nvidia.com endpoint for ``nemotron-parse``.
+    No local GPU model is loaded.
+    """
+
+    DEFAULT_INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+
+    def __init__(
+        self,
+        *,
+        extract_tables: bool = False,
+        extract_charts: bool = False,
+        extract_infographics: bool = False,
+        nemotron_parse_invoke_url: Optional[str] = None,
+        invoke_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        request_timeout_s: float = 60.0,
+        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
+    ) -> None:
+        super().__init__()
+        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or self.DEFAULT_INVOKE_URL).strip()
+        self._api_key = api_key
+        self._request_timeout_s = float(request_timeout_s)
+        self._task_prompt = str(task_prompt)
+        self._remote_retry = RemoteRetryParams(
+            remote_max_pool_workers=int(remote_max_pool_workers),
+            remote_max_retries=int(remote_max_retries),
+            remote_max_429_retries=int(remote_max_429_retries),
+        )
+        self._model = None
+        self._extract_tables = bool(extract_tables)
+        self._extract_charts = bool(extract_charts)
+        self._extract_infographics = bool(extract_infographics)
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return nemotron_parse_page_elements(
+            data,
+            model=self._model,
+            invoke_url=self._invoke_url,
+            api_key=self._api_key,
+            request_timeout_s=self._request_timeout_s,
+            task_prompt=self._task_prompt,
+            extract_tables=self._extract_tables,
+            extract_charts=self._extract_charts,
+            extract_infographics=self._extract_infographics,
+            remote_retry=self._remote_retry,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="nemotron_parse_actor_call", exc=e)
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["chart"] = [[] for _ in range(n)]
+                out["infographic"] = [[] for _ in range(n)]
+                out["table_parse"] = [[] for _ in range(n)]
+                out["chart_parse"] = [[] for _ in range(n)]
+                out["infographic_parse"] = [[] for _ in range(n)]
+                out["nemotron_parse_v1_2"] = [payload for _ in range(n)]
+                return out
+            return [{"nemotron_parse_v1_2": _error_payload(stage="nemotron_parse_actor_call", exc=e)}]
+
+
+class NemotronParseActor(ArchetypeOperator):
+    """Graph-facing Nemotron Parse archetype."""
+
+    _cpu_variant_class = NemotronParseCPUActor
+    _gpu_variant_class = NemotronParseGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("nemotron_parse_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(
+        self,
+        *,
+        extract_tables: bool = False,
+        extract_charts: bool = False,
+        extract_infographics: bool = False,
+        nemotron_parse_invoke_url: Optional[str] = None,
+        invoke_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        request_timeout_s: float = 60.0,
+        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
+    ) -> None:
+        super().__init__(
+            extract_tables=extract_tables,
+            extract_charts=extract_charts,
+            extract_infographics=extract_infographics,
+            nemotron_parse_invoke_url=nemotron_parse_invoke_url,
+            invoke_url=invoke_url,
+            api_key=api_key,
+            request_timeout_s=request_timeout_s,
+            task_prompt=task_prompt,
+            remote_max_pool_workers=remote_max_pool_workers,
+            remote_max_retries=remote_max_retries,
+            remote_max_429_retries=remote_max_429_retries,
+        )
+        self._extract_tables = bool(extract_tables)
+        self._extract_charts = bool(extract_charts)
+        self._extract_infographics = bool(extract_infographics)
+        self._nemotron_parse_invoke_url = nemotron_parse_invoke_url
+        self._invoke_url = invoke_url
+        self._api_key = api_key
+        self._request_timeout_s = float(request_timeout_s)
+        self._task_prompt = str(task_prompt)
+        self._remote_max_pool_workers = int(remote_max_pool_workers)
+        self._remote_max_retries = int(remote_max_retries)
+        self._remote_max_429_retries = int(remote_max_429_retries)

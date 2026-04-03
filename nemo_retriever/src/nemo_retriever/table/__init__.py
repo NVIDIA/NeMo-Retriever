@@ -9,9 +9,16 @@ This stage enriches existing STRUCTURED/table primitives by populating
 `metadata.table_metadata.table_content` using OCR (and optionally YOLOX).
 """
 
-from .table_detection import TableStructureActor, table_structure_ocr_page_elements
+from .table_detection import (
+    TableStructureActor,
+    TableStructureCPUActor,
+    TableStructureGPUActor,
+    table_structure_ocr_page_elements,
+)
 
 __all__ = [
     "TableStructureActor",
+    "TableStructureCPUActor",
+    "TableStructureGPUActor",
     "table_structure_ocr_page_elements",
 ]

@@ -53,12 +53,17 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
 _SCORE_COLUMN = "rerank_score"
+_DEFAULT_RERANK_ENDPOINT = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +246,7 @@ def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-class NemotronRerankActor:
+class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
 
@@ -275,10 +280,6 @@ class NemotronRerankActor:
     ----------
     model_name:
         HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-1b-v2"``).
-    invoke_url:
-        Base URL of a vLLM / NIM ``/rerank`` endpoint.  When set the actor
-        skips local model creation and delegates all scoring to the endpoint.
-        Also accepted as ``rerank_invoke_url``.
     api_key:
         Bearer token for the remote endpoint.
     device:
@@ -299,29 +300,35 @@ class NemotronRerankActor:
         If ``True`` (default) rows in each batch are sorted by score descending.
     """
 
-    __slots__ = ("_kwargs", "_model")
-
     def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
 
         invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
-        if invoke_url and "invoke_url" not in self._kwargs:
-            self._kwargs["invoke_url"] = invoke_url
-
         if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronRerankV2
-
-            self._model = NemotronRerankV2(
-                model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
-                device=self._kwargs.get("device") or None,
-                hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+            raise ValueError(
+                "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
+        from nemo_retriever.model.local import NemotronRerankV2
+
+        self._model = NemotronRerankV2(
+            model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
+            device=self._kwargs.get("device") or None,
+            hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+        )
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        return _rerank_batch(batch_df, model=self._model, **self._kwargs, **override_kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
-            return _rerank_batch(batch_df, model=self._model, **self._kwargs, **override_kwargs)
+            return self.run(batch_df, **override_kwargs)
         except BaseException as exc:
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
@@ -330,6 +337,53 @@ class NemotronRerankActor:
                 out[score_col] = [payload for _ in range(len(out.index))]
                 return out
             return [{"rerank_score": _error_payload(stage="actor_call", exc=exc)}]
+
+
+class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only reranking actor that delegates to a remote endpoint."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._kwargs = dict(kwargs)
+        invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
+        if not invoke_url:
+            invoke_url = _DEFAULT_RERANK_ENDPOINT
+        self._kwargs["invoke_url"] = invoke_url
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        return _rerank_batch(batch_df, model=self._model, **self._kwargs, **override_kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as exc:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="actor_call", exc=exc)
+                score_col = str(self._kwargs.get("score_column", _SCORE_COLUMN))
+                out[score_col] = [payload for _ in range(len(out.index))]
+                return out
+            return [{"rerank_score": _error_payload(stage="actor_call", exc=exc)}]
+
+
+class NemotronRerankActor(ArchetypeOperator):
+    _cpu_variant_class = NemotronRerankCPUActor
+    _gpu_variant_class = NemotronRerankGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("rerank_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
 
 
 # ---------------------------------------------------------------------------

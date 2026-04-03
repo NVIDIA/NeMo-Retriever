@@ -4,25 +4,25 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure the followi
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
 
 ## Software Requirements
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)
-- **Python 3.12 or later** (required for NeMo Retriever Library packages; see note below)
 - [Docker](https://docs.docker.com/engine/install/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 - [Docker Buildx](https://docs.docker.com/build/concepts/overview/#buildx) `>= 0.17` (Compose 2.40+ enforces this)
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-- [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/)
+- [Python](https://www.python.org/downloads/) `>= 3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
+- [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
 
 
 !!! note
 
-    Install **Python 3.12 or later** before creating your environment. Using Python 3.10 or 3.11 will cause dependency resolution failures when installing NeMo Retriever Library packages.
+    When you use UV, create the environment with Python 3.12 or later — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
 
 
 
@@ -38,7 +38,7 @@ For additional hardware details, refer to [Support Matrix](support-matrix.md).
 
 - **System Memory**: At least 256 GB RAM
 - **CPU Cores**: At least 32 CPU cores
-- **GPU**: NVIDIA GPU with at least 24 GB VRAM (e.g., A100, V100, or equivalent)
+- **GPU**: NVIDIA GPU with at least 24 GB VRAM (e.g., A100, H100, L40S, or equivalent)
 
 !!! note
 

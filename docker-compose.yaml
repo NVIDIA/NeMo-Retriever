@@ -184,7 +184,7 @@ services:
       - reranker
 
   nemotron-parse:
-    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse}:${NEMOTRON_PARSE_TAG:-1.5.0}
+    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NEMOTRON_PARSE_TAG:-1.7.0-variant}
     shm_size: 16gb
     ports:
       - "${NEMOTRON_PARSE_HTTP_PORT:-8018}:8000"
@@ -328,7 +328,7 @@ services:
       # - NEMOTRON_PARSE_HTTP_ENDPOINT=https://integrate.api.nvidia.com/v1/chat/completions
       - NEMOTRON_PARSE_HTTP_ENDPOINT=http://nemotron-parse:8000/v1/chat/completions
       - NEMOTRON_PARSE_INFER_PROTOCOL=http
-      - NEMOTRON_PARSE_MODEL_NAME=nvidia/nemotron-parse
+      - NEMOTRON_PARSE_MODEL_NAME=${NEMOTRON_PARSE_MODEL_NAME:-nvidia/nemotron-parse-v1.2}
       - NGC_API_KEY=${NGC_API_KEY:-ngcapikey}
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-${NGC_API_KEY:-ngcapikey}}
       - NV_INGEST_MAX_UTIL=${NV_INGEST_MAX_UTIL:-32}

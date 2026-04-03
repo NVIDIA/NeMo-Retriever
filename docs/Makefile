@@ -9,7 +9,7 @@ SPHINX_OUTPUT_DIR=docs/extraction/api-docs
 
 # Check for the nv_ingest module
 INGEST_PYTHON_MODULE_EXISTS := $(shell python -c "import importlib.util; exit(0 if importlib.util.find_spec('nv_ingest') else 1)" && echo 1 || echo 0)
-PYTHONPATH=$(CURDIR)/../src:$(CURDIR)/../api/src:$(CURDIR)/../client/src
+PYTHONPATH=$(CURDIR)/../src:$(CURDIR)/../api/src:$(CURDIR)/../client/src:$(CURDIR)/../nemo_retriever/src
 
 
 # Default target
@@ -27,6 +27,9 @@ sphinx-apidoc:
 
 	@echo "🏃 Running sphinx-apidoc against nv-ingest-client"
 	sphinx-apidoc -o sphinx_docs/source/nv-ingest-client ../client/src/nv_ingest_client
+
+	@echo "🏃 Running sphinx-apidoc against nemo-retriever"
+	sphinx-apidoc -o sphinx_docs/source/nemo-retriever ../nemo_retriever/src/nemo_retriever
 
 # Generate nv-ingest openapi specification schema
 .PHONY: generate-openapi-schema
