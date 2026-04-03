@@ -362,7 +362,7 @@ class TestTableStructureOCRConfig:
         assert cfg.table_structure_invoke_url == ""
         assert cfg.ocr_invoke_url == ""
         assert cfg.api_key == ""
-        assert cfg.request_timeout_s == 120.0
+        assert cfg.request_timeout_s == 60.0
 
     def test_load_config_with_values(self) -> None:
         from nemo_retriever.table.config import load_table_structure_ocr_config_from_dict

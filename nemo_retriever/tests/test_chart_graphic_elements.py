@@ -312,7 +312,7 @@ class TestGraphicElementsOCRConfig:
         assert cfg.graphic_elements_invoke_url == ""
         assert cfg.ocr_invoke_url == ""
         assert cfg.api_key == ""
-        assert cfg.request_timeout_s == 120.0
+        assert cfg.request_timeout_s == 60.0
 
     def test_load_config_with_values(self) -> None:
         from nemo_retriever.chart.config import load_graphic_elements_ocr_config_from_dict
