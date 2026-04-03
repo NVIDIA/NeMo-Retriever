@@ -255,6 +255,7 @@ def build_graph(
             "method": extract_params.method,
             "dpi": int(extract_params.dpi),
             "extract_text": extract_params.extract_text,
+            "extract_images": extract_params.extract_images,
             "extract_tables": extract_params.extract_tables,
             "extract_charts": extract_params.extract_charts,
             "extract_infographics": extract_params.extract_infographics,

@@ -244,6 +244,18 @@ class GraphIngestor(ingestor):
         ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
         """
+        # Auto-enable dedup before captioning so that images overlapping
+        # with table/chart/infographic detections are removed first.
+        if self._caption_params is not None and self._dedup_params is None:
+            self._dedup_params = DedupParams()
+            if "dedup" not in self._stage_order:
+                # Insert dedup right before caption in the stage order.
+                try:
+                    idx = self._stage_order.index("caption")
+                except ValueError:
+                    idx = len(self._stage_order)
+                self._stage_order.insert(idx, "dedup")
+
         post_extract_order = tuple(s for s in self._stage_order if s != "extract")
 
         if self._run_mode == "batch":
