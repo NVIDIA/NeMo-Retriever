@@ -14,6 +14,8 @@ from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
+    NEMOTRON_PARSE_BATCH_SIZE,
+    NEMOTRON_PARSE_GPUS_PER_ACTOR,
     OCR_GPUS_PER_ACTOR,
 )
 
@@ -252,6 +254,13 @@ class RayDataExecutor(AbstractExecutor):
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
 
+            # NemotronParseActor uses vLLM which handles its own batching
+            # efficiently, so feed it more rows per map_batches call.
+            from nemo_retriever.parse.nemotron_parse import NemotronParseActor
+
+            if batch_size == self._default_batch_size and issubclass(node.operator_class, NemotronParseActor):
+                batch_size = NEMOTRON_PARSE_BATCH_SIZE
+
             # When no explicit num_gpus override is given, auto-detect from the
             # GPUOperator mixin using actual cluster GPU availability.
             if "num_gpus" in overrides:
@@ -264,7 +273,14 @@ class RayDataExecutor(AbstractExecutor):
                 elif available_gpus > 0:
                     # Local model, GPUs present: assign the heuristic fraction so
                     # Ray can co-schedule multiple actors per GPU.
-                    num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
+                    # Exception: NemotronParseActor uses vLLM which manages
+                    # its own KV-cache and requires exclusive GPU access.
+                    from nemo_retriever.parse.nemotron_parse import NemotronParseActor
+
+                    if issubclass(node.operator_class, NemotronParseActor):
+                        num_gpus = max(self._default_num_gpus, NEMOTRON_PARSE_GPUS_PER_ACTOR)
+                    else:
+                        num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
                 else:
                     # No GPUs in the cluster — operator will likely fail to load
                     # its CUDA model.  Warn loudly rather than silently requesting
