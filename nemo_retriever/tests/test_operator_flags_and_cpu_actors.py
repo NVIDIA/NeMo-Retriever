@@ -22,6 +22,7 @@ class TestGPUOperatorFlag:
         assert isinstance(GPUOperator(), GPUOperator)
 
     def test_gpu_operators_have_flag(self):
+        from nemo_retriever.audio.asr_actor import ASRGPUActor
         from nemo_retriever.page_elements.page_elements import PageElementDetectionGPUActor
         from nemo_retriever.chart.chart_detection import GraphicElementsGPUActor
         from nemo_retriever.table.table_detection import TableStructureGPUActor
@@ -32,6 +33,7 @@ class TestGPUOperatorFlag:
         from nemo_retriever.rerank.rerank import NemotronRerankGPUActor
         from nemo_retriever.text_embed.text_embed import TextEmbedGPUActor
 
+        assert issubclass(ASRGPUActor, GPUOperator)
         assert issubclass(PageElementDetectionGPUActor, GPUOperator)
         assert issubclass(GraphicElementsGPUActor, GPUOperator)
         assert issubclass(TableStructureGPUActor, GPUOperator)
