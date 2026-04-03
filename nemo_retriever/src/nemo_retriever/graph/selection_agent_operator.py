@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, List, Literal, Optional
+from typing import Any, List, Optional
 
 import pandas as pd
 
@@ -161,15 +161,12 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame:
         """Validate that *data* is a DataFrame with the required columns."""
         if not isinstance(data, pd.DataFrame):
-            raise TypeError(
-                f"SelectionAgentOperator expects a pd.DataFrame, got {type(data).__name__!r}."
-            )
+            raise TypeError(f"SelectionAgentOperator expects a pd.DataFrame, got {type(data).__name__!r}.")
         required = {"query_id", "query_text", "doc_id", "text"}
         missing = required - set(data.columns)
         if missing:
             raise ValueError(
-                f"Input DataFrame is missing required column(s): {sorted(missing)}. "
-                f"Expected: {sorted(required)}."
+                f"Input DataFrame is missing required column(s): {sorted(missing)}. " f"Expected: {sorted(required)}."
             )
         return data.copy()
 
@@ -181,19 +178,18 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
         for query_id, group in data.groupby("query_id", sort=False):
             query_text = str(group["query_text"].iloc[0])
-            docs = [
-                {"id": str(row["doc_id"]), "text": str(row["text"])}
-                for _, row in group.iterrows()
-            ]
+            docs = [{"id": str(row["doc_id"]), "text": str(row["text"])} for _, row in group.iterrows()]
             result = self._select_documents(query_text, docs)
             message = result.get("message", "")
             for rank, doc_id in enumerate(result.get("doc_ids", []), 1):
-                rows.append({
-                    "query_id": query_id,
-                    "doc_id": doc_id,
-                    "rank": rank,
-                    "message": message,
-                })
+                rows.append(
+                    {
+                        "query_id": query_id,
+                        "doc_id": doc_id,
+                        "rank": rank,
+                        "message": message,
+                    }
+                )
 
         if not rows:
             return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message"])
@@ -215,8 +211,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             from openai import OpenAI
         except ImportError as exc:
             raise ImportError(
-                "SelectionAgentOperator requires 'openai'. "
-                "Install it with:  pip install 'openai>=1.0'"
+                "SelectionAgentOperator requires 'openai'. " "Install it with:  pip install 'openai>=1.0'"
             ) from exc
 
         api_key = self._api_key
@@ -248,7 +243,10 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "thought": {"type": "string", "description": "Your reasoning or analysis."}
+                            "thought": {
+                                "type": "string",
+                                "description": "Your reasoning or analysis.",
+                            }
                         },
                         "required": ["thought"],
                     },
@@ -278,9 +276,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                             },
                             "message": {
                                 "type": "string",
-                                "description": (
-                                    "A brief explanation of your selection and the relevance ordering."
-                                ),
+                                "description": ("A brief explanation of your selection and the relevance ordering."),
                             },
                         },
                     },
@@ -353,7 +349,10 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     {
                         "id": tc.id,
                         "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
                     }
                     for tc in msg.tool_calls
                 ]
@@ -361,10 +360,12 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
             if choice.finish_reason == "stop" or not msg.tool_calls:
                 # LLM stopped without calling a tool — nudge it to finish
-                messages.append({
-                    "role": "user",
-                    "content": "Please call log_selected_documents to report your final selection.",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Please call log_selected_documents to report your final selection.",
+                    }
+                )
                 continue
 
             # Process tool calls
@@ -376,33 +377,42 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 try:
                     fn_args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError:
-                    tool_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": "Error: could not parse tool arguments.",
-                    })
+                    tool_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": "Error: could not parse tool arguments.",
+                        }
+                    )
                     continue
 
                 if tc.function.name == "think":
-                    tool_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": "Your thought has been logged.",
-                    })
+                    tool_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": "Your thought has been logged.",
+                        }
+                    )
 
                 elif tc.function.name == "log_selected_documents":
                     doc_ids: List[str] = fn_args.get("doc_ids", [])
                     # Filter to only valid candidates
                     doc_ids = [d for d in doc_ids if d in valid_id_set][:feasible_k]
-                    end_kwargs = {"doc_ids": doc_ids, "message": fn_args.get("message", "")}
+                    end_kwargs = {
+                        "doc_ids": doc_ids,
+                        "message": fn_args.get("message", ""),
+                    }
                     should_end = True
 
                 else:
-                    tool_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": f"Error: unknown tool '{tc.function.name}'.",
-                    })
+                    tool_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": f"Error: unknown tool '{tc.function.name}'.",
+                        }
+                    )
 
             if should_end:
                 return end_kwargs
@@ -410,4 +420,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             messages.extend(tool_messages)
 
         # Max steps reached without a successful call
-        return {"doc_ids": [], "message": "Selection agent reached max steps without completing."}
+        return {
+            "doc_ids": [],
+            "message": "Selection agent reached max steps without completing.",
+        }

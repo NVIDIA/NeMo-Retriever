@@ -196,7 +196,7 @@ def main(
             raise typer.BadParameter("--input-path is required when --skip-ingest is not set.")
 
         from nemo_retriever.graph_ingestor import GraphIngestor
-        from nemo_retriever.params import EmbedParams, ExtractParams, TextChunkParams
+        from nemo_retriever.params import EmbedParams, ExtractParams
         from nemo_retriever.utils.remote_auth import resolve_remote_api_key
         from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
@@ -221,9 +221,7 @@ def main(
                 "image": ["*.jpg", "*.jpeg", "*.png", "*.tiff", "*.bmp"],
             }
             file_patterns = [
-                str(input_path / ext)
-                for ext in ext_map.get(input_type, ["*.pdf"])
-                if _glob.glob(str(input_path / ext))
+                str(input_path / ext) for ext in ext_map.get(input_type, ["*.pdf"]) if _glob.glob(str(input_path / ext))
             ]
             if not file_patterns:
                 raise typer.BadParameter(f"No files found for input_type={input_type!r} in {input_path}")
@@ -251,7 +249,13 @@ def main(
         result = ingestor.ingest()
         result_df = result if isinstance(result, pd.DataFrame) else pd.DataFrame(list(result))
         logger.info("Step 1: Ingested %d rows; writing to LanceDB ...", len(result_df))
-        handle_lancedb(result_df.to_dict("records"), lancedb_uri, lancedb_table, hybrid=hybrid, mode="overwrite")
+        handle_lancedb(
+            result_df.to_dict("records"),
+            lancedb_uri,
+            lancedb_table,
+            hybrid=hybrid,
+            mode="overwrite",
+        )
         logger.info("Step 1 complete.")
     else:
         logger.info("Step 1: Skipped (--skip-ingest).")
@@ -263,7 +267,12 @@ def main(
     from nemo_retriever.graph.pipeline_graph import Graph
     from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
 
-    logger.info("Step 2: Expanding %d quer%s via LLM (%s) ...", len(queries), "y" if len(queries) == 1 else "ies", llm_model)
+    logger.info(
+        "Step 2: Expanding %d quer%s via LLM (%s) ...",
+        len(queries),
+        "y" if len(queries) == 1 else "ies",
+        llm_model,
+    )
 
     subquery_kwargs: Dict[str, Any] = {
         "llm_model": llm_model,
@@ -275,7 +284,6 @@ def main(
     if llm_base_url:
         subquery_kwargs["base_url"] = llm_base_url
 
-
     subquery_op = SubQueryGeneratorOperator(**subquery_kwargs)
 
     # Build a single-node graph and run via InprocessExecutor
@@ -284,23 +292,38 @@ def main(
 
     executor = InprocessExecutor(query_graph, show_progress=False)
 
-    queries_df = pd.DataFrame({
-        "query_id": [f"q{i}" for i in range(len(queries))],
-        "query_text": list(queries),
-    })
+    queries_df = pd.DataFrame(
+        {
+            "query_id": [f"q{i}" for i in range(len(queries))],
+            "query_text": list(queries),
+        }
+    )
     subquery_df = executor.ingest(queries_df)
-    logger.info("Step 2 complete: %d sub-quer%s generated.", len(subquery_df), "y" if len(subquery_df) == 1 else "ies")
+    logger.info(
+        "Step 2 complete: %d sub-quer%s generated.",
+        len(subquery_df),
+        "y" if len(subquery_df) == 1 else "ies",
+    )
 
     if debug:
         for _, row in subquery_df.iterrows():
-            logger.debug("  [%s] subq%d: %s", row["query_id"], row["subquery_idx"], row["subquery_text"])
+            logger.debug(
+                "  [%s] subq%d: %s",
+                row["query_id"],
+                row["subquery_idx"],
+                row["subquery_text"],
+            )
 
     # ------------------------------------------------------------------
-    # Step 3 — Retrieval via Retriever 
+    # Step 3 — Retrieval via Retriever
     # ------------------------------------------------------------------
     from nemo_retriever.retriever import Retriever
 
-    logger.info("Step 3: Retrieving for %d sub-quer%s ...", len(subquery_df), "y" if len(subquery_df) == 1 else "ies")
+    logger.info(
+        "Step 3: Retrieving for %d sub-quer%s ...",
+        len(subquery_df),
+        "y" if len(subquery_df) == 1 else "ies",
+    )
 
     retriever_kwargs: Dict[str, Any] = {
         "lancedb_uri": lancedb_uri,
@@ -311,7 +334,6 @@ def main(
     }
     if embed_invoke_url:
         retriever_kwargs["embedding_endpoint"] = embed_invoke_url
-
 
     retriever = Retriever(**retriever_kwargs)
     subquery_texts = subquery_df["subquery_text"].tolist()
@@ -343,16 +365,21 @@ def main(
         for i, query_text in enumerate(queries):
             qid = f"q{i}"
             for hit in fused.get(qid, []):
-                selection_rows.append({
-                    "query_id": qid,
-                    "query_text": query_text,
-                    "doc_id": str(hit.get("source_id") or hit.get("path") or ""),
-                    "text": str(hit.get("text", "")),
-                    "rrf_score": hit.get("rrf_score", 0.0),
-                })
+                selection_rows.append(
+                    {
+                        "query_id": qid,
+                        "query_text": query_text,
+                        "doc_id": str(hit.get("source_id") or hit.get("path") or ""),
+                        "text": str(hit.get("text", "")),
+                        "rrf_score": hit.get("rrf_score", 0.0),
+                    }
+                )
         selection_input_df = pd.DataFrame(selection_rows)
 
-        selection_kwargs: Dict[str, Any] = {"llm_model": llm_model, "top_k": selection_top_k}
+        selection_kwargs: Dict[str, Any] = {
+            "llm_model": llm_model,
+            "top_k": selection_top_k,
+        }
         if llm_api_key:
             selection_kwargs["api_key"] = llm_api_key
         if llm_base_url:
@@ -376,8 +403,11 @@ def main(
             for _, row in ranked.iterrows():
                 # Retrieve text from fused hits since selection_df only has query_id/doc_id/rank/message
                 hit_text = next(
-                    (str(h.get("text", "")) for h in fused.get(qid, [])
-                     if str(h.get("source_id") or h.get("path") or "") == row["doc_id"]),
+                    (
+                        str(h.get("text", ""))
+                        for h in fused.get(qid, [])
+                        if str(h.get("source_id") or h.get("path") or "") == row["doc_id"]
+                    ),
                     "",
                 )
                 snippet = hit_text.replace("\n", " ")[:120]
