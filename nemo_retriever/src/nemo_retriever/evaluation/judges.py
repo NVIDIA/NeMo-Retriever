@@ -1,22 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 LLM-as-judge scoring for the QA evaluation pipeline.
 
 LLMJudge uses a strong LLM to score generated answers on a 1-5 scale
-against a ground-truth reference answer. Scores are returned as structured
-JSON so they can be aggregated programmatically.
-
-Default judge model: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1
+against a ground-truth reference answer.
 """
 
 from __future__ import annotations
 
 import json
 import re
-
 from typing import Any, Optional
 
-from nv_ingest_harness.utils.qa.generators import LiteLLMClient
-from nv_ingest_harness.utils.qa.types import JudgeResult
+from nemo_retriever.evaluation.generators import LiteLLMClient
+from nemo_retriever.evaluation.types import JudgeResult
 
 _JUDGE_SYSTEM_PROMPT = """\
 You are an expert evaluator for factual question answering.
@@ -59,18 +59,7 @@ Candidate answer: {candidate}"""
 
 
 class LLMJudge:
-    """
-    LLM-as-judge that scores candidate answers on a 1-5 scale.
-
-    Uses a LiteLLMClient under the hood so the judge model is swappable
-    via the same model-string convention as the generator.
-
-    Args:
-        model: litellm model string for the judge LLM.
-        api_base: Override endpoint URL for private / local deployments.
-        api_key: Explicit API key (prefer env vars).
-        extra_params: Additional kwargs forwarded to litellm.completion.
-    """
+    """LLM-as-judge that scores candidate answers on a 1-5 scale."""
 
     def __init__(
         self,
@@ -91,21 +80,7 @@ class LLMJudge:
         self.model = model
 
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:
-        """
-        Score a candidate answer against the reference answer.
-
-        Uses self._client.complete() so retry logic, auth, and extra_params
-        flow through LiteLLMClient -- no litellm calls here directly.
-
-        Args:
-            query: The original question.
-            reference: Ground-truth reference answer.
-            candidate: The LLM-generated answer to evaluate.
-
-        Returns:
-            JudgeResult with score (1-5) and one-sentence reasoning.
-            Returns score=0 if parsing fails, so the pipeline can continue.
-        """
+        """Score a candidate answer against the reference answer."""
         if not candidate or not candidate.strip():
             return JudgeResult(score=0, reasoning="Candidate answer was empty.", error="empty_candidate")
 
@@ -127,20 +102,13 @@ class LLMJudge:
 
 
 def _parse_judge_response(raw: str) -> JudgeResult:
-    """
-    Parse the judge's JSON response into a JudgeResult.
-
-    Attempts strict JSON parsing first, then falls back to regex extraction
-    to handle models that wrap the JSON in prose or code fences.
-    """
+    """Parse the judge's JSON response into a JudgeResult."""
     text = raw.strip()
 
-    # Remove markdown code fences if present
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
     text = text.strip()
 
-    # Strict JSON parse
     try:
         data = json.loads(text)
         score = int(data["score"])
@@ -150,7 +118,6 @@ def _parse_judge_response(raw: str) -> JudgeResult:
     except (json.JSONDecodeError, KeyError, ValueError):
         pass
 
-    # Fallback: regex extraction
     score_match = re.search(r'"score"\s*:\s*([1-5])', text)
     reasoning_match = re.search(r'"reasoning"\s*:\s*"([^"]*)"', text)
     if score_match:

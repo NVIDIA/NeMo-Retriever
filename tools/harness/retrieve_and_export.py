@@ -75,7 +75,7 @@ def main() -> int:
     print("=" * 60)
 
     # Load ground truth queries
-    from nv_ingest_harness.utils.qa.ground_truth import get_qa_dataset_loader
+    from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
 
     loader = get_qa_dataset_loader(qa_dataset)
     qa_pairs = loader(data_dir=ground_truth_dir)

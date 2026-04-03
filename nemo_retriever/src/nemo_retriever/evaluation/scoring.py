@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Programmatic scoring functions for multi-tier QA evaluation.
 
@@ -9,6 +13,7 @@ Functions:
   answer_in_context  -- Tier 1: are reference answer keywords in the chunks?
   token_f1           -- Tier 2: SQuAD-style token precision/recall/F1
   classify_failure   -- Per-query failure mode classification
+  score_dataframe    -- Apply all metrics to a DataFrame
 """
 
 from __future__ import annotations
@@ -16,6 +21,10 @@ from __future__ import annotations
 import re
 import string
 from typing import Optional
+
+import pandas as pd
+
+from nemo_retriever.evaluation.text_utils import strip_think_tags
 
 _STOP_WORDS = frozenset(
     {
@@ -157,12 +166,10 @@ def _content_words(text: str) -> list[str]:
 
 
 def answer_in_context(reference: str, chunks: list[str]) -> bool:
-    """
-    Tier-1 retrieval quality check.
+    """Tier-1 retrieval quality check.
 
     Returns True if >= 50% of the content words in the reference answer
-    appear in the concatenated chunk text. Case-insensitive with numeric
-    normalization (e.g. '16.00%' matches '16%').
+    appear in the concatenated chunk text.
     """
     ref_words = _content_words(reference)
     if not ref_words:
@@ -174,17 +181,10 @@ def answer_in_context(reference: str, chunks: list[str]) -> bool:
 
 
 def token_f1(reference: str, candidate: str) -> dict:
-    """
-    Tier-2 SQuAD-style token-level scoring after normalization.
+    """Tier-2 SQuAD-style token-level scoring after normalization.
 
-    Strips <think> tags from candidate before scoring. Returns a dict with:
-      exact_match: bool -- perfect string match after normalization
-      f1: float         -- harmonic mean of precision and recall
-      precision: float  -- fraction of candidate tokens in reference
-      recall: float     -- fraction of reference tokens in candidate
+    Strips <think> tags from candidate before scoring.
     """
-    from nv_ingest_harness.utils.qa.generators import strip_think_tags
-
     candidate = strip_think_tags(candidate)
 
     norm_ref = _normalize(_normalize_numeric(reference))
@@ -224,17 +224,7 @@ def classify_failure(
     gen_error: Optional[str],
     candidate: str,
 ) -> str:
-    """
-    Classify the failure mode for a single query + model combination.
-
-    Returns one of:
-      "correct"             -- judge score >= 4
-      "partial"             -- judge score 2-3
-      "retrieval_miss"      -- reference not in chunks AND score <= 2
-      "generation_miss"     -- reference in chunks but score <= 2
-      "thinking_truncated"  -- generator flagged truncated reasoning
-      "no_context"          -- candidate says 'no information' AND score <= 2
-    """
+    """Classify the failure mode for a single query + model combination."""
     if gen_error == "thinking_truncated":
         return "thinking_truncated"
 
@@ -244,16 +234,63 @@ def classify_failure(
     if judge_score >= 4:
         return "correct"
 
+    claims_no_context = bool(_NO_CONTEXT_RE.search(candidate))
+
     if 2 <= judge_score <= 3:
-        if _NO_CONTEXT_RE.search(candidate):
-            return "no_context"
+        if claims_no_context:
+            return "refused_with_context" if ref_in_chunks else "refused_missing_context"
         return "partial"
 
     if judge_score <= 1:
-        if _NO_CONTEXT_RE.search(candidate):
-            return "no_context"
+        if claims_no_context:
+            return "refused_with_context" if ref_in_chunks else "refused_missing_context"
         if not ref_in_chunks:
             return "retrieval_miss"
         return "generation_miss"
 
     return "partial"
+
+
+def score_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply all programmatic scoring metrics to a DataFrame.
+
+    Input DataFrame must have ``reference_answer``, ``answer``, ``context``
+    columns.  Optionally ``judge_score`` and ``gen_error`` for failure
+    classification.
+
+    Adds columns: ``answer_in_context``, ``token_f1``, ``exact_match``,
+    ``failure_mode``.
+    """
+    out = df.copy()
+    aic_results = []
+    f1_results = []
+    em_results = []
+    fm_results = []
+
+    for _, row in out.iterrows():
+        ref = row["reference_answer"]
+        ans = row.get("answer", "")
+        ctx = row.get("context", [])
+
+        aic = answer_in_context(ref, ctx)
+        aic_results.append(aic)
+
+        tf1 = token_f1(ref, ans)
+        f1_results.append(tf1.get("f1", 0.0))
+        em_results.append(tf1.get("exact_match", False))
+
+        judge_score = row.get("judge_score")
+        gen_error = row.get("gen_error")
+        fm = classify_failure(
+            ref_in_chunks=aic,
+            judge_score=judge_score,
+            gen_error=gen_error,
+            candidate=ans,
+        )
+        fm_results.append(fm)
+
+    out["answer_in_context"] = aic_results
+    out["token_f1"] = f1_results
+    out["exact_match"] = em_results
+    out["failure_mode"] = fm_results
+    return out

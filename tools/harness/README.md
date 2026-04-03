@@ -372,9 +372,10 @@ The eval harness is **pluggable**: your retrieval stack (vector, hybrid, agentic
 **At a glance**
 
 - **Default ground truth (standalone scripts):** [`data/bo767_annotations.csv`](../../data/bo767_annotations.csv) at the repo root -- the **bo767 annotations subset** we maintain for this benchmark (multi-modality Q&A over the bo767 PDFs). `QA_CSV` / `QA_DATASET` default to this path (resolved relative to the repo root from `tools/harness`).
-- **Standalone scripts** in `tools/harness/`: `ingest_bo767.py`, `extract_bo767_parquet.py`, `build_page_markdown_index.py`, `export_retrieval_nemo.py`, `run_qa_eval.py`; optional `retrieve_and_export.py` when using the harness VDB stack.
+- **Standalone scripts** in `tools/harness/`: `build_page_markdown_index.py`, `export_retrieval_nemo.py`, `run_qa_eval.py`; optional `retrieve_and_export.py` when using the harness VDB stack. Ingestion is handled by `python -m nemo_retriever.examples.graph_pipeline` which builds an operator graph, uploads to LanceDB, and optionally saves extraction Parquet via `--save-intermediate`. **Run `graph_pipeline` from the repo root** so that default relative paths (e.g. `--query-csv data/bo767_query_gt.csv`) resolve correctly.
+- **Eval architecture:** The evaluation framework (`nemo_retriever.evaluation`) provides two paths -- an **operator graph chain** (`RetrievalLoaderOperator >> QAGenerationOperator >> JudgingOperator >> ScoringOperator`) for single-model runs, and **`QAEvalPipeline`** for multi-model sweeps. Both consume the same retrieval JSON and produce identical scored output. See the QA README [Architecture](src/nv_ingest_harness/utils/qa/README.md#architecture) section.
 - **Eval requires** `RETRIEVAL_FILE` and `NVIDIA_API_KEY`; all other knobs are in the QA README.
-- **Full bo767 repro (ingest / LanceDB / NeMo Retriever):** requires a **Python 3.12 venv** with `nemo_retriever`, LanceDB, and `litellm`. See [Python environment](src/nv_ingest_harness/utils/qa/README.md#python-environment) in the QA README.
+- **Full bo767 repro (ingest / LanceDB / NeMo Retriever):** requires a **Python 3.12 venv** with `nemo_retriever[eval]` (includes `litellm`). See [Python environment](src/nv_ingest_harness/utils/qa/README.md#python-environment) in the QA README.
 
 **Harness CLI (alternative)** -- uses `test_configs.yaml`; dataset and retrieval file paths may differ from standalone defaults. See the QA README.
 
@@ -382,6 +383,14 @@ The eval harness is **pluggable**: your retrieval stack (vector, hybrid, agentic
 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 uv run python retrieve_and_export.py
 uv run nv-ingest-harness-run --case=qa_eval --dataset=bo767
+```
+
+**Config-driven eval (alternative)** -- use a standalone YAML/JSON config with `nemo_retriever.evaluation.config`:
+
+```python
+from nemo_retriever.evaluation.config import load_eval_config, build_eval_chain
+config = load_eval_config("eval_config.yaml")
+result_df = build_eval_chain(config).execute(None)
 ```
 
 **Retrieval JSON** -- minimal shape: a top-level `queries` object mapping each ground-truth question string to `{ "chunks": ["...", ...] }` (plus optional metadata). Meet the full specification in the QA README so `run_qa_eval.py` can load it unchanged.
