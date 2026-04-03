@@ -9,9 +9,19 @@ This stage enriches existing STRUCTURED/infographic primitives by populating
 `metadata.table_metadata.table_content` via OCR, using `nv-ingest-api` internals.
 """
 
-from .infographic_detection import InfographicDetectionActor, detect_infographic_elements_v1
+from .infographic_detection import (
+    InfographicDetectionActor,
+    InfographicDetectionCPUActor,
+    InfographicDetectionGPUActor,
+    detect_infographic_elements_v1,
+)
 
-__all__ = ["InfographicDetectionActor", "detect_infographic_elements_v1"]
+__all__ = [
+    "InfographicDetectionActor",
+    "InfographicDetectionCPUActor",
+    "InfographicDetectionGPUActor",
+    "detect_infographic_elements_v1",
+]
 
 # Optional imports: infographic *extraction* depends on nv-ingest-api (and its deps).
 # We keep detection importable even in lightweight environments.

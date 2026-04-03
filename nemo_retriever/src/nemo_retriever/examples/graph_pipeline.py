@@ -292,12 +292,9 @@ def main(
         _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
 
         remote_api_key = resolve_remote_api_key(api_key)
-        extract_remote_api_key = (
-            remote_api_key
-            if any((page_elements_invoke_url, ocr_invoke_url, graphic_elements_invoke_url, table_structure_invoke_url))
-            else None
-        )
-        embed_remote_api_key = remote_api_key if embed_invoke_url else None
+        extract_remote_api_key = remote_api_key
+        embed_remote_api_key = remote_api_key
+        caption_remote_api_key = remote_api_key
 
         # Warn if remote URLs configured without an API key
         if (
@@ -455,6 +452,7 @@ def main(
             ingestor = ingestor.caption(
                 CaptionParams(
                     endpoint_url=caption_invoke_url,
+                    api_key=caption_remote_api_key,
                     model_name=caption_model_name,
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,

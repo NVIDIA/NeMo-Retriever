@@ -12,8 +12,10 @@ import pandas as pd
 
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.graph.operator_resolution import resolve_graph
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
+    gather_local_resources,
     NEMOTRON_PARSE_BATCH_SIZE,
     NEMOTRON_PARSE_GPUS_PER_ACTOR,
     OCR_GPUS_PER_ACTOR,
@@ -115,7 +117,8 @@ class InprocessExecutor(AbstractExecutor):
                 f"data must be a pandas.DataFrame, file path, or list of paths, " f"got {type(data).__name__}"
             )
 
-        nodes = self._linearize(self.graph)
+        resolved_graph = resolve_graph(self.graph, gather_local_resources())
+        nodes = self._linearize(resolved_graph)
         operators = []
         for node in nodes:
             op = node.operator_class(**node.operator_kwargs)
@@ -231,6 +234,7 @@ class RayDataExecutor(AbstractExecutor):
 
         cluster = gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
+        resolved_graph = resolve_graph(self.graph, cluster)
 
         if isinstance(data, rd.Dataset):
             ds = data
@@ -246,7 +250,7 @@ class RayDataExecutor(AbstractExecutor):
                 f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
             )
 
-        nodes = self._linearize(self.graph)
+        nodes = self._linearize(resolved_graph)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
@@ -267,6 +271,17 @@ class RayDataExecutor(AbstractExecutor):
                 num_gpus = overrides.pop("num_gpus")
             elif issubclass(node.operator_class, GPUOperator):
                 has_remote_endpoint = any("invoke_url" in k and bool(v) for k, v in node.operator_kwargs.items())
+                # For composite operators (e.g. MultiTypeExtractOperator) the
+                # invoke URLs live inside a nested ExtractParams object rather
+                # than as top-level kwargs.  Check those too.
+                if not has_remote_endpoint:
+                    for v in node.operator_kwargs.values():
+                        if hasattr(v, "model_dump"):
+                            has_remote_endpoint = any(
+                                "invoke_url" in k and bool(val) for k, val in v.model_dump(exclude_none=True).items()
+                            )
+                            if has_remote_endpoint:
+                                break
                 if has_remote_endpoint:
                     # Remote endpoint handles the model — no local GPU needed.
                     num_gpus = self._default_num_gpus

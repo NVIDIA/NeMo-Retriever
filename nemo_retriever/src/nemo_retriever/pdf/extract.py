@@ -22,6 +22,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
     import pypdfium2 as pdfium
@@ -376,7 +377,7 @@ def pdf_extraction(
         raise NotImplementedError("pdf_extraction currently only supports pandas.DataFrame input.")
 
 
-class PDFExtractionActor(AbstractOperator, CPUOperator):
+class PDFExtractionCPUActor(AbstractOperator, CPUOperator):
     """
     Skeleton PDF extraction callable.
 
@@ -416,3 +417,10 @@ class PDFExtractionActor(AbstractOperator, CPUOperator):
                     page_number=0,
                 )
             ]
+
+
+class PDFExtractionActor(ArchetypeOperator):
+    _cpu_variant_class = PDFExtractionCPUActor
+
+    def __init__(self, **extract_kwargs: Any) -> None:
+        super().__init__(**extract_kwargs)

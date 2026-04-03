@@ -239,6 +239,7 @@ def build_graph(
             html_params=html_params,
             audio_chunk_params=audio_chunk_params,
             asr_params=asr_params,
+            caption_params=caption_params,
         )
     else:
         graph = Graph()
@@ -256,6 +257,7 @@ def build_graph(
             "method": extract_params.method,
             "dpi": int(extract_params.dpi),
             "extract_text": extract_params.extract_text,
+            "extract_images": extract_params.extract_images,
             "extract_tables": extract_params.extract_tables,
             "extract_charts": extract_params.extract_charts,
             "extract_infographics": extract_params.extract_infographics,
