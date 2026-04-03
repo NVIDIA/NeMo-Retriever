@@ -243,8 +243,8 @@ def caption_images(
     ``images[i]["text"]``.
 
     When ``caption_infographics`` is True, infographic entries are cropped
-    from the page image and captioned as well.  The OCR stage should have
-    emitted these with empty ``text``.
+    from the page image and captioned.  The VLM caption is written to the
+    ``caption`` field, preserving the existing OCR ``text``.
     """
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
         return batch_df
@@ -296,8 +296,8 @@ def caption_images(
                     for item_idx, item in enumerate(infographics):
                         if not isinstance(item, dict):
                             continue
-                        if item.get("text"):
-                            continue
+                        if item.get("caption"):
+                            continue  # already captioned
                         bbox = item.get("bbox_xyxy_norm")
                         if not bbox or len(bbox) < 4:
                             continue
@@ -322,7 +322,9 @@ def caption_images(
                 system_prompt=system_prompt,
                 temperature=temperature,
             )
-            batch_df.at[row_idx, col][item_idx]["text"] = caption
+            # Infographics keep OCR text; VLM caption goes to a separate field.
+            field = "caption" if col == "infographic" else "text"
+            batch_df.at[row_idx, col][item_idx][field] = caption
     else:
         all_b64 = [b64 for _, _, _, b64 in pending]
 
@@ -348,6 +350,7 @@ def caption_images(
                 all_captions.extend(captions)
 
         for (row_idx, col, item_idx, _), caption in zip(pending, all_captions):
-            batch_df.at[row_idx, col][item_idx]["text"] = caption
+            field = "caption" if col == "infographic" else "text"
+            batch_df.at[row_idx, col][item_idx][field] = caption
 
     return batch_df

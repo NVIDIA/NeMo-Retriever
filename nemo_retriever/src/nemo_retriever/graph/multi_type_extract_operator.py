@@ -257,8 +257,6 @@ class _MultiTypeExtractBase(AbstractOperator):
             ocr_kwargs["extract_charts"] = True
         if extract_params.extract_infographics:
             ocr_kwargs["extract_infographics"] = True
-        if self.caption_params is not None and getattr(self.caption_params, "caption_infographics", False):
-            ocr_kwargs["caption_infographics"] = True
         if extract_params.ocr_invoke_url:
             ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
         if extract_params.api_key:

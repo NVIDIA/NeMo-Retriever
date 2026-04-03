@@ -292,8 +292,6 @@ def build_graph(
                 ocr_kwargs["extract_charts"] = True
             if extract_params.extract_infographics:
                 ocr_kwargs["extract_infographics"] = True
-            if caption_params is not None and getattr(caption_params, "caption_infographics", False):
-                ocr_kwargs["caption_infographics"] = True
             ocr_kwargs["use_graphic_elements"] = extract_params.use_graphic_elements
             if extract_params.ocr_invoke_url:
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
