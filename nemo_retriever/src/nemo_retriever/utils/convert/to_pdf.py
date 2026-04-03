@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import traceback
@@ -65,6 +66,12 @@ def convert_to_pdf_bytes(file_bytes: bytes, extension: str) -> bytes:
 
     if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported extension: {extension!r}")
+
+    if shutil.which("libreoffice") is None:
+        raise FileNotFoundError(
+            "LibreOffice is required to convert DOCX/PPTX files to PDF but was not found on $PATH. "
+            "Please install LibreOffice (e.g. `apt-get install libreoffice`) and try again."
+        )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Strip leading dot for the filename suffix (e.g. ".docx" -> "docx").
@@ -131,6 +138,8 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
             pdf_bytes = convert_to_pdf_bytes(bytes(file_bytes), ext)
             # Preserve original path so downstream metadata tracks the source file.
             out_rows.append({"bytes": pdf_bytes, "path": file_path})
+        except FileNotFoundError:
+            raise  # LibreOffice not installed — fail fast, don't swallow.
         except BaseException as e:
             out_rows.append(
                 _error_record(
