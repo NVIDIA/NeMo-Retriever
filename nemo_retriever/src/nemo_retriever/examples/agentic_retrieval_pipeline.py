@@ -2,44 +2,52 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""End-to-end pipeline: ingest documents → expand queries → retrieve with RRF fusion.
+"""Graph-based agentic retrieval pipeline.
 
-This script chains three stages sequentially:
+Chains four graph-operator stages to deliver an agentic, multi-step
+retrieval experience:
 
 1. **Ingestion** — graph-based document ingestion via
    :class:`~nemo_retriever.graph_ingestor.GraphIngestor`
    (files → extract → embed → LanceDB).  Skip with ``--skip-ingest`` if the
    table is already populated.
 
-2. **Query expansion** — :class:`~nemo_retriever.graph.subquery_operator.SubQueryGeneratorOperator`
+2. **Query expansion** *(agentic)* —
+   :class:`~nemo_retriever.graph.subquery_operator.SubQueryGeneratorOperator`
    runs as a :class:`~nemo_retriever.graph.pipeline_graph.Graph` node via
    :class:`~nemo_retriever.graph.executor.InprocessExecutor`, expanding each
    input query into sub-queries via an LLM.
 
 3. **Retrieval** — :class:`~nemo_retriever.retriever.Retriever` is invoked
-   as-is (``retriever.queries()``) on the expanded sub-query texts, with no
-   modifications.
+   as-is (``retriever.queries()``) on the expanded sub-query texts, followed
+   by Reciprocal Rank Fusion (RRF) to merge per-sub-query result lists into
+   a single ranked list.
 
-4. **RRF fusion** — per-sub-query result lists are merged with Reciprocal Rank
-   Fusion (RRF) into a single ranked list per original query.
+4. **Selection** *(agentic, optional)* —
+   :class:`~nemo_retriever.graph.selection_agent_operator.SelectionAgentOperator`
+   runs an LLM-based agentic loop (think → select) to re-rank and select
+   the final top-k documents from the fused candidates.
 
 Run with::
 
-    python -m nemo_retriever.examples.e2e_pipeline \\
+    python -m nemo_retriever.examples.agentic_retrieval_pipeline \\
         --input-path /data/pdfs \\
         --queries "What causes inflation?" \\
         --queries "How do vaccines work?" \\
-        --llm-model gpt-4o \\
-        --llm-api-key $OPENAI_API_KEY \\
+        --llm-model meta/llama-3.1-70b-instruct \\
+        --llm-api-key "os.environ/NVIDIA_API_KEY" \\
+        --llm-base-url https://integrate.api.nvidia.com/v1 \\
         --embed-invoke-url http://localhost:8000/v1
 
-    # Skip ingestion if LanceDB is already populated:
-    python -m nemo_retriever.examples.e2e_pipeline \\
+    # Skip ingestion, run full agentic retrieval with selection agent:
+    python -m nemo_retriever.examples.agentic_retrieval_pipeline \\
         --skip-ingest \\
         --queries "What causes inflation?" \\
-        --llm-model gpt-4o \\
-        --llm-api-key $OPENAI_API_KEY \\
-        --embed-invoke-url http://localhost:8000/v1
+        --llm-model meta/llama-3.1-70b-instruct \\
+        --llm-api-key "os.environ/NVIDIA_API_KEY" \\
+        --llm-base-url https://integrate.api.nvidia.com/v1 \\
+        --embed-invoke-url http://localhost:8000/v1 \\
+        --selection-top-k 5
 """
 
 from __future__ import annotations
