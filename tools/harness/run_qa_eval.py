@@ -8,7 +8,12 @@ inside the minimal Docker image without the full harness CLI/config stack.
 Required env vars:
   RETRIEVAL_FILE   Path to the retrieval results JSON
                    e.g. /data/test_retrieval/bo767_sample.json
-  NVIDIA_API_KEY   API key for NVIDIA NIM endpoints
+
+API key env vars (at least one required):
+  GEN_API_KEY      API key for the answer-generation model.
+  JUDGE_API_KEY    API key for the judge model.
+  NVIDIA_API_KEY   Fallback used by both generator and judge when
+                   their individual keys are not set.
 
 Optional env vars:
   GROUND_TRUTH_DIR Directory used by some dataset loaders (ViDoRe, etc.).
@@ -18,24 +23,26 @@ Optional env vars:
   QA_TOP_K         Chunks per query (default: 5)
   QA_MAX_WORKERS   Concurrent API calls (default: 4)
   QA_LIMIT         Only evaluate the first N queries (0 = all, default: 0)
-  OUTPUT_FILE      Where to write results JSON (default: /tmp/qa_results.json)
-  JUDGE_MODEL      litellm model string for judge
-                   (default: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1)
-  JUDGE_API_BASE   Override endpoint for judge model
-  GEN_MODEL_NAME   Short label for the generator (default: generator)
+  OUTPUT_FILE      Where to write results JSON
+                   (default: auto-timestamped under data/test_retrieval/)
   GEN_MODEL        litellm model string for answer generation
                    (default: nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5)
+  GEN_MODEL_NAME   Short label for the generator (default: generator)
   GEN_API_BASE     Override endpoint for generator model
   GEN_MODELS       Multi-model sweep: comma-separated name:model pairs.
                    Overrides GEN_MODEL/GEN_MODEL_NAME when set.
                    e.g. "nemotron:nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5,
-                          qwen3:nvidia_nim/qwen/qwen3-235b-a22b"
+                          claude:openai/aws/anthropic/bedrock-claude-sonnet-4-6"
+  JUDGE_MODEL      litellm model string for judge
+                   (default: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1)
+  JUDGE_API_BASE   Override endpoint for judge model
   LITELLM_DEBUG    Set to 1 to enable full litellm request/response logging
 """
 
 import json
 import os
 import sys
+from datetime import datetime
 
 # Allow running from repo root: add the harness src/ to sys.path
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -129,7 +136,6 @@ def main() -> int:
     qa_top_k = int(os.environ.get("QA_TOP_K", "5"))
     qa_max_workers = int(os.environ.get("QA_MAX_WORKERS", "4"))
     qa_limit = int(os.environ.get("QA_LIMIT", "0"))
-    output_file = os.environ.get("OUTPUT_FILE", "/tmp/qa_results.json")
     litellm_debug = os.environ.get("LITELLM_DEBUG", "0").strip() in ("1", "true", "yes")
 
     judge_model = os.environ.get("JUDGE_MODEL", "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
@@ -140,23 +146,35 @@ def main() -> int:
     gen_model = os.environ.get("GEN_MODEL", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
     gen_api_base = os.environ.get("GEN_API_BASE")
 
-    # Validate API key looks real before spending time loading everything
-    api_key = os.environ.get("NVIDIA_API_KEY", "")
-    if not api_key:
-        print("WARNING: NVIDIA_API_KEY is not set. API calls will fail.", file=sys.stderr)
-    elif api_key.startswith("nvapi-") and len(api_key) < 20:
-        print("WARNING: NVIDIA_API_KEY looks like a placeholder. Did you paste the real key?", file=sys.stderr)
+    def _default_output_path() -> str:
+        dataset_stem = os.path.splitext(
+            os.path.basename(qa_dataset.split(":", 1)[-1] if ":" in qa_dataset else qa_dataset)
+        )[0]
+        model_label = gen_name.replace("/", "_").replace(" ", "_")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"qa_results_{dataset_stem}_{model_label}_{timestamp}.json"
+        return os.path.join(_HERE, "data", "test_retrieval", filename)
+
+    output_file = os.environ.get("OUTPUT_FILE", "") or _default_output_path()
+
+    fallback_key = os.environ.get("NVIDIA_API_KEY", "")
+    gen_api_key = os.environ.get("GEN_API_KEY", "") or fallback_key
+    judge_api_key = os.environ.get("JUDGE_API_KEY", "") or fallback_key
+    if not gen_api_key:
+        print("WARNING: No API key found for generator (set GEN_API_KEY or NVIDIA_API_KEY).", file=sys.stderr)
+    if not judge_api_key:
+        print("WARNING: No API key found for judge (set JUDGE_API_KEY or NVIDIA_API_KEY).", file=sys.stderr)
 
     if litellm_debug:
         import litellm
 
         litellm._turn_on_debug()
 
-    from nv_ingest_harness.utils.qa.retrievers import FileRetriever
-    from nv_ingest_harness.utils.qa.generators import LiteLLMClient
-    from nv_ingest_harness.utils.qa.judges import LLMJudge
-    from nv_ingest_harness.utils.qa.orchestrator import QAEvalPipeline
-    from nv_ingest_harness.utils.qa.ground_truth import get_qa_dataset_loader
+    from nemo_retriever.evaluation.retrievers import FileRetriever
+    from nemo_retriever.evaluation.generators import LiteLLMClient
+    from nemo_retriever.evaluation.judges import LLMJudge
+    from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
+    from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
 
     gen_model_pairs: list[tuple[str, str]] = []
     if gen_models_str:
@@ -183,7 +201,8 @@ def main() -> int:
     print(f"  api_base:     {gen_api_base}")
     print(f"Judge:          {judge_model}")
     print(f"  api_base:     {judge_api_base}")
-    print(f"NVIDIA_API_KEY: {'set (' + api_key[:12] + '...)' if api_key else 'NOT SET'}")
+    print(f"Gen API key:    {'set (' + gen_api_key[:12] + '...)' if gen_api_key else 'NOT SET'}")
+    print(f"Judge API key:  {'set (' + judge_api_key[:12] + '...)' if judge_api_key else 'NOT SET'}")
     print("=" * 60)
 
     loader = get_qa_dataset_loader(qa_dataset)
@@ -209,13 +228,13 @@ def main() -> int:
         llm_clients[gn] = LiteLLMClient(
             model=gm,
             api_base=gen_api_base or None,
-            api_key=api_key or None,
+            api_key=gen_api_key or None,
         )
 
     judge = LLMJudge(
         model=judge_model,
         api_base=judge_api_base or None,
-        api_key=api_key or None,
+        api_key=judge_api_key or None,
     )
 
     pipeline = QAEvalPipeline(

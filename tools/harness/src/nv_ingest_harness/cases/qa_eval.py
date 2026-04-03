@@ -13,11 +13,12 @@ import json
 import os
 import re
 
-from nv_ingest_harness.utils.qa.generators import LiteLLMClient
-from nv_ingest_harness.utils.qa.ground_truth import get_qa_dataset_loader
-from nv_ingest_harness.utils.qa.judges import LLMJudge
-from nv_ingest_harness.utils.qa.orchestrator import QAEvalPipeline
-from nv_ingest_harness.utils.qa.retrievers import FileRetriever, TopKRetriever
+from nemo_retriever.evaluation.generators import LiteLLMClient
+from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
+from nemo_retriever.evaluation.judges import LLMJudge
+from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
+from nemo_retriever.evaluation.retrievers import FileRetriever
+from nv_ingest_harness.utils.qa import TopKRetriever
 
 
 def _expand_env_vars(value):
