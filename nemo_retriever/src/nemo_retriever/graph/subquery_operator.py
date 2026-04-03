@@ -38,7 +38,6 @@ Rules:
 - Sub-queries should be diverse and complementary, not redundant.
 - Use clear, precise language suited for dense embedding retrieval.
 - Output a JSON array of strings only — no explanation, no markdown fences.""",
-
     "hyde": """\
 You are a Hypothetical Document Embedding (HyDE) assistant for a retrieval system.
 
@@ -52,7 +51,6 @@ Rules:
 - Vary the style and perspective across passages (e.g., academic, technical, narrative).
 - Be factually plausible; focus on covering the query intent.
 - Output a JSON array of strings only — no explanation, no markdown fences.""",
-
     "multi_perspective": """\
 You are a multi-perspective query expansion assistant for a retrieval system.
 
@@ -265,8 +263,7 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
             from openai import OpenAI
         except ImportError as exc:
             raise ImportError(
-                "SubQueryGeneratorOperator requires 'openai'. "
-                "Install it with:  pip install 'openai>=1.0'"
+                "SubQueryGeneratorOperator requires 'openai'. " "Install it with:  pip install 'openai>=1.0'"
             ) from exc
 
         api_key = self._api_key
@@ -314,7 +311,7 @@ def _parse_json_list(raw: str, *, fallback: str) -> List[str]:
     text = raw
     for fence in ("```json", "```"):
         if text.startswith(fence):
-            text = text[len(fence):]
+            text = text[len(fence) :]
             break
     if text.endswith("```"):
         text = text[:-3]
