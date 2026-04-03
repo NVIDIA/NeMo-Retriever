@@ -4,11 +4,14 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 def _chunk_ranges(total: int, chunk_size: int) -> List[Tuple[int, int]]:
@@ -78,6 +81,13 @@ def _post_with_retries(
                 if retries_429 >= int(max_429_retries):
                     response.raise_for_status()
                 backoff_time = base_delay * (2**retries_429)
+                logger.warning(
+                    "NIM endpoint %s returned 429 (rate limited). Retry %d/%d after %.1fs backoff.",
+                    invoke_url,
+                    retries_429,
+                    max_429_retries,
+                    backoff_time,
+                )
                 time.sleep(backoff_time)
                 continue
 
@@ -85,6 +95,14 @@ def _post_with_retries(
                 if attempt == int(max_retries) - 1:
                     response.raise_for_status()
                 backoff_time = base_delay * (2**attempt)
+                logger.warning(
+                    "NIM endpoint %s returned %d. Retry %d/%d after %.1fs backoff.",
+                    invoke_url,
+                    status_code,
+                    attempt + 1,
+                    max_retries,
+                    backoff_time,
+                )
                 time.sleep(backoff_time)
                 attempt += 1
                 continue
@@ -96,12 +114,28 @@ def _post_with_retries(
             if attempt == int(max_retries) - 1:
                 raise TimeoutError(f"Request timed out after {attempt + 1} attempts.") from exc
             backoff_time = base_delay * (2**attempt)
+            logger.warning(
+                "NIM endpoint %s timed out (%.1fs). Retry %d/%d after %.1fs backoff.",
+                invoke_url,
+                timeout_s,
+                attempt + 1,
+                max_retries,
+                backoff_time,
+            )
             time.sleep(backoff_time)
             attempt += 1
-        except requests.RequestException:
+        except requests.RequestException as exc:
             if attempt == int(max_retries) - 1:
                 raise
             backoff_time = base_delay * (2**attempt)
+            logger.warning(
+                "NIM endpoint %s request failed: %s. Retry %d/%d after %.1fs backoff.",
+                invoke_url,
+                exc,
+                attempt + 1,
+                max_retries,
+                backoff_time,
+            )
             time.sleep(backoff_time)
             attempt += 1
 

@@ -262,6 +262,17 @@ class RayDataExecutor(AbstractExecutor):
                 num_gpus = overrides.pop("num_gpus")
             elif issubclass(node.operator_class, GPUOperator):
                 has_remote_endpoint = any("invoke_url" in k and bool(v) for k, v in node.operator_kwargs.items())
+                # For composite operators (e.g. MultiTypeExtractOperator) the
+                # invoke URLs live inside a nested ExtractParams object rather
+                # than as top-level kwargs.  Check those too.
+                if not has_remote_endpoint:
+                    for v in node.operator_kwargs.values():
+                        if hasattr(v, "model_dump"):
+                            has_remote_endpoint = any(
+                                "invoke_url" in k and bool(val) for k, val in v.model_dump(exclude_none=True).items()
+                            )
+                            if has_remote_endpoint:
+                                break
                 if has_remote_endpoint:
                     # Remote endpoint handles the model — no local GPU needed.
                     num_gpus = self._default_num_gpus

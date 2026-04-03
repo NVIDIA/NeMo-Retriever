@@ -15,6 +15,7 @@ import pandas as pd
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.html.ray_data import HtmlSplitActor
 from nemo_retriever.image.ray_data import ImageLoadActor
 from nemo_retriever.image.load import SUPPORTED_IMAGE_EXTENSIONS
@@ -43,7 +44,7 @@ IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
 VIDEO_EXTENSIONS = {".mp4"}
 
 
-class MultiTypeExtractOperator(AbstractOperator):
+class MultiTypeExtractOperator(AbstractOperator, GPUOperator):
     """Extract mixed or single-type Ray batches without recursing into the ingestor API."""
 
     def __init__(
