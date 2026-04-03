@@ -27,7 +27,9 @@ from nemo_retriever.parse.nemotron_parse_postprocessing import (
     postprocess_text as _postprocess_element_text,
 )
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.nim.nim import invoke_chat_completions, invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
 
@@ -324,7 +326,7 @@ def nemotron_parse_pages(
 # ---------------------------------------------------------------------------
 
 
-class NemotronParseActor(AbstractOperator, GPUOperator):
+class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
 
     def __init__(
@@ -410,3 +412,136 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
                 out["nemotron_parse_v1_2"] = [payload for _ in range(n)]
                 return out
             return [{"nemotron_parse_v1_2": _error_payload(stage="nemotron_parse_actor_call", exc=e)}]
+
+
+class NemotronParseCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only variant that delegates to a remote Nemotron Parse endpoint.
+
+    Defaults to the build.nvidia.com chat completions endpoint.
+    No local GPU model is loaded.
+    """
+
+    DEFAULT_INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+
+    def __init__(
+        self,
+        *,
+        extract_text: bool = False,
+        extract_tables: bool = False,
+        extract_charts: bool = False,
+        extract_infographics: bool = False,
+        nemotron_parse_invoke_url: Optional[str] = None,
+        nemotron_parse_model: Optional[str] = None,
+        invoke_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        request_timeout_s: float = 120.0,
+        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        remote_max_pool_workers: int = 16,
+        remote_max_retries: int = 10,
+        remote_max_429_retries: int = 5,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or self.DEFAULT_INVOKE_URL).strip()
+        self._nemotron_parse_model = nemotron_parse_model
+        self._api_key = api_key
+        self._request_timeout_s = float(request_timeout_s)
+        self._task_prompt = str(task_prompt)
+        self._remote_retry = RemoteRetryParams(
+            remote_max_pool_workers=int(remote_max_pool_workers),
+            remote_max_retries=int(remote_max_retries),
+            remote_max_429_retries=int(remote_max_429_retries),
+        )
+        self._model = None
+        self._extract_text = bool(extract_text)
+        self._extract_tables = bool(extract_tables)
+        self._extract_charts = bool(extract_charts)
+        self._extract_infographics = bool(extract_infographics)
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return nemotron_parse_pages(
+            data,
+            model=self._model,
+            invoke_url=self._invoke_url,
+            nemotron_parse_model=self._nemotron_parse_model,
+            api_key=self._api_key,
+            request_timeout_s=self._request_timeout_s,
+            task_prompt=self._task_prompt,
+            extract_text=self._extract_text,
+            extract_tables=self._extract_tables,
+            extract_charts=self._extract_charts,
+            extract_infographics=self._extract_infographics,
+            remote_retry=self._remote_retry,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="nemotron_parse_actor_call", exc=e)
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["chart"] = [[] for _ in range(n)]
+                out["infographic"] = [[] for _ in range(n)]
+                out["table_parse"] = [[] for _ in range(n)]
+                out["chart_parse"] = [[] for _ in range(n)]
+                out["infographic_parse"] = [[] for _ in range(n)]
+                out["nemotron_parse_v1_2"] = [payload for _ in range(n)]
+                return out
+            return [{"nemotron_parse_v1_2": _error_payload(stage="nemotron_parse_actor_call", exc=e)}]
+
+
+class NemotronParseActor(ArchetypeOperator):
+    """Graph-facing Nemotron Parse archetype."""
+
+    _cpu_variant_class = NemotronParseCPUActor
+    _gpu_variant_class = NemotronParseGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("nemotron_parse_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(
+        self,
+        *,
+        extract_text: bool = False,
+        extract_tables: bool = False,
+        extract_charts: bool = False,
+        extract_infographics: bool = False,
+        nemotron_parse_invoke_url: Optional[str] = None,
+        nemotron_parse_model: Optional[str] = None,
+        invoke_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        request_timeout_s: float = 120.0,
+        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        remote_max_pool_workers: int = 16,
+        remote_max_retries: int = 10,
+        remote_max_429_retries: int = 5,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            extract_text=extract_text,
+            extract_tables=extract_tables,
+            extract_charts=extract_charts,
+            extract_infographics=extract_infographics,
+            nemotron_parse_invoke_url=nemotron_parse_invoke_url,
+            nemotron_parse_model=nemotron_parse_model,
+            invoke_url=invoke_url,
+            api_key=api_key,
+            request_timeout_s=request_timeout_s,
+            task_prompt=task_prompt,
+            remote_max_pool_workers=remote_max_pool_workers,
+            remote_max_retries=remote_max_retries,
+            remote_max_429_retries=remote_max_429_retries,
+            **kwargs,
+        )

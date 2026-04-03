@@ -25,7 +25,8 @@ class TestGPUOperatorFlag:
         from nemo_retriever.page_elements.page_elements import PageElementDetectionGPUActor
         from nemo_retriever.chart.chart_detection import GraphicElementsGPUActor
         from nemo_retriever.table.table_detection import TableStructureGPUActor
-        from nemo_retriever.ocr.ocr import OCRGPUActor, NemotronParseGPUActor
+        from nemo_retriever.ocr.ocr import OCRGPUActor
+        from nemo_retriever.parse.nemotron_parse import NemotronParseGPUActor
         from nemo_retriever.text_embed.operators import _BatchEmbedGPUActor
         from nemo_retriever.caption.caption import CaptionGPUActor
         from nemo_retriever.infographic.infographic_detection import InfographicDetectionGPUActor
