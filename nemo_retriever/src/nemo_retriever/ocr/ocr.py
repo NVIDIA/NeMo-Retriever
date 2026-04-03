@@ -875,6 +875,145 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
 
 
 # ---------------------------------------------------------------------------
+# OCR v2 Actors
+# ---------------------------------------------------------------------------
+
+
+class OCRV2Actor(AbstractOperator, GPUOperator):
+    """
+    Ray-friendly callable that initializes Nemotron OCR v2 once per actor.
+
+    Identical interface to :class:`OCRActor` but loads the v2 model
+    (multilingual, higher throughput).  The v2 model supports English,
+    Chinese (Simplified & Traditional), Japanese, Korean, and Russian.
+
+    Usage with Ray Data::
+
+        ds = ds.map_batches(
+            OCRV2Actor,
+            batch_size=16, batch_format="pandas", num_cpus=4, num_gpus=1,
+            compute=ray.data.ActorPoolStrategy(size=8),
+            fn_constructor_kwargs={
+                "extract_tables": True,
+                "extract_charts": True,
+                "extract_infographics": False,
+            },
+        )
+    """
+
+    def __init__(self, **ocr_kwargs: Any) -> None:
+        super().__init__(**ocr_kwargs)
+        import warnings
+
+        if Image is not None:
+            warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
+
+        self.ocr_kwargs = dict(ocr_kwargs)
+        invoke_url = str(self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or "").strip()
+        if invoke_url and "invoke_url" not in self.ocr_kwargs:
+            self.ocr_kwargs["invoke_url"] = invoke_url
+
+        self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
+        self.ocr_kwargs["extract_tables"] = bool(self.ocr_kwargs.get("extract_tables", False))
+        self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
+        self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
+        self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
+        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
+        self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))
+
+        self._remote_retry = RemoteRetryParams(
+            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 16)),
+            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 10)),
+            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
+        )
+        if invoke_url:
+            self._model = None
+        else:
+            from nemo_retriever.model.local import NemotronOCRV2
+
+            self._model = NemotronOCRV2()
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return ocr_page_elements(
+            data,
+            model=self._model,
+            remote_retry=self._remote_retry,
+            **self.ocr_kwargs,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="actor_call", exc=e)
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["chart"] = [[] for _ in range(n)]
+                out["infographic"] = [[] for _ in range(n)]
+                out["ocr_v1"] = [payload for _ in range(n)]
+                return out
+            return [{"ocr_v1": _error_payload(stage="actor_call", exc=e)}]
+
+
+class OCRV2CPUActor(AbstractOperator, CPUOperator):
+    """CPU-only variant of :class:`OCRV2Actor`.
+
+    Defaults to the build.nvidia.com endpoint for ``nemotron-ocr-v2``.
+    No local GPU model is loaded.
+    """
+
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
+
+    def __init__(self, **ocr_kwargs: Any) -> None:
+        super().__init__(**ocr_kwargs)
+        self.ocr_kwargs = dict(ocr_kwargs)
+        invoke_url = str(
+            self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or self.DEFAULT_INVOKE_URL
+        ).strip()
+        if "invoke_url" not in self.ocr_kwargs:
+            self.ocr_kwargs["invoke_url"] = invoke_url
+
+        self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
+        self.ocr_kwargs["extract_tables"] = bool(self.ocr_kwargs.get("extract_tables", False))
+        self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
+        self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
+        self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
+        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
+        self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))
+
+        self._remote_retry = RemoteRetryParams(
+            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 16)),
+            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 10)),
+            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
+        )
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return ocr_page_elements(
+            data,
+            model=self._model,
+            remote_retry=self._remote_retry,
+            **self.ocr_kwargs,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+# ---------------------------------------------------------------------------
 # Nemotron Parse v1.2
 # ---------------------------------------------------------------------------
 
