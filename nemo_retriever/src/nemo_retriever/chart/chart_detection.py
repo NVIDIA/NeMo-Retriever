@@ -343,7 +343,7 @@ def graphic_elements_ocr_page_elements(
     graphic_elements_invoke_url: str = "",
     ocr_invoke_url: str = "",
     api_key: str = "",
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     remote_retry: RemoteRetryParams | None = None,
     **kwargs: Any,
 ) -> Any:
@@ -374,9 +374,9 @@ def graphic_elements_ocr_page_elements(
     from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
 
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
 
     if not isinstance(batch_df, pd.DataFrame):
@@ -554,10 +554,10 @@ class GraphicElementsGPUActor(AbstractOperator, GPUOperator):
         ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        request_timeout_s: float = 60.0,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
         inference_batch_size: int = 8,
     ) -> None:
         super().__init__()
@@ -654,10 +654,10 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
         ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        request_timeout_s: float = 60.0,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
         inference_batch_size: int = 8,
     ) -> None:
         super().__init__()
@@ -755,10 +755,10 @@ class GraphicElementsActor(ArchetypeOperator):
         ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        request_timeout_s: float = 60.0,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
         inference_batch_size: int = 8,
     ) -> None:
         super().__init__(

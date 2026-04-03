@@ -455,7 +455,7 @@ def detect_page_elements_v3(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     inference_batch_size: int = 8,
     output_column: str = "page_elements_v3",
     num_detections_column: str = "page_elements_v3_num_detections",
@@ -464,9 +464,9 @@ def detect_page_elements_v3(
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
     Run Nemotron Page Elements v3 on a pandas batch.

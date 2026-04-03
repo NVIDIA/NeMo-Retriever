@@ -454,7 +454,7 @@ def ocr_page_elements(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     extract_text: bool = False,
     extract_tables: bool = False,
     extract_charts: bool = False,
@@ -465,9 +465,9 @@ def ocr_page_elements(
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
     Run Nemotron OCR v1 on cropped regions detected by PageElements v3.
@@ -779,13 +779,13 @@ class OCRGPUActor(AbstractOperator, GPUOperator):
         self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
         self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
         self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
-        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
+        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 60.0))
         self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))
 
         self._remote_retry = RemoteRetryParams(
-            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 16)),
-            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 10)),
-            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
+            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 8)),
+            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 5)),
+            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 3)),
         )
         from nemo_retriever.model.local import NemotronOCRV1
 
@@ -846,13 +846,13 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
         self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
         self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
         self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
-        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
+        self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 60.0))
         self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))
 
         self._remote_retry = RemoteRetryParams(
-            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 16)),
-            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 10)),
-            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
+            remote_max_pool_workers=int(self.ocr_kwargs.get("remote_max_pool_workers", 8)),
+            remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 5)),
+            remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 3)),
         )
         self._model = None
 
@@ -942,7 +942,7 @@ def nemotron_parse_page_elements(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     extract_text: bool = False,
     extract_tables: bool = False,
     extract_charts: bool = False,
@@ -958,9 +958,9 @@ def nemotron_parse_page_elements(
     so this stage can replace the page-elements + OCR pair in pipeline wiring.
     """
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("nemotron_parse_page_elements currently only supports pandas.DataFrame input.")
@@ -1160,11 +1160,11 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         nemotron_parse_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
+        request_timeout_s: float = 60.0,
         task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
     ) -> None:
         super().__init__()
         self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
@@ -1245,11 +1245,11 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         nemotron_parse_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
+        request_timeout_s: float = 60.0,
         task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
     ) -> None:
         super().__init__()
         self._invoke_url = (nemotron_parse_invoke_url or invoke_url or self.DEFAULT_INVOKE_URL).strip()
@@ -1326,11 +1326,11 @@ class NemotronParseActor(ArchetypeOperator):
         nemotron_parse_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
+        request_timeout_s: float = 60.0,
         task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
     ) -> None:
         super().__init__(
             extract_tables=extract_tables,
