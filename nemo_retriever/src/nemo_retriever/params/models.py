@@ -19,15 +19,15 @@ class _ParamsModel(BaseModel):
 
 
 class RemoteRetryParams(_ParamsModel):
-    remote_max_pool_workers: int = 16
-    remote_max_retries: int = 10
-    remote_max_429_retries: int = 5
+    remote_max_pool_workers: int = 8
+    remote_max_retries: int = 5
+    remote_max_429_retries: int = 3
 
 
 class RemoteInvokeParams(_ParamsModel):
     invoke_url: Optional[str] = None
     api_key: Optional[str] = None
-    request_timeout_s: float = 120.0
+    request_timeout_s: float = 60.0
 
 
 class ModelRuntimeParams(_ParamsModel):
@@ -175,7 +175,7 @@ class ExtractParams(_ParamsModel):
     # Service endpoints
     invoke_url: Optional[str] = None
     api_key: Optional[str] = None
-    request_timeout_s: float = 120.0
+    request_timeout_s: float = 60.0
     page_elements_invoke_url: Optional[str] = None
     page_elements_api_key: Optional[str] = None
     page_elements_request_timeout_s: Optional[float] = None

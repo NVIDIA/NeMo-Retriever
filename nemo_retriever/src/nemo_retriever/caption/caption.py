@@ -12,7 +12,9 @@ import pandas as pd
 from PIL import Image
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import CaptionParams
 
 _DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
@@ -50,12 +52,8 @@ def _get_cached_local_model(kwargs: dict) -> "Any":
     return _cached_local_model
 
 
-class CaptionActor(AbstractOperator, GPUOperator):
-    """Ray Data actor that holds a local VLM captioner on a single GPU.
-
-    When ``endpoint_url`` is provided, the actor delegates to a remote VLM
-    endpoint and no local model is loaded.
-    """
+class CaptionGPUActor(AbstractOperator, GPUOperator):
+    """Ray Data actor that holds a local VLM captioner on a single GPU."""
 
     def __init__(self, params: CaptionParams) -> None:
         super().__init__(params=params)
@@ -63,9 +61,8 @@ class CaptionActor(AbstractOperator, GPUOperator):
         self._kwargs = params.model_dump(mode="python")
         endpoint = (self._kwargs.get("endpoint_url") or "").strip()
         if endpoint:
-            self._model = None
-        else:
-            self._model = _create_local_model(self._kwargs)
+            raise ValueError("CaptionGPUActor does not support remote endpoint execution. Use CaptionCPUActor instead.")
+        self._model = _create_local_model(self._kwargs)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -75,6 +72,45 @@ class CaptionActor(AbstractOperator, GPUOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+
+class CaptionCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only caption actor that delegates to a remote VLM endpoint."""
+
+    def __init__(self, params: CaptionParams) -> None:
+        super().__init__(params=params)
+        self._params = params
+        self._kwargs = params.model_dump(mode="python")
+        endpoint = (self._kwargs.get("endpoint_url") or "").strip()
+        if not endpoint:
+            raise ValueError("CaptionCPUActor requires params.endpoint_url to be set.")
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **kwargs: Any) -> Any:
+        return caption_images(batch_df, model=self._model, **self._kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class CaptionActor(ArchetypeOperator):
+    """Graph-facing captioning archetype resolved to the local hardware variant."""
+
+    _cpu_variant_class = CaptionCPUActor
+    _gpu_variant_class = CaptionGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        params = (operator_kwargs or {}).get("params")
+        endpoint = getattr(params, "endpoint_url", None)
+        return bool(str(endpoint or "").strip())
+
+    def __init__(self, params: CaptionParams) -> None:
+        super().__init__(params=params)
+        self._params = params
 
 
 def _build_prompt_with_context(base_prompt: str, context_text: str) -> str:

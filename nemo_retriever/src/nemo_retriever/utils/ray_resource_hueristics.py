@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -208,6 +209,18 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
             cpu_count=available_resources.get("CPU", 0), gpu_count=available_resources.get("GPU", 0)
         ),
     )
+
+
+def gather_local_resources() -> Resources:
+    """Gather local CPU/GPU resources without requiring Ray."""
+
+    cpu_count = int(os.cpu_count() or 0)
+    gpu_count = 0
+    try:
+        gpu_count = len(_get_gpu_memory_info().gpus)
+    except Exception as exc:  # pragma: no cover - depends on optional NVML runtime
+        logger.debug("Failed to detect local GPU resources via NVML: %s", exc)
+    return Resources(cpu_count=cpu_count, gpu_count=int(gpu_count))
 
 
 class RequestedPlan(BaseModel):

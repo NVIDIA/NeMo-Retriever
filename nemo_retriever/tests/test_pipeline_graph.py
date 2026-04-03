@@ -9,9 +9,13 @@ from typing import Any
 import pytest
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +87,45 @@ class ParamsHolderOperator(AbstractOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+
+class CPUAdaptiveAddOperator(AbstractOperator, CPUOperator):
+    def __init__(self, value: int = 1) -> None:
+        super().__init__()
+        self.value = value
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return data + self.value
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class GPUAdaptiveAddOperator(AbstractOperator, GPUOperator):
+    def __init__(self, value: int = 1) -> None:
+        super().__init__()
+        self.value = value
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return data + self.value
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class AdaptiveAddOperator(ArchetypeOperator):
+    _cpu_variant_class = CPUAdaptiveAddOperator
+    _gpu_variant_class = GPUAdaptiveAddOperator
+
+    def __init__(self, value: int = 1) -> None:
+        super().__init__(value=value)
+        self.value = value
 
 
 # =====================================================================
@@ -407,6 +450,24 @@ class TestGraph:
 # Graph.execute tests
 # =====================================================================
 class TestGraphExecute:
+    def test_resolve_returns_clone_with_concrete_operator_class(self):
+        g = Graph() >> AdaptiveAddOperator(5)
+
+        resolved = g.resolve(Resources(cpu_count=8, gpu_count=0))
+
+        assert resolved is not g
+        assert resolved.roots[0].operator_class is CPUAdaptiveAddOperator
+        assert g.roots[0].operator_class is AdaptiveAddOperator
+
+    def test_execute_resolves_archetypes_locally(self, monkeypatch):
+        resources = Resources(cpu_count=8, gpu_count=0)
+        monkeypatch.setattr("nemo_retriever.graph.operator_resolution.gather_local_resources", lambda: resources)
+        monkeypatch.setattr("nemo_retriever.graph.operator_archetype.gather_local_resources", lambda: resources)
+
+        g = Graph() >> AdaptiveAddOperator(5)
+
+        assert g.execute(7) == [12]
+
     def test_single_node(self):
         g = Graph()
         g.add_root(Node(AddOperator(10)))

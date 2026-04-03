@@ -14,6 +14,7 @@ from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
     import torch
@@ -229,7 +230,7 @@ def table_structure_ocr_page_elements(
     table_structure_invoke_url: str = "",
     ocr_invoke_url: str = "",
     api_key: str = "",
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     remote_retry: RemoteRetryParams | None = None,
     **kwargs: Any,
 ) -> Any:
@@ -274,9 +275,9 @@ def table_structure_ocr_page_elements(
     from nemo_retriever.utils.table_and_chart import join_table_structure_and_ocr_output
 
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
 
     if not isinstance(batch_df, pd.DataFrame):
@@ -447,7 +448,7 @@ def table_structure_ocr_page_elements(
 # ---------------------------------------------------------------------------
 
 
-class TableStructureActor(AbstractOperator, GPUOperator):
+class TableStructureGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes both table-structure and OCR
     models once per actor and runs the combined stage.
@@ -472,14 +473,19 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        request_timeout_s: float = 60.0,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
     ) -> None:
         super().__init__()
         self._table_structure_invoke_url = (table_structure_invoke_url or "").strip()
         self._ocr_invoke_url = (ocr_invoke_url or invoke_url or "").strip()
+        if self._table_structure_invoke_url or self._ocr_invoke_url:
+            raise ValueError(
+                "TableStructureGPUActor does not support remote endpoint execution. "
+                "Use TableStructureCPUActor instead."
+            )
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._remote_retry = RemoteRetryParams(
@@ -488,19 +494,11 @@ class TableStructureActor(AbstractOperator, GPUOperator):
             remote_max_429_retries=int(remote_max_429_retries),
         )
 
-        if self._table_structure_invoke_url:
-            self._table_structure_model = None
-        else:
-            from nemo_retriever.model.local import NemotronTableStructureV1
+        from nemo_retriever.model.local import NemotronTableStructureV1
+        from nemo_retriever.model.local import NemotronOCRV1
 
-            self._table_structure_model = NemotronTableStructureV1()
-
-        if self._ocr_invoke_url:
-            self._ocr_model = None
-        else:
-            from nemo_retriever.model.local import NemotronOCRV1
-
-            self._ocr_model = NemotronOCRV1()
+        self._table_structure_model = NemotronTableStructureV1()
+        self._ocr_model = NemotronOCRV1()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -572,10 +570,10 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
         ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
+        request_timeout_s: float = 60.0,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
     ) -> None:
         super().__init__()
         self._table_structure_invoke_url = (
@@ -610,3 +608,86 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = {
+                    "timing": None,
+                    "error": {
+                        "stage": "table_structure_actor_call",
+                        "type": e.__class__.__name__,
+                        "message": str(e),
+                        "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+                    },
+                }
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["table_structure_ocr_v1"] = [payload for _ in range(n)]
+                return out
+            return [
+                {
+                    "table_structure_ocr_v1": {
+                        "timing": None,
+                        "error": {
+                            "stage": "table_structure_actor_call",
+                            "type": e.__class__.__name__,
+                            "message": str(e),
+                            "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+                        },
+                    }
+                }
+            ]
+
+
+class TableStructureActor(ArchetypeOperator):
+    """Graph-facing table structure archetype."""
+
+    _cpu_variant_class = TableStructureCPUActor
+    _gpu_variant_class = TableStructureGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(
+            str(
+                kwargs.get("table_structure_invoke_url")
+                or kwargs.get("ocr_invoke_url")
+                or kwargs.get("invoke_url")
+                or ""
+            ).strip()
+        )
+
+    def __init__(
+        self,
+        *,
+        table_structure_invoke_url: Optional[str] = None,
+        ocr_invoke_url: Optional[str] = None,
+        invoke_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        request_timeout_s: float = 60.0,
+        remote_max_pool_workers: int = 8,
+        remote_max_retries: int = 5,
+        remote_max_429_retries: int = 3,
+    ) -> None:
+        super().__init__(
+            table_structure_invoke_url=table_structure_invoke_url,
+            ocr_invoke_url=ocr_invoke_url,
+            invoke_url=invoke_url,
+            api_key=api_key,
+            request_timeout_s=request_timeout_s,
+            remote_max_pool_workers=remote_max_pool_workers,
+            remote_max_retries=remote_max_retries,
+            remote_max_429_retries=remote_max_429_retries,
+        )
+        self._table_structure_invoke_url = table_structure_invoke_url
+        self._ocr_invoke_url = ocr_invoke_url
+        self._invoke_url = invoke_url
+        self._api_key = api_key
+        self._request_timeout_s = float(request_timeout_s)
+        self._remote_max_pool_workers = int(remote_max_pool_workers)
+        self._remote_max_retries = int(remote_max_retries)
+        self._remote_max_429_retries = int(remote_max_429_retries)

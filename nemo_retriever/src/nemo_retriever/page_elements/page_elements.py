@@ -17,6 +17,7 @@ from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
     import numpy as np
@@ -454,7 +455,7 @@ def detect_page_elements_v3(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     inference_batch_size: int = 8,
     output_column: str = "page_elements_v3",
     num_detections_column: str = "page_elements_v3_num_detections",
@@ -463,9 +464,9 @@ def detect_page_elements_v3(
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
     Run Nemotron Page Elements v3 on a pandas batch.
@@ -740,7 +741,7 @@ def detect_page_elements_v3(
     return out
 
 
-class PageElementDetectionActor(AbstractOperator, GPUOperator):
+class PageElementDetectionGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Page Elements v3 once.
 
@@ -754,14 +755,14 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
         invoke_url = str(
             self.detect_kwargs.get("page_elements_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
         ).strip()
-        if invoke_url and "invoke_url" not in self.detect_kwargs:
-            self.detect_kwargs["invoke_url"] = invoke_url
         if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronPageElementsV3
+            raise ValueError(
+                "PageElementDetectionGPUActor does not support remote endpoint execution. "
+                "Use PageElementDetectionCPUActor instead."
+            )
+        from nemo_retriever.model.local import NemotronPageElementsV3
 
-            self._model = NemotronPageElementsV3()
+        self._model = NemotronPageElementsV3()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -839,3 +840,18 @@ class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
                 out["page_elements_v3_counts_by_label"] = [{} for _ in range(len(out.index))]
                 return out
             return [{"page_elements_v3": _error_payload(stage="cpu_actor_call", exc=e)}]
+
+
+class PageElementDetectionActor(ArchetypeOperator):
+    """Graph-facing page element detection archetype."""
+
+    _cpu_variant_class = PageElementDetectionCPUActor
+    _gpu_variant_class = PageElementDetectionGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("page_elements_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
