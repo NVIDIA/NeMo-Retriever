@@ -246,7 +246,8 @@ class GraphIngestor(ingestor):
         """
         # Auto-enable dedup before captioning so that images overlapping
         # with table/chart/infographic detections are removed first.
-        if self._caption_params is not None and self._dedup_params is None:
+        # Skip for image-only extraction — the image IS the content.
+        if self._caption_params is not None and self._dedup_params is None and self._extraction_mode != "image":
             self._dedup_params = DedupParams()
             if "dedup" not in self._stage_order:
                 # Insert dedup right before caption in the stage order.

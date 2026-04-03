@@ -254,6 +254,14 @@ def caption_images(
     if not has_images and not has_infographics:
         return batch_df
 
+    # Normalize model name for the target execution mode (local vs remote).
+    from nemo_retriever.model.local.nemotron_vlm_captioner import resolve_caption_model_name
+
+    if endpoint_url:
+        model_name = resolve_caption_model_name(model_name, target="remote")
+    else:
+        model_name = resolve_caption_model_name(model_name, target="local")
+
     if model is None and not endpoint_url:
         model = _get_cached_local_model(kwargs)
 
