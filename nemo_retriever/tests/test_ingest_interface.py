@@ -1,6 +1,17 @@
 import pytest
 
+from nemo_retriever.graph_ingestor import GraphIngestor
 from nemo_retriever.ingestor import IngestorCreateParams, _merge_params, create_ingestor
+from nemo_retriever.params import (
+    ASRParams,
+    AudioChunkParams,
+    CaptionParams,
+    DedupParams,
+    EmbedParams,
+    ExtractParams,
+    HtmlChunkParams,
+    TextChunkParams,
+)
 
 
 def test_merge_params_none_returns_kwargs() -> None:
@@ -16,23 +27,50 @@ def test_merge_params_with_model_copy_updates_values() -> None:
     assert merged.ray_log_to_driver is False
 
 
-def test_create_ingestor_parses_kwargs_and_uses_factory(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_factory(*, run_mode, params):
-        captured["run_mode"] = run_mode
-        captured["params"] = params
-        return "sentinel-ingestor"
-
-    monkeypatch.setattr("nemo_retriever.ingestor.create_runmode_ingestor", fake_factory)
-
+def test_create_ingestor_parses_kwargs_and_returns_graph_ingestor() -> None:
     ingestor = create_ingestor(run_mode="inprocess", documents=["doc.pdf"], base_url="http://example:7670")
-    assert ingestor == "sentinel-ingestor"
-    assert captured["run_mode"] == "inprocess"
-    assert isinstance(captured["params"], IngestorCreateParams)
-    assert captured["params"].documents == ["doc.pdf"]  # type: ignore[index]
+    assert isinstance(ingestor, GraphIngestor)
+    assert ingestor._run_mode == "inprocess"
+    assert ingestor._documents == ["doc.pdf"]
 
 
 def test_create_ingestor_rejects_unknown_kwargs() -> None:
     with pytest.raises(Exception):
         create_ingestor(run_mode="inprocess", unknown_field=True)
+
+
+def test_create_ingestor_rejects_legacy_non_graph_modes() -> None:
+    with pytest.raises(ValueError, match="supports only graph-backed run modes"):
+        create_ingestor(run_mode="fused")  # type: ignore[arg-type]
+
+
+def test_graph_ingestor_action_methods_materialize_default_params() -> None:
+    ingestor = GraphIngestor(run_mode="inprocess")
+
+    ingestor.extract()
+    assert isinstance(ingestor._extract_params, ExtractParams)
+
+    ingestor.extract_image_files()
+    assert isinstance(ingestor._extract_params, ExtractParams)
+
+    ingestor.extract_txt()
+    assert isinstance(ingestor._text_params, TextChunkParams)
+
+    ingestor.extract_html()
+    assert isinstance(ingestor._html_params, HtmlChunkParams)
+
+    ingestor.extract_audio()
+    assert isinstance(ingestor._audio_chunk_params, AudioChunkParams)
+    assert isinstance(ingestor._asr_params, ASRParams)
+
+    ingestor.dedup()
+    assert isinstance(ingestor._dedup_params, DedupParams)
+
+    ingestor.caption()
+    assert isinstance(ingestor._caption_params, CaptionParams)
+
+    ingestor.split()
+    assert isinstance(ingestor._split_params, TextChunkParams)
+
+    ingestor.embed()
+    assert isinstance(ingestor._embed_params, EmbedParams)

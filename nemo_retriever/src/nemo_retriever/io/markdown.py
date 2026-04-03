@@ -110,9 +110,6 @@ def _records_from_mapping(results: Mapping[str, Any]) -> list[dict[str, Any]]:
         return [dict(results)]
     raise ValueError("Markdown rendering expects a document row, row list, or saved results payload.")
 
-    # TODO(jioffe): Centralize retriever result-shape detection so helpers and
-    # actor outputs do not rely on duplicated key-based heuristics.
-
 
 def _looks_like_record(record: Mapping[str, Any]) -> bool:
     return any(

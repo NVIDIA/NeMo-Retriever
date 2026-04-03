@@ -23,6 +23,7 @@ import traceback
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
     import torch
@@ -176,7 +177,7 @@ def embed_text_1b_v2(
     return out
 
 
-class TextEmbedActor(AbstractOperator, GPUOperator):
+class TextEmbedGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes `LlamaNemotronEmbed1BV2Embedder` once.
     """
@@ -226,3 +227,10 @@ class TextEmbedActor(AbstractOperator, GPUOperator):
                 out["text_embeddings_1b_v2_has_embedding"] = [False for _ in range(len(out.index))]
                 return out
             return [{"text_embeddings_1b_v2": _error_payload(stage="actor_call", exc=e)}]
+
+
+class TextEmbedActor(ArchetypeOperator):
+    _gpu_variant_class = TextEmbedGPUActor
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)

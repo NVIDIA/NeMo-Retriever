@@ -82,7 +82,7 @@ from typing import Any
 from nemo_retriever.graph import AbstractOperator
 
 
-class AddSuffixOperator(AbstractOperator):
+class AddSuffixOperator(AbstractOperator, VDB):
     def __init__(self, suffix: str = "_done") -> None:
         super().__init__()
         self.suffix = suffix
@@ -91,13 +91,14 @@ class AddSuffixOperator(AbstractOperator):
         return str(data).strip()
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        return data + self.suffix
+        return self._vdb.write_to_index(data)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
 ```
 
-Then add it to a graph:
+
 
 ```python
 from nemo_retriever.graph import UDFOperator

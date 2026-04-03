@@ -10,7 +10,22 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.utils.ray_resource_hueristics import (
+    gather_cluster_resources,
+    gather_local_resources,
+    OCR_GPUS_PER_ACTOR,
+)
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Heuristic GPU fraction for GPUOperator nodes that load a local model.
+# Reuses the same baseline constant as the batch ingest mode.
+_DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
 
 
 class AbstractExecutor(ABC):
@@ -100,7 +115,8 @@ class InprocessExecutor(AbstractExecutor):
                 f"data must be a pandas.DataFrame, file path, or list of paths, " f"got {type(data).__name__}"
             )
 
-        nodes = self._linearize(self.graph)
+        resolved_graph = resolve_graph(self.graph, gather_local_resources())
+        nodes = self._linearize(resolved_graph)
         operators = []
         for node in nodes:
             op = node.operator_class(**node.operator_kwargs)
@@ -214,6 +230,10 @@ class RayDataExecutor(AbstractExecutor):
         if self._ray_address or not ray.is_initialized():
             ray.init(address=self._ray_address, ignore_reinit_error=True)
 
+        cluster = gather_cluster_resources(ray)
+        available_gpus = cluster.available_gpu_count()
+        resolved_graph = resolve_graph(self.graph, cluster)
+
         if isinstance(data, rd.Dataset):
             ds = data
         elif isinstance(data, (str, list)):
@@ -228,14 +248,54 @@ class RayDataExecutor(AbstractExecutor):
                 f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
             )
 
-        nodes = self._linearize(self.graph)
+        nodes = self._linearize(resolved_graph)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
-            num_gpus = overrides.pop("num_gpus", self._default_num_gpus)
+
+            # When no explicit num_gpus override is given, auto-detect from the
+            # GPUOperator mixin using actual cluster GPU availability.
+            if "num_gpus" in overrides:
+                num_gpus = overrides.pop("num_gpus")
+            elif issubclass(node.operator_class, GPUOperator):
+                has_remote_endpoint = any("invoke_url" in k and bool(v) for k, v in node.operator_kwargs.items())
+                # For composite operators (e.g. MultiTypeExtractOperator) the
+                # invoke URLs live inside a nested ExtractParams object rather
+                # than as top-level kwargs.  Check those too.
+                if not has_remote_endpoint:
+                    for v in node.operator_kwargs.values():
+                        if hasattr(v, "model_dump"):
+                            has_remote_endpoint = any(
+                                "invoke_url" in k and bool(val) for k, val in v.model_dump(exclude_none=True).items()
+                            )
+                            if has_remote_endpoint:
+                                break
+                if has_remote_endpoint:
+                    # Remote endpoint handles the model — no local GPU needed.
+                    num_gpus = self._default_num_gpus
+                elif available_gpus > 0:
+                    # Local model, GPUs present: assign the heuristic fraction so
+                    # Ray can co-schedule multiple actors per GPU.
+                    num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
+                else:
+                    # No GPUs in the cluster — operator will likely fail to load
+                    # its CUDA model.  Warn loudly rather than silently requesting
+                    # a fraction that would stall the pipeline indefinitely.
+                    logger.warning(
+                        "Node %r is a GPUOperator with no remote endpoint but "
+                        "the Ray cluster reports 0 available GPUs. "
+                        "The actor will be scheduled with num_gpus=0 and will "
+                        "likely fail to load its model. Pass --ocr-invoke-url / "
+                        "--page-elements-invoke-url / --embed-invoke-url to use "
+                        "remote endpoints, or ensure GPUs are visible to Ray.",
+                        node.name,
+                    )
+                    num_gpus = self._default_num_gpus
+            else:
+                num_gpus = self._default_num_gpus
 
             if target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
                 ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))

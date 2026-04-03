@@ -145,17 +145,18 @@ class NemotronRerankV2(BaseModel):
         texts = [_prompt_template(query, d) for d in documents]
         all_scores: List[float] = []
 
+        # Tokenize all texts in a single call to avoid repeated setup overhead.
+        full_batch = self._tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            max_length=max_length,
+        )
+
         with torch.inference_mode():
             for start in range(0, len(texts), batch_size):
-                chunk = texts[start : start + batch_size]
-                batch = self._tokenizer(
-                    chunk,
-                    padding=True,
-                    truncation=True,
-                    return_tensors="pt",
-                    max_length=max_length,
-                )
-                batch = {k: v.to(self._device) for k, v in batch.items()}
+                batch = {k: v[start : start + batch_size].to(self._device) for k, v in full_batch.items()}
                 logits = self._model(**batch).logits
                 all_scores.extend(logits.view(-1).cpu().tolist())
 
@@ -193,17 +194,18 @@ class NemotronRerankV2(BaseModel):
         texts = [_prompt_template(q, d) for q, d in pairs]
         all_scores: List[float] = []
 
+        # Tokenize all texts in a single call to avoid repeated setup overhead.
+        full_batch = self._tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            max_length=max_length,
+        )
+
         with torch.inference_mode():
             for start in range(0, len(texts), batch_size):
-                chunk = texts[start : start + batch_size]
-                batch = self._tokenizer(
-                    chunk,
-                    padding=True,
-                    truncation=True,
-                    return_tensors="pt",
-                    max_length=max_length,
-                )
-                batch = {k: v.to(self._device) for k, v in batch.items()}
+                batch = {k: v[start : start + batch_size].to(self._device) for k, v in full_batch.items()}
                 logits = self._model(**batch).logits
                 all_scores.extend(logits.view(-1).cpu().tolist())
 

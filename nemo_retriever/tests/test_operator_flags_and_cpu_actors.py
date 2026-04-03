@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 
@@ -21,31 +22,31 @@ class TestGPUOperatorFlag:
         assert isinstance(GPUOperator(), GPUOperator)
 
     def test_gpu_operators_have_flag(self):
-        from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
-        from nemo_retriever.chart.chart_detection import GraphicElementsActor
-        from nemo_retriever.table.table_detection import TableStructureActor
-        from nemo_retriever.ocr.ocr import OCRActor, NemotronParseActor
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedActor
-        from nemo_retriever.caption.caption import CaptionActor
-        from nemo_retriever.infographic.infographic_detection import InfographicDetectionActor
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
-        from nemo_retriever.text_embed.text_embed import TextEmbedActor
+        from nemo_retriever.page_elements.page_elements import PageElementDetectionGPUActor
+        from nemo_retriever.chart.chart_detection import GraphicElementsGPUActor
+        from nemo_retriever.table.table_detection import TableStructureGPUActor
+        from nemo_retriever.ocr.ocr import OCRGPUActor, NemotronParseGPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedGPUActor
+        from nemo_retriever.caption.caption import CaptionGPUActor
+        from nemo_retriever.infographic.infographic_detection import InfographicDetectionGPUActor
+        from nemo_retriever.rerank.rerank import NemotronRerankGPUActor
+        from nemo_retriever.text_embed.text_embed import TextEmbedGPUActor
 
-        assert issubclass(PageElementDetectionActor, GPUOperator)
-        assert issubclass(GraphicElementsActor, GPUOperator)
-        assert issubclass(TableStructureActor, GPUOperator)
-        assert issubclass(OCRActor, GPUOperator)
-        assert issubclass(NemotronParseActor, GPUOperator)
-        assert issubclass(_BatchEmbedActor, GPUOperator)
-        assert issubclass(CaptionActor, GPUOperator)
-        assert issubclass(InfographicDetectionActor, GPUOperator)
-        assert issubclass(NemotronRerankActor, GPUOperator)
-        assert issubclass(TextEmbedActor, GPUOperator)
+        assert issubclass(PageElementDetectionGPUActor, GPUOperator)
+        assert issubclass(GraphicElementsGPUActor, GPUOperator)
+        assert issubclass(TableStructureGPUActor, GPUOperator)
+        assert issubclass(OCRGPUActor, GPUOperator)
+        assert issubclass(NemotronParseGPUActor, GPUOperator)
+        assert issubclass(_BatchEmbedGPUActor, GPUOperator)
+        assert issubclass(CaptionGPUActor, GPUOperator)
+        assert issubclass(InfographicDetectionGPUActor, GPUOperator)
+        assert issubclass(NemotronRerankGPUActor, GPUOperator)
+        assert issubclass(TextEmbedGPUActor, GPUOperator)
 
     def test_gpu_operators_are_not_cpu(self):
-        from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
+        from nemo_retriever.page_elements.page_elements import PageElementDetectionGPUActor
 
-        assert not issubclass(PageElementDetectionActor, CPUOperator)
+        assert not issubclass(PageElementDetectionGPUActor, CPUOperator)
 
 
 class TestCPUOperatorFlag:
@@ -53,29 +54,52 @@ class TestCPUOperatorFlag:
         assert isinstance(CPUOperator(), CPUOperator)
 
     def test_cpu_operators_have_flag(self):
-        from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
-        from nemo_retriever.pdf.split import PDFSplitActor
-        from nemo_retriever.pdf.extract import PDFExtractionActor
-        from nemo_retriever.txt.ray_data import TextChunkActor, TxtSplitActor
-        from nemo_retriever.image.ray_data import ImageLoadActor
-        from nemo_retriever.html.ray_data import HtmlSplitActor
-        from nemo_retriever.ingest_modes.batch import ExplodeContentActor
-        from nemo_retriever.audio.asr_actor import ASRActor
+        from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionCPUActor
+        from nemo_retriever.pdf.split import PDFSplitCPUActor
+        from nemo_retriever.pdf.extract import PDFExtractionCPUActor
+        from nemo_retriever.txt.ray_data import TextChunkCPUActor, TxtSplitCPUActor
+        from nemo_retriever.image.ray_data import ImageLoadCPUActor
+        from nemo_retriever.html.ray_data import HtmlSplitCPUActor
+        from nemo_retriever.graph.content_operators import ExplodeContentActor
+        from nemo_retriever.audio.asr_actor import ASRCPUActor
+        from nemo_retriever.caption.caption import CaptionCPUActor
+        from nemo_retriever.infographic.infographic_detection import InfographicDetectionCPUActor
+        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
 
-        assert issubclass(DocToPdfConversionActor, CPUOperator)
-        assert issubclass(PDFSplitActor, CPUOperator)
-        assert issubclass(PDFExtractionActor, CPUOperator)
-        assert issubclass(TextChunkActor, CPUOperator)
-        assert issubclass(TxtSplitActor, CPUOperator)
-        assert issubclass(ImageLoadActor, CPUOperator)
-        assert issubclass(HtmlSplitActor, CPUOperator)
+        assert issubclass(DocToPdfConversionCPUActor, CPUOperator)
+        assert issubclass(PDFSplitCPUActor, CPUOperator)
+        assert issubclass(PDFExtractionCPUActor, CPUOperator)
+        assert issubclass(TextChunkCPUActor, CPUOperator)
+        assert issubclass(TxtSplitCPUActor, CPUOperator)
+        assert issubclass(ImageLoadCPUActor, CPUOperator)
+        assert issubclass(HtmlSplitCPUActor, CPUOperator)
         assert issubclass(ExplodeContentActor, CPUOperator)
-        assert issubclass(ASRActor, CPUOperator)
+        assert issubclass(ASRCPUActor, CPUOperator)
+        assert issubclass(CaptionCPUActor, CPUOperator)
+        assert issubclass(InfographicDetectionCPUActor, CPUOperator)
+        assert issubclass(NemotronRerankCPUActor, CPUOperator)
 
     def test_cpu_operators_are_not_gpu(self):
-        from nemo_retriever.pdf.split import PDFSplitActor
+        from nemo_retriever.pdf.split import PDFSplitCPUActor
 
-        assert not issubclass(PDFSplitActor, GPUOperator)
+        assert not issubclass(PDFSplitCPUActor, GPUOperator)
+
+    def test_public_actor_names_are_archetypes(self):
+        from nemo_retriever.audio.asr_actor import ASRActor
+        from nemo_retriever.caption.caption import CaptionActor
+        from nemo_retriever.chart.chart_detection import GraphicElementsActor
+        from nemo_retriever.ocr.ocr import OCRActor
+        from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
+        from nemo_retriever.table.table_detection import TableStructureActor
+
+        assert issubclass(ASRActor, ArchetypeOperator)
+        assert issubclass(CaptionActor, ArchetypeOperator)
+        assert issubclass(GraphicElementsActor, ArchetypeOperator)
+        assert issubclass(OCRActor, ArchetypeOperator)
+        assert issubclass(PageElementDetectionActor, ArchetypeOperator)
+        assert issubclass(TableStructureActor, ArchetypeOperator)
+        assert not issubclass(ASRActor, CPUOperator)
+        assert not issubclass(CaptionActor, GPUOperator)
 
     def test_all_operators_are_abstract_operator(self):
         from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
@@ -292,13 +316,13 @@ class TestBatchEmbedCPUActor:
         return EmbedParams(model_name="test-model", embed_invoke_url="http://fake")
 
     def test_inherits_cpu_operator(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         assert issubclass(_BatchEmbedCPUActor, CPUOperator)
         assert not issubclass(_BatchEmbedCPUActor, GPUOperator)
 
     def test_uses_default_invoke_url(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
         from nemo_retriever.params import EmbedParams
 
         actor = _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model"))
@@ -306,15 +330,15 @@ class TestBatchEmbedCPUActor:
         assert "integrate.api.nvidia.com" in actor._kwargs["embedding_endpoint"]
 
     def test_creates_with_custom_invoke_url(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         actor = _BatchEmbedCPUActor(params=self._make_params())
         assert actor._model is None
         assert actor._kwargs["embedding_endpoint"] == "http://fake"
 
-    @patch("nemo_retriever.ingest_modes.inprocess.embed_text_main_text_embed")
+    @patch("nemo_retriever.text_embed.operators.embed_text_main_text_embed")
     def test_process(self, mock_fn):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected
@@ -324,14 +348,14 @@ class TestBatchEmbedCPUActor:
         pd.testing.assert_frame_equal(result, expected)
 
     def test_preprocess_passthrough(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         actor = _BatchEmbedCPUActor(params=self._make_params())
         df = pd.DataFrame({"text": ["hello"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
     def test_postprocess_passthrough(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         actor = _BatchEmbedCPUActor(params=self._make_params())
         df = pd.DataFrame({"text": ["hello"]})

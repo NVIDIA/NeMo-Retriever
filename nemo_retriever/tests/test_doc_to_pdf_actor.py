@@ -5,9 +5,32 @@
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
+from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor, convert_to_pdf_bytes, convert_batch_to_pdf
+
+
+class TestConvertToPdfBytes:
+    @patch("nemo_retriever.utils.convert.to_pdf.shutil.which", return_value=None)
+    def test_raises_when_libreoffice_missing(self, _mock_which):
+        with pytest.raises(FileNotFoundError, match="LibreOffice is required"):
+            convert_to_pdf_bytes(b"fake docx content", ".docx")
+
+    @patch("nemo_retriever.utils.convert.to_pdf.shutil.which", return_value=None)
+    def test_skips_check_for_pdf(self, _mock_which):
+        """PDF passthrough should not require LibreOffice."""
+        result = convert_to_pdf_bytes(b"%PDF-1.4 content", ".pdf")
+        assert result == b"%PDF-1.4 content"
+
+
+class TestConvertBatchToPdf:
+    @patch("nemo_retriever.utils.convert.to_pdf.shutil.which", return_value=None)
+    def test_libreoffice_missing_propagates_through_batch(self, _mock_which):
+        """FileNotFoundError must not be swallowed by the batch error handler."""
+        df = pd.DataFrame({"bytes": [b"fake"], "path": ["/tmp/test.docx"]})
+        with pytest.raises(FileNotFoundError, match="LibreOffice is required"):
+            convert_batch_to_pdf(df)
 
 
 class TestDocToPdfConversionActor:

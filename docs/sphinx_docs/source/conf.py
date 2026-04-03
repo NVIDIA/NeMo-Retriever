@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, os.path.abspath("../../../api/src"))  # nv-ingest-api src
 sys.path.insert(1, os.path.abspath("../../../client/src"))  # nv-ingest-client src
 sys.path.insert(2, os.path.abspath("../../../src"))  # nv-ingest src
+sys.path.insert(3, os.path.abspath("../../../nemo_retriever/src"))  # nemo-retriever src
 
 project = "nv-ingest"
 copyright = "2025, Nvidia"

@@ -2,8 +2,10 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""Compatibility re-exports for shared content-transform operators."""
+
 from __future__ import annotations
 
-from ..ingestor import Ingestor, RunMode, create_ingestor
+from nemo_retriever.graph.content_operators import ExplodeContentActor
 
-__all__ = ["Ingestor", "RunMode", "create_ingestor"]
+__all__ = ["ExplodeContentActor"]
