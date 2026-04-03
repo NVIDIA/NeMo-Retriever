@@ -316,6 +316,7 @@ class CaptionParams(_ParamsModel):
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
+    caption_infographics: bool = False
 
 
 class DedupParams(_ParamsModel):

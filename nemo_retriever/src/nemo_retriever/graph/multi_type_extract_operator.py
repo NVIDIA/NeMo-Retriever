@@ -25,6 +25,7 @@ from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import HtmlChunkParams
 from nemo_retriever.params import PdfSplitParams
@@ -57,6 +58,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         html_params: HtmlChunkParams | None = None,
         audio_chunk_params: AudioChunkParams | None = None,
         asr_params: ASRParams | None = None,
+        caption_params: CaptionParams | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -66,6 +68,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         self.html_params = html_params or HtmlChunkParams()
         self.audio_chunk_params = audio_chunk_params or AudioChunkParams()
         self.asr_params = asr_params or ASRParams()
+        self.caption_params = caption_params
 
     def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame | dict[str, list[str]]:
         if isinstance(data, pd.DataFrame):
@@ -254,6 +257,8 @@ class _MultiTypeExtractBase(AbstractOperator):
             ocr_kwargs["extract_charts"] = True
         if extract_params.extract_infographics:
             ocr_kwargs["extract_infographics"] = True
+        if self.caption_params is not None and getattr(self.caption_params, "caption_infographics", False):
+            ocr_kwargs["caption_infographics"] = True
         if extract_params.ocr_invoke_url:
             ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
         if extract_params.api_key:
@@ -310,6 +315,7 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         html_params: HtmlChunkParams | None = None,
         audio_chunk_params: AudioChunkParams | None = None,
         asr_params: ASRParams | None = None,
+        caption_params: CaptionParams | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -319,6 +325,7 @@ class MultiTypeExtractOperator(ArchetypeOperator):
             html_params=html_params,
             audio_chunk_params=audio_chunk_params,
             asr_params=asr_params,
+            caption_params=caption_params,
             **kwargs,
         )
         self.extraction_mode = extraction_mode
@@ -327,3 +334,4 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         self.html_params = html_params
         self.audio_chunk_params = audio_chunk_params
         self.asr_params = asr_params
+        self.caption_params = caption_params

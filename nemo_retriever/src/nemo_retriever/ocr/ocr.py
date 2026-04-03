@@ -459,6 +459,7 @@ def ocr_page_elements(
     extract_tables: bool = False,
     extract_charts: bool = False,
     extract_infographics: bool = False,
+    caption_infographics: bool = False,
     use_graphic_elements: bool = False,
     inference_batch_size: int = 8,
     remote_retry: RemoteRetryParams | None = None,
@@ -508,8 +509,11 @@ def ocr_page_elements(
         wanted_labels.add("table")
     if extract_charts:
         wanted_labels.add("chart")
-    if extract_infographics:
+    if extract_infographics and not caption_infographics:
         wanted_labels.add("infographic")
+    # When caption_infographics is True, infographic regions are NOT OCR'd
+    # here — they are left for the caption stage to fill via VLM instead.
+    _collect_infographic_bboxes = extract_infographics and caption_infographics
 
     # Per-row accumulators.
     all_table: List[List[Dict[str, Any]]] = []
@@ -704,6 +708,17 @@ def ocr_page_elements(
             all_text.append(_blocks_to_text(row_ocr_text_blocks))
         else:
             all_text.append(None)
+
+        # When caption_infographics is enabled, collect infographic bboxes
+        # without OCR so the caption stage can fill text via VLM.
+        if _collect_infographic_bboxes:
+            for det in dets:
+                if not isinstance(det, dict):
+                    continue
+                if det.get("label_name") == "infographic":
+                    bbox = det.get("bbox_xyxy_norm")
+                    if bbox and len(bbox) >= 4:
+                        infographic_items.append({"bbox_xyxy_norm": list(bbox[:4]), "text": ""})
 
         all_table.append(table_items)
         all_chart.append(chart_items)

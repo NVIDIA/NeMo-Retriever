@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 from PIL import Image
 
+from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
@@ -220,6 +221,7 @@ def caption_images(
     temperature: float = 1.0,
     batch_size: int = 8,
     context_text_max_chars: int = 0,
+    caption_infographics: bool = False,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """Caption images in the ``images`` column using a VLM.
@@ -239,10 +241,17 @@ def caption_images(
     For each row, any item in the ``images`` list whose ``text`` field is
     empty will be captioned.  The returned caption is written back into
     ``images[i]["text"]``.
+
+    When ``caption_infographics`` is True, infographic entries are cropped
+    from the page image and captioned as well.  The OCR stage should have
+    emitted these with empty ``text``.
     """
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
         return batch_df
-    if "images" not in batch_df.columns:
+
+    has_images = "images" in batch_df.columns
+    has_infographics = caption_infographics and "infographic" in batch_df.columns
+    if not has_images and not has_infographics:
         return batch_df
 
     if model is None and not endpoint_url:
@@ -253,25 +262,46 @@ def caption_images(
     use_context = context_text_max_chars > 0
     effective_max = min(context_text_max_chars, _MAX_CONTEXT_TEXT_CHARS) if use_context else 0
 
-    pending: List[Tuple[int, int, str]] = []
+    # pending entries: (row_idx, column_name, item_idx, b64)
+    pending: List[Tuple[int, str, int, str]] = []
     for row_idx, row in batch_df.iterrows():
-        images = row.get("images")
-        if not isinstance(images, list):
-            continue
-        for item_idx, item in enumerate(images):
-            if not isinstance(item, dict):
-                continue
-            if item.get("text"):
-                continue  # already captioned
-            b64 = item.get("image_b64")
-            if b64 and _image_meets_min_size(b64):
-                pending.append((row_idx, item_idx, b64))
+        # Unstructured images.
+        if has_images:
+            images = row.get("images")
+            if isinstance(images, list):
+                for item_idx, item in enumerate(images):
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("text"):
+                        continue
+                    b64 = item.get("image_b64")
+                    if b64 and _image_meets_min_size(b64):
+                        pending.append((row_idx, "images", item_idx, b64))
+
+        # Infographics — crop from page image.
+        if has_infographics:
+            infographics = row.get("infographic")
+            if isinstance(infographics, list):
+                page_image = row.get("page_image")
+                page_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
+                if page_b64:
+                    for item_idx, item in enumerate(infographics):
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("text"):
+                            continue
+                        bbox = item.get("bbox_xyxy_norm")
+                        if not bbox or len(bbox) < 4:
+                            continue
+                        cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
+                        if cropped_b64 and _image_meets_min_size(cropped_b64):
+                            pending.append((row_idx, "infographic", item_idx, cropped_b64))
 
     if not pending:
         return batch_df
 
     if use_context:
-        for row_idx, item_idx, b64 in pending:
+        for row_idx, col, item_idx, b64 in pending:
             page_text = batch_df.at[row_idx, "text"] if "text" in batch_df.columns else ""
             context = (page_text or "")[:effective_max]
             enriched_prompt = _build_prompt_with_context(prompt, context)
@@ -284,9 +314,9 @@ def caption_images(
                 system_prompt=system_prompt,
                 temperature=temperature,
             )
-            batch_df.at[row_idx, "images"][item_idx]["text"] = caption
+            batch_df.at[row_idx, col][item_idx]["text"] = caption
     else:
-        all_b64 = [b64 for _, _, b64 in pending]
+        all_b64 = [b64 for _, _, _, b64 in pending]
 
         if model is not None:
             all_captions = _caption_batch_local(
@@ -309,7 +339,7 @@ def caption_images(
                 )
                 all_captions.extend(captions)
 
-        for (row_idx, item_idx, _), caption in zip(pending, all_captions):
-            batch_df.at[row_idx, "images"][item_idx]["text"] = caption
+        for (row_idx, col, item_idx, _), caption in zip(pending, all_captions):
+            batch_df.at[row_idx, col][item_idx]["text"] = caption
 
     return batch_df
