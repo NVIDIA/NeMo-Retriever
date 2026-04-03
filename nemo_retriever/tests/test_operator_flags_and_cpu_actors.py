@@ -26,7 +26,7 @@ class TestGPUOperatorFlag:
         from nemo_retriever.table.table_detection import TableStructureActor
         from nemo_retriever.ocr.ocr import OCRActor
         from nemo_retriever.parse.nemotron_parse import NemotronParseActor
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
         from nemo_retriever.caption.caption import CaptionActor
         from nemo_retriever.infographic.infographic_detection import InfographicDetectionActor
         from nemo_retriever.rerank.rerank import NemotronRerankActor
@@ -60,7 +60,7 @@ class TestCPUOperatorFlag:
         from nemo_retriever.txt.ray_data import TextChunkActor, TxtSplitActor
         from nemo_retriever.image.ray_data import ImageLoadActor
         from nemo_retriever.html.ray_data import HtmlSplitActor
-        from nemo_retriever.ingest_modes.batch import ExplodeContentActor
+        from nemo_retriever.graph.content_operators import ExplodeContentActor
         from nemo_retriever.audio.asr_actor import ASRActor
 
         assert issubclass(DocToPdfConversionActor, CPUOperator)
@@ -260,13 +260,13 @@ class TestBatchEmbedCPUActor:
         return EmbedParams(model_name="test-model", embed_invoke_url="http://fake")
 
     def test_inherits_cpu_operator(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         assert issubclass(_BatchEmbedCPUActor, CPUOperator)
         assert not issubclass(_BatchEmbedCPUActor, GPUOperator)
 
     def test_uses_default_invoke_url(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
         from nemo_retriever.params import EmbedParams
 
         actor = _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model"))
@@ -274,15 +274,15 @@ class TestBatchEmbedCPUActor:
         assert "integrate.api.nvidia.com" in actor._kwargs["embedding_endpoint"]
 
     def test_creates_with_custom_invoke_url(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         actor = _BatchEmbedCPUActor(params=self._make_params())
         assert actor._model is None
         assert actor._kwargs["embedding_endpoint"] == "http://fake"
 
-    @patch("nemo_retriever.ingest_modes.inprocess.embed_text_main_text_embed")
+    @patch("nemo_retriever.text_embed.operators.embed_text_main_text_embed")
     def test_process(self, mock_fn):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected
@@ -292,14 +292,14 @@ class TestBatchEmbedCPUActor:
         pd.testing.assert_frame_equal(result, expected)
 
     def test_preprocess_passthrough(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         actor = _BatchEmbedCPUActor(params=self._make_params())
         df = pd.DataFrame({"text": ["hello"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
     def test_postprocess_passthrough(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedCPUActor
 
         actor = _BatchEmbedCPUActor(params=self._make_params())
         df = pd.DataFrame({"text": ["hello"]})

@@ -497,13 +497,13 @@ class TestHtmlSplitActor:
 class TestBatchEmbedActor:
     def _make(self):
         from nemo_retriever.params import EmbedParams
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
 
         params = EmbedParams(model_name="test-model", embed_invoke_url="http://fake")
         return _BatchEmbedActor(params=params)
 
     def test_inherits(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
 
         assert issubclass(_BatchEmbedActor, AbstractOperator)
 
@@ -517,7 +517,7 @@ class TestBatchEmbedActor:
         df = pd.DataFrame({"text": ["hello"]})
         pd.testing.assert_frame_equal(actor.postprocess(df), df)
 
-    @patch("nemo_retriever.ingest_modes.inprocess.embed_text_main_text_embed")
+    @patch("nemo_retriever.text_embed.operators.embed_text_main_text_embed")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected
@@ -526,7 +526,7 @@ class TestBatchEmbedActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.ingest_modes.inprocess.embed_text_main_text_embed")
+    @patch("nemo_retriever.text_embed.operators.embed_text_main_text_embed")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected

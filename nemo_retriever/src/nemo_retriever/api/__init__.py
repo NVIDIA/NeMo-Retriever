@@ -2,6 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from .ingestor import Ingestor, RunMode, create_ingestor
+from nemo_retriever.ingestor import create_ingestor
+from nemo_retriever.params import RunMode
 
-__all__ = ["Ingestor", "RunMode", "create_ingestor"]
+__all__ = ["RunMode", "create_ingestor"]
