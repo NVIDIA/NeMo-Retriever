@@ -44,6 +44,7 @@ from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
@@ -228,6 +229,11 @@ def main(
     caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
     caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
     # Text chunking
+    store_images_uri: Optional[str] = typer.Option(
+        None, "--store-images-uri", help="Store extracted images to this URI."
+    ),
+    store_text: bool = typer.Option(False, "--store-text/--no-store-text", help="Also store extracted text."),
+    strip_base64: bool = typer.Option(True, "--strip-base64/--no-strip-base64", help="Strip base64 after storing."),
     text_chunk: bool = typer.Option(False, "--text-chunk"),
     text_chunk_max_tokens: Optional[int] = typer.Option(None, "--text-chunk-max-tokens"),
     text_chunk_overlap_tokens: Optional[int] = typer.Option(None, "--text-chunk-overlap-tokens"),
@@ -457,6 +463,15 @@ def main(
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
+                )
+            )
+
+        if store_images_uri is not None:
+            ingestor = ingestor.store(
+                StoreParams(
+                    storage_uri=store_images_uri,
+                    store_text=store_text,
+                    strip_base64=strip_base64,
                 )
             )
 

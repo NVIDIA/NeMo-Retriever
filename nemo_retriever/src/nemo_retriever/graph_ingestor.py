@@ -40,6 +40,7 @@ from nemo_retriever.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    StoreParams,
     TextChunkParams,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
@@ -143,6 +144,7 @@ class GraphIngestor(ingestor):
         self._split_params: Any = None
         self._caption_params: Any = None
         self._dedup_params: Any = None
+        self._store_params: Any = None
         # Ordered list of stage names; "extract" is tracked but excluded from
         # the post-extraction stage_order passed to graph builders.
         self._stage_order: List[str] = []
@@ -224,6 +226,12 @@ class GraphIngestor(ingestor):
         self._record_stage("split")
         return self
 
+    def store(self, params: Optional[StoreParams] = None, **kwargs: Any) -> "GraphIngestor":
+        """Record a store stage for persisting extracted images/text to storage."""
+        self._store_params = _coerce(params, kwargs, default_factory=StoreParams)
+        self._record_stage("store")
+        return self
+
     def embed(self, params: Optional[EmbedParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Record an embedding stage."""
         self._embed_params = _resolve_api_key(_coerce(params, kwargs, default_factory=EmbedParams))
@@ -271,6 +279,7 @@ class GraphIngestor(ingestor):
                 split_params=self._split_params,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
+                store_params=self._store_params,
                 stage_order=post_extract_order,
             )
             executor = RayDataExecutor(
@@ -296,6 +305,7 @@ class GraphIngestor(ingestor):
                 split_params=self._split_params,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
+                store_params=self._store_params,
                 stage_order=post_extract_order,
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)

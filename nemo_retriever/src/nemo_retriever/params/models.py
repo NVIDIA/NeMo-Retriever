@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional, Sequence, Tuple
+from typing import Any, Literal, Optional, Sequence, Tuple
 
 import warnings
 
@@ -270,6 +270,20 @@ class EmbedParams(_ParamsModel):
 class VdbUploadParams(_ParamsModel):
     purge_results_after_upload: bool = True
     lancedb: LanceDbParams = Field(default_factory=LanceDbParams)
+
+
+class StoreParams(_ParamsModel):
+    storage_uri: str = "stored_images"
+    storage_options: dict[str, Any] = Field(default_factory=dict)
+    public_base_url: Optional[str] = None
+    store_page_images: bool = True
+    store_tables: bool = True
+    store_charts: bool = True
+    store_infographics: bool = True
+    store_images: bool = True
+    store_text: bool = False
+    image_format: str = "png"
+    strip_base64: bool = True
 
 
 class PageElementsParams(_ParamsModel):
