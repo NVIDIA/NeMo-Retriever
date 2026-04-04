@@ -276,7 +276,9 @@ def build_graph(
                 "extract_charts": extract_params.extract_charts,
                 "extract_infographics": extract_params.extract_infographics,
             }
-            if extract_params.invoke_url:
+            if extract_params.nemotron_parse_invoke_url:
+                parse_kwargs["nemotron_parse_invoke_url"] = extract_params.nemotron_parse_invoke_url
+            elif extract_params.invoke_url:
                 parse_kwargs["invoke_url"] = extract_params.invoke_url
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
