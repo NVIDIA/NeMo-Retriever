@@ -30,10 +30,8 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.nim.nim import (
-    invoke_chat_completions_images,
-    invoke_image_inference_batches,
-)
+from nemo_retriever.nim.chat_completions import invoke_chat_completions_images
+from nemo_retriever.nim.nim import invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
 
 try:
