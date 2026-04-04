@@ -30,7 +30,10 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.nim.nim import invoke_chat_completions, invoke_image_inference_batches
+from nemo_retriever.nim.nim import (
+    invoke_chat_completions_images,
+    invoke_image_inference_batches,
+)
 from nemo_retriever.params import RemoteRetryParams
 
 try:
@@ -43,7 +46,8 @@ except Exception:  # pragma: no cover
 # Constants
 # ---------------------------------------------------------------------------
 
-NEMOTRON_PARSE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
+NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse"
+NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
 
 # Map Nemotron Parse class labels to the pipeline content channels.
 _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
@@ -142,6 +146,82 @@ def _route_parsed_elements(
     return table_items, chart_items, infographic_items, page_text
 
 
+# v1.0/v1.1 JSON type labels → pipeline channel names
+_V1_TYPE_TO_CHANNEL: Dict[str, str] = {
+    "Table": "table",
+    "Chart": "chart",
+    "Picture": "infographic",
+    "Infographic": "infographic",
+}
+
+
+def _route_parsed_elements_v1(
+    raw_json_text: str,
+    *,
+    extract_tables: bool,
+    extract_charts: bool,
+    extract_infographics: bool,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
+    """Route v1.0/v1.1 tool_calls JSON into pipeline content channels.
+
+    The legacy NIM returns ``tool_calls[0]["function"]["arguments"]`` as a JSON
+    string containing ``[[elem, ...], ...]`` (list of per-page element lists).
+    Each element is ``{"type": str, "bbox": {...}, "text": str}``.
+    """
+    import json
+
+    try:
+        parsed = json.loads(raw_json_text)
+    except (json.JSONDecodeError, TypeError):
+        return [], [], [], None
+
+    # Flatten [[page1_elems], [page2_elems], ...] → [elem, ...]
+    elements: List[Dict[str, Any]] = []
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, list):
+                elements.extend(item)
+            elif isinstance(item, dict):
+                elements.append(item)
+
+    table_items: List[Dict[str, Any]] = []
+    chart_items: List[Dict[str, Any]] = []
+    infographic_items: List[Dict[str, Any]] = []
+    text_parts: List[str] = []
+
+    for elem in elements:
+        if not isinstance(elem, dict):
+            continue
+        cls = elem.get("type", "")
+        raw_text = str(elem.get("text", "")).strip()
+        if not raw_text:
+            continue
+        # Apply the same postprocessing as v1.2 (LaTeX table → markdown, etc.)
+        text = _postprocess_element_text(raw_text, cls=cls, table_format="markdown")
+        if not text:
+            continue
+        bbox = elem.get("bbox", {})
+        bbox_list = [
+            float(bbox.get("xmin", 0)),
+            float(bbox.get("ymin", 0)),
+            float(bbox.get("xmax", 0)),
+            float(bbox.get("ymax", 0)),
+        ]
+        channel = _V1_TYPE_TO_CHANNEL.get(cls)
+        entry = {"bbox_xyxy_norm": bbox_list, "text": text}
+        if channel == "table" and extract_tables:
+            table_items.append(entry)
+        elif channel == "chart" and extract_charts:
+            chart_items.append(entry)
+        elif channel == "infographic" and extract_infographics:
+            infographic_items.append(entry)
+        else:
+            text_parts.append(text)
+
+    page_text = "\n\n".join(text_parts) if text_parts else None
+    return table_items, chart_items, infographic_items, page_text
+
+
 def _decode_page_image(page_image_b64: str) -> np.ndarray:
     """Decode a base64 page image to an HWC uint8 numpy array."""
     raw = base64.b64decode(page_image_b64)
@@ -229,17 +309,24 @@ def nemotron_parse_pages(
 
     # -- Phase 2: run model inference in a single batch ------------------
     raw_texts: List[str] = [""] * len(batch_indices)
+    used_v1_api = False  # v1.0/v1.1 chat completions (tool_calls JSON)
     if batch_images:
         try:
             if use_remote:
                 if "/v1/chat/completions" in invoke_url:
-                    raw_texts = invoke_chat_completions(
+                    # Hosted API (v1.0/v1.1): image only, no task_prompt.
+                    # Response arrives as tool_calls JSON.
+                    used_v1_api = True
+                    raw_texts = invoke_chat_completions_images(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
-                        model=nemotron_parse_model or NEMOTRON_PARSE_DEFAULT_MODEL,
+                        model=nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
-                        task_prompt=task_prompt,
+                        extra_body={
+                            "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
+                            "max_tokens": 8192,
+                        },
                         max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
@@ -257,6 +344,7 @@ def nemotron_parse_pages(
                     )
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
+                # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
@@ -275,10 +363,12 @@ def nemotron_parse_pages(
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
+    # v1.0/v1.1 returns tool_calls JSON; v1.2 returns tagged text.
+    route_fn = _route_parsed_elements_v1 if used_v1_api else _route_parsed_elements
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
         try:
-            fp_tables, fp_charts, fp_infographics, fp_text = _route_parsed_elements(
+            fp_tables, fp_charts, fp_infographics, fp_text = route_fn(
                 raw_text,
                 extract_tables=extract_tables,
                 extract_charts=extract_charts,
