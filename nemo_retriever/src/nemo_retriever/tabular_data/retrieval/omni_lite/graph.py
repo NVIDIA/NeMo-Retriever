@@ -25,6 +25,24 @@ logger = logging.getLogger(__name__)
 
 
 
+class AgentPayload(TypedDict):
+    """Payload received from the API."""
+
+    not_to_check_in_files: bool
+    unstructured: str  # path to file
+    question: str
+    history: list[dict[str, str]]
+    auto_choose_option: bool
+    source: Literal["slack", "teams", "extension"]
+    is_technical: bool
+    required_property: Optional[str]
+    action: Optional[Literal["smalltalk", "calculation", "information"]]
+    feedback: Optional[Literal["inaccurate", "unclear", "irrelevant"]]
+    candidate_id: Optional[str]
+    candidate_name: Optional[str]
+    candidate_label: Optional[str]
+    candidate_zone_id: Optional[str]
+
 
 class AgentState(TypedDict):
     """State object passed through the LangGraph."""

@@ -1,12 +1,22 @@
 import logging
 from enum import StrEnum
 from itertools import groupby
+import os
 import re
 
 from langchain_community.vectorstores import PGVector
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
 
 logger = logging.getLogger(__name__)
+
+# Load .env from current working directory so LLM_API_KEY, LLM_INVOKE_URL are set (run from repo root)
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 # ==================== CONSTANTS ====================
 
@@ -38,6 +48,17 @@ COLUMNS_USAGE_PERCENTILE = "columns_usage_percentile"
 
 
 
+
+def _make_llm() -> ChatNVIDIA:
+    # Prefer LLM_API_KEY; fall back to NVIDIA_API_KEY (used by LangChain NVIDIA docs)
+    api_key = os.environ.get("LLM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+    return ChatNVIDIA(
+        base_url=os.environ.get("LLM_INVOKE_URL"),
+        api_key=api_key,
+        model=os.environ.get("LLM_MODEL", "meta/llama-3.1-70b-instruct"),
+    )
+
+    
 class Labels(StrEnum):
     """Semantic labels used by omni-lite candidate retrieval."""
 

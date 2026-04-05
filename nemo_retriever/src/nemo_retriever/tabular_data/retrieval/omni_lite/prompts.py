@@ -1,3 +1,16 @@
+ONTOLOGY = """
+{"ontology": {"industry": [], 
+             "dictionary": 
+             [
+             {"name": "Brand", "description": "identifies the specific brand associated with a product. use WAREHOUSE.STOCKITEMS_ARCHIVE.BRAND. example of a brand: 'Northwind'"}, 
+             {"name": "sold items", "description": "When asking about sold items, use the invoice attribute and not orders. Invoice has details about the items inside an order. while order table includes summary and totals of the order like how many items, total price etc, but doesn't include info about the items themselves."}, 
+             {"name": "purchased items with discount", "description": "Use Sales.Orders"}, 
+             {"name": "best selling products with filters", "description": "Do NOT use REPORTS.MV_TOPSELLINGPRODUCTS. Use REPORTS.TOP_SELLING_PRODUCTS"}, 
+             {"name": "deals and discounts", "description": "Use SALES.SPECIALDEALS"}, 
+             {"name": "transactions", "description": "When asking about transactions in general or specifically about successful transactions (and not unfinished ones) - include the isFinalized filter."}}, 
+             "omniSettings": {"visualizeSqlResults": true, "summarized": true}}
+"""
+
 def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
     """
     System prompt for SQL generation from semantic retrieval (custom analyses, columns, etc.).
