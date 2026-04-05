@@ -385,11 +385,21 @@ uv run python retrieve_and_export.py
 uv run nv-ingest-harness-run --case=qa_eval --dataset=bo767
 ```
 
-**Config-driven eval (alternative)** -- use a standalone YAML/JSON config with `nemo_retriever.evaluation.config`:
+**Config-driven sweep (alternative)** -- define models once in a YAML config and run
+multiple generator+judge combos with optional repeat runs:
+
+```bash
+export GEN_API_KEY="sk-..."
+export NVIDIA_API_KEY="nvapi-..."
+python run_qa_eval.py --config eval_sweep.yaml
+```
+
+The config uses a `models` + `evaluations` schema (see `eval_sweep.yaml` or the
+QA README for the full spec).  Programmatic usage is also supported:
 
 ```python
 from nemo_retriever.evaluation.config import load_eval_config, build_eval_chain
-config = load_eval_config("eval_config.yaml")
+config = load_eval_config("eval_sweep.yaml")
 result_df = build_eval_chain(config).execute(None)
 ```
 

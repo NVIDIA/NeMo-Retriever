@@ -34,6 +34,7 @@ class JudgingOperator(EvalOperator):
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         extra_params: Optional[dict[str, Any]] = None,
+        timeout: float = 120.0,
         max_workers: int = 8,
     ) -> None:
         super().__init__(
@@ -41,6 +42,7 @@ class JudgingOperator(EvalOperator):
             api_base=api_base,
             api_key=api_key,
             extra_params=extra_params,
+            timeout=timeout,
             max_workers=max_workers,
         )
         self._judge = LLMJudge(
@@ -48,6 +50,7 @@ class JudgingOperator(EvalOperator):
             api_base=api_base,
             api_key=api_key,
             extra_params=extra_params,
+            timeout=timeout,
         )
         self._max_workers = max_workers
 

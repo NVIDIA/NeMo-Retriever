@@ -67,6 +67,7 @@ class LLMJudge:
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         extra_params: Optional[dict[str, Any]] = None,
+        timeout: float = 120.0,
     ):
         self._client = LiteLLMClient(
             model=model,
@@ -76,6 +77,7 @@ class LLMJudge:
             max_tokens=256,
             extra_params=extra_params or {},
             num_retries=3,
+            timeout=timeout,
         )
         self.model = model
 
