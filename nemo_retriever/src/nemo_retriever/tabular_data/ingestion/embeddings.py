@@ -1,0 +1,73 @@
+from typing import List
+
+import pandas as pd
+
+from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
+
+
+def query_neo4j_tables_for_embedding() -> List[dict]:
+    """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
+    neo4j_conn = get_neo4j_conn()
+    query = """MATCH (d:Db)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)
+               MATCH (t)-[:CONTAINS]->(c:Column)
+               WITH d, s, t, collect(
+                 "{name: " + c.name + ", data_type: " + c.data_type +
+                 CASE WHEN c.description IS NOT NULL AND trim(c.description) <> ''
+                   THEN ", description: " + c.description ELSE "" END +
+                 "}") as columns
+               RETURN collect({
+                 text: "db_name: " + d.name + ", schema_name: " + s.name +
+                   ", table_name: " + t.name +
+                   CASE WHEN t.description IS NOT NULL AND trim(t.description) <> ''
+                     THEN ", table_description: " + t.description ELSE "" END +
+                   ", columns: " + apoc.text.join(columns, ' '),
+                 name: t.name, label: labels(t)[0], id: t.id
+               }) as docs
+            """
+    result = neo4j_conn.query_write(query, parameters={})
+    if not result:
+        return []
+    return result[0].get("docs") or []
+
+
+def fetch_tabular_embedding_dataframe(
+    *,
+    text_key: str = "text",
+    id_key: str = "id",
+    label_key: str = "label",
+    name_key: str = "name",
+    embed_modality: str = "text",
+) -> pd.DataFrame:
+    """Fetch all tabular entity docs from Neo4j and return a DataFrame ready for embedding.
+
+    Each row has: text, _embed_modality, path, page_number, metadata
+    (id, label, name, source_path) — matching the format produced by the
+    unstructured pipeline so run_pipeline_tasks_on_df works without changes.
+    """
+    _empty = pd.DataFrame(columns=["text", "_embed_modality", "path", "page_number", "metadata"])
+    docs = query_neo4j_tables_for_embedding()
+    if not docs:
+        return _empty
+
+    rows = []
+    for item in docs:
+        text = (item.get(text_key) or "").strip()
+        node_id = item.get(id_key)
+        label = item.get(label_key, "")
+        name = item.get(name_key, "")
+        path = f"neo4j:{node_id}" if node_id is not None else "neo4j:unknown"
+        rows.append(
+            {
+                "text": text,
+                "_embed_modality": embed_modality,
+                "path": path,
+                "page_number": -1,
+                "metadata": {
+                    "id": node_id,
+                    "label": label,
+                    "name": name,
+                    "source_path": path,
+                },
+            }
+        )
+    return pd.DataFrame(rows)

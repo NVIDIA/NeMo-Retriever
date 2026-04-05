@@ -24,6 +24,11 @@ from .models import PdfSplitParams
 from .models import RemoteInvokeParams
 from .models import RemoteRetryParams
 from .models import RunMode
+from .models import TabularDescriptionParams
+from .models import TabularExtractParams
+from .models import TabularFetchParams
+from .models import TabularSemanticLayerParams
+from .models import TabularUsageWeightsParams
 from .models import TableParams
 from .models import TextChunkParams
 from .models import VdbUploadParams
@@ -51,6 +56,11 @@ __all__ = [
     "RemoteInvokeParams",
     "RemoteRetryParams",
     "RunMode",
+    "TabularDescriptionParams",
+    "TabularExtractParams",
+    "TabularFetchParams",
+    "TabularSemanticLayerParams",
+    "TabularUsageWeightsParams",
     "TableParams",
     "TextChunkParams",
     "VdbUploadParams",

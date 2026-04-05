@@ -9,6 +9,7 @@ from typing import Literal, Optional, Sequence, Tuple
 import warnings
 
 
+from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RunMode = Literal["inprocess", "batch", "fused", "online"]
@@ -223,7 +224,7 @@ class EmbedParams(_ParamsModel):
     model_name: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None  # e.g. NVIDIA API key for inference-api.nvidia.com
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types
     embed_granularity: Literal["element", "page"] = "element"  # "element" = per-element rows, "page" = one row per page
@@ -335,3 +336,95 @@ class InfographicParams(_ParamsModel):
     output_column: str = "infographic_elements_v1"
     num_detections_column: str = "infographic_elements_v1_num_detections"
     counts_by_label_column: str = "infographic_elements_v1_counts_by_label"
+
+
+# ---------------------------------------------------------------------------
+# Structured (database) ingestion params
+# ---------------------------------------------------------------------------
+
+
+class TabularExtractParams(_ParamsModel):
+    """Params for step 1: extract schema metadata and write to Neo4j.
+
+    Covers SQLAlchemy reflection of a live database and/or parsing of
+    pre-existing SQL DDL/query files.  Produces Database, Schema, Table,
+    Column, View and Query nodes together with their relationships.
+    The Neo4j connection is provided by get_neo4j_conn() (see
+    tabular_data.neo4j) and is not configured here.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    connector: Optional[SQLDatabase] = None
+
+
+class TabularSemanticLayerParams(_ParamsModel):
+    """Params for step 2: map business terms/attributes to graph entities.
+
+    Global term and attribute definitions are matched to Table and Column
+    nodes; unmatched entities receive auto-generated Term/Attribute nodes
+    together with MAPS_TO_TABLE / MAPS_TO_COLUMN relationships.
+    The Neo4j connection is injected at runtime by ingest_tabular().
+    """
+
+    # Path to a YAML/JSON file containing the global semantic-layer definition
+    semantic_layer_file: Optional[str] = None
+    # Raw term → table mappings (overrides or supplements the file)
+    term_mappings: dict[str, str] = Field(default_factory=dict)
+    # Raw attribute → column mappings (overrides or supplements the file)
+    attribute_mappings: dict[str, str] = Field(default_factory=dict)
+    auto_create_unmapped: bool = True
+
+
+class TabularUsageWeightsParams(_ParamsModel):
+    """Params for step 4: derive usage weights from query log files.
+
+    Query log files are parsed and Table/Column co-occurrence frequencies are
+    computed, then written back as ``usage_weight`` float properties on the
+    corresponding Neo4j nodes.
+    The Neo4j connection is injected at runtime by ingest_tabular().
+    """
+
+    # One or more paths (or glob patterns) pointing to SQL query log files
+    query_log_files: list[str] = Field(default_factory=list)
+    # Log format hint for the parser (e.g. "postgres", "snowflake", "raw_sql")
+    log_format: str = "raw_sql"
+    normalize_weights: bool = True
+
+
+class TabularDescriptionParams(_ParamsModel):
+    """Params for step 5: LLM-generate natural-language descriptions for all nodes.
+
+    Descriptions are generated for Database, Schema, Table, Column, View and
+    Query nodes and written back to Neo4j as a ``description`` property.
+    The Neo4j connection is injected at runtime by ingest_tabular().
+    """
+
+    llm_invoke_url: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_model: Optional[str] = None
+    # Node labels to generate descriptions for; empty list means all supported types
+    target_node_labels: list[str] = Field(default_factory=list)
+    # Maximum concurrent LLM requests
+    max_concurrency: int = 8
+    # Retry settings for LLM calls
+    max_retries: int = 3
+
+
+class TabularFetchParams(_ParamsModel):
+    """Params for step 6: fetch entity descriptions from Neo4j into a DataFrame.
+
+    Reads all node descriptions from Neo4j and assembles a pandas DataFrame
+    with columns: ``text`` (the description), ``_embed_modality`` = ``"text"``,
+    and ``metadata`` (JSON blob with entity_type, entity_name, node_id).
+    No embedding is performed here — the DataFrame is passed to the embed step.
+    The Neo4j connection is injected at runtime by ingest_tabular().
+    """
+
+    # Node labels to fetch; empty list means all supported types
+    target_node_labels: list[str] = Field(default_factory=list)
+    # Column names in the output DataFrame
+    text_column: str = "text"
+    metadata_column: str = "metadata"
+    embed_modality_column: str = "_embed_modality"
+    embed_modality_value: str = "text"
