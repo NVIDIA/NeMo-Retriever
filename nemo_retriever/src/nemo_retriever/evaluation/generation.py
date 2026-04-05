@@ -39,6 +39,7 @@ class QAGenerationOperator(EvalOperator):
         max_tokens: int = 4096,
         extra_params: Optional[dict[str, Any]] = None,
         num_retries: int = 3,
+        timeout: float = 120.0,
         max_workers: int = 8,
     ) -> None:
         super().__init__(
@@ -49,6 +50,7 @@ class QAGenerationOperator(EvalOperator):
             max_tokens=max_tokens,
             extra_params=extra_params,
             num_retries=num_retries,
+            timeout=timeout,
             max_workers=max_workers,
         )
         self._client = LiteLLMClient(
@@ -59,6 +61,7 @@ class QAGenerationOperator(EvalOperator):
             max_tokens=max_tokens,
             extra_params=extra_params,
             num_retries=num_retries,
+            timeout=timeout,
         )
         self._max_workers = max_workers
 

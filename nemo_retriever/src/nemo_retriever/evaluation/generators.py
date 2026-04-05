@@ -66,6 +66,7 @@ class LiteLLMClient:
         max_tokens: int = 4096,
         extra_params: Optional[dict[str, Any]] = None,
         num_retries: int = 3,
+        timeout: float = 120.0,
     ):
         self.model = model
         self.api_base = api_base
@@ -74,6 +75,7 @@ class LiteLLMClient:
         self.max_tokens = max_tokens
         self.extra_params = extra_params or {}
         self.num_retries = num_retries
+        self.timeout = timeout
 
     def complete(self, messages: list[dict], max_tokens: Optional[int] = None) -> tuple[str, float]:
         """Raw litellm completion call. Returns (content_text, latency_s)."""
@@ -85,6 +87,7 @@ class LiteLLMClient:
             "temperature": self.temperature,
             "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
             "num_retries": self.num_retries,
+            "timeout": self.timeout,
         }
         if self.api_base:
             call_kwargs["api_base"] = self.api_base

@@ -14,38 +14,38 @@ Primary entry points:
     ``build_eval_chain(config)``     -- single-model ``>>`` graph chain
     ``build_eval_pipeline(config)``  -- multi-model ``QAEvalPipeline``
 
-Config schema (YAML example)::
+Two config formats are supported.  The **new** ``models`` + ``evaluations``
+schema lets you define models once and compose generator/judge combos
+with per-combo run counts::
 
-    dataset:
-      source: "csv:data/bo767_annotations.csv"
-      ground_truth_dir: "tools/harness/data"
-      query_column: "query"
-      answer_column: "answer"
-      limit: 0
+    models:
+      nemotron-super:
+        model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+        api_key: "${NVIDIA_API_KEY}"
+      mixtral-judge:
+        model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+        api_key: "${NVIDIA_API_KEY}"
 
-    retrieval:
-      type: "file"
-      file_path: "data/retrieval_bo767_run_1"
+    evaluations:
+      - generator: "nemotron-super"
+        judge: "mixtral-judge"
+        runs: 5
+
+    execution:
+      top_k: 5
+      max_workers: 8
+
+The **legacy** ``generators`` + ``judge`` format is still accepted and
+auto-normalised internally::
 
     generators:
       - name: "nemotron"
         model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
         api_key: "${NVIDIA_API_KEY}"
-        temperature: 0.0
-        max_tokens: 4096
 
     judge:
       model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
       api_key: "${NVIDIA_API_KEY}"
-
-    execution:
-      top_k: 5
-      max_workers: 8
-      chunk_char_limit: 500
-      include_chunks_in_results: true
-
-    output:
-      results_file: "data/qa_results.json"
 
 Environment variables are expanded in string values: ``${VAR}`` resolves
 to ``os.environ["VAR"]`` at load time. Secrets never live in the config.
@@ -68,7 +68,10 @@ logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
-_REQUIRED_SECTIONS = ("generators", "judge")
+_VALID_SECTION_SETS = (
+    frozenset(("generators", "judge")),
+    frozenset(("models", "evaluations")),
+)
 
 
 def _expand_env_vars(value: Any) -> Any:
@@ -89,6 +92,61 @@ def _expand_env_vars(value: Any) -> Any:
     if isinstance(value, list):
         return [_expand_env_vars(item) for item in value]
     return value
+
+
+def _normalize_config(config: dict) -> dict:
+    """Normalise new ``models``/``evaluations`` format into legacy keys.
+
+    If the config uses the new format, this synthesises ``generators``
+    and ``judge`` entries so that :func:`build_eval_chain` and
+    :func:`build_eval_pipeline` keep working without changes.
+
+    The ``evaluations`` list is always present after normalisation
+    (synthesised from ``generators`` + ``judge`` when using legacy format).
+    """
+    if "models" in config and "evaluations" in config:
+        models = config["models"]
+        evals = config["evaluations"]
+
+        seen_generators: dict[str, dict] = {}
+        for entry in evals:
+            gen_key = entry["generator"]
+            if gen_key not in models:
+                raise ValueError(f"Evaluation references unknown model {gen_key!r}. " f"Available: {list(models)}")
+            judge_key = entry["judge"]
+            if judge_key not in models:
+                raise ValueError(f"Evaluation references unknown model {judge_key!r}. " f"Available: {list(models)}")
+            if gen_key not in seen_generators:
+                seen_generators[gen_key] = {"name": gen_key, **models[gen_key]}
+
+        config.setdefault("generators", list(seen_generators.values()))
+        first_judge_key = evals[0]["judge"]
+        distinct_judges = {e["judge"] for e in evals}
+        if len(distinct_judges) > 1:
+            logger.warning(
+                "Config has %d distinct judges %s; legacy 'judge' key uses "
+                "only the first (%r). Use --config sweep or build per-eval "
+                "clients for heterogeneous judges.",
+                len(distinct_judges),
+                sorted(distinct_judges),
+                first_judge_key,
+            )
+        config.setdefault("judge", models[first_judge_key])
+
+    elif "generators" in config and "judge" in config:
+        generators = config["generators"]
+        judge_cfg = config["judge"]
+        judge_name = judge_cfg.get("name", "judge")
+        config.setdefault("models", {})
+        for gen in generators:
+            name = gen.get("name", gen["model"])
+            config["models"][name] = {k: v for k, v in gen.items() if k != "name"}
+        config["models"][judge_name] = {k: v for k, v in judge_cfg.items() if k != "name"}
+        config.setdefault(
+            "evaluations", [{"generator": g.get("name", g["model"]), "judge": judge_name} for g in generators]
+        )
+
+    return config
 
 
 def load_eval_config(path: str) -> dict:
@@ -139,9 +197,13 @@ def load_eval_config(path: str) -> dict:
 
     config = _expand_env_vars(raw)
 
-    missing = [s for s in _REQUIRED_SECTIONS if s not in config]
-    if missing:
-        raise ValueError(f"Config is missing required sections: {missing}")
+    if not any(req <= config.keys() for req in _VALID_SECTION_SETS):
+        accepted = " or ".join(str(sorted(s)) for s in _VALID_SECTION_SETS)
+        raise ValueError(
+            f"Config must contain one of these section sets: {accepted}. " f"Got top-level keys: {sorted(config)}"
+        )
+
+    config = _normalize_config(config)
 
     return config
 
@@ -206,6 +268,8 @@ def build_eval_chain(
         top_k=execution.get("top_k", 5),
     )
 
+    default_timeout = execution.get("timeout", 120.0)
+
     gen_op = QAGenerationOperator(
         model=gen_cfg["model"],
         api_base=gen_cfg.get("api_base"),
@@ -214,6 +278,7 @@ def build_eval_chain(
         max_tokens=gen_cfg.get("max_tokens", 4096),
         extra_params=gen_cfg.get("extra_params"),
         num_retries=gen_cfg.get("num_retries", 3),
+        timeout=gen_cfg.get("timeout", default_timeout),
         max_workers=execution.get("max_workers", 8),
     )
 
@@ -222,6 +287,7 @@ def build_eval_chain(
         api_base=judge_cfg.get("api_base"),
         api_key=judge_cfg.get("api_key"),
         extra_params=judge_cfg.get("extra_params"),
+        timeout=judge_cfg.get("timeout", default_timeout),
         max_workers=execution.get("max_workers", 8),
     )
 
@@ -258,6 +324,7 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
     execution = config.get("execution", {})
     retrieval = config.get("retrieval", {})
     judge_cfg = config["judge"]
+    default_timeout = execution.get("timeout", 120.0)
 
     retrieval_type = retrieval.get("type", "file")
     if retrieval_type == "file":
@@ -276,6 +343,7 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
             max_tokens=gen_cfg.get("max_tokens", 4096),
             extra_params=gen_cfg.get("extra_params"),
             num_retries=gen_cfg.get("num_retries", 3),
+            timeout=gen_cfg.get("timeout", default_timeout),
         )
 
     judge = LLMJudge(
@@ -283,6 +351,7 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
         api_base=judge_cfg.get("api_base"),
         api_key=judge_cfg.get("api_key"),
         extra_params=judge_cfg.get("extra_params"),
+        timeout=judge_cfg.get("timeout", default_timeout),
     )
 
     return QAEvalPipeline(

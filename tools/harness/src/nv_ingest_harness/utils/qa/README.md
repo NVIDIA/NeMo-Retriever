@@ -293,7 +293,7 @@ Both exporters produce identical JSON conforming to the
 
 ### Step 5: Run QA evaluation
 
-**Estimated time: ~1-2 hours** (1005 queries, ~12s per query for generation + judge, 8 concurrent workers).
+**Estimated time: ~15 min - 45 min** (1005 queries, ~12s per query for generation + judge, 8 concurrent workers).
 
 ```bash
 export NVIDIA_API_KEY="nvapi-..."
@@ -322,16 +322,16 @@ python run_qa_eval.py
 | `JUDGE_API_BASE` | _(unset)_ | Override endpoint URL for the judge |
 | `LITELLM_DEBUG` | `0` | Set `1` for full request/response logging |
 
-**API key resolution:** `GEN_API_KEY` and `JUDGE_API_KEY` each fall back to `NVIDIA_API_KEY` when unset. Set only `NVIDIA_API_KEY` if generator and judge share the same provider. Set individual keys when they use different providers (e.g. generator on NVIDIA Inference API, judge on NVIDIA NIM).
+**API key resolution:** `GEN_API_KEY` and `JUDGE_API_KEY` each fall back to `NVIDIA_API_KEY` when unset. Set only `NVIDIA_API_KEY` if generator and judge share the same provider. Set individual keys when they use different providers.
 
 **Auto-timestamped output:** When `OUTPUT_FILE` is not set, results are written to `data/test_retrieval/qa_results_{dataset}_{model}_{YYYYMMDD_HHMMSS}.json` so consecutive runs never overwrite each other.
 
-**Switching inference providers:** To use a different provider for the generator (e.g. Claude Sonnet 4.6 via the NVIDIA Inference API), set `GEN_MODEL`, `GEN_API_BASE`, and `GEN_API_KEY`:
+**Switching inference providers:** To use a different provider for the generator, set `GEN_MODEL`, `GEN_API_BASE`, and `GEN_API_KEY`:
 
 ```bash
-export GEN_MODEL="openai/aws/anthropic/bedrock-claude-sonnet-4-6"
-export GEN_API_BASE="https://inference-api.nvidia.com/v1"
-export GEN_API_KEY="sk-..."
+export GEN_MODEL="openai/my-org/my-model"
+export GEN_API_BASE="https://your-openai-compatible-endpoint/v1"
+export GEN_API_KEY="your-api-key"
 export NVIDIA_API_KEY="nvapi-..."   # still used by the judge (NIM)
 python run_qa_eval.py
 ```
@@ -339,6 +339,14 @@ python run_qa_eval.py
 LiteLLM routes by model prefix (`nvidia_nim/`, `openai/`, `huggingface/`). See [Model Strings](#model-strings) for supported providers. Each model can target a different endpoint/key.
 
 **API cost:** Each query costs ~$0.01-0.02 (generation + judge) on NIM pay-as-you-go. A full 1005-query run is approximately $10-20. Set `QA_LIMIT` to cap during development.
+
+**Multi-model sweeps and repeated runs:** To evaluate multiple generator/judge combos or run each configuration N times for statistical confidence, use a YAML config file instead of env vars:
+
+```bash
+python run_qa_eval.py --config eval_sweep.yaml
+```
+
+The config defines models once and composes evaluation combos with per-combo run counts.  See [Eval Config File](#eval-config-file-yaml--json) and `eval_sweep.yaml` for the full schema.
 
 ### Results (March 2026 -- full-page markdown, bo767_annotations.csv)
 
@@ -349,7 +357,7 @@ Tier 1 - Retrieval Quality:
   Answer-in-Context rate:  88.2% (886/1005)
 
 Tier 2 - Programmatic Answer Quality:
-  generator            exact_match=0.0%  token_f1=0.120
+  generator            token_f1=0.120
 
 Tier 3 - LLM Judge:
   generator            mean=3.74/5  scored=970  errors=35
@@ -660,21 +668,74 @@ qa_eval:
 ### Eval config file (YAML / JSON)
 
 For programmatic or CI use, `nemo_retriever.evaluation.config` provides a
-standalone configuration layer. Load a YAML or JSON file with
-`load_eval_config(path)` and pass it to `build_eval_chain()` (single-model
-graph chain) or `build_eval_pipeline()` (multi-model sweep).
+standalone configuration layer.  Two schema formats are supported.
+
+#### New format: `models` + `evaluations` (recommended)
+
+Define models once, compose generator/judge combos with per-combo run counts.
+Any model can serve as generator or judge.
 
 ```yaml
 dataset:
   source: "csv:data/bo767_annotations.csv"
-  query_column: "query"
-  answer_column: "answer"
-  limit: 0                          # 0 = all queries
 
 retrieval:
   type: "file"
-  file_path: "data/retrieval_bo767_run_1"
+  file_path: "data/test_retrieval/bo767_retrieval_fullpage.json"
 
+models:
+  generator-a:
+    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    api_key: "${NVIDIA_API_KEY}"
+
+  generator-b:
+    model: "openai/my-org/my-model"
+    api_base: "https://your-openai-compatible-endpoint/v1"
+    api_key: "${GEN_API_KEY}"
+
+  mixtral-judge:
+    model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+    api_key: "${NVIDIA_API_KEY}"
+
+evaluations:
+  - generator: "generator-b"
+    judge: "mixtral-judge"
+    runs: 2
+
+  - generator: "generator-a"
+    judge: "mixtral-judge"
+    runs: 5
+
+execution:
+  top_k: 5
+  max_workers: 8
+```
+
+| Section | Purpose |
+|---------|---------|
+| `models` | Dict of model definitions keyed by short name. Fields: `model` (litellm string), `api_base`, `api_key`, `temperature`, `max_tokens`, `extra_params`, `num_retries`. |
+| `evaluations` | List of generator+judge combos. Each entry references model names and has an optional `runs` count (default: `execution.runs`, then 1). Per-evaluation `temperature`/`max_tokens` overrides are supported. |
+| `execution` | Shared settings: `top_k`, `max_workers`, `runs` (default for evaluations that omit it). |
+| `output` | Optional `results_dir` (default: `data/test_retrieval`). |
+
+**Config-driven sweep** -- run all evaluations with one command:
+
+```bash
+export GEN_API_KEY="your-api-key"    # for generators using an OpenAI-compatible endpoint
+export NVIDIA_API_KEY="nvapi-..."    # for NIM models
+python run_qa_eval.py --config eval_sweep.yaml
+```
+
+Each run produces a timestamped output file:
+`qa_results_{dataset}_{generator}_{judge}_{run}of{total}_{YYYYMMDD_HHMMSS}.json`.
+Failed runs are logged and skipped; a pass/fail summary prints at the end.
+
+#### Legacy format: `generators` + `judge`
+
+Still accepted and auto-normalised internally.  Every generator shares the
+same judge.
+
+```yaml
 generators:
   - name: "nemotron"
     model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
@@ -689,17 +750,12 @@ judge:
 execution:
   top_k: 5
   max_workers: 8
-  chunk_char_limit: 500
-  include_chunks_in_results: true
-
-output:
-  results_file: "data/qa_results.json"
 ```
 
 Environment variables are expanded in string values: `${VAR}` resolves to
 `os.environ["VAR"]` at load time. Secrets never live in the config file.
 
-**Usage:**
+**Programmatic usage:**
 
 ```python
 from nemo_retriever.evaluation.config import load_eval_config, build_eval_chain
@@ -753,7 +809,6 @@ After normalizing both reference and candidate (lowercase, strip punctuation, nu
 | `precision` | `common_tokens / candidate_tokens` | Fraction of the model's output tokens that are relevant |
 | `recall` | `common_tokens / reference_tokens` | Fraction of the reference's tokens the model captured |
 | `f1` | `2 * P * R / (P + R)` | Harmonic mean of precision and recall |
-| `exact_match` | `normalized_ref == normalized_candidate` | Strict string equality after normalization |
 
 ### Tier 3: `judge_score` (LLM-as-judge, 1-5 scale)
 
@@ -829,7 +884,6 @@ Candidate answer: {candidate}
 | `gen_latency_s` | Generation | `float` | Generation API call latency (seconds) |
 | `gen_error` | Generation | `str?` | Error string if generation failed, else `null` |
 | `token_f1` | **Tier 2** | `float` | SQuAD-style F1 (0.0-1.0) |
-| `exact_match` | **Tier 2** | `bool` | Normalized exact string match |
 | `judge_score` | **Tier 3** | `int` | LLM judge score (1-5) |
 | `judge_reasoning` | **Tier 3** | `str` | One-sentence explanation from the judge |
 | `judge_error` | Tier 3 | `str?` | Error string if judging failed, else `null` |
@@ -944,7 +998,6 @@ No registration step needed -- pass the instance directly to `QAEvalPipeline`.
     },
     "tier2_programmatic": {
       "generator": {
-        "mean_exact_match": 0.0,
         "mean_token_f1": 0.1196
       }
     },
@@ -971,7 +1024,7 @@ No registration step needed -- pass the instance directly to `QAEvalPipeline`.
         "reference_answer": "$205.43",
         "retrieved_chunk_count": 2,
         "answer_in_context": true,
-        "token_f1": {"generator": {"f1": 0.057, "exact_match": false}},
+        "token_f1": {"generator": {"f1": 0.057}},
         "failure_mode": {"generator": "correct"},
         "retrieved_chunks": ["## Page 2\n\n..."],
         "retrieval_metadata": [{"source_id": "1003421.pdf", "page_number": 2, "distance": 1.037}],

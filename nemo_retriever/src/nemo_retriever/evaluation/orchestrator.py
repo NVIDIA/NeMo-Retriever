@@ -194,7 +194,7 @@ class QAEvalPipeline(EvalOperator):
 
             answers, latencies, models, gen_errors = [], [], [], []
             judge_scores, judge_reasonings, judge_errors = [], [], []
-            aic_list, f1_list, em_list, fm_list = [], [], [], []
+            aic_list, f1_list, fm_list = [], [], []
 
             for gen, verdict, aic, tf1, fm in row_results:
                 answers.append(gen.answer)
@@ -206,7 +206,6 @@ class QAEvalPipeline(EvalOperator):
                 judge_errors.append(verdict.error)
                 aic_list.append(aic)
                 f1_list.append(tf1.get("f1", 0.0))
-                em_list.append(tf1.get("exact_match", False))
                 fm_list.append(fm)
 
             out[f"{prefix}_answer"] = answers
@@ -218,7 +217,6 @@ class QAEvalPipeline(EvalOperator):
             out[f"{prefix}_judge_error"] = judge_errors
             out[f"{prefix}_answer_in_context"] = aic_list
             out[f"{prefix}_token_f1"] = f1_list
-            out[f"{prefix}_exact_match"] = em_list
             out[f"{prefix}_failure_mode"] = fm_list
 
         return out
@@ -285,7 +283,6 @@ class QAEvalPipeline(EvalOperator):
         latencies_by_model: dict[str, list[float]] = defaultdict(list)
         errors_by_model: dict[str, int] = defaultdict(int)
         f1_by_model: dict[str, list[float]] = defaultdict(list)
-        exact_by_model: dict[str, list[bool]] = defaultdict(list)
         failures_by_model: dict[str, Counter] = defaultdict(Counter)
 
         aic_count = 0
@@ -323,7 +320,6 @@ class QAEvalPipeline(EvalOperator):
                 j_reasoning = row.get(f"{prefix}_judge_reasoning", "")
                 j_error = row.get(f"{prefix}_judge_error")
                 tf1_val = row.get(f"{prefix}_token_f1", 0.0)
-                em_val = row.get(f"{prefix}_exact_match", False)
                 fm_val = row.get(f"{prefix}_failure_mode", "")
 
                 generations_dict[model_name] = {
@@ -339,7 +335,6 @@ class QAEvalPipeline(EvalOperator):
                 }
                 token_f1_dict[model_name] = {
                     "f1": tf1_val,
-                    "exact_match": em_val,
                 }
                 failure_mode_dict[model_name] = fm_val
 
@@ -352,7 +347,6 @@ class QAEvalPipeline(EvalOperator):
                     latencies_by_model[model_name].append(latency)
 
                 f1_by_model[model_name].append(tf1_val)
-                exact_by_model[model_name].append(em_val)
                 failures_by_model[model_name][fm_val] += 1
 
             if row_aic:
@@ -392,9 +386,7 @@ class QAEvalPipeline(EvalOperator):
         tier2: dict[str, dict] = {}
         for name in self.llm_clients:
             f1s = f1_by_model[name]
-            exacts = exact_by_model[name]
             tier2[name] = {
-                "mean_exact_match": round(sum(exacts) / len(exacts), 4) if exacts else 0.0,
                 "mean_token_f1": round(sum(f1s) / len(f1s), 4) if f1s else 0.0,
             }
 
