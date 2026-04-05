@@ -29,6 +29,8 @@ from enrichments.ai_services.llm_invoke import invoke_with_structured_output
 from search.api.omni.agent.agents.calculation.utils import (
     build_semantic_items_section,
     get_semantic_entities_ids,
+)
+from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
     get_question_for_processing,
 )
 from search.api.omni.agent.agents.calculation.models import (
@@ -192,11 +194,9 @@ class SQLFromSemanticAgent(BaseAgent):
     - path_state["similar_questions"]: Similar questions (from CandidatePreparationAgent)
     - path_state["complex_candidates"]: Complex candidates (from CandidatePreparationAgent)
     - path_state["complex_candidates_str"]: String representation (from CandidatePreparationAgent)
-    - path_state["feedback"]: Optional feedback flag
     - path_state["extracted_file_data"]: Optional extracted data from files
     - state["initial_question"]: User's question
     - state["dialects"]: SQL dialects to support
-    - state["is_technical"]: Whether user is technical
 
     Output:
     - path_state["llm_calc_response"]: SQL response with SQL code or text answer
@@ -244,8 +244,6 @@ class SQLFromSemanticAgent(BaseAgent):
         # Extract just the candidate objects for processing
         candidates = [item["candidate"] for item in candidates_with_entities]
 
-        is_feedback = path_state.get("feedback", False)
-        is_technical = state["is_technical"]
 
         # Get pre-fetched data from CandidatePreparationAgent
         table_groups = path_state.get("table_groups", [])
@@ -295,7 +293,6 @@ class SQLFromSemanticAgent(BaseAgent):
         )
 
         def build_messages(
-            file_snippets: Optional[list[dict]] = None,
             extracted_data: Optional[str] = None,
         ) -> list:
             """
@@ -315,25 +312,7 @@ class SQLFromSemanticAgent(BaseAgent):
             if extracted_data:
                 observation_block += f"\n\nEXTRACTED DATA FROM FILES (use this in SQL construction if needed):\n{extracted_data}\n"
 
-            # Add file snippets if provided (for backward compatibility or edge cases)
-            if file_snippets and not extracted_data:
-                snippet_lines = []
-                for snippet in file_snippets:
-                    display_name = snippet.get("display_name") or snippet.get(
-                        "filename"
-                    )
-                    snippet_text = (snippet.get("text") or "").strip()
-                    if not snippet_text:
-                        continue
-                    truncated = snippet_text
-                    snippet_lines.append(
-                        f"[Document: {display_name} | score {snippet.get('score', 0):.2f}]\n{truncated}"
-                    )
-                if snippet_lines:
-                    observation_block += (
-                        "\n\nFILE EXCERPTS (for file attributes):\n\n"
-                        + "\n\n".join(snippet_lines)
-                    )
+           
 
             # Build user prompt with formatted tables
             user_prompt = create_sql_user_prompt.format(
@@ -355,17 +334,9 @@ class SQLFromSemanticAgent(BaseAgent):
             )
 
             # Choose system prompt based on context
-            if is_feedback:
-                system_prompt = create_sql_feedback_prompt
-            else:
-                system_prompt = (
-                    create_sql_from_semantic_prompt(complex_candidates)
-                    if is_technical
-                    else create_sql_from_semantic_prompt_non_technical(
-                        complex_candidates
-                    )
-                )
-
+            
+            system_prompt = create_sql_from_semantic_prompt(complex_candidates)
+                    
             messages = state["messages"] + [
                 SystemMessage(content=system_prompt),
                 AIMessage(content=user_prompt),
@@ -387,18 +358,14 @@ class SQLFromSemanticAgent(BaseAgent):
         # Choose schema based on context
         # Use SQLGenerationModel for new flow (without formatting)
         # Keep old models for feedback scenarios
-        if is_feedback:
-            schema = CalculationFinalFeedbackResponseModel
-        else:
-            # Use SQLGenerationModel - formatting will be handled separately
-            schema = SQLGenerationModel
+
+        schema = SQLGenerationModel
 
         def run_with_context(
-            file_snippets: Optional[list[dict]] = None,
             extracted_data: Optional[str] = None,
         ) -> tuple:
             """Invoke LLM with messages, optionally including file snippets and extracted data."""
-            messages = build_messages(file_snippets, extracted_data)
+            messages = build_messages(extracted_data)
             response = invoke_with_structured_output(llm, messages, schema)
             # Log response explanation
             # SQLGenerationModel uses 'response' field; feedback models may use 'thought'
@@ -415,9 +382,9 @@ class SQLFromSemanticAgent(BaseAgent):
         # Get extracted data from path_state (set by extract_from_file_snippets node)
         extracted_data = path_state.get("extracted_file_data")
 
-        # Call LLM for SQL construction (with extracted data from files if available)
+        # Call LLM for SQL construction (with extracted data from files if available) 
         response, messages = run_with_context(
-            file_snippets=None, extracted_data=extracted_data
+            extracted_data=extracted_data
         )
 
         # Check if we have a valid response (either SQL or text-based answer from file contents)

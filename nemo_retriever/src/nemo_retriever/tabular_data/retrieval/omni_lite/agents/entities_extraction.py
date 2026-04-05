@@ -11,7 +11,10 @@ from typing import Any, Dict
 
 from langchain_core.messages import SystemMessage
 from pydantic import BaseModel, Field
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+    AgentState,
+    get_question_for_processing,
+)
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
 
@@ -33,29 +36,6 @@ class EntitiesExtractionModel(BaseModel):
         ...,
         description="The user's query with all specific values stripped out (dates, numbers, names, etc.).",
     )
-
-def get_question_for_processing(state: Dict[str, Any]) -> str:
-    """
-    Get the appropriate question for SQL processing.
-
-    Uses normalized_question if available in path_state (for calculation_sql flow),
-    otherwise falls back to initial_question.
-
-    Args:
-        state: Agent state containing path_state and initial_question
-
-    Returns:
-        The question to use for processing (normalized or original)
-    """
-    path_state = state.get("path_state", {})
-    normalized_question = path_state.get("normalized_question")
-
-    if normalized_question:
-        return normalized_question
-
-    initial_question = state.get("initial_question", "")
-    return initial_question
-
 
 
 class EntitiesExtractionAgent(BaseAgent):

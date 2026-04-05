@@ -20,10 +20,12 @@ Design Decisions:
 import logging
 from typing import Dict, Any
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.agents.candidates_retieval import get_question_for_processing
 import networkx as nx
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+    AgentState,
+    get_question_for_processing,
+)
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
     Labels,

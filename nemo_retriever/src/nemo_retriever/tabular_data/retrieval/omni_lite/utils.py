@@ -1,6 +1,7 @@
 import logging
 from enum import StrEnum
 from itertools import groupby
+import re
 
 from langchain_community.vectorstores import PGVector
 
@@ -356,3 +357,395 @@ def extract_candidates(
     )
 
     return out_custom, out_columns
+
+
+
+def get_semantic_entities_ids(items):
+    """
+    Filter semantic items by classification flag and return their IDs.
+
+    Args:
+        items: list of ItemScore objects (or dicts) like
+            [{'id': '...', label: 'custom_analysis', 'classification': true}, ...]
+            or ItemScore(id=..., label=..., classification=True)
+
+    Returns:
+        list of dictionaries with 'id' and 'label' for items where classification is True
+    """
+    if not items:
+        return []
+
+    def _get(obj, key, default=None):
+        """Safe getter for both Pydantic-style objects and plain dicts."""
+        if hasattr(obj, key):
+            return getattr(obj, key, default)
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return default
+
+    classified_ids_and_labels = []
+    for item in items:
+        is_relevant = bool(_get(item, "classification", False))
+        if not is_relevant:
+            continue
+        item_id = _get(item, "id")
+        item_label = _get(item, "label")
+        if item_id and item_label:
+            classified_ids_and_labels.append({"id": item_id, "label": item_label})
+
+    return classified_ids_and_labels
+
+
+
+def extract_entities_with_id_name_label(data):
+    result = {}
+
+    def recurse(obj):
+        if isinstance(obj, dict):
+            # Main entity case: id + name + (type or label)
+            if "id" in obj and "name" in obj and ("type" in obj or "label" in obj):
+                if "type" in obj:
+                    label = type_to_labels(obj["type"])
+                    final_label = label[0] if label else obj["type"]
+                else:
+                    final_label = obj["label"]
+
+                result[obj["id"]] = (
+                    obj["name"],
+                    final_label,
+                    obj.get("parent_id"),
+                )
+
+            # explicitly capture table inside column
+            if "table" in obj and isinstance(obj["table"], dict):
+                table = obj["table"]
+                if "id" in table and "name" in table:
+                    result[table["id"]] = (table["name"], "table", None)
+
+            # Continue recursion
+            for value in obj.values():
+                recurse(value)
+
+        elif isinstance(obj, list):
+            for item in obj:
+                recurse(item)
+
+    recurse(data)
+    return result
+
+
+
+def highlight_entity(items_present: dict, text: str, account_id: str) -> str:
+    """
+    Processes [[[entity]]] patterns in the text.
+
+    Supported formats:
+    - [[[name/id]]]
+    - [[[label/id|display_name]]]
+
+    Replaces valid ones with hyperlinks using `prepare_link`.
+    Falls back to bolding just the entity name if invalid or not found.
+    """
+
+    def replace_entity(match):
+        raw = match.group(1)
+        cleaned = re.sub(r"\s*/\s*", "/", raw.strip())  # Remove whitespace around slash
+
+        # Handle display name (e.g., [[[label/id|display_name]]])
+        if "|" in cleaned:
+            entity_part, display_name = cleaned.split("|", 1)
+            display_name = display_name.strip()
+        else:
+            entity_part, display_name = cleaned, None
+
+        # Now parse entity part → name/ID
+        if "/" in entity_part:
+            name_or_label, eid = entity_part.split("/", 1)
+            name_or_label = name_or_label.strip()
+            eid = eid.strip()
+
+            # Lookup by ID
+            entity = items_present.get(eid)
+            if entity and (
+                entity[0].lower() == name_or_label.lower()
+                or (display_name and entity[0].lower() == display_name.lower())
+            ):
+                shown_name = display_name or name_or_label
+                return f"<{prepare_link(shown_name, eid, entity[1], entity[2])}>"
+            elif entity:
+                logger.warning(
+                    "ASSUMPTION: the name in link is not found correctly by llm, take it by id from candidates"
+                )
+                return f"<{prepare_link(entity[0], eid, entity[1], entity[2])}>"
+
+            # no entity in candidates
+            try:
+                item = get_item_by_id(account_id, eid, name_or_label)
+            except Exception:
+                logger.error("Something not ok with id, error raised")
+                return f"*{display_name or name_or_label}*"
+
+            if item:
+                return f"<{prepare_link(item['name'], eid, name_or_label)}>"
+            else:
+                logger.warning(
+                    f"Entity ID mismatch or not found: {name_or_label}/{eid}"
+                )
+                return f"*{display_name or name_or_label}*"
+        else:
+            logger.warning(f"No ID found in entity: {cleaned}")
+            return f"*{cleaned}*"
+
+    return re.sub(r"\[\[\[(.*?)\]\]\]", replace_entity, text)
+
+
+
+def format_response(account_id, candidates, response):
+    final_response_formatted = response.replace("%%%", "```").replace("**", "*")
+    final_response_formatted = re.sub(r"(\\+n|\n)", "\n ", final_response_formatted)
+    all_entities_present = extract_entities_with_id_name_label(candidates)
+
+    try:
+        final_response_highlighted = highlight_entity(
+            all_entities_present, final_response_formatted, account_id
+        )
+    except Exception:
+        return final_response_formatted
+    return final_response_highlighted
+
+
+# TODO how to get fks from duckdb?
+def get_relevant_fks(tables_ids, account_id):
+    # Build a connected graph by expanding from target tables through FK relationships
+    query = """ 
+    // Start with target tables and expand outward to find connected tables
+    WITH $tables_ids as current_ids
+    
+    // Level 1: Find tables connected via FK
+    OPTIONAL MATCH (t0:table{account_id:$account_id} WHERE t0.id IN current_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t1:table{account_id:$account_id})
+    WITH current_ids, collect(DISTINCT t1.id) as new_ids_1
+    WITH current_ids + new_ids_1 as level_1_ids
+    
+    // Level 2
+    OPTIONAL MATCH (t1:table{account_id:$account_id} WHERE t1.id IN level_1_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t2:table{account_id:$account_id})
+    WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
+    WITH level_1_ids + new_ids_2 as level_2_ids
+    
+    // Level 3
+    OPTIONAL MATCH (t2:table{account_id:$account_id} WHERE t2.id IN level_2_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t3:table{account_id:$account_id})
+    WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
+    WITH level_2_ids + new_ids_3 as all_table_ids
+    
+    // Get all FK relationships between these tables
+    MATCH (t1:table{account_id:$account_id})-[:schema]->(col1:column)-[:fk]-(col2:column)<-[:schema]-(t2:table{account_id:$account_id})
+    WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
+      AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
+    
+    RETURN collect(DISTINCT {
+        table1: t1.schema_name + '.' + t1.name, 
+        column1: col1.name, 
+        column1_datatype: coalesce(col1.data_type, 'None'), 
+        table2: t2.schema_name + '.' + t2.name, 
+        column2: col2.name, 
+        column2_datatype: coalesce(col2.data_type, 'None')
+    }) as list_of_foreign_keys
+    """
+    results = conn.query_read_only(
+        query=query,
+        parameters={
+            "account_id": account_id,
+            "tables_ids": tables_ids,
+        },
+    )
+    if len(results) > 0:
+        result_fks = results[0]["list_of_foreign_keys"]
+    else:
+        result_fks = []
+
+    # Build a connected graph by expanding from target tables through FK relationships
+    query = """ 
+    // Start with target tables and expand outward to find connected tables
+    
+    // Level 1: Find tables connected via FK
+    OPTIONAL MATCH (t0:table{account_id:$account_id} WHERE t0.id IN $tables_ids)-[:join]-(t1:table{account_id:$account_id})
+    WITH collect(DISTINCT t1.id) as new_ids_1
+    WITH $tables_ids + new_ids_1 as level_1_ids
+    
+    // Level 2
+    OPTIONAL MATCH (t1:table{account_id:$account_id} WHERE t1.id IN level_1_ids)-[:join]-(t2:table{account_id:$account_id})
+    WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
+    WITH level_1_ids + new_ids_2 as level_2_ids
+    
+    // Level 3
+    OPTIONAL MATCH (t2:table{account_id:$account_id} WHERE t2.id IN level_2_ids)-[:join]-(t3:table{account_id:$account_id})
+    WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
+    WITH level_2_ids + new_ids_3 as all_table_ids
+    
+    // Get all join relationships between these tables and parse the join property
+    MATCH (t1:table{account_id:$account_id})-[rel:join]-(t2:table{account_id:$account_id})
+    WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
+      AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
+      AND rel.join IS NOT NULL
+    
+    // Parse the join property: split by operators and extract left/right sides
+    WITH t1, t2, rel,
+         trim(apoc.text.split(rel.join, '<=|>=|=|<|>')[0]) as left_side,
+         trim(apoc.text.split(rel.join, '<=|>=|=|<|>')[1]) as right_side
+    
+    // Parse left side: SCHEMA.TABLE.COLUMN (handle potential whitespace)
+    WITH t1, t2, rel, left_side, right_side,
+         trim(split(left_side, '.')[0]) as left_schema,
+         trim(split(left_side, '.')[1]) as left_table,
+         trim(split(left_side, '.')[2]) as left_column,
+         trim(split(right_side, '.')[0]) as right_schema,
+         trim(split(right_side, '.')[1]) as right_table,
+         trim(split(right_side, '.')[2]) as right_column
+    WHERE left_schema IS NOT NULL AND left_table IS NOT NULL AND left_column IS NOT NULL
+      AND right_schema IS NOT NULL AND right_table IS NOT NULL AND right_column IS NOT NULL
+    
+    // Match the actual column nodes for left side
+    OPTIONAL MATCH (s1:schema{account_id:$account_id, name: left_schema})-[:schema]->(tbl1:table{account_id:$account_id, name: left_table})-[:schema]->(col1:column{account_id:$account_id, name: left_column})
+    
+    // Match the actual column nodes for right side
+    OPTIONAL MATCH (s2:schema{account_id:$account_id, name: right_schema})-[:schema]->(tbl2:table{account_id:$account_id, name: right_table})-[:schema]->(col2:column{account_id:$account_id, name: right_column})
+    
+    // Return the structured format
+    RETURN collect(DISTINCT {
+        table1: t1.schema_name + '.' + t1.name, 
+        column1: coalesce(col1.name, left_column), 
+        column1_datatype: coalesce(col1.data_type, 'None'), 
+        table2: t2.schema_name + '.' + t2.name, 
+        column2: coalesce(col2.name, right_column), 
+        column2_datatype: coalesce(col2.data_type, 'None')
+    }) as list_of_foreign_keys
+    """
+    results = conn.query_read_only(
+        query=query,
+        parameters={
+            "account_id": account_id,
+            "tables_ids": tables_ids,
+        },
+    )
+    if len(results) > 0:
+        result_joins = results[0]["list_of_foreign_keys"]
+    else:
+        result_joins = []
+    results = result_fks + result_joins
+
+    # Convert to JSON strings, use set to remove duplicates, then convert back
+    unique_strings = set(json.dumps(d, sort_keys=True) for d in results)
+    unique_results = [json.loads(s) for s in unique_strings]
+
+    key_order = [
+        "table1",
+        "column1",
+        "column1_datatype",
+        "table2",
+        "column2",
+        "column2_datatype",
+    ]
+    sorted_results = [{key: d[key] for key in key_order} for d in unique_results]
+    return sorted_results
+
+
+
+
+def get_relevant_tables(
+    account_d,
+    initial_question,
+    k=15,
+    exclude_ids: list[str] | None = None,
+):
+    account_simple_str = account_id.replace("-", "_") # TODO no account
+    try:
+        if exclude_ids:
+            allowed_tables_ids = [
+                table_id
+                for table_id in allowed_tables_ids
+                if table_id not in exclude_ids
+            ]
+        relevant_tables = search_vector_index(
+            account_id,
+            index_name=f"{account_simple_str}_tables_info_vector_store",
+            allowed_ids=allowed_tables_ids,
+            user_question=initial_question,
+            k=k,
+            # label_filter=[Labels.TABLE],    add the filter? reduce runtime?
+        )
+    except Exception:
+        relevant_tables = []
+
+    def parse_table_text(text: str) -> dict:
+        """Parse db_name, schema_name, and columns from table text."""
+        parsed = {}
+        try:
+            import re
+
+            # Ensure text is a string
+            if not isinstance(text, str):
+                return parsed
+
+            # Extract db_name
+            db_match = re.search(r"db_name:\s*([^,]+)", text)
+            if db_match:
+                parsed["db_name"] = db_match.group(1).strip()
+
+            # Extract schema_name
+            schema_match = re.search(r"schema_name:\s*([^,]+)", text)
+            if schema_match:
+                parsed["schema_name"] = schema_match.group(1).strip()
+
+            # Extract columns
+            columns_match = re.search(r"columns:\s*(.+)$", text)
+            if columns_match:
+                columns_str = columns_match.group(1).strip()
+                # Parse column blocks like {name: X, data_type: Y, description: Z}
+                column_pattern = r"\{name:\s*([^,}]+)(?:,\s*data_type:\s*([^,}]+))?(?:,\s*description:\s*([^}]+))?\}"
+                columns = []
+                for match in re.finditer(column_pattern, columns_str):
+                    column = {
+                        "name": match.group(1).strip(),
+                    }
+                    if match.group(2):
+                        column["data_type"] = match.group(2).strip()
+                    if match.group(3):
+                        desc = match.group(3).strip()
+                        if desc != "null":
+                            column["description"] = desc
+                    columns.append(column)
+                if columns:
+                    parsed["columns"] = columns
+        except Exception:
+            # If parsing fails, return empty dict (fallback to table_info)
+            pass
+
+        return parsed
+
+    relevant_tables_list = [
+        {
+            "name": f"{table['metadata']['name']}",
+            "label": f"{table['metadata']['label']}",
+            "id": f"{table['metadata']['id']}",
+            "table_info": f"{table['text']}",
+            **(
+                {"primary_key": table["metadata"]["pk"]}
+                if "pk" in table["metadata"]
+                else {}
+            ),
+            **parse_table_text(table["text"]),
+        }
+        for table in relevant_tables
+    ]
+    relevant_fks = get_relevant_fks([x["id"] for x in relevant_tables_list], account_id)
+    for table in relevant_tables_list:
+        for fk in relevant_fks:
+            if table["name"] == fk["table1"]:
+                table["foreign_key"] = (
+                    f"'{table['name']}.{fk['column1']}' = '{fk['table2']}.{fk['column2']}'"
+                )
+
+    return relevant_tables_list, relevant_fks
+

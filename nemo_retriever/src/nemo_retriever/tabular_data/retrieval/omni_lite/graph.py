@@ -4,7 +4,14 @@ from langchain_core.messages import HumanMessage
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.candidates_preparation import CandidatePreparationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.candidates_retieval import CandidateRetrievalAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.entities_extraction import EntitiesExtractionAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.formatting import SQLResponseFormattingAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.intent_validation import IntentValidationAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.response import CalculationResponseAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_execution import SQLExecutionAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_semantic import SQLFromSemanticAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_tables import SQLFromTablesAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_reconstruction import SQLReconstructionAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_validation_agent import SQLValidationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import agent_wrapper
 from langchain_openai import ChatOpenAI
 from typing import Literal, Optional, TypedDict
@@ -34,7 +41,18 @@ class AgentState(TypedDict):
     language: str
 
 
+def get_question_for_processing(state: AgentState) -> str:
+    """
+    Question string for retrieval, SQL, and validation.
 
+    Uses ``path_state["normalized_question"]`` when set (e.g. after entity extraction),
+    otherwise ``initial_question``.
+    """
+    path_state = state.get("path_state", {})
+    normalized_question = path_state.get("normalized_question")
+    if normalized_question:
+        return normalized_question
+    return state.get("initial_question", "")
 
 
 def route_sql_validation(state: AgentState) -> str:
@@ -215,11 +233,9 @@ def create_graph():
     retrieval_agent = CandidateRetrievalAgent()
     candidate_preparation_agent = CandidatePreparationAgent()
     sql_from_tables_agent = SQLFromTablesAgent()
-    sql_from_semantic_agent = SQLFromSemanticAgent()  # TODO: narrow to custom analyses only if needed
+    sql_from_semantic_agent = SQLFromSemanticAgent()  
     sql_reconstruction_agent = SQLReconstructionAgent()
-
     sql_formatting_agent = SQLResponseFormattingAgent()
-    finalize_text_agent = FinalizeTextAnswerAgent()
     sql_validation_agent = SQLValidationAgent()
     intent_validation_agent = IntentValidationAgent()
     sql_execution_agent = SQLExecutionAgent()
@@ -256,9 +272,7 @@ def create_graph():
     reconstruct_sql_node = _make_node(
         "reconstruct_sql", agent_wrapper(sql_reconstruction_agent)
     )
-    finalize_text_based_answer_node = _make_node(
-        "finalize_text_based_answer", agent_wrapper(finalize_text_agent)
-    )
+
     validate_sql_query_node = _make_node(
         "validate_sql_query", agent_wrapper(sql_validation_agent)
     )
@@ -294,7 +308,6 @@ def create_graph():
     graph.add_node("construct_sql_from_semantic", construct_sql_from_semantic_node)
     graph.add_node("format_sql_response", format_sql_response_node)
     graph.add_node("reconstruct_sql", reconstruct_sql_node)
-    graph.add_node("finalize_text_based_answer", finalize_text_based_answer_node)
     graph.add_node("validate_sql_query", validate_sql_query_node)
     graph.add_node("validate_intent", validate_intent_node)
     graph.add_node("execute_sql_query", execute_sql_query_node)
@@ -350,7 +363,6 @@ def create_graph():
     graph.add_edge("format_sql_response", "execute_sql_query")
     graph.add_edge("execute_sql_query", "calc_respond")
     graph.add_edge("reconstruct_sql", "validate_sql_query")
-    graph.add_edge("finalize_text_based_answer", "calc_respond")
 
     graph.add_edge("unconstructable_sql_response", END)
     graph.add_edge("calc_respond", END)
@@ -359,7 +371,7 @@ def create_graph():
     return graph
 
 
-__all__ = ["create_graph"]
+__all__ = ["AgentState", "create_graph", "get_question_for_processing"]
 
 
 
