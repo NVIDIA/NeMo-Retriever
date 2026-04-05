@@ -30,7 +30,7 @@ models:
     api_key: "${GEN_API_KEY}"
 
   nemotron-nano-30b:
-    model: "nvidia_nim/nvidia/Nemotron-3-Nano-30B-A3B"
+    model: "nvidia_nim/nvidia/nemotron-3-nano-30b-a3b"
     api_key: "${NVIDIA_API_KEY}"
 
   mixtral-judge:
