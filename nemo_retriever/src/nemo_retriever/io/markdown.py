@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from .dataframe import read_dataframe
 
@@ -282,3 +285,132 @@ def _label_for_subtype(subtype: Any, *, fallback: str) -> str:
         "page_image": "Page Image",
     }
     return subtype_map.get(subtype.strip().lower(), fallback)
+
+
+_MARKDOWN_PARQUET_COLUMNS = frozenset(
+    {
+        "path",
+        "source_id",
+        "page_number",
+        "text",
+        "document_type",
+        "_content_type",
+        "metadata",
+        "table",
+        "chart",
+        "infographic",
+        "tables",
+        "charts",
+        "infographics",
+        "images",
+    }
+)
+
+
+def _read_parquet_for_markdown(path: Path) -> pd.DataFrame:
+    """Read a Parquet file loading only columns needed for markdown rendering.
+
+    Extraction Parquet files can contain huge columns (page_image with
+    base64 images, embedding vectors) that are not used for markdown.
+    Selecting only the relevant columns avoids multi-GB memory spikes.
+    """
+    import pyarrow.parquet as pq
+    from .dataframe import _arrow_table_to_pandas_via_pylist
+
+    pf = pq.ParquetFile(path)
+    available = set(pf.schema_arrow.names)
+    columns = sorted(_MARKDOWN_PARQUET_COLUMNS & available)
+    table = pf.read(columns=columns)
+    try:
+        return table.to_pandas(split_blocks=False)
+    except Exception:
+        return _arrow_table_to_pandas_via_pylist(table)
+
+
+def build_page_index(
+    parquet_dir: str | Path | None = None,
+    dataframe: pd.DataFrame | None = None,
+) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+    """Build a ``{source_id: {page_number: markdown}}`` index.
+
+    Accepts either a directory of Parquet files (from the ingestion
+    pipeline) or a pre-loaded DataFrame.
+    Exactly one of the two parameters must be provided.
+
+    Each document's extraction records are grouped by source path, then
+    rendered page-by-page via :func:`to_markdown_by_page`.
+
+    Parameters
+    ----------
+    parquet_dir:
+        Directory containing ``.parquet`` files to load and concatenate.
+    dataframe:
+        Pre-loaded extraction DataFrame (same schema as the Parquet files).
+
+    Returns
+    -------
+    tuple[dict[str, dict[str, str]], dict[str, str]]
+        A 2-tuple of ``(index, failures)``.  *index*: outer key is the
+        source document path/id, inner key is the string page number,
+        value is the rendered markdown.  *failures*: maps source_id to
+        the error message for documents that failed rendering.
+    """
+    import numpy as np
+
+    if (parquet_dir is None) == (dataframe is None):
+        raise ValueError("Provide exactly one of parquet_dir or dataframe.")
+
+    if dataframe is not None:
+        df = dataframe
+    else:
+        parquet_path = Path(parquet_dir)
+        if not parquet_path.is_dir():
+            raise FileNotFoundError(f"Parquet directory not found: {parquet_path}")
+        single = parquet_path / "extraction.parquet"
+        if single.is_file():
+            parquet_files = [single]
+        else:
+            parquet_files = sorted(f for f in parquet_path.rglob("*.parquet") if f.name != "extraction.parquet")
+        if not parquet_files:
+            raise FileNotFoundError(f"No .parquet files in {parquet_path}")
+
+        dfs = [_read_parquet_for_markdown(f) for f in parquet_files]
+        df = pd.concat(dfs, ignore_index=True)
+
+    path_col = "path" if "path" in df.columns else "source_id"
+    if path_col not in df.columns:
+        raise KeyError(f"Neither 'path' nor 'source_id' found in columns: {list(df.columns)}")
+
+    list_keys = ("table", "chart", "infographic", "tables", "charts", "infographics")
+
+    docs_grouped: dict[str, list[dict]] = defaultdict(list)
+    for _, row in df.iterrows():
+        source = str(row.get(path_col, ""))
+        if not source:
+            continue
+        record = row.to_dict()
+        for key in list_keys:
+            val = record.get(key)
+            if isinstance(val, np.ndarray):
+                record[key] = val.tolist()
+        docs_grouped[source].append(record)
+
+    index: dict[str, dict[str, str]] = {}
+    failures: dict[str, str] = {}
+    for source_id, records in docs_grouped.items():
+        try:
+            pages = to_markdown_by_page(records)
+        except Exception as exc:
+            logger.warning("Failed to render pages for %r: %s", source_id, exc)
+            failures[source_id] = str(exc)
+            continue
+        index[source_id] = {str(page_number): md for page_number, md in pages.items()}
+
+    if failures:
+        logger.warning(
+            "%d/%d documents failed page rendering",
+            len(failures),
+            len(failures) + len(index),
+        )
+
+    return index, failures

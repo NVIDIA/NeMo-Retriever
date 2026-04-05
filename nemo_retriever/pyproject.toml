@@ -83,6 +83,10 @@ dependencies = [
 svg = [
   "cairosvg>=2.7.0",
 ]
+eval = [
+  "litellm>=1.40.0",
+  "pyyaml>=6.0",
+]
 dev = [
   "build>=1.2.2",
   "pytest>=8.0.2",

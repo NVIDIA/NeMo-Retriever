@@ -26,6 +26,11 @@ Examples::
     python -m nemo_retriever.examples.graph_pipeline /data/pdfs \\
         --run-mode inprocess \\
         --ocr-invoke-url http://localhost:9000/v1
+
+    # Save extraction Parquet for full-page markdown (e.g. page index + export)
+    python -m nemo_retriever.examples.graph_pipeline /data/pdfs \\
+        --lancedb-uri lancedb \\
+        --save-intermediate /path/to/extracted_parquet_dir
 """
 
 from __future__ import annotations
@@ -57,7 +62,7 @@ LANCEDB_TABLE = "nv-ingest"
 
 
 # ---------------------------------------------------------------------------
-# Logging helpers (shared with batch_pipeline.py style)
+# Logging helpers
 # ---------------------------------------------------------------------------
 
 
@@ -257,6 +262,14 @@ def main(
     nemotron_parse_batch_size: Optional[int] = typer.Option(0, "--nemotron-parse-batch-size"),
     # LanceDB / evaluation
     lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri"),
+    save_intermediate: Optional[Path] = typer.Option(
+        None,
+        "--save-intermediate",
+        help="Directory to write extraction results as Parquet (for full-page markdown / page index).",
+        path_type=Path,
+        file_okay=False,
+        dir_okay=True,
+    ),
     hybrid: bool = typer.Option(False, "--hybrid/--no-hybrid"),
     query_csv: Path = typer.Option("./data/bo767_query_gt.csv", "--query-csv", path_type=Path),
     recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode"),
@@ -497,6 +510,13 @@ def main(
             ingest_local_results = result_df.to_dict("records")
             ray_download_time = 0.0
             num_rows = result_df["source_id"].nunique() if "source_id" in result_df.columns else len(result_df)
+
+        if save_intermediate is not None:
+            out_dir = Path(save_intermediate).expanduser().resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / "extraction.parquet"
+            result_df.to_parquet(out_path, index=False)
+            logger.info("Wrote extraction Parquet for intermediate use: %s", out_path)
 
         if detection_summary_file is not None:
             from nemo_retriever.utils.detection_summary import (

@@ -9,6 +9,7 @@ dependencies = [
     "docker>=7.1.0",
     "pyyaml>=6.0",
     "requests>=2.32.5",
+    "tenacity>=8.2.0",
     "pynvml>=11.5.0",
     "nv-ingest",
     "nv-ingest-api",
@@ -19,6 +20,8 @@ dependencies = [
     "nemotron-graphic-elements-v1>=0.dev0",
     "nemotron-table-structure-v1>=0.dev0",
     "nemotron-ocr>=0.dev0",
+    "litellm>=1.40.0",
+    "datasets>=2.19.0",
 ]
 
 [project.scripts]
@@ -31,6 +34,11 @@ nv-ingest-harness-stats = "nv_ingest_harness.cli.stats:main"
 
 [tool.uv]
 package = true
+# fastparquet>=2026.3.0 dropped x86_64 wheels (manylinux_2_39 only gets i686/aarch64).
+# Override to last known-good version until upstream fixes their wheel builds.
+override-dependencies = [
+    "fastparquet<2026.3.0",
+]
 
 [tool.uv.sources]
 nv-ingest = { path = "../../src", editable = true }

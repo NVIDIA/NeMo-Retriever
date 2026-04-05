@@ -1,0 +1,61 @@
+# QA Evaluation Sweep Configuration
+#
+# Usage:
+#   export GEN_API_KEY="your-api-key"    # for generator-b (any OpenAI-compatible provider)
+#   export GEN_API_BASE="https://your-endpoint/v1"
+#   export NVIDIA_API_KEY="nvapi-..."    # for NIM models (judge, nemotron generators)
+#   python run_qa_eval.py --config eval_sweep.yaml
+#
+# Secrets use ${VAR} expansion -- they are resolved from environment
+# variables at load time.  Never commit real keys in this file.
+
+dataset:
+  source: "csv:data/bo767_annotations.csv"
+
+retrieval:
+  type: "file"
+  file_path: "data/test_retrieval/bo767_retrieval_fullpage.json"
+
+# Define models once, reference by name in evaluations.
+# Any model can serve as generator or judge.
+# api_base is any OpenAI-compatible endpoint (NIM, vLLM, Ollama, etc.).
+models:
+  nemotron-super-49b:
+    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    api_key: "${NVIDIA_API_KEY}"
+
+  generator-b:
+    model: "openai/my-org/my-model"
+    api_base: "${GEN_API_BASE}"
+    api_key: "${GEN_API_KEY}"
+
+  nemotron-nano-30b:
+    model: "nvidia_nim/nvidia/nemotron-3-nano-30b-a3b"
+    api_key: "${NVIDIA_API_KEY}"
+
+  mixtral-judge:
+    model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+    api_key: "${NVIDIA_API_KEY}"
+
+# Each evaluation picks a generator + judge by name.
+# "runs" is optional (defaults to execution.runs, then 1).
+evaluations:
+  - generator: "generator-b"
+    judge: "mixtral-judge"
+    runs: 2
+
+  - generator: "nemotron-nano-30b"
+    judge: "nemotron-nano-30b"
+    runs: 3
+
+  - generator: "nemotron-super-49b"
+    judge: "mixtral-judge"
+    runs: 5
+
+execution:
+  top_k: 5
+  max_workers: 8
+  # timeout: 120  # per-request timeout in seconds (default: 120)
+
+output:
+  results_dir: "data/test_retrieval"
