@@ -120,7 +120,7 @@ class TabularIngestOperator(AbstractOperator, CPUOperator):
 
             lancedb_params = self._vdb_params.lancedb
             handle_lancedb(
-                result_df,
+                result_df.to_dict(orient="records"),
                 uri=lancedb_params.lancedb_uri,
                 table_name=_TABULAR_TABLE,
             )
