@@ -1,7 +1,7 @@
-from shared.graph.parsers.sql import sql_select_parser
+from nemo_retriever.tabular_data.ingestion.graph.parsers.sql import sql_select_parser
 
-from shared.graph.model.reserved_words import Views, Props, Labels
-from shared.graph.model.query import Query
+from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import Views, Props, Labels
+from nemo_retriever.tabular_data.ingestion.graph.model.query import Query
 
 
 def get_projection_nodes(query_obj):

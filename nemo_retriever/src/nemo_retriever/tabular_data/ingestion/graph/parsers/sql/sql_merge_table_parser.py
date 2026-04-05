@@ -1,7 +1,7 @@
-from shared.graph.parsers.sql import sql_select_parser as sql_select
-from shared.graph.parsers.sql.utils import get_name_and_parent_name
-from shared.graph.model.reserved_words import Props, Parser, SQL
-from shared.graph.model.query import Query
+from nemo_retriever.tabular_data.ingestion.graph.parsers.sql import sql_select_parser as sql_select
+from nemo_retriever.tabular_data.ingestion.graph.parsers.sql.utils import get_name_and_parent_name
+from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import Props, Parser, SQL
+from nemo_retriever.tabular_data.ingestion.graph.model.query import Query
 
 
 def build_query_obj(
