@@ -100,7 +100,6 @@ class SQLExecutionAgent(BaseAgent):
                 connection_id,
                 db_name,
                 state["source"],
-                tag="illumex-omni",  # Tag for observability
             )
         )
 

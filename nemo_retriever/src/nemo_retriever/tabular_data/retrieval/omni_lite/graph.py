@@ -11,6 +11,7 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_execution import
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_semantic import SQLFromSemanticAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_tables import SQLFromTablesAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_reconstruction import SQLReconstructionAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_unconstructable import CalculationUnconstructableAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_validation_agent import SQLValidationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import agent_wrapper
 from langchain_openai import ChatOpenAI
@@ -250,12 +251,10 @@ def create_graph():
     retrieve_candidates_node = _make_node(
         "retrieve_candidates", agent_wrapper(retrieval_agent)
     )
-    extract_action_input_node = _make_node(
-        "extract_action_input", agent_wrapper(entities_extraction_agent)
+    entities_extraction_node = _make_node(
+        "entities_extraction", agent_wrapper(entities_extraction_agent)
     )
-    calculation_search_node = _make_node(
-        "calculation_search", agent_wrapper(calculation_search_agent)
-    )
+
     prepare_candidates_node = _make_node(
         "prepare_candidates", agent_wrapper(candidate_preparation_agent)
     )
@@ -297,12 +296,11 @@ def create_graph():
     graph = StateGraph(AgentState)
 
     # -----------------    ENTRY POINT   ------------------
-    graph.set_entry_point("retrieve_candidates")
+    graph.set_entry_point("entities_extraction")
 
     # Add only nodes instantiated above.
+    graph.add_node("entities_extraction", entities_extraction_node)
     graph.add_node("retrieve_candidates", retrieve_candidates_node)
-    graph.add_node("extract_action_input", extract_action_input_node)
-    graph.add_node("calculation_search", calculation_search_node)
     graph.add_node("prepare_candidates", prepare_candidates_node)
     graph.add_node("construct_sql_not_from_snippets", construct_sql_not_from_snippets_node)
     graph.add_node("construct_sql_from_semantic", construct_sql_from_semantic_node)
@@ -315,9 +313,8 @@ def create_graph():
     graph.add_node("unconstructable_sql_response", unconstructable_sql_response_node)
 
     # Minimal flow using only the defined nodes.
-    graph.add_edge("retrieve_candidates", "extract_action_input")
-    graph.add_edge("extract_action_input", "calculation_search")
-    graph.add_edge("calculation_search", "prepare_candidates")
+    graph.add_edge("entities_extraction", "retrieve_candidates")
+    graph.add_edge("retrieve_candidates", "prepare_candidates")
     graph.add_edge("prepare_candidates", "construct_sql_from_semantic")
     
 
