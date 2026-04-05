@@ -18,6 +18,11 @@ def _wait_for_port(host: str, port: int, timeout: float = 120.0, interval: float
     Wait until a TCP port on a host is accepting connections or raise TimeoutError.
     This makes the tests robust against pipeline warm-up variability.
     """
+    if timeout <= 0:
+        raise ValueError(f"timeout must be positive, got {timeout}")
+    if interval <= 0:
+        raise ValueError(f"interval must be positive, got {interval}")
+
     deadline = time.time() + timeout
     last_err: Exception | None = None
     while time.time() < deadline:
