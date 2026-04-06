@@ -191,6 +191,42 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
     assert "q,doc_name_1" in csv_contents
 
 
+def test_build_command_omits_tuning_flags_when_use_heuristics(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        use_heuristics=True,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--pdf-extract-tasks" not in cmd
+    assert "--pdf-extract-cpus-per-task" not in cmd
+    assert "--pdf-extract-batch-size" not in cmd
+    assert "--pdf-split-batch-size" not in cmd
+    assert "--page-elements-batch-size" not in cmd
+    assert "--page-elements-actors" not in cmd
+    assert "--ocr-actors" not in cmd
+    assert "--ocr-batch-size" not in cmd
+    assert "--embed-actors" not in cmd
+    assert "--embed-batch-size" not in cmd
+    assert "--page-elements-cpus-per-actor" not in cmd
+    assert "--ocr-cpus-per-actor" not in cmd
+    assert "--embed-cpus-per-actor" not in cmd
+    assert "--page-elements-gpus-per-actor" not in cmd
+    assert "--ocr-gpus-per-actor" not in cmd
+    assert "--embed-gpus-per-actor" not in cmd
+    # non-tuning flags still present
+    assert "--embed-model-name" in cmd
+    assert "--evaluation-mode" in cmd
+
+
 def test_normalize_recall_metric_key_removes_duplicate_prefix() -> None:
     assert _normalize_recall_metric_key("recall@1") == "recall_1"
     assert _normalize_recall_metric_key("recall@10") == "recall_10"
