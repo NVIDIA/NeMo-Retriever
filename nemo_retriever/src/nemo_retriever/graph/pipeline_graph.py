@@ -168,10 +168,23 @@ class Graph:
         Each root receives *data*; children receive their parent's output.
         Returns a list of leaf outputs (one per leaf node reached).
         """
+        resolved = self.resolve_for_local_execution()
         results: List[Any] = []
-        for root in self.roots:
-            self._execute_node(root, data, results, **kwargs)
+        for root in resolved.roots:
+            resolved._execute_node(root, data, results, **kwargs)
         return results
+
+    def resolve(self, resources: Any) -> "Graph":
+        """Return a cloned graph with archetype operators mapped to concrete variants."""
+        from nemo_retriever.graph.operator_resolution import resolve_graph
+
+        return resolve_graph(self, resources)
+
+    def resolve_for_local_execution(self) -> "Graph":
+        """Return a cloned graph resolved against resources detected on the current machine."""
+        from nemo_retriever.graph.operator_resolution import resolve_graph_for_local_execution
+
+        return resolve_graph_for_local_execution(self)
 
     def _execute_node(self, node: Node, data: Any, results: List[Any], **kwargs: Any) -> None:
         output = node.operator.run(data, **kwargs)

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -24,11 +25,11 @@ EMBED_GPUS_PER_ACTOR = (
 EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 
 # Nemotron Parse Actor constants (PER-GPU)
-NEMOTRON_PARSE_INITIAL_ACTORS = 1  # Hueristic initial num actors per GPU (initial_size of ActorPoolStrategy). Ray starts up this many actors on start-up.  # noqa: E501
-NEMOTRON_PARSE_MIN_ACTORS = 1  # Hueristic minimum num actors per GPU (min_size of ActorPoolStrategy). Ray tries to never let running actors fall below this number.  # noqa: E501
-NEMOTRON_PARSE_MAX_ACTORS = 4  # Hueristic baseline num actors per GPU (max_size of ActorPoolStrategy). Ray will grow to this size when resources are available.  # noqa: E501
+NEMOTRON_PARSE_INITIAL_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
+NEMOTRON_PARSE_MIN_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
+NEMOTRON_PARSE_MAX_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
 NEMOTRON_PARSE_GPUS_PER_ACTOR = (
-    0.1  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on. # noqa: E501
+    1.0  # vLLM owns the full GPU for KV-cache management and continuous batching.  # noqa: E501
 )
 NEMOTRON_PARSE_BATCH_SIZE = 64  # Ray batch size AND Nemotron Parse inference batch size
 
@@ -208,6 +209,18 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
             cpu_count=available_resources.get("CPU", 0), gpu_count=available_resources.get("GPU", 0)
         ),
     )
+
+
+def gather_local_resources() -> Resources:
+    """Gather local CPU/GPU resources without requiring Ray."""
+
+    cpu_count = int(os.cpu_count() or 0)
+    gpu_count = 0
+    try:
+        gpu_count = len(_get_gpu_memory_info().gpus)
+    except Exception as exc:  # pragma: no cover - depends on optional NVML runtime
+        logger.debug("Failed to detect local GPU resources via NVML: %s", exc)
+    return Resources(cpu_count=cpu_count, gpu_count=int(gpu_count))
 
 
 class RequestedPlan(BaseModel):
