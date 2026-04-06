@@ -346,10 +346,15 @@ def _hit_to_audio_segment_key(hit: Dict[str, Any]) -> str | None:
         start_time = content_metadata.get("start_time")
         end_time = content_metadata.get("end_time")
         if start_time is not None and end_time is not None:
-            try:
-                return _encode_audio_segment_key(media_id, float(start_time) / 1000.0, float(end_time) / 1000.0)
-            except (TypeError, ValueError):
+            normalized = _normalize_audio_segment_times(
+                start_time,
+                end_time,
+                duration_hint_secs=metadata.get("duration"),
+            )
+            if normalized is None:
                 return None
+            start_secs, end_secs = normalized
+            return _encode_audio_segment_key(media_id, start_secs, end_secs)
 
     return None
 

@@ -286,9 +286,10 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         ]
 
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
-    cmd += ["--audio-split-type", cfg.audio_split_type]
-    cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
+    if cfg.input_type == "audio":
+        cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
+        cmd += ["--audio-split-type", cfg.audio_split_type]
+        cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:

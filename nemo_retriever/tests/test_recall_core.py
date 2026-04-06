@@ -57,3 +57,15 @@ def test_hit_to_audio_segment_key_converts_millis_to_seconds() -> None:
     }
 
     assert _hit_to_audio_segment_key(hit) == "sample_clip\t0.320000\t4.880000"
+
+
+def test_hit_to_audio_segment_key_normalizes_content_metadata_times() -> None:
+    hit = {
+        "source_id": "/tmp/sample_clip.mp3",
+        "metadata": (
+            "{'source_path': '/tmp/sample_clip.mp3', 'duration': 79.67, "
+            "'content_metadata': {'start_time': 320, 'end_time': 4880}}"
+        ),
+    }
+
+    assert _hit_to_audio_segment_key(hit) == "sample_clip\t0.320000\t4.880000"

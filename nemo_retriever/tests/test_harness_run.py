@@ -189,6 +189,10 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
     csv_contents = effective_query_csv.read_text(encoding="utf-8")
     assert "query,pdf_page" in csv_contents
     assert "q,doc_name_1" in csv_contents
+    assert "--segment-audio" not in cmd
+    assert "--no-segment-audio" not in cmd
+    assert "--audio-split-type" not in cmd
+    assert "--audio-split-interval" not in cmd
 
 
 def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
