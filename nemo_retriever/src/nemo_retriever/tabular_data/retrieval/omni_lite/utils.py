@@ -7,8 +7,9 @@ import re
 
 from langchain_community.vectorstores import PGVector
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
-
-
+from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
+import numpy as np
+from datetime import date, timedelta
 logger = logging.getLogger(__name__)
 
 # Load .env from current working directory so LLM_API_KEY, LLM_INVOKE_URL are set (run from repo root)
@@ -18,6 +19,8 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+conn = get_neo4j_conn()
 
 # ==================== CONSTANTS ====================
 
@@ -65,6 +68,10 @@ class Labels(StrEnum):
 
     CUSTOM_ANALYSIS = "custom_analysis"
     COLUMN = "column"
+    QUERY = "query"
+    
+  
+
 
 def store_usage_percentiles(
     percentiles_type_name: str,
@@ -173,15 +180,15 @@ def clean_results(raw_candidates: list[dict]) -> list[dict]:
     return out
 
 
-def update_candidate_properties(candidate: dict, props_by_id: dict) -> None:
-    """Merge graph-expanded properties from ``expand_info`` into ``candidate``."""
-    cid = candidate.get("id")
-    if cid is None:
-        return
-    extra = props_by_id.get(cid) or props_by_id.get(str(cid))
-    if isinstance(extra, dict):
-        # values in ``extra`` may be list-wrapped from groupBy; take first dict if so
-        candidate.update(extra)
+queries_for_columns_params = {
+    "wildcard_names": ["Wildcard", "QualifiedWildcard"],
+    "sql_subgraph_rel": "<SQL",
+    "sql_subgraph_labels": ">sql|-table",
+    "sql_type": Labels.QUERY,
+}
+queries_for_columns_params_keys = ", ".join(
+    [f"{key}:${key}" for key in queries_for_columns_params.keys()]
+)
 
 
 def expand_info(ids_and_labels):
@@ -220,7 +227,7 @@ def expand_info(ids_and_labels):
                     """
         params = {
             "label_id_pairs": label_id_pairs_for_current_label,
-            "sql_type": SQLType.QUERY,
+            "sql_type": Labels.QUERY,
             "usage_percentile_25": queries_percentile_25,
             "usage_percentile_75": queries_percentile_75,
         }
@@ -283,7 +290,7 @@ def _hits_to_semantic_rows(hits: list[dict], allowed_labels: set[str], k: int) -
 
 
 def search_lancedb_semantic_index(
-    user_question: str,
+    entity: str,
     k: int = 30,
     label_filter: list[str] | None = None,
 ) -> list[dict]:
@@ -311,10 +318,7 @@ def search_lancedb_semantic_index(
     )
 
     hits = retriever.query(
-        user_question,
-        lancedb_uri=uri,
-        lancedb_table=table_name,
-        label_in=sorted(allowed_labels) if allowed_labels else None,
+        entity,
     )
 
     return _hits_to_semantic_rows(hits, allowed_labels, int(k))
@@ -405,7 +409,7 @@ def _dedupe_best_score_sort_cap(combined: list[dict]) -> list[dict]:
 
 
 def extract_candidates(
-    entities: list[str],
+    entities_and_concepts: list[str],
     query_no_values: str,
     query_with_values: str = "",
 ) -> tuple[list[dict], list[dict]]:
@@ -426,7 +430,7 @@ def extract_candidates(
         pulls.append(qnv_text)
     if qwv_text and qwv_text != qnv_text:
         pulls.append(qwv_text)
-    for ent in entities or []:
+    for ent in entities_and_concepts or []:
         t = (ent or "").strip()
         if t:
             pulls.append(t)

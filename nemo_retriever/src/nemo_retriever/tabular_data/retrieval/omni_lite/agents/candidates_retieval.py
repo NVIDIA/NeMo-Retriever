@@ -1,18 +1,12 @@
 """
 Candidate Retrieval Agent
 
-This agent performs semantic search to retrieve relevant candidates from the graph.
-It's a foundational agent that provides evidence for routing decisions.
+This agent performs semantic search (custom analysis and columns) to retrieve relevant candidates from the graph.
 
 Responsibilities:
-- Perform semantic search for graph entities (custom analyses)
+- Perform semantic search for graph entities (custom analyses and columns)
 - Clean and expand candidate properties
-- Build summary for routing agent
 
-Design Decisions:
-- Generic retrieval 
-- Results by CalculationAgent
-- Categorization helps routing agent understand what's available
 """
 
 import logging
@@ -30,7 +24,6 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
     clean_results,
     expand_info,
     extract_candidates,
-    update_candidate_properties,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,23 +31,16 @@ logger = logging.getLogger(__name__)
 
 class CandidateRetrievalAgent(BaseAgent):
     """
-    Agent that retrieves candidates from semantic search.
-
-    This agent performs the initial retrieval that informs routing decisions.
-    It searches for relevant graph entities and categorizes them.
+    Agent that retrieves candidates from semantic search (custom analyses and columns).
 
     Retrieval Strategy:
-    - Semantic search over all entity types (customanalyses)
-    - Top 10 candidates (balance between coverage and latency)
+    - Semantic search over custom analyses and columns.
     - Clean and expand candidate properties
 
-    Input Requirements:
-    - path_state["normalized_question"]: Normalized English question (from LanguageDetectionAgent)
-
     Output:
-    - path_state["retrieved_custom_analyses"]: Cleaned custom_analysis stream (from extract_candidates tuple[0])
-    - path_state["retrieved_column_candidates"]: Cleaned column stream (from extract_candidates tuple[1])
-    - path_state["retrieved_candidates"]: Concatenation of both (for consumers that need one list)
+    - path_state["retrieved_custom_analyses"]: Cleaned custom_analysis stream.
+    - path_state["retrieved_column_candidates"]: Cleaned column stream.
+    - path_state["retrieved_candidates"]: Concatenation of both.
     """
 
     def __init__(self):
@@ -72,15 +58,14 @@ class CandidateRetrievalAgent(BaseAgent):
         """
         Retrieve candidates from semantic search.
 
-        Performs semantic search, cleans results, expands properties, and
-        categorizes candidates for routing decisions.
+        Performs semantic search, cleans results, expands properties.
 
         Args:
             state: Current agent state
 
         Returns:
             Dictionary with:
-            - path_state: Contains retrieved candidates and categorization
+            - path_state: Contains retrieved candidates.
         """
         path_state = state.get("path_state", {})
 
@@ -88,13 +73,13 @@ class CandidateRetrievalAgent(BaseAgent):
 
         try:
             # Semantic search: custom analyses + columns (see extract_candidates).
-            entities = state.get("entities_and_concepts", []) 
+            entities_and_concepts = state.get("entities_and_concepts", []) 
             query_no_values = path_state.get(
                 "query_no_values", ""
             )
 
             extracted = extract_candidates(
-                entities,
+                entities_and_concepts,
                 query_no_values,
                 question,
             )
@@ -128,7 +113,12 @@ class CandidateRetrievalAgent(BaseAgent):
             candidates_properties = expand_info(ids_and_labels) if ids_and_labels else {}
 
             for candidate in retrieved_custom_analyses + retrieved_column_candidates:
-                update_candidate_properties(candidate, candidates_properties)
+                cid = candidate.get("id")
+                if cid is None:
+                    continue
+                extra = candidates_properties.get(cid) or candidates_properties.get(str(cid))
+                if isinstance(extra, dict):
+                    candidate.update(extra)
 
             path_state["retrieved_custom_analyses"] = retrieved_custom_analyses
             path_state["retrieved_column_candidates"] = retrieved_column_candidates
