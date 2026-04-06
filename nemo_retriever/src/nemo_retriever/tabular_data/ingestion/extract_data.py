@@ -52,7 +52,7 @@ def extract_tabular_db_data(params=None):
     return data_for_populate_tabular(params.connector)
 
 
-def store_relational_db_in_neo4j(data):
+def store_relational_db_in_neo4j(data, neo4j_conn=None):
     """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
 
     Args:
