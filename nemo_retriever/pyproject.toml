@@ -63,7 +63,7 @@ dependencies = [
   "nemotron-page-elements-v3>=0.dev0",
   "nemotron-graphic-elements-v1>=0.dev0",
   "nemotron-table-structure-v1>=0.dev0",
-  "nemotron-ocr>=0.dev0",
+  "nemotron-ocr>=0.dev0; sys_platform == 'linux'",
   "markitdown",
   "timm==1.0.22",
   "tqdm",
@@ -76,7 +76,7 @@ dependencies = [
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
-  "vllm==0.16.0",
+  "vllm==0.16.0; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]
