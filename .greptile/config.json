@@ -1,5 +1,5 @@
 {
-  "strictness": 1,
+  "strictness": 2,
   "commentTypes": ["logic", "syntax", "style"],
   "triggerOnUpdates": true,
   "triggerOnDrafts": false,
@@ -11,7 +11,7 @@
 
   "ignorePatterns": "**/__pycache__/**\n**/*.pyc\n**/.mypy_cache/**\n**/.pytest_cache/**\n**/*.egg-info/**\n**/dist/**\n**/build/**\n**/.eggs/**\n**/.venv/**\n**/node_modules/**\n**/versioneer.py\n**/_version.py\nuv.lock\n**/*.generated.*\n**/package-lock.json\ndata/**\nmodels/**\nthird_party/**\n**/*.csv\n**/*.svg\n**/*.png\n**/*.jpg\n**/*.jpeg\n**/*.gif\n**/*.ico\n**/*.woff\n**/*.woff2\n**/*.ttf\n**/*.eot\ndocs/site/**\n.devcontainer/**",
 
-  "instructions": "This is the NeMo Retriever repository (historically NV-Ingest) -- an enterprise-grade, GPU-accelerated multimodal document ingestion and retrieval pipeline built on Ray.\n\nIt is a Python monorepo with multiple independently versioned packages:\n- src/ (nv-ingest): Core ingestion service -- Ray pipeline, FastAPI endpoints, orchestration\n- api/ (nv-ingest-api): Shared API types, schemas, and extractors\n- client/ (nv-ingest-client): Python client library for submitting jobs\n- nemo_retriever/ (nemo-retriever): Forward-looking library API wrapping all three above packages\n- retrieval-bench/: Benchmarking tooling (ViDoRe/BRIGHT evaluation)\n- tools/harness/: Operations and harness tooling\n\nKey technologies: Ray (data/serve/all), FastAPI, PyTorch, vLLM, Triton Inference Server, Milvus, LanceDB, Redis, MinIO/S3, OpenTelemetry, Docker, Helm/Kubernetes.\n\nThe pipeline processes ControlMessage objects through a DAG of stages. Each stage uses decorators: @traceable (tracing), @nv_ingest_node_failure_context_manager (error handling), @filter_by_task (task routing). Understanding this decorator-driven flow is critical for reviewing pipeline code.\n\nReview as a distinguished engineer: focus on architectural correctness, data flow integrity through the pipeline, proper error handling with ControlMessage patterns, cross-package dependency direction (api -> src -> nemo_retriever, never backwards), security (this processes sensitive enterprise documents), and production readiness.\n\nCode standards: Black (120 char line length), Flake8 (120 char), Python 3.12+. All new files require SPDX license headers. Commits require DCO sign-off. Dependencies managed via uv and pyproject.toml.",
+  "instructions": "This is the NeMo Retriever repository (historically NV-Ingest) -- an enterprise-grade, GPU-accelerated multimodal document ingestion and retrieval pipeline built on Ray.\n\nIt is a Python monorepo with multiple independently versioned packages:\n- src/ (nv-ingest): Core ingestion service -- Ray pipeline, FastAPI endpoints, orchestration\n- api/ (nv-ingest-api): Shared API types, schemas, and extractors\n- client/ (nv-ingest-client): Python client library for submitting jobs\n- nemo_retriever/ (nemo-retriever): Forward-looking library API wrapping all three above packages\n- retrieval-bench/: Benchmarking tooling (ViDoRe/BRIGHT evaluation)\n- tools/harness/: Operations and harness tooling\n\nKey technologies: Ray (data/serve/all), FastAPI, PyTorch, vLLM, Triton Inference Server, Milvus, LanceDB, Redis, MinIO/S3, OpenTelemetry, Docker, Helm/Kubernetes.\n\nThe pipeline processes ControlMessage objects through a DAG of stages. Each stage uses decorators: @traceable (tracing), @nv_ingest_node_failure_context_manager (error handling), @filter_by_task (task routing). Understanding this decorator-driven flow is critical for reviewing pipeline code.\n\nReview as a distinguished engineer: focus on architectural correctness, data flow integrity through the pipeline, proper error handling with ControlMessage patterns, cross-package dependency direction (api/ is the base; client/ and src/ are parallel and depend only on api/; nemo_retriever/ sits on top), security (this processes sensitive enterprise documents), and production readiness.\n\nCode standards: Black (120 char line length), Flake8 (120 char), Python 3.12+. All new files require SPDX license headers. Commits require DCO sign-off. Dependencies managed via uv and pyproject.toml.",
 
   "summarySection": {
     "included": true,
@@ -37,7 +37,7 @@
   "rules": [
     {
       "id": "spdx-license-header",
-      "rule": "All new Python files MUST include the SPDX license header at the top of the file:\n\n# SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.\n# All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nFlag any new .py file missing this header.",
+      "rule": "All new Python files MUST include the SPDX license header at the top of the file:\n\n# SPDX-FileCopyrightText: Copyright (c) 20XX, NVIDIA CORPORATION & AFFILIATES.\n# All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nwhere 20XX is the year the file was created. Flag any new .py file missing this header or missing the SPDX-License-Identifier line.",
       "scope": ["**/*.py"],
       "severity": "high"
     },
@@ -48,7 +48,7 @@
     },
     {
       "id": "no-circular-cross-package-imports",
-      "rule": "The package dependency direction must be: api/ (base) -> client/ (depends on api) -> src/ (depends on api) -> nemo_retriever/ (depends on all). Never import from a higher-level package into a lower-level one. For example, api/ must NEVER import from src/, client/, or nemo_retriever/. src/ must NEVER import from nemo_retriever/.",
+      "rule": "The package dependency direction is strictly layered: api/ is the base (no upstream imports); client/ and src/ are parallel mid-level packages that each depend only on api/ -- client/ must NEVER import from src/, and src/ must NEVER import from client/; nemo_retriever/ is the top-level package that may depend on all three. Never import from a higher-level package into a lower-level one.",
       "scope": ["src/**/*.py", "api/**/*.py", "client/**/*.py", "nemo_retriever/**/*.py"],
       "severity": "high"
     },
@@ -66,7 +66,7 @@
     },
     {
       "id": "ray-resource-cleanup",
-      "rule": "Ray actors and tasks must properly release resources (GPU memory, file handles, network connections, temporary files). Check that actors implement cleanup in __del__ or a dedicated shutdown method, that temporary files use context managers or try/finally for cleanup, and that GPU tensors are explicitly deleted or moved to CPU when no longer needed.",
+      "rule": "Ray actors and tasks must properly release resources (GPU memory, file handles, network connections, temporary files). Actors MUST implement a dedicated shutdown() or cleanup() method -- do NOT rely on __del__ alone because Ray does not guarantee its execution. Use ray.actor.exit_actor() for controlled shutdown. Temporary files must use context managers or try/finally for cleanup. GPU tensors must be explicitly deleted or moved to CPU when no longer needed.",
       "scope": ["src/**/*.py", "nemo_retriever/**/*.py"],
       "severity": "high"
     },

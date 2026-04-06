@@ -14,17 +14,16 @@ maintainability over stylistic preferences.
 This monorepo has a strict layering:
 
 ```
-api/  (lowest level -- shared types and schemas)
-  ^
-  |
-client/  and  src/  (mid-level -- depend on api/)
-                ^
-                |
-         nemo_retriever/  (highest level -- depends on everything)
+         api/  (base -- shared types and schemas, no upstream imports)
+        /    \
+   client/   src/  (parallel mid-level -- each depends ONLY on api/)
+        \    /
+    nemo_retriever/  (top-level -- may depend on all three)
 ```
 
-**Never** import upward. If `api/` needs something from `src/`, the design
-is wrong -- extract the shared abstraction into `api/` instead.
+**Never** import upward or sideways between peers. `client/` must never
+import from `src/` (or vice versa). If `api/` needs something from `src/`,
+the design is wrong -- extract the shared abstraction into `api/` instead.
 
 ### Single Responsibility in Pipeline Stages
 
