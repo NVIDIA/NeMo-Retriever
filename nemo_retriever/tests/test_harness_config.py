@@ -210,7 +210,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
                 "    audio_split_type: time",
                 "    audio_split_interval: 30",
                 "    recall_required: true",
-                "    recall_adapter: audio_only_video_gt_csv",
+                "    recall_adapter: none",
                 "    recall_match_mode: audio_segment",
                 "    audio_match_tolerance_secs: 3.5",
             ]
@@ -223,7 +223,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
     assert cfg.segment_audio is True
     assert cfg.audio_split_type == "time"
     assert cfg.audio_split_interval == 30
-    assert cfg.recall_adapter == "audio_only_video_gt_csv"
+    assert cfg.recall_adapter == "none"
     assert cfg.recall_match_mode == "audio_segment"
     assert cfg.audio_match_tolerance_secs == 3.5
 

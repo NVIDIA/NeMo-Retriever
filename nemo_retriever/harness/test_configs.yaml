@@ -113,14 +113,14 @@ datasets:
 
   audio_retrieval:
     path: /datasets/nv-ingest/data/audio_retrieval_data_mp3
-    query_csv: /datasets/nv-ingest/video_retrieval_eval_gt.csv
+    query_csv: data/video_retrieval_eval_gt_audio_only.csv
     input_type: audio
     segment_audio: true
     audio_split_type: time
     audio_split_interval: 36000
     recall_required: true
     recall_match_mode: audio_segment
-    recall_adapter: audio_only_video_gt_csv
+    recall_adapter: none
     audio_match_tolerance_secs: 2.0
     embed_model_name: nvidia/llama-nemotron-embed-1b-v2
     embed_modality: text

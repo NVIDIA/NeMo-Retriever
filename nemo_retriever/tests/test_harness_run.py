@@ -200,7 +200,7 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
     query_csv.write_text(
-        "name,question,answer_modality,start_time,end_time\nclip,q,Audio only,1.0,2.0\n",
+        "query,expected_media_id,expected_start_time,expected_end_time\nq,clip,1.0,2.0\n",
         encoding="utf-8",
     )
 
@@ -214,7 +214,6 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
         audio_split_type="time",
         audio_split_interval=45,
         recall_match_mode="audio_segment",
-        recall_adapter="audio_only_video_gt_csv",
         audio_match_tolerance_secs=3.25,
     )
     cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")

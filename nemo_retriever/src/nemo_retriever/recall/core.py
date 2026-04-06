@@ -133,6 +133,41 @@ def _normalize_audio_segment_times(
     return start_val, end_val
 
 
+def _normalize_audio_query_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    if "query" not in df.columns and "question" in df.columns:
+        df = df.rename(columns={"question": "query"})
+    if "expected_media_id" not in df.columns and "name" in df.columns:
+        df["expected_media_id"] = df["name"].astype(str).apply(_normalize_audio_media_id)
+    if "expected_start_time" not in df.columns and "start_time" in df.columns:
+        df["expected_start_time"] = pd.to_numeric(df["start_time"], errors="raise").astype(float)
+    if "expected_end_time" not in df.columns and "end_time" in df.columns:
+        df["expected_end_time"] = pd.to_numeric(df["end_time"], errors="raise").astype(float)
+
+    required = {"query", "expected_media_id", "expected_start_time", "expected_end_time"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise KeyError(
+            "For audio_segment mode, query data must contain "
+            "['query','expected_media_id','expected_start_time','expected_end_time'] "
+            "or ['question','name','start_time','end_time'] columns "
+            f"(missing: {sorted(missing)})"
+        )
+
+    df["query"] = df["query"].astype(str)
+    df["expected_media_id"] = df["expected_media_id"].astype(str).apply(_normalize_audio_media_id)
+    df["expected_start_time"] = pd.to_numeric(df["expected_start_time"], errors="raise").astype(float)
+    df["expected_end_time"] = pd.to_numeric(df["expected_end_time"], errors="raise").astype(float)
+    df["golden_answer"] = df.apply(
+        lambda row: _encode_audio_segment_key(
+            row["expected_media_id"], row["expected_start_time"], row["expected_end_time"]
+        ),
+        axis=1,
+    )
+    return df
+
+
 def _normalize_query_df(df: pd.DataFrame, *, match_mode: str) -> pd.DataFrame:
     """
     Normalize a query CSV into:
@@ -153,39 +188,10 @@ def _normalize_query_df(df: pd.DataFrame, *, match_mode: str) -> pd.DataFrame:
     if match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
         raise ValueError(f"Unsupported recall match mode: {match_mode}")
 
-    df = df.copy()
-
     if match_mode == "audio_segment":
-        if "query" not in df.columns and "question" in df.columns:
-            df = df.rename(columns={"question": "query"})
-        if "expected_media_id" not in df.columns and "name" in df.columns:
-            df["expected_media_id"] = df["name"].astype(str).apply(_normalize_audio_media_id)
-        if "expected_start_time" not in df.columns and "start_time" in df.columns:
-            df["expected_start_time"] = pd.to_numeric(df["start_time"], errors="raise").astype(float)
-        if "expected_end_time" not in df.columns and "end_time" in df.columns:
-            df["expected_end_time"] = pd.to_numeric(df["end_time"], errors="raise").astype(float)
+        return _normalize_audio_query_df(df)
 
-        required = {"query", "expected_media_id", "expected_start_time", "expected_end_time"}
-        missing = required.difference(df.columns)
-        if missing:
-            raise KeyError(
-                "For audio_segment mode, query data must contain "
-                "['query','expected_media_id','expected_start_time','expected_end_time'] "
-                "or ['question','name','start_time','end_time'] columns "
-                f"(missing: {sorted(missing)})"
-            )
-
-        df["query"] = df["query"].astype(str)
-        df["expected_media_id"] = df["expected_media_id"].astype(str).apply(_normalize_audio_media_id)
-        df["expected_start_time"] = pd.to_numeric(df["expected_start_time"], errors="raise").astype(float)
-        df["expected_end_time"] = pd.to_numeric(df["expected_end_time"], errors="raise").astype(float)
-        df["golden_answer"] = df.apply(
-            lambda row: _encode_audio_segment_key(
-                row["expected_media_id"], row["expected_start_time"], row["expected_end_time"]
-            ),
-            axis=1,
-        )
-        return df
+    df = df.copy()
 
     if "query" not in df.columns:
         raise KeyError("Query CSV must contain a 'query' column.")
