@@ -108,12 +108,11 @@ class SQLReconstructionAgent(BaseAgent):
             table_groups = path_state.get("table_groups", [])
             if table_groups:
                 # Extract all tables and FKs from all groups (not just the best one)
-                tables_with_entities = path_state.get("tables_with_entities", [])
-                fks_with_entities = path_state.get("fks_with_entities", [])
+                tables_rows = path_state.get("tables_rows", [])
+                all_fks_raw = path_state.get("relevant_fks", [])
 
-                # Fallback to all tables and FKs from all groups
-                all_tables = [item["table"] for item in tables_with_entities]
-                all_fks = [item["fk"] for item in fks_with_entities]
+                all_tables = list(tables_rows)
+                all_fks = list(all_fks_raw)
 
                 self.logger.info(
                     f"First reconstruction - using ALL table groups: {len(all_tables)} tables, "

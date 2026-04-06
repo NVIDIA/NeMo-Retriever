@@ -69,6 +69,7 @@ class Labels(StrEnum):
     CUSTOM_ANALYSIS = "custom_analysis"
     COLUMN = "column"
     QUERY = "query"
+    TABLE = "table"
     
   
 
@@ -319,37 +320,15 @@ def search_lancedb_semantic_index(
 
     hits = retriever.query(
         entity,
+        lancedb_uri=uri,
+        lancedb_table=table_name,
+        label_in=sorted(allowed_labels) if allowed_labels else None,
     )
 
     return _hits_to_semantic_rows(hits, allowed_labels, int(k))
 
 
-def search_vector_index(
-    index_name,
-    allowed_ids,
-    user_question,
-    k=30,
-    label_filter: list[str] | None = None,
-):
-    vectorstore = PGVector.from_existing_index(
-        embedding=get_embeddings(account_id),
-        collection_name=index_name,
-        connection_string=pg_conn.connection_string,
-    )
 
-    filter_kwargs = {}
-    if label_filter:
-        filter_kwargs["label"] = {"in": label_filter}
-
-    # PGVector returns distance here; convert to a similarity-style score where
-    # higher is better by applying (1 - distance).
-    result = vectorstore.similarity_search_with_score(
-        user_question,
-        k=k,
-        filter=filter_kwargs,
-    )
-    # double check for account_id
-    return result
 
 
 def get_semantic_candidates_information(
@@ -624,33 +603,33 @@ def format_response(account_id, candidates, response):
     return final_response_highlighted
 
 
-# TODO how to get fks from duckdb?
-def get_relevant_fks(tables_ids, account_id):
+
+def get_relevant_fks(tables_ids):
     # Build a connected graph by expanding from target tables through FK relationships
     query = """ 
     // Start with target tables and expand outward to find connected tables
     WITH $tables_ids as current_ids
     
     // Level 1: Find tables connected via FK
-    OPTIONAL MATCH (t0:table{account_id:$account_id} WHERE t0.id IN current_ids)
-          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t1:table{account_id:$account_id})
+    OPTIONAL MATCH (t0:table WHERE t0.id IN current_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t1:table)
     WITH current_ids, collect(DISTINCT t1.id) as new_ids_1
     WITH current_ids + new_ids_1 as level_1_ids
     
     // Level 2
-    OPTIONAL MATCH (t1:table{account_id:$account_id} WHERE t1.id IN level_1_ids)
-          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t2:table{account_id:$account_id})
+    OPTIONAL MATCH (t1:table WHERE t1.id IN level_1_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t2:table)
     WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
     WITH level_1_ids + new_ids_2 as level_2_ids
     
     // Level 3
-    OPTIONAL MATCH (t2:table{account_id:$account_id} WHERE t2.id IN level_2_ids)
-          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t3:table{account_id:$account_id})
+    OPTIONAL MATCH (t2:table WHERE t2.id IN level_2_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t3:table)
     WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
     WITH level_2_ids + new_ids_3 as all_table_ids
     
     // Get all FK relationships between these tables
-    MATCH (t1:table{account_id:$account_id})-[:schema]->(col1:column)-[:fk]-(col2:column)<-[:schema]-(t2:table{account_id:$account_id})
+    MATCH (t1:table)-[:schema]->(col1:column)-[:fk]-(col2:column)<-[:schema]-(t2:table)
     WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
       AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
     
@@ -663,13 +642,7 @@ def get_relevant_fks(tables_ids, account_id):
         column2_datatype: coalesce(col2.data_type, 'None')
     }) as list_of_foreign_keys
     """
-    results = conn.query_read_only(
-        query=query,
-        parameters={
-            "account_id": account_id,
-            "tables_ids": tables_ids,
-        },
-    )
+    results = conn.query_read(query, {"tables_ids": tables_ids})
     if len(results) > 0:
         result_fks = results[0]["list_of_foreign_keys"]
     else:
@@ -680,22 +653,22 @@ def get_relevant_fks(tables_ids, account_id):
     // Start with target tables and expand outward to find connected tables
     
     // Level 1: Find tables connected via FK
-    OPTIONAL MATCH (t0:table{account_id:$account_id} WHERE t0.id IN $tables_ids)-[:join]-(t1:table{account_id:$account_id})
+    OPTIONAL MATCH (t0:table WHERE t0.id IN $tables_ids)-[:join]-(t1:table)
     WITH collect(DISTINCT t1.id) as new_ids_1
     WITH $tables_ids + new_ids_1 as level_1_ids
     
     // Level 2
-    OPTIONAL MATCH (t1:table{account_id:$account_id} WHERE t1.id IN level_1_ids)-[:join]-(t2:table{account_id:$account_id})
+    OPTIONAL MATCH (t1:table WHERE t1.id IN level_1_ids)-[:join]-(t2:table)
     WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
     WITH level_1_ids + new_ids_2 as level_2_ids
     
     // Level 3
-    OPTIONAL MATCH (t2:table{account_id:$account_id} WHERE t2.id IN level_2_ids)-[:join]-(t3:table{account_id:$account_id})
+    OPTIONAL MATCH (t2:table WHERE t2.id IN level_2_ids)-[:join]-(t3:table)
     WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
     WITH level_2_ids + new_ids_3 as all_table_ids
     
     // Get all join relationships between these tables and parse the join property
-    MATCH (t1:table{account_id:$account_id})-[rel:join]-(t2:table{account_id:$account_id})
+    MATCH (t1:table)-[rel:join]-(t2:table)
     WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
       AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
       AND rel.join IS NOT NULL
@@ -717,10 +690,10 @@ def get_relevant_fks(tables_ids, account_id):
       AND right_schema IS NOT NULL AND right_table IS NOT NULL AND right_column IS NOT NULL
     
     // Match the actual column nodes for left side
-    OPTIONAL MATCH (s1:schema{account_id:$account_id, name: left_schema})-[:schema]->(tbl1:table{account_id:$account_id, name: left_table})-[:schema]->(col1:column{account_id:$account_id, name: left_column})
+    OPTIONAL MATCH (s1:schema{name: left_schema})-[:schema]->(tbl1:table{name: left_table})-[:schema]->(col1:column{name: left_column})
     
     // Match the actual column nodes for right side
-    OPTIONAL MATCH (s2:schema{account_id:$account_id, name: right_schema})-[:schema]->(tbl2:table{account_id:$account_id, name: right_table})-[:schema]->(col2:column{account_id:$account_id, name: right_column})
+    OPTIONAL MATCH (s2:schema{name: right_schema})-[:schema]->(tbl2:table{name: right_table})-[:schema]->(col2:column{name: right_column})
     
     // Return the structured format
     RETURN collect(DISTINCT {
@@ -732,13 +705,7 @@ def get_relevant_fks(tables_ids, account_id):
         column2_datatype: coalesce(col2.data_type, 'None')
     }) as list_of_foreign_keys
     """
-    results = conn.query_read_only(
-        query=query,
-        parameters={
-            "account_id": account_id,
-            "tables_ids": tables_ids,
-        },
-    )
+    results = conn.query_read(query, {"tables_ids": tables_ids})
     if len(results) > 0:
         result_joins = results[0]["list_of_foreign_keys"]
     else:
@@ -761,101 +728,196 @@ def get_relevant_fks(tables_ids, account_id):
     return sorted_results
 
 
-
-
-def get_relevant_tables(
-    account_d,
-    initial_question,
-    k=15,
-    exclude_ids: list[str] | None = None,
-):
-    account_simple_str = account_id.replace("-", "_") # TODO no account
+def _parse_table_text(text: str) -> dict:
+    """Parse db_name, schema_name, and columns from LanceDB-style table text."""
+    parsed: dict = {}
     try:
-        if exclude_ids:
-            allowed_tables_ids = [
-                table_id
-                for table_id in allowed_tables_ids
-                if table_id not in exclude_ids
-            ]
-        relevant_tables = search_vector_index(
-            account_id,
-            index_name=f"{account_simple_str}_tables_info_vector_store",
-            allowed_ids=allowed_tables_ids,
-            user_question=initial_question,
-            k=k,
-            # label_filter=[Labels.TABLE],    add the filter? reduce runtime?
-        )
+        if not isinstance(text, str):
+            return parsed
+
+        db_match = re.search(r"db_name:\s*([^,]+)", text)
+        if db_match:
+            parsed["db_name"] = db_match.group(1).strip()
+
+        schema_match = re.search(r"schema_name:\s*([^,]+)", text)
+        if schema_match:
+            parsed["schema_name"] = schema_match.group(1).strip()
+
+        columns_match = re.search(r"columns:\s*(.+)$", text)
+        if columns_match:
+            columns_str = columns_match.group(1).strip()
+            column_pattern = r"\{name:\s*([^,}]+)(?:,\s*data_type:\s*([^,}]+))?(?:,\s*description:\s*([^}]+))?\}"
+            columns = []
+            for match in re.finditer(column_pattern, columns_str):
+                column = {
+                    "name": match.group(1).strip(),
+                }
+                if match.group(2):
+                    column["data_type"] = match.group(2).strip()
+                if match.group(3):
+                    desc = match.group(3).strip()
+                    if desc != "null":
+                        column["description"] = desc
+                columns.append(column)
+            if columns:
+                parsed["columns"] = columns
     except Exception:
-        relevant_tables = []
+        pass
 
-    def parse_table_text(text: str) -> dict:
-        """Parse db_name, schema_name, and columns from table text."""
-        parsed = {}
-        try:
-            import re
+    return parsed
 
-            # Ensure text is a string
-            if not isinstance(text, str):
-                return parsed
 
-            # Extract db_name
-            db_match = re.search(r"db_name:\s*([^,]+)", text)
-            if db_match:
-                parsed["db_name"] = db_match.group(1).strip()
+def get_relevant_queries(  # TODO: check
+    candidates
+):
+    snippet_queries = []
+    for candidate in candidates:
+        if candidate.get("label", "") == "custom_analysis":
+            analysis_sql = candidate.get("sql", [])
+            # Check if sql list is not empty before accessing index 0
+            if not analysis_sql:
+                continue
+            s_query = analysis_sql[0].get(
+                "sql_code", ""
+            )  # analysis can't be without sql, one sql? [0]?
+            if s_query and s_query not in snippet_queries:
+                snippet_queries.append(s_query)
+    return snippet_queries
 
-            # Extract schema_name
-            schema_match = re.search(r"schema_name:\s*([^,]+)", text)
-            if schema_match:
-                parsed["schema_name"] = schema_match.group(1).strip()
 
-            # Extract columns
-            columns_match = re.search(r"columns:\s*(.+)$", text)
-            if columns_match:
-                columns_str = columns_match.group(1).strip()
-                # Parse column blocks like {name: X, data_type: Y, description: Z}
-                column_pattern = r"\{name:\s*([^,}]+)(?:,\s*data_type:\s*([^,}]+))?(?:,\s*description:\s*([^}]+))?\}"
-                columns = []
-                for match in re.finditer(column_pattern, columns_str):
-                    column = {
-                        "name": match.group(1).strip(),
-                    }
-                    if match.group(2):
-                        column["data_type"] = match.group(2).strip()
-                    if match.group(3):
-                        desc = match.group(3).strip()
-                        if desc != "null":
-                            column["description"] = desc
-                    columns.append(column)
-                if columns:
-                    parsed["columns"] = columns
-        except Exception:
-            # If parsing fails, return empty dict (fallback to table_info)
-            pass
+def _normalize_table_to_relevant_shape(table: dict) -> dict:
+    """Build the same per-table dict shape as :func:`get_relevant_tables` returns."""
+    text = str(table.get("table_info") or table.get("text") or "")
+    parsed = _parse_table_text(text)
+    entry: dict = {
+        "name": str(table.get("name") or ""),
+        "label": str(table.get("label") or Labels.TABLE),
+        "id": str(table.get("id") or ""),
+        "table_info": text,
+        **parsed,
+    }
+    if table.get("db_name") and not entry.get("db_name"):
+        entry["db_name"] = table["db_name"]
+    if table.get("schema_name") and not entry.get("schema_name"):
+        entry["schema_name"] = table["schema_name"]
+    if table.get("columns") and not entry.get("columns"):
+        entry["columns"] = table["columns"]
+    if table.get("pk") is not None:
+        entry["primary_key"] = table["pk"]
+    return entry
 
-        return parsed
 
-    relevant_tables_list = [
-        {
-            "name": f"{table['metadata']['name']}",
-            "label": f"{table['metadata']['label']}",
-            "id": f"{table['metadata']['id']}",
-            "table_info": f"{table['text']}",
-            **(
-                {"primary_key": table["metadata"]["pk"]}
-                if "pk" in table["metadata"]
-                else {}
-            ),
-            **parse_table_text(table["text"]),
-        }
-        for table in relevant_tables
-    ]
-    relevant_fks = get_relevant_fks([x["id"] for x in relevant_tables_list], account_id)
-    for table in relevant_tables_list:
+def _apply_foreign_key_hints(tables: list[dict], relevant_fks: list) -> None:
+    """Set ``foreign_key`` on tables when name matches FK side (same as ``get_relevant_tables``)."""
+    for table in tables:
         for fk in relevant_fks:
             if table["name"] == fk["table1"]:
                 table["foreign_key"] = (
                     f"'{table['name']}.{fk['column1']}' = '{fk['table2']}.{fk['column2']}'"
                 )
+
+
+def get_relevant_fks_from_candidates_tables(
+    candidates: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """
+    Extract tables and foreign keys from flat candidate dicts.
+
+    Reads ``relevant_tables`` on each candidate (when present), deduplicates by table id,
+    calls :func:`get_relevant_fks` for those table ids, then removes
+    ``relevant_tables`` from each candidate in place.
+
+    Returns:
+        ``(relevant_tables, relevant_fks)`` — same table dict shape as :func:`get_relevant_tables`
+        (``name``, ``label``, ``id``, ``table_info``, parsed fields, optional ``primary_key``,
+        optional ``foreign_key``), and ``relevant_fks`` as returned by :func:`get_relevant_fks`.
+    """
+    table_by_id: dict[str, dict] = {}
+
+    for cand in candidates:
+        if not isinstance(cand, dict):
+            continue
+        rel = cand.get("relevant_tables")
+        if not rel:
+            continue
+        for table in rel:
+            if not isinstance(table, dict):
+                continue
+            tid = table.get("id")
+            if tid is None:
+                continue
+            tid_s = str(tid)
+            if tid_s not in table_by_id:
+                table_by_id[tid_s] = table
+
+    def _strip_relevant_tables() -> None:
+        for cand in candidates:
+            if isinstance(cand, dict) and "relevant_tables" in cand:
+                cand.pop("relevant_tables", None)
+
+    if not table_by_id:
+        _strip_relevant_tables()
+        return [], []
+
+    relevant_tables = [
+        _normalize_table_to_relevant_shape(table_by_id[tid]) for tid in table_by_id
+    ]
+    relevant_fks: list[dict] = []
+    try:
+        relevant_fks = get_relevant_fks([x["id"] for x in relevant_tables])
+    except Exception:
+        logger.exception("get_relevant_fks failed for candidate tables")
+        relevant_fks = []
+
+    _apply_foreign_key_hints(relevant_tables, relevant_fks)
+    _strip_relevant_tables()
+    return relevant_tables, relevant_fks
+
+
+def get_relevant_tables(
+    initial_question,
+    k=15,
+):
+    """Semantic search over the same LanceDB index as candidate retrieval, label ``table`` only."""
+    try:
+        raw_rows = search_lancedb_semantic_index(
+            initial_question,
+            k=k,
+            label_filter=[Labels.TABLE],
+        )
+    except Exception:
+        logger.exception("get_relevant_tables: LanceDB search failed")
+        raw_rows = []
+
+    relevant_tables_list = []
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("text") or "")
+        name = row.get("name")
+        tid = row.get("id")
+        lab = row.get("label") or Labels.TABLE
+        if name is None and tid is None:
+            continue
+        entry = _normalize_table_to_relevant_shape(
+            {
+                "name": name,
+                "label": lab,
+                "id": tid,
+                "text": text,
+                "pk": row.get("pk"),
+            }
+        )
+        relevant_tables_list.append(entry)
+
+    relevant_fks: list = []
+    if relevant_tables_list:
+        try:
+            relevant_fks = get_relevant_fks([x["id"] for x in relevant_tables_list])
+        except Exception:
+            logger.exception("get_relevant_fks failed in get_relevant_tables")
+            relevant_fks = []
+    _apply_foreign_key_hints(relevant_tables_list, relevant_fks)
 
     return relevant_tables_list, relevant_fks
 

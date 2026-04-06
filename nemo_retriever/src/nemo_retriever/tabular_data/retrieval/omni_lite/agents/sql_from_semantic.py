@@ -56,7 +56,7 @@ def format_table_groups_for_prompt(table_groups: list[dict]) -> str:
 
     Args:
         table_groups: List of table group dictionaries with structure:
-            {"tables": [...], "entities": [...], "candidate_ids": [...], "fks": [...]}
+            {"tables": [...], "entities": [...], "fks": [...]}
 
     Returns:
         Formatted string showing table groups with their connections and entities
@@ -188,8 +188,8 @@ class SQLFromSemanticAgent(BaseAgent):
     answer in some feedback/file cases).
 
     Input Requirements:
-    - path_state["candidates"]: Wrapped candidates from preparation (candidate + entity)
-    - path_state["tables_with_entities"] / table_groups / fks_with_entities: schema context
+    - path_state["candidates"]: Candidate dicts from preparation (flat list; legacy wrapped shape still accepted)
+    - path_state["tables_rows"] / table_groups / relevant_fks: schema context
     - path_state["relevant_queries"]: Relevant queries (from CandidatePreparationAgent)
     - path_state["similar_questions"]: Similar questions (from CandidatePreparationAgent)
     - path_state["complex_candidates"]: Complex candidates (from CandidatePreparationAgent)
@@ -239,16 +239,19 @@ class SQLFromSemanticAgent(BaseAgent):
         llm = state["llm"]
         dialects = state["dialects"]
         question = get_question_for_processing(state)
-        candidates_with_entities = path_state["candidates"]
-
-        # Extract just the candidate objects for processing
-        candidates = [item["candidate"] for item in candidates_with_entities]
+        raw_candidates = path_state["candidates"]
+        candidates = [
+            item["candidate"]
+            if isinstance(item, dict) and "candidate" in item
+            else item
+            for item in raw_candidates
+        ]
 
 
         # Get pre-fetched data from CandidatePreparationAgent
         table_groups = path_state.get("table_groups", [])
-        tables_with_entities = path_state.get("tables_with_entities", [])
-        fks_with_entities = path_state.get("fks_with_entities", [])
+        tables_rows = path_state.get("tables_rows", [])
+        relevant_fks_flat = path_state.get("relevant_fks", [])
         relevant_queries = path_state.get("relevant_queries", [])
         similar_questions = path_state.get("similar_questions", [])
         complex_candidates = path_state.get("complex_candidates", [])
@@ -256,20 +259,14 @@ class SQLFromSemanticAgent(BaseAgent):
         action_input = path_state.get("action_input", {})
         entities = action_input.get("required_entity_name", []) if action_input else []
 
-        # Select the best table group: most entities covered, then most connected tables
         best_group = None
         if table_groups:
-            # Score each group by: prioritize entities first (always preferred), then tables
-            # Using tuple comparison: (entities, tables) - entities will always be compared first
             def score_group(group):
-                num_tables = len(group.get("tables", []))
-                num_entities = len(group.get("entities", []))
-                return (num_entities, num_tables)
+                return len(group.get("tables", []))
 
             best_group = max(table_groups, key=score_group)
             self.logger.info(
                 f"Selected best table group: {len(best_group.get('tables', []))} tables, "
-                f"{len(best_group.get('entities', []))} entities, "
                 f"{len(best_group.get('fks', []))} FKs"
             )
 
@@ -281,8 +278,8 @@ class SQLFromSemanticAgent(BaseAgent):
             table_groups = [best_group]
         else:
             # Fallback to all tables and FKs if no groups
-            relevant_tables = [item["table"] for item in tables_with_entities]
-            relevant_fks = [item["fk"] for item in fks_with_entities]
+            relevant_tables = list(tables_rows)
+            relevant_fks = list(relevant_fks_flat)
 
         # Format similar questions for prompt
         similar_questions_txt = "\n".join(
