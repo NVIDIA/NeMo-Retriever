@@ -113,7 +113,7 @@ datasets:
 
   audio_retrieval:
     path: /datasets/nv-ingest/data/audio_retrieval_data_mp3
-    query_csv: data/video_retrieval_eval_gt_audio_only.csv
+    query_csv: /dataset/nv-ingest/video_retrieval_eval_gt_audio_only.csv
     input_type: audio
     segment_audio: true
     audio_split_type: time
