@@ -10,6 +10,7 @@ from typing import Any
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import TabularExtractParams
 from nemo_retriever.params import VdbUploadParams
@@ -18,24 +19,8 @@ from nemo_retriever.params import VdbUploadParams
 _TABULAR_TABLE = "nv-ingest-tabular"
 
 
-class TabularIngestOperator(AbstractOperator, CPUOperator):
-    """Graph operator that orchestrates the full tabular ingestion pipeline.
-
-    Mirrors the steps of :meth:`BatchIngestor.ingest_tabular` as a first-class
-    :class:`AbstractOperator` so it can be composed in a :class:`Graph` without
-    touching the ingestor API.
-
-    Steps executed in :meth:`process`:
-
-    1. ``extract_tabular_db_data``      — pull schema entities from the DB
-    2. ``store_relational_db_in_neo4j`` — write entities as graph nodes
-    3. ``populate_tabular_semantic_layer`` (future)
-    4. ``populate_tabular_usage_weights``  (future)
-    5. ``generate_tabular_descriptions``   (future)
-    6. ``fetch_tabular_embedding_dataframe`` → Ray Dataset
-    7. :class:`_BatchEmbedActor`         — GPU/remote batch embedding
-    8. ``handle_lancedb``               — write embedded rows to LanceDB
-    """
+class _TabularIngestBase(AbstractOperator):
+    """Shared implementation for the tabular ingestion pipeline operator."""
 
     def __init__(
         self,
@@ -44,8 +29,9 @@ class TabularIngestOperator(AbstractOperator, CPUOperator):
         embed_params: EmbedParams | None = None,
         vdb_params: VdbUploadParams | None = None,
         allow_no_gpu: bool = False,
+        **kwargs: Any,
     ) -> None:
-        super().__init__()
+        super().__init__(**kwargs)
         self._tabular_params = tabular_params
         self._embed_params = embed_params
         self._vdb_params = vdb_params
@@ -129,3 +115,60 @@ class TabularIngestOperator(AbstractOperator, CPUOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+
+class TabularIngestCPUActor(_TabularIngestBase, CPUOperator):
+    """CPU variant of the tabular ingestion operator."""
+
+    pass
+
+
+class TabularIngestOperator(ArchetypeOperator):
+    """Graph-facing archetype operator for the full tabular ingestion pipeline.
+
+    Mirrors the steps of :meth:`BatchIngestor.ingest_tabular` as a first-class
+    :class:`ArchetypeOperator` so it can be composed in a :class:`Graph` without
+    touching the ingestor API.
+
+    Tabular ingestion is CPU-bound (schema extraction, Neo4j writes, pandas);
+    GPU resources for embedding are managed internally via Ray actor pools.
+
+    Steps executed in :meth:`process`:
+
+    1. ``extract_tabular_db_data``      — pull schema entities from the DB
+    2. ``store_relational_db_in_neo4j`` — write entities as graph nodes
+    3. ``populate_tabular_semantic_layer`` (future)
+    4. ``populate_tabular_usage_weights``  (future)
+    5. ``generate_tabular_descriptions``   (future)
+    6. ``fetch_tabular_embedding_dataframe`` → Ray Dataset
+    7. :class:`_BatchEmbedActor`         — GPU/remote batch embedding
+    8. ``handle_lancedb``               — write embedded rows to LanceDB
+    """
+
+    _cpu_variant_class = TabularIngestCPUActor
+    _gpu_variant_class = None
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        return True
+
+    def __init__(
+        self,
+        *,
+        tabular_params: TabularExtractParams | None = None,
+        embed_params: EmbedParams | None = None,
+        vdb_params: VdbUploadParams | None = None,
+        allow_no_gpu: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            tabular_params=tabular_params,
+            embed_params=embed_params,
+            vdb_params=vdb_params,
+            allow_no_gpu=allow_no_gpu,
+            **kwargs,
+        )
+        self._tabular_params = tabular_params
+        self._embed_params = embed_params
+        self._vdb_params = vdb_params
+        self._allow_no_gpu = allow_no_gpu
