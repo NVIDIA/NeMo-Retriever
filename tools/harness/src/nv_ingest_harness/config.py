@@ -116,7 +116,7 @@ class TestConfig:
             errors.append(f"text_depth must be one of {valid_text_depths}, got '{self.text_depth}'")
 
         # Check table_output_format is valid (from TableFormatEnum)
-        valid_table_formats = ["html", "image", "latex", "markdown", "pseudo_markdown", "simple"]
+        valid_table_formats = ["markdown", "pseudo_markdown", "simple"]
         if self.table_output_format not in valid_table_formats:
             errors.append(f"table_output_format must be one of {valid_table_formats}, got '{self.table_output_format}'")
 
