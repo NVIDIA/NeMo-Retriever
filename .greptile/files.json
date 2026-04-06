@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "CONTRIBUTING.md",
-      "description": "Architectural guidelines (SRP, DIP, SoC, ADP, etc.), coding patterns (decorators, ControlMessage flow), testing standards, and DCO/licensing requirements. This is the primary reference for how code should be structured."
+      "description": "Architectural guidelines (SRP, DIP, SoC, ADP, etc.), coding patterns, testing standards, and DCO/licensing requirements."
     },
     {
       "path": ".github/PULL_REQUEST_TEMPLATE.md",
@@ -10,25 +10,19 @@
     },
     {
       "path": ".pre-commit-config.yaml",
-      "description": "Enforced pre-commit hooks: Black (120 char), Flake8 (120 char), trailing whitespace, large file checks, AST validation, debug statement detection, and deployment config validation."
+      "description": "Enforced pre-commit hooks: Black (120 char), Flake8 (120 char), trailing whitespace, large file checks, AST validation, debug statement detection."
     },
     {
       "path": "setup.cfg",
-      "description": "Extended Flake8 configuration with per-file ignores, isort settings, and coding style rules that complement pre-commit."
+      "description": "Extended Flake8 configuration with per-file ignores, isort settings, and coding style rules."
     },
     {
       "path": ".github/CODEOWNERS",
-      "description": "Code ownership: nv-ingest-maintainers and nemo-retriever-research own everything; specialized teams for docs, examples, devops, and CI."
+      "description": "Code ownership: nv-ingest-maintainers and nemo-retriever-research own everything; specialized teams for docs, devops, CI."
     },
     {
-      "path": "src/pyproject.toml",
-      "description": "Core nv-ingest service dependencies and build configuration. Reference for allowed dependency versions and the package's external interface.",
-      "scope": ["src/**"]
-    },
-    {
-      "path": "nemo_retriever/pyproject.toml",
-      "description": "NeMo Retriever library dependencies, uv source configuration for inter-package editable installs, and entry points. Shows the dependency wiring between packages.",
-      "scope": ["nemo_retriever/**"]
+      "path": "docs/docs/extraction/overview.md",
+      "description": "High-level architecture overview of the ingestion pipeline, scaling modes, and system design."
     },
     {
       "path": "api/pyproject.toml",
@@ -41,22 +35,8 @@
       "scope": ["client/**"]
     },
     {
-      "path": "docs/docs/extraction/content-metadata.md",
-      "description": "Schema-enforced metadata format for extracted content. Critical reference for understanding the data contract between pipeline stages.",
-      "scope": ["src/nv_ingest/**", "api/**"]
-    },
-    {
-      "path": "docs/docs/extraction/user-defined-stages.md",
-      "description": "Guide for adding new pipeline stages. Defines the expected patterns and contracts for stage implementations.",
-      "scope": ["src/nv_ingest/**"]
-    },
-    {
-      "path": "docs/docs/extraction/overview.md",
-      "description": "High-level architecture overview of the ingestion pipeline, scaling modes, and system design."
-    },
-    {
       "path": ".github/workflows/ci-pull-request.yml",
-      "description": "PR CI pipeline: pre-commit checks, Docker build and test (pytest, not integration, with coverage). Changes to CI should be reviewed for correctness and security.",
+      "description": "PR CI pipeline: pre-commit checks, Docker build and test with coverage.",
       "scope": [".github/**"]
     }
   ]

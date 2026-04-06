@@ -10,9 +10,9 @@
   "excludeAuthors": ["dependabot[bot]", "renovate[bot]"],
   "disabledLabels": ["skip-review"],
 
-  "ignorePatterns": "**/__pycache__/**\n**/*.pyc\n**/.mypy_cache/**\n**/.pytest_cache/**\n**/*.egg-info/**\n**/dist/**\n**/build/**\n**/.eggs/**\n**/.venv/**\n**/node_modules/**\n**/versioneer.py\n**/_version.py\nuv.lock\n**/*.generated.*\n**/package-lock.json\ndata/**\nmodels/**\nthird_party/**\n**/*.csv\n**/*.svg\n**/*.png\n**/*.jpg\n**/*.jpeg\n**/*.gif\n**/*.ico\n**/*.woff\n**/*.woff2\n**/*.ttf\n**/*.eot\ndocs/site/**\n.devcontainer/**",
+  "ignorePatterns": "**/__pycache__/**\n**/*.pyc\n**/.mypy_cache/**\n**/.pytest_cache/**\n**/*.egg-info/**\n**/dist/**\n**/build/**\n**/.eggs/**\n**/.venv/**\n**/node_modules/**\n**/versioneer.py\n**/_version.py\n**/uv.lock\n**/*.generated.*\n**/package-lock.json\ndata/**\nmodels/**\nthird_party/**\n**/*.csv\n**/*.svg\n**/*.png\n**/*.jpg\n**/*.jpeg\n**/*.gif\n**/*.ico\n**/*.woff\n**/*.woff2\n**/*.ttf\n**/*.eot\n**/*.ipynb\n**/*.pth\n**/*.onnx\n**/*.bin\n**/*.safetensors\ndocs/site/**\n.devcontainer/**",
 
-  "instructions": "This is the NeMo Retriever repository (historically NV-Ingest) -- an enterprise-grade, GPU-accelerated multimodal document ingestion and retrieval pipeline built on Ray.\n\nIt is a Python monorepo with multiple independently versioned packages:\n- src/ (nv-ingest): Core ingestion service -- Ray pipeline, FastAPI endpoints, orchestration\n- api/ (nv-ingest-api): Shared API types, schemas, and extractors\n- client/ (nv-ingest-client): Python client library for submitting jobs\n- nemo_retriever/ (nemo-retriever): Forward-looking library API wrapping all three above packages\n- retrieval-bench/: Benchmarking tooling (ViDoRe/BRIGHT evaluation)\n- tools/harness/: Operations and harness tooling\n\nKey technologies: Ray (data/serve/all), FastAPI, PyTorch, vLLM, Triton Inference Server, Milvus, LanceDB, Redis, MinIO/S3, OpenTelemetry, Docker, Helm/Kubernetes.\n\nThe pipeline processes ControlMessage objects through a DAG of stages. Each stage uses decorators: @traceable (tracing), @nv_ingest_node_failure_context_manager (error handling), @filter_by_task (task routing). Understanding this decorator-driven flow is critical for reviewing pipeline code.\n\nReview as a distinguished engineer: focus on architectural correctness, data flow integrity through the pipeline, proper error handling with ControlMessage patterns, cross-package dependency direction (api/ is the base; client/ and src/ are parallel and depend only on api/; nemo_retriever/ sits on top), security (this processes sensitive enterprise documents), and production readiness.\n\nCode standards: Black (120 char line length), Flake8 (120 char), Python 3.12+. All new files require SPDX license headers. Commits require DCO sign-off. Dependencies managed via uv and pyproject.toml.",
+  "instructions": "This is the NeMo Retriever monorepo -- an enterprise-grade multimodal document ingestion and retrieval system. Most active development happens in nemo_retriever/ (library mode). The legacy service-mode packages (src/, api/, client/) are foundational but stable.\n\nPackage layout:\n- nemo_retriever/: PRIMARY -- library-mode API (most PRs land here)\n- src/ (nv-ingest): Legacy service-mode pipeline\n- api/ (nv-ingest-api): Shared types and schemas (base package)\n- client/ (nv-ingest-client): Client library for service mode\n- retrieval-bench/: Benchmarking (ViDoRe/BRIGHT)\n- tools/harness/: Operations tooling\n\nDependency direction: api/ is the base; client/ and src/ are parallel mid-level packages depending only on api/; nemo_retriever/ sits on top and may depend on all three.\n\nCode standards: Black (120 char), Flake8 (120 char), Python 3.12+. SPDX license headers required. DCO sign-off required. Dependencies via uv and pyproject.toml.",
 
   "summarySection": {
     "included": true,
@@ -38,13 +38,13 @@
   "rules": [
     {
       "id": "spdx-license-header",
-      "rule": "All new Python files MUST include the SPDX license header at the top of the file:\n\n# SPDX-FileCopyrightText: Copyright (c) 20XX, NVIDIA CORPORATION & AFFILIATES.\n# All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nwhere 20XX is the year the file was created. Flag any new .py file missing this header or missing the SPDX-License-Identifier line.",
+      "rule": "Python files added in this PR must include the SPDX license header at the top:\n\n# SPDX-FileCopyrightText: Copyright (c) <year>, NVIDIA CORPORATION & AFFILIATES.\n# All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nUse the current year for new files. Flag any .py file added in the PR that is missing this header or missing the SPDX-License-Identifier line.",
       "scope": ["**/*.py"],
       "severity": "high"
     },
     {
       "id": "no-hardcoded-secrets",
-      "rule": "No hardcoded credentials, API keys, tokens, passwords, or secrets in source code. Look for patterns like 'password=', 'token=', 'api_key=', 'secret=', 'AWS_ACCESS_KEY', 'HF_TOKEN', or Base64-encoded strings that appear to be credentials. Use environment variables or secret management instead.",
+      "rule": "No hardcoded credentials, API keys, tokens, passwords, or secrets in any file. In Python: look for 'password=', 'token=', 'api_key=', 'secret=', 'AWS_ACCESS_KEY', 'HF_TOKEN', or Base64-encoded credential strings. In YAML/JSON: look for 'password:', 'token:', 'apiKey:', 'secret:' with literal values instead of variable references. In Dockerfiles: look for 'ENV' directives setting credentials or 'ARG' with default secret values. Use environment variables or secret management instead.",
       "severity": "high"
     },
     {
@@ -54,39 +54,9 @@
       "severity": "high"
     },
     {
-      "id": "pipeline-stage-decorators",
-      "rule": "All Ray pipeline stage functions that process ControlMessages must use the standard decorator stack: @traceable() for tracing, @nv_ingest_node_failure_context_manager(annotation_id=...) for error handling, and @filter_by_task([...]) for task routing where applicable. Missing any of these decorators in a pipeline stage is a critical issue.",
-      "scope": ["src/nv_ingest/**/*.py"],
-      "severity": "high"
-    },
-    {
-      "id": "no-direct-model-execution",
-      "rule": "Models must NOT be loaded or executed directly within the Ray pipeline stages. All model inference must go through Triton Inference Server, vLLM, or an external NIM endpoint. Direct torch.load(), model.forward(), or model() calls inside pipeline processing code indicate an architectural violation. Model code in nemo_retriever/ library mode is exempt from this rule.",
-      "scope": ["src/nv_ingest/**/*.py"],
-      "severity": "high"
-    },
-    {
-      "id": "ray-resource-cleanup",
-      "rule": "Ray actors and tasks must properly release resources (GPU memory, file handles, network connections, temporary files). Actors MUST implement a dedicated shutdown() or cleanup() method -- do NOT rely on __del__ alone because Ray does not guarantee its execution. Use ray.actor.exit_actor() for controlled shutdown. Temporary files must use context managers or try/finally for cleanup. GPU tensors must be explicitly deleted or moved to CPU when no longer needed.",
-      "scope": ["src/**/*.py", "nemo_retriever/**/*.py"],
-      "severity": "high"
-    },
-    {
-      "id": "async-error-handling",
-      "rule": "All async functions and Ray remote calls must have explicit error handling. Unhandled exceptions in async code or Ray tasks silently kill workers and corrupt pipeline state. Ensure try/except blocks with proper logging and re-raising, or use the @nv_ingest_node_failure_context_manager decorator.",
-      "scope": ["src/**/*.py", "nemo_retriever/**/*.py"],
-      "severity": "high"
-    },
-    {
       "id": "no-bare-except",
-      "rule": "Never use bare 'except:' that silently swallows errors. Always catch specific exceptions where possible. Catching 'except Exception as e:' is acceptable ONLY at top-level handlers or boundaries IF the exception is logged with full context (including traceback via exc_info=True) and either re-raised or used to set a failure state. Flag any except block that catches and does nothing, returns None silently, or uses 'pass'.",
+      "rule": "Never use bare 'except:' that silently swallows errors. Always catch specific exceptions where possible. Catching 'except Exception as e:' is acceptable ONLY at defined boundaries -- FastAPI endpoint handlers, CLI entry points (typer/click commands), Ray actor main loops, or pipeline top-level error handlers -- and ONLY IF the exception is logged with full context (including traceback via exc_info=True) and either re-raised or used to set a failure state. Flag any except block that catches and does nothing, returns None silently, or uses 'pass'.",
       "scope": ["**/*.py"],
-      "severity": "high"
-    },
-    {
-      "id": "api-input-validation",
-      "rule": "All FastAPI endpoint parameters and request bodies must be validated using Pydantic models with appropriate field constraints (type, min/max, regex patterns). Never trust raw user input. Check that path parameters, query parameters, and JSON bodies are all validated before use.",
-      "scope": ["**/api/**/*.py", "src/nv_ingest/service/**/*.py", "nemo_retriever/**/api/**/*.py"],
       "severity": "high"
     },
     {
@@ -97,8 +67,8 @@
     },
     {
       "id": "type-hints-public-api",
-      "rule": "All public functions, methods, and class attributes must have type annotations. This includes parameter types, return types, and class-level attributes. Private/internal helpers (prefixed with _) are encouraged but not required. The nemo_retriever/ and api/ packages especially must have complete type coverage since they define the public interface.",
-      "scope": ["api/**/*.py", "client/**/*.py", "nemo_retriever/src/**/*.py"],
+      "rule": "All public functions, methods, and class attributes must have type annotations. This includes parameter types, return types, and class-level attributes. Private/internal helpers (prefixed with _) are encouraged but not required.",
+      "scope": ["api/**/*.py", "client/**/*.py", "nemo_retriever/src/**/*.py", "src/nv_ingest/**/*.py"],
       "severity": "medium"
     },
     {
@@ -109,20 +79,20 @@
     },
     {
       "id": "test-mirrors-source-structure",
-      "rule": "Test files must mirror the source directory structure. For example, src/nv_ingest/stages/foo/bar.py should have tests at tests/nv_ingest/stages/foo/test_bar.py (or an equivalent test path). New source modules without corresponding test files should be flagged.",
+      "rule": "New source modules should have corresponding test files. Test file placement should follow the package's existing test conventions (e.g., api/api_tests/, client/client_tests/, nemo_retriever/tests/, tests/service_tests/). PRs adding new source files with zero corresponding tests should be flagged.",
       "scope": ["src/**/*.py", "api/**/*.py", "client/**/*.py", "nemo_retriever/**/*.py"],
       "severity": "medium"
     },
     {
       "id": "test-coverage-new-code",
-      "rule": "New functionality must include corresponding unit tests. PRs that add or modify business logic, pipeline stages, API endpoints, or client methods without tests should be flagged. Tests should cover the happy path, error paths, and meaningful edge cases.",
+      "rule": "New functionality must include corresponding unit tests. PRs that add or modify business logic, API endpoints, or client methods without tests should be flagged. Tests should cover the happy path, error paths, and meaningful edge cases.",
       "scope": ["**/*.py"],
       "severity": "medium"
     },
     {
       "id": "mock-external-services",
       "rule": "Tests must mock all external service dependencies (Triton, Redis, Milvus, MinIO/S3, HTTP endpoints, Ray cluster). Tests should never make real network calls. Use unittest.mock.patch or pytest-mock to isolate the unit under test.",
-      "scope": ["**/test*/**/*.py", "**/*_test.py", "**/test_*.py"],
+      "scope": ["**/test*/**/*.py", "**/*_tests/**/*.py", "**/*_test.py", "**/test_*.py"],
       "severity": "medium"
     },
     {
@@ -150,36 +120,6 @@
       "severity": "medium"
     },
     {
-      "id": "single-responsibility",
-      "rule": "Functions and classes should have a single, well-defined responsibility. Functions exceeding 50 lines likely do too much and should be decomposed. Classes with more than 10 public methods may violate SRP. Flag overly complex functions (high cyclomatic complexity) or god classes.",
-      "scope": ["**/*.py"],
-      "severity": "low"
-    },
-    {
-      "id": "composition-over-inheritance",
-      "rule": "Prefer composition over class inheritance for behavior reuse. Deep inheritance hierarchies (more than 2 levels) are a code smell in this codebase. If inheritance is used, ensure the Liskov Substitution Principle holds.",
-      "scope": ["**/*.py"],
-      "severity": "low"
-    },
-    {
-      "id": "descriptive-naming",
-      "rule": "Variables, functions, classes, and modules must have descriptive names. Single-letter variables are acceptable only as loop counters or lambda parameters. Avoid abbreviations unless they are universally understood in the domain (e.g., 'msg' for message, 'cfg' for configuration).",
-      "scope": ["**/*.py"],
-      "severity": "low"
-    },
-    {
-      "id": "document-assumptions",
-      "rule": "Non-obvious design decisions, performance trade-offs, and environmental assumptions must be documented in code comments or docstrings. If a piece of code depends on a specific Ray version behavior, GPU memory layout, or external service contract, that assumption must be explicitly stated.",
-      "scope": ["**/*.py"],
-      "severity": "low"
-    },
-    {
-      "id": "no-unnecessary-data-copies",
-      "rule": "Avoid unnecessary copies of large data structures (DataFrames, tensors, byte arrays). In the pipeline, ControlMessage payloads can be very large. Use in-place operations or views where possible. Flag pd.DataFrame.copy(), .clone(), or deepcopy() unless there is a clear mutation safety reason.",
-      "scope": ["src/**/*.py", "nemo_retriever/**/*.py"],
-      "severity": "low"
-    },
-    {
       "id": "helm-chart-standards",
       "rule": "Helm templates must use proper value references with defaults, include resource limits/requests for all containers, define health checks (liveness/readiness probes), and use configurable image tags. Hardcoded resource values or missing health checks should be flagged.",
       "scope": ["helm/**/*.yaml", "helm/**/*.tpl"],
@@ -188,13 +128,37 @@
     {
       "id": "dockerfile-best-practices",
       "rule": "Dockerfiles must use multi-stage builds, pin base image tags (never 'latest'), run as non-root user in the final stage, never COPY secrets/credentials/env files into the image, and use .dockerignore to exclude test data, docs, and dev files. Flag any ADD or COPY that pulls in sensitive files, or any USER root in a final stage.",
-      "scope": ["**/Dockerfile*", "**/dockerfile*", "docker/**"],
+      "scope": ["**/Dockerfile*", "**/dockerfile*"],
       "severity": "medium"
     },
     {
-      "id": "opentelemetry-instrumentation",
-      "rule": "New pipeline stages and API endpoints should include OpenTelemetry instrumentation (spans, metrics, or traces) consistent with existing patterns. The @traceable decorator handles pipeline stages; API endpoints should use FastAPI's middleware or manual span creation.",
-      "scope": ["src/nv_ingest/**/*.py", "nemo_retriever/**/api/**/*.py"],
+      "id": "github-actions-security",
+      "rule": "GitHub Actions workflows must: pin third-party actions to a full SHA (not a mutable tag like @v3), include explicit 'permissions:' blocks with least-privilege scope, never echo secrets in 'run:' steps, and avoid 'pull_request_target' with 'actions/checkout' of the PR head ref (code injection risk). New workflows or changes to existing workflows must be reviewed for secret exfiltration paths.",
+      "scope": [".github/workflows/**/*.yml", ".github/workflows/**/*.yaml"],
+      "severity": "high"
+    },
+    {
+      "id": "single-responsibility",
+      "rule": "Functions and classes should have a single, well-defined responsibility. Functions exceeding 50 lines likely do too much and should be decomposed. Classes with more than 10 public methods may violate SRP.",
+      "scope": ["**/*.py"],
+      "severity": "low"
+    },
+    {
+      "id": "composition-over-inheritance",
+      "rule": "Prefer composition over class inheritance for behavior reuse. Deep inheritance hierarchies (more than 2 levels) are a code smell in this codebase.",
+      "scope": ["**/*.py"],
+      "severity": "low"
+    },
+    {
+      "id": "descriptive-naming",
+      "rule": "Variables, functions, classes, and modules must have descriptive names. Single-letter variables are acceptable only as loop counters or lambda parameters.",
+      "scope": ["**/*.py"],
+      "severity": "low"
+    },
+    {
+      "id": "document-assumptions",
+      "rule": "Non-obvious design decisions, performance trade-offs, and environmental assumptions must be documented in code comments or docstrings.",
+      "scope": ["**/*.py"],
       "severity": "low"
     }
   ],

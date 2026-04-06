@@ -1,17 +1,14 @@
 # NeMo Retriever Code Review Standards
 
-These rules supplement the structured rules in `config.json` with detailed
-guidelines, rationale, and code examples. When reviewing, apply the judgment
-of a distinguished engineer: prioritize correctness, security, and
-maintainability over stylistic preferences.
+Universal guidelines that apply across all packages. Package-specific
+rules live in their own `.greptile/` directories (`nemo_retriever/.greptile/`
+and `src/.greptile/`).
 
 ---
 
 ## Architecture and Design
 
 ### Package Dependency Direction
-
-This monorepo has a strict layering:
 
 ```
          api/  (base -- shared types and schemas, no upstream imports)
@@ -25,133 +22,11 @@ This monorepo has a strict layering:
 import from `src/` (or vice versa). If `api/` needs something from `src/`,
 the design is wrong -- extract the shared abstraction into `api/` instead.
 
-### Single Responsibility in Pipeline Stages
+### Single Responsibility
 
-Each pipeline stage should do exactly one thing: extract text, split chunks,
-embed content, etc. If a stage function is handling multiple concerns (e.g.,
-extraction AND validation AND storage), it should be decomposed.
-
-### Separation of Configuration and Logic
-
-Pipeline stage behavior should be driven by configuration passed through
-`ControlMessage` task specs, not by hardcoded conditionals. If you see a
-stage with `if config_value == "mode_a": ... elif config_value == "mode_b": ...`
-growing beyond two branches, suggest extracting a strategy pattern.
-
----
-
-## Ray Pipeline Patterns
-
-### Required Decorator Stack
-
-Every function that processes a `ControlMessage` as part of the pipeline
-must use the standard decorator stack:
-
-```python
-@filter_by_task(["task_name"])
-@nv_ingest_node_failure_context_manager(annotation_id="stage_name")
-@traceable(trace_name="StageName")
-def process_fn(control_message: ControlMessage, **kwargs) -> ControlMessage:
-    ...
-```
-
-The order matters:
-1. `@filter_by_task` -- outermost, skips non-relevant messages
-2. `@nv_ingest_node_failure_context_manager` -- catches failures, annotates the message
-3. `@traceable` -- innermost, records entry/exit timestamps
-
-A stage missing any of these decorators will silently break tracing,
-error recovery, or task routing.
-
-### Ray Actor Lifecycle
-
-Ray actors that hold GPU resources, database connections, or large caches
-must implement proper cleanup:
-
-- Implement a `shutdown()` or `cleanup()` method that releases resources
-- Use `ray.actor.exit_actor()` for controlled shutdown
-- Never rely on `__del__` alone -- Ray does not guarantee its execution
-- Explicitly `del` GPU tensors and call `torch.cuda.empty_cache()` when
-  releasing models
-
-### Avoiding Ray Anti-Patterns
-
-- Do not pass large objects (DataFrames, tensors, images) directly as Ray
-  task arguments. Use the Ray object store (`ray.put()` / `ray.get()`)
-  or shared memory references.
-- Do not block the event loop inside async Ray actors. Use
-  `await asyncio.to_thread()` for CPU-bound work.
-- Do not create unbounded numbers of Ray tasks in a loop. Use
-  `ray.wait()` with a concurrency limit or batch submissions.
-
----
-
-## Error Handling
-
-### ControlMessage Failure Flow
-
-When a pipeline stage encounters an error, the `ControlMessage` must be
-annotated with the failure (not silently dropped). The
-`@nv_ingest_node_failure_context_manager` decorator handles this
-automatically. **Never** catch and swallow exceptions inside a pipeline
-stage without re-raising or annotating the `ControlMessage`.
-
-Bad:
-```python
-def process(msg):
-    try:
-        result = do_work(msg)
-    except Exception:
-        pass  # silently lost
-    return msg
-```
-
-Good:
-```python
-@nv_ingest_node_failure_context_manager(annotation_id="my_stage")
-def process(msg):
-    result = do_work(msg)
-    return msg
-```
-
-### Exception Specificity
-
-Catch the most specific exception possible:
-
-```python
-# Bad
-try:
-    response = client.query(params)
-except Exception as e:
-    logger.error(f"Query failed: {e}")
-
-# Good
-try:
-    response = client.query(params)
-except ConnectionError as e:
-    logger.error(f"Connection to service lost: {e}")
-    raise
-except TimeoutError as e:
-    logger.warning(f"Query timed out, retrying: {e}")
-    response = client.query(params, timeout=extended_timeout)
-```
-
-### Logging Context
-
-Always include actionable context in log messages. A log message should
-answer: what happened, where, and what identifiers can be used to trace it.
-
-```python
-# Bad
-logger.error("Processing failed")
-
-# Good
-logger.error(
-    "Failed to extract text from document",
-    extra={"source_id": doc.source_id, "doc_type": doc.document_type, "stage": "pdf_extraction"},
-    exc_info=True,
-)
-```
+Each module, class, or function should have one reason to change. If a
+function exceeds 50 lines or a class has more than 10 public methods,
+it likely does too much.
 
 ---
 
@@ -188,12 +63,53 @@ Every entry point (API endpoint, CLI command, client method) must validate:
 
 ---
 
+## Error Handling
+
+### Exception Specificity
+
+Catch the most specific exception possible:
+
+```python
+# Bad
+try:
+    response = client.query(params)
+except Exception as e:
+    logger.error(f"Query failed: {e}")
+
+# Good
+try:
+    response = client.query(params)
+except ConnectionError as e:
+    logger.error(f"Connection to service lost: {e}")
+    raise
+except TimeoutError as e:
+    logger.warning(f"Query timed out, retrying: {e}")
+    response = client.query(params, timeout=extended_timeout)
+```
+
+### Logging Context
+
+Always include actionable context in log messages:
+
+```python
+# Bad
+logger.error("Processing failed")
+
+# Good
+logger.error(
+    "Failed to extract text from document",
+    extra={"source_id": doc.source_id, "doc_type": doc.document_type},
+    exc_info=True,
+)
+```
+
+---
+
 ## Testing Standards
 
 ### Test Quality Over Quantity
 
-A test that only verifies the happy path with no assertions on error
-behavior is incomplete. Each test function should:
+Each test function should:
 
 - Test one specific behavior (not multiple scenarios in one function)
 - Include assertions on both return values AND side effects
@@ -218,15 +134,6 @@ default unit test run.
 
 ## API Design
 
-### Pydantic Model Discipline
-
-All API request/response models must use Pydantic with:
-
-- Explicit field types (no `Any` unless truly necessary)
-- Field validators for business rules
-- `model_config = ConfigDict(strict=True)` where type coercion is dangerous
-- Descriptive `Field(description="...")` for OpenAPI documentation
-
 ### Backward Compatibility
 
 When evolving APIs:
@@ -239,7 +146,7 @@ When evolving APIs:
 
 ---
 
-## Performance Considerations
+## Performance
 
 ### Memory Awareness
 
@@ -250,15 +157,6 @@ images). Be vigilant about:
 - Creating intermediate copies of large byte arrays or DataFrames
 - Accumulating results in a list when a generator would work
 - Not releasing GPU tensors after inference completes
-
-### Concurrency and Throughput
-
-- Pipeline stages should be stateless where possible to allow horizontal
-  scaling via Ray
-- Shared state between stages must go through Ray's object store or an
-  external service (Redis), never through module-level globals
-- Batch operations (batch inference, batch database writes) are preferred
-  over item-by-item processing
 
 ---
 
