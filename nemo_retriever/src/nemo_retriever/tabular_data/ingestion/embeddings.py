@@ -30,14 +30,7 @@ def query_neo4j_tables_for_embedding() -> List[dict]:
     return result[0].get("docs") or []
 
 
-def fetch_tabular_embedding_dataframe(
-    *,
-    text_key: str = "text",
-    id_key: str = "id",
-    label_key: str = "label",
-    name_key: str = "name",
-    embed_modality: str = "text",
-) -> pd.DataFrame:
+def fetch_tabular_embedding_dataframe() -> pd.DataFrame:
     """Fetch all tabular entity docs from Neo4j and return a DataFrame ready for embedding.
 
     Each row has: text, _embed_modality, path, page_number, metadata
@@ -51,15 +44,15 @@ def fetch_tabular_embedding_dataframe(
 
     rows = []
     for item in docs:
-        text = (item.get(text_key) or "").strip()
-        node_id = item.get(id_key)
-        label = item.get(label_key, "")
-        name = item.get(name_key, "")
+        text = (item.get("text") or "").strip()
+        node_id = item.get("id")
+        label = item.get("label", "")
+        name = item.get("name", "")
         path = f"neo4j:{node_id}" if node_id is not None else "neo4j:unknown"
         rows.append(
             {
                 "text": text,
-                "_embed_modality": embed_modality,
+                "_embed_modality": "text",
                 "path": path,
                 "page_number": -1,
                 "metadata": {
