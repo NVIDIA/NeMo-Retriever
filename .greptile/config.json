@@ -8,6 +8,7 @@
   "updateExistingSummaryComment": true,
 
   "excludeAuthors": ["dependabot[bot]", "renovate[bot]"],
+  "disabledLabels": ["skip-review"],
 
   "ignorePatterns": "**/__pycache__/**\n**/*.pyc\n**/.mypy_cache/**\n**/.pytest_cache/**\n**/*.egg-info/**\n**/dist/**\n**/build/**\n**/.eggs/**\n**/.venv/**\n**/node_modules/**\n**/versioneer.py\n**/_version.py\nuv.lock\n**/*.generated.*\n**/package-lock.json\ndata/**\nmodels/**\nthird_party/**\n**/*.csv\n**/*.svg\n**/*.png\n**/*.jpg\n**/*.jpeg\n**/*.gif\n**/*.ico\n**/*.woff\n**/*.woff2\n**/*.ttf\n**/*.eot\ndocs/site/**\n.devcontainer/**",
 
@@ -78,7 +79,7 @@
     },
     {
       "id": "no-bare-except",
-      "rule": "Never use bare 'except:' or 'except Exception:' that silently swallows errors. Always catch specific exceptions. If catching broad exceptions is necessary (e.g., at a top-level handler), the exception MUST be logged with full context including the traceback.",
+      "rule": "Never use bare 'except:' that silently swallows errors. Always catch specific exceptions where possible. Catching 'except Exception as e:' is acceptable ONLY at top-level handlers or boundaries IF the exception is logged with full context (including traceback via exc_info=True) and either re-raised or used to set a failure state. Flag any except block that catches and does nothing, returns None silently, or uses 'pass'.",
       "scope": ["**/*.py"],
       "severity": "high"
     },
@@ -182,6 +183,12 @@
       "id": "helm-chart-standards",
       "rule": "Helm templates must use proper value references with defaults, include resource limits/requests for all containers, define health checks (liveness/readiness probes), and use configurable image tags. Hardcoded resource values or missing health checks should be flagged.",
       "scope": ["helm/**/*.yaml", "helm/**/*.tpl"],
+      "severity": "medium"
+    },
+    {
+      "id": "dockerfile-best-practices",
+      "rule": "Dockerfiles must use multi-stage builds, pin base image tags (never 'latest'), run as non-root user in the final stage, never COPY secrets/credentials/env files into the image, and use .dockerignore to exclude test data, docs, and dev files. Flag any ADD or COPY that pulls in sensitive files, or any USER root in a final stage.",
+      "scope": ["**/Dockerfile*", "**/dockerfile*", "docker/**"],
       "severity": "medium"
     },
     {
