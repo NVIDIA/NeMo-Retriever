@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import Labels
-from nemo_retriever.tabular_data.ingestion.graph.model.node import Node
+from nemo_retriever.tabular_data.ingestion.graph.model.node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.graph.model.schema import Schema
 import logging
 
@@ -18,7 +18,7 @@ def parse_df(tables_df, columns_df, db_node=None):
     """
     db_name = tables_df.iloc[0]["database"]
     if not db_node:
-        db_node = Node(
+        db_node = Neo4jNode(
             name=db_name,
             label=Labels.DB,
             props={"name": db_name, "pulled": datetime.now()},

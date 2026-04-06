@@ -5,7 +5,7 @@ from nemo_retriever.tabular_data.ingestion.graph.utils import (
     normalize_tables,
     normalize_columns,
 )
-from nemo_retriever.tabular_data.ingestion.graph.model.node import Node
+from nemo_retriever.tabular_data.ingestion.graph.model.node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import (
     Labels,
     RelTypes,
@@ -28,7 +28,7 @@ def load_schema_from_graph(
         columns_df = None
 
     if db_node is None:
-        db_node = Node(name=db_name, label=Labels.DB, props={"name": db_name})
+        db_node = Neo4jNode(name=db_name, label=Labels.DB, props={"name": db_name})
 
     schema = Schema(db_node, tables_df, columns_df)
     schema.create_schema_node(schema_name)
@@ -120,7 +120,7 @@ def add_schemas_edge(edge, created):
         node_to_label = node_to.get_label()
 
         # in case of match, override the existing ID in the graph
-        # to correlate with the ID of the parsed Node object
+        # to correlate with the ID of the parsed Neo4jNode object
         query = f"""
             CALL apoc.merge.node.eager($from_label, $from_identProps, $v_props, {{id:$v_props.id}})
             yield node as v1
@@ -206,7 +206,7 @@ def add_pks(pks_df):
 
 def merge_schema_nodes(nodes, created):
     # in case of match, override the existing ID in the graph
-    # to correlate with the ID of the parsed Node object
+    # to correlate with the ID of the parsed Neo4jNode object
     merge_nodes_query = """
                             UNWIND $nodes as node
                             CALL apoc.merge.node.eager(node.label, node.match_props, node.props, {id:node.props.id})

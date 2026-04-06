@@ -6,7 +6,7 @@ from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import Lab
 logger = logging.getLogger(__name__)
 
 
-class Node:
+class Neo4jNode:
     def __init__(
         self,
         name,
@@ -83,7 +83,7 @@ class Node:
             self.props.update({key: val})
 
     def __eq__(self, other):
-        if isinstance(other, Node):
+        if isinstance(other, Neo4jNode):
             # compare without uuid
             equal_result = (
                 self.name == other.name and self.label == other.label and self.match_props == other.match_props
@@ -92,14 +92,16 @@ class Node:
 
     def __str__(self):
         self_id = self.pop_property("id")
-        str_val = "Node: {name: " + self.name + "; label: " + self.label + "; properties: " + str(self.props) + "}"
+        str_val = "Neo4jNode: {name: " + self.name + "; label: " + self.label + "; properties: " + str(self.props) + "}"
         self.restore_property("id", self_id)
 
         return str_val
 
     def __repr__(self):
         self_id = self.pop_property("id")
-        repr_val = "Node: {name: " + self.name + "; label: " + self.label + "; properties: " + str(self.props) + "}"
+        repr_val = (
+            "Neo4jNode: {name: " + self.name + "; label: " + self.label + "; properties: " + str(self.props) + "}"
+        )
         self.restore_property("id", self_id)
 
         return repr_val
@@ -110,7 +112,7 @@ class Node:
 
 
 # subclass JSONEncoder
-class NodeEncoder(JSONEncoder):
+class Neo4jNodeEncoder(JSONEncoder):
     def default(self, o):
         props_copy = o.props.copy()
         if "id" in props_copy.keys():

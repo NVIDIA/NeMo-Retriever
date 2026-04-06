@@ -1,6 +1,6 @@
 import logging
 
-from nemo_retriever.tabular_data.ingestion.graph.model.node import Node
+from nemo_retriever.tabular_data.ingestion.graph.model.node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import (
     Props,
     Labels,
@@ -21,7 +21,7 @@ def is_flat_dict(properties: dict):
             raise ValueError(f"Invalid property name: {key}\nThe property value: {value}")
 
 
-def check_properties_compatibility_with_neo4j(node_from: Node, node_to: Node, edge_props: dict):
+def check_properties_compatibility_with_neo4j(node_from: Neo4jNode, node_to: Neo4jNode, edge_props: dict):
     is_flat_dict(node_from.get_properties())
     if node_from.get_override_existing_props():
         is_flat_dict(node_from.get_override_existing_props())
@@ -77,7 +77,7 @@ def _get_edge_label(edge):
         return next(iter(edge[2]))
 
 
-def prepare_node(node: Node):
+def prepare_node(node: Neo4jNode):
     label = node.get_label()
     props = node.get_properties()
 

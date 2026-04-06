@@ -1,6 +1,6 @@
 import logging
 import uuid
-from nemo_retriever.tabular_data.ingestion.graph.model.node import Node
+from nemo_retriever.tabular_data.ingestion.graph.model.node import Neo4jNode
 import pandas as pd
 import numpy as np
 from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import Labels
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class Schema:
     def __init__(
         self,
-        db_node: Node = None,
+        db_node: Neo4jNode = None,
         schema_tables_df: pd.DataFrame = None,
         schema_columns_df: pd.DataFrame = None,
         schema_name: str = None,
@@ -285,7 +285,7 @@ class Schema:
             is_nullable,
             ordinal_position,
         )
-        column_node = Node(
+        column_node = Neo4jNode(
             column_name,
             label=label,
             props=props,
@@ -395,7 +395,7 @@ class Schema:
             created,
             description,
         )
-        table_node = Node(
+        table_node = Neo4jNode(
             name=table_name,
             label=label,
             props=props,
@@ -464,7 +464,7 @@ class Schema:
                 "db_name": self.get_db_name(),
                 "name": schema_name,
             }
-            self.schema_node = Node(
+            self.schema_node = Neo4jNode(
                 name=schema_name,
                 label=Labels.SCHEMA,
                 props=props,
