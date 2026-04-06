@@ -23,83 +23,24 @@ from typing import Dict, Any, Optional
 
 from langchain_core.messages import AIMessage, SystemMessage
 
-from search.api.omni.agent.agents.shared.types import AgentState
-from search.api.omni.agent.agents.base import BaseAgent
-from enrichments.ai_services.llm_invoke import invoke_with_structured_output
-from search.api.omni.agent.agents.calculation.utils import (
-    build_semantic_items_section,
-    get_semantic_entities_ids,
-)
+
+from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import build_semantic_items_section, get_semantic_entities_ids, invoke_with_structured_output
+
 from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+    AgentState,
     get_question_for_processing,
 )
-from search.api.omni.agent.agents.calculation.models import (
-    SQLGenerationModel,
-    CalculationFinalFeedbackResponseModel,
-)
+
 from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import (
     create_sql_from_semantic_prompt,
-    create_sql_from_semantic_prompt_non_technical,
-)
-from search.api.omni.agent.agents.calculation.sql_generation.prompts import (
     create_sql_user_prompt,
-    create_sql_feedback_prompt,
 )
-from search.api.omni.agent.agents.shared.prompts import snowflake_dialect_prompt
+
+from nemo_retriever.tabular_data.retrieval.omni_lite.models import SQLGenerationModel
 
 logger = logging.getLogger(__name__)
 
-
-def format_table_groups_for_prompt(table_groups: list[dict]) -> str:
-    """
-    Format table groups showing which tables are connected and which entities they relate to.
-
-    Args:
-        table_groups: List of table group dictionaries with structure:
-            {"tables": [...], "entities": [...], "fks": [...]}
-
-    Returns:
-        Formatted string showing table groups with their connections and entities
-    """
-    if not table_groups:
-        return "No table groups available"
-
-    formatted_groups = []
-    for i, group in enumerate(table_groups, 1):
-        group_parts = []
-        entities = group.get("entities", [])
-        tables = group.get("tables", [])
-        fks = group.get("fks", [])
-
-        # Group header with entities
-        if entities:
-            group_parts.append(f"TABLE GROUP {i} (Related to: {', '.join(entities)}):")
-        else:
-            group_parts.append(f"TABLE GROUP {i}:")
-
-        # Add tables in this group
-        for table in tables:
-            table_name = table.get("name", "UNKNOWN")
-            db_name = table.get("db_name", "")
-            schema_name = table.get("schema_name", "")
-
-            if db_name and schema_name:
-                full_name = f"{db_name}.{schema_name}.{table_name}"
-            else:
-                full_name = table_name
-
-            group_parts.append(f"  - {full_name}")
-
-        # Add FKs connecting tables in this group
-        if fks:
-            group_parts.append("  Foreign Key Relationships:")
-            for fk in fks:
-                fk_str = f"    {fk.get('table1')}.{fk.get('column1')} = {fk.get('table2')}.{fk.get('column2')}"
-                group_parts.append(fk_str)
-
-        formatted_groups.append("\n".join(group_parts))
-
-    return "\n\n".join(formatted_groups)
 
 
 def format_tables_for_prompt(tables: list[dict]) -> str:
@@ -184,24 +125,16 @@ class SQLFromSemanticAgent(BaseAgent):
     Agent that constructs SQL from semantic retrieval and prepared schema context.
 
     Uses candidates, table groups, FKs, and related signals produced by
-    CandidatePreparationAgent, then prompts the LLM to produce SQL (or a text
-    answer in some feedback/file cases).
+    CandidatePreparationAgent, then prompts the LLM to produce SQL
 
     Input Requirements:
-    - path_state["candidates"]: Candidate dicts from preparation (flat list; legacy wrapped shape still accepted)
-    - path_state["tables_rows"] / table_groups / relevant_fks: schema context
+    - path_state["retrieved_candidates"]: Candidate dicts from preparation (flat list; legacy wrapped shape still accepted)
+    - path_state["relevant_tables"] / table_groups / relevant_fks: schema context
     - path_state["relevant_queries"]: Relevant queries (from CandidatePreparationAgent)
-    - path_state["similar_questions"]: Similar questions (from CandidatePreparationAgent)
-    - path_state["complex_candidates"]: Complex candidates (from CandidatePreparationAgent)
-    - path_state["complex_candidates_str"]: String representation (from CandidatePreparationAgent)
-    - path_state["extracted_file_data"]: Optional extracted data from files
-    - state["initial_question"]: User's question
-    - state["dialects"]: SQL dialects to support
 
     Output:
     - path_state["llm_calc_response"]: SQL response with SQL code or text answer
     - path_state["relevant_tables"]: Relevant tables used
-    - path_state["connection"]: Database connection info
     - path_state["semantic_elements"]: Semantic entity IDs used
     - decision: "constructable" or "unconstructable"
     """
@@ -212,7 +145,7 @@ class SQLFromSemanticAgent(BaseAgent):
     def validate_input(self, state: AgentState) -> bool:
         """Validate that prepared candidates exist for semantic SQL construction."""
         path_state = state.get("path_state", {})
-        if not path_state.get("candidates"):
+        if not path_state.get("retrieved_candidates"):
             self.logger.warning(
                 "No candidates found for SQL construction from semantic context"
             )
@@ -239,47 +172,17 @@ class SQLFromSemanticAgent(BaseAgent):
         llm = state["llm"]
         dialects = state["dialects"]
         question = get_question_for_processing(state)
-        raw_candidates = path_state["candidates"]
-        candidates = [
-            item["candidate"]
-            if isinstance(item, dict) and "candidate" in item
-            else item
-            for item in raw_candidates
-        ]
-
+        candidates = path_state["retrieved_candidates"]
 
         # Get pre-fetched data from CandidatePreparationAgent
         table_groups = path_state.get("table_groups", [])
-        tables_rows = path_state.get("tables_rows", [])
-        relevant_fks_flat = path_state.get("relevant_fks", [])
+        relevant_tables = path_state.get("relevant_tables", [])
+        relevant_fks = path_state.get("relevant_fks", [])
         relevant_queries = path_state.get("relevant_queries", [])
         similar_questions = path_state.get("similar_questions", [])
         complex_candidates = path_state.get("complex_candidates", [])
         complex_candidates_str = path_state.get("complex_candidates_str", [])
-        action_input = path_state.get("action_input", {})
-        entities = action_input.get("required_entity_name", []) if action_input else []
 
-        best_group = None
-        if table_groups:
-            def score_group(group):
-                return len(group.get("tables", []))
-
-            best_group = max(table_groups, key=score_group)
-            self.logger.info(
-                f"Selected best table group: {len(best_group.get('tables', []))} tables, "
-                f"{len(best_group.get('fks', []))} FKs"
-            )
-
-        # Extract tables and FKs from the best group
-        if len(entities) > 1 and best_group:
-            relevant_tables = best_group.get("tables", [])
-            relevant_fks = best_group.get("fks", [])
-            # Use only the best group for the prompt
-            table_groups = [best_group]
-        else:
-            # Fallback to all tables and FKs if no groups
-            relevant_tables = list(tables_rows)
-            relevant_fks = list(relevant_fks_flat)
 
         # Format similar questions for prompt
         similar_questions_txt = "\n".join(
@@ -290,7 +193,7 @@ class SQLFromSemanticAgent(BaseAgent):
         )
 
         def build_messages(
-            extracted_data: Optional[str] = None,
+            
         ) -> list:
             """
             Build messages for SQL construction.
@@ -300,25 +203,9 @@ class SQLFromSemanticAgent(BaseAgent):
             """
             observation_block = f"\nlist of important semantic entities with sql snippets:\n{complex_candidates_str}\n"
 
-            # Add table groups information to show connected tables and their entities
-            if table_groups:
-                table_groups_info = format_table_groups_for_prompt(table_groups)
-                observation_block += f"\n\nTABLE GROUPS (tables connected by foreign keys):\n{table_groups_info}\n"
-
-            # Add extracted data from files if available (data to use in SQL, not full snippets)
-            if extracted_data:
-                observation_block += f"\n\nEXTRACTED DATA FROM FILES (use this in SQL construction if needed):\n{extracted_data}\n"
-
-           
-
             # Build user prompt with formatted tables
             user_prompt = create_sql_user_prompt.format(
                 dialects=dialects,
-                dialects_prompt=(
-                    snowflake_dialect_prompt
-                    if any(dialect.lower() == "snowflake" for dialect in dialects)
-                    else ""
-                ),
                 main_question=question,
                 observation_block=observation_block,
                 fks=[
@@ -358,11 +245,9 @@ class SQLFromSemanticAgent(BaseAgent):
 
         schema = SQLGenerationModel
 
-        def run_with_context(
-            extracted_data: Optional[str] = None,
-        ) -> tuple:
+        def run_with_context(        ) -> tuple:
             """Invoke LLM with messages, optionally including file snippets and extracted data."""
-            messages = build_messages(extracted_data)
+            messages = build_messages()
             response = invoke_with_structured_output(llm, messages, schema)
             # Log response explanation
             # SQLGenerationModel uses 'response' field; feedback models may use 'thought'
@@ -376,12 +261,9 @@ class SQLFromSemanticAgent(BaseAgent):
                 )
             return response, messages
 
-        # Get extracted data from path_state (set by extract_from_file_snippets node)
-        extracted_data = path_state.get("extracted_file_data")
 
         # Call LLM for SQL construction (with extracted data from files if available) 
         response, messages = run_with_context(
-            extracted_data=extracted_data
         )
 
         # Check if we have a valid response (either SQL or text-based answer from file contents)
@@ -414,13 +296,11 @@ class SQLFromSemanticAgent(BaseAgent):
                     **path_state,
                     "llm_calc_response": response,  # Keep as object (Pydantic model)
                     "relevant_tables": relevant_tables if has_sql else [],
-                    "connection": response.connection,
                     "semantic_elements": semantic_elements,
                 },
                 "decision": "constructable",
             }
         elif has_response:
-            # Fallback for feedback scenarios that still use old model with response field
             semantic_elements = []
             if hasattr(response, "semantic_elements"):
                 response.response += build_semantic_items_section(
@@ -430,19 +310,12 @@ class SQLFromSemanticAgent(BaseAgent):
                     response.semantic_elements
                 )
 
-            connection = (
-                response.connection
-                if (response.connection and response.connection.strip())
-                else ""
-            )
-
             return {
                 "messages": messages + [AIMessage(content=response.response)],
                 "path_state": {
                     **path_state,
                     "llm_calc_response": response,
                     "relevant_tables": relevant_tables if has_sql else [],
-                    "connection": connection,
                     "semantic_elements": semantic_elements,
                 },
                 "decision": "constructable",
@@ -458,9 +331,3 @@ class SQLFromSemanticAgent(BaseAgent):
                 "decision": "unconstructable",
             }
 
-
-__all__ = [
-    "SQLFromSemanticAgent",
-    "format_table_groups_for_prompt",
-    "format_tables_for_prompt",
-]

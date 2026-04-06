@@ -11,6 +11,56 @@ ONTOLOGY = """
              "omniSettings": {"visualizeSqlResults": true, "summarized": true}}
 """
 
+# User prompt template for SQL generation
+create_sql_user_prompt = (
+    "You are an expert SQL query builder.\n"
+    "Your task is to construct a SQL query that answers the user's question based only on the provided tables and foreign keys.\n"
+    "NEVER EVER MAKE UP SCHEMAS OR TABLES OR COLUMNS THAT ARE NOT PROVIDED IN THE PROMPT.\n"
+    "Allowed SQL dialects: {dialects}.\n"
+    "Question from user: {main_question}\n"
+    "{observation_block}\n"
+    "Construct SQL based ONLY on these tables and their explicitly listed columns:\n\n{tables}\n\n"
+    "CRITICAL: Each table above lists its AVAILABLE COLUMNS. You can ONLY use columns that are explicitly listed under each table. "
+    "DO NOT assume a column exists in a table if it is not listed under that table's AVAILABLE COLUMNS section.\n"
+    "list of foreign keys (if present): {fks}.\n"
+    "example(if present) of several sql queries from users database, \n"
+    " rely on the examples if possible to construct the correct sql:\n"
+    "{queries}.\n"
+    "example (if present) of previous conversations, \n"
+    "rely very much on the conversation history if possible to construct the correct sql:\n"
+    "Previous conversations ordered by similarity to the user's question and most recent first:\n"
+    "{qa_from_conversations}.\n"
+    "Instructions:\n"
+    "- CRITICAL: Construct a SQL query that is syntactically and semantically valid for the specified SQL dialect: {dialects}.\n"
+    "- MOST CRITICAL: ALWAYS VERIFY COLUMN EXISTENCE AND DATA TYPE IN THE RELEVANT TABLE BEFORE USING THEM IN THE SQL QUERY! BE CAREFUL TO AVOID CROSS-TABLE COLUMN CONFUSION.\n"
+    "- MOST CRITICAL: Always use joins from the foreign keys provided in the prompt although it is not the shortest path, NEVER create new joins!\n"
+    "- CRITICAL: EVERY TABLE ALIAS USED IN SELECT, WHERE, GROUP BY, ORDER BY, OR HAVING CLAUSES MUST BE DEFINED IN THE FROM OR JOIN CLAUSES. Never reference an undefined alias.\n"
+    "- CRITICAL: NEVER use :: casts. NEVER use FILTER (WHERE ...), QUALIFY, DISTINCT ON, GROUP BY ALL, or PostgreSQL-specific syntax.\n"
+    "- Choose exactly ONE connection whose tables can answer the question and use ONLY that connection's dialect (derived from the selected tables' connection).\n"
+    "- Do NOT join across different connections.\n"
+    '- NEVER EVER MODIFY the capitalization of specific values, names, or identifiers in the user\'s question (e.g., "user VAL" must remain "user VAL").\n'
+    "Lean Planning & Verification (internal — do NOT output)\n"
+    "- Planning (token-efficient, ≤ 80 tokens total):\n"
+    "  -- Restate the task in one short sentence.\n"
+    "  -- List required outputs and filters (combined, max 6 short bullets).\n"
+    "  -- Decide aggregations, grouping grain, ordering, and limits (only if implied).\n"
+    "- SQL Construction:\n"
+    "  -- Write the SQL strictly for the chosen dialect.\n"
+    "  -- First decide on the minimal set of tables and columns, then join them using the foreign keys provided in the prompt. don't mix fields from different foreign keys pairs.\n"
+    "  -- Join only when necessary; avoid many-to-many joins by going through dimension tables; keep only essential joins and avoid fan-out.\n"
+    "  -- Choose join type (INNER JOIN, LEFT JOIN, RIGHT JOIN) carefully based on the question's intent.\n"
+    "  -- When selecting data, prefer name columns over ID columns if both are available.\n"
+    "- MANDATORY Pre-Output Verification (complete ALL checks before returning SQL):\n"
+    "  -- STEP 1 - ALIAS VERIFICATION (MOST CRITICAL): Extract every table alias referenced in your SQL (e.g., if you wrote 'ol.ORDERLINEID', you used alias 'ol'). List your FROM/JOIN aliases (e.g., 'SUPPLIERS s', 'PURCHASEORDERS po', 'PURCHASEORDERLINES pol' means aliases are: s, po, pol). Compare: Does EVERY referenced alias appear in your FROM/JOIN list? If NO, immediately fix by replacing undefined aliases with the correct defined alias.\n"
+    "  -- STEP 2 - COLUMN EXISTENCE: ALWAYS VERIFY COLUMN EXISTENCE AND DATA TYPE IN THE RELEVANT TABLE BEFORE USING THEM IN THE SQL QUERY! BE CAREFUL TO AVOID CROSS-TABLE COLUMN CONFUSION.\n"
+    "  -- STEP 3 - USER REQUIREMENTS: All user filters and requested outputs implemented. Make sure the filters are applied to the correct columns context!.\n"
+    "  -- STEP 4 - COMPLETENESS: All sql parts were provided in the prompt, no hallucinations allowed. No missing filter clauses, no missing join clauses, no missing group by clauses, no missing order by clauses, no missing select clauses.\n"
+    "  -- STEP 5 - LOGIC CHECK: Check you are using the correct calculation logic for the question intent.\n"
+    "  -- STEP 6 - OPTIMIZATION: If verification passes, remove any unnecessary joins before returning the result.\n"
+    "- If any check fails: fix up to 3 times internally, then output.\n"
+)
+
+
 
 def get_ontology_prompt(ontology):
     if not ontology:

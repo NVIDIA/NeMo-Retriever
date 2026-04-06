@@ -766,6 +766,47 @@ def _parse_table_text(text: str) -> dict:
 
     return parsed
 
+def build_semantic_items_section(items, candidates):
+    """
+    Build a markdown section listing semantic items that were used.
+
+    Args:
+        items: list of objects or dicts like [{'id': '...', 'classification': True}, ...]
+        candidates: list of objects or dicts with at least {'id': '...', 'name': '...', 'label': '...'}
+
+    Returns:
+        a markdown string starting with 'Semantic items used:' and per-item details, or empty string if no items
+    """
+    if not items:
+        return ""
+
+    # Normalize to attribute access via getattr (fallback to dict.get)
+    def _get(obj, key, default=None):
+        return getattr(
+            obj, key, obj.get(key, default) if isinstance(obj, dict) else default
+        )
+
+    # Map candidate id -> candidate object
+    by_id = {_get(c, "id"): c for c in candidates if _get(c, "id")}
+
+    matched_lines = []
+    for item in items:
+        cid = _get(item, "id")
+        candidate = by_id.get(cid)
+        if not candidate:  # skip if candidate not found
+            continue
+
+        name = _get(candidate, "name", "<unknown name>")
+        relevant = _get(item, "classification", False)
+        if relevant:
+            matched_lines.append(f"- [[[{name}/{cid}]]]")
+
+    # Only add header if there are matched items
+    if not matched_lines:
+        return ""
+
+    return "\n\n**Semantic items used**:\n" + "\n".join(matched_lines)
+
 
 def get_relevant_queries(  # TODO: check
     candidates
