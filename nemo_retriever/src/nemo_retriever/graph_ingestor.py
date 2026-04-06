@@ -43,6 +43,18 @@ from nemo_retriever.params import (
     HtmlChunkParams,
     TextChunkParams,
 )
+from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+
+
+def _resolve_api_key(params: Any) -> Any:
+    """Auto-resolve api_key from NVIDIA_API_KEY / NGC_API_KEY if not explicitly set."""
+    if params is None:
+        return params
+    if not getattr(params, "api_key", None) and hasattr(params, "model_copy"):
+        key = resolve_remote_api_key()
+        if key:
+            return params.model_copy(update={"api_key": key})
+    return params
 
 
 def _coerce(params: Any, kwargs: dict[str, Any], *, default_factory: Callable[[], Any] | None = None) -> Any:
@@ -152,14 +164,14 @@ class GraphIngestor(ingestor):
     def extract(self, params: Optional[ExtractParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Configure PDF/document extraction (extraction_mode='pdf')."""
         self._extraction_mode = "pdf"
-        self._extract_params = _coerce(params, kwargs, default_factory=ExtractParams)
+        self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
         self._record_stage("extract")
         return self
 
     def extract_image_files(self, params: Optional[ExtractParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Configure image extraction (extraction_mode='image')."""
         self._extraction_mode = "image"
-        self._extract_params = _coerce(params, kwargs, default_factory=ExtractParams)
+        self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
         self._record_stage("extract")
         return self
 
@@ -203,7 +215,7 @@ class GraphIngestor(ingestor):
 
     def caption(self, params: Optional[CaptionParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Record a caption stage."""
-        self._caption_params = _coerce(params, kwargs, default_factory=CaptionParams)
+        self._caption_params = _resolve_api_key(_coerce(params, kwargs, default_factory=CaptionParams))
         self._record_stage("caption")
         return self
 
@@ -215,7 +227,7 @@ class GraphIngestor(ingestor):
 
     def embed(self, params: Optional[EmbedParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Record an embedding stage."""
-        self._embed_params = _coerce(params, kwargs, default_factory=EmbedParams)
+        self._embed_params = _resolve_api_key(_coerce(params, kwargs, default_factory=EmbedParams))
         self._record_stage("embed")
         return self
 
@@ -233,6 +245,19 @@ class GraphIngestor(ingestor):
         ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
         """
+        # Auto-enable dedup before captioning so that images overlapping
+        # with table/chart/infographic detections are removed first.
+        # Skip for image-only extraction — the image IS the content.
+        if self._caption_params is not None and self._dedup_params is None and self._extraction_mode != "image":
+            self._dedup_params = DedupParams()
+            if "dedup" not in self._stage_order:
+                # Insert dedup right before caption in the stage order.
+                try:
+                    idx = self._stage_order.index("caption")
+                except ValueError:
+                    idx = len(self._stage_order)
+                self._stage_order.insert(idx, "dedup")
+
         post_extract_order = tuple(s for s in self._stage_order if s != "extract")
 
         if self._run_mode == "batch":

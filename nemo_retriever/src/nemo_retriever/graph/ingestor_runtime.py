@@ -22,7 +22,8 @@ from nemo_retriever.graph.content_transforms import (
     explode_content_to_rows,
 )
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
-from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
+from nemo_retriever.ocr.ocr import OCRActor
+from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
@@ -425,6 +426,7 @@ def build_graph(
             html_params=html_params,
             audio_chunk_params=audio_chunk_params,
             asr_params=asr_params,
+            caption_params=caption_params,
         )
     else:
         graph = Graph()
@@ -442,6 +444,7 @@ def build_graph(
             "method": extract_params.method,
             "dpi": int(extract_params.dpi),
             "extract_text": extract_params.extract_text,
+            "extract_images": extract_params.extract_images,
             "extract_tables": extract_params.extract_tables,
             "extract_charts": extract_params.extract_charts,
             "extract_infographics": extract_params.extract_infographics,
@@ -450,14 +453,24 @@ def build_graph(
         }
 
         if parse_mode:
+            # PDF extraction renders pages to images required by Nemotron Parse.
+            extract_kwargs["extract_page_as_image"] = True
+            graph = graph >> PDFExtractionActor(**extract_kwargs)
+
             parse_kwargs: dict[str, Any] = {
                 "extract_text": extract_params.extract_text,
                 "extract_tables": extract_params.extract_tables,
                 "extract_charts": extract_params.extract_charts,
                 "extract_infographics": extract_params.extract_infographics,
             }
+            if extract_params.nemotron_parse_invoke_url:
+                parse_kwargs["nemotron_parse_invoke_url"] = extract_params.nemotron_parse_invoke_url
+            elif extract_params.invoke_url:
+                parse_kwargs["invoke_url"] = extract_params.invoke_url
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
+            if extract_params.nemotron_parse_model:
+                parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
             graph = graph >> NemotronParseActor(**parse_kwargs)
         else:
             detect_kwargs: dict[str, Any] = {}

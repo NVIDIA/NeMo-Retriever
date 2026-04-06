@@ -184,6 +184,8 @@ class ExtractParams(_ParamsModel):
     ocr_request_timeout_s: Optional[float] = None
     graphic_elements_invoke_url: Optional[str] = None
     table_structure_invoke_url: Optional[str] = None
+    nemotron_parse_invoke_url: Optional[str] = None
+    nemotron_parse_model: Optional[str] = None
 
     # Output columns
     output_column: str = "page_elements_v3"
@@ -316,6 +318,7 @@ class CaptionParams(_ParamsModel):
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
+    caption_infographics: bool = False
 
 
 class DedupParams(_ParamsModel):

@@ -473,6 +473,7 @@ class TableStructureGPUActor(AbstractOperator, GPUOperator):
         ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
+        table_output_format: Optional[str] = None,
         request_timeout_s: float = 60.0,
         remote_max_pool_workers: int = 8,
         remote_max_retries: int = 5,
@@ -487,6 +488,7 @@ class TableStructureGPUActor(AbstractOperator, GPUOperator):
                 "Use TableStructureCPUActor instead."
             )
         self._api_key = api_key
+        self._table_output_format = table_output_format
         self._request_timeout_s = float(request_timeout_s)
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
@@ -511,6 +513,7 @@ class TableStructureGPUActor(AbstractOperator, GPUOperator):
             table_structure_invoke_url=self._table_structure_invoke_url,
             ocr_invoke_url=self._ocr_invoke_url,
             api_key=self._api_key,
+            table_output_format=self._table_output_format,
             request_timeout_s=self._request_timeout_s,
             remote_retry=self._remote_retry,
             **kwargs,
@@ -570,6 +573,7 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
         ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
+        table_output_format: Optional[str] = None,
         request_timeout_s: float = 60.0,
         remote_max_pool_workers: int = 8,
         remote_max_retries: int = 5,
@@ -581,6 +585,7 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
         ).strip()
         self._ocr_invoke_url = (ocr_invoke_url or invoke_url or self.DEFAULT_OCR_INVOKE_URL).strip()
         self._api_key = api_key
+        self._table_output_format = table_output_format
         self._request_timeout_s = float(request_timeout_s)
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
@@ -601,6 +606,7 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
             table_structure_invoke_url=self._table_structure_invoke_url,
             ocr_invoke_url=self._ocr_invoke_url,
             api_key=self._api_key,
+            table_output_format=self._table_output_format,
             request_timeout_s=self._request_timeout_s,
             remote_retry=self._remote_retry,
             **kwargs,

@@ -25,7 +25,8 @@ class TestGPUOperatorFlag:
         from nemo_retriever.page_elements.page_elements import PageElementDetectionGPUActor
         from nemo_retriever.chart.chart_detection import GraphicElementsGPUActor
         from nemo_retriever.table.table_detection import TableStructureGPUActor
-        from nemo_retriever.ocr.ocr import OCRGPUActor, NemotronParseGPUActor
+        from nemo_retriever.ocr.ocr import OCRGPUActor
+        from nemo_retriever.parse.nemotron_parse import NemotronParseGPUActor
         from nemo_retriever.text_embed.operators import _BatchEmbedGPUActor
         from nemo_retriever.caption.caption import CaptionGPUActor
         from nemo_retriever.infographic.infographic_detection import InfographicDetectionGPUActor
@@ -271,39 +272,6 @@ class TestOCRCPUActor:
         expected = pd.DataFrame({"ocr_v1": ["res"]})
         mock_fn.return_value = expected
         actor = OCRCPUActor(ocr_invoke_url="http://fake")
-        result = actor.process(pd.DataFrame({"page_image": ["x"]}))
-        mock_fn.assert_called_once()
-        pd.testing.assert_frame_equal(result, expected)
-
-
-class TestNemotronParseCPUActor:
-    def test_inherits_cpu_operator(self):
-        from nemo_retriever.ocr.ocr import NemotronParseCPUActor
-
-        assert issubclass(NemotronParseCPUActor, CPUOperator)
-        assert not issubclass(NemotronParseCPUActor, GPUOperator)
-
-    def test_uses_default_invoke_url(self):
-        from nemo_retriever.ocr.ocr import NemotronParseCPUActor
-
-        actor = NemotronParseCPUActor()
-        assert actor._model is None
-        assert "integrate.api.nvidia.com" in actor._invoke_url
-
-    def test_creates_with_custom_invoke_url(self):
-        from nemo_retriever.ocr.ocr import NemotronParseCPUActor
-
-        actor = NemotronParseCPUActor(nemotron_parse_invoke_url="http://custom")
-        assert actor._model is None
-        assert actor._invoke_url == "http://custom"
-
-    @patch("nemo_retriever.ocr.ocr.nemotron_parse_page_elements")
-    def test_process(self, mock_fn):
-        from nemo_retriever.ocr.ocr import NemotronParseCPUActor
-
-        expected = pd.DataFrame({"nemotron_parse_v1_2": ["res"]})
-        mock_fn.return_value = expected
-        actor = NemotronParseCPUActor(nemotron_parse_invoke_url="http://fake")
         result = actor.process(pd.DataFrame({"page_image": ["x"]}))
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
