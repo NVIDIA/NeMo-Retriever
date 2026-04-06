@@ -52,8 +52,7 @@ def test_hit_to_audio_segment_key_converts_millis_to_seconds() -> None:
     hit = {
         "source_id": "/tmp/sample_clip.mp3",
         "metadata": (
-            "{'source_path': '/tmp/sample_clip.mp3', 'duration': 79.67, "
-            "'segment_start': 320, 'segment_end': 4880}"
+            "{'source_path': '/tmp/sample_clip.mp3', 'duration': 79.67, " "'segment_start': 320, 'segment_end': 4880}"
         ),
     }
 

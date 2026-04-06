@@ -157,7 +157,9 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
     monkeypatch.setattr(batch_pipeline, "_ensure_lancedb_table", lambda *args, **kwargs: None)
     monkeypatch.setattr(batch_pipeline, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setitem(sys.modules, "ray", SimpleNamespace(shutdown=lambda: None))
-    monkeypatch.setattr(batch_pipeline, "asr_params_from_env", lambda: SimpleNamespace(model_copy=lambda update: update))
+    monkeypatch.setattr(
+        batch_pipeline, "asr_params_from_env", lambda: SimpleNamespace(model_copy=lambda update: update)
+    )
 
     class _FakeTable:
         def count_rows(self) -> int:

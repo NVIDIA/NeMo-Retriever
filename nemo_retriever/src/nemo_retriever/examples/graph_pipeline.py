@@ -206,7 +206,9 @@ def main(
     ),
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable debug-level logging."),
     dpi: int = typer.Option(300, "--dpi", min=72, help="Render DPI for PDF page images."),
-    input_type: str = typer.Option("pdf", "--input-type", help="Input type: 'pdf', 'doc', 'txt', 'html', 'image', or 'audio'."),
+    input_type: str = typer.Option(
+        "pdf", "--input-type", help="Input type: 'pdf', 'doc', 'txt', 'html', 'image', or 'audio'."
+    ),
     method: str = typer.Option("pdfium", "--method", help="PDF text extraction method."),
     extract_text: bool = typer.Option(True, "--extract-text/--no-extract-text"),
     extract_tables: bool = typer.Option(True, "--extract-tables/--no-extract-tables"),

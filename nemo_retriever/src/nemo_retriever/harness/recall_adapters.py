@@ -89,7 +89,9 @@ def _adapt_audio_only_video_gt_csv(query_csv: Path, output_csv: Path) -> Path:
 
     filtered = df.loc[df["answer_modality"].astype(str) == "Audio only"].copy()
     if filtered.empty:
-        raise ValueError(f"audio_only_video_gt_csv adapter found no rows with answer_modality == 'Audio only' in {query_csv}")
+        raise ValueError(
+            f"audio_only_video_gt_csv adapter found no rows with answer_modality == 'Audio only' in {query_csv}"
+        )
 
     normalized = pd.DataFrame(
         {
