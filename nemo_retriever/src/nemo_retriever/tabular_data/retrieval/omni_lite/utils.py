@@ -4,6 +4,7 @@ from enum import StrEnum
 from itertools import groupby
 import os
 import re
+import time
 
 from langchain_community.vectorstores import PGVector
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -765,6 +766,110 @@ def _parse_table_text(text: str) -> dict:
         pass
 
     return parsed
+
+
+def get_slim_account_schemas(
+    relevant_schemas_ids: list | None = None,
+) -> list[dict[str, str]]:
+    if relevant_schemas_ids is not None and len(relevant_schemas_ids) > 0:
+        query = """ MATCH (db:db)-[:schema]->(schema:schema WHERE schema.id in $relevant_schemas_ids)
+                    -[:schema]->(table:table WHERE coalesce(table.deleted, FALSE)=FALSE)
+                    -[:schema]->(column:column WHERE coalesce(column.deleted, FALSE)=FALSE AND NOT column.db_name IS NULL)
+                    RETURN collect({
+                    db_name:column.db_name,
+                    id:column.id,
+                    name:column.name, 
+                    table_name:column.table_name,
+                    data_type:column.data_type, 
+                    schema_name:column.schema_name, 
+                    label:labels(column)[0]
+                    }) as data
+                    """
+        result = conn.query_read(
+            query,
+            {"relevant_schemas_ids": relevant_schemas_ids},
+        )
+    else:
+        query = """ MATCH (column:column WHERE coalesce(column.deleted, FALSE)=FALSE AND NOT column.db_name IS NULL)
+                    RETURN collect({
+                    db_name:column.db_name,
+                    id:column.id,
+                    name:column.name, 
+                    table_name:column.table_name,
+                    data_type:column.data_type, 
+                    schema_name:column.schema_name, 
+                    label:labels(column)[0]
+                    }) as data
+                    """
+        result = conn.query_read(query, None)
+    if len(result) > 0:
+        return result[0]["data"]
+    return []
+
+
+def get_schemas_slim(relevant_schemas_ids: list = None):
+    ## This function is for sql validations in the app - (for example metrics or analyses sql validations)
+    ## in these cases we get a slim version of the data so the validation is faster
+    before_get_all = time.time()
+    data_array = get_slim_account_schemas(relevant_schemas_ids)
+    logger.info(f"time took to get all data from graph: {time.time() - before_get_all}")
+    data_df = pd.DataFrame(data_array)
+    dbs = list(data_df["db_name"].unique())
+
+    schemas = data_df[["schema_name", "db_name"]]
+    schemas = schemas.drop_duplicates().to_dict(orient="records")
+
+    all_schemas = {}
+    schema_dfs = {}
+    dbs_nodes = {}
+    for db_name in dbs:
+        db_node = Node(name=db_name, label=Labels.DB, props={"name": db_name})
+        dbs_nodes[db_name] = db_node
+
+    tables_df = data_df[["schema_name", "db_name", "table_name"]]
+    tables_df = tables_df.drop_duplicates()
+    # TODO: add db_name to the schema's identifying key in the all_schemas map
+    unique_schemas = data_df.schema_name.unique()
+    for schema_name in unique_schemas:
+        schema_tables_df = tables_df.loc[tables_df["schema_name"] == schema_name]
+        schema_dfs[schema_name] = {"tables": schema_tables_df.to_dict(orient="records")}
+
+    for schema_name in unique_schemas:
+        columns_df = data_df.loc[data_df["schema_name"] == schema_name]
+        schema_dfs[schema_name]["columns"] = columns_df.to_dict(orient="records")
+
+    def create_schema_node(schema):
+        schema_name: str = schema["schema_name"]
+        if schema_name != "":
+            schema_db_name: str = schema["db_name"]
+            schema_db_node = dbs_nodes[schema_db_name]
+            tables_df = pd.DataFrame(schema_dfs[schema_name]["tables"])
+            tables_df = tables_df.rename(columns={"schema_name": "schema"})
+            tables_df["name"] = tables_df["table_name"]
+            tables_df["is_temp"] = False
+            columns_df = pd.DataFrame(schema_dfs[schema_name]["columns"])
+            columns_df["column_name"] = columns_df["name"]
+            columns_df = columns_df.rename(columns={"schema_name": "schema"})
+            columns_df["is_temp"] = False
+            all_schemas[schema_name.lower()] = Schema(
+                account_id,
+                schema_db_node,
+                tables_df,
+                columns_df,
+                schema_name,
+                is_creation_mode=False,
+            )
+
+    before_modify_all = time.time()
+    for schema in schemas:
+        create_schema_node(schema)
+    logger.info(
+        f"total time it took to create all schemas nodes: {time.time() - before_modify_all}"
+    )
+    logger.info(f"total time for get_schemas_slim(): {time.time() - before_get_all}")
+    return all_schemas
+
+
 
 def build_semantic_items_section(items, candidates):
     """

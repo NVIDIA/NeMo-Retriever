@@ -39,13 +39,9 @@ class SQLValidationAgent(BaseAgent):
     Input Requirements:
     - path_state["llm_calc_response"]: SQL response to validate
     - path_state["relevant_tables"]: Relevant tables used
-    - path_state["connection"]: Database connection type
-    - path_state["is_text_based_answer"]: Optional flag (if True, skip validation)
-    - state["dialects"]: SQL dialects
 
     Output:
     - path_state["sql_response_from_db"]: None (will be set after execution)
-    - path_state["connection_data"]: Connection data
     - path_state["sql_columns"]: Column IDs from SQL
     - path_state["semantic_elements"]: Semantic entity IDs used
     - decision: "valid_sql" or "invalid_sql"
@@ -81,41 +77,6 @@ class SQLValidationAgent(BaseAgent):
             - decision: "valid_sql" or "invalid_sql"
         """
         path_state = state.get("path_state", {})
-
-        # Check if this is a text-based answer (skip SQL validation)
-        if path_state.get("is_text_based_answer", False):
-            self.logger.info(
-                "Text-based answer from file contents, skipping SQL validation"
-            )
-            response = path_state.get("llm_calc_response")
-            candidates_with_entities = path_state.get("candidates", [])
-
-            # Extract just the candidate objects for processing
-            candidates = [
-                item["candidate"]
-                if isinstance(item, dict) and "candidate" in item
-                else item
-                for item in candidates_with_entities
-            ]
-
-            semantic_elements = []
-            if hasattr(response, "semantic_elements"):
-                semantic_elements = get_semantic_entities_ids(
-                    response.semantic_elements, candidates
-                )
-
-            updated_path_state = {
-                **path_state,
-                "sql_response_from_db": None,
-                "sql_columns": [],
-                "semantic_elements": semantic_elements,
-            }
-
-            return {
-                "decision": "valid_sql",
-                "path_state": updated_path_state,
-            }
-
        
         response = path_state.get("llm_calc_response")
         relevant_tables = path_state.get("relevant_tables", [])
