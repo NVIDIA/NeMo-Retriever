@@ -280,10 +280,15 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             str(effective_query_csv),
             "--recall-match-mode",
             cfg.recall_match_mode,
+            "--audio-match-tolerance-secs",
+            str(cfg.audio_match_tolerance_secs),
             "--no-recall-details",
         ]
 
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
+    cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
+    cmd += ["--audio-split-type", cfg.audio_split_type]
+    cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
@@ -445,6 +450,10 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "recall_required": cfg.recall_required,
             "recall_match_mode": cfg.recall_match_mode,
             "recall_adapter": cfg.recall_adapter,
+            "audio_match_tolerance_secs": cfg.audio_match_tolerance_secs,
+            "segment_audio": cfg.segment_audio,
+            "audio_split_type": cfg.audio_split_type,
+            "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
             "beir_loader": cfg.beir_loader,
             "beir_dataset_name": cfg.beir_dataset_name,

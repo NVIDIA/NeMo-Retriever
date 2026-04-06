@@ -17,6 +17,11 @@ def _normalize_pdf_name(value: object) -> str:
     return str(value).replace(".pdf", "")
 
 
+def _normalize_media_id(value: object) -> str:
+    basename = Path(str(value)).name
+    return basename.split(".", 1)[0] if basename else ""
+
+
 def _adapt_page_plus_one(query_csv: Path, output_csv: Path) -> Path:
     df = pd.read_csv(query_csv)
     if "gt_page" in df.columns and "page" not in df.columns:
@@ -71,9 +76,37 @@ def _adapt_financebench_json(query_json: Path, output_csv: Path) -> Path:
     return output_csv
 
 
+def _adapt_audio_only_video_gt_csv(query_csv: Path, output_csv: Path) -> Path:
+    df = pd.read_csv(query_csv)
+    required = {"question", "name", "answer_modality", "start_time", "end_time"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise ValueError(
+            "audio_only_video_gt_csv adapter requires "
+            "['question','name','answer_modality','start_time','end_time'] columns "
+            f"(missing: {sorted(missing)}) in {query_csv}"
+        )
+
+    filtered = df.loc[df["answer_modality"].astype(str) == "Audio only"].copy()
+    if filtered.empty:
+        raise ValueError(f"audio_only_video_gt_csv adapter found no rows with answer_modality == 'Audio only' in {query_csv}")
+
+    normalized = pd.DataFrame(
+        {
+            "query": filtered["question"].astype(str),
+            "expected_media_id": filtered["name"].astype(str).apply(_normalize_media_id),
+            "expected_start_time": pd.to_numeric(filtered["start_time"], errors="raise").astype(float),
+            "expected_end_time": pd.to_numeric(filtered["end_time"], errors="raise").astype(float),
+        }
+    )
+    normalized.to_csv(output_csv, index=False)
+    return output_csv
+
+
 _ADAPTER_HANDLERS: dict[str, tuple[Callable[[Path, Path], Path], str]] = {
     "page_plus_one": (_adapt_page_plus_one, "query_adapter.page_plus_one.csv"),
     "financebench_json": (_adapt_financebench_json, "query_adapter.financebench_json.csv"),
+    "audio_only_video_gt_csv": (_adapt_audio_only_video_gt_csv, "query_adapter.audio_only_video_gt_csv.csv"),
 }
 
 
