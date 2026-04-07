@@ -505,25 +505,31 @@ Built-in datasets: `bo767_infographic`, `vidore/<hf_dataset_id>`, `csv:/path/to/
 
 Compare different retrieval strategies head-to-head by generating FileRetriever
 JSON from alternative retrieval systems and running the same QA evaluation.
-Two scripts in `retrieval_bench/` bridge the
+Three scripts in `retrieval_bench/` bridge the
 [retrieval-bench](../../../../retrieval-bench/) framework with the QA eval
 harness -- any pipeline (dense, agentic, hybrid, reranked) that produces a
 conforming JSON can be evaluated without changing the generator or judge.
 
 | Script | Purpose |
 |--------|---------|
-| `run_dense_retrieval_bo767.py` | Run dense retrieval directly on the bo767 corpus (page markdown index + annotations CSV) and output FileRetriever JSON. Enables apples-to-apples comparison with LanceDB retrieval. |
+| `run_dense_retrieval_bo767.py` | Run **dense** (single-shot) retrieval on the bo767 corpus using sub-page chunks from extraction Parquet, then expand hits to full-page markdown. Enables apples-to-apples comparison with LanceDB retrieval (same chunk granularity, different embedding model). |
+| `run_agentic_retrieval_bo767.py` | Run **agentic** retrieval on the same bo767 corpus. An LLM agent iteratively searches with multi-angle queries, query rewriting, and a selection agent -- then hits are expanded to full-page markdown. Same corpus/expansion as the dense script; the variable is the retrieval strategy. |
 | `convert_traces_to_retrieval.py` | Convert retrieval-bench per-query trace files into FileRetriever JSON for any dataset (ViDoRe, BRIGHT, custom). |
 
 **Prerequisites:** `retrieval-bench` must be installed (`pip install -e path/to/retrieval-bench`
-or equivalent). For Path A, the page markdown index (`data/bo767_page_markdown.json`)
-from [step 2](#step-2-build-page-markdown-index-nemo-retriever) is required.
+or equivalent). For Path A, **both** the extraction Parquet (`data/bo767_extracted/`)
+from [step 1](#step-1-ingest--embed-nemo-retriever) and the page markdown index
+(`data/bo767_page_markdown.json`) from [step 2](#step-2-build-page-markdown-index-nemo-retriever)
+are required.
 
 ### Path A: bo767 corpus (self-contained, recommended starting point)
 
-Run dense retrieval directly on the bo767 corpus using the page markdown index.
-This path is self-contained -- no external retrieval-bench run is needed
-beforehand:
+Run dense retrieval on the bo767 sub-page chunks from extraction Parquet.
+The script indexes the same chunks that nv-ingest stores in LanceDB, embeds
+them with a retrieval-bench backend, retrieves the top scoring chunks per
+query, then expands hits to full-page markdown (same dedup + expansion logic
+as the LanceDB export). This path is self-contained -- no external
+retrieval-bench run is needed beforehand:
 
 ```bash
 cd tools/harness
@@ -532,6 +538,7 @@ python retrieval_bench/run_dense_retrieval_bo767.py \
   --backend llama-nv-embed-reasoning-3b \
   --top-k 5 \
   --retriever-top-k 100 \
+  --parquet-dir data/bo767_extracted \
   --output data/test_retrieval/bo767_retrieval_dense.json
 ```
 
@@ -548,6 +555,64 @@ python run_qa_eval.py
 To use a non-NIM generator (e.g., an OpenAI-compatible endpoint), add
 `GEN_MODEL`, `GEN_API_BASE`, and `GEN_API_KEY` as described in
 [Step 5](#step-5-run-qa-evaluation).
+
+### Path A-2: bo767 agentic retrieval (LLM agent + dense backend)
+
+Same corpus and post-retrieval expansion as Path A, but replaces the
+single-shot dense retrieval with an **LLM-driven agent** that iteratively
+searches from multiple angles, rewrites sub-queries for embedding model
+compatibility, and re-ranks results via a selection agent.  This is the
+same agentic pipeline that placed 1st on the
+[ViDoRe V3 leaderboard](https://huggingface.co/spaces/vidore/vidore-leaderboard).
+
+Requires an OpenAI-compatible LLM endpoint for the agent (NVIDIA NIM,
+vLLM, OpenAI, etc.).  The embedding backend is the same as Path A.
+
+```bash
+cd tools/harness
+
+export NVIDIA_API_KEY="nvapi-..."
+
+python retrieval_bench/run_agentic_retrieval_bo767.py \
+  --backend llama-nv-embed-reasoning-3b \
+  --llm-model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --api-key "$NVIDIA_API_KEY" \
+  --top-k 5 \
+  --num-concurrent 4 \
+  --output data/test_retrieval/bo767_retrieval_agentic.json
+```
+
+Then evaluate identically to Path A:
+
+```bash
+export RETRIEVAL_FILE=data/test_retrieval/bo767_retrieval_agentic.json
+export QA_MAX_WORKERS=8
+python run_qa_eval.py
+```
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--backend` | `llama-nv-embed-reasoning-3b` | Embedding backend for the underlying dense retriever |
+| `--llm-model` | _(required)_ | LiteLLM model string for the agent LLM |
+| `--api-key` | `NVIDIA_API_KEY` / `OPENAI_API_KEY` env | API key for the agent LLM |
+| `--base-url` | `OPENAI_BASE_URL` env | Override LLM endpoint URL |
+| `--top-k` | `5` | Full-page chunks per query in output |
+| `--retriever-top-k` | `500` | Sub-page candidates per agent `retrieve()` call |
+| `--num-concurrent` | `1` | Concurrent agent queries (increase for throughput) |
+| `--max-steps` | `200` | Max agent iterations per query |
+| `--target-top-k` | `10` | Documents the agent selects via `final_results` |
+
+**Estimated time:** ~2-4 hours for 1,005 queries at `--num-concurrent 4`,
+depending on LLM latency. Each query involves multiple LLM round-trips.
+The corpus embedding step reuses the same cache as Path A -- if you
+already ran Path A with the same backend, indexing will load instantly.
+
+**Three-way comparison:** Run Path A (dense), Path A-2 (agentic), and
+the LanceDB baseline on the same bo767 corpus. All three use the same
+sub-page chunks and full-page expansion.  The only variables are the
+embedding model (LanceDB vs retrieval-bench) and retrieval strategy
+(single-shot vs agentic).  Evaluate each with the same generator/judge
+to isolate retrieval quality.
 
 ### Path B: ViDoRe dataset (requires retrieval-bench traces)
 
@@ -588,10 +653,10 @@ and point `RETRIEVAL_FILE` at it. The QA eval harness treats all retrieval
 sources identically.
 
 For the most direct comparison, use the **same dataset** (e.g., bo767) across
-all retrieval methods. Path A above uses the same ground-truth CSV and page
-markdown corpus as the LanceDB baseline from
+all retrieval methods. Path A above uses the same sub-page chunks, ground-truth
+CSV, and page expansion logic as the LanceDB baseline from
 [Reproducing the bo767 Run](#reproducing-the-bo767-run), so the only variable
-is the retrieval strategy. Run QA eval with the same generator and judge on
+is the embedding model. Run QA eval with the same generator and judge on
 each retrieval JSON and compare the resulting scores side-by-side.
 
 ## Architecture
@@ -734,7 +799,8 @@ independently of any ingestion or retrieval pipeline.
 | `load_eval_config()` + `build_eval_chain()` | Config-driven single-model eval via operator graph chain |
 | `load_eval_config()` + `build_eval_pipeline()` | Config-driven multi-model eval via `QAEvalPipeline` |
 | `cases/qa_eval.py` | Harness CLI integration (`--case=qa_eval`) -- reads `test_configs.yaml` |
-| `retrieval_bench/run_dense_retrieval_bo767.py` | Dense retrieval on bo767 via retrieval-bench, outputs FileRetriever JSON |
+| `retrieval_bench/run_dense_retrieval_bo767.py` | Dense (single-shot) retrieval on bo767 sub-page chunks via retrieval-bench, with full-page expansion |
+| `retrieval_bench/run_agentic_retrieval_bo767.py` | Agentic (LLM agent loop) retrieval on the same bo767 corpus, with full-page expansion |
 | `retrieval_bench/convert_traces_to_retrieval.py` | Convert retrieval-bench traces to FileRetriever JSON (any dataset) |
 
 ## Configuration
