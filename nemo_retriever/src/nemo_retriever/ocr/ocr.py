@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Any
 
+from nemo_retriever.nim.nim import invoke_image_inference_batches
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.ocr import shared as _shared
 from nemo_retriever.ocr.shared import (
     _blocks_to_pseudo_markdown,
     _blocks_to_text,
@@ -15,13 +18,12 @@ from nemo_retriever.ocr.shared import (
     _extract_remote_ocr_item,
     _np_rgb_to_b64_png,
     _parse_ocr_result,
-    nemotron_parse_page_elements,
-    ocr_page_elements,
 )
 
 __all__ = [
     "ocr_page_elements",
     "nemotron_parse_page_elements",
+    "invoke_image_inference_batches",
     "_blocks_to_pseudo_markdown",
     "_blocks_to_text",
     "_crop_all_from_page",
@@ -30,6 +32,29 @@ __all__ = [
     "_np_rgb_to_b64_png",
     "_parse_ocr_result",
 ]
+
+
+@contextmanager
+def _patched_shared_runtime() -> Any:
+    original_np_rgb_to_b64_png = _shared._np_rgb_to_b64_png
+    original_invoke = _shared.invoke_image_inference_batches
+    _shared._np_rgb_to_b64_png = _np_rgb_to_b64_png
+    _shared.invoke_image_inference_batches = invoke_image_inference_batches
+    try:
+        yield
+    finally:
+        _shared._np_rgb_to_b64_png = original_np_rgb_to_b64_png
+        _shared.invoke_image_inference_batches = original_invoke
+
+
+def ocr_page_elements(*args: Any, **kwargs: Any):
+    with _patched_shared_runtime():
+        return _shared.ocr_page_elements(*args, **kwargs)
+
+
+def nemotron_parse_page_elements(*args: Any, **kwargs: Any):
+    with _patched_shared_runtime():
+        return _shared.nemotron_parse_page_elements(*args, **kwargs)
 
 
 class OCRActor(ArchetypeOperator):
