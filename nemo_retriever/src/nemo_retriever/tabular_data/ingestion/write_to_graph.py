@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from datetime import datetime, timezone
 import logging
 import time
@@ -32,6 +36,10 @@ def populate_tabular_data(data, num_workers, dialect):
 
     tables_df = data["tables"]
     columns_df = data["columns"]
+
+    if tables_df is None or tables_df.empty:
+        logger.warning("No tables found in source database; skipping graph population.")
+        return
 
     unique_databases = tables_df.database.unique()
     for database in unique_databases:
@@ -122,7 +130,7 @@ def populate_db(tables_df, columns_df, num_workers):
 
 def populate_fks(fks):
     logger.info("Adding FKs.")
-    last_seen = datetime.now()
+    last_seen = datetime.now(timezone.utc)
     add_fks(fks, last_seen)
     delete_old_fks(last_seen)
 

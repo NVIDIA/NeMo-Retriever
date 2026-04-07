@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import regex
 from datetime import timezone
 
@@ -17,7 +21,7 @@ def flat_list_recursive(nested_list):
 
 
 def remove_redundant_parentheses(text):
-    r = r"s/(\(|^)\K(\((((?2)|[^()])*)\))(?=\)|$)/\3/"
+    r = r"s/(\(|^)\K(\((((?2)|[^()])*)\))(?=\)|$)//"
     if r[0] != "s":
         raise SyntaxError('Missing "s"')
     d = r[1]
@@ -64,7 +68,7 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
         "created": "string",
         "description": "string",
     }
-    df = df.copy() if df is not None and not df.empty else pd.DataFrame()
+    df = df.copy() if df is not None and not df.empty else pd.DataFrame(columns=list(types.keys()))
     if df.empty:
         return df
 
@@ -96,7 +100,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "is_nullable": "category",
         "description": "string",
     }
-    df = df.copy() if df is not None and not df.empty else pd.DataFrame()
+    df = df.copy() if df is not None and not df.empty else pd.DataFrame(columns=list(types.keys()))
     if df.empty:
         return df
 

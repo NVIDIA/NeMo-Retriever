@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from nemo_retriever.tabular_data.ingestion.utils import chunks

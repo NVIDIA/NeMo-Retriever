@@ -30,7 +30,8 @@ class Neo4jConnection:
                 notifications_min_severity="OFF",
             )
         except Exception as e:
-            print("Failed to create the driver: ", e)
+            logger.error("Failed to create the Neo4j driver: %s", e)
+            raise
 
     def verify_connectivity(self):
         return self.__driver.verify_connectivity()

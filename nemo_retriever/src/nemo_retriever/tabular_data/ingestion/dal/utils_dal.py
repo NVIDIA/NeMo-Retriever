@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import logging
 
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
@@ -8,7 +12,6 @@ from nemo_retriever.tabular_data.ingestion.model.reserved_words import (
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 
 logger = logging.getLogger(__name__)
-conn = get_neo4j_conn()
 
 
 def is_flat_dict(properties: dict):
@@ -124,7 +127,7 @@ def add_edges(edges_data):
             SET rel = props
             RETURN DISTINCT 'true'
             """
-    conn.query_write(query=query, parameters={"edges_data": edges_data})
+    get_neo4j_conn().query_write(query=query, parameters={"edges_data": edges_data})
 
 
 def get_node_properties_by_id(id, label: str | list[str]):
@@ -137,7 +140,7 @@ def get_node_properties_by_id(id, label: str | list[str]):
         RETURN apoc.map.setKey(properties(n),"label", labels(n)[0]) as props
     """
 
-    props = conn.query_read(query, parameters={"id": id})
+    props = get_neo4j_conn().query_read(query, parameters={"id": id})
     if len(props) == 0:
         return None
     else:
@@ -150,7 +153,7 @@ def delete_bulk_of_nodes(ids, labels):
                     where n.id in $ids
                     detach delete n
                 """
-        conn.query_write(query, parameters={"ids": ids})
+        get_neo4j_conn().query_write(query, parameters={"ids": ids})
 
 
 def detach_bulk_of_nodes(ids):
@@ -158,13 +161,13 @@ def detach_bulk_of_nodes(ids):
                 match(n:field{qs_id:id})-[r:depends_on]->()
                 delete r
             """
-    conn.query_write(query, parameters={"ids": ids})
+    get_neo4j_conn().query_write(query, parameters={"ids": ids})
 
 
 def get_node_id_by_name_and_label(name: str, label: Labels):
     query = f"""MATCH (n:{label}{{name:$name}})
                RETURN n.id as id"""
-    result = conn.query_read(query=query, parameters={"name": name})
+    result = get_neo4j_conn().query_read(query=query, parameters={"name": name})
     if len(result) > 0:
         return result[0]["id"]
     return None

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import logging
 import pandas as pd
 
@@ -7,7 +11,6 @@ from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, La
 from .schemas_dal import load_schema_from_graph, add_schemas_edge
 
 logger = logging.getLogger(__name__)
-conn = get_neo4j_conn()
 
 
 def db_exists(db_node):
@@ -17,7 +20,7 @@ def db_exists(db_node):
     OPTIONAL MATCH (n)-[r]-(v)
     RETURN n.id AS id, count(r) AS nbrs
     """
-    result_data = conn.query_read(query=query, parameters={"db_name": db_name})
+    result_data = get_neo4j_conn().query_read(query=query, parameters={"db_name": db_name})
     if not result_data or len(result_data) == 0:
         return None, None
 
@@ -30,7 +33,7 @@ def update_node_property(label, node_id, update_properties):
             match(n:{label}{{id:$node_id}})
             set n += $update_properties
             """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={
             "node_id": node_id,
@@ -44,7 +47,7 @@ def delete_schema(schema_node_id):
                (table:{Labels.TABLE})-[:{Edges.CONTAINS}]->(col:{Labels.COLUMN})
                DETACH DELETE schema, table, col
              """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={"schema_node_id": schema_node_id},
     )
@@ -73,7 +76,7 @@ def add_schemas_edge_batch(edges, created):
             SET r = e.optional_edge_props
             """
 
-        conn.query_write(
+        get_neo4j_conn().query_write(
             query=query,
             parameters={
                 "created": created,
@@ -251,7 +254,7 @@ def delete_table(table_id):
     query = f"""MATCH (table:{Labels.TABLE} {{id: $table_id}})-[:{Edges.CONTAINS}]->(col:{Labels.COLUMN})
                DETACH DELETE table, col
             """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={"table_id": table_id},
     )
@@ -268,7 +271,7 @@ def update_properties_in_graph_batch(items):
             // keep existing description unless it is null
             SET node.description = coalesce(node.description, new_description)
             """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={"items": items},
     )
@@ -279,7 +282,7 @@ def delete_columns_batch(column_ids):
                MATCH (col:{Labels.COLUMN} {{id: column_id}})
                DETACH DELETE col
             """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={"column_ids": column_ids},
     )
@@ -289,7 +292,7 @@ def delete_column(column_id):
     query = f"""MATCH (col:{Labels.COLUMN} {{id: $column_id}})
                DETACH DELETE col
             """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={"column_id": column_id},
     )

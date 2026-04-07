@@ -44,12 +44,12 @@ class DuckDB(SQLDatabase):
         Path to a persistent DuckDB database file, or ``None`` / ``":memory:"``
         for an ephemeral in-memory database (default: in-memory).
     read_only:
-        Open the database in read-only mode (default: True).  Multiple
+        Open the database in read-only mode (default: False).  Multiple
         processes can hold a read-only connection simultaneously; set to
-        ``False`` only when you need to write to the file.
+        ``True`` when you only need to read and want to prevent accidental writes.
     """
 
-    def __init__(self, connection_string: str, *, read_only: bool = True) -> None:
+    def __init__(self, connection_string: str, *, read_only: bool = False) -> None:
         self.conn = duckdb.connect(database=connection_string, read_only=read_only)
         logger.debug("DuckDB connected (database=%r, read_only=%s).", connection_string, read_only)
 

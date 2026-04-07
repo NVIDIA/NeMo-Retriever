@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from nemo_retriever.tabular_data.ingestion.utils import (
     normalize_fks,
@@ -52,7 +56,7 @@ def extract_tabular_db_data(params=None):
     return data_for_populate_tabular(params.connector)
 
 
-def store_relational_db_in_neo4j(data):
+def store_relational_db_in_neo4j(data, num_workers: int = 4, dialect: str = "duckdb"):
     """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
 
     Args:
@@ -70,6 +74,6 @@ def store_relational_db_in_neo4j(data):
 
     populate_tabular_data(
         data,
-        num_workers=4,
-        dialect="duckdb",
+        num_workers=num_workers,
+        dialect=dialect,
     )

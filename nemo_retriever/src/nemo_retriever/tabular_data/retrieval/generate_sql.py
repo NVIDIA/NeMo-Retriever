@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import os
 import json
 
@@ -214,15 +218,14 @@ CALC_FINAL_RESPONSE_JSON_SCHEMA = {
         "response": {
             "type": "string",
             "description": (
-                "The final response with your explanations and the final sql query",
-                "that answers the user's question.",
+                "The final response with your explanations and the final sql query " "that answers the user's question."
             ),
         },
         "sql_code": {
             "type": "string",
             "description": (
-                "The sql code that answers the user's question",
-                "based on chosen snippet/s and appropriate joins (if present).",
+                "The sql code that answers the user's question "
+                "based on chosen snippet/s and appropriate joins (if present)."
             ),
         },
         "thought": {

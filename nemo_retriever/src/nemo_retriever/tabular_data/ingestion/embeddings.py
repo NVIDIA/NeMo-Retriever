@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from typing import List
 
 import pandas as pd
@@ -24,7 +28,7 @@ def query_neo4j_tables_for_embedding() -> List[dict]:
                  name: t.name, label: labels(t)[0], id: t.id
                }) as docs
             """
-    result = neo4j_conn.query_write(query, parameters={})
+    result = neo4j_conn.query_read(query, parameters={})
     if not result:
         return []
     return result[0].get("docs") or []

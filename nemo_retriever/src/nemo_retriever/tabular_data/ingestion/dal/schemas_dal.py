@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import pandas as pd
 import logging
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
@@ -12,7 +16,6 @@ from nemo_retriever.tabular_data.ingestion.model.reserved_words import (
 )
 from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 
-conn = get_neo4j_conn()
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +44,7 @@ def get_schemas_ids_and_names(db_id: str = None):
                 RETURN s.name as schema_name, s.id as schema_id
             """
     result = pd.DataFrame(
-        conn.query_read(
+        get_neo4j_conn().query_read(
             query=query,
             parameters={"db_id": db_id},
         )
@@ -71,7 +74,7 @@ def get_schema_columns(db_name, schema_name):
                     is_nullable: is_nullable
                 }}) as columns
                 """
-    res = conn.query_read(
+    res = get_neo4j_conn().query_read(
         query=query,
         parameters={
             "db_name": db_name,
@@ -94,7 +97,7 @@ def get_schema_tables(db_name, schema_name):
                     id:t_id, created: created, description: description
                 }}) as tables
                 """
-    res = conn.query_read(
+    res = get_neo4j_conn().query_read(
         query=query,
         parameters={
             "db_name": db_name,
@@ -133,7 +136,7 @@ def add_schemas_edge(edge, created):
             SET r = $optional_edge_props
             """
 
-        conn.query_write(
+        get_neo4j_conn().query_write(
             query=query,
             parameters={
                 "created": created,
@@ -156,7 +159,7 @@ def delete_old_fks(last_seen):
                 WHERE old_fk.last_seen<>$last_seen
                 DELETE old_fk
             """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={"last_seen": last_seen},
     )
@@ -175,7 +178,7 @@ def add_fks(fks_df, last_seen):
                    db_name: fkd.fk_database_name
                }})-[:{RelTypes.CONTAINS}]->(col2:{Labels.COLUMN}{{name: fkd.fk_column_name}})
                MERGE (col1)-[:{RelTypes.FOREIGN_KEY} {{last_seen: $last_seen}}]->(col2)"""
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={
             "fks_dict": fks_df.to_dict(orient="records"),
@@ -187,7 +190,7 @@ def add_fks(fks_df, last_seen):
 def reset_pks():
     query = f"""MATCH (t:{Labels.TABLE})
                SET t.pk = NULL"""
-    conn.query_write(query=query, parameters={})
+    get_neo4j_conn().query_write(query=query, parameters={})
 
 
 def add_pks(pks_df):
@@ -198,7 +201,7 @@ def add_pks(pks_df):
                    db_name: pkd.database_name
                }})-[:{RelTypes.CONTAINS}]->(col:{Labels.COLUMN}{{name: pkd.column_name}})
                SET t.pk = CASE WHEN t.pk is NULL THEN [col.name] ELSE t.pk + [col.name] END"""
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=query,
         parameters={"pks_dict": pks_df.to_dict(orient="records")},
     )
@@ -214,7 +217,7 @@ def merge_schema_nodes(nodes, created):
                             set v1.created = coalesce(v1.created, $created)
                             set v1.description = coalesce(v1.description, node.props.description)
                         """
-    conn.query_write(
+    get_neo4j_conn().query_write(
         query=merge_nodes_query,
         parameters={"nodes": nodes, "created": created},
     )
@@ -228,4 +231,4 @@ def merge_schema_edges(edges, from_label, to_label):
                             CALL apoc.merge.relationship(v, "{RelTypes.CONTAINS}", {{}}, edge.props, u, {{}})
                             YIELD rel RETURN rel
                         """
-    conn.query_write(query=merge_edges_query, parameters={"edges": edges})
+    get_neo4j_conn().query_write(query=merge_edges_query, parameters={"edges": edges})
