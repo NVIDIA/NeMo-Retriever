@@ -516,38 +516,14 @@ conforming JSON can be evaluated without changing the generator or judge.
 | `convert_traces_to_retrieval.py` | Convert retrieval-bench per-query trace files into FileRetriever JSON for any dataset (ViDoRe, BRIGHT, custom). |
 
 **Prerequisites:** `retrieval-bench` must be installed (`pip install -e path/to/retrieval-bench`
-or equivalent). For Path B, the page markdown index (`data/bo767_page_markdown.json`)
+or equivalent). For Path A, the page markdown index (`data/bo767_page_markdown.json`)
 from [step 2](#step-2-build-page-markdown-index-nemo-retriever) is required.
 
-### Path A: ViDoRe dataset (retrieval-bench traces)
+### Path A: bo767 corpus (self-contained, recommended starting point)
 
-Run retrieval-bench on a ViDoRe dataset first (outside this harness), then convert
-the per-query traces into FileRetriever JSON:
-
-```bash
-cd tools/harness
-
-python retrieval_bench/convert_traces_to_retrieval.py \
-  --traces-dir /path/to/retrieval-bench/traces \
-  --trace-run-name DenseRetrievalPipeline__llama-nv-embed-reasoning-3b \
-  --dataset-name vidore/vidore_v3_finance_en \
-  --top-k 5 \
-  --output data/test_retrieval/vidore_finance_retrieval.json
-```
-
-Then evaluate with the standard QA pipeline:
-
-```bash
-export NVIDIA_API_KEY="nvapi-..."
-export RETRIEVAL_FILE=data/test_retrieval/vidore_finance_retrieval.json
-export QA_DATASET="vidore/vidore_v3_finance_en"
-export QA_MAX_WORKERS=8
-python run_qa_eval.py
-```
-
-### Path B: bo767 corpus (apples-to-apples with LanceDB)
-
-Run dense retrieval directly on the bo767 corpus using the page markdown index:
+Run dense retrieval directly on the bo767 corpus using the page markdown index.
+This path is self-contained -- no external retrieval-bench run is needed
+beforehand:
 
 ```bash
 cd tools/harness
@@ -573,6 +549,36 @@ To use a non-NIM generator (e.g., an OpenAI-compatible endpoint), add
 `GEN_MODEL`, `GEN_API_BASE`, and `GEN_API_KEY` as described in
 [Step 5](#step-5-run-qa-evaluation).
 
+### Path B: ViDoRe dataset (requires retrieval-bench traces)
+
+> **Prerequisite:** This path requires a completed `retrieval-bench` run that
+> produced per-query trace files. You must run retrieval-bench separately on
+> your chosen ViDoRe dataset **before** using the converter script below. If
+> you have not set up retrieval-bench yet, use **Path A** above instead.
+
+Convert the per-query traces into FileRetriever JSON:
+
+```bash
+cd tools/harness
+
+python retrieval_bench/convert_traces_to_retrieval.py \
+  --traces-dir /path/to/retrieval-bench/traces \
+  --trace-run-name DenseRetrievalPipeline__llama-nv-embed-reasoning-3b \
+  --dataset-name vidore/vidore_v3_finance_en \
+  --top-k 5 \
+  --output data/test_retrieval/vidore_finance_retrieval.json
+```
+
+Then evaluate with the standard QA pipeline:
+
+```bash
+export NVIDIA_API_KEY="nvapi-..."
+export RETRIEVAL_FILE=data/test_retrieval/vidore_finance_retrieval.json
+export QA_DATASET="vidore/vidore_v3_finance_en"
+export QA_MAX_WORKERS=8
+python run_qa_eval.py
+```
+
 ### Extending to other retrieval systems
 
 Any retrieval pipeline -- agentic RAG, hybrid search, BM25 + reranker, or a
@@ -582,7 +588,7 @@ and point `RETRIEVAL_FILE` at it. The QA eval harness treats all retrieval
 sources identically.
 
 For the most direct comparison, use the **same dataset** (e.g., bo767) across
-all retrieval methods. Path B above uses the same ground-truth CSV and page
+all retrieval methods. Path A above uses the same ground-truth CSV and page
 markdown corpus as the LanceDB baseline from
 [Reproducing the bo767 Run](#reproducing-the-bo767-run), so the only variable
 is the retrieval strategy. Run QA eval with the same generator and judge on
