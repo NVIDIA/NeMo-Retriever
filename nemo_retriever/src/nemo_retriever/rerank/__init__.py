@@ -13,7 +13,7 @@ NemotronRerankActor
 rerank_hits
     Convenience function to rerank a list of LanceDB hit dicts for a single
     query string, using either a local ``NemotronRerankV2`` model or a remote
-    vLLM / NIM ``/rerank`` endpoint.
+    vLLM / NIM ranking endpoint.
 """
 
 from .rerank import NemotronRerankActor, NemotronRerankCPUActor, NemotronRerankGPUActor, rerank_hits
