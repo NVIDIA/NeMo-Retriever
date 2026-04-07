@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
@@ -25,7 +25,7 @@ def parse_df(tables_df, columns_df, db_node=None):
         db_node = Neo4jNode(
             name=db_name,
             label=Labels.DB,
-            props={"name": db_name, "pulled": datetime.now()},
+            props={"name": db_name, "pulled": datetime.now(timezone.utc)},
             match_props={"name": db_name},
         )
 

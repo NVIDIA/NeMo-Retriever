@@ -84,5 +84,6 @@ def add_schema(
             executor.map(add_table, edges_per_table)
 
     except Exception as err:
-        logger.info(f"Failed adding schema: {schema.get_schema_name()}")
+        logger.error(f"Failed adding schema: {schema.get_schema_name()}")
         logger.exception(err)
+        raise
