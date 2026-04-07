@@ -23,8 +23,10 @@ from typing import Dict, Any
 from langchain_core.messages import AIMessage, SystemMessage
 from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import get_question_for_processing
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
+    AgentState,
+    get_question_for_processing,
+)
 from nemo_retriever.tabular_data.retrieval.omni_lite.models import SQLGenerationModel
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import get_semantic_entities_ids
 
@@ -45,12 +47,10 @@ class SQLReconstructionAgent(BaseAgent):
     - path_state["llm_calc_response"]: Previous (incorrect) SQL response
     - path_state["candidates"]: Relevant candidates for context
     - state["initial_question"]: Original user question
-    - path_state["feedback"]: Optional feedback flag
 
     Output:
     - path_state["llm_calc_response"]: Reconstructed SQL response
     - path_state["relevant_tables"]: Relevant tables
-    - path_state["connection"]: Database connection info
     - path_state["semantic_elements"]: Semantic entity IDs used
     - messages: Updated messages with reconstruction
     """
@@ -89,113 +89,13 @@ class SQLReconstructionAgent(BaseAgent):
         llm = state["llm"]
         error = path_state.get("error", "")
         incorrect_response = path_state.get("llm_calc_response")
-        is_feedback = path_state.get("feedback", False)
         question = get_question_for_processing(state)
-
-        # Check if this is the first reconstruction attempt (not a second invalid cycle)
-        reconstruction_count = path_state.get("reconstruction_count", 0)
-        is_first_reconstruction = reconstruction_count == 0
 
         # Build messages list starting from state messages
         messages = state["messages"]
 
         # Variables to track all tables and FKs for updating path_state
         all_tables = None
-        all_fks = None
-
-        # Add system message with all table groups ONLY on first reconstruction
-        if is_first_reconstruction:
-            table_groups = path_state.get("table_groups", [])
-            if table_groups:
-                # Extract all tables and FKs from all groups (not just the best one)
-                tables_rows = path_state.get("tables_rows", [])
-                all_fks_raw = path_state.get("relevant_fks", [])
-
-                all_tables = list(tables_rows)
-                all_fks = list(all_fks_raw)
-
-                self.logger.info(
-                    f"First reconstruction - using ALL table groups: {len(all_tables)} tables, "
-                    f"{len(all_fks)} FKs from {len(table_groups)} groups"
-                )
-
-                # Build system message with additional context
-                system_message_parts = []
-
-                if all_tables:
-                    # Create structured table information
-                    table_info_list = []
-                    for t in all_tables:
-                        table_info = {
-                            "database": t.get("db_name", ""),
-                            "schema_name": t.get("schema_name", ""),
-                            "table_name": t.get("name", "UNKNOWN"),
-                            "columns": [],
-                        }
-
-                        # Extract column information
-                        columns = t.get("columns", [])
-                        for col in columns:
-                            if isinstance(col, dict):
-                                col_info = {
-                                    "column_name": col.get("name", "UNKNOWN"),
-                                }
-                                # Add description if available
-                                if col.get("description"):
-                                    col_info["description"] = col.get("description")
-                                table_info["columns"].append(col_info)
-                            elif isinstance(col, str):
-                                table_info["columns"].append({"column_name": col})
-
-                        table_info_list.append(table_info)
-
-                    # Format tables for the prompt
-                    formatted_tables = []
-                    for tbl in table_info_list:
-                        full_name = (
-                            f"{tbl['database']}.{tbl['schema_name']}.{tbl['table_name']}"
-                            if tbl["database"] and tbl["schema_name"]
-                            else tbl["table_name"]
-                        )
-                        table_str = f"- {full_name}"
-                        if tbl["columns"]:
-                            cols_str = ", ".join(
-                                [
-                                    f"{c['column_name']}"
-                                    + (
-                                        f" ({c['description']})"
-                                        if c.get("description")
-                                        else ""
-                                    )
-                                    for c in tbl["columns"]
-                                ]
-                            )
-                            table_str += f"\n  Columns: {cols_str}"
-                        formatted_tables.append(table_str)
-
-                    system_message_parts.append(
-                        f"ADDITIONAL TABLES AVAILABLE (from all table groups):\n"
-                        f"{chr(10).join(formatted_tables)}"
-                    )
-
-                if all_fks:
-                    fk_descriptions = [
-                        f"{fk.get('table1')}.{fk.get('column1')} = {fk.get('table2')}.{fk.get('column2')}"
-                        for fk in all_fks
-                    ]
-                    system_message_parts.append(
-                        f"ADDITIONAL FOREIGN KEYS AVAILABLE (from all table groups):\n"
-                        f"{chr(10).join(fk_descriptions)}"
-                    )
-
-                if system_message_parts:
-                    system_content = "\n\n".join(system_message_parts)
-                    system_content += "\n\nYou may use these additional tables and foreign keys to correct the SQL."
-                    messages = messages + [SystemMessage(content=system_content)]
-        else:
-            self.logger.info(
-                f"Second reconstruction attempt (count={reconstruction_count}) - not adding additional table groups"
-            )
 
         # Build error prompt for reconstruction
         error_prompt = (
@@ -261,7 +161,5 @@ class SQLReconstructionAgent(BaseAgent):
                 if all_tables is not None
                 else path_state.get("relevant_tables", []),
                 "semantic_elements": semantic_elements,
-                "reconstruction_count": reconstruction_count
-                + 1,  # Increment for next time
             },
         }

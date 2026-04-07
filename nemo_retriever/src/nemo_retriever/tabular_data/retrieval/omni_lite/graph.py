@@ -1,6 +1,11 @@
 from langgraph.graph import StateGraph, END
 from langchain_core.runnables import RunnableLambda
 from langchain_core.messages import HumanMessage
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
+    AgentPayload,
+    AgentState,
+    get_question_for_processing,
+)
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.candidates_preparation import CandidatePreparationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.candidates_retieval import CandidateRetrievalAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.entities_extraction import EntitiesExtractionAgent
@@ -11,49 +16,12 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_execution import
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_semantic import SQLFromSemanticAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_tables import SQLFromTablesAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_reconstruction import SQLReconstructionAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_unconstructable import CalculationUnconstructableAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_unconstructable import SQLUnconstructableAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_validation_agent import SQLValidationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import agent_wrapper
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
-from typing import Literal, Optional, TypedDict
-
-
-
-
 import logging
+
 logger = logging.getLogger(__name__)
-
-
-
-class AgentPayload(TypedDict):
-    """Payload received from the API."""
-    question: str
-    history: list[dict[str, str]]
-
-
-class AgentState(TypedDict):
-    """State object passed through the LangGraph."""
-
-    llm: ChatNVIDIA
-    initial_question: str
-    messages: list[HumanMessage]
-    decision: str  # Generalized to support all graph node names
-    dialects: list[str]
-    path_state: dict  # scoped to logic-specific states like retries
-
-
-def get_question_for_processing(state: AgentState) -> str:
-    """
-    Question string for retrieval, SQL, and validation.
-
-    Uses ``path_state["normalized_question"]`` when set (e.g. after entity extraction),
-    otherwise ``initial_question``.
-    """
-    path_state = state.get("path_state", {})
-    normalized_question = path_state.get("normalized_question")
-    if normalized_question:
-        return normalized_question
-    return state.get("initial_question", "")
 
 
 def route_sql_validation(state: AgentState) -> str:
@@ -240,7 +208,7 @@ def create_graph():
     intent_validation_agent = IntentValidationAgent()
     sql_execution_agent = SQLExecutionAgent()
     calculation_response_agent = CalculationResponseAgent()
-    calculation_unconstructable_agent = CalculationUnconstructableAgent()
+    sql_unconstructable_agent = SQLUnconstructableAgent()
 
 
     # ==================== CREATE NODES ====================
@@ -283,7 +251,7 @@ def create_graph():
         "calc_respond", agent_wrapper(calculation_response_agent)
     )
     unconstructable_sql_response_node = _make_node(
-        "unconstructable_sql_response", agent_wrapper(calculation_unconstructable_agent)
+        "unconstructable_sql_response", agent_wrapper(sql_unconstructable_agent)
     )
 
 
@@ -366,7 +334,12 @@ def create_graph():
     return graph
 
 
-__all__ = ["AgentState", "create_graph", "get_question_for_processing"]
+__all__ = [
+    "AgentPayload",
+    "AgentState",
+    "create_graph",
+    "get_question_for_processing",
+]
 
 
 

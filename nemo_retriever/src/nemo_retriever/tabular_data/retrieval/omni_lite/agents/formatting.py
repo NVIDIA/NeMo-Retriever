@@ -17,7 +17,7 @@ from typing import Dict, Any, Optional
 
 from langchain_core.messages import AIMessage
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
 
 
 

@@ -12,7 +12,7 @@ Responsibilities:
 import logging
 from typing import Dict, Any
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
     AgentState,
     get_question_for_processing,
 )

@@ -21,7 +21,7 @@ import logging
 from typing import Dict, Any
 
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import get_semantic_entities_ids
 
 

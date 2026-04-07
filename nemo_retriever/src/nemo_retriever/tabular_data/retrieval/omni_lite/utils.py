@@ -5,6 +5,7 @@ from itertools import groupby
 import os
 import re
 import time
+import pandas as pd
 
 from langchain_community.vectorstores import PGVector
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -71,6 +72,16 @@ class Labels(StrEnum):
     COLUMN = "column"
     QUERY = "query"
     TABLE = "table"
+    INSERT = "insert"
+    CREATE_TABLE = "createtable"
+    UPDATE = "update"
+    MERGE = "merge"
+    DELETE = "delete"
+    VIEW = "view"
+    SEMANTIC = "semantic"
+
+    
+
     
   
 
@@ -805,6 +816,20 @@ def get_slim_account_schemas(
     if len(result) > 0:
         return result[0]["data"]
     return []
+
+
+def get_all_schemas_ids():
+    query = f"""MATCH(s:schema)
+                RETURN s.id as schema_id
+            """
+    result = pd.DataFrame(
+        conn.query_read(
+            query=query,
+            parameters=None,
+        )
+    )
+    return result["schema_id"].tolist()
+
 
 
 def get_schemas_slim(relevant_schemas_ids: list = None):

@@ -22,7 +22,7 @@ from typing import Dict, Any
 
 import networkx as nx
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
     AgentState,
     get_question_for_processing,
 )
@@ -32,25 +32,10 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
     get_relevant_fks_from_candidates_tables,
     get_relevant_queries,
     get_relevant_tables,
-    find_similar_questions,
+    
 )
 
 logger = logging.getLogger(__name__)
-
-
-
-
-def _optional_embeddings_client(account_id: str):
-    """Embeddings are wired in some deployments; absent in the open-source stub."""
-    try:
-        from nemo_retriever.tabular_data.retrieval.omni_lite import utils as omni_utils
-
-        ge = getattr(omni_utils, "get_embeddings", None)
-        if callable(ge):
-            return ge(account_id, is_embeddings=True)
-    except Exception:
-        pass
-    return None
 
 
 class CandidatePreparationAgent(BaseAgent):

@@ -20,15 +20,17 @@ import logging
 from typing import Dict, Any
 
 from langchain_core.messages import AIMessage, SystemMessage
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_semantic import format_tables_for_prompt
+from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
-from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import create_sql_general_prompt
-from nemo_retriever.tabular_data.retrieval.omni_lite.state_helpers import get_question_for_processing
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState, get_question_for_processing
+from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import create_sql_general_prompt, create_sql_user_prompt
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import get_relevant_tables
 
 
 
 logger = logging.getLogger(__name__)
-
+    
 
 class SQLFromTablesAgent(BaseAgent):
     """
@@ -87,20 +89,15 @@ class SQLFromTablesAgent(BaseAgent):
 
         # Find similar questions from conversation history
         similar_questions = []
-        embeddings_client = get_embeddings(account_id, is_embeddings=True)
-        if embeddings_client and user_id:
-            similar_questions = find_similar_questions(
-                embeddings_client.embed_query(question), user_id
-            )
+        # embeddings_client = get_embeddings(account_id, is_embeddings=True)
+        # if embeddings_client and user_id:
+        #     similar_questions = find_similar_questions(
+        #         embeddings_client.embed_query(question), user_id
+        #     )
 
         # Build user prompt with formatted tables
         user_prompt = create_sql_user_prompt.format(
             dialects=dialects,
-            dialects_prompt=(
-                snowflake_dialect_prompt
-                if any(dialect.lower() == "snowflake" for dialect in dialects)
-                else ""
-            ),
             main_question=question,
             observation_block="",
             fks=[],  # Foreign keys can be added if needed

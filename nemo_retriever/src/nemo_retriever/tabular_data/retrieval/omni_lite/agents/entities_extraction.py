@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 from langchain_core.messages import SystemMessage
 from pydantic import BaseModel, Field
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
     AgentState,
     get_question_for_processing,
 )

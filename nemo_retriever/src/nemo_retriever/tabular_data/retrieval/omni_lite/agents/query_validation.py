@@ -1,13 +1,11 @@
 import re
 import logging
-from shared.graph.model.query import NoFKError, NotSelectSqlTypeError
-from shared.graph.model.reserved_words import SQLType
-from shared.graph.parsers.sql.queries_parser import parse_single
-from search.api.omni.agent.agents.shared.helpers import (
-    get_columns_with_pii_tag,
-    validate_tables_with_user_participants,
+
+from nemo_retriever.tabular_data.neo4j.neo4j_connection import get_neo4j_conn
+
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
+    Labels,
 )
-from infra.Neo4jConnection import get_neo4j_conn
 
 logger = logging.getLogger(__name__)
 neo4j_conn = get_neo4j_conn()
@@ -81,7 +79,7 @@ def is_infra_or_auth_error(error: Exception | str) -> bool:
     return bool(combined_pattern.search(msg))
 
 
-def _get_column_breadcrumbs(account_id: str, column_ids: list) -> dict:
+def _get_column_breadcrumbs(column_ids: list) -> dict:
     """
     Fetch breadcrumb information (table_name, schema_name, database_name, connection, connection_type) for columns.
     Returns a dict mapping column_id to {table_name, schema_name, database_name, connection, connection_type}.
@@ -91,12 +89,12 @@ def _get_column_breadcrumbs(account_id: str, column_ids: list) -> dict:
 
     query = """
         UNWIND $column_ids as col_id
-        MATCH (c:column {account_id: $account_id, id: col_id})<-[:schema]-(t:table)<-[:schema]-(s:schema)<-[:schema]-(db:db)<-[:connecting]-(conn:connection)
+        MATCH (c:column )<-[:schema]-(t:table)<-[:schema]-(s:schema)<-[:schema]-(db:db)<-[:connecting]-(conn:connection)
         RETURN col_id as column_id, t.name as table_name, s.name as schema_name, db.name as database_name, conn.id as connection, conn.type as connection_type
     """
     rows = neo4j_conn.query_read_only(
         query=query,
-        parameters={"account_id": account_id, "column_ids": column_ids},
+        parameters={"column_ids": column_ids},
     )
 
     breadcrumbs = {}
@@ -114,7 +112,6 @@ def _get_column_breadcrumbs(account_id: str, column_ids: list) -> dict:
 
 
 def query_validation(
-    account_id: str,
     schemas,
     sql: str,
     dialects: list,
@@ -127,21 +124,21 @@ def query_validation(
             q=sql,
             schemas=schemas,
             dialects=dialects,
-            sql_type=SQLType.SEMANTIC,
+            sql_type=Labels.SEMANTIC,
             allow_only_select=True,
             fks=fks,
         )
         column_ids = query.get_reached_columns_ids()
         return_dict["sql_columns"] = column_ids
         if column_ids:
-            pii_columns = get_columns_with_pii_tag(account_id, column_ids)
+            pii_columns = get_columns_with_pii_tag(column_ids)
             return_dict["pii_objects"] = pii_columns
             # Extract breadcrumb information for columns
-            column_breadcrumbs = _get_column_breadcrumbs(account_id, column_ids)
+            column_breadcrumbs = _get_column_breadcrumbs(column_ids)
             return_dict["column_breadcrumbs"] = column_breadcrumbs
         if column_ids:
             tables_validation = validate_tables_with_user_participants(
-                account_id, user_participants, column_ids
+                user_participants, column_ids
             )
             out_of_zone = [
                 t["table_name"] for t in tables_validation if not t["in_zone"]

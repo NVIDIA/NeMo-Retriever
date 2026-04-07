@@ -22,8 +22,8 @@ from typing import Dict, Any
 
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.query_validation import query_validation
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
-from nemo_retriever.tabular_data.retrieval.omni_lite.utils import get_semantic_entities_ids
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import get_all_schemas_ids, get_schemas_slim, get_semantic_entities_ids
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class SQLValidationAgent(BaseAgent):
     
         # Convert schema IDs to schemas dict format (keyed by schema name)
         # relevant_schemas_ids is a set of schema IDs, need to convert to dict format
-        schemas = get_schemas_slim(list(relevant_schemas_ids)) # TODO where to get schemas?
+        schemas = get_schemas_slim(list(get_all_schemas_ids())) 
 
         # Validate SQL using query_validation
         # This extracts columns, checks syntax, validates logic
@@ -109,15 +109,6 @@ class SQLValidationAgent(BaseAgent):
 
         # SQL is valid, extract columns and semantic elements
         sql_columns = validation_result.get("sql_columns") or []
-        candidates_with_entities = path_state.get("candidates", [])
-
-        # Extract just the candidate objects for processing
-        candidates = [
-            item["candidate"]
-            if isinstance(item, dict) and "candidate" in item
-            else item
-            for item in candidates_with_entities
-        ]
 
         semantic_elements = []
         if hasattr(response, "semantic_elements"):
@@ -128,7 +119,6 @@ class SQLValidationAgent(BaseAgent):
         updated_path_state = {
             **path_state,
             "sql_response_from_db": None,  # Will be set after execution
-            "pii_objects": validation_result.get("pii_objects") or [],
             "sql_columns": sql_columns,
             "semantic_elements": semantic_elements,
             "sql_code": response.sql_code,  # Store SQL code for execution

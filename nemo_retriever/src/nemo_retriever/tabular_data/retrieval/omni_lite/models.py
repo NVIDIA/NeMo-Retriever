@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Annotated
+from typing import List, Annotated, Literal
 
 
 # ==================== BASE MODEL ====================
@@ -32,7 +32,7 @@ class ItemScore(BaseModel):
     """Represents a semantic entity (attribute, metric, or analysis) with classification."""
 
     id: NonEmptyStr
-    label: Literal["attribute", "metric", "analysis"] = Field(
+    label: Literal["custom_analysis", "column", "query", "table"] = Field(
         ...,
         description="The label of the semantic entity (attribute | metric | analysis)",
     )

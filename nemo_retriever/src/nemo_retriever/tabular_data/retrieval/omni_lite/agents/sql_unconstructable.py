@@ -1,5 +1,5 @@
 """
-Calculation Unconstructable Response Agent
+SQL Unconstructable Response Agent
 
 This agent generates a response when SQL cannot be constructed from available data.
 """
@@ -8,13 +8,13 @@ import logging
 from typing import Dict, Any
 
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
 
 
 logger = logging.getLogger(__name__)
 
 
-class CalculationUnconstructableAgent(BaseAgent):
+class SQLUnconstructableAgent(BaseAgent):
     """
     Agent that generates a response when SQL construction fails.
 
@@ -29,7 +29,7 @@ class CalculationUnconstructableAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__("calculation_unconstructable")
+        super().__init__("sql_unconstructable")
 
     def execute(self, state: AgentState) -> Dict[str, Any]:
         """
@@ -55,7 +55,6 @@ class CalculationUnconstructableAgent(BaseAgent):
         )
 
         response = {
-            "action": "calculation",
             "response": response_text,
         }
 

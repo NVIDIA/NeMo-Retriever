@@ -24,10 +24,11 @@ from typing import Dict, Any, Optional
 from langchain_core.messages import AIMessage, SystemMessage
 
 
+from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.utils import build_semantic_items_section, get_semantic_entities_ids, invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import build_semantic_items_section, get_semantic_entities_ids
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
     AgentState,
     get_question_for_processing,
 )

@@ -1,43 +1,38 @@
-import os
 import logging
+import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
-import subprocess
+
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables.graph import MermaidDrawMethod
 from nemo_retriever.tabular_data.retrieval.deep_agent.prompts import main_system_prompt_template
+from nemo_retriever.tabular_data.retrieval.omni_lite.graph import create_graph
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentPayload, AgentState
 from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import ONTOLOGY, get_ontology_prompt
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import _make_llm
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentPayload, AgentState, create_graph
-
-
 
 logger = logging.getLogger(__name__)
-# Get LLM client with automatic provider selection and fallback (LangChain)
 
 try:
     llm_client = _make_llm()
 except ValueError as e:
-    logger.error(f"Failed to initialize LLM client: {e}")
+    logger.error("Failed to initialize LLM client: %s", e)
     llm_client = None
 
 graph = create_graph()
 app = graph.compile()
 
-
-# Generate graph visualization using local rendering method
-current_dir = os.path.dirname(os.path.abspath(__file__))
-graph_image_path = os.path.abspath(
-    os.path.join(current_dir, "..", "omni_agent_graph.png")
-)
+# Graph PNG next to this module (omni_lite/omni_agent_graph.png)
+_OMNI_LITE_DIR = Path(__file__).resolve().parent
+graph_image_path = str(_OMNI_LITE_DIR / "omni_agent_graph.png")
 Path(os.path.dirname(graph_image_path)).mkdir(parents=True, exist_ok=True)
 
-def render_with_mmdc(out_path: str, mermaid_text: str):
-    # Use mmdc CLI to render mermaid diagrams (no-browser fallback)
-    # Use scale factor of 4 and larger dimensions for high resolution
-    import tempfile
+
+def render_with_mmdc(out_path: str, mermaid_text: str) -> None:
     import pathlib
+    import tempfile
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mmd") as tmp:
         pathlib.Path(tmp.name).write_text(mermaid_text, encoding="utf-8")
@@ -49,16 +44,16 @@ def render_with_mmdc(out_path: str, mermaid_text: str):
                 "-o",
                 out_path,
                 "-s",
-                "4",  # Scale factor of 4 for high resolution
+                "4",
                 "-w",
-                "3200",  # Width of 3200px
+                "3200",
                 "-H",
-                "2400",  # Height of 2400px
+                "2400",
             ],
             check=True,
         )
 
-# Try pyppeteer first, but fall back to mmdc if it fails
+
 try:
     import importlib
 
@@ -71,7 +66,6 @@ try:
         f.write(png_bytes)
     logger.info("Graph visualization saved (local Pyppeteer)")
 except Exception:
-    # Pyppeteer failed or not available, try mmdc CLI fallback
     try:
         mermaid_src = app.get_graph().draw_mermaid()
         render_with_mmdc(graph_image_path, mermaid_src)
@@ -82,7 +76,7 @@ except Exception:
         )
         logger.warning("Skipping graph visualization generation...")
     except Exception as e_cli:
-        logger.warning(f"Failed to generate graph visualization with mmdc: {e_cli}")
+        logger.warning("Failed to generate graph visualization with mmdc: %s", e_cli)
         logger.warning("Skipping graph visualization generation...")
 
 
@@ -100,57 +94,54 @@ def get_agent_response(payload: AgentPayload):
             chat_history.add_ai_message(history["response"])
         messages.extend(chat_history.messages)
     messages.append(HumanMessage(content=payload["question"]))
-    dialects = ["duckdb"]
+
+    initial_path_state = dict(payload.get("path_state") or {})
+
     state: AgentState = {
         "llm": llm_client,
         "initial_question": payload["question"],
-        "dialects": dialects,
+        "dialects": payload.get("dialects"),
+        "db_connector": payload.get("db_connector"),
         "messages": messages,
         "decision": "entities_extraction",
-        "path_state": {},
+        "path_state": initial_path_state,
     }
 
-
-    # Stream through the graph and accumulate state
     final_state = state.copy()
     for step in app.stream(state, config={"recursion_limit": 45}):
         logger.info("--- AGENT STEP ---")
         for node_name, node_output in step.items():
-            logger.info(f"Node: {node_name}")
-            # Accumulate state updates
+            logger.info("Node: %s", node_name)
             if node_output:
-                # Merge path_state updates
                 if "path_state" in node_output:
                     if "path_state" not in final_state:
                         final_state["path_state"] = {}
                     final_state["path_state"].update(node_output["path_state"])
-                # Merge other state updates
                 for key, value in node_output.items():
                     if key != "path_state":
                         final_state[key] = value
 
-    # Get final result from path_state (set by domain-specific/formatting agents)
     path_state = final_state.get("path_state", {})
     final_response = path_state.get("final_response")
     if final_response is None:
-        # Fallback to messages if final_response not found (for backward compatibility)
-        messages = final_state.get("messages", [])
-        if messages:
-            if isinstance(messages, dict):
-                final_response = messages
-            elif isinstance(messages[-1], dict):
-                final_response = messages[-1]
+        messages_out = final_state.get("messages", [])
+        if messages_out:
+            if isinstance(messages_out, dict):
+                final_response = messages_out
+            elif isinstance(messages_out[-1], dict):
+                final_response = messages_out[-1]
             else:
-                final_response = str(messages[-1])
+                final_response = str(messages_out[-1])
         else:
             final_response = ""
 
-    # Normalize to outer answer dict expected by router.py
     if isinstance(final_response, dict):
         answer = final_response
     else:
-        # Plain string → wrap into dict
         answer = {"response": str(final_response)}
 
-    logger.info(f"💬 Final answer to user:\n{answer}")
+    logger.info("💬 Final answer to user:\n%s", answer)
     return answer
+
+
+__all__ = ["get_agent_response", "app", "graph", "llm_client"]

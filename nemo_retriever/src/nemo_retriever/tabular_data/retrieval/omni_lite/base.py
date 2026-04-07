@@ -16,7 +16,7 @@ Design Principles:
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
 
 logger = logging.getLogger(__name__)
 

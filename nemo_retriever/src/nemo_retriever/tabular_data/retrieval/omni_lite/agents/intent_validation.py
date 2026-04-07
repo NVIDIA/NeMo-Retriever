@@ -20,8 +20,9 @@ Design Decisions:
 
 import logging
 from typing import Dict, Any
+from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.graph import (
+from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
     AgentState,
     get_question_for_processing,
 )
