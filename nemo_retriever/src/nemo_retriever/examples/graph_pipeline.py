@@ -228,6 +228,11 @@ def main(
     embed_invoke_url: Optional[str] = typer.Option(None, "--embed-invoke-url"),
     # Embedding
     embed_model_name: str = typer.Option("nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name"),
+    embed_use_vllm: bool = typer.Option(
+        False,
+        "--embed-use-vllm/--no-embed-use-vllm",
+        help="Use vLLM for local text embedding (requires vLLM >= 0.17.0).",
+    ),
     embed_modality: str = typer.Option("text", "--embed-modality"),
     embed_granularity: str = typer.Option("element", "--embed-granularity"),
     text_elements_modality: Optional[str] = typer.Option(None, "--text-elements-modality"),
@@ -435,6 +440,7 @@ def main(
                     "embed_granularity": embed_granularity,
                     "batch_tuning": embed_batch_tuning,
                     "inference_batch_size": embed_batch_size or None,
+                    "embed_use_vllm": embed_use_vllm or None,
                 }.items()
                 if v is not None
             }
@@ -672,6 +678,7 @@ def main(
                 match_mode=recall_match_mode,
                 audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
+                use_vllm=embed_use_vllm,
             )
             evaluation_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
