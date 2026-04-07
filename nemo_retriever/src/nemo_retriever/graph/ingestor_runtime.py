@@ -500,6 +500,8 @@ def build_graph(
                 parse_kwargs["invoke_url"] = extract_params.invoke_url
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
+            if extract_params.nemotron_parse_model:
+                parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
             graph = graph >> NemotronParseActor(**parse_kwargs)
         else:
             detect_kwargs: dict[str, Any] = {}
