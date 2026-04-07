@@ -203,7 +203,7 @@ EXTRACT_IMAGES=true API_VERSION=v1 uv run nv-ingest-harness-run --case=e2e --dat
 #### Extraction Options
 - `extract_text`, `extract_tables`, `extract_charts`, `extract_images`, `extract_infographics` (boolean): Content extraction toggles
 - `text_depth` (string): Text extraction granularity - `page`, `document`, `block`, `line`, etc.
-- `table_output_format` (string): Table output format - `markdown`, `html`, `latex`, `pseudo_markdown`, `simple`
+- `table_output_format` (string): Table output format - `markdown`, `pseudo_markdown`, `simple`
 
 #### Pipeline Options
 - `enable_caption` (boolean): Enable image captioning (requires the VLM profile to be running)
@@ -233,7 +233,7 @@ EXTRACT_IMAGES=true API_VERSION=v1 uv run nv-ingest-harness-run --case=e2e --dat
 
 **text_depth**: `block`, `body`, `document`, `header`, `line`, `nearby_block`, `other`, `page`, `span`
 
-**table_output_format**: `html`, `image`, `latex`, `markdown`, `pseudo_markdown`, `simple`
+**table_output_format**: `markdown`, `pseudo_markdown`, `simple`
 
 **api_version**: `v1`, `v2`
 

@@ -187,6 +187,20 @@ def _resolve_lancedb_uri(cfg: HarnessConfig, artifact_dir: Path) -> str:
     return str(p)
 
 
+def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
+    raw = cfg.store_images_uri
+    if raw is None:
+        return None
+    # Pass URIs with a scheme (e.g. s3://, gcs://, minio://) through unchanged;
+    # pathlib.is_absolute() does not understand URI schemes.
+    if "://" in raw:
+        return raw
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = (artifact_dir / p).resolve()
+    return str(p)
+
+
 def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -206,38 +220,45 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         cfg.input_type,
         "--evaluation-mode",
         cfg.evaluation_mode,
-        "--pdf-extract-tasks",
-        str(cfg.pdf_extract_workers),
-        "--pdf-extract-cpus-per-task",
-        str(cfg.pdf_extract_num_cpus),
-        "--pdf-extract-batch-size",
-        str(cfg.pdf_extract_batch_size),
-        "--pdf-split-batch-size",
-        str(cfg.pdf_split_batch_size),
-        "--page-elements-batch-size",
-        str(cfg.page_elements_batch_size),
-        "--page-elements-actors",
-        str(cfg.page_elements_workers),
-        "--ocr-actors",
-        str(cfg.ocr_workers),
-        "--ocr-batch-size",
-        str(cfg.ocr_batch_size),
-        "--embed-actors",
-        str(cfg.embed_workers),
-        "--embed-batch-size",
-        str(cfg.embed_batch_size),
-        "--page-elements-cpus-per-actor",
-        str(cfg.page_elements_cpus_per_actor),
-        "--ocr-cpus-per-actor",
-        str(cfg.ocr_cpus_per_actor),
-        "--embed-cpus-per-actor",
-        str(cfg.embed_cpus_per_actor),
-        "--page-elements-gpus-per-actor",
-        str(cfg.gpu_page_elements),
-        "--ocr-gpus-per-actor",
-        str(cfg.gpu_ocr),
-        "--embed-gpus-per-actor",
-        str(cfg.gpu_embed),
+    ]
+
+    if not cfg.use_heuristics:
+        cmd += [
+            "--pdf-extract-tasks",
+            str(cfg.pdf_extract_workers),
+            "--pdf-extract-cpus-per-task",
+            str(cfg.pdf_extract_num_cpus),
+            "--pdf-extract-batch-size",
+            str(cfg.pdf_extract_batch_size),
+            "--pdf-split-batch-size",
+            str(cfg.pdf_split_batch_size),
+            "--page-elements-batch-size",
+            str(cfg.page_elements_batch_size),
+            "--page-elements-actors",
+            str(cfg.page_elements_workers),
+            "--ocr-actors",
+            str(cfg.ocr_workers),
+            "--ocr-batch-size",
+            str(cfg.ocr_batch_size),
+            "--embed-actors",
+            str(cfg.embed_workers),
+            "--embed-batch-size",
+            str(cfg.embed_batch_size),
+            "--page-elements-cpus-per-actor",
+            str(cfg.page_elements_cpus_per_actor),
+            "--ocr-cpus-per-actor",
+            str(cfg.ocr_cpus_per_actor),
+            "--embed-cpus-per-actor",
+            str(cfg.embed_cpus_per_actor),
+            "--page-elements-gpus-per-actor",
+            str(cfg.gpu_page_elements),
+            "--ocr-gpus-per-actor",
+            str(cfg.gpu_ocr),
+            "--embed-gpus-per-actor",
+            str(cfg.gpu_embed),
+        ]
+
+    cmd += [
         "--embed-model-name",
         cfg.embed_model_name,
         "--embed-modality",
@@ -280,10 +301,16 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             str(effective_query_csv),
             "--recall-match-mode",
             cfg.recall_match_mode,
+            "--audio-match-tolerance-secs",
+            str(cfg.audio_match_tolerance_secs),
             "--no-recall-details",
         ]
 
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
+    if cfg.input_type == "audio":
+        cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
+        cmd += ["--audio-split-type", cfg.audio_split_type]
+        cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
@@ -292,6 +319,13 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         cmd += ["--ray-address", cfg.ray_address]
     if cfg.hybrid:
         cmd += ["--hybrid"]
+
+    resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
+    if resolved_store_uri is not None:
+        cmd += ["--store-images-uri", resolved_store_uri]
+        if cfg.store_text:
+            cmd += ["--store-text"]
+        cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
 
     return cmd, runtime_dir, detection_summary_file, effective_query_csv
 
@@ -445,6 +479,10 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "recall_required": cfg.recall_required,
             "recall_match_mode": cfg.recall_match_mode,
             "recall_adapter": cfg.recall_adapter,
+            "audio_match_tolerance_secs": cfg.audio_match_tolerance_secs,
+            "segment_audio": cfg.segment_audio,
+            "audio_split_type": cfg.audio_split_type,
+            "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
             "beir_loader": cfg.beir_loader,
             "beir_dataset_name": cfg.beir_dataset_name,
@@ -460,6 +498,10 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "extract_page_as_image": cfg.extract_page_as_image,
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
+            "use_heuristics": cfg.use_heuristics,
+            "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
+            "store_text": cfg.store_text,
+            "strip_base64": cfg.strip_base64,
             "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
             "tuning": {field: getattr(cfg, field) for field in sorted(TUNING_FIELDS)},
         },

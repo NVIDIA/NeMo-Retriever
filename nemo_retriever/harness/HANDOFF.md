@@ -153,6 +153,16 @@ Notes:
 - Comparison utility:
   - `retriever harness compare` prints pages/sec and recall deltas by run name for two sessions.
 
+## Recent Progress (Apr 2026)
+
+- Image and text storage is now wired end-to-end through the harness:
+  - Harness config fields: `store_images_uri`, `store_text`, `strip_base64`.
+  - Environment overrides: `HARNESS_STORE_IMAGES_URI`, `HARNESS_STORE_TEXT`, `HARNESS_STRIP_BASE64`.
+  - `_build_command()` maps these to batch CLI flags (`--store-images-uri`, `--store-text`, `--strip-base64` / `--no-strip-base64`).
+  - When `store_images_uri` is set, harness resolves it relative to the artifact directory so stored outputs land alongside other run artifacts.
+  - Defaults: `store_images_uri: null`, `store_text: false`, `strip_base64: true`.
+  - Store metadata (`store_images_uri`, `store_text`, `strip_base64`) is recorded in `results.json`.
+
 ## Current Validation Status
 
 Harness-focused tests pass:
@@ -187,6 +197,9 @@ shim for that newer upstream behavior.
   - `gpu_page_elements` -> `--page-elements-gpus-per-actor`
   - `gpu_ocr` -> `--ocr-gpus-per-actor`
   - `gpu_embed` -> `--embed-gpus-per-actor`
+  - `store_images_uri` -> `--store-images-uri`
+  - `store_text` -> `--store-text`
+  - `strip_base64` -> `--strip-base64` / `--no-strip-base64`
 
 ### Artifact / parser semantics
 
