@@ -848,7 +848,6 @@ async def submit_job_v2(
         # Parse job spec
         job_spec_dict = json.loads(job_spec.payload)
 
-
         # Extract PDF configuration if provided by client
         pdf_config = job_spec_dict.get("pdf_config", {})
         client_split_page_count = pdf_config.get("split_page_count") if pdf_config else None

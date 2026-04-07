@@ -7,8 +7,6 @@ from __future__ import annotations
 from nemo_retriever.table.shared import table_structure_ocr_page_elements
 
 __all__ = [
-    "TableStructureActor",
-    "TableStructureCPUActor",
     "table_structure_ocr_page_elements",
 ]
 

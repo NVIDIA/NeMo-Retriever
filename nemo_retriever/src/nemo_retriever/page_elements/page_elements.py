@@ -7,8 +7,6 @@ from __future__ import annotations
 from nemo_retriever.page_elements.shared import detect_page_elements_v3
 
 __all__ = [
-    "PageElementDetectionActor",
-    "PageElementDetectionCPUActor",
     "detect_page_elements_v3",
 ]
 

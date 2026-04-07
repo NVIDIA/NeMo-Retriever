@@ -7,8 +7,6 @@ from __future__ import annotations
 from nemo_retriever.chart.shared import _prediction_to_detections, graphic_elements_ocr_page_elements
 
 __all__ = [
-    "GraphicElementsActor",
-    "GraphicElementsCPUActor",
     "graphic_elements_ocr_page_elements",
     "_prediction_to_detections",
 ]

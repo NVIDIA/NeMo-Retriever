@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-__all__ = ["_BatchEmbedActor", "_BatchEmbedCPUActor"]
+__all__ = []
 
 
 def __getattr__(name: str):

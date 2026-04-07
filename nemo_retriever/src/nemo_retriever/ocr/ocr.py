@@ -17,10 +17,6 @@ from nemo_retriever.ocr.shared import (
 )
 
 __all__ = [
-    "OCRActor",
-    "OCRCPUActor",
-    "NemotronParseActor",
-    "NemotronParseCPUActor",
     "ocr_page_elements",
     "nemotron_parse_page_elements",
     "_blocks_to_pseudo_markdown",
