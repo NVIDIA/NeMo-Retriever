@@ -125,4 +125,5 @@ To query the ingested results from the milvus database, use :func:`~nv_ingest_cl
     nv-ingest-api/modules.rst
     nv-ingest-client/modules.rst
     nv-ingest/modules.rst
+    nemo-retriever/modules.rst
     

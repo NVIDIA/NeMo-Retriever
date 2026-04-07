@@ -199,15 +199,15 @@ def _run_evaluation(
 
     # Cache-only mode: build corpus embeddings and exit without running queries.
     if cache_only:
-        pipeline.dataset_name = dataset_name
-        pipeline.index(corpus_ids=corpus_ids, corpus_images=corpus_images, corpus_texts=corpus_texts)
+        pipeline.index(
+            corpus_ids=corpus_ids, corpus_images=corpus_images, corpus_texts=corpus_texts, dataset_name=dataset_name
+        )
         print("Corpus embeddings cached. Exiting (--cache-only).")
         return
 
     # Evaluate
     print("\nRunning evaluation...")
     try:
-        pipeline.dataset_name = dataset_name
         trace_run_name_eff = trace_run_name or default_trace_run_name(pipeline)
         results = evaluate_retrieval(
             pipeline=pipeline,

@@ -14,6 +14,10 @@ import traceback
 from nemotron_page_elements_v3.utils import postprocess_preds_page_element
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
     import numpy as np
@@ -451,7 +455,7 @@ def detect_page_elements_v3(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     inference_batch_size: int = 8,
     output_column: str = "page_elements_v3",
     num_detections_column: str = "page_elements_v3_num_detections",
@@ -460,9 +464,9 @@ def detect_page_elements_v3(
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
     Run Nemotron Page Elements v3 on a pandas batch.
@@ -737,7 +741,7 @@ def detect_page_elements_v3(
     return out
 
 
-class PageElementDetectionActor:
+class PageElementDetectionGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Page Elements v3 once.
 
@@ -745,30 +749,38 @@ class PageElementDetectionActor:
       ds = ds.map_batches(PageElementDetectionActor, fn_constructor_kwargs={...}, batch_format="pandas")
     """
 
-    __slots__ = ("detect_kwargs", "_model")
-
     def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = str(
             self.detect_kwargs.get("page_elements_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
         ).strip()
-        if invoke_url and "invoke_url" not in self.detect_kwargs:
-            self.detect_kwargs["invoke_url"] = invoke_url
         if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronPageElementsV3
+            raise ValueError(
+                "PageElementDetectionGPUActor does not support remote endpoint execution. "
+                "Use PageElementDetectionCPUActor instead."
+            )
+        from nemo_retriever.model.local import NemotronPageElementsV3
 
-            self._model = NemotronPageElementsV3()
+        self._model = NemotronPageElementsV3()
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return detect_page_elements_v3(
+            data,
+            model=self._model,
+            **self.detect_kwargs,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
 
     def __call__(self, pages_df: Any, **override_kwargs: Any) -> Any:
         try:
-            return detect_page_elements_v3(
-                pages_df,
-                model=self._model,
-                **self.detect_kwargs,
-                **override_kwargs,
-            )
+            return self.run(pages_df, **override_kwargs)
         except Exception as e:
             # As a last line of defense, never let the Ray UDF raise.
             if isinstance(pages_df, pd.DataFrame):
@@ -779,3 +791,67 @@ class PageElementDetectionActor:
                 out["page_elements_v3_counts_by_label"] = [{} for _ in range(len(out.index))]
                 return out
             return [{"page_elements_v3": _error_payload(stage="actor_call", exc=e)}]
+
+
+class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only variant of :class:`PageElementDetectionActor`.
+
+    Defaults to the build.nvidia.com endpoint for ``nemotron-page-elements-v3``.
+    No local GPU model is loaded.
+    """
+
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
+        self.detect_kwargs = dict(detect_kwargs)
+        invoke_url = str(
+            self.detect_kwargs.get("page_elements_invoke_url")
+            or self.detect_kwargs.get("invoke_url")
+            or self.DEFAULT_INVOKE_URL
+        ).strip()
+        if "invoke_url" not in self.detect_kwargs:
+            self.detect_kwargs["invoke_url"] = invoke_url
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return detect_page_elements_v3(
+            data,
+            model=self._model,
+            **self.detect_kwargs,
+            **kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, pages_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(pages_df, **override_kwargs)
+        except Exception as e:
+            if isinstance(pages_df, pd.DataFrame):
+                out = pages_df.copy()
+                payload = _error_payload(stage="cpu_actor_call", exc=e)
+                out["page_elements_v3"] = [payload for _ in range(len(out.index))]
+                out["page_elements_v3_num_detections"] = [0 for _ in range(len(out.index))]
+                out["page_elements_v3_counts_by_label"] = [{} for _ in range(len(out.index))]
+                return out
+            return [{"page_elements_v3": _error_payload(stage="cpu_actor_call", exc=e)}]
+
+
+class PageElementDetectionActor(ArchetypeOperator):
+    """Graph-facing page element detection archetype."""
+
+    _cpu_variant_class = PageElementDetectionCPUActor
+    _gpu_variant_class = PageElementDetectionGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("page_elements_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)

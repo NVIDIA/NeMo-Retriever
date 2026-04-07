@@ -15,13 +15,15 @@ It mirrors the "pure pandas batch fn + Ray-friendly actor" pattern used by:
 - `nemo_retriever.chart.chart_detection.graphic_elements_ocr_page_elements`
 """
 
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence  # noqa: F401
 
 import time
 import traceback
 
 import pandas as pd
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
     import torch
@@ -175,15 +177,13 @@ def embed_text_1b_v2(
     return out
 
 
-@dataclass(slots=True)
-class TextEmbedActor:
+class TextEmbedGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes `LlamaNemotronEmbed1BV2Embedder` once.
     """
 
-    detect_kwargs: Dict[str, Any]
-
     def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
 
         device = self.detect_kwargs.pop("device", None)
@@ -201,14 +201,23 @@ class TextEmbedActor:
             max_length=int(max_length),
         )
 
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        return embed_text_1b_v2(
+            batch_df,
+            model=self._model,
+            **self.detect_kwargs,
+            **override_kwargs,
+        )
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
-            return embed_text_1b_v2(
-                batch_df,
-                model=self._model,
-                **self.detect_kwargs,
-                **override_kwargs,
-            )
+            return self.run(batch_df, **override_kwargs)
         except BaseException as e:
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
@@ -218,3 +227,10 @@ class TextEmbedActor:
                 out["text_embeddings_1b_v2_has_embedding"] = [False for _ in range(len(out.index))]
                 return out
             return [{"text_embeddings_1b_v2": _error_payload(stage="actor_call", exc=e)}]
+
+
+class TextEmbedActor(ArchetypeOperator):
+    _gpu_variant_class = TextEmbedGPUActor
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)

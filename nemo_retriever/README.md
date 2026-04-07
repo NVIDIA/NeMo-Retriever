@@ -114,7 +114,6 @@ You can inspect how recall accuracy optimized text chunks for various content ty
 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose...'
 
 # markdown formatted table from the first page
->>> chunks[1]["text"]
 '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |'
 
 # a chart from the first page
@@ -234,6 +233,12 @@ ingestor = (
 ```
 
 *Note:* the `split()` task uses a tokenizer to split texts by a max_token length
+### Render results as markdown
+
+If you want a readable markdown view of extracted results, pass the full in-process result list
+to `nemo_retriever.io.to_markdown`. The helper now returns a `dict[str, str]` keyed by input
+filename, where each value is the document collapsed into one markdown string without per-page
+headers, so both single-document and multi-document runs follow the same contract.
 
 PDF text is split at the page level.
 
@@ -247,8 +252,13 @@ ingestor = (
   .extract()
   .split(max_tokens=5) #1024 by default, set low here to demonstrate chunking
 )
+results = ingestor.ingest()
+markdown_docs = to_markdown(results)
+print(markdown_docs["multimodal_test.pdf"])
 ```
 
+Use `to_markdown_by_page(results)` when you want a nested
+`dict[str, dict[int, str]]` instead, where each filename maps to its per-page markdown strings.
 For audio and video files, ensure ffmpeg is installed by your system's package manager.
 
 For example, with apt-get on Ubuntu:

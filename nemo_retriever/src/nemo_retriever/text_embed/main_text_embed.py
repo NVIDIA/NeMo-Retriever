@@ -281,7 +281,7 @@ def _http_embed_openai_compat(
     input_type: str,
     truncate: str,
     dimensions: Optional[int] = None,
-    timeout_s: float = 120.0,
+    timeout_s: float = 60.0,
 ) -> List[Optional[List[float]]]:
     """
     Best-effort HTTP embeddings call using an OpenAI-compatible schema.

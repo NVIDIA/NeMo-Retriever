@@ -5,7 +5,9 @@
 from .models import ASRParams
 from .models import AudioChunkParams
 from .models import BatchTuningParams
+from .models import CaptionParams
 from .models import ChartParams
+from .models import DedupParams
 from .models import EmbedParams
 from .models import ExtractParams
 from .models import FusedTuningParams
@@ -22,6 +24,8 @@ from .models import PdfSplitParams
 from .models import RemoteInvokeParams
 from .models import RemoteRetryParams
 from .models import RunMode
+from .models import StoreParams
+from .models import TabularExtractParams
 from .models import TableParams
 from .models import TextChunkParams
 from .models import VdbUploadParams
@@ -30,7 +34,9 @@ __all__ = [
     "ASRParams",
     "AudioChunkParams",
     "BatchTuningParams",
+    "CaptionParams",
     "ChartParams",
+    "DedupParams",
     "EmbedParams",
     "ExtractParams",
     "FusedTuningParams",
@@ -47,6 +53,8 @@ __all__ = [
     "RemoteInvokeParams",
     "RemoteRetryParams",
     "RunMode",
+    "StoreParams",
+    "TabularExtractParams",
     "TableParams",
     "TextChunkParams",
     "VdbUploadParams",

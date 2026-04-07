@@ -13,11 +13,14 @@ from typing import Any, Dict, List  # noqa: F401
 import pandas as pd
 
 from nemo_retriever.params import TextChunkParams
+from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 from .split import txt_bytes_to_chunks_df
 
 
-class TextChunkActor:
+class TextChunkCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: re-chunk existing ``text`` column by token count.
 
@@ -27,20 +30,30 @@ class TextChunkActor:
     """
 
     def __init__(self, params: TextChunkParams | None = None) -> None:
+        super().__init__()
         self._params = params or TextChunkParams()
 
-    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
         from .split import split_df
 
-        if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
-            return batch_df
+        if not isinstance(data, pd.DataFrame) or data.empty:
+            return data
 
         kw = self._params.model_dump(mode="python")
         kw.pop("encoding", None)
-        return split_df(batch_df, **kw)
+        return split_df(data, **kw)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+        return self.run(batch_df)
 
 
-class TxtSplitActor:
+class TxtSplitCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of chunks.
 
@@ -48,15 +61,21 @@ class TxtSplitActor:
     """
 
     def __init__(self, params: TextChunkParams | None = None) -> None:
+        super().__init__()
         self._params = params or TextChunkParams()
 
-    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
-        if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        if not isinstance(data, pd.DataFrame) or data.empty:
             return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        if not isinstance(data, pd.DataFrame) or data.empty:
+            return data
 
         params = self._params
         out_dfs: List[pd.DataFrame] = []
-        for _, row in batch_df.iterrows():
+        for _, row in data.iterrows():
             raw = row.get("bytes")
             text = row.get("text")
             path = row.get("path")
@@ -73,3 +92,25 @@ class TxtSplitActor:
         if not out_dfs:
             return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
         return pd.concat(out_dfs, ignore_index=True)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+        return self.run(batch_df)
+
+
+class TextChunkActor(ArchetypeOperator):
+    _cpu_variant_class = TextChunkCPUActor
+
+    def __init__(self, params: TextChunkParams | None = None) -> None:
+        super().__init__(params=params)
+        self._params = params
+
+
+class TxtSplitActor(ArchetypeOperator):
+    _cpu_variant_class = TxtSplitCPUActor
+
+    def __init__(self, params: TextChunkParams | None = None) -> None:
+        super().__init__(params=params)
+        self._params = params

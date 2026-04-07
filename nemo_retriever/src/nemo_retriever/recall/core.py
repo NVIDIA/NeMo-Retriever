@@ -4,15 +4,17 @@
 
 from __future__ import annotations
 
+import ast
+import json
 import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from nemo_retriever.retriever import Retriever
-import json
 
 logger = logging.getLogger(__name__)
+AUDIO_MATCH_TOLERANCE_SECS = 2.0
 
 import numpy as np
 import pandas as pd
@@ -50,7 +52,9 @@ class RecallConfig:
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys
+    # - audio_segment: compare on "media_id<TAB>start<TAB>end" segment keys
     match_mode: str = "pdf_page"
+    audio_match_tolerance_secs: float = AUDIO_MATCH_TOLERANCE_SECS
     reranker: Optional[str] = None
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
@@ -59,6 +63,111 @@ class RecallConfig:
 
 def _normalize_pdf_name(value: str) -> str:
     return str(value).replace(".pdf", "")
+
+
+def _normalize_audio_media_id(value: object) -> str:
+    basename = Path(str(value)).name
+    return basename.split(".", 1)[0] if basename else ""
+
+
+def _encode_audio_segment_key(media_id: str, start_time: float, end_time: float) -> str:
+    return f"{media_id}\t{float(start_time):.6f}\t{float(end_time):.6f}"
+
+
+def _parse_audio_segment_key(key: str) -> tuple[str, float, float]:
+    parts = str(key).split("\t")
+    if len(parts) != 3:
+        raise ValueError(f"Invalid audio segment key: {key!r}")
+    media_id, start_time, end_time = parts
+    return media_id, float(start_time), float(end_time)
+
+
+def _parse_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return {}
+
+    text = value.strip()
+    if not text:
+        return {}
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    try:
+        parsed = ast.literal_eval(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    return {}
+
+
+def _normalize_audio_segment_times(
+    start_time: Any,
+    end_time: Any,
+    *,
+    duration_hint_secs: Any = None,
+) -> tuple[float, float] | None:
+    try:
+        start_val = float(start_time)
+        end_val = float(end_time)
+    except (TypeError, ValueError):
+        return None
+
+    duration_secs: float | None
+    try:
+        duration_secs = float(duration_hint_secs) if duration_hint_secs is not None else None
+    except (TypeError, ValueError):
+        duration_secs = None
+
+    # Audio stage metadata currently stores segment times in milliseconds.
+    # Normalize those to seconds when they obviously exceed the chunk duration.
+    if duration_secs is not None and duration_secs > 0 and end_val > (duration_secs + 1.0):
+        return start_val / 1000.0, end_val / 1000.0
+
+    return start_val, end_val
+
+
+def _normalize_audio_query_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    if "query" not in df.columns and "question" in df.columns:
+        df = df.rename(columns={"question": "query"})
+    if "expected_media_id" not in df.columns and "name" in df.columns:
+        df["expected_media_id"] = df["name"].astype(str).apply(_normalize_audio_media_id)
+    if "expected_start_time" not in df.columns and "start_time" in df.columns:
+        df["expected_start_time"] = pd.to_numeric(df["start_time"], errors="raise").astype(float)
+    if "expected_end_time" not in df.columns and "end_time" in df.columns:
+        df["expected_end_time"] = pd.to_numeric(df["end_time"], errors="raise").astype(float)
+
+    required = {"query", "expected_media_id", "expected_start_time", "expected_end_time"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise KeyError(
+            "For audio_segment mode, query data must contain "
+            "['query','expected_media_id','expected_start_time','expected_end_time'] "
+            "or ['question','name','start_time','end_time'] columns "
+            f"(missing: {sorted(missing)})"
+        )
+
+    df["query"] = df["query"].astype(str)
+    df["expected_media_id"] = df["expected_media_id"].astype(str).apply(_normalize_audio_media_id)
+    df["expected_start_time"] = pd.to_numeric(df["expected_start_time"], errors="raise").astype(float)
+    df["expected_end_time"] = pd.to_numeric(df["expected_end_time"], errors="raise").astype(float)
+    df["golden_answer"] = df.apply(
+        lambda row: _encode_audio_segment_key(
+            row["expected_media_id"], row["expected_start_time"], row["expected_end_time"]
+        ),
+        axis=1,
+    )
+    return df
 
 
 def _normalize_query_df(df: pd.DataFrame, *, match_mode: str) -> pd.DataFrame:
@@ -74,9 +183,15 @@ def _normalize_query_df(df: pd.DataFrame, *, match_mode: str) -> pd.DataFrame:
       - pdf_only:
         - query,expected_pdf
         - query,pdf
+      - audio_segment:
+        - query,expected_media_id,expected_start_time,expected_end_time
+        - question,name,start_time,end_time
     """
-    if match_mode not in {"pdf_page", "pdf_only"}:
+    if match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
         raise ValueError(f"Unsupported recall match mode: {match_mode}")
+
+    if match_mode == "audio_segment":
+        return _normalize_audio_query_df(df)
 
     df = df.copy()
 
@@ -207,6 +322,63 @@ def _hits_to_keys(raw_hits: List[List[Dict[str, Any]]]) -> List[List[str]]:
     return retrieved_keys
 
 
+def _hit_to_audio_segment_key(hit: Dict[str, Any]) -> str | None:
+    metadata = _parse_mapping(hit.get("metadata"))
+    source = _parse_mapping(hit.get("source"))
+
+    source_id = source.get("source_id")
+    if not isinstance(source_id, str) or not source_id.strip():
+        source_id = hit.get("source_id") if isinstance(hit.get("source_id"), str) else hit.get("source")
+    if not isinstance(source_id, str) or not source_id.strip():
+        return None
+
+    media_id = _normalize_audio_media_id(source_id)
+    if not media_id:
+        return None
+
+    start_time = metadata.get("segment_start")
+    end_time = metadata.get("segment_end")
+    if start_time is not None and end_time is not None:
+        normalized = _normalize_audio_segment_times(
+            start_time,
+            end_time,
+            duration_hint_secs=metadata.get("duration"),
+        )
+        if normalized is None:
+            return None
+        start_secs, end_secs = normalized
+        return _encode_audio_segment_key(media_id, start_secs, end_secs)
+
+    content_metadata = metadata.get("content_metadata")
+    if isinstance(content_metadata, dict):
+        start_time = content_metadata.get("start_time")
+        end_time = content_metadata.get("end_time")
+        if start_time is not None and end_time is not None:
+            normalized = _normalize_audio_segment_times(
+                start_time,
+                end_time,
+                duration_hint_secs=metadata.get("duration"),
+            )
+            if normalized is None:
+                return None
+            start_secs, end_secs = normalized
+            return _encode_audio_segment_key(media_id, start_secs, end_secs)
+
+    return None
+
+
+def _hits_to_audio_segment_keys(raw_hits: List[List[Dict[str, Any]]]) -> List[List[str]]:
+    retrieved_keys: List[List[str]] = []
+    for hits in raw_hits:
+        keys: List[str] = []
+        for hit in hits:
+            encoded = _hit_to_audio_segment_key(hit)
+            if encoded is not None:
+                keys.append(encoded)
+        retrieved_keys.append(keys)
+    return retrieved_keys
+
+
 def _extract_doc_from_pdf_page(key: str) -> str:
     parts = str(key).rsplit("_", 1)
     if len(parts) != 2:
@@ -214,12 +386,35 @@ def _extract_doc_from_pdf_page(key: str) -> str:
     return parts[0]
 
 
-def _is_hit(golden_key: str, retrieved: List[str], k: int, *, match_mode: str) -> bool:
+def _is_hit(
+    golden_key: str,
+    retrieved: List[str],
+    k: int,
+    *,
+    match_mode: str,
+    audio_match_tolerance_secs: float = AUDIO_MATCH_TOLERANCE_SECS,
+) -> bool:
     """Check if a golden key is found in the top-k retrieved keys.
 
     Handles filenames with underscores via ``rsplit`` and also accepts
     whole-document keys (page ``-1``).
     """
+    if match_mode == "audio_segment":
+        gold_media, gold_start, gold_end = _parse_audio_segment_key(golden_key)
+        for encoded_hit in retrieved[:k]:
+            try:
+                hit_media, hit_start, hit_end = _parse_audio_segment_key(encoded_hit)
+            except ValueError:
+                continue
+            hit_midpoint = (hit_start + hit_end) / 2.0
+            if (
+                hit_media == gold_media
+                and hit_midpoint > (gold_start - float(audio_match_tolerance_secs))
+                and hit_midpoint < (gold_end + float(audio_match_tolerance_secs))
+            ):
+                return True
+        return False
+
     if match_mode == "pdf_only":
         gold_doc = _normalize_pdf_name(str(golden_key))
         top_docs = [_extract_doc_from_pdf_page(r) for r in retrieved[:k]]
@@ -235,9 +430,22 @@ def _is_hit(golden_key: str, retrieved: List[str], k: int, *, match_mode: str) -
     return specific_page in top or entire_document in top
 
 
-def is_hit_at_k(golden_key: str, retrieved: Sequence[str], k: int, *, match_mode: str) -> bool:
+def is_hit_at_k(
+    golden_key: str,
+    retrieved: Sequence[str],
+    k: int,
+    *,
+    match_mode: str,
+    audio_match_tolerance_secs: float = AUDIO_MATCH_TOLERANCE_SECS,
+) -> bool:
     """Public wrapper for top-k hit checks across match modes."""
-    return _is_hit(str(golden_key), list(retrieved), int(k), match_mode=str(match_mode))
+    return _is_hit(
+        str(golden_key),
+        list(retrieved),
+        int(k),
+        match_mode=str(match_mode),
+        audio_match_tolerance_secs=float(audio_match_tolerance_secs),
+    )
 
 
 def gold_to_doc_page(golden_key: str) -> tuple[str, str]:
@@ -271,8 +479,18 @@ def hit_key_and_distance(hit: dict) -> tuple[str | None, float | None]:
     return key, dist
 
 
-def _recall_at_k(gold: List[str], retrieved: List[List[str]], k: int, *, match_mode: str) -> float:
-    hits = sum(is_hit_at_k(g, r, k, match_mode=match_mode) for g, r in zip(gold, retrieved))
+def _recall_at_k(
+    gold: List[str],
+    retrieved: List[List[str]],
+    k: int,
+    *,
+    match_mode: str,
+    audio_match_tolerance_secs: float = AUDIO_MATCH_TOLERANCE_SECS,
+) -> float:
+    hits = sum(
+        is_hit_at_k(g, r, k, match_mode=match_mode, audio_match_tolerance_secs=audio_match_tolerance_secs)
+        for g, r in zip(gold, retrieved)
+    )
     return hits / max(1, len(gold))
 
 
@@ -290,7 +508,7 @@ def retrieve_and_score(
       - normalized query DataFrame
       - gold keys
       - raw LanceDB hits
-      - retrieved keys (pdf_page-like)
+      - retrieved keys (pdf_page-like or audio-segment-like)
       - metrics dict (recall@k)
     """
     df_query = _normalize_query_df(pd.read_csv(query_csv), match_mode=str(cfg.match_mode))
@@ -327,9 +545,19 @@ def retrieve_and_score(
         f"(average {len(queries)/end_queries:.2f} queries/second)",
     )
 
-    retrieved_keys = _hits_to_keys(raw_hits)
+    if str(cfg.match_mode) == "audio_segment":
+        retrieved_keys = _hits_to_audio_segment_keys(raw_hits)
+    else:
+        retrieved_keys = _hits_to_keys(raw_hits)
     metrics = {
-        f"recall@{k}": _recall_at_k(gold, retrieved_keys, int(k), match_mode=str(cfg.match_mode)) for k in cfg.ks
+        f"recall@{k}": _recall_at_k(
+            gold,
+            retrieved_keys,
+            int(k),
+            match_mode=str(cfg.match_mode),
+            audio_match_tolerance_secs=float(cfg.audio_match_tolerance_secs),
+        )
+        for k in cfg.ks
     }
     return df_query, gold, raw_hits, retrieved_keys, metrics
 
@@ -353,8 +581,27 @@ def evaluate_recall(
         row = {"query_id": i, "query": q, "golden_answer": g, "top_retrieved": r[: cfg.top_k]}
         for k in cfg.ks:
             k = int(k)
-            row[f"hit@{k}"] = is_hit_at_k(g, r, k, match_mode=str(cfg.match_mode))
-            if str(cfg.match_mode) == "pdf_only":
+            row[f"hit@{k}"] = is_hit_at_k(
+                g,
+                r,
+                k,
+                match_mode=str(cfg.match_mode),
+                audio_match_tolerance_secs=float(cfg.audio_match_tolerance_secs),
+            )
+            if str(cfg.match_mode) == "audio_segment":
+                rank = None
+                for index, encoded_hit in enumerate(r[: cfg.top_k], start=1):
+                    if is_hit_at_k(
+                        g,
+                        [encoded_hit],
+                        1,
+                        match_mode="audio_segment",
+                        audio_match_tolerance_secs=float(cfg.audio_match_tolerance_secs),
+                    ):
+                        rank = index
+                        break
+                row[f"rank@{k}"] = rank
+            elif str(cfg.match_mode) == "pdf_only":
                 top_docs = [_extract_doc_from_pdf_page(key) for key in r[: cfg.top_k]]
                 try:
                     row[f"rank@{k}"] = top_docs.index(_normalize_pdf_name(str(g))) + 1
