@@ -52,6 +52,118 @@ def _dataset_trace_dir(dataset_name: str) -> str:
     return _slugify(parts[-1] if parts else "unknown_dataset")
 
 
+def convert_traces(
+    traces_dir: str,
+    trace_run_name: str,
+    dataset_name: str,
+    output: str,
+    top_k: int = 5,
+    split: str = "test",
+    language: str | None = None,
+) -> dict:
+    """Convert retrieval-bench trace files into a FileRetriever JSON.
+
+    Returns a dict with keys: ``queries_written``, ``traces_found``,
+    ``skipped``, ``missing_docs``, ``output_path``.
+    """
+    dataset_dir = _dataset_trace_dir(dataset_name)
+    trace_root = Path(traces_dir) / _slugify(trace_run_name) / dataset_dir
+
+    if not trace_root.exists():
+        raise FileNotFoundError(
+            f"Trace directory not found: {trace_root}\n"
+            f"Expected structure: {traces_dir}/<trace_run_name>/<dataset_dir>/<query_id>.json"
+        )
+
+    trace_files = sorted(trace_root.glob("*.json"))
+    if not trace_files:
+        raise FileNotFoundError(f"No trace JSON files found in {trace_root}")
+    logger.info("Found %d trace files in %s", len(trace_files), trace_root)
+
+    logger.info("Loading dataset '%s' (split=%s) ...", dataset_name, split)
+    from retrieval_bench.pipeline_evaluation import load_vidore_dataset
+
+    (
+        query_ids,
+        queries,
+        corpus_ids,
+        corpus_images,
+        corpus_texts,
+        qrels,
+        query_languages,
+        _,
+    ) = load_vidore_dataset(
+        dataset_name=dataset_name,
+        split=split,
+        language=language,
+    )
+
+    qid_to_query = {qid: q for qid, q in zip(query_ids, queries)}
+    cid_to_text = {cid: t for cid, t in zip(corpus_ids, corpus_texts)}
+    logger.info("Dataset: %d queries, %d corpus documents", len(qid_to_query), len(cid_to_text))
+
+    output_queries: dict[str, dict] = {}
+    skipped = 0
+    missing_docs = 0
+
+    for trace_file in trace_files:
+        try:
+            with open(trace_file) as f:
+                trace = json.load(f)
+        except Exception:
+            logger.warning("Failed to parse %s, skipping", trace_file)
+            skipped += 1
+            continue
+
+        qid = str(trace.get("query_id", trace_file.stem))
+        run = trace.get("run")
+        if not isinstance(run, dict):
+            logger.debug("No 'run' dict in %s, skipping", trace_file.name)
+            skipped += 1
+            continue
+
+        query_text = qid_to_query.get(qid)
+        if query_text is None:
+            logger.debug("query_id %s not found in dataset, skipping", qid)
+            skipped += 1
+            continue
+
+        ranked = sorted(run.items(), key=lambda x: float(x[1]), reverse=True)[:top_k]
+
+        chunks = []
+        metadata = []
+        for doc_id, score in ranked:
+            text = cid_to_text.get(doc_id)
+            if text is None:
+                missing_docs += 1
+                continue
+            chunks.append(text)
+            metadata.append({"doc_id": doc_id, "score": float(score)})
+
+        if chunks:
+            output_queries[query_text] = {"chunks": chunks, "metadata": metadata}
+
+    if skipped:
+        logger.warning("Skipped %d trace files (parse errors or missing data)", skipped)
+    if missing_docs:
+        logger.warning("%d doc_id lookups failed (ID not in corpus)", missing_docs)
+
+    result = {"queries": output_queries}
+    out_path = Path(output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump(result, f, indent=2)
+
+    logger.info("Wrote %d queries to %s (top_k=%d)", len(output_queries), out_path, top_k)
+    return {
+        "queries_written": len(output_queries),
+        "traces_found": len(trace_files),
+        "skipped": skipped,
+        "missing_docs": missing_docs,
+        "output_path": str(out_path),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Convert retrieval-bench traces to QA eval FileRetriever JSON.")
     parser.add_argument(
@@ -86,105 +198,22 @@ def main():
     )
     args = parser.parse_args()
 
-    dataset_dir = _dataset_trace_dir(args.dataset_name)
-    trace_root = Path(args.traces_dir) / _slugify(args.trace_run_name) / dataset_dir
-
-    if not trace_root.exists():
-        logger.error("Trace directory not found: %s", trace_root)
-        logger.error(
-            "Expected structure: %s/<trace_run_name>/<dataset_dir>/<query_id>.json",
-            args.traces_dir,
+    try:
+        stats = convert_traces(
+            traces_dir=args.traces_dir,
+            trace_run_name=args.trace_run_name,
+            dataset_name=args.dataset_name,
+            output=args.output,
+            top_k=args.top_k,
+            split=args.split,
+            language=args.language,
         )
+    except FileNotFoundError as exc:
+        logger.error("%s", exc)
         sys.exit(1)
 
-    trace_files = sorted(trace_root.glob("*.json"))
-    if not trace_files:
-        logger.error("No trace JSON files found in %s", trace_root)
-        sys.exit(1)
-    logger.info("Found %d trace files in %s", len(trace_files), trace_root)
-
-    logger.info("Loading dataset '%s' (split=%s) ...", args.dataset_name, args.split)
-    from retrieval_bench.pipeline_evaluation import load_vidore_dataset
-
-    (
-        query_ids,
-        queries,
-        corpus_ids,
-        corpus_images,
-        corpus_texts,
-        qrels,
-        query_languages,
-        _,
-    ) = load_vidore_dataset(
-        dataset_name=args.dataset_name,
-        split=args.split,
-        language=args.language,
-    )
-
-    qid_to_query = {qid: q for qid, q in zip(query_ids, queries)}
-    cid_to_text = {cid: t for cid, t in zip(corpus_ids, corpus_texts)}
-    logger.info("Dataset: %d queries, %d corpus documents", len(qid_to_query), len(cid_to_text))
-
-    output_queries: dict[str, dict] = {}
-    skipped = 0
-    missing_docs = 0
-
-    for trace_file in trace_files:
-        try:
-            with open(trace_file) as f:
-                trace = json.load(f)
-        except Exception:
-            logger.warning("Failed to parse %s, skipping", trace_file)
-            skipped += 1
-            continue
-
-        qid = str(trace.get("query_id", trace_file.stem))
-        run = trace.get("run")
-        if not isinstance(run, dict):
-            logger.debug("No 'run' dict in %s, skipping", trace_file.name)
-            skipped += 1
-            continue
-
-        query_text = qid_to_query.get(qid)
-        if query_text is None:
-            logger.debug("query_id %s not found in dataset, skipping", qid)
-            skipped += 1
-            continue
-
-        ranked = sorted(run.items(), key=lambda x: float(x[1]), reverse=True)[: args.top_k]
-
-        chunks = []
-        metadata = []
-        for doc_id, score in ranked:
-            text = cid_to_text.get(doc_id)
-            if text is None:
-                missing_docs += 1
-                continue
-            chunks.append(text)
-            metadata.append({"doc_id": doc_id, "score": float(score)})
-
-        if chunks:
-            output_queries[query_text] = {"chunks": chunks, "metadata": metadata}
-
-    if skipped:
-        logger.warning("Skipped %d trace files (parse errors or missing data)", skipped)
-    if missing_docs:
-        logger.warning("%d doc_id lookups failed (ID not in corpus)", missing_docs)
-
-    output = {"queries": output_queries}
-    out_path = Path(args.output)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w") as f:
-        json.dump(output, f, indent=2)
-
-    logger.info(
-        "Wrote %d queries to %s (top_k=%d)",
-        len(output_queries),
-        out_path,
-        args.top_k,
-    )
-    print(f"\nDone. FileRetriever JSON: {out_path}")
-    print(f"Queries converted: {len(output_queries)} / {len(trace_files)}")
+    print(f"\nDone. FileRetriever JSON: {stats['output_path']}")
+    print(f"Queries converted: {stats['queries_written']} / {stats['traces_found']}")
 
 
 if __name__ == "__main__":
