@@ -197,7 +197,7 @@ For PowerPoint and Docx files, ensure libeoffice is installed by your system's p
 
 For example, with apt-get on Ubuntu:
 ```bash
-sudo apt install -y libreoffice
+sudo apt install libreoffice
 ```
 
 For SVG files, install the optional `cairosvg` dependency with `pip install cairosvg`. SVG support is available in the NeMo Retriever Library, but not in the container deployment. `cairosvg` requires network access to install, so it will not work in air-gapped environments.
