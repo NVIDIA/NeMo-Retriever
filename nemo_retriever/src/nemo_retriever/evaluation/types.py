@@ -56,10 +56,14 @@ class GenerationResult:
 
 @dataclass
 class JudgeResult:
-    """Result from a single judge evaluation."""
+    """Result from a single judge evaluation.
 
-    score: int
-    reasoning: str
+    ``score`` is ``None`` when the judge could not produce a score
+    (API error, parse failure, empty candidate).  Valid scores are 1-5.
+    """
+
+    score: Optional[int] = None
+    reasoning: str = ""
     error: Optional[str] = None
 
 

@@ -60,7 +60,11 @@ class QAEvalPipeline(EvalOperator):
     non-serializable constructor args (retriever, llm_clients, judge).
     """
 
-    required_columns: ClassVar[tuple[str, ...]] = ("query", "reference_answer", "context")
+    required_columns: ClassVar[tuple[str, ...]] = (
+        "query",
+        "reference_answer",
+        "context",
+    )
     output_columns: ClassVar[tuple[str, ...]] = ()
 
     def __init__(
@@ -126,13 +130,23 @@ class QAEvalPipeline(EvalOperator):
 
         out = df.copy()
 
+        # Tier-1 retrieval quality is model-independent (same chunks for
+        # every generator), so compute it once before the model loop.
+        aic_per_row: list[bool] = []
+        for _, row in df.iterrows():
+            ref = row["reference_answer"]
+            ctx = row.get("context", [])
+            if not isinstance(ctx, list):
+                ctx = []
+            aic_per_row.append(answer_in_context(ref, ctx))
+
         for model_name, client in self.llm_clients.items():
             prefix = _sanitize_prefix(model_name)
 
             # _client and _model_name are captured via default args to avoid
             # the late-binding closure bug across loop iterations. self.judge
             # is safe to access directly since it does not change per-iteration.
-            def _process_row(row_tuple, _client=client, _model_name=model_name):
+            def _process_row(row_tuple, row_aic, _client=client, _model_name=model_name):
                 _, row = row_tuple
                 query = row["query"]
                 ref = row["reference_answer"]
@@ -145,29 +159,29 @@ class QAEvalPipeline(EvalOperator):
 
                 if gen.error == "thinking_truncated":
                     verdict = JudgeResult(
-                        score=0,
+                        score=None,
                         reasoning="Skipped: thinking truncated",
                         error="thinking_truncated",
                     )
                 else:
                     verdict = self.judge.judge(query, ref, answer_text)
 
-                ref_in_chunks = answer_in_context(ref, ctx)
                 tf1 = token_f1(ref, answer_text)
-                judge_score_val = verdict.score if not verdict.error else None
                 fm = classify_failure(
-                    ref_in_chunks=ref_in_chunks,
-                    judge_score=judge_score_val,
+                    ref_in_chunks=row_aic,
+                    judge_score=verdict.score,
                     gen_error=gen.error,
                     candidate=answer_text,
                 )
-                return gen, verdict, ref_in_chunks, tf1, fm
+                return gen, verdict, tf1, fm
 
             row_count = len(df)
             row_results: list = [None] * row_count
             done_count = 0
             with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-                row_futures = {pool.submit(_process_row, item): i for i, item in enumerate(df.iterrows())}
+                row_futures = {
+                    pool.submit(_process_row, item, aic_per_row[i]): i for i, item in enumerate(df.iterrows())
+                }
                 for future in as_completed(row_futures):
                     idx = row_futures[future]
                     try:
@@ -180,23 +194,33 @@ class QAEvalPipeline(EvalOperator):
                             model=model_name,
                             error=str(exc),
                         )
-                        sentinel_judge = JudgeResult(score=0, reasoning="", error=str(exc))
+                        sentinel_judge = JudgeResult(score=None, reasoning="", error=str(exc))
+                        fm = classify_failure(
+                            ref_in_chunks=aic_per_row[idx],
+                            judge_score=None,
+                            gen_error=str(exc),
+                            candidate="",
+                        )
                         row_results[idx] = (
                             sentinel_gen,
                             sentinel_judge,
-                            False,
                             {"f1": 0.0, "exact_match": False},
-                            "generation_miss",
+                            fm,
                         )
                     done_count += 1
                     if done_count % 10 == 0 or done_count == row_count:
-                        logger.info("Model %s: %d/%d rows completed", model_name, done_count, row_count)
+                        logger.info(
+                            "Model %s: %d/%d rows completed",
+                            model_name,
+                            done_count,
+                            row_count,
+                        )
 
             answers, latencies, models, gen_errors = [], [], [], []
             judge_scores, judge_reasonings, judge_errors = [], [], []
-            aic_list, f1_list, fm_list = [], [], []
+            f1_list, fm_list = [], []
 
-            for gen, verdict, aic, tf1, fm in row_results:
+            for gen, verdict, tf1, fm in row_results:
                 answers.append(gen.answer)
                 latencies.append(gen.latency_s)
                 models.append(gen.model)
@@ -204,7 +228,6 @@ class QAEvalPipeline(EvalOperator):
                 judge_scores.append(verdict.score)
                 judge_reasonings.append(verdict.reasoning)
                 judge_errors.append(verdict.error)
-                aic_list.append(aic)
                 f1_list.append(tf1.get("f1", 0.0))
                 fm_list.append(fm)
 
@@ -215,7 +238,7 @@ class QAEvalPipeline(EvalOperator):
             out[f"{prefix}_judge_score"] = judge_scores
             out[f"{prefix}_judge_reasoning"] = judge_reasonings
             out[f"{prefix}_judge_error"] = judge_errors
-            out[f"{prefix}_answer_in_context"] = aic_list
+            out[f"{prefix}_answer_in_context"] = aic_per_row
             out[f"{prefix}_token_f1"] = f1_list
             out[f"{prefix}_failure_mode"] = fm_list
 
@@ -256,7 +279,12 @@ class QAEvalPipeline(EvalOperator):
                 except Exception as exc:
                     idx = futures[future]
                     pair = qa_pairs[idx]
-                    logger.error("Retrieval for query [%d] failed: %r: %s", idx, pair.get("query", ""), exc)
+                    logger.error(
+                        "Retrieval for query [%d] failed: %r: %s",
+                        idx,
+                        pair.get("query", ""),
+                        exc,
+                    )
                     rows[idx] = {
                         "query": pair.get("query", ""),
                         "reference_answer": pair.get("reference_answer") or pair.get("answer", ""),
@@ -316,7 +344,8 @@ class QAEvalPipeline(EvalOperator):
                 latency = row.get(f"{prefix}_latency_s", 0.0)
                 model = row.get(f"{prefix}_model", "")
                 gen_error = row.get(f"{prefix}_gen_error")
-                j_score = row.get(f"{prefix}_judge_score", 0)
+                j_score_raw = row.get(f"{prefix}_judge_score")
+                j_score = None if pd.isna(j_score_raw) else int(j_score_raw)
                 j_reasoning = row.get(f"{prefix}_judge_reasoning", "")
                 j_error = row.get(f"{prefix}_judge_error")
                 tf1_val = row.get(f"{prefix}_token_f1", 0.0)
@@ -338,7 +367,7 @@ class QAEvalPipeline(EvalOperator):
                 }
                 failure_mode_dict[model_name] = fm_val
 
-                if j_error and j_score == 0:
+                if j_score is None:
                     errors_by_model[model_name] += 1
                 else:
                     scores_by_model[model_name].append(j_score)
@@ -378,7 +407,7 @@ class QAEvalPipeline(EvalOperator):
             by_model[name] = {
                 "mean_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
                 "score_distribution": dist,
-                "mean_latency_s": round(sum(latencies) / len(latencies), 3) if latencies else 0.0,
+                "mean_latency_s": (round(sum(latencies) / len(latencies), 3) if latencies else 0.0),
                 "scored_count": len(scores),
                 "error_count": errors_by_model[name],
             }
@@ -401,7 +430,7 @@ class QAEvalPipeline(EvalOperator):
                 "dropped_queries": dropped,
             },
             "tier1_retrieval": {
-                "answer_in_context_rate": round(aic_count / total_completed, 4) if total_completed else 0.0,
+                "answer_in_context_rate": (round(aic_count / total_completed, 4) if total_completed else 0.0),
                 "answer_in_context_count": aic_count,
                 "total": total_completed,
             },

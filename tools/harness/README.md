@@ -389,7 +389,7 @@ uv run nv-ingest-harness-run --case=qa_eval --dataset=bo767
 multiple generator+judge combos with optional repeat runs:
 
 ```bash
-export GEN_API_KEY="sk-..."
+export GEN_API_KEY="key-..."
 export NVIDIA_API_KEY="nvapi-..."
 python run_qa_eval.py --config eval_sweep.yaml
 ```

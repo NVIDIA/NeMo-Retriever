@@ -113,6 +113,7 @@ benchmarks = [
 eval = [
   "litellm>=1.40.0",
   "pyyaml>=6.0",
+  "tenacity>=8.0.0",
 ]
 dev = [
   "build>=1.2.2",

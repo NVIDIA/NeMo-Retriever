@@ -144,18 +144,38 @@ _NO_CONTEXT_PATTERNS = [
 _NO_CONTEXT_RE = re.compile("|".join(_NO_CONTEXT_PATTERNS), re.IGNORECASE)
 
 
+_DECIMAL_PLACEHOLDER = "\ufffd"
+
+
 def _normalize(text: str) -> str:
-    """Lowercase, strip articles/punctuation, collapse whitespace."""
+    """Lowercase, strip articles/punctuation, collapse whitespace.
+
+    Decimal points between digits are preserved so that '205.6' and '20.56'
+    remain distinguishable after normalization.
+    """
     text = text.lower()
     text = re.sub(r"\b(a|an|the)\b", " ", text)
+    text = re.sub(
+        r"(\d)\.(\d)",
+        lambda m: m.group(1) + _DECIMAL_PLACEHOLDER + m.group(2),
+        text,
+    )
     text = text.translate(str.maketrans("", "", string.punctuation))
+    text = text.replace(_DECIMAL_PLACEHOLDER, ".")
     return " ".join(text.split())
 
 
 def _normalize_numeric(text: str) -> str:
-    """Normalize numeric formats so '16.00%' matches '16%', '1,000' matches '1000'."""
+    """Normalize numeric formats so equivalent representations match.
+
+    Handles: '16.00%' == '16%', '1,000' == '1000', '205.60' == '205.6'.
+    """
     text = re.sub(r",(\d{3})", r"\1", text)
-    text = re.sub(r"(\d+)\.0+(%?)", r"\1\2", text)
+
+    def _strip_trailing(m: re.Match) -> str:
+        return m.group(0).rstrip("0").rstrip(".")
+
+    text = re.sub(r"\d+\.\d+", _strip_trailing, text)
     return text
 
 
@@ -176,7 +196,8 @@ def answer_in_context(reference: str, chunks: list[str]) -> bool:
         return True
 
     chunk_text = _normalize(_normalize_numeric(" ".join(chunks)))
-    found = sum(1 for w in ref_words if w in chunk_text)
+    chunk_words = set(chunk_text.split())
+    found = sum(1 for w in ref_words if w in chunk_words)
     return found / len(ref_words) >= 0.5
 
 
@@ -229,7 +250,7 @@ def classify_failure(
         return "thinking_truncated"
 
     if judge_score is None:
-        return "thinking_truncated"
+        return "judge_error"
 
     if judge_score >= 4:
         return "correct"
@@ -279,7 +300,8 @@ def score_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         f1_results.append(tf1.get("f1", 0.0))
         em_results.append(tf1.get("exact_match", False))
 
-        judge_score = row.get("judge_score")
+        judge_score_raw = row.get("judge_score")
+        judge_score = None if pd.isna(judge_score_raw) else int(judge_score_raw)
         gen_error = row.get("gen_error")
         fm = classify_failure(
             ref_in_chunks=aic,

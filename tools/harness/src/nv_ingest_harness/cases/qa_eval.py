@@ -11,29 +11,14 @@ latency stats, and full per-query detail.
 
 import json
 import os
-import re
 
+from nemo_retriever.evaluation.config import _expand_env_vars
 from nemo_retriever.evaluation.generators import LiteLLMClient
 from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
 from nemo_retriever.evaluation.judges import LLMJudge
 from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
 from nemo_retriever.evaluation.retrievers import FileRetriever
 from nv_ingest_harness.utils.qa import TopKRetriever
-
-
-def _expand_env_vars(value):
-    """Recursively expand ${VAR} references in config values."""
-    if isinstance(value, str):
-        return re.sub(
-            r"\$\{(\w+)\}",
-            lambda m: os.environ.get(m.group(1), m.group(0)),
-            value,
-        )
-    if isinstance(value, dict):
-        return {k: _expand_env_vars(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_expand_env_vars(item) for item in value]
-    return value
 
 
 def _build_retriever(config, collection_name: str, model_name: str):

@@ -39,9 +39,13 @@ Optional env vars (env-var mode):
   GEN_MODEL_NAME   Short label for the generator (default: generator)
   GEN_API_BASE     Override endpoint for generator model
   GEN_MODELS       Multi-model sweep: comma-separated name:model pairs.
+  GEN_TEMPERATURE  Sampling temperature for generator (default: 0.0)
   JUDGE_MODEL      litellm model string for judge
   JUDGE_API_BASE   Override endpoint for judge model
   LITELLM_DEBUG    Set to 1 to enable full litellm request/response logging
+  MIN_COVERAGE     Abort if retrieval file covers fewer queries than this
+                   fraction (0.0-1.0, default: 0.0 = no check).
+                   Set to e.g. 0.8 to fail-fast on misaligned data.
 """
 
 import json
@@ -196,6 +200,16 @@ def _run_config_sweep(config_path: str) -> int:
 
     retriever = FileRetriever(file_path=retrieval_file)
     coverage = retriever.check_coverage(qa_pairs)
+    min_coverage = execution.get("min_coverage", 0.0)
+    print(f"Coverage:       {coverage:.1%}")
+    if coverage < min_coverage:
+        print(
+            f"ERROR: retrieval file covers only {coverage:.1%} of queries "
+            f"(min_coverage={min_coverage:.0%}). Aborting to avoid "
+            f"wasting API credits on misaligned data.",
+            file=sys.stderr,
+        )
+        return 1
     if coverage < 0.5:
         print(
             f"WARNING: retrieval file covers only {coverage:.0%} of queries",
@@ -234,7 +248,7 @@ def _run_config_sweep(config_path: str) -> int:
         for run_idx in range(1, n_runs + 1):
             run_number += 1
             label = f"{gen_name} + {judge_name} (run {run_idx}/{n_runs})"
-            print(f"\n{'=' * 60}\n" f"[{run_number}/{total_runs}] {label} " f"(run {run_idx}/{n_runs})\n" f"{'=' * 60}")
+            print(f"\n{'=' * 60}\n" f"[{run_number}/{total_runs}] {label}\n" f"{'=' * 60}")
 
             try:
                 pipeline = QAEvalPipeline(
@@ -285,6 +299,7 @@ def _run_config_sweep(config_path: str) -> int:
     passed = sum(1 for _, s, _ in results_log if s == "PASS")
     print(f"\n{'=' * 60}")
     print(f"Sweep complete: {passed}/{total_runs} passed")
+    print(f"Coverage:       {coverage:.1%}")
     print("=" * 60)
     for label, status, detail in results_log:
         print(f"  {status}: {label} -> {detail}")
@@ -313,6 +328,7 @@ def _main_env() -> int:
     gen_name = os.environ.get("GEN_MODEL_NAME", "generator")
     gen_model = os.environ.get("GEN_MODEL", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
     gen_api_base = os.environ.get("GEN_API_BASE")
+    gen_temperature = float(os.environ.get("GEN_TEMPERATURE", "0.0"))
 
     def _default_output_path() -> str:
         dataset_stem = os.path.splitext(
@@ -369,8 +385,8 @@ def _main_env() -> int:
     print(f"  api_base:     {gen_api_base}")
     print(f"Judge:          {judge_model}")
     print(f"  api_base:     {judge_api_base}")
-    print(f"Gen API key:    {'set (' + gen_api_key[:12] + '...)' if gen_api_key else 'NOT SET'}")
-    print(f"Judge API key:  {'set (' + judge_api_key[:12] + '...)' if judge_api_key else 'NOT SET'}")
+    print(f"Gen API key:    {'set' if gen_api_key else 'NOT SET'}")
+    print(f"Judge API key:  {'set' if judge_api_key else 'NOT SET'}")
     print("=" * 60)
 
     loader = get_qa_dataset_loader(qa_dataset)
@@ -383,6 +399,16 @@ def _main_env() -> int:
 
     retriever = FileRetriever(file_path=retrieval_file)
     coverage = retriever.check_coverage(qa_pairs)
+    min_coverage = float(os.environ.get("MIN_COVERAGE", "0.0"))
+    print(f"Coverage:       {coverage:.1%}")
+    if coverage < min_coverage:
+        print(
+            f"ERROR: retrieval file covers only {coverage:.1%} of queries "
+            f"(MIN_COVERAGE={min_coverage:.0%}). Aborting to avoid "
+            f"wasting API credits on misaligned data.",
+            file=sys.stderr,
+        )
+        return 1
     if coverage < 0.5:
         print(
             f"WARNING: retrieval file covers only {coverage:.0%} of queries -- "
@@ -397,6 +423,7 @@ def _main_env() -> int:
             model=gm,
             api_base=gen_api_base or None,
             api_key=gen_api_key or None,
+            temperature=gen_temperature,
         )
 
     judge = LLMJudge(

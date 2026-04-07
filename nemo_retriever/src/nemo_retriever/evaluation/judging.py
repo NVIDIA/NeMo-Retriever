@@ -74,7 +74,7 @@ class JudgingOperator(EvalOperator):
                 except Exception as exc:
                     idx = futures[future]
                     logger.warning("Row %d judging failed: %s", idx, exc)
-                    results[idx] = JudgeResult(score=0, reasoning="", error=str(exc))
+                    results[idx] = JudgeResult(score=None, reasoning="", error=str(exc))
 
         out = df.copy()
         out["judge_score"] = [r.score for r in results]

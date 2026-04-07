@@ -64,11 +64,14 @@ def load_vidore_v3_qa(dataset_name: str, cache_dir: Optional[str] = None) -> lis
             "The 'datasets' library is required for ViDoRe v3 loading. " "Install it: pip install datasets>=2.19.0"
         ) from exc
 
-    load_kwargs: dict = {"split": "queries"}
+    load_kwargs: dict = {}
     if cache_dir:
         load_kwargs["cache_dir"] = cache_dir
 
-    ds = load_dataset(dataset_name, **load_kwargs)
+    try:
+        ds = load_dataset(dataset_name, "queries", split="test", **load_kwargs)
+    except (ValueError, TypeError):
+        ds = load_dataset(dataset_name, split="queries", **load_kwargs)
 
     column_names = ds.column_names
     required = ["query", "answer"]

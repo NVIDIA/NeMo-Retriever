@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import threading
 import unicodedata
 from nemo_retriever.evaluation.types import RetrievalResult
 
@@ -74,6 +75,7 @@ class FileRetriever:
             self._raw_keys[norm] = raw_key
 
         self._miss_count = 0
+        self._miss_lock = threading.Lock()
 
     def check_coverage(self, qa_pairs: list[dict]) -> float:
         """Validate retrieval file covers the ground-truth queries."""
@@ -110,10 +112,12 @@ class FileRetriever:
         entry = self._norm_index.get(norm)
 
         if entry is None:
-            self._miss_count += 1
-            if self._miss_count <= 20:
+            with self._miss_lock:
+                self._miss_count += 1
+                count = self._miss_count
+            if count <= 20:
                 logger.warning("FileRetriever: query not found in retrieval file: %r", query)
-            elif self._miss_count == 21:
+            elif count == 21:
                 logger.warning("FileRetriever: suppressing further miss warnings (>20)")
             return RetrievalResult(chunks=[], metadata=[])
 

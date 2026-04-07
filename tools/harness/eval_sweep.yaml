@@ -10,7 +10,7 @@
 # variables at load time.  Never commit real keys in this file.
 
 dataset:
-  source: "csv:data/bo767_annotations.csv"
+  source: "csv:../../data/bo767_annotations.csv"
 
 retrieval:
   type: "file"
@@ -55,7 +55,8 @@ evaluations:
 execution:
   top_k: 5
   max_workers: 8
-  # timeout: 120  # per-request timeout in seconds (default: 120)
+  # timeout: 120    # per-request timeout in seconds (default: 120)
+  # min_coverage: 0.8  # abort if retrieval file covers < 80% of queries (default: 0.0 = no check)
 
 output:
   results_dir: "data/test_retrieval"

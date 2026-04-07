@@ -84,7 +84,7 @@ class LLMJudge:
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:
         """Score a candidate answer against the reference answer."""
         if not candidate or not candidate.strip():
-            return JudgeResult(score=0, reasoning="Candidate answer was empty.", error="empty_candidate")
+            return JudgeResult(score=None, reasoning="Candidate answer was empty.", error="empty_candidate")
 
         user_content = _JUDGE_USER_TEMPLATE.format(
             query=query,
@@ -100,7 +100,7 @@ class LLMJudge:
             raw, _ = self._client.complete(messages, max_tokens=256)
             return _parse_judge_response(raw)
         except Exception as exc:
-            return JudgeResult(score=0, reasoning="", error=f"judge_api_error: {exc}")
+            return JudgeResult(score=None, reasoning="", error=f"judge_api_error: {exc}")
 
 
 def _parse_judge_response(raw: str) -> JudgeResult:
@@ -128,7 +128,7 @@ def _parse_judge_response(raw: str) -> JudgeResult:
         return JudgeResult(score=score, reasoning=reasoning)
 
     return JudgeResult(
-        score=0,
+        score=None,
         reasoning="",
         error=f"parse_failure: could not extract score from response: {raw[:200]!r}",
     )

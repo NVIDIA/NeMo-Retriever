@@ -19,6 +19,7 @@ Designed to be **plug-and-play** -- swap retrievers, generators, or judges indep
 - [Quick Start (Harness CLI)](#quick-start-harness-cli)
 - [Retrieval JSON Format (Interface Contract)](#retrieval-json-format-interface-contract)
 - [Custom Datasets (CSV Loader)](#custom-datasets-csv-loader)
+- [Retrieval Benchmarking](#retrieval-benchmarking)
 - [Architecture](#architecture)
   - [Operator Graph Chain (single-model)](#operator-graph-chain-single-model)
   - [QAEvalPipeline (multi-model sweeps)](#qaevalpipeline-multi-model-sweeps)
@@ -162,6 +163,11 @@ The only requirement is that your JSON contains a top-level `queries` object
 mapping each ground-truth question string to `{ "chunks": ["...", ...] }`.
 See the [interface contract](#retrieval-json-format-interface-contract) for the
 full schema, required fields, and a worked example.
+
+**Alternative: retrieval-bench integration.** If you want to benchmark dense
+retrieval (or any retrieval-bench pipeline) against the LanceDB baseline on the
+same bo767 dataset, see [Retrieval Benchmarking](#retrieval-benchmarking) for
+ready-made scripts and exact commands.
 
 ### Python environment
 
@@ -318,9 +324,11 @@ python run_qa_eval.py
 | `GEN_MODEL_NAME` | `generator` | Short label for the generator |
 | `GEN_API_BASE` | _(unset)_ | Override endpoint URL for the generator |
 | `GEN_MODELS` | _(unset)_ | Multi-model sweep: `name:model,...` (overrides `GEN_MODEL`) |
+| `GEN_TEMPERATURE` | `0.0` | Sampling temperature for generator |
 | `JUDGE_MODEL` | `nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1` | Judge model |
 | `JUDGE_API_BASE` | _(unset)_ | Override endpoint URL for the judge |
 | `LITELLM_DEBUG` | `0` | Set `1` for full request/response logging |
+| `MIN_COVERAGE` | `0.0` | Abort if retrieval covers fewer queries (0.0-1.0, e.g. `0.8`) |
 
 **API key resolution:** `GEN_API_KEY` and `JUDGE_API_KEY` each fall back to `NVIDIA_API_KEY` when unset. Set only `NVIDIA_API_KEY` if generator and judge share the same provider. Set individual keys when they use different providers.
 
@@ -493,6 +501,93 @@ All columns beyond `query` and `answer` are preserved as metadata in the output.
 
 Built-in datasets: `bo767_infographic`, `vidore/<hf_dataset_id>`, `csv:/path/to/file.csv`. The default dataset is `csv:data/bo767_annotations.csv` (1007 Q&A pairs across text, table, chart, and infographic modalities).
 
+## Retrieval Benchmarking
+
+Compare different retrieval strategies head-to-head by generating FileRetriever
+JSON from alternative retrieval systems and running the same QA evaluation.
+Two scripts in `retrieval_bench/` bridge the
+[retrieval-bench](../../../../retrieval-bench/) framework with the QA eval
+harness -- any pipeline (dense, agentic, hybrid, reranked) that produces a
+conforming JSON can be evaluated without changing the generator or judge.
+
+| Script | Purpose |
+|--------|---------|
+| `run_dense_retrieval_bo767.py` | Run dense retrieval directly on the bo767 corpus (page markdown index + annotations CSV) and output FileRetriever JSON. Enables apples-to-apples comparison with LanceDB retrieval. |
+| `convert_traces_to_retrieval.py` | Convert retrieval-bench per-query trace files into FileRetriever JSON for any dataset (ViDoRe, BRIGHT, custom). |
+
+**Prerequisites:** `retrieval-bench` must be installed (`pip install -e path/to/retrieval-bench`
+or equivalent). For Path B, the page markdown index (`data/bo767_page_markdown.json`)
+from [step 2](#step-2-build-page-markdown-index-nemo-retriever) is required.
+
+### Path A: ViDoRe dataset (retrieval-bench traces)
+
+Run retrieval-bench on a ViDoRe dataset first (outside this harness), then convert
+the per-query traces into FileRetriever JSON:
+
+```bash
+cd tools/harness
+
+python retrieval_bench/convert_traces_to_retrieval.py \
+  --traces-dir /path/to/retrieval-bench/traces \
+  --trace-run-name DenseRetrievalPipeline__llama-nv-embed-reasoning-3b \
+  --dataset-name vidore/vidore_v3_finance_en \
+  --top-k 5 \
+  --output data/test_retrieval/vidore_finance_retrieval.json
+```
+
+Then evaluate with the standard QA pipeline:
+
+```bash
+export NVIDIA_API_KEY="nvapi-..."
+export RETRIEVAL_FILE=data/test_retrieval/vidore_finance_retrieval.json
+export QA_DATASET="vidore/vidore_v3_finance_en"
+export QA_MAX_WORKERS=8
+python run_qa_eval.py
+```
+
+### Path B: bo767 corpus (apples-to-apples with LanceDB)
+
+Run dense retrieval directly on the bo767 corpus using the page markdown index:
+
+```bash
+cd tools/harness
+
+python retrieval_bench/run_dense_retrieval_bo767.py \
+  --backend llama-nv-embed-reasoning-3b \
+  --top-k 5 \
+  --retriever-top-k 100 \
+  --output data/test_retrieval/bo767_retrieval_dense.json
+```
+
+Then evaluate -- the generator and judge are the same as for LanceDB, so any
+score difference is purely from retrieval quality:
+
+```bash
+export NVIDIA_API_KEY="nvapi-..."
+export RETRIEVAL_FILE=data/test_retrieval/bo767_retrieval_dense.json
+export QA_MAX_WORKERS=8
+python run_qa_eval.py
+```
+
+To use a non-NIM generator (e.g., an OpenAI-compatible endpoint), add
+`GEN_MODEL`, `GEN_API_BASE`, and `GEN_API_KEY` as described in
+[Step 5](#step-5-run-qa-evaluation).
+
+### Extending to other retrieval systems
+
+Any retrieval pipeline -- agentic RAG, hybrid search, BM25 + reranker, or a
+fully custom system -- can be benchmarked through the same workflow. Produce a
+JSON file conforming to the [retrieval JSON specification](#retrieval-json-format-interface-contract)
+and point `RETRIEVAL_FILE` at it. The QA eval harness treats all retrieval
+sources identically.
+
+For the most direct comparison, use the **same dataset** (e.g., bo767) across
+all retrieval methods. Path B above uses the same ground-truth CSV and page
+markdown corpus as the LanceDB baseline from
+[Reproducing the bo767 Run](#reproducing-the-bo767-run), so the only variable
+is the retrieval strategy. Run QA eval with the same generator and judge on
+each retrieval JSON and compare the resulting scores side-by-side.
+
 ## Architecture
 
 The evaluation framework provides **two execution paths** that share the same
@@ -633,6 +728,8 @@ independently of any ingestion or retrieval pipeline.
 | `load_eval_config()` + `build_eval_chain()` | Config-driven single-model eval via operator graph chain |
 | `load_eval_config()` + `build_eval_pipeline()` | Config-driven multi-model eval via `QAEvalPipeline` |
 | `cases/qa_eval.py` | Harness CLI integration (`--case=qa_eval`) -- reads `test_configs.yaml` |
+| `retrieval_bench/run_dense_retrieval_bo767.py` | Dense retrieval on bo767 via retrieval-bench, outputs FileRetriever JSON |
+| `retrieval_bench/convert_traces_to_retrieval.py` | Convert retrieval-bench traces to FileRetriever JSON (any dataset) |
 
 ## Configuration
 
@@ -715,7 +812,7 @@ execution:
 |---------|---------|
 | `models` | Dict of model definitions keyed by short name. Fields: `model` (litellm string), `api_base`, `api_key`, `temperature`, `max_tokens`, `extra_params`, `num_retries`. |
 | `evaluations` | List of generator+judge combos. Each entry references model names and has an optional `runs` count (default: `execution.runs`, then 1). Per-evaluation `temperature`/`max_tokens` overrides are supported. |
-| `execution` | Shared settings: `top_k`, `max_workers`, `runs` (default for evaluations that omit it). |
+| `execution` | Shared settings: `top_k`, `max_workers`, `runs` (default for evaluations that omit it), `min_coverage` (abort if retrieval covers fewer queries than this fraction, default 0.0). |
 | `output` | Optional `results_dir` (default: `data/test_retrieval`). |
 
 **Config-driven sweep** -- run all evaluations with one command:
@@ -884,7 +981,7 @@ Candidate answer: {candidate}
 | `gen_latency_s` | Generation | `float` | Generation API call latency (seconds) |
 | `gen_error` | Generation | `str?` | Error string if generation failed, else `null` |
 | `token_f1` | **Tier 2** | `float` | SQuAD-style F1 (0.0-1.0) |
-| `judge_score` | **Tier 3** | `int` | LLM judge score (1-5) |
+| `judge_score` | **Tier 3** | `int?` | LLM judge score (1-5), `null` on error |
 | `judge_reasoning` | **Tier 3** | `str` | One-sentence explanation from the judge |
 | `judge_error` | Tier 3 | `str?` | Error string if judging failed, else `null` |
 | `failure_mode` | Derived | `str` | Classification (see below) |
@@ -901,7 +998,8 @@ Combines Tier 1 + Tier 3 to diagnose **where** a failure occurred:
 | `refused_with_context` | `judge_score` 1-3, model claims "no context", AND `answer_in_context == True` | Model falsely claimed the answer was missing despite it being in the chunks |
 | `retrieval_miss` | `judge_score <= 1`, answer does NOT claim "no context", AND `answer_in_context == False` | Retriever failed to surface the answer |
 | `generation_miss` | `judge_score <= 1`, answer does NOT claim "no context", AND `answer_in_context == True` | Retriever had the answer, model missed it (wrong answer, not a refusal) |
-| `thinking_truncated` | `gen_error == "thinking_truncated"` or `judge_score` is `null` | Reasoning model exhausted token budget before producing an answer |
+| `thinking_truncated` | `gen_error == "thinking_truncated"` | Reasoning model exhausted token budget before producing an answer |
+| `judge_error` | `judge_score` is `null` AND `gen_error != "thinking_truncated"` | Judge API failed (timeout, parse error, rate limit); query could not be scored |
 
 The **`refused_missing_context`** vs **`refused_with_context`** split replaces the old `no_context` bucket. Both indicate the model said "context does not contain..." but they differ on whether that was true: `refused_missing_context` = correct refusal (retrieval problem), `refused_with_context` = false refusal (generation problem).
 
