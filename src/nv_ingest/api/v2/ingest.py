@@ -13,6 +13,7 @@ import os
 import time
 import uuid
 import random
+=======
 from pathlib import Path
 import fsspec
 
@@ -848,6 +849,7 @@ async def submit_job_v2(
         # Parse job spec
         job_spec_dict = json.loads(job_spec.payload)
 
+
         # Extract PDF configuration if provided by client
         pdf_config = job_spec_dict.get("pdf_config", {})
         client_split_page_count = pdf_config.get("split_page_count") if pdf_config else None
@@ -866,6 +868,10 @@ async def submit_job_v2(
         # Track page count for all PDFs (used for both splitting logic and metadata)
         pdf_page_count_cache = None
         submission_items: List[Tuple[str, MessageWrapper]] = []
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2695fec0b083ff168ec6dcb9d04a7872da76e5ac
         subjob_ids: List[str] = []
         subjob_descriptors: List[Dict[str, Any]] = []
         parent_metadata: Dict[str, Any] = {}
@@ -945,8 +951,8 @@ async def submit_job_v2(
                         {
                             "job_id": subjob_id,
                             "chunk_index": len(subjob_descriptors) + 1,
-                            "start_page": chunk.get("start_page"),
-                            "end_page": chunk.get("end_page"),
+                            "start_page": chunk.get("start"),
+                            "end_page": chunk.get("end"),
                             "page_count": chunk.get("page_count"),
                         }
                     )
@@ -985,7 +991,34 @@ async def submit_job_v2(
                     "start": start,
                     "end": end,
                 }
+        elif document_types and payloads and document_types[0].lower() in ["mp4", "mov", "avi", "mp3", "wav"]:
+            # print("IN AUDIO/VIDEO BLOCK")
+            document_type = document_types[0]
+            upload_path = f"./{Path(original_source_id).name}"
+            # dump the payload to a file, just came from client
+            with fsspec.open(upload_path, "wb") as f:
+                f.write(base64.b64decode(payloads[0]))
+            dataloader = DataLoader(
+                path=upload_path, output_dir="./audio_chunks/", audio_only=True, split_interval=50000000
+            )
+            document_type = DocumentTypeEnum.MP3
 
+            parent_uuid = uuid.UUID(parent_job_id)
+            for task in job_spec_dict["tasks"]:
+                if "task_properties" in task and "document_type" in task["task_properties"]:
+                    task["task_properties"]["document_type"] = document_type
+            end = 0
+            for idx, (file_path, duration) in enumerate(dataloader.files_completed):
+                start = end
+                end = int(start + duration)
+                chunk = {
+                    "bytes": file_path.encode("utf-8"),
+                    "chunk_index": idx,
+                    "start": start,
+                    "end": end,
+                }
+
+                logger.debug(f"Preparing chunk submission for {file_path} and duration {duration}")
                 subjob_id, subjob_wrapper = _prepare_chunk_submission(
                     job_spec_dict,
                     chunk,
@@ -1008,9 +1041,9 @@ async def submit_job_v2(
                         "page_count": chunk.get("page_count", 0),
                     }
                 )
-            logger.debug(f"Removing uploaded file {upload_path}")
-            os.remove(upload_path)
 
+            logger.error(f"Removing uploaded file {upload_path}")
+            os.remove(upload_path)
         if submission_items:
             burst_size, pause_ms, jitter_ms = _get_submit_burst_params()
             await _submit_subjobs_in_bursts(

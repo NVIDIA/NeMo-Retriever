@@ -922,18 +922,20 @@ def wait_for_index(collection_name: str, expected_rows_dict: dict, client: Milvu
     """
     client.flush(collection_name)
     indexed_rows = 0
-    # observe dense_index, all indexes get populated simultaneously
-    for index_name, rows_expected in expected_rows_dict.items():
-        indexed_rows = client.describe_index(collection_name, index_name)["indexed_rows"]
-        while indexed_rows < rows_expected:
-            # 0.5% of rows expected allowed without noticing an increase in indexed_rows
-            pos_movement = start_pos_movement = max((rows_expected - indexed_rows) * 0.005, 10)
+    for index_name in index_names:
+        indexed_rows = 0
+        already_indexed_rows = client.describe_index(collection_name, index_name)["indexed_rows"]
+        while indexed_rows < num_elements:
+            pos_movement = 10  # number of iteration allowed without noticing an increase in indexed_rows
             for i in range(20):
                 prev_indexed_rows = indexed_rows
                 indexed_rows = client.describe_index(collection_name, index_name)["indexed_rows"]
                 time.sleep(1)
-                logger.info(f"Indexed rows, {collection_name}, {index_name} -  {indexed_rows} / {rows_expected}")
-                if indexed_rows >= rows_expected:
+                logger.info(
+                    f"polling for indexed rows, {collection_name}, {index_name} -  {new_indexed_rows} / {num_elements}"
+                )
+                if new_indexed_rows == already_indexed_rows + num_elements:
+                    indexed_rows = new_indexed_rows
                     break
                 # check if indexed_rows is staying the same, too many times means something is wrong
                 if indexed_rows == prev_indexed_rows:
