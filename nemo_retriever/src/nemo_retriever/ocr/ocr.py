@@ -562,11 +562,16 @@ def ocr_page_elements(
                 crops = _crop_all_from_page(page_image_b64, dets, row_wanted, as_b64=True)
                 crop_b64s: List[str] = [b64 for _label, _bbox, b64 in crops]
                 crop_meta: List[Tuple[str, List[float]]] = [(label, bbox) for label, bbox, _b64 in crops]
+                # Tables need word-level merging; everything else uses paragraph.
+                crop_merge_levels: List[str] = [
+                    "word" if label == "table" else "paragraph" for label, _bbox, _b64 in crops
+                ]
 
                 if crop_b64s:
                     response_items = invoke_image_inference_batches(
                         invoke_url=invoke_url,
                         image_b64_list=crop_b64s,
+                        merge_levels=crop_merge_levels,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
