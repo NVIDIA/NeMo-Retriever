@@ -417,7 +417,7 @@ def _remote_response_to_detections(
                 batch_size=1,
                 label_names=label_names,
             )[0]
-            return _apply_page_elements_v3_postprocess(dets)
+            return _apply_final_score_filter(_apply_page_elements_v3_postprocess(dets))
         except Exception:
             pass
 
@@ -430,7 +430,7 @@ def _remote_response_to_detections(
         if isinstance(bb, dict):
             try:
                 dets = _bounding_boxes_to_detections(bb)
-                return _apply_page_elements_v3_postprocess(dets)
+                return _apply_final_score_filter(_apply_page_elements_v3_postprocess(dets))
             except Exception:
                 pass
 
@@ -442,7 +442,7 @@ def _remote_response_to_detections(
         if all(isinstance(v, list) for v in cand.values()):
             try:
                 dets = _annotation_dict_to_detections(cand)  # type: ignore[arg-type]
-                return _apply_page_elements_v3_postprocess(dets)
+                return _apply_final_score_filter(_apply_page_elements_v3_postprocess(dets))
             except Exception:
                 pass
 
