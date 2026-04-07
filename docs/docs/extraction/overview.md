@@ -48,6 +48,7 @@ NeMo Retriever Library supports the following file types:
 - `png`
 - `pptx`
 - `sh` (treated as text)
+- `svg` (NeMo Retriever Library only, requires `cairosvg`)
 - `tiff`
 - `txt`
 - `wav`

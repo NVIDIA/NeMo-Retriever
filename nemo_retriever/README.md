@@ -200,6 +200,13 @@ For example, with apt-get on Ubuntu:
 sudo apt install -y libreoffice
 ```
 
+For SVG image files, install the optional `cairosvg` dependency. SVG support is only available in NeMo Retriever Library (not in the container deployment) and requires network access to install, so it will not work in air-gapped environments.
+```bash
+uv pip install "nemo-retriever[svg]"
+# or equivalently:
+uv pip install "cairosvg>=2.7.0"
+```
+
 Example usage:
 ```python
 # docx and pptx files
