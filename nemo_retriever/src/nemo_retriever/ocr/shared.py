@@ -973,4 +973,3 @@ def nemotron_parse_page_elements(
     out["infographic_parse"] = all_infographic
     out["nemotron_parse_v1_2"] = all_meta
     return out
-

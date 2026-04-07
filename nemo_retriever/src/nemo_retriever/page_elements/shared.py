@@ -727,4 +727,3 @@ def detect_page_elements_v3(
         _counts_by_label(p.get("detections") or []) if isinstance(p, dict) else {} for p in row_payloads
     ]
     return out
-

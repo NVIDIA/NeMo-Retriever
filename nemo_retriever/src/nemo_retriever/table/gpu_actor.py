@@ -97,4 +97,15 @@ class TableStructureActor(AbstractOperator, GPUOperator):
                 out["table"] = [[] for _ in range(n)]
                 out["table_structure_ocr_v1"] = [payload for _ in range(n)]
                 return out
-            return [{"table_structure_ocr_v1": {"timing": None, "error": {"stage": "table_structure_actor_call", "type": exc.__class__.__name__, "message": str(exc)}}}]
+            return [
+                {
+                    "table_structure_ocr_v1": {
+                        "timing": None,
+                        "error": {
+                            "stage": "table_structure_actor_call",
+                            "type": exc.__class__.__name__,
+                            "message": str(exc),
+                        },
+                    }
+                }
+            ]

@@ -97,4 +97,15 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
                 out["chart"] = [[] for _ in range(n)]
                 out["graphic_elements_ocr_v1"] = [payload for _ in range(n)]
                 return out
-            return [{"graphic_elements_ocr_v1": {"timing": None, "error": {"stage": "chart_graphic_elements_ocr_actor_call", "type": exc.__class__.__name__, "message": str(exc)}}}]
+            return [
+                {
+                    "graphic_elements_ocr_v1": {
+                        "timing": None,
+                        "error": {
+                            "stage": "chart_graphic_elements_ocr_actor_call",
+                            "type": exc.__class__.__name__,
+                            "message": str(exc),
+                        },
+                    }
+                }
+            ]

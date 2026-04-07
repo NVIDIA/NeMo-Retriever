@@ -868,10 +868,6 @@ async def submit_job_v2(
         # Track page count for all PDFs (used for both splitting logic and metadata)
         pdf_page_count_cache = None
         submission_items: List[Tuple[str, MessageWrapper]] = []
-<<<<<<< HEAD
-=======
-
->>>>>>> 2695fec0b083ff168ec6dcb9d04a7872da76e5ac
         subjob_ids: List[str] = []
         subjob_descriptors: List[Dict[str, Any]] = []
         parent_metadata: Dict[str, Any] = {}
