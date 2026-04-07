@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.page_elements.shared import detect_page_elements_v3
 
 __all__ = [
@@ -11,13 +14,37 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
-    if name == "PageElementDetectionActor":
-        from nemo_retriever.page_elements.gpu_actor import PageElementDetectionActor
+class PageElementDetectionActor(ArchetypeOperator):
+    """Graph-facing page element detection archetype."""
 
-        return PageElementDetectionActor
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("page_elements_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    @classmethod
+    def cpu_variant_class(cls):
+        from nemo_retriever.page_elements.cpu_actor import PageElementDetectionCPUActor
+
+        return PageElementDetectionCPUActor
+
+    @classmethod
+    def gpu_variant_class(cls):
+        from nemo_retriever.page_elements.gpu_actor import PageElementDetectionActor as PageElementDetectionGPUActor
+
+        return PageElementDetectionGPUActor
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
+
+
+def __getattr__(name: str):
     if name == "PageElementDetectionCPUActor":
         from nemo_retriever.page_elements.cpu_actor import PageElementDetectionCPUActor
 
         return PageElementDetectionCPUActor
+    if name == "PageElementDetectionGPUActor":
+        from nemo_retriever.page_elements.gpu_actor import PageElementDetectionActor as PageElementDetectionGPUActor
+
+        return PageElementDetectionGPUActor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

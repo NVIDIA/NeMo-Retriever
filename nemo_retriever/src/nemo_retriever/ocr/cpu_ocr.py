@@ -6,9 +6,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
+
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.ocr.shared import _error_payload
 from nemo_retriever.ocr.shared import ocr_page_elements
 
 
@@ -55,3 +58,18 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as exc:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="cpu_actor_call", exc=exc)
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["chart"] = [[] for _ in range(n)]
+                out["infographic"] = [[] for _ in range(n)]
+                out["ocr_v1"] = [payload for _ in range(n)]
+                return out
+            return [{"ocr_v1": _error_payload(stage="cpu_actor_call", exc=exc)}]

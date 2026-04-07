@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import pandas as pd
+
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.params import RemoteRetryParams
@@ -70,3 +72,34 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as exc:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = {
+                    "timing": None,
+                    "error": {
+                        "stage": "table_structure_cpu_actor_call",
+                        "type": exc.__class__.__name__,
+                        "message": str(exc),
+                    },
+                }
+                n = len(out.index)
+                out["table"] = [[] for _ in range(n)]
+                out["table_structure_ocr_v1"] = [payload for _ in range(n)]
+                return out
+            return [
+                {
+                    "table_structure_ocr_v1": {
+                        "timing": None,
+                        "error": {
+                            "stage": "table_structure_cpu_actor_call",
+                            "type": exc.__class__.__name__,
+                            "message": str(exc),
+                        },
+                    }
+                }
+            ]
