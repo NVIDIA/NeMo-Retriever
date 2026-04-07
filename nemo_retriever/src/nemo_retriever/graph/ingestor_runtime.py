@@ -15,7 +15,7 @@ from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
 from nemo_retriever.dedup.dedup import dedup_images
-from nemo_retriever.graph import Graph, UDFOperator
+from nemo_retriever.graph import Graph, StoreOperator, UDFOperator
 from nemo_retriever.graph.content_transforms import (
     _CONTENT_COLUMNS,
     collapse_content_to_page_rows,
@@ -241,10 +241,12 @@ def _resolve_execution_inputs(
     dedup_params: Any | None,
     split_params: Any | None,
     caption_params: Any | None,
+    store_params: Any | None,
     embed_params: Any | None,
     stage_order: tuple[str, ...],
 ) -> tuple[
     str,
+    Any | None,
     Any | None,
     Any | None,
     Any | None,
@@ -269,6 +271,7 @@ def _resolve_execution_inputs(
             dedup_params,
             split_params,
             caption_params,
+            store_params,
             embed_params,
             stage_order,
         )
@@ -284,6 +287,7 @@ def _resolve_execution_inputs(
         stage_map.get("dedup"),
         stage_map.get("split"),
         stage_map.get("caption"),
+        stage_map.get("store"),
         stage_map.get("embed"),
         tuple(stage.name for stage in execution_plan.stages),
     )
@@ -309,6 +313,7 @@ def _append_ordered_transform_stages(
     dedup_params: Any | None,
     split_params: Any | None,
     caption_params: Any | None,
+    store_params: Any | None,
     embed_params: Any | None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
@@ -319,20 +324,24 @@ def _append_ordered_transform_stages(
     pending_stages = [
         stage
         for stage in stage_order
-        if stage in {"dedup", "split", "caption", "embed"} and (supports_dedup or stage != "dedup")
+        if stage in {"dedup", "split", "caption", "store", "embed"} and (supports_dedup or stage != "dedup")
     ]
     if not pending_stages:
         if supports_dedup and dedup_params is not None:
             pending_stages.append("dedup")
         if caption_params is not None:
             pending_stages.append("caption")
+        if store_params is not None:
+            pending_stages.append("store")
         if split_params is not None:
             pending_stages.append("split")
         if embed_params is not None:
             pending_stages.append("embed")
 
     for stage_name in pending_stages:
-        if stage_name == "dedup" and supports_dedup and dedup_params is not None:
+        if stage_name == "store" and store_params is not None:
+            graph = graph >> StoreOperator(params=store_params)
+        elif stage_name == "dedup" and supports_dedup and dedup_params is not None:
             dedup_kwargs = cast(dict[str, Any], dedup_params.model_dump(mode="python"))
             graph = graph >> UDFOperator(partial(dedup_images, **dedup_kwargs), name="DedupImages")
         elif stage_name == "caption" and caption_params is not None:
@@ -382,6 +391,7 @@ def build_graph(
     embed_params: Any | None = None,
     split_params: Any | None = None,
     caption_params: Any | None = None,
+    store_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
 ) -> Graph:
     """Build a batch graph from explicit params or a shared execution plan."""
@@ -396,6 +406,7 @@ def build_graph(
         dedup_params,
         split_params,
         caption_params,
+        store_params,
         embed_params,
         stage_order,
     ) = _resolve_execution_inputs(
@@ -409,6 +420,7 @@ def build_graph(
         dedup_params=dedup_params,
         split_params=split_params,
         caption_params=caption_params,
+        store_params=store_params,
         embed_params=embed_params,
         stage_order=stage_order,
     )
@@ -538,6 +550,7 @@ def build_graph(
         dedup_params=dedup_params,
         split_params=split_params,
         caption_params=caption_params,
+        store_params=store_params,
         embed_params=embed_params,
         stage_order=stage_order,
         supports_dedup=True,

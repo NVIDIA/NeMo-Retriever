@@ -4,11 +4,12 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional, Sequence, Tuple
+from typing import Any, Literal, Optional, Sequence, Tuple
 
 import warnings
 
 
+from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RunMode = Literal["inprocess", "batch", "fused", "online"]
@@ -272,6 +273,20 @@ class VdbUploadParams(_ParamsModel):
     lancedb: LanceDbParams = Field(default_factory=LanceDbParams)
 
 
+class StoreParams(_ParamsModel):
+    storage_uri: str = "stored_images"
+    storage_options: dict[str, Any] = Field(default_factory=dict)
+    public_base_url: Optional[str] = None
+    store_page_images: bool = True
+    store_tables: bool = True
+    store_charts: bool = True
+    store_infographics: bool = True
+    store_images: bool = True
+    store_text: bool = False
+    image_format: str = "png"
+    strip_base64: bool = True
+
+
 class PageElementsParams(_ParamsModel):
     remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
@@ -335,3 +350,23 @@ class InfographicParams(_ParamsModel):
     output_column: str = "infographic_elements_v1"
     num_detections_column: str = "infographic_elements_v1_num_detections"
     counts_by_label_column: str = "infographic_elements_v1_counts_by_label"
+
+
+# ---------------------------------------------------------------------------
+# Structured (database) ingestion params
+# ---------------------------------------------------------------------------
+
+
+class TabularExtractParams(_ParamsModel):
+    """Params for step 1: extract schema metadata and write to Neo4j.
+
+    Covers SQLAlchemy reflection of a live database and/or parsing of
+    pre-existing SQL DDL/query files.  Produces Database, Schema, Table,
+    Column, View and Query nodes together with their relationships.
+    The Neo4j connection is provided by get_neo4j_conn() (see
+    tabular_data.neo4j) and is not configured here.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    connector: Optional[SQLDatabase] = None
