@@ -477,6 +477,7 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "extract_page_as_image": cfg.extract_page_as_image,
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
+            "use_heuristics": cfg.use_heuristics,
             "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
             "tuning": {field: getattr(cfg, field) for field in sorted(TUNING_FIELDS)},
         },

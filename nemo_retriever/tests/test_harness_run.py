@@ -78,14 +78,14 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert "element" in cmd
     assert "--extract-page-as-image" in cmd
     assert "--no-extract-page-as-image" not in cmd
-    assert "--pdf-extract-workers" not in cmd
-    assert "--pdf-extract-num-cpus" not in cmd
-    assert "--page-elements-workers" not in cmd
-    assert "--ocr-workers" not in cmd
-    assert "--embed-workers" not in cmd
-    assert "--gpu-page-elements" not in cmd
-    assert "--gpu-ocr" not in cmd
-    assert "--gpu-embed" not in cmd
+    assert "--pdf-extract-tasks" not in cmd
+    assert "--pdf-extract-cpus-per-task" not in cmd
+    assert "--page-elements-actors" not in cmd
+    assert "--ocr-actors" not in cmd
+    assert "--embed-actors" not in cmd
+    assert "--page-elements-gpus-per-actor" not in cmd
+    assert "--ocr-gpus-per-actor" not in cmd
+    assert "--embed-gpus-per-actor" not in cmd
     assert detection_file.parent == runtime_dir
     assert detection_file.name == ".detection_summary.json"
     assert effective_query_csv == query_csv
