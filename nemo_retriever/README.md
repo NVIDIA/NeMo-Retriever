@@ -155,7 +155,7 @@ The above retrieval results are often feedable directly to an LLM for answer gen
 
 To do so, first install the openai client and set your [build.nvidia.com](https://build.nvidia.com/) API key:
 ```bash
-uv pip install -y openai
+uv pip install openai
 export NVIDIA_API_KEY=nvapi-...
 ```
 
