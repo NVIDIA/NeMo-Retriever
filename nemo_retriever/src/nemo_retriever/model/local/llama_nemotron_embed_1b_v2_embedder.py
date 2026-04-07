@@ -61,6 +61,12 @@ class LlamaNemotronEmbed1BV2Embedder:
                     "vLLM embedding requires the embed-vllm extra. "
                     "Install with: uv pip install -e '.[embed-vllm]' or pip install -e '.[embed-vllm]'"
                 ) from e
+            if self.device is not None:
+                import os
+
+                dev_id = self.device.split(":")[-1] if ":" in self.device else self.device
+                os.environ["CUDA_VISIBLE_DEVICES"] = dev_id
+            configure_global_hf_cache_base(self.hf_cache_dir)
             model_id = self.model_id or _DEFAULT_EMBED_MODEL
             self._llm = create_vllm_llm(
                 str(model_id),

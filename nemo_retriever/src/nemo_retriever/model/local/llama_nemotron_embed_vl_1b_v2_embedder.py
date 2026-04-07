@@ -67,6 +67,12 @@ class LlamaNemotronEmbedVL1BV2Embedder:
                     f"but {_vllm_version} is installed. "
                     "Update with: uv pip install 'vllm>=0.17.0'"
                 )
+            if self.device is not None:
+                import os
+
+                dev_id = self.device.split(":")[-1] if ":" in self.device else self.device
+                os.environ["CUDA_VISIBLE_DEVICES"] = dev_id
+            configure_global_hf_cache_base(self.hf_cache_dir)
             model_id = self.model_id or "nvidia/llama-nemotron-embed-vl-1b-v2"
             self._llm = create_vllm_llm(
                 str(model_id),
