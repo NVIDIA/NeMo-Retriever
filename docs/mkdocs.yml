@@ -1,8 +1,8 @@
 site_name: NeMo Retriever Documentation
 site_url: https://docs.nvidia.com/nemo/retriever/
 
-repo_name: NVIDIA/nv-ingest
-repo_url: https://github.com/NVIDIA/nv-ingest/
+repo_name: NVIDIA/NeMo-Retriever
+repo_url: https://github.com/NVIDIA/NeMo-Retriever/
 
 theme:
   name: material
@@ -69,8 +69,8 @@ nav:
         - Deploy (Helm Chart): extraction/helm.md
       - Developer Guide:
         - Notebooks: extraction/notebooks.md
-        - Use the CLI: extraction/nv-ingest_cli.md
-        - Use the API: extraction/nv-ingest-python-api.md
+        - Use the CLI: extraction/cli-reference.md
+        - Use the API: extraction/python-api-reference.md
         - Use the API (V2): extraction/v2-api-guide.md
         - Split Documents: extraction/chunking.md
         - Upload Data: extraction/data-store.md
@@ -159,10 +159,10 @@ extra:
      alias: true
    social:
      - icon: fontawesome/brands/github
-       link: https://github.com/NVIDIA/nv-ingest/
+       link: https://github.com/NVIDIA/NeMo-Retriever/
 #   docker_url: nvcr.io/nvidia/clara/bionemo-framework
 #   docker_tag: main--nightly
-#   github_url: https://github.com/NVIDIA/nv-ingest/
+#   github_url: https://github.com/NVIDIA/NeMo-Retriever/
 
 copyright: |
   &copy; Copyright 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
