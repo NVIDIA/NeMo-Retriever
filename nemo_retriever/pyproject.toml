@@ -46,6 +46,7 @@ dependencies = [
   "typer>=0.12.0",
   "rich>=13.7.0",
   "pillow==12.1.1",
+  "universal-pathlib>=0.2.0",
   "numpy>=1.26.0",
   "nltk==3.9.3",
   "urllib3==2.6.3",

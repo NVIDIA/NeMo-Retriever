@@ -189,6 +189,47 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
     csv_contents = effective_query_csv.read_text(encoding="utf-8")
     assert "query,pdf_page" in csv_contents
     assert "q,doc_name_1" in csv_contents
+    assert "--segment-audio" not in cmd
+    assert "--no-segment-audio" not in cmd
+    assert "--audio-split-type" not in cmd
+    assert "--audio-split-interval" not in cmd
+
+
+def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text(
+        "query,expected_media_id,expected_start_time,expected_end_time\nq,clip,1.0,2.0\n",
+        encoding="utf-8",
+    )
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="audio_retrieval",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        input_type="audio",
+        segment_audio=True,
+        audio_split_type="time",
+        audio_split_interval=45,
+        recall_match_mode="audio_segment",
+        audio_match_tolerance_secs=3.25,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--input-type" in cmd
+    assert cmd[cmd.index("--input-type") + 1] == "audio"
+    assert "--recall-match-mode" in cmd
+    assert cmd[cmd.index("--recall-match-mode") + 1] == "audio_segment"
+    assert "--audio-match-tolerance-secs" in cmd
+    assert cmd[cmd.index("--audio-match-tolerance-secs") + 1] == "3.25"
+    assert "--segment-audio" in cmd
+    assert "--no-segment-audio" not in cmd
+    assert "--audio-split-type" in cmd
+    assert cmd[cmd.index("--audio-split-type") + 1] == "time"
+    assert "--audio-split-interval" in cmd
+    assert cmd[cmd.index("--audio-split-interval") + 1] == "45"
 
 
 def test_normalize_recall_metric_key_removes_duplicate_prefix() -> None:
@@ -505,6 +546,10 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "recall_required": cfg.recall_required,
             "recall_match_mode": cfg.recall_match_mode,
             "recall_adapter": cfg.recall_adapter,
+            "audio_match_tolerance_secs": cfg.audio_match_tolerance_secs,
+            "segment_audio": cfg.segment_audio,
+            "audio_split_type": cfg.audio_split_type,
+            "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
             "beir_loader": cfg.beir_loader,
             "beir_dataset_name": cfg.beir_dataset_name,

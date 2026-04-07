@@ -232,6 +232,10 @@ class RayDataExecutor(AbstractExecutor):
         if self._ray_address or not ray.is_initialized():
             ray.init(address=self._ray_address, ignore_reinit_error=True)
 
+        ctx = rd.DataContext.get_current()
+        ctx.enable_rich_progress_bars = True
+        ctx.use_ray_tqdm = False
+
         cluster = gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)

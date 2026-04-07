@@ -30,7 +30,8 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
-from nemo_retriever.graph.ingestor_runtime import build_graph
+from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
+from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
 from nemo_retriever.ingestor import ingestor
 from nemo_retriever.params import (
     ASRParams,
@@ -40,6 +41,7 @@ from nemo_retriever.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    StoreParams,
     TextChunkParams,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
@@ -143,6 +145,7 @@ class GraphIngestor(ingestor):
         self._split_params: Any = None
         self._caption_params: Any = None
         self._dedup_params: Any = None
+        self._store_params: Any = None
         # Ordered list of stage names; "extract" is tracked but excluded from
         # the post-extraction stage_order passed to graph builders.
         self._stage_order: List[str] = []
@@ -224,6 +227,12 @@ class GraphIngestor(ingestor):
         self._record_stage("split")
         return self
 
+    def store(self, params: Optional[StoreParams] = None, **kwargs: Any) -> "GraphIngestor":
+        """Record a store stage for persisting extracted images/text to storage."""
+        self._store_params = _coerce(params, kwargs, default_factory=StoreParams)
+        self._record_stage("store")
+        return self
+
     def embed(self, params: Optional[EmbedParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Record an embedding stage."""
         self._embed_params = _resolve_api_key(_coerce(params, kwargs, default_factory=EmbedParams))
@@ -260,6 +269,12 @@ class GraphIngestor(ingestor):
         post_extract_order = tuple(s for s in self._stage_order if s != "extract")
 
         if self._run_mode == "batch":
+            import ray
+
+            if self._ray_address or not ray.is_initialized():
+                ray.init(address=self._ray_address, ignore_reinit_error=True)
+            cluster_resources = gather_cluster_resources(ray)
+
             graph = build_graph(
                 extraction_mode=self._extraction_mode,
                 extract_params=self._extract_params,
@@ -271,15 +286,28 @@ class GraphIngestor(ingestor):
                 split_params=self._split_params,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
+                store_params=self._store_params,
                 stage_order=post_extract_order,
             )
+            # Derive per-node Ray scheduling config from BatchTuningParams plus
+            # cluster-scaled heuristic defaults, then let any explicit
+            # node_overrides passed to __init__ take precedence.
+            derived_overrides = batch_tuning_to_node_overrides(
+                self._extract_params, self._embed_params, cluster_resources=cluster_resources
+            )
+            merged_overrides: Dict[str, Dict[str, Any]] = {}
+            for node_name in set(derived_overrides) | set(self._node_overrides):
+                merged_overrides[node_name] = {
+                    **derived_overrides.get(node_name, {}),
+                    **self._node_overrides.get(node_name, {}),
+                }
             executor = RayDataExecutor(
                 graph,
                 ray_address=self._ray_address,
                 batch_size=self._batch_size,
                 num_cpus=self._num_cpus,
                 num_gpus=self._num_gpus,
-                node_overrides=self._node_overrides,
+                node_overrides=merged_overrides,
             )
             result = executor.ingest(self._documents)
             self._rd_dataset = result
@@ -296,6 +324,7 @@ class GraphIngestor(ingestor):
                 split_params=self._split_params,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
+                store_params=self._store_params,
                 stage_order=post_extract_order,
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)
