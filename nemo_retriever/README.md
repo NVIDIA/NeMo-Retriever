@@ -197,7 +197,7 @@ For PowerPoint and Docx files, ensure libeoffice is installed by your system's p
 
 For example, with apt-get on Ubuntu:
 ```bash
-sudo apt install -y libreoffice
+sudo apt install libreoffice
 ```
 
 Example usage:
