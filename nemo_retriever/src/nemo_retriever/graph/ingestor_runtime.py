@@ -11,23 +11,26 @@ from typing import cast
 from typing import Any
 
 from nemo_retriever.caption.caption import CaptionActor
-from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
 from nemo_retriever.dedup.dedup import dedup_images
 from nemo_retriever.graph import Graph, UDFOperator
+from nemo_retriever.graph.actor_selection import (
+    embed_actor_class,
+    graphic_elements_actor_class,
+    nemotron_parse_actor_class,
+    ocr_actor_class,
+    page_elements_actor_class,
+    table_structure_actor_class,
+)
 from nemo_retriever.graph.content_transforms import (
     _CONTENT_COLUMNS,
     collapse_content_to_page_rows,
     explode_content_to_rows,
 )
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
-from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
-from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
-from nemo_retriever.table.table_detection import TableStructureActor
-from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.txt.ray_data import TextChunkActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.ingest_plans import IngestExecutionPlan
@@ -176,7 +179,7 @@ def _append_ordered_transform_stages(
                         ),
                         name="ExplodeContentToRows",
                     )
-            graph = graph >> _BatchEmbedActor(params=embed_params)
+            graph = graph >> embed_actor_class(embed_params=embed_params)(params=embed_params)
 
     return graph
 
@@ -271,7 +274,10 @@ def build_graph(
             }
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
-            graph = graph >> NemotronParseActor(**parse_kwargs)
+            parse_actor = nemotron_parse_actor_class(
+                invoke_url=getattr(extract_params, "nemotron_parse_invoke_url", None)
+            )
+            graph = graph >> parse_actor(**parse_kwargs)
         else:
             detect_kwargs: dict[str, Any] = {}
             if extract_params.page_elements_invoke_url:
@@ -319,18 +325,23 @@ def build_graph(
             if extract_params.api_key:
                 graphic_kwargs["api_key"] = extract_params.api_key
 
-            graph = graph >> PDFExtractionActor(**extract_kwargs) >> PageElementDetectionActor(**detect_kwargs)
+            page_elements_actor = page_elements_actor_class(extract_params=extract_params)
+            table_actor = table_structure_actor_class(extract_params=extract_params)
+            graphic_actor = graphic_elements_actor_class(extract_params=extract_params)
+            ocr_actor = ocr_actor_class(extract_params=extract_params)
+
+            graph = graph >> PDFExtractionActor(**extract_kwargs) >> page_elements_actor(**detect_kwargs)
             if extract_params.use_table_structure and extract_params.extract_tables:
-                graph = graph >> TableStructureActor(**table_kwargs)
+                graph = graph >> table_actor(**table_kwargs)
             if extract_params.use_graphic_elements and extract_params.extract_charts:
-                graph = graph >> GraphicElementsActor(**graphic_kwargs)
+                graph = graph >> graphic_actor(**graphic_kwargs)
 
             needs_ocr = any(
                 bool(ocr_kwargs.get(key))
                 for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
             )
             if needs_ocr:
-                graph = graph >> OCRActor(**ocr_kwargs)
+                graph = graph >> ocr_actor(**ocr_kwargs)
 
     return _append_ordered_transform_stages(
         graph,

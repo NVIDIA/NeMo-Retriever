@@ -40,6 +40,7 @@ from typing import Optional, TextIO
 import typer
 
 from nemo_retriever.graph_ingestor import GraphIngestor
+from nemo_retriever.graph.actor_selection import has_local_gpu
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
@@ -292,12 +293,16 @@ def main(
         _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
 
         remote_api_key = resolve_remote_api_key(api_key)
+        local_gpu_available = has_local_gpu()
         extract_remote_api_key = (
             remote_api_key
-            if any((page_elements_invoke_url, ocr_invoke_url, graphic_elements_invoke_url, table_structure_invoke_url))
+            if (
+                any((page_elements_invoke_url, ocr_invoke_url, graphic_elements_invoke_url, table_structure_invoke_url))
+                or not local_gpu_available
+            )
             else None
         )
-        embed_remote_api_key = remote_api_key if embed_invoke_url else None
+        embed_remote_api_key = remote_api_key if (embed_invoke_url or not local_gpu_available) else None
 
         # Warn if remote URLs configured without an API key
         if (

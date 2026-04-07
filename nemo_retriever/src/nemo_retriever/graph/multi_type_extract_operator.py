@@ -15,11 +15,16 @@ import pandas as pd
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.actor_selection import (
+    graphic_elements_actor_class,
+    nemotron_parse_actor_class,
+    ocr_actor_class,
+    page_elements_actor_class,
+    table_structure_actor_class,
+)
 from nemo_retriever.html.ray_data import HtmlSplitActor
 from nemo_retriever.image.ray_data import ImageLoadActor
 from nemo_retriever.image.load import SUPPORTED_IMAGE_EXTENSIONS
-from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
-from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
 from nemo_retriever.params import ExtractParams
@@ -28,8 +33,6 @@ from nemo_retriever.params import PdfSplitParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
-from nemo_retriever.table.table_detection import TableStructureActor
-from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.txt.ray_data import TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 
@@ -192,7 +195,10 @@ class MultiTypeExtractOperator(AbstractOperator):
             }
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
-            return NemotronParseActor(**parse_kwargs).run(batch_df)
+            parse_actor = nemotron_parse_actor_class(
+                invoke_url=getattr(extract_params, "nemotron_parse_invoke_url", None)
+            )
+            return parse_actor(**parse_kwargs).run(batch_df)
 
         extract_kwargs: dict[str, Any] = {
             "method": extract_params.method,
@@ -225,7 +231,12 @@ class MultiTypeExtractOperator(AbstractOperator):
         )
         if inference_batch_size:
             detect_kwargs["inference_batch_size"] = int(inference_batch_size)
-        batch_df = PageElementDetectionActor(**detect_kwargs).run(batch_df)
+        page_elements_actor = page_elements_actor_class(extract_params=extract_params)
+        table_actor = table_structure_actor_class(extract_params=extract_params)
+        graphic_actor = graphic_elements_actor_class(extract_params=extract_params)
+        ocr_actor = ocr_actor_class(extract_params=extract_params)
+
+        batch_df = page_elements_actor(**detect_kwargs).run(batch_df)
 
         if extract_params.use_table_structure and extract_params.extract_tables:
             table_kwargs: dict[str, Any] = {}
@@ -237,7 +248,7 @@ class MultiTypeExtractOperator(AbstractOperator):
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
                 table_kwargs["table_output_format"] = extract_params.table_output_format
-            batch_df = TableStructureActor(**table_kwargs).run(batch_df)
+            batch_df = table_actor(**table_kwargs).run(batch_df)
 
         if extract_params.use_graphic_elements and extract_params.extract_charts:
             graphic_kwargs: dict[str, Any] = {}
@@ -247,7 +258,7 @@ class MultiTypeExtractOperator(AbstractOperator):
                 graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 graphic_kwargs["api_key"] = extract_params.api_key
-            batch_df = GraphicElementsActor(**graphic_kwargs).run(batch_df)
+            batch_df = graphic_actor(**graphic_kwargs).run(batch_df)
 
         ocr_kwargs: dict[str, Any] = {"use_graphic_elements": extract_params.use_graphic_elements}
         if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
@@ -268,7 +279,7 @@ class MultiTypeExtractOperator(AbstractOperator):
         if any(
             ocr_kwargs.get(key) for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
         ):
-            batch_df = OCRActor(**ocr_kwargs).run(batch_df)
+            batch_df = ocr_actor(**ocr_kwargs).run(batch_df)
 
         return batch_df
 
