@@ -25,8 +25,12 @@ from nemo_retriever.graph.actor_selection import (
 from nemo_retriever.html.ray_data import HtmlSplitActor
 from nemo_retriever.image.ray_data import ImageLoadActor
 from nemo_retriever.image.load import SUPPORTED_IMAGE_EXTENSIONS
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import HtmlChunkParams
 from nemo_retriever.params import PdfSplitParams
@@ -46,8 +50,8 @@ IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
 VIDEO_EXTENSIONS = {".mp4"}
 
 
-class MultiTypeExtractOperator(AbstractOperator):
-    """Extract mixed or single-type Ray batches without recursing into the ingestor API."""
+class _MultiTypeExtractBase(AbstractOperator):
+    """Shared implementation for GPU and CPU multi-type extract actors."""
 
     def __init__(
         self,
@@ -57,23 +61,17 @@ class MultiTypeExtractOperator(AbstractOperator):
         html_params: HtmlChunkParams | None = None,
         audio_chunk_params: AudioChunkParams | None = None,
         asr_params: ASRParams | None = None,
+        caption_params: CaptionParams | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(
-            extraction_mode=extraction_mode,
-            extract_params=extract_params,
-            text_params=text_params,
-            html_params=html_params,
-            audio_chunk_params=audio_chunk_params,
-            asr_params=asr_params,
-            **kwargs,
-        )
+        super().__init__()
         self.extraction_mode = extraction_mode
         self.extract_params = extract_params or ExtractParams()
         self.text_params = text_params or TextChunkParams()
         self.html_params = html_params or HtmlChunkParams()
         self.audio_chunk_params = audio_chunk_params or AudioChunkParams()
         self.asr_params = asr_params or ASRParams()
+        self.caption_params = caption_params
 
     def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame | dict[str, list[str]]:
         if isinstance(data, pd.DataFrame):
@@ -204,6 +202,7 @@ class MultiTypeExtractOperator(AbstractOperator):
             "method": extract_params.method,
             "dpi": int(extract_params.dpi),
             "extract_text": extract_params.extract_text,
+            "extract_images": extract_params.extract_images,
             "extract_tables": extract_params.extract_tables,
             "extract_charts": extract_params.extract_charts,
             "extract_infographics": extract_params.extract_infographics,
@@ -285,3 +284,63 @@ class MultiTypeExtractOperator(AbstractOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+
+class MultiTypeExtractGPUActor(_MultiTypeExtractBase, GPUOperator):
+    """GPU variant – used when local models are available."""
+
+    pass
+
+
+class MultiTypeExtractCPUActor(_MultiTypeExtractBase, CPUOperator):
+    """CPU variant – used when all inference is remote."""
+
+    pass
+
+
+class MultiTypeExtractOperator(ArchetypeOperator):
+    """Graph-facing multi-type extraction archetype."""
+
+    _cpu_variant_class = MultiTypeExtractCPUActor
+    _gpu_variant_class = MultiTypeExtractGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        ep = kwargs.get("extract_params")
+        if ep is None:
+            return False
+        # If extract_params carries any invoke URL, all heavy inference is
+        # remote and no local GPU is required.
+        if hasattr(ep, "model_dump"):
+            return any("invoke_url" in k and bool(v) for k, v in ep.model_dump(exclude_none=True).items())
+        return False
+
+    def __init__(
+        self,
+        extraction_mode: str = "auto",
+        extract_params: ExtractParams | None = None,
+        text_params: TextChunkParams | None = None,
+        html_params: HtmlChunkParams | None = None,
+        audio_chunk_params: AudioChunkParams | None = None,
+        asr_params: ASRParams | None = None,
+        caption_params: CaptionParams | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            extraction_mode=extraction_mode,
+            extract_params=extract_params,
+            text_params=text_params,
+            html_params=html_params,
+            audio_chunk_params=audio_chunk_params,
+            asr_params=asr_params,
+            caption_params=caption_params,
+            **kwargs,
+        )
+        self.extraction_mode = extraction_mode
+        self.extract_params = extract_params
+        self.text_params = text_params
+        self.html_params = html_params
+        self.audio_chunk_params = audio_chunk_params
+        self.asr_params = asr_params
+        self.caption_params = caption_params
