@@ -36,12 +36,12 @@ jobs:
           docker build \
             --target docs \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
-            -t nv-ingest-docs:latest \
+            -t nemo-retriever-docs:latest \
             .
 
       - name: Run Documentation Build Container
         run: |
-          CONTAINER_ID=$(docker run -d nv-ingest-docs:latest)
+          CONTAINER_ID=$(docker run -d nemo-retriever-docs:latest)
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
       - name: Wait for documentation generation

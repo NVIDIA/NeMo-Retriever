@@ -1,4 +1,4 @@
-name: Build NV-Ingest Documentation
+name: Build NeMo-Retriever Documentation
 
 # Trigger for pull requests and pushing to main
 on:
@@ -39,11 +39,11 @@ jobs:
       # Build the Docker image using the Dockerfile
       - name: Build Docker image
         run: |
-          docker build --target docs --build-arg GIT_COMMIT=${GITHUB_SHA} -t nv-ingest-docs:latest .
+          docker build --target docs --build-arg GIT_COMMIT=${GITHUB_SHA} -t nemo-retriever-docs:latest .
 
       - name: Run the container
         run: |
-          CONTAINER_ID=$(docker run -d nv-ingest-docs:latest)
+          CONTAINER_ID=$(docker run -d nemo-retriever-docs:latest)
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
       - name: Wait for the docs generation to complete in the container

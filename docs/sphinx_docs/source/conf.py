@@ -10,7 +10,7 @@ sys.path.insert(1, os.path.abspath("../../../client/src"))  # nv-ingest-client s
 sys.path.insert(2, os.path.abspath("../../../src"))  # nv-ingest src
 sys.path.insert(3, os.path.abspath("../../../nemo_retriever/src"))  # nemo-retriever src
 
-project = "nv-ingest"
+project = "NeMo-Retriever"
 copyright = "2025, Nvidia"
 author = "Nvidia"
 release = "24.12"
@@ -50,3 +50,5 @@ html_theme_options = {
 }
 
 html_static_path = ["_static"]
+
+html_baseurl = "https://nvidia.github.io/NeMo-Retriever/extraction/api-docs/"
