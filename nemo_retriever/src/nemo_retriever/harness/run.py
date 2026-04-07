@@ -520,7 +520,6 @@ def _run_entry(
     cli_overrides: list[str] | None = None,
     recall_required: bool | None = None,
     tags: list[str] | None = None,
-    skip_local_history: bool = False,
 ) -> dict[str, Any]:
     cfg = load_harness_config(
         config_file=config_file,
