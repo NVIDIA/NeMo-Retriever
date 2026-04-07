@@ -55,8 +55,8 @@ dependencies = [
   # transformers>=4.57 includes native nvidia/parakeet-ctc-1.1b support.
   "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",
-  "torch~=2.10.0",
-  "torchvision>=0.25,<0.26",
+  "torch~=2.9.1",
+  "torchvision>=0.24,<0.25",
   "einops",
   "easydict",
   "addict",
@@ -76,10 +76,10 @@ dependencies = [
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
-  "vllm",
+  "vllm==0.16.0",
   # flashinfer and cubin versions must match
-  "flashinfer-cubin==0.6.4",
-  "flashinfer-python==0.6.4",
+  "flashinfer-cubin==0.6.3",
+  "flashinfer-python==0.6.3",
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
@@ -112,8 +112,10 @@ nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
 torch = { index = "torch-cuda"}
 torchvision = { index ="torch-cuda"}
-# CUDA 13 wheel from GitHub (PyPI only has CUDA 12). Use _aarch64 wheel on ARM.
-vllm = { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0%2Bcu130-cp38-abi3-manylinux_2_35_x86_64.whl" }
+vllm = [
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
+]
 
 [[tool.uv.index]]
 name = "test-pypi"

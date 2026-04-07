@@ -54,6 +54,8 @@ class LlamaNemotronEmbed1BV2Embedder:
 
         if self.use_vllm:
             try:
+                import vllm as _vllm_mod
+
                 from nemo_retriever.model import _DEFAULT_EMBED_MODEL
                 from nemo_retriever.text_embed.vllm import create_vllm_llm
             except ImportError as e:
@@ -61,6 +63,15 @@ class LlamaNemotronEmbed1BV2Embedder:
                     "vLLM embedding requires the embed-vllm extra. "
                     "Install with: uv pip install -e '.[embed-vllm]' or pip install -e '.[embed-vllm]'"
                 ) from e
+            from packaging.version import Version
+
+            _vllm_version = Version(_vllm_mod.__version__)
+            if _vllm_version < Version("0.17.0"):
+                raise RuntimeError(
+                    f"VLM embedding via vLLM requires vLLM >= 0.17.0, "
+                    f"but {_vllm_version} is installed. "
+                    "Update with: uv pip install 'vllm>=0.17.0'"
+                )
             model_id = self.model_id or _DEFAULT_EMBED_MODEL
             self._llm = create_vllm_llm(
                 str(model_id),
