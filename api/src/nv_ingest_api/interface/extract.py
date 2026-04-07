@@ -87,17 +87,13 @@ def extract_primitives_from_pdf(
     Parameters
     ----------
     df_extraction_ledger : pd.DataFrame
-        DataFrame containing PDF documents to process. Must include the following columns:
-        - "content" : str
-            Base64-encoded PDF data
-        - "source_id" : str
-            Unique identifier for the document
-        - "source_name" : str
-            Name of the document (filename or descriptive name)
-        - "document_type" : str or enum
-            Document type identifier (should be "pdf" or related enum value)
-        - "metadata" : Dict[str, Any]
-            Dictionary containing additional metadata about the document
+        DataFrame containing PDF documents to process. Must include these columns:
+
+        * ``content`` (str) -- Base64-encoded PDF data
+        * ``source_id`` (str) -- Unique identifier for the document
+        * ``source_name`` (str) -- Name of the document (filename or descriptive name)
+        * ``document_type`` (str or enum) -- Document type identifier (e.g. ``"pdf"``)
+        * ``metadata`` (dict) -- Additional metadata about the document
 
     extract_method : str, default "pdfium"
         The extraction engine to use. Valid options:
@@ -124,11 +120,8 @@ def extract_primitives_from_pdf(
         Whether to extract charts and graphs from the PDFs.
 
     text_depth : str, default "page"
-        Level of text granularity to extract. Options:
-        - "page" : Text extracted at page level
-        - "block" : Text extracted at block level
-        - "paragraph" : Text extracted at paragraph level
-        - "line" : Text extracted at line level
+        Level of text granularity to extract. One of ``"page"``, ``"block"``,
+        ``"paragraph"``, or ``"line"``.
 
     adobe_client_id : str, optional
         Client ID for Adobe PDF Services API. Required when extract_method="adobe".
@@ -170,10 +163,8 @@ def extract_primitives_from_pdf(
     Returns
     -------
     pandas.DataFrame
-        A DataFrame containing the extracted primitives with the following columns:
-        - "document_type" : Type of the extracted element (e.g., "text", "image", "table")
-        - "metadata" : Dictionary containing detailed information about the extracted element
-        - "uuid" : Unique identifier for the extracted element
+        DataFrame of extracted primitives with columns ``document_type``, ``metadata``,
+        and ``uuid``.
 
     Raises
     ------
@@ -209,23 +200,23 @@ def extract_primitives_from_pdf(
     >>>
     >>> # Read a PDF file and encode it as base64
     >>> with open("document.pdf", "rb") as f:
-    >>>     pdf_content = base64.b64encode(f.read()).decode("utf-8")
+    ...     pdf_content = base64.b64encode(f.read()).decode("utf-8")
     >>>
     >>> # Create a DataFrame with the PDF content
     >>> df = pd.DataFrame({
-    >>>     "source_id": ["doc1"],
-    >>>     "source_name": ["document.pdf"],
-    >>>     "content": [pdf_content],
-    >>>     "document_type": ["pdf"],
-    >>>     "metadata": [{"content_metadata": {"type": "document"}}]
-    >>> })
+    ...     "source_id": ["doc1"],
+    ...     "source_name": ["document.pdf"],
+    ...     "content": [pdf_content],
+    ...     "document_type": ["pdf"],
+    ...     "metadata": [{"content_metadata": {"type": "document"}}],
+    ... })
     >>>
     >>> # Extract primitives using PDFium
     >>> result_df = extract_primitives_from_pdf(
-    >>>     df_extraction_ledger=df,
-    >>>     extract_method="pdfium",
-    >>>     yolox_endpoints=(None, "http://localhost:8000/v1/infer")
-    >>> )
+    ...     df_extraction_ledger=df,
+    ...     extract_method="pdfium",
+    ...     yolox_endpoints=(None, "http://localhost:8000/v1/infer"),
+    ... )
     >>>
     >>> # Display the types of extracted elements
     >>> print(result_df["document_type"].value_counts())
@@ -255,17 +246,14 @@ def extract_primitives_from_pdf_pdfium(
     Parameters
     ----------
     df_extraction_ledger : pd.DataFrame
-        DataFrame containing PDF documents to process. Must include the following columns:
-        - "content" : str
-            Base64-encoded PDF data
-        - "source_id" : str
-            Unique identifier for the document
-        - "source_name" : str
-            Name of the document (filename or descriptive name)
-        - "document_type" : str or enum
-            Document type identifier (should be "pdf" or related enum value)
-        - "metadata" : Dict[str, Any]
-            Dictionary containing additional metadata about the document
+        DataFrame containing PDF documents to process. Must include these columns:
+
+        * ``content`` (str) -- Base64-encoded PDF data
+        * ``source_id`` (str) -- Unique identifier for the document
+        * ``source_name`` (str) -- Name of the document (filename or descriptive name)
+        * ``document_type`` (str or enum) -- Document type identifier (e.g. ``"pdf"``)
+        * ``metadata`` (dict) -- Additional metadata about the document
+
     extract_text : bool, default True
         Whether to extract text content
     extract_images : bool, default True
@@ -333,17 +321,13 @@ def extract_primitives_from_pdf_nemotron_parse(
     Parameters
     ----------
     df_extraction_ledger : pd.DataFrame
-        DataFrame containing PDF documents to process. Must include the following columns:
-        - "content" : str
-            Base64-encoded PDF data
-        - "source_id" : str
-            Unique identifier for the document
-        - "source_name" : str
-            Name of the document (filename or descriptive name)
-        - "document_type" : str or enum
-            Document type identifier (should be "pdf" or related enum value)
-        - "metadata" : Dict[str, Any]
-            Dictionary containing additional metadata about the document
+        DataFrame containing PDF documents to process. Must include these columns:
+
+        * ``content`` (str) -- Base64-encoded PDF data
+        * ``source_id`` (str) -- Unique identifier for the document
+        * ``source_name`` (str) -- Name of the document (filename or descriptive name)
+        * ``document_type`` (str or enum) -- Document type identifier (e.g. ``"pdf"``)
+        * ``metadata`` (dict) -- Additional metadata about the document
 
     extract_text : bool, default True
         Whether to extract text content from the PDFs. When True, the function will
@@ -367,11 +351,7 @@ def extract_primitives_from_pdf_nemotron_parse(
         identify and extract complex visual information displays.
 
     text_depth : str, default "page"
-        Level of text granularity to extract. Options:
-        - "page" : Text extracted at page level (coarsest granularity)
-        - "block" : Text extracted at block level (groups of paragraphs)
-        - "paragraph" : Text extracted at paragraph level (semantic units)
-        - "line" : Text extracted at line level (finest granularity)
+        Text granularity: ``"page"``, ``"block"``, ``"paragraph"``, or ``"line"``.
 
     auth_token : Optional[str], default None
         Authentication token used for both YOLOX inference (image processing) and Nemotron
@@ -384,9 +364,7 @@ def extract_primitives_from_pdf_nemotron_parse(
         Example: (None, "http://localhost:8000/v1/infer")
 
     yolox_infer_protocol : str, default "http"
-        Protocol to use for YOLOX inference. Options:
-        - "http" : Use HTTP protocol for YOLOX inference services
-        - "grpc" : Use gRPC protocol for YOLOX inference services
+        Protocol for YOLOX inference: ``"http"`` or ``"grpc"``.
 
     nemotron_parse_endpoints : Optional[Tuple[str, str]], default None
         A tuple containing (gRPC endpoint, HTTP endpoint) for Nemotron Parse.
@@ -395,9 +373,7 @@ def extract_primitives_from_pdf_nemotron_parse(
         Required for this extraction method.
 
     nemotron_parse_protocol : str, default "http"
-        Protocol to use for Nemotron Parse. Options:
-        - "http" : Use HTTP protocol for Nemotron Parse services
-        - "grpc" : Use gRPC protocol for Nemotron Parse services
+        Protocol for Nemotron Parse: ``"http"`` or ``"grpc"``.
 
     nemotron_parse_model_name : Optional[str], default None
         Model name for Nemotron Parse.
@@ -406,14 +382,8 @@ def extract_primitives_from_pdf_nemotron_parse(
     Returns
     -------
     pd.DataFrame
-        A DataFrame containing the extracted primitives with the following columns:
-        - "document_type" : str
-            Type of the extracted element (e.g., "text", "image", "structured")
-        - "metadata" : Dict[str, Any]
-            Dictionary containing detailed information about the extracted element
-            including position, content, confidence scores, etc.
-        - "uuid" : str
-            Unique identifier for the extracted element
+        DataFrame of extracted primitives with columns ``document_type``, ``metadata``,
+        and ``uuid``.
 
     Raises
     ------
@@ -434,22 +404,22 @@ def extract_primitives_from_pdf_nemotron_parse(
     >>>
     >>> # Read a PDF file and encode it as base64
     >>> with open("document.pdf", "rb") as f:
-    >>>     pdf_content = base64.b64encode(f.read()).decode("utf-8")
+    ...     pdf_content = base64.b64encode(f.read()).decode("utf-8")
     >>>
     >>> # Create a DataFrame with the PDF content
     >>> df = pd.DataFrame({
-    >>>     "source_id": ["doc1"],
-    >>>     "source_name": ["document.pdf"],
-    >>>     "content": [pdf_content],
-    >>>     "document_type": ["pdf"],
-    >>>     "metadata": [{"content_metadata": {"type": "document"}}]
-    >>> })
+    ...     "source_id": ["doc1"],
+    ...     "source_name": ["document.pdf"],
+    ...     "content": [pdf_content],
+    ...     "document_type": ["pdf"],
+    ...     "metadata": [{"content_metadata": {"type": "document"}}],
+    ... })
     >>>
     >>> # Extract primitives using Nemotron Parse
     >>> result_df = extract_primitives_from_pdf_nemotron_parse(
-    >>>     df_extraction_ledger=df,
-    >>>     nemotron_parse_endpoints=(None, "http://localhost:8015/v1/chat/completions")
-    >>> )
+    ...     df_extraction_ledger=df,
+    ...     nemotron_parse_endpoints=(None, "http://localhost:8015/v1/chat/completions"),
+    ... )
     >>>
     >>> # Display the types of extracted elements
     >>> print(result_df["document_type"].value_counts())
@@ -616,13 +586,11 @@ def extract_primitives_from_pptx(
 
     Notes
     -----
-    This function is decorated with `@unified_exception_handler` to handle exceptions uniformly.
-    The task configuration is assembled with two main keys:
-      - "params": Contains boolean flags for controlling which primitives to extract.
-      - "pptx_extraction_config": Contains additional settings for PPTX extraction (e.g., YOLOX endpoints,
-        inference protocol, and auth token).
-    It then calls `extract_primitives_from_pptx_internal` with the DataFrame, the task configuration,
-    and the extraction configuration.
+    This function is decorated with ``@unified_exception_handler`` to handle exceptions uniformly.
+    The task configuration uses keys ``params`` (boolean flags for which primitives to extract) and
+    ``pptx_extraction_config`` (YOLOX endpoints, inference protocol, auth token). It then calls
+    ``extract_primitives_from_pptx_internal`` with the DataFrame, task configuration, and extraction
+    configuration.
     """
     task_config: Dict[str, Any] = {
         "method": extract_method,
