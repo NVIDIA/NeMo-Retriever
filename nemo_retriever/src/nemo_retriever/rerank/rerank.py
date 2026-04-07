@@ -12,7 +12,7 @@ Provides:
 Remote endpoint
 ---------------
 When ``invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
-server that exposes the OpenAI-compatible ranking REST API. The helper accepts
+server that exposes the NIM ranking REST API. The helper accepts
 either a fully qualified ``.../reranking`` URL or a base URL and appends
 ``/v1/ranking`` automatically::
 
