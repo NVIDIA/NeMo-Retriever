@@ -103,14 +103,14 @@ def add_edges(edges_data):
                 data.v1_label,
                 data.v1_identity_props,
                 data.v1_on_create_props,
-                data.v1_on_match_props,
+                data.v1_on_match_props
             )
             yield node as v1
             call apoc.merge.node.eager(
                 data.v2_label,
                 data.v2_identity_props,
                 data.v2_on_create_props,
-                data.v2_on_match_props,
+                data.v2_on_match_props
             )
             yield node as v2
             with v1, v2, data, data.edge_identity_props as e_identity_props
