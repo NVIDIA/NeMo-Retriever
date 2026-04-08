@@ -9,18 +9,10 @@ from multiprocessing import Manager
 
 logger = logging.getLogger(__name__)
 
-# Lazily initialized on first use so that importing this module does not
-# spawn a subprocess at import time (which breaks Windows multiprocessing).
-_manager = None
-global_cache = None
+# Create a shared manager and lock for thread-safe access
+manager = Manager()
+global_cache = manager.dict()
 lock = Lock()
-
-
-def _ensure_manager():
-    global _manager, global_cache
-    if _manager is None:
-        _manager = Manager()
-        global_cache = _manager.dict()
 
 
 def multiprocessing_cache(max_calls):
@@ -36,14 +28,10 @@ def multiprocessing_cache(max_calls):
     """
 
     def decorator(func):
-        call_count = None  # Initialized lazily alongside the manager
+        call_count = manager.Value("i", 0)  # Shared integer for call counting
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            nonlocal call_count
-            _ensure_manager()
-            if call_count is None:
-                call_count = _manager.Value("i", 0)
             key = (func.__name__, args, frozenset(kwargs.items()))
 
             with lock:

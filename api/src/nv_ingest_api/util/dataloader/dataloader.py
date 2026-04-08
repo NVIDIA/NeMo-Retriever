@@ -213,10 +213,12 @@ else:
                 )
                 logging.debug(f"Split {input_path} into {num_splits} chunks")
                 self.path_metadata[input_path] = probe
-                logging.info(capture_output)
-                logging.error(f"{original_input_path} -  {capture_error}")
+                logging.debug(capture_output)
+                logging.debug(f"{original_input_path} -  {capture_error}")
             except ffmpeg.Error as e:
-                logging.error(f"FFmpeg error for file {original_input_path}: {e.stderr.decode()}")
+                logging.error(
+                    f"FFmpeg error for file {original_input_path}: {e.stderr.decode()} {capture_output} {capture_error}"
+                )
                 return []
             files = [str(output_dir / f"{file_name}_chunk_{i:04d}{suffix}") for i in range(int(num_splits))]
             if video_audio_separate and suffix in [".mp4", ".mov", ".avi", ".mkv"]:
@@ -232,7 +234,7 @@ else:
             for to_remove in files_to_remove:
                 to_remove = Path(to_remove)
                 if to_remove.is_file():
-                    logger.error(f"Removing file {to_remove}")
+                    logger.debug(f"Removing file {to_remove}")
                     to_remove.unlink()
             return files
 
