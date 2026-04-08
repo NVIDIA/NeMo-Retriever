@@ -45,14 +45,15 @@ def create_local_embedder(
     gpu_memory_utilization: float = 0.45,
     enforce_eager: bool = False,
     compile_cache_dir: str | None = None,
+    dimensions: int | None = None,
 ) -> Any:
     """Create the appropriate local embedding model (VL or non-VL).
 
     VL models always use HuggingFace (supports image + text+image modalities).
     Non-VL models always use vLLM for maximum throughput.
 
-    Note: ``gpu_memory_utilization``, ``enforce_eager``, and ``compile_cache_dir``
-    are vLLM-specific and are ignored for VL models.
+    Note: ``gpu_memory_utilization``, ``enforce_eager``, ``compile_cache_dir``, and
+    ``dimensions`` are vLLM-specific and are ignored for VL models.
     """
     model_id = resolve_embed_model(model_name)
 
@@ -78,4 +79,5 @@ def create_local_embedder(
         gpu_memory_utilization=gpu_memory_utilization,
         enforce_eager=enforce_eager,
         compile_cache_dir=compile_cache_dir,
+        dimensions=dimensions,
     )

@@ -164,6 +164,7 @@ def embed_via_vllm(
     prompts: List[str],
     *,
     model: str,
+    revision: Optional[str] = None,
     batch_size: int = 256,
     prefix: Optional[str] = None,
     dimensions: Optional[int] = None,
@@ -184,6 +185,8 @@ def embed_via_vllm(
         Texts to embed. If prefix is set, each prompt is prefixed (e.g. "query: " or "passage: ").
     model : str
         HuggingFace model id (e.g. nvidia/llama-3.2-nv-embedqa-1b-v2) or local path.
+    revision : str, optional
+        HuggingFace model revision (commit hash or tag) for reproducible embeddings.
     batch_size : int
         Max prompts per llm.embed() call (vLLM may batch internally as well).
     prefix : str, optional
@@ -210,6 +213,7 @@ def embed_via_vllm(
     """
     llm = create_vllm_llm(
         model,
+        revision=revision,
         dimensions=dimensions,
         tensor_parallel_size=tensor_parallel_size,
         trust_remote_code=trust_remote_code,
