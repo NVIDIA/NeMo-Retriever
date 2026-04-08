@@ -199,8 +199,8 @@ def rerank_hits(
     -------
     List[dict]
         Hits sorted by ``"_rerank_score"`` descending.  Each dict has a new
-        ``"_rerank_score"`` key with the raw logit (local) or relevance score
-        (remote).
+        ``"_rerank_score"`` key with the model score returned by the selected
+        reranker (local or remote).
     """
     if not hits:
         return hits
