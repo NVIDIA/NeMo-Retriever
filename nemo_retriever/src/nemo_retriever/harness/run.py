@@ -564,19 +564,9 @@ def _run_entry(
     resolved_run_name = run_name or cfg.dataset_label
     normalized_tags = _normalize_tags(tags)
     result = _run_single(cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags)
-    run_result = {
-        "run_name": resolved_run_name,
-        "dataset": cfg.dataset_label,
-        "preset": cfg.preset,
-        "artifact_dir": str(artifact_dir.resolve()),
-        "success": bool(result["success"]),
-        "return_code": int(result["return_code"]),
-        "failure_reason": result.get("failure_reason"),
-        "metrics": dict(result.get("summary_metrics", result.get("metrics", {}))),
-    }
-    if normalized_tags:
-        run_result["tags"] = normalized_tags
-    return run_result
+    result["run_name"] = resolved_run_name
+    result["artifact_dir"] = str(artifact_dir.resolve())
+    return result
 
 
 def execute_runs(
@@ -629,9 +619,10 @@ def run_command(
         recall_required=recall_required,
         tags=tag,
     )
+    artifact_display = (result.get("artifacts") or {}).get("runtime_metrics_dir", "N/A")
     typer.echo(
         f"\nResult: {'PASS' if result['success'] else 'FAIL'} | "
-        f"return_code={result['return_code']} | artifact_dir={result['artifact_dir']}"
+        f"return_code={result['return_code']} | artifacts={artifact_display}"
     )
     raise typer.Exit(code=0 if result["success"] else 1)
 

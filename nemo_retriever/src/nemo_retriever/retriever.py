@@ -58,7 +58,7 @@ class Retriever:
     reranker_model_name: Optional[str] = "nvidia/llama-nemotron-rerank-1b-v2"
     """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2')."""
     reranker_endpoint: Optional[str] = None
-    """Base URL of a vLLM / NIM /rerank endpoint.  Takes priority over local model."""
+    """Base URL of a vLLM / NIM ranking endpoint. Appends ``/v1/ranking`` unless already using ``/reranking``."""
     reranker_api_key: str = ""
     """Bearer token for the remote rerank endpoint."""
     reranker_max_length: int = 512

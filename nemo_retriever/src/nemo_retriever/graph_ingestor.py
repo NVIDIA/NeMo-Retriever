@@ -292,8 +292,12 @@ class GraphIngestor(ingestor):
             # Derive per-node Ray scheduling config from BatchTuningParams plus
             # cluster-scaled heuristic defaults, then let any explicit
             # node_overrides passed to __init__ take precedence.
+            effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
             derived_overrides = batch_tuning_to_node_overrides(
-                self._extract_params, self._embed_params, cluster_resources=cluster_resources
+                self._extract_params,
+                self._embed_params,
+                cluster_resources=cluster_resources,
+                allow_no_gpu=effective_allow_no_gpu,
             )
             merged_overrides: Dict[str, Dict[str, Any]] = {}
             for node_name in set(derived_overrides) | set(self._node_overrides):

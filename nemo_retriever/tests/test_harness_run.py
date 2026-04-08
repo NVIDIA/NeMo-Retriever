@@ -363,6 +363,7 @@ def test_run_entry_returns_tags(monkeypatch, tmp_path: Path) -> None:
             "return_code": 0,
             "failure_reason": None,
             "summary_metrics": {"pages": 0, "ingest_secs": 1.0, "pages_per_sec_ingest": 0.0, "recall_5": None},
+            "tags": tags,
         }
 
     monkeypatch.setattr(harness_run, "_run_single", _fake_run_single)
