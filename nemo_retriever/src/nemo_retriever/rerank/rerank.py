@@ -12,14 +12,16 @@ Provides:
 Remote endpoint
 ---------------
 When ``invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
-server that exposes the OpenAI-compatible ``/rerank`` REST API::
+server that exposes the NIM ranking REST API. The helper accepts
+either a fully qualified ``.../reranking`` URL or a base URL and appends
+``/v1/ranking`` automatically::
 
-    POST /rerank
+    POST /v1/ranking
     {
       "model": "nvidia/llama-nemotron-rerank-1b-v2",
-      "query": "...",
-      "documents": ["...", "..."],
-      "top_n": N
+      "query": {"text": "..."},
+      "passages": [{"text": "..."}, {"text": "..."}],
+      "truncate": "END"
     }
 
 Local model
@@ -80,13 +82,14 @@ def _rerank_via_endpoint(
     api_key: str = "",
 ) -> List[float]:
     """
-    Call a vLLM / NIM ``/rerank`` REST endpoint and return per-document scores.
+    Call a vLLM / NIM ranking endpoint and return per-document scores.
 
-    The server must expose the OpenAI-compatible rerank API introduced in
-    vLLM >= 0.14.0::
+    The server must expose the ranking API used by NeMo Retriever and NIM. Pass
+    either a full ``.../reranking`` URL or a base URL; base URLs are
+    normalized to ``.../v1/ranking``::
 
-        POST {endpoint}/rerank
-        {"model": ..., "query": ..., "documents": [...], "top_n": N}
+        POST {endpoint}/v1/ranking
+        {"model": ..., "query": {"text": ...}, "passages": [{"text": ...}]}
 
     Parameters
     ----------
@@ -96,7 +99,7 @@ def _rerank_via_endpoint(
         List of document strings to score against the query.
     endpoint:
         Base URL of the reranking endpoint (e.g. ``http://localhost:8015
-        ``).  The function will append ``/v1/ranking`` if the URL does not
+        ``). The function will append ``/v1/ranking`` if the URL does not
         already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
@@ -174,8 +177,9 @@ def rerank_hits(
         A ``NemotronRerankV2`` instance (local GPU inference).  Ignored when
         *invoke_url* is set.
     invoke_url:
-        Base URL of a vLLM / NIM ``/rerank`` endpoint.  Takes priority over
-        *model*.
+        Base URL of a vLLM / NIM ranking endpoint. Takes priority over
+        *model*. Base URLs are normalized to ``/v1/ranking`` unless they
+        already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
         ``"nvidia/llama-nemotron-rerank-1b-v2"``).
@@ -195,8 +199,8 @@ def rerank_hits(
     -------
     List[dict]
         Hits sorted by ``"_rerank_score"`` descending.  Each dict has a new
-        ``"_rerank_score"`` key with the raw logit (local) or relevance score
-        (remote).
+        ``"_rerank_score"`` key with the model score returned by the selected
+        reranker (local or remote).
     """
     if not hits:
         return hits

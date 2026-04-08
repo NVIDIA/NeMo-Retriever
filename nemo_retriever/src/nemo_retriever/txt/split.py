@@ -161,6 +161,12 @@ def split_df(
                 meta["chunk_count"] = len(chunks)
                 meta["content"] = chunk
             new_row["page_number"] = i + 1
+            # Only the first chunk keeps structured content so that
+            # downstream explode does not duplicate tables/charts/etc.
+            if i > 0:
+                for col in ("table", "chart", "infographic", "images"):
+                    if col in new_row:
+                        new_row[col] = []
             out_rows.append(new_row)
 
     if not out_rows:

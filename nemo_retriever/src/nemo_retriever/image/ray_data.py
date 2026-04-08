@@ -64,6 +64,8 @@ class ImageLoadCPUActor(AbstractOperator, CPUOperator):
                 page_df = image_bytes_to_pages_df(raw, path_str)
                 if not page_df.empty:
                     out_dfs.append(page_df)
+            except ImportError:
+                raise
             except Exception:
                 continue
         if not out_dfs:

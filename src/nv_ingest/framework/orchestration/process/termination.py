@@ -48,7 +48,12 @@ def _safe_log(level: int, msg: str) -> None:
         except Exception:
             pass
 
-    # Fallback to stderr if available
+    # Fallback to stderr if available — but still respect the requested level.
+    # During atexit the logger may have no handlers, so without this check
+    # every message (including DEBUG) would be printed to stderr.
+    if level < logging.WARNING:
+        return
+
     try:
         import sys
 
@@ -95,20 +100,24 @@ def kill_pipeline_process_group(process) -> None:
     if pid is None:
         raise AttributeError("Unable to determine PID for process group termination")
 
-    _safe_log(logging.INFO, f"Terminating pipeline process group (PID: {pid})")
+    _safe_log(logging.DEBUG, f"Terminating pipeline process group (PID: {pid})")
 
     try:
-        # Send graceful termination to the entire process group
+        # Send SIGUSR1 to the main subprocess for graceful shutdown.
+        # We intentionally avoid SIGTERM here because gRPC/abseil installs a
+        # C-level FailureSignalHandler for SIGTERM that dumps noisy stack
+        # traces to stderr before our Python handler can run.  SIGUSR1 is not
+        # intercepted by abseil, so the subprocess shuts down quietly.
         try:
-            pgid = os.getpgid(pid)
+            os.getpgid(pid)  # Check process still exists
         except Exception:
             # Process already gone
-            _safe_log(logging.DEBUG, f"Process group for PID {pid} not found during SIGTERM phase")
+            _safe_log(logging.DEBUG, f"Process group for PID {pid} not found during shutdown")
             return
         try:
-            os.killpg(pgid, signal.SIGTERM)
+            os.kill(pid, signal.SIGUSR1)
         except ProcessLookupError:
-            _safe_log(logging.DEBUG, f"Process group for PID {pid} no longer exists (SIGTERM)")
+            _safe_log(logging.DEBUG, f"Process for PID {pid} no longer exists")
             return
 
         # If we have a Process handle, give it a chance to exit cleanly
@@ -128,7 +137,7 @@ def kill_pipeline_process_group(process) -> None:
                 still_alive = False
 
         if still_alive:
-            _safe_log(logging.WARNING, "Process group did not terminate gracefully, using SIGKILL")
+            _safe_log(logging.DEBUG, "Process group did not terminate gracefully, using SIGKILL")
             try:
                 try:
                     pgid2 = os.getpgid(pid)

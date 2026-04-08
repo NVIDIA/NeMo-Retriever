@@ -14,6 +14,24 @@ from nv_ingest_api.internal.primitives.nim.model_interface.decorators import mul
 logging.basicConfig(level=logging.INFO)
 
 
+def _multiprocessing_cache_worker(queue, value):
+    @multiprocessing_cache(max_calls=10)
+    def cached_func(x):
+        # This sleep simulates some expensive computation
+        time.sleep(0.1)
+        return x * 2
+
+    start_time = time.time()
+    result1 = cached_func(value)
+    first_call_time = time.time() - start_time
+
+    start_time = time.time()
+    result2 = cached_func(value)
+    second_call_time = time.time() - start_time
+
+    queue.put((result1, result2, first_call_time, second_call_time))
+
+
 class TestMultiprocessingCache(unittest.TestCase):
     def setUp(self):
         # Reset between tests by importing the module again
@@ -106,29 +124,10 @@ class TestMultiprocessingCache(unittest.TestCase):
     def test_multiple_processes(self):
         """Test that the cache works across multiple processes."""
 
-        def worker_function(queue, value):
-            @multiprocessing_cache(max_calls=10)
-            def cached_func(x):
-                # This sleep simulates some expensive computation
-                time.sleep(0.1)
-                return x * 2
-
-            # First call should compute
-            start_time = time.time()
-            result1 = cached_func(value)
-            first_call_time = time.time() - start_time
-
-            # Second call should be cached
-            start_time = time.time()
-            result2 = cached_func(value)
-            second_call_time = time.time() - start_time
-
-            queue.put((result1, result2, first_call_time, second_call_time))
-
         # Create two processes that both call the same function with the same argument
         queue = Queue()
-        p1 = Process(target=worker_function, args=(queue, 5))
-        p2 = Process(target=worker_function, args=(queue, 5))
+        p1 = Process(target=_multiprocessing_cache_worker, args=(queue, 5))
+        p2 = Process(target=_multiprocessing_cache_worker, args=(queue, 5))
 
         p1.start()
         time.sleep(0.05)  # Small delay to ensure p1 starts first

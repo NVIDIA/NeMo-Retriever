@@ -155,7 +155,7 @@ The above retrieval results are often feedable directly to an LLM for answer gen
 
 To do so, first install the openai client and set your [build.nvidia.com](https://build.nvidia.com/) API key:
 ```bash
-uv pip install -y openai
+uv pip install openai
 export NVIDIA_API_KEY=nvapi-...
 ```
 
@@ -198,6 +198,13 @@ For PowerPoint and Docx files, ensure libeoffice is installed by your system's p
 For example, with apt-get on Ubuntu:
 ```bash
 sudo apt install -y libreoffice
+```
+
+For SVG files, install the optional `cairosvg` dependency with `pip install cairosvg`. SVG support is available in the NeMo Retriever Library, but not in the container deployment. `cairosvg` requires network access to install, so it will not work in air-gapped environments.
+```bash
+uv pip install "nemo-retriever[svg]"
+# or equivalently:
+uv pip install "cairosvg>=2.7.0"
 ```
 
 Example usage:
@@ -250,6 +257,25 @@ sudo apt install -y ffmpeg
 ```python
 ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
+```
+
+### Store extracted images and text
+
+Use `.store()` to persist extracted images, tables, charts, and text to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame so downstream stages (embed, VDB upload) can reference them. By default, base64 payloads are stripped after writing to reduce memory pressure.
+
+```python
+ingestor = (
+  ingestor.files(documents)
+  .extract()
+  .store(
+    storage_uri="s3://my-bucket/citation-assets",  # or a local path
+    storage_options={"key": "...", "secret": "..."},  # fsspec auth for S3/MinIO
+    store_text=True,       # also write .txt files for page text and structured content
+    strip_base64=True,     # free image payloads after writing (default)
+  )
+  .embed()
+  .vdb_upload()
+)
 ```
 
 ### Explore Different Pipeline Options:
@@ -405,3 +431,14 @@ retriever-harness sweep --runs-config harness/vidore_sweep.yaml
 ```
 
 The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
+
+### Harness with image/text storage
+
+The harness can persist extracted images and text alongside other run artifacts. Set `store_images_uri` in `test_configs.yaml` (per-dataset or in `active:`) or via `--override`:
+
+```bash
+retriever harness run --dataset bo20 --preset single_gpu \
+  --override store_images_uri=stored_images --override store_text=true
+```
+
+When `store_images_uri` is a relative path (like `stored_images`), it resolves to `artifact_dir/stored_images/` so each run is isolated. Absolute paths and fsspec URIs (e.g. `s3://bucket/prefix`) are passed through as-is.

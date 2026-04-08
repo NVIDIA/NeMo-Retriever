@@ -6,6 +6,7 @@
 
 from typing import Any
 
+import pandas as pd
 import pytest
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
@@ -15,6 +16,7 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.params import ExtractParams
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
@@ -641,6 +643,97 @@ class TestMultiTypeExtractOperator:
         grouped = {"pdf": [], "image": [], "text": [], "html": [], "audio": [], "video": []}
         result = op.process(grouped)
         assert result == []
+
+    def test_detection_pipeline_resolves_suboperators_through_archetype_resolution(self, monkeypatch):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.utils.ray_resource_hueristics import Resources
+
+        calls = []
+
+        class _IdentityStage:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def run(self, data):
+                return data
+
+        def _fake_resolve(operator_class, resources, operator_kwargs=None):
+            calls.append((operator_class.__name__, resources))
+            return _IdentityStage
+
+        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.gather_local_resources",
+            lambda: Resources(cpu_count=8, gpu_count=1),
+        )
+
+        op = MultiTypeExtractCPUActor(
+            extraction_mode="image",
+            extract_params=ExtractParams(
+                method="ocr",
+                extract_text=True,
+                extract_tables=True,
+                use_table_structure=True,
+                extract_charts=True,
+                use_graphic_elements=True,
+                extract_infographics=True,
+            ),
+        )
+
+        batch_df = pd.DataFrame({"page_image": ["x"]})
+        result = op._run_detection_pipeline(batch_df)
+
+        pd.testing.assert_frame_equal(result, batch_df)
+        assert [name for name, _resources in calls] == [
+            "PageElementDetectionActor",
+            "TableStructureActor",
+            "GraphicElementsActor",
+            "OCRActor",
+        ]
+        assert len({id(resources) for _name, resources in calls}) == 1
+
+    def test_parse_pipeline_resolves_nemotron_parse_through_archetype_resolution(self, monkeypatch):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.utils.ray_resource_hueristics import Resources
+
+        calls = []
+
+        class _IdentityStage:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def run(self, data):
+                return data
+
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.DocToPdfConversionActor.run",
+            lambda self, data: data,
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.PDFSplitActor.run",
+            lambda self, data: data,
+        )
+
+        def _fake_resolve(operator_class, resources, operator_kwargs=None):
+            calls.append((operator_class.__name__, resources))
+            return _IdentityStage
+
+        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.gather_local_resources",
+            lambda: Resources(cpu_count=8, gpu_count=1),
+        )
+
+        op = MultiTypeExtractCPUActor(
+            extraction_mode="pdf",
+            extract_params=ExtractParams(method="nemotron_parse"),
+        )
+
+        batch_df = pd.DataFrame({"path": ["/tmp/test.pdf"]})
+        result = op._run_pdf_pipeline(batch_df)
+
+        pd.testing.assert_frame_equal(result, batch_df)
+        assert [name for name, _resources in calls] == ["NemotronParseActor"]
 
 
 class TestFileListLoaderOperator:

@@ -110,13 +110,20 @@ def image_bytes_to_pages_df(content_bytes: bytes, path: str) -> pd.DataFrame:
             "orig_shape_hw": (h, w),
         }
 
+        # Include the full image as an image entry so downstream stages can process it.
+        image_entry: Dict[str, Any] = {
+            "image_b64": image_b64,
+            "text": "",
+            "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
+        }
+
         page_record: Dict[str, Any] = {
             "path": path,
             "page_number": 1,
             "source_id": None,
             "text": "",
             "page_image": page_image,
-            "images": [],
+            "images": [image_entry],
             "tables": [],
             "charts": [],
             "infographics": [],

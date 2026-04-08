@@ -93,7 +93,7 @@ def group_bounding_boxes(
     """
     n = len(boxes)
     if n > max_num_boxes:
-        logger.warning(
+        logger.debug(
             "Number of bounding boxes (%d) exceeds the maximum allowed (%d). "
             "Skipping image grouping to avoid high computational overhead.",
             n,

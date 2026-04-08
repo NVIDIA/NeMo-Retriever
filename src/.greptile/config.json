@@ -1,0 +1,49 @@
+{
+  "instructions": "This is src/ (nv-ingest) -- the legacy service-mode ingestion pipeline built on Ray. It processes ControlMessage objects through a DAG of stages, where each stage uses a standard decorator stack for tracing, error handling, and task routing.\n\nKey review priorities: decorator correctness on pipeline stages, ControlMessage data flow integrity, proper error annotation (not silent swallowing), Ray resource cleanup, and ensuring all model inference goes through external services (Triton, vLLM endpoints) rather than direct in-process execution.\n\nThis package is foundational but relatively stable. Changes here must be reviewed carefully as they affect the entire pipeline.",
+
+  "rules": [
+    {
+      "id": "pipeline-stage-decorators",
+      "rule": "All Ray pipeline stage functions that process ControlMessages must use the standard decorator stack in this order:\n1. @filter_by_task([...]) -- outermost, skips non-relevant messages\n2. @nv_ingest_node_failure_context_manager(annotation_id=...) -- catches failures, annotates the ControlMessage\n3. @traceable(trace_name=...) -- innermost, records entry/exit timestamps\nMissing any of these decorators in a pipeline stage will silently break tracing, error recovery, or task routing.",
+      "severity": "high"
+    },
+    {
+      "id": "no-direct-model-execution",
+      "rule": "In service mode, models must NOT be loaded or executed directly within pipeline stages. All model inference must go through Triton Inference Server, vLLM, or an external NIM endpoint. Direct torch.load(), model.forward(), or model() calls inside src/ pipeline code indicate an architectural violation.",
+      "severity": "high"
+    },
+    {
+      "id": "controlmessage-error-annotation",
+      "rule": "When a pipeline stage encounters an error, the ControlMessage must be annotated with the failure -- never silently dropped or swallowed. The @nv_ingest_node_failure_context_manager decorator handles this automatically. Never catch and swallow exceptions inside a pipeline stage without re-raising or annotating the ControlMessage.",
+      "severity": "high"
+    },
+    {
+      "id": "ray-resource-cleanup",
+      "rule": "Ray actors and tasks must properly release resources (GPU memory, file handles, network connections, temporary files). Actors MUST implement a dedicated shutdown() or cleanup() method -- do NOT rely on __del__ alone because Ray does not guarantee its execution. Use ray.actor.exit_actor() for controlled shutdown.",
+      "severity": "high"
+    },
+    {
+      "id": "async-error-handling",
+      "rule": "All async functions and Ray remote calls must have explicit error handling. Unhandled exceptions in async code or Ray tasks silently kill workers and corrupt pipeline state. Ensure try/except blocks with proper logging and re-raising, or use the @nv_ingest_node_failure_context_manager decorator.",
+      "severity": "high"
+    },
+    {
+      "id": "api-input-validation",
+      "rule": "All FastAPI endpoint parameters and request bodies must be validated using Pydantic models with appropriate field constraints. Never trust raw user input.",
+      "scope": ["nv_ingest/api/**/*.py"],
+      "severity": "high"
+    },
+    {
+      "id": "no-unnecessary-data-copies",
+      "rule": "Avoid unnecessary copies of large data structures (DataFrames, tensors, byte arrays). ControlMessage payloads can be very large. Use in-place operations or views where possible. Flag pd.DataFrame.copy(), .clone(), or deepcopy() unless there is a clear mutation safety reason.",
+      "severity": "low"
+    },
+    {
+      "id": "opentelemetry-instrumentation",
+      "rule": "New pipeline stages should include OpenTelemetry instrumentation consistent with existing patterns. The @traceable decorator handles this for pipeline stages; API endpoints should use FastAPI middleware or manual span creation.",
+      "severity": "low"
+    }
+  ],
+
+  "disabledRules": []
+}

@@ -1,0 +1,43 @@
+{
+  "instructions": "This is nemo_retriever/ -- the primary library-mode API for NeMo Retriever. Most PRs land here. Unlike the legacy service mode (src/), library mode loads and runs models directly in-process using PyTorch, vLLM, and Nemotron model packages. There is no external Triton dependency in library mode.\n\nKey review priorities: public API surface quality, model lifecycle management, GPU resource handling, type safety, error messages that are actionable for end users, and test coverage.\n\nThis package depends on api/, src/, and client/ via editable path installs (see pyproject.toml). It exposes the 'retriever' CLI entry point and a programmatic Python API.",
+
+  "rules": [
+    {
+      "id": "model-lazy-loading",
+      "rule": "Models must be loaded lazily (on first use or explicit initialization), never at module import time. Importing nemo_retriever should not trigger GPU allocation or model downloads. Check for top-level torch.load(), model instantiation, or weight downloads in module scope.",
+      "severity": "high"
+    },
+    {
+      "id": "gpu-memory-lifecycle",
+      "rule": "GPU resources must have explicit lifecycle management. Models must be releasable via a public method (e.g., .unload(), .cleanup()). After releasing a model, GPU memory must be freed (del tensor + torch.cuda.empty_cache()). Long-running processes must not accumulate unreleased GPU allocations.",
+      "severity": "high"
+    },
+    {
+      "id": "public-api-contract",
+      "rule": "Every public class and function in nemo_retriever is a user-facing contract. Public methods MUST have: complete type annotations (parameters + return), a docstring describing behavior/params/returns/raises, and actionable error messages (tell the user what to do, not just what failed). Do not expose internal implementation details (Ray actor handles, internal dataframes, raw ControlMessages) in the public API.",
+      "severity": "high"
+    },
+    {
+      "id": "pydantic-config-models",
+      "rule": "User-facing configuration must use Pydantic models with field validation, descriptive Field(description=...) annotations, and sensible defaults. Support both programmatic construction and dict/YAML-based instantiation. Never use raw dicts for configuration that crosses API boundaries.",
+      "severity": "medium"
+    },
+    {
+      "id": "device-placement",
+      "rule": "Model and tensor device placement must be configurable, not hardcoded. Never assume CUDA is available -- check with torch.cuda.is_available() and provide a fallback or clear error. Support device strings like 'cuda:0', 'cuda:1', 'cpu' via configuration.",
+      "severity": "medium"
+    },
+    {
+      "id": "thread-async-safety",
+      "rule": "Models and stateful components accessed from Ray actors or async endpoints must be thread-safe or explicitly documented as not thread-safe. If a component is not safe for concurrent access, enforce single-threaded usage via locks or document the constraint clearly.",
+      "severity": "medium"
+    },
+    {
+      "id": "actionable-errors",
+      "rule": "Error messages must tell the user what happened AND what to do about it. Bad: 'Model loading failed'. Good: 'Failed to load model nvidia/nemotron-ocr: file not found at /path. Run `retriever download nvidia/nemotron-ocr` or set NEMO_RETRIEVER_MODEL_DIR to the correct path.'",
+      "severity": "medium"
+    }
+  ],
+
+  "disabledRules": []
+}

@@ -2,22 +2,10 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from .ocr import (
-    OCRActor,
-    OCRCPUActor,
-    OCRGPUActor,
-    NemotronParseActor,
-    NemotronParseCPUActor,
-    NemotronParseGPUActor,
-    ocr_page_elements,
-)
+from .gpu_ocr import OCRActor
+from .shared import ocr_page_elements
 
 __all__ = [
     "OCRActor",
-    "OCRCPUActor",
-    "OCRGPUActor",
-    "NemotronParseActor",
-    "NemotronParseCPUActor",
-    "NemotronParseGPUActor",
     "ocr_page_elements",
 ]

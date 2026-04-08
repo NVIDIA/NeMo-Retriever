@@ -29,6 +29,9 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
                     text = item.get("text", "")
                     if isinstance(text, str) and text.strip():
                         parts.append(text.strip())
+                    caption = item.get("caption", "")
+                    if isinstance(caption, str) and caption.strip():
+                        parts.append(caption.strip())
     return "\n\n".join(parts) if parts else ""
 
 
@@ -98,24 +101,25 @@ def explode_content_to_rows(
             for item in content_list:
                 if not isinstance(item, dict):
                     continue
-                text = item.get("text", "")
-                if not isinstance(text, str) or not text.strip():
-                    continue
-                content_row = _deep_copy_row(row_dict)
-                content_row[text_column] = text.strip()
-                content_row["_embed_modality"] = struct_mod
-                content_row["_content_type"] = column
-                if struct_mod in IMAGE_MODALITIES and page_image_b64:
-                    bbox = item.get("bbox_xyxy_norm")
-                    if bbox and len(bbox) == 4:
-                        cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_image_b64, bbox_xyxy_norm=bbox)
-                        content_row["_image_b64"] = cropped_b64
-                    else:
-                        content_row["_image_b64"] = page_image_b64
-                elif struct_mod in IMAGE_MODALITIES:
-                    content_row["_image_b64"] = None
-                new_rows.append(content_row)
-                exploded_any = True
+                for field, content_type in [("text", column), ("caption", f"{column}_caption")]:
+                    value = item.get(field, "")
+                    if not isinstance(value, str) or not value.strip():
+                        continue
+                    content_row = _deep_copy_row(row_dict)
+                    content_row[text_column] = value.strip()
+                    content_row["_embed_modality"] = struct_mod
+                    content_row["_content_type"] = content_type
+                    if struct_mod in IMAGE_MODALITIES and page_image_b64:
+                        bbox = item.get("bbox_xyxy_norm")
+                        if bbox and len(bbox) == 4:
+                            cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_image_b64, bbox_xyxy_norm=bbox)
+                            content_row["_image_b64"] = cropped_b64
+                        else:
+                            content_row["_image_b64"] = page_image_b64
+                    elif struct_mod in IMAGE_MODALITIES:
+                        content_row["_image_b64"] = None
+                    new_rows.append(content_row)
+                    exploded_any = True
 
         if not exploded_any:
             preserved = _deep_copy_row(row_dict)

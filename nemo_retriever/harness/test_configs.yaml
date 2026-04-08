@@ -25,6 +25,9 @@ active:
   extract_page_as_image: false
   extract_infographics: false
   write_detection_file: false
+  store_images_uri: null
+  store_text: false
+  strip_base64: true
 
 presets:
   single_gpu:
@@ -110,6 +113,21 @@ datasets:
     recall_required: true
     recall_match_mode: pdf_only
     recall_adapter: financebench_json
+
+  audio_retrieval:
+    path: /datasets/nv-ingest/audio_retrieval_data_mp3
+    query_csv: /datasets/nv-ingest/video_retrieval_eval_gt_audio_only.csv
+    input_type: audio
+    segment_audio: true
+    audio_split_type: time
+    audio_split_interval: 36000
+    recall_required: true
+    recall_match_mode: audio_segment
+    recall_adapter: none
+    audio_match_tolerance_secs: 2.0
+    embed_model_name: nvidia/llama-nemotron-embed-1b-v2
+    embed_modality: text
+    embed_granularity: element
 
   vidore_v3_computer_science:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_computer_science
