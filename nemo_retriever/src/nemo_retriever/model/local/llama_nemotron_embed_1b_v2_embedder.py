@@ -180,14 +180,18 @@ class LlamaNemotronEmbed1BV2VLLMEmbedder:
     def is_remote(self) -> bool:
         return False
 
-    def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
-        """Embed document texts. Returns CPU tensor ``[N, D]``."""
+    def embed(self, texts: Sequence[str], *, batch_size: int = 64, prefix: str = "passage: ") -> torch.Tensor:
+        """Embed texts. Returns CPU tensor ``[N, D]``.
+
+        ``prefix`` is prepended to every text before encoding; defaults to ``"passage: "`` for
+        document embeddings.  Pass ``prefix="query: "`` for query embeddings.
+        """
         from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
 
         texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
-        vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix="passage: ")
+        vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix=prefix)
         if not vectors:
             return torch.empty((0, 0), dtype=torch.float32)
         return _l2_normalize(torch.tensor(vectors, dtype=torch.float32))

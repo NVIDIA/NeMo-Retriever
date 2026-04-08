@@ -101,7 +101,7 @@ def create_vllm_llm(
             pooler_config = PoolerConfig(seq_pooling_type="MEAN", normalize=True, dimensions=dimensions)
         except TypeError:
             pooler_config = PoolerConfig(pooling_type="MEAN", normalize=True, dimensions=dimensions)
-    except Exception:
+    except ImportError:
         pooler_config = None
 
     kwargs: dict = {

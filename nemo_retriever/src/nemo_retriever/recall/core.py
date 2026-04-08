@@ -295,7 +295,7 @@ def _embed_queries_local_hf(
     if is_vl_embed_model(model_name):
         vecs = embedder.embed_queries(queries, batch_size=int(batch_size))
     else:
-        vecs = embedder.embed(["query: " + q for q in queries], batch_size=int(batch_size))
+        vecs = embedder.embed(queries, batch_size=int(batch_size), prefix="query: ")
     return vecs.detach().to("cpu").tolist()
 
 
