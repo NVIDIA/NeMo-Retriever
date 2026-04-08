@@ -16,10 +16,10 @@ lock = Lock()
 
 
 def _ensure_manager():
-    global _manager, global_cache
-    if _manager is None:
-        _manager = Manager()
-        global_cache = _manager.dict()
+    global manager, global_cache
+    if manager is None:
+        manager = Manager()
+        global_cache = manager.dict()
 
 
 def multiprocessing_cache(max_calls):
@@ -42,7 +42,7 @@ def multiprocessing_cache(max_calls):
             nonlocal call_count
             _ensure_manager()
             if call_count is None:
-                call_count = _manager.Value("i", 0)
+                call_count = manager.Value("i", 0)
             key = (func.__name__, args, frozenset(kwargs.items()))
 
             with lock:
