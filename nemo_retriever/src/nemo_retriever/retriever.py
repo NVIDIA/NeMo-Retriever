@@ -161,6 +161,10 @@ class Retriever:
             if effective_nprobes <= 0:
                 effective_nprobes = 16
 
+        # Check whether the table has a stored_image_uri column (added for VL reranking).
+        table_columns = {f.name for f in table.schema}
+        has_image_uri = "stored_image_uri" in table_columns
+
         results: list[list[dict[str, Any]]] = []
         for i, vector in enumerate(query_vectors):
             q = np.asarray(vector, dtype="float32")
@@ -169,37 +173,48 @@ class Retriever:
             if self.hybrid:
                 from lancedb.rerankers import RRFReranker  # type: ignore
 
+                select_cols = [
+                    "text",
+                    "metadata",
+                    "source",
+                    "page_number",
+                    "pdf_page",
+                    "pdf_basename",
+                    "source_id",
+                    "path",
+                ]
+                if has_image_uri:
+                    select_cols.append("stored_image_uri")
                 hits = (
                     table.search(query_type="hybrid")
                     .vector(q)
                     .text(query_texts[i])
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(
-                        ["text", "metadata", "source", "page_number", "pdf_page", "pdf_basename", "source_id", "path"]
-                    )
+                    .select(select_cols)
                     .limit(int(top_k))
                     .rerank(RRFReranker())
                     .to_list()
                 )
             else:
+                select_cols = [
+                    "text",
+                    "metadata",
+                    "source",
+                    "page_number",
+                    "_distance",
+                    "pdf_page",
+                    "pdf_basename",
+                    "source_id",
+                    "path",
+                ]
+                if has_image_uri:
+                    select_cols.append("stored_image_uri")
                 hits = (
                     table.search(q, vector_column_name=self.vector_column_name)
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(
-                        [
-                            "text",
-                            "metadata",
-                            "source",
-                            "page_number",
-                            "_distance",
-                            "pdf_page",
-                            "pdf_basename",
-                            "source_id",
-                            "path",
-                        ]
-                    )
+                    .select(select_cols)
                     .limit(int(top_k))
                     .to_list()
                 )
@@ -211,12 +226,12 @@ class Retriever:
     # ------------------------------------------------------------------
 
     def _get_reranker_model(self) -> Any:
-        """Lazily load and cache the local NemotronRerankV2 model."""
+        """Lazily load and cache the local reranker model (text-only or VL)."""
         if self._reranker_model is None and self.reranker:
-            from nemo_retriever.model.local import NemotronRerankV2
+            from nemo_retriever.model import create_local_reranker
 
             cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            self._reranker_model = NemotronRerankV2(
+            self._reranker_model = create_local_reranker(
                 model_name=self.reranker_model_name,
                 device=self.local_hf_device,
                 hf_cache_dir=cache_dir,

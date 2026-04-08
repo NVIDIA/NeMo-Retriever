@@ -73,6 +73,10 @@ def explode_content_to_rows(
             batch_df["_image_b64"] = batch_df["page_image"].apply(
                 lambda page_image: page_image.get("image_b64") if isinstance(page_image, dict) else None
             )
+        if "page_image" in batch_df.columns:
+            batch_df["_stored_image_uri"] = batch_df["page_image"].apply(
+                lambda page_image: page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
+            )
         batch_df["_embed_modality"] = text_mod
         return batch_df
 
@@ -83,8 +87,11 @@ def explode_content_to_rows(
 
         page_image = row_dict.get("page_image")
         page_image_b64: Optional[str] = None
-        if any_images and isinstance(page_image, dict):
-            page_image_b64 = page_image.get("image_b64")
+        page_stored_uri: Optional[str] = None
+        if isinstance(page_image, dict):
+            page_stored_uri = page_image.get("stored_image_uri")
+            if any_images:
+                page_image_b64 = page_image.get("image_b64")
 
         page_text = row_dict.get(text_column)
         if isinstance(page_text, str) and page_text.strip():
@@ -93,6 +100,7 @@ def explode_content_to_rows(
             page_row["_content_type"] = "text"
             if text_mod in IMAGE_MODALITIES:
                 page_row["_image_b64"] = page_image_b64
+            page_row["_stored_image_uri"] = page_stored_uri
             new_rows.append(page_row)
             exploded_any = True
 
@@ -121,6 +129,7 @@ def explode_content_to_rows(
                             content_row["_image_b64"] = page_image_b64
                     elif struct_mod in IMAGE_MODALITIES:
                         content_row["_image_b64"] = None
+                    content_row["_stored_image_uri"] = item.get("stored_image_uri") or page_stored_uri
                     new_rows.append(content_row)
                     exploded_any = True
 
@@ -130,6 +139,7 @@ def explode_content_to_rows(
             preserved["_content_type"] = "text"
             if text_mod in IMAGE_MODALITIES:
                 preserved["_image_b64"] = page_image_b64
+            preserved["_stored_image_uri"] = page_stored_uri
             new_rows.append(preserved)
 
     return pd.DataFrame(new_rows).reset_index(drop=True)
@@ -159,6 +169,11 @@ def collapse_content_to_page_rows(
             )
         else:
             batch_df["_image_b64"] = None
+
+    if "page_image" in batch_df.columns:
+        batch_df["_stored_image_uri"] = batch_df["page_image"].apply(
+            lambda page_image: page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
+        )
 
     batch_df["_embed_modality"] = modality
     return batch_df

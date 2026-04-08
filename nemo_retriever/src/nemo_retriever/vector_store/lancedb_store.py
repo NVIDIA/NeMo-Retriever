@@ -163,6 +163,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         if page_number == -1:
             logger.debug("Unable to determine page number for %s", path)
 
+        stored_uri = row.get("_stored_image_uri") or ""
         out.append(
             {
                 "vector": embedding,
@@ -175,6 +176,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 "path": path,
                 "text": row.get("text", ""),
                 "metadata": str(meta),
+                "stored_image_uri": str(stored_uri) if stored_uri else "",
             }
         )
 

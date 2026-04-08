@@ -78,6 +78,7 @@ def _rerank_via_endpoint(
     endpoint: str,
     model_name: str = _DEFAULT_MODEL,
     api_key: str = "",
+    images_b64: Optional[List[Optional[str]]] = None,
 ) -> List[float]:
     """
     Call a vLLM / NIM ``/rerank`` REST endpoint and return per-document scores.
@@ -119,11 +120,16 @@ def _rerank_via_endpoint(
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    texts = [{"text": d} for d in documents]
+    passages = []
+    for i, d in enumerate(documents):
+        entry: Dict[str, Any] = {"text": d}
+        if images_b64 and i < len(images_b64) and images_b64[i]:
+            entry["image"] = images_b64[i]
+        passages.append(entry)
     payload = {
         "model": model_name,
         "query": {"text": query},
-        "passages": texts,
+        "passages": passages,
         "truncate": "END",
     }
     response = requests.post(url, json=payload, headers=headers)
@@ -202,6 +208,23 @@ def rerank_hits(
         return hits
 
     documents = [str(h.get(text_key) or "") for h in hits]
+
+    # Load images from stored URIs when using a VL reranker.
+    images_b64: Optional[List[Optional[str]]] = None
+    _model_name = getattr(model, "model_name", model_name) if model is not None else model_name
+    from nemo_retriever.model import is_vl_rerank_model
+
+    if is_vl_rerank_model(_model_name):
+        from nemo_retriever.io.image_store import load_image_b64_from_uri
+
+        images_b64 = []
+        for h in hits:
+            uri = str(h.get("stored_image_uri") or "").strip()
+            if uri:
+                images_b64.append(load_image_b64_from_uri(uri))
+            else:
+                images_b64.append(None)
+
     if invoke_url:
         scores = _rerank_via_endpoint(
             query,
@@ -209,9 +232,13 @@ def rerank_hits(
             endpoint=invoke_url,
             model_name=model_name,
             api_key=api_key,
+            images_b64=images_b64,
         )
     elif model is not None:
-        scores = model.score(query, documents, max_length=max_length, batch_size=batch_size)
+        if images_b64 is not None:
+            scores = model.score(query, documents, images_b64=images_b64, max_length=max_length, batch_size=batch_size)
+        else:
+            scores = model.score(query, documents, max_length=max_length, batch_size=batch_size)
     else:
         raise ValueError("Either 'model' (NemotronRerankV2 instance) or 'invoke_url' must be provided.")
 
@@ -309,9 +336,9 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
             raise ValueError(
                 "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
-        from nemo_retriever.model.local import NemotronRerankV2
+        from nemo_retriever.model import create_local_reranker
 
-        self._model = NemotronRerankV2(
+        self._model = create_local_reranker(
             model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
             device=self._kwargs.get("device") or None,
             hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
@@ -400,6 +427,7 @@ def _rerank_batch(
     api_key: str = "",
     query_column: str = "query",
     text_column: str = "text",
+    image_column: str = "",
     score_column: str = _SCORE_COLUMN,
     max_length: int = _DEFAULT_MAX_LENGTH,
     batch_size: int = _DEFAULT_BATCH_SIZE,
@@ -419,20 +447,30 @@ def _rerank_batch(
     texts = batch_df[text_column].tolist()
     pairs = list(zip(queries, texts))
 
+    # Extract images when an image column is present.
+    images_b64: Optional[List[Optional[str]]] = None
+    if image_column and image_column in batch_df.columns:
+        images_b64 = batch_df[image_column].tolist()
+
     if invoke_url:
         # Remote endpoint: score pair-by-pair (each row may have a different query).
         scores: List[float] = []
-        for q, d in pairs:
+        for i, (q, d) in enumerate(pairs):
+            img = [images_b64[i]] if images_b64 else None
             row_scores = _rerank_via_endpoint(
                 q,
                 [d],
                 endpoint=invoke_url,
                 model_name=model_name,
                 api_key=api_key,
+                images_b64=img,
             )
             scores.append(row_scores[0])
     elif model is not None:
-        scores = model.score_pairs(pairs, max_length=max_length, batch_size=batch_size)
+        if images_b64 is not None:
+            scores = model.score_pairs(pairs, images_b64=images_b64, max_length=max_length, batch_size=batch_size)
+        else:
+            scores = model.score_pairs(pairs, max_length=max_length, batch_size=batch_size)
     else:
         raise ValueError("Either 'model' or 'invoke_url' must be provided to NemotronRerankActor.")
 

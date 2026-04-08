@@ -355,6 +355,12 @@ def store_extracted(
     if not isinstance(df, pd.DataFrame) or df.empty:
         return df
 
+    if not os.path.isabs(storage_uri) and not storage_uri.startswith(("s3://", "gs://", "az://")):
+        raise ValueError(
+            f"storage_uri must be an absolute path (got {storage_uri!r}). "
+            "Relative paths break in Ray batch mode where workers run in a temporary directory."
+        )
+
     df = df.copy()
     logger.info("Storing extracted content to %s", storage_uri)
     storage_root = UPath(storage_uri, **(storage_options or {})).resolve()

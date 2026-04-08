@@ -141,6 +141,9 @@ def build_lancedb_row(
     else:
         row_out["text"] = ""
 
+    stored_uri = getattr(row, "_stored_image_uri", None)
+    row_out["stored_image_uri"] = str(stored_uri) if stored_uri else ""
+
     return row_out
 
 
@@ -183,6 +186,7 @@ def lancedb_schema(vector_dim: int = 2048) -> Any:
             pa.field("path", pa.string()),
             pa.field("text", pa.string()),
             pa.field("metadata", pa.string()),
+            pa.field("stored_image_uri", pa.string()),
         ]
     )
 
