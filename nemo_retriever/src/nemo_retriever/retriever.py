@@ -161,16 +161,18 @@ class Retriever:
             if effective_nprobes <= 0:
                 effective_nprobes = 16
 
-        _KEEP_KEYS = {
-            "text",
-            "metadata",
-            "source",
-            "page_number",
-            "pdf_page",
-            "pdf_basename",
-            "source_id",
-            "path",
-        }
+_KEEP_KEYS: frozenset[str] = frozenset(
+    {
+        "text",
+        "metadata",
+        "source",
+        "page_number",
+        "pdf_page",
+        "pdf_basename",
+        "source_id",
+        "path",
+    }
+)
 
         results: list[list[dict[str, Any]]] = []
         for i, vector in enumerate(query_vectors):
