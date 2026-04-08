@@ -218,7 +218,9 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         valid = [v for v in vectors if v]
         if not valid:
             return torch.empty((0, 2048), dtype=torch.float32)
-        return torch.tensor(valid, dtype=torch.float32)
+        dim = len(valid[0])
+        padded = [v if v else [0.0] * dim for v in vectors]
+        return _l2_normalize(torch.tensor(padded, dtype=torch.float32))
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, 2048]``."""
@@ -231,7 +233,9 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         valid = [v for v in vectors if v]
         if not valid:
             return torch.empty((0, 2048), dtype=torch.float32)
-        return torch.tensor(valid, dtype=torch.float32)
+        dim = len(valid[0])
+        padded = [v if v else [0.0] * dim for v in vectors]
+        return _l2_normalize(torch.tensor(padded, dtype=torch.float32))
 
     def embed_images(self, images_b64: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         raise NotImplementedError(
