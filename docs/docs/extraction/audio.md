@@ -89,14 +89,11 @@ Use the following procedure to run the NIM locally.
     )
     ```
 
-    !!! note
-
         To emit one extracted element per sentence-like ASR segment, pass
         `extract_audio_params={"segment_audio": True}` to `.extract(...)`.
-        This option only takes effect when audio extraction uses a
-        hosted Parakeet service, such as the Parakeet ASR NIM or an NVCF
-        endpoint, and does not change behavior when using the local Hugging Face
-        Parakeet model.
+        This option takes effect when audio extraction uses a Parakeet NIM
+        (whether run locally via Docker or cloud-hosted via NVCF), and does
+        not change behavior when using the local Hugging Face Parakeet model.
 
 
     !!! tip
