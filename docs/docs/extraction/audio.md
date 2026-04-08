@@ -82,9 +82,21 @@ Use the following procedure to run the NIM locally.
         .extract(
             document_type="wav",  # Ingestor should detect type automatically in most cases
             extract_method="audio",
+            extract_audio_params={
+                "segment_audio": True,
+            },
         )
     )
     ```
+
+    !!! note
+
+        To emit one extracted element per sentence-like ASR segment, pass
+        `extract_audio_params={"segment_audio": True}` to `.extract(...)`.
+        This option only has an effect when audio extraction is using a
+        hosted Parakeet service, such as the Parakeet ASR NIM or an NVCF
+        endpoint. It does not change behavior for the local Hugging Face
+        Parakeet fallback path.
 
 
     !!! tip
@@ -117,6 +129,7 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
                 "auth_token": "<API key>",
                 "function_id": "<function ID>",
                 "use_ssl": True,
+                "segment_audio": True,
             },
         )
     )
