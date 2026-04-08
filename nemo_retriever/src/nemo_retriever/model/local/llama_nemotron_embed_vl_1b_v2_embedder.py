@@ -152,6 +152,12 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
     ``LlamaNemotronEmbedVL1BV2Embedder`` (HuggingFace) for those.
 
     Requires vLLM >= 0.17.0.
+
+    .. warning::
+        When ``device`` is set, ``CUDA_VISIBLE_DEVICES`` is overwritten for the entire
+        process. Constructing multiple instances with different devices in the same process
+        (e.g. in a Ray actor pool) will produce incorrect behaviour. Pass device constraints
+        via ``tensor_parallel_size`` or ensure each actor is launched in an isolated process.
     """
 
     model_id: Optional[str] = None
@@ -209,21 +215,23 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         if not texts_list:
             return torch.empty((0, 2048), dtype=torch.float32)
         vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix="passage: ")
-        if not vectors:
+        valid = [v for v in vectors if v]
+        if not valid:
             return torch.empty((0, 2048), dtype=torch.float32)
-        return torch.tensor(vectors, dtype=torch.float32)
+        return torch.tensor(valid, dtype=torch.float32)
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, 2048]``."""
         from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
 
-        texts_list = [str(t) for t in texts]
+        texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:
             return torch.empty((0, 2048), dtype=torch.float32)
         vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix="query: ")
-        if not vectors:
+        valid = [v for v in vectors if v]
+        if not valid:
             return torch.empty((0, 2048), dtype=torch.float32)
-        return torch.tensor(vectors, dtype=torch.float32)
+        return torch.tensor(valid, dtype=torch.float32)
 
     def embed_images(self, images_b64: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         raise NotImplementedError(
