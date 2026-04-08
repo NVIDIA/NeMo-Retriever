@@ -10,6 +10,12 @@ no-build-package = ["nemotron-ocr"]
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
 ]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu130" },
+  ],
+]
 
 [project]
 name = "nemo-retriever"
@@ -56,8 +62,6 @@ dependencies = [
   "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",
   "accelerate>=1.1.0",
-  "torch~=2.9.1",
-  "torchvision>=0.24,<0.25",
   "einops",
   "easydict",
   "addict",
@@ -85,6 +89,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cpu = [
+  "torch~=2.9.1",
+  "torchvision>=0.24,<0.25",
+]
+cu130 = [
+  "torch~=2.9.1",
+  "torchvision>=0.24,<0.25",
+]
 svg = [
   "cairosvg>=2.7.0",
 ]
@@ -108,8 +120,14 @@ nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
-torch = { index = "torch-cuda"}
-torchvision = { index ="torch-cuda"}
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu130", extra = "cu130" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu130", extra = "cu130" },
+]
 vllm = [
   { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
   { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
@@ -121,7 +139,12 @@ url = "https://test.pypi.org/simple/"
 explicit = true
 
 [[tool.uv.index]]
-name = "torch-cuda"
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 

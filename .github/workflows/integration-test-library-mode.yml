@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           uv pip install --system -e src/ -e api/ -e client/
-          uv pip install --system -e nemo_retriever
+          uv pip install --system -e "nemo_retriever[cpu]"
 
       - name: Run graph pipeline on PDFs
         shell: bash
