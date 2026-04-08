@@ -48,6 +48,9 @@ def create_local_embedder(
 
     VL models always use HuggingFace (supports image + text+image modalities).
     Non-VL models always use vLLM for maximum throughput.
+
+    Note: ``gpu_memory_utilization``, ``enforce_eager``, and ``compile_cache_dir``
+    are vLLM-specific and are ignored for VL models.
     """
     model_id = resolve_embed_model(model_name)
 

@@ -187,18 +187,20 @@ class LlamaNemotronEmbed1BV2VLLMEmbedder:
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
         vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix=prefix)
-        if not vectors:
+        valid = [v for v in vectors if v]
+        if not valid:
             return torch.empty((0, 0), dtype=torch.float32)
-        return _l2_normalize(torch.tensor(vectors, dtype=torch.float32))
+        return _l2_normalize(torch.tensor(valid, dtype=torch.float32))
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, D]``."""
         from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
 
-        texts_list = [str(t) for t in texts]
+        texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
         vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix="query: ")
-        if not vectors:
+        valid = [v for v in vectors if v]
+        if not valid:
             return torch.empty((0, 0), dtype=torch.float32)
-        return _l2_normalize(torch.tensor(vectors, dtype=torch.float32))
+        return _l2_normalize(torch.tensor(valid, dtype=torch.float32))
