@@ -9,6 +9,19 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 from tqdm import tqdm
 
+_KEEP_KEYS = frozenset(
+    {
+        "text",
+        "metadata",
+        "source",
+        "page_number",
+        "pdf_page",
+        "pdf_basename",
+        "source_id",
+        "path",
+    }
+)
+
 
 @dataclass
 class Retriever:
@@ -160,19 +173,6 @@ class Retriever:
                 pass
             if effective_nprobes <= 0:
                 effective_nprobes = 16
-
-_KEEP_KEYS: frozenset[str] = frozenset(
-    {
-        "text",
-        "metadata",
-        "source",
-        "page_number",
-        "pdf_page",
-        "pdf_basename",
-        "source_id",
-        "path",
-    }
-)
 
         results: list[list[dict[str, Any]]] = []
         for i, vector in enumerate(query_vectors):
