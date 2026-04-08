@@ -150,12 +150,7 @@ class LlamaNemotronEmbed1BV2VLLMEmbedder:
     dimensions: Optional[int] = None
 
     def __post_init__(self) -> None:
-        try:
-            from nemo_retriever.text_embed.vllm import create_vllm_llm
-        except ImportError as e:
-            raise RuntimeError(
-                "vLLM embedding requires the embed-vllm extra. " "Install with: uv pip install -e '.[embed-vllm]'"
-            ) from e
+        from nemo_retriever.text_embed.vllm import create_vllm_llm
 
         if self.device is not None:
             import os

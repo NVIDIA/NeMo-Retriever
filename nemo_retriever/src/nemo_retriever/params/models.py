@@ -37,6 +37,9 @@ class ModelRuntimeParams(_ParamsModel):
     normalize: bool = True
     max_length: int = 8192
     model_name: Optional[str] = None
+    gpu_memory_utilization: float = 0.45
+    enforce_eager: bool = False
+    compile_cache_dir: Optional[str] = None
 
 
 class IngestorCreateParams(_ParamsModel):
