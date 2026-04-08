@@ -594,6 +594,9 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": True,
             "use_heuristics": cfg.use_heuristics,
+            "store_images_uri": None,
+            "store_text": False,
+            "strip_base64": True,
             "lancedb_uri": str((artifact_dir / "lancedb").resolve()),
             "tuning": {field: getattr(cfg, field) for field in sorted(harness_run.TUNING_FIELDS)},
         },
@@ -753,3 +756,70 @@ def test_cli_run_accepts_repeated_tags(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert captured["tags"] == ["nightly", "candidate"]
+
+
+def test_build_command_includes_store_flags(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        store_images_uri="stored_images",
+        store_text=True,
+        strip_base64=True,
+    )
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--store-images-uri" in cmd
+    resolved = cmd[cmd.index("--store-images-uri") + 1]
+    assert resolved == str((tmp_path / "stored_images").resolve())
+    assert "--store-text" in cmd
+    assert "--strip-base64" in cmd
+    assert "--no-strip-base64" not in cmd
+
+
+def test_build_command_omits_store_when_uri_is_none(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        store_images_uri=None,
+    )
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--store-images-uri" not in cmd
+    assert "--store-text" not in cmd
+    assert "--strip-base64" not in cmd
+    assert "--no-strip-base64" not in cmd
+
+
+def test_build_command_store_no_strip_base64(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        store_images_uri="/absolute/path/store",
+        store_text=False,
+        strip_base64=False,
+    )
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--store-images-uri" in cmd
+    assert cmd[cmd.index("--store-images-uri") + 1] == "/absolute/path/store"
+    assert "--store-text" not in cmd
+    assert "--no-strip-base64" in cmd
+    assert "--strip-base64" not in cmd

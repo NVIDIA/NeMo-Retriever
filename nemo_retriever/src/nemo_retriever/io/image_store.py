@@ -355,6 +355,7 @@ def store_extracted(
     if not isinstance(df, pd.DataFrame) or df.empty:
         return df
 
+    df = df.copy()
     logger.info("Storing extracted content to %s", storage_uri)
     storage_root = UPath(storage_uri, **(storage_options or {})).resolve()
     ext = _normalize_image_format(image_format)
