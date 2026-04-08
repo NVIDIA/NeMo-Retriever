@@ -62,6 +62,9 @@ jobs:
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           PYTHONPATH: nemo_retriever/src
+          # macOS CI runners (Apple Silicon) can be slow to start the Ray raylet;
+          # increase the wait timeout to avoid premature startup failures.
+          RAY_raylet_start_wait_time_s: "120"
         run: |
           python -m nemo_retriever.examples.graph_pipeline ./data \
             --run-mode batch \
