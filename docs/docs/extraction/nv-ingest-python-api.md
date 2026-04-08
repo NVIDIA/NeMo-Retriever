@@ -549,11 +549,13 @@ ingestor = Ingestor().files("audio_file.mp3")
 
 ingestor = ingestor.extract(
         document_type="mp3",
+        extract_method="audio",
         extract_text=True,
         extract_tables=False,
         extract_charts=False,
         extract_images=False,
         extract_infographics=False,
+        extract_audio_params={"segment_audio": True},
     ).split(
         tokenizer="meta-llama/Llama-3.2-1B",
         chunk_size=150,
@@ -563,8 +565,7 @@ ingestor = ingestor.extract(
 
 results = ingestor.ingest()
 ```
-
-
+Set extract_audio_params={"segment_audio": True} to output sentence-like audio segments as distinct extracted elements. This setting applies only when audio extraction runs through a hosted Parakeet endpoint—such as the Parakeet ASR NIM or NVCF—and has no effect when using the local Hugging Face Parakeet model.
 
 ## Related Topics
 

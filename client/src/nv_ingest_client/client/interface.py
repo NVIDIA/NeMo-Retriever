@@ -1070,6 +1070,9 @@ class Ingestor:
             - extract_charts: bool, extract charts (default True)
             - extract_infographics: bool, extract infographics (default False)
             - extract_page_as_image: bool, extract full page as image (default False)
+            - extract_audio_params: dict, audio extraction options such as
+              endpoint settings and `segment_audio` for sentence-like ASR
+              segmentation when using a hosted Parakeet service
             - table_output_format: str, format for table output (default "markdown")
             - auto_dedup: bool, auto-enable bbox deduplication when extracting both
               structured elements and images (default True). Set to False to disable.
