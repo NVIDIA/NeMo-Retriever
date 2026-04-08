@@ -15,6 +15,13 @@ global_cache = manager.dict()
 lock = Lock()
 
 
+def _ensure_manager():
+    global _manager, global_cache
+    if _manager is None:
+        _manager = Manager()
+        global_cache = _manager.dict()
+
+
 def multiprocessing_cache(max_calls):
     """
     A decorator that creates a global cache shared between multiple processes.
@@ -28,10 +35,14 @@ def multiprocessing_cache(max_calls):
     """
 
     def decorator(func):
-        call_count = manager.Value("i", 0)  # Shared integer for call counting
+        call_count = None  # Initialized lazily alongside the manager
 
         @wraps(func)
         def wrapper(*args, **kwargs):
+            nonlocal call_count
+            _ensure_manager()
+            if call_count is None:
+                call_count = _manager.Value("i", 0)
             key = (func.__name__, args, frozenset(kwargs.items()))
 
             with lock:
