@@ -161,6 +161,17 @@ class Retriever:
             if effective_nprobes <= 0:
                 effective_nprobes = 16
 
+        _KEEP_KEYS = {
+            "text",
+            "metadata",
+            "source",
+            "page_number",
+            "pdf_page",
+            "pdf_basename",
+            "source_id",
+            "path",
+        }
+
         results: list[list[dict[str, Any]]] = []
         for i, vector in enumerate(query_vectors):
             q = np.asarray(vector, dtype="float32")
@@ -175,9 +186,6 @@ class Retriever:
                     .text(query_texts[i])
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(
-                        ["text", "metadata", "source", "page_number", "pdf_page", "pdf_basename", "source_id", "path"]
-                    )
                     .limit(int(top_k))
                     .rerank(RRFReranker())
                     .to_list()
@@ -203,7 +211,7 @@ class Retriever:
                     .limit(int(top_k))
                     .to_list()
                 )
-            results.append(hits)
+            results.append([{k: v for k, v in h.items() if k in _KEEP_KEYS} for h in hits])
         return results
 
     # ------------------------------------------------------------------
