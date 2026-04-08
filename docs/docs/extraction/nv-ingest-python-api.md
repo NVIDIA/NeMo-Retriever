@@ -565,14 +565,7 @@ ingestor = ingestor.extract(
 
 results = ingestor.ingest()
 ```
-
-Set `extract_audio_params={"segment_audio": True}` to emit sentence-like
-audio segments as separate extracted elements. This option only takes effect
-when audio extraction is performed through a hosted Parakeet endpoint—such as the
-Parakeet ASR NIM or NVCF—and does not affect behavior when using the local Hugging
-Face Parakeet model.
-
-
+Set extract_audio_params={"segment_audio": True} to output sentence-like audio segments as distinct extracted elements. This setting applies only when audio extraction runs through a hosted Parakeet endpoint—such as the Parakeet ASR NIM or NVCF—and has no effect when using the local Hugging Face Parakeet model.
 
 ## Related Topics
 
