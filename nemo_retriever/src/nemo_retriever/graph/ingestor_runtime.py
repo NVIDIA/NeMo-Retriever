@@ -11,9 +11,9 @@ from typing import cast
 from typing import Any
 
 from nemo_retriever.caption.caption import CaptionActor
-from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
+from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.dedup.dedup import dedup_images
 from nemo_retriever.graph import Graph, StoreOperator, UDFOperator
 from nemo_retriever.graph.content_transforms import (
@@ -22,13 +22,13 @@ from nemo_retriever.graph.content_transforms import (
     explode_content_to_rows,
 )
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
+from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.ocr.ocr import OCRActor
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
+from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
-from nemo_retriever.table.table_detection import TableStructureActor
-from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.txt.ray_data import TextChunkActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.ingest_plans import IngestExecutionPlan
@@ -50,6 +50,7 @@ def batch_tuning_to_node_overrides(
     extract_params: Any | None,
     embed_params: Any | None,
     cluster_resources: ClusterResources | None = None,
+    allow_no_gpu: bool | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
 
@@ -62,7 +63,13 @@ def batch_tuning_to_node_overrides(
     PDF extract concurrency is capped so that it cannot exhaust the cluster CPU
     budget when all other persistent actors are running simultaneously.
     """
-    plan = resolve_requested_plan(cluster_resources=cluster_resources) if cluster_resources is not None else None
+    auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.available_gpu_count() == 0)
+    effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
+    plan = (
+        resolve_requested_plan(cluster_resources=cluster_resources, allow_no_gpu=effective_allow_no_gpu)
+        if cluster_resources is not None
+        else None
+    )
 
     overrides: dict[str, dict[str, Any]] = {}
 
@@ -76,6 +83,9 @@ def batch_tuning_to_node_overrides(
         v = _resolve(explicit, fallback)
         if v is not None:
             overrides.setdefault(node_name, {})[key] = v
+
+    def _force_cpu_only(node_name: str) -> None:
+        overrides.setdefault(node_name, {})["num_gpus"] = 0.0
 
     embed_tuning = _batch_tuning(embed_params)
     embed_concurrency: int = 0
@@ -102,7 +112,9 @@ def batch_tuning_to_node_overrides(
             or 1.0
         )
         _set(_BatchEmbedActor.__name__, "num_cpus", embed_cpus if embed_cpus != 1.0 else None)
-        if not embed_invoke_url:
+        if effective_allow_no_gpu:
+            _force_cpu_only(_BatchEmbedActor.__name__)
+        elif not embed_invoke_url:
             _set(
                 _BatchEmbedActor.__name__,
                 "num_gpus",
@@ -138,7 +150,9 @@ def batch_tuning_to_node_overrides(
             or 1.0
         )
         _set(OCRActor.__name__, "num_cpus", ocr_cpus if ocr_cpus != 1.0 else None)
-        if not ocr_invoke_url:
+        if effective_allow_no_gpu:
+            _force_cpu_only(OCRActor.__name__)
+        elif not ocr_invoke_url:
             _set(
                 OCRActor.__name__,
                 "num_gpus",
@@ -167,7 +181,9 @@ def batch_tuning_to_node_overrides(
             or 1.0
         )
         _set(PageElementDetectionActor.__name__, "num_cpus", page_elements_cpus if page_elements_cpus != 1.0 else None)
-        if not page_elements_invoke_url:
+        if effective_allow_no_gpu:
+            _force_cpu_only(PageElementDetectionActor.__name__)
+        elif not page_elements_invoke_url:
             _set(
                 PageElementDetectionActor.__name__,
                 "num_gpus",
@@ -185,12 +201,15 @@ def batch_tuning_to_node_overrides(
             getattr(extract_tuning, "nemotron_parse_workers", None) if extract_tuning is not None else None,
             plan.nemotron_parse_initial_actors if plan else None,
         )
-        _set(
-            NemotronParseActor.__name__,
-            "num_gpus",
-            getattr(extract_tuning, "gpu_nemotron_parse", None) if extract_tuning is not None else None,
-            plan.nemotron_parse_gpus_per_actor if plan else None,
-        )
+        if effective_allow_no_gpu:
+            _force_cpu_only(NemotronParseActor.__name__)
+        else:
+            _set(
+                NemotronParseActor.__name__,
+                "num_gpus",
+                getattr(extract_tuning, "gpu_nemotron_parse", None) if extract_tuning is not None else None,
+                plan.nemotron_parse_gpus_per_actor if plan else None,
+            )
 
         pdf_bs = _positive(
             getattr(extract_tuning, "pdf_extract_batch_size", None) if extract_tuning is not None else None

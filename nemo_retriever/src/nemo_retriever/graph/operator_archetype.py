@@ -32,21 +32,31 @@ class ArchetypeOperator(AbstractOperator):
         return False
 
     @classmethod
+    def cpu_variant_class(cls) -> type[AbstractOperator] | None:
+        return cls._cpu_variant_class
+
+    @classmethod
+    def gpu_variant_class(cls) -> type[AbstractOperator] | None:
+        return cls._gpu_variant_class
+
+    @classmethod
     def resolve_operator_class(
         cls,
         resources: ClusterResources | Resources | None = None,
         operator_kwargs: dict[str, Any] | None = None,
     ) -> type[AbstractOperator]:
         detected = resources or gather_local_resources()
-        if cls.prefers_cpu_variant(operator_kwargs or {}) and cls._cpu_variant_class is not None:
-            return cls._cpu_variant_class
+        cpu_variant = cls.cpu_variant_class()
+        gpu_variant = cls.gpu_variant_class()
+        if cls.prefers_cpu_variant(operator_kwargs or {}) and cpu_variant is not None:
+            return cpu_variant
         available_gpus = _available_gpu_count(detected)
-        if available_gpus > 0 and cls._gpu_variant_class is not None:
-            return cls._gpu_variant_class
-        if cls._cpu_variant_class is not None:
-            return cls._cpu_variant_class
-        if cls._gpu_variant_class is not None:
-            return cls._gpu_variant_class
+        if available_gpus > 0 and gpu_variant is not None:
+            return gpu_variant
+        if cpu_variant is not None:
+            return cpu_variant
+        if gpu_variant is not None:
+            return gpu_variant
         return cls
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

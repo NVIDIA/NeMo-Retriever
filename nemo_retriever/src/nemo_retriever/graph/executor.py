@@ -229,6 +229,11 @@ class RayDataExecutor(AbstractExecutor):
         import ray
         import ray.data as rd
 
+        if not isinstance(data, (rd.Dataset, str, list)):
+            raise TypeError(
+                f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
+            )
+
         if self._ray_address or not ray.is_initialized():
             ray.init(address=self._ray_address, ignore_reinit_error=True)
 
@@ -249,11 +254,6 @@ class RayDataExecutor(AbstractExecutor):
                 matches = _glob.glob(pattern)
                 expanded.extend(sorted(matches) if matches else [pattern])
             ds = rd.read_binary_files(expanded, include_paths=True)
-        else:
-            raise TypeError(
-                f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
-            )
-
         nodes = self._linearize(resolved_graph)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))

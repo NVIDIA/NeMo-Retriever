@@ -187,6 +187,20 @@ def _resolve_lancedb_uri(cfg: HarnessConfig, artifact_dir: Path) -> str:
     return str(p)
 
 
+def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
+    raw = cfg.store_images_uri
+    if raw is None:
+        return None
+    # Pass URIs with a scheme (e.g. s3://, gcs://, minio://) through unchanged;
+    # pathlib.is_absolute() does not understand URI schemes.
+    if "://" in raw:
+        return raw
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = (artifact_dir / p).resolve()
+    return str(p)
+
+
 def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -305,6 +319,13 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         cmd += ["--ray-address", cfg.ray_address]
     if cfg.hybrid:
         cmd += ["--hybrid"]
+
+    resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
+    if resolved_store_uri is not None:
+        cmd += ["--store-images-uri", resolved_store_uri]
+        if cfg.store_text:
+            cmd += ["--store-text"]
+        cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
 
     return cmd, runtime_dir, detection_summary_file, effective_query_csv
 
@@ -478,6 +499,9 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
             "use_heuristics": cfg.use_heuristics,
+            "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
+            "store_text": cfg.store_text,
+            "strip_base64": cfg.strip_base64,
             "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
             "tuning": {field: getattr(cfg, field) for field in sorted(TUNING_FIELDS)},
         },
@@ -540,19 +564,9 @@ def _run_entry(
     resolved_run_name = run_name or cfg.dataset_label
     normalized_tags = _normalize_tags(tags)
     result = _run_single(cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags)
-    run_result = {
-        "run_name": resolved_run_name,
-        "dataset": cfg.dataset_label,
-        "preset": cfg.preset,
-        "artifact_dir": str(artifact_dir.resolve()),
-        "success": bool(result["success"]),
-        "return_code": int(result["return_code"]),
-        "failure_reason": result.get("failure_reason"),
-        "metrics": dict(result.get("summary_metrics", result.get("metrics", {}))),
-    }
-    if normalized_tags:
-        run_result["tags"] = normalized_tags
-    return run_result
+    result["run_name"] = resolved_run_name
+    result["artifact_dir"] = str(artifact_dir.resolve())
+    return result
 
 
 def execute_runs(
@@ -605,9 +619,10 @@ def run_command(
         recall_required=recall_required,
         tags=tag,
     )
+    artifact_display = (result.get("artifacts") or {}).get("runtime_metrics_dir", "N/A")
     typer.echo(
         f"\nResult: {'PASS' if result['success'] else 'FAIL'} | "
-        f"return_code={result['return_code']} | artifact_dir={result['artifact_dir']}"
+        f"return_code={result['return_code']} | artifacts={artifact_display}"
     )
     raise typer.Exit(code=0 if result["success"] else 1)
 

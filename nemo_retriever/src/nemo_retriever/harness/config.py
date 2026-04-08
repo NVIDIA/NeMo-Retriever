@@ -83,6 +83,9 @@ class HarnessConfig:
     extract_infographics: bool = False
     write_detection_file: bool = False
     use_heuristics: bool = False
+    store_images_uri: str | None = None
+    store_text: bool = False
+    strip_base64: bool = True
 
     pdf_extract_workers: int = 8
     pdf_extract_num_cpus: float = 2.0
@@ -286,6 +289,9 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
+        "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
+        "HARNESS_STORE_TEXT": ("store_text", _parse_bool),
+        "HARNESS_STRIP_BASE64": ("strip_base64", _parse_bool),
     }
 
     for key in TUNING_FIELDS:

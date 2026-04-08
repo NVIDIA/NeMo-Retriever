@@ -556,3 +556,36 @@ def test_load_harness_config_uses_financebench_repo_fixture(monkeypatch: pytest.
     assert cfg.dataset_dir == str(Path("/raid/tester/financebench").resolve())
     assert cfg.query_csv == str(expected_query_csv)
     assert cfg.recall_required is True
+
+
+def test_load_harness_config_supports_store_options(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: true",
+                "    store_images_uri: stored_images",
+                "    store_text: true",
+                "    strip_base64: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.store_images_uri == "stored_images"
+    assert cfg.store_text is True
+    assert cfg.strip_base64 is False
