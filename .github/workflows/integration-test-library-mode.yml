@@ -25,9 +25,9 @@ jobs:
         include:
           - runner: windows-latest
             os-label: windows-x64
-          - runner: macos-latest
+          - runner: macos-26
             os-label: macos-arm64
-          - runner: macos-latest-large
+          - runner: macos-26-intel
             os-label: macos-x64
 
     env:
