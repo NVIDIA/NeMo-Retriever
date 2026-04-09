@@ -1,14 +1,15 @@
 """Convert retrieval-bench per-query trace files into a FileRetriever JSON.
 
-Usable as a standalone CLI::
+Importable helper -- use :func:`convert_traces` directly::
 
-    python convert_traces_to_retrieval.py \\
-        --traces-dir /path/to/traces \\
-        --trace-run-name DenseRetrievalPipeline__backend \\
-        --dataset-name vidore/vidore_v3_finance_en \\
-        --output output.json
+    from retrieval_bench.convert_traces_to_retrieval import convert_traces
 
-or as an importable helper via :func:`convert_traces`.
+    convert_traces(
+        traces_dir="/path/to/traces",
+        trace_run_name="DenseRetrievalPipeline__backend",
+        dataset_name="vidore/vidore_v3_finance_en",
+        output="output.json",
+    )
 """
 
 import json
@@ -149,43 +150,3 @@ def convert_traces(
         "missing_docs": missing_docs,
         "output_path": str(out_path),
     }
-
-
-def main() -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Convert retrieval-bench traces to FileRetriever JSON.",
-    )
-    parser.add_argument("--traces-dir", required=True, help="Root directory containing trace folders.")
-    parser.add_argument("--trace-run-name", required=True, help="Name of the trace run (subfolder under traces-dir).")
-    parser.add_argument(
-        "--dataset-name", required=True, help="HuggingFace dataset ID (e.g. vidore/vidore_v3_finance_en)."
-    )
-    parser.add_argument("--output", required=True, help="Output JSON path.")
-    parser.add_argument("--top-k", type=int, default=5, help="Max documents per query (default: 5).")
-    parser.add_argument("--split", default="test", help="Dataset split (default: test).")
-    parser.add_argument("--language", default=None, help="Language filter (default: none).")
-    args = parser.parse_args()
-
-    result = convert_traces(
-        traces_dir=args.traces_dir,
-        trace_run_name=args.trace_run_name,
-        dataset_name=args.dataset_name,
-        output=args.output,
-        top_k=args.top_k,
-        split=args.split,
-        language=args.language,
-    )
-    print(f"\nDone: {result['queries_written']} queries written to {result['output_path']}")
-    if result["skipped"]:
-        print(f"  Skipped: {result['skipped']}")
-    if result["missing_docs"]:
-        print(f"  Missing docs: {result['missing_docs']}")
-    return 0
-
-
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(main())

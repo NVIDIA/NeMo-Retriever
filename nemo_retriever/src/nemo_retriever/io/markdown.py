@@ -21,9 +21,6 @@ _DOCUMENT_TITLE = "Extracted Content"
 _UNKNOWN_PAGE = -1
 _RECORD_LIST_KEYS = ("records", "df_records", "extracted_df_records", "primitives")
 _PAGE_CONTENT_COLUMNS = (
-    ("table", "Table"),
-    ("chart", "Chart"),
-    ("infographic", "Infographic"),
     ("tables", "Table"),
     ("charts", "Chart"),
     ("infographics", "Infographic"),
@@ -123,9 +120,6 @@ def _looks_like_record(record: Mapping[str, Any]) -> bool:
             "text",
             "content",
             "metadata",
-            "table",
-            "chart",
-            "infographic",
             "tables",
             "charts",
             "infographics",
@@ -287,7 +281,6 @@ def _label_for_subtype(subtype: Any, *, fallback: str) -> str:
     return subtype_map.get(subtype.strip().lower(), fallback)
 
 
-# Includes both singular and plural forms for backward compat with older extraction Parquets.
 _MARKDOWN_PARQUET_COLUMNS = frozenset(
     {
         "path",
@@ -297,9 +290,6 @@ _MARKDOWN_PARQUET_COLUMNS = frozenset(
         "document_type",
         "_content_type",
         "metadata",
-        "table",
-        "chart",
-        "infographic",
         "tables",
         "charts",
         "infographics",
@@ -382,7 +372,7 @@ def build_page_index(
     if path_col not in df.columns:
         raise KeyError(f"Neither 'path' nor 'source_id' found in columns: {list(df.columns)}")
 
-    list_keys = ("table", "chart", "infographic", "tables", "charts", "infographics")
+    list_keys = ("tables", "charts", "infographics")
 
     docs_grouped: dict[str, list[dict]] = defaultdict(list)
     for _, row in df.iterrows():

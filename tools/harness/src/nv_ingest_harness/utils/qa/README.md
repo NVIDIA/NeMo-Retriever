@@ -553,7 +553,7 @@ conforming JSON can be evaluated without changing the generator or judge.
 |--------|---------|
 | `run_dense_retrieval_bo767.py` | Run **dense** (single-shot) retrieval on the bo767 corpus using sub-page chunks from extraction Parquet, then expand hits to full-page markdown. Enables apples-to-apples comparison with LanceDB retrieval (same chunk granularity, different embedding model). |
 | `run_agentic_retrieval_bo767.py` | Run **agentic** retrieval on the same bo767 corpus. An LLM agent iteratively searches with multi-angle queries, query rewriting, and a selection agent -- then hits are expanded to full-page markdown. Same corpus/expansion as the dense script; the variable is the retrieval strategy. |
-| `convert_traces_to_retrieval.py` | Convert retrieval-bench per-query trace files into FileRetriever JSON for any dataset (ViDoRe, BRIGHT, custom). |
+| `convert_traces_to_retrieval.py` | Importable helper -- converts retrieval-bench per-query trace files into FileRetriever JSON for any dataset (ViDoRe, BRIGHT, custom). |
 
 **Prerequisites:** `retrieval-bench` must be installed (`pip install -e path/to/retrieval-bench`
 or equivalent). For Path A, **both** the extraction Parquet (`data/bo767_extracted/`)
@@ -664,15 +664,16 @@ to isolate retrieval quality.
 
 Convert the per-query traces into FileRetriever JSON:
 
-```bash
-cd tools/harness
+```python
+from retrieval_bench.convert_traces_to_retrieval import convert_traces
 
-python retrieval_bench/convert_traces_to_retrieval.py \
-  --traces-dir /path/to/retrieval-bench/traces \
-  --trace-run-name DenseRetrievalPipeline__llama-nv-embed-reasoning-3b \
-  --dataset-name vidore/vidore_v3_finance_en \
-  --top-k 5 \
-  --output data/test_retrieval/vidore_finance_retrieval.json
+convert_traces(
+    traces_dir="/path/to/retrieval-bench/traces",
+    trace_run_name="DenseRetrievalPipeline__llama-nv-embed-reasoning-3b",
+    dataset_name="vidore/vidore_v3_finance_en",
+    top_k=5,
+    output="data/test_retrieval/vidore_finance_retrieval.json",
+)
 ```
 
 Then evaluate with the standard QA pipeline:
@@ -844,7 +845,7 @@ independently of any ingestion or retrieval pipeline.
 | `cases/qa_eval.py` | Harness CLI integration (`--case=qa_eval`) -- reads `test_configs.yaml` |
 | `retrieval_bench/run_dense_retrieval_bo767.py` | Dense (single-shot) retrieval on bo767 sub-page chunks via retrieval-bench, with full-page expansion |
 | `retrieval_bench/run_agentic_retrieval_bo767.py` | Agentic (LLM agent loop) retrieval on the same bo767 corpus, with full-page expansion |
-| `retrieval_bench/convert_traces_to_retrieval.py` | Convert retrieval-bench traces to FileRetriever JSON (any dataset) |
+| `retrieval_bench/convert_traces_to_retrieval.py` | Importable helper -- converts retrieval-bench traces to FileRetriever JSON (any dataset) |
 
 ## Configuration
 
