@@ -179,13 +179,6 @@ def txt_file_to_chunks_df(
     path: str,
     params: TextChunkParams | None = None,
 ) -> pd.DataFrame:
-    chunk_params = params or TextChunkParams()
-    max_tokens = chunk_params.max_tokens
-    overlap_tokens = chunk_params.overlap_tokens
-    tokenizer_model_id = chunk_params.tokenizer_model_id
-    encoding = chunk_params.encoding
-    tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
-
     """
     Read a .txt file and return a DataFrame of chunks (one row per chunk).
 
@@ -212,6 +205,12 @@ def txt_file_to_chunks_df(
     pd.DataFrame
         Columns: text, path, page_number, metadata.
     """
+    chunk_params = params or TextChunkParams()
+    max_tokens = chunk_params.max_tokens
+    overlap_tokens = chunk_params.overlap_tokens
+    tokenizer_model_id = chunk_params.tokenizer_model_id
+    encoding = chunk_params.encoding
+    tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
     path = str(Path(path).resolve())
     raw = Path(path).read_text(encoding=encoding, errors="replace")
     if not raw or not raw.strip():
@@ -256,18 +255,17 @@ def txt_bytes_to_chunks_df(
     path: str,
     params: TextChunkParams | None = None,
 ) -> pd.DataFrame:
+    """
+    Decode bytes to text and return a DataFrame of chunks (same shape as txt_file_to_chunks_df).
+
+    Used by batch TxtSplitActor when input is bytes + path from read_binary_files.
+    """
     chunk_params = params or TextChunkParams()
     max_tokens = chunk_params.max_tokens
     overlap_tokens = chunk_params.overlap_tokens
     tokenizer_model_id = chunk_params.tokenizer_model_id
     encoding = chunk_params.encoding
     tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
-
-    """
-    Decode bytes to text and return a DataFrame of chunks (same shape as txt_file_to_chunks_df).
-
-    Used by batch TxtSplitActor when input is bytes + path from read_binary_files.
-    """
     path = str(Path(path).resolve())
     raw = content_bytes.decode(encoding, errors="replace")
     model_id = tokenizer_model_id or DEFAULT_TOKENIZER_MODEL_ID

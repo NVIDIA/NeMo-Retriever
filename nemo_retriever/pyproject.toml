@@ -10,12 +10,6 @@ no-build-package = ["nemotron-ocr"]
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
 ]
-conflicts = [
-  [
-    { extra = "cpu" },
-    { extra = "cu130" },
-  ],
-]
 
 [project]
 name = "nemo-retriever"
