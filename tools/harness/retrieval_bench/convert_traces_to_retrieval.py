@@ -1,31 +1,18 @@
-#!/usr/bin/env python3
-"""
-Convert retrieval-bench per-query trace files into a FileRetriever JSON
-that the QA evaluation harness can consume.
+"""Convert retrieval-bench per-query trace files into a FileRetriever JSON.
 
-retrieval-bench produces per-query traces like:
-    traces/<run_name>/<dataset_dir>/<query_id>.json
-        {"query_id": "42", "run": {"doc_0": 0.95, "doc_1": 0.82, ...}, ...}
+Usable as a standalone CLI::
 
-The QA eval harness expects:
-    {"queries": {"query text": {"chunks": ["text1", "text2", ...]}}}
+    python convert_traces_to_retrieval.py \\
+        --traces-dir /path/to/traces \\
+        --trace-run-name DenseRetrievalPipeline__backend \\
+        --dataset-name vidore/vidore_v3_finance_en \\
+        --output output.json
 
-This script loads the same dataset retrieval-bench used, maps doc IDs back
-to corpus text, and writes the bridge JSON.
-
-Usage:
-    python convert_traces_to_retrieval.py \
-        --traces-dir traces \
-        --trace-run-name DenseRetrievalPipeline__model \
-        --dataset-name vidore/vidore_v3_finance_en \
-        --top-k 5 \
-        --output retrieval_for_qa_eval.json
+or as an importable helper via :func:`convert_traces`.
 """
 
-import argparse
 import json
 import logging
-import sys
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -164,57 +151,41 @@ def convert_traces(
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Convert retrieval-bench traces to QA eval FileRetriever JSON.")
-    parser.add_argument(
-        "--traces-dir",
-        required=True,
-        help="Root traces directory (same as --traces-dir passed to retrieval-bench).",
+def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Convert retrieval-bench traces to FileRetriever JSON.",
     )
+    parser.add_argument("--traces-dir", required=True, help="Root directory containing trace folders.")
+    parser.add_argument("--trace-run-name", required=True, help="Name of the trace run (subfolder under traces-dir).")
     parser.add_argument(
-        "--trace-run-name",
-        required=True,
-        help="Trace run name (subdirectory under traces-dir). "
-        "Shown in retrieval-bench output, e.g. 'DenseRetrievalPipeline__model_name'.",
+        "--dataset-name", required=True, help="HuggingFace dataset ID (e.g. vidore/vidore_v3_finance_en)."
     )
-    parser.add_argument(
-        "--dataset-name",
-        required=True,
-        help="Dataset identifier (same as --dataset-name passed to retrieval-bench), "
-        "e.g. 'vidore/vidore_v3_finance_en' or 'bright/biology'.",
-    )
-    parser.add_argument(
-        "--top-k",
-        type=int,
-        default=5,
-        help="Number of top chunks per query (default: 5).",
-    )
+    parser.add_argument("--output", required=True, help="Output JSON path.")
+    parser.add_argument("--top-k", type=int, default=5, help="Max documents per query (default: 5).")
     parser.add_argument("--split", default="test", help="Dataset split (default: test).")
-    parser.add_argument("--language", default=None, help="Language filter (optional).")
-    parser.add_argument(
-        "--output",
-        required=True,
-        help="Output JSON path for the FileRetriever-compatible file.",
-    )
+    parser.add_argument("--language", default=None, help="Language filter (default: none).")
     args = parser.parse_args()
 
-    try:
-        stats = convert_traces(
-            traces_dir=args.traces_dir,
-            trace_run_name=args.trace_run_name,
-            dataset_name=args.dataset_name,
-            output=args.output,
-            top_k=args.top_k,
-            split=args.split,
-            language=args.language,
-        )
-    except FileNotFoundError as exc:
-        logger.error("%s", exc)
-        sys.exit(1)
-
-    print(f"\nDone. FileRetriever JSON: {stats['output_path']}")
-    print(f"Queries converted: {stats['queries_written']} / {stats['traces_found']}")
+    result = convert_traces(
+        traces_dir=args.traces_dir,
+        trace_run_name=args.trace_run_name,
+        dataset_name=args.dataset_name,
+        output=args.output,
+        top_k=args.top_k,
+        split=args.split,
+        language=args.language,
+    )
+    print(f"\nDone: {result['queries_written']} queries written to {result['output_path']}")
+    if result["skipped"]:
+        print(f"  Skipped: {result['skipped']}")
+    if result["missing_docs"]:
+        print(f"  Missing docs: {result['missing_docs']}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    sys.exit(main())

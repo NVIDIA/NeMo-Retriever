@@ -51,6 +51,7 @@ import argparse
 import json
 import os
 import time
+from collections import defaultdict
 from typing import Any
 
 from run_dense_retrieval_bo767 import (
@@ -62,6 +63,271 @@ from run_dense_retrieval_bo767 import (
     _load_parquet_corpus,
     _load_queries,
 )
+
+# ---------------------------------------------------------------------------
+# Latency instrumentation (monkeypatch-based, zero changes to retrieval-bench)
+# ---------------------------------------------------------------------------
+
+
+class _LatencyTracker:
+    """Non-intrusive per-query phase timing via class-level monkeypatching.
+
+    Wraps five methods in retrieval-bench's agent stack to record wall-clock
+    latency for each sub-phase.  The pipeline runs identically -- same code
+    paths, same parameters, same results -- only stopwatches are added.
+
+    Intercept points
+    ~~~~~~~~~~~~~~~~
+    1. ``Agent.step``          -- main agent LLM API call
+    2. ``Agent.call_one_tool`` -- tool execution (retrieve / think / final_results)
+    3. ``Agent.conclude_task`` -- post-loop RRF + selection agent
+    4. ``RetrieveTool._acall`` -- vector search (subset of call_one_tool)
+    5. ``query_rewriter.rewrite_query`` -- rewriting LLM sub-call (subset of call_one_tool)
+    """
+
+    def __init__(self) -> None:
+        self._data: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {
+                "step_ms": [],
+                "tool_calls": [],
+                "rewrite_ms": [],
+                "retrieve_ms": [],
+                "conclude_ms": 0.0,
+            }
+        )
+        self._originals: dict[str, tuple] = {}
+
+    # -- install / uninstall ------------------------------------------------
+
+    def install(self) -> None:
+        """Apply timing wrappers.  Call once before ``pipeline.search()``."""
+        from retrieval_bench.nemo_agentic import query_rewriter as _qr_mod
+        from retrieval_bench.nemo_agentic.agent import Agent
+        from retrieval_bench.pipelines.agentic import RetrieveTool, _CURRENT_QUERY_ID
+
+        tracker = self
+
+        orig_step = Agent.step
+
+        async def _timed_step(self_agent, *a, **kw):
+            t0 = time.perf_counter()
+            result = await orig_step(self_agent, *a, **kw)
+            elapsed = (time.perf_counter() - t0) * 1000.0
+            qid = getattr(self_agent, "session_id", None)
+            if qid is not None:
+                tracker._data[str(qid)]["step_ms"].append(elapsed)
+            return result
+
+        Agent.step = _timed_step
+
+        orig_call_tool = Agent.call_one_tool
+
+        async def _timed_call_tool(self_agent, *args, **kw):
+            fn_name = kw.get("fn_name") or (args[0] if args else "unknown")
+            t0 = time.perf_counter()
+            result = await orig_call_tool(self_agent, *args, **kw)
+            elapsed = (time.perf_counter() - t0) * 1000.0
+            qid = getattr(self_agent, "session_id", None)
+            if qid is not None:
+                tracker._data[str(qid)]["tool_calls"].append({"name": str(fn_name), "ms": elapsed})
+            return result
+
+        Agent.call_one_tool = _timed_call_tool
+
+        orig_conclude = Agent.conclude_task
+
+        async def _timed_conclude(self_agent, *a, **kw):
+            t0 = time.perf_counter()
+            result = await orig_conclude(self_agent, *a, **kw)
+            elapsed = (time.perf_counter() - t0) * 1000.0
+            qid = getattr(self_agent, "session_id", None)
+            if qid is not None:
+                tracker._data[str(qid)]["conclude_ms"] = elapsed
+            return result
+
+        Agent.conclude_task = _timed_conclude
+
+        orig_retrieve = RetrieveTool._acall
+
+        async def _timed_retrieve(self_tool, *a, **kw):
+            t0 = time.perf_counter()
+            result = await orig_retrieve(self_tool, *a, **kw)
+            elapsed = (time.perf_counter() - t0) * 1000.0
+            qid = _CURRENT_QUERY_ID.get()
+            if qid is not None:
+                tracker._data[str(qid)]["retrieve_ms"].append(elapsed)
+            return result
+
+        RetrieveTool._acall = _timed_retrieve
+
+        orig_rewrite = _qr_mod.rewrite_query
+
+        async def _timed_rewrite(*a, **kw):
+            t0 = time.perf_counter()
+            result = await orig_rewrite(*a, **kw)
+            elapsed = (time.perf_counter() - t0) * 1000.0
+            qid = _CURRENT_QUERY_ID.get()
+            if qid is not None:
+                tracker._data[str(qid)]["rewrite_ms"].append(elapsed)
+            return result
+
+        _qr_mod.rewrite_query = _timed_rewrite
+
+        self._originals = {
+            "Agent.step": (Agent, "step", orig_step),
+            "Agent.call_one_tool": (Agent, "call_one_tool", orig_call_tool),
+            "Agent.conclude_task": (Agent, "conclude_task", orig_conclude),
+            "RetrieveTool._acall": (RetrieveTool, "_acall", orig_retrieve),
+            "qr.rewrite_query": (_qr_mod, "rewrite_query", orig_rewrite),
+        }
+
+    def uninstall(self) -> None:
+        """Remove timing wrappers, restoring original methods."""
+        for _key, (cls_or_mod, attr, original) in self._originals.items():
+            setattr(cls_or_mod, attr, original)
+        self._originals.clear()
+
+    # -- data access --------------------------------------------------------
+
+    def build_phase_timing(self, qid: str) -> dict[str, Any]:
+        """Return a timing breakdown dict for *qid*, ready to merge into trace."""
+        raw = self._data.get(str(qid))
+        if raw is None:
+            return {}
+
+        retrieve_tcs = [tc for tc in raw["tool_calls"] if tc["name"] == "retrieve"]
+        think_tcs = [tc for tc in raw["tool_calls"] if tc["name"] == "think"]
+        other_tcs = [tc for tc in raw["tool_calls"] if tc["name"] not in ("retrieve", "think")]
+
+        return {
+            "step_total_ms": round(sum(raw["step_ms"]), 2),
+            "step_count": len(raw["step_ms"]),
+            "step_latencies_ms": [round(x, 2) for x in raw["step_ms"]],
+            "tool_retrieve_total_ms": round(sum(tc["ms"] for tc in retrieve_tcs), 2),
+            "tool_retrieve_count": len(retrieve_tcs),
+            "tool_think_total_ms": round(sum(tc["ms"] for tc in think_tcs), 2),
+            "tool_think_count": len(think_tcs),
+            "tool_other_total_ms": round(sum(tc["ms"] for tc in other_tcs), 2),
+            "rewrite_total_ms": round(sum(raw["rewrite_ms"]), 2),
+            "rewrite_count": len(raw["rewrite_ms"]),
+            "rewrite_latencies_ms": [round(x, 2) for x in raw["rewrite_ms"]],
+            "vector_search_total_ms": round(sum(raw["retrieve_ms"]), 2),
+            "vector_search_count": len(raw["retrieve_ms"]),
+            "vector_search_latencies_ms": [round(x, 2) for x in raw["retrieve_ms"]],
+            "conclude_ms": round(raw["conclude_ms"], 2),
+        }
+
+
+def _percentile(data: list[float], p: float) -> float:
+    """Linear-interpolation percentile (no numpy dependency)."""
+    if not data:
+        return 0.0
+    s = sorted(data)
+    k = (len(s) - 1) * (p / 100.0)
+    f = int(k)
+    c = min(f + 1, len(s) - 1)
+    return s[f] + (k - f) * (s[c] - s[f])
+
+
+def _print_latency_summary(
+    per_query_trace: dict[str, dict],
+    tracker: _LatencyTracker,
+    queries: list[str],
+) -> dict[str, Any]:
+    """Print a human-readable latency report and return summary dict."""
+    n = len(per_query_trace)
+    if n == 0:
+        return {}
+
+    elapsed_vals = [t["elapsed_ms"] for t in per_query_trace.values()]
+    total_elapsed = sum(elapsed_vals)
+
+    total_step = 0.0
+    total_conclude = 0.0
+    total_tool_retrieve = 0.0
+    total_tool_think = 0.0
+    total_rewrite = 0.0
+    total_vector = 0.0
+
+    for qid in per_query_trace:
+        pt = tracker.build_phase_timing(qid)
+        total_step += pt.get("step_total_ms", 0)
+        total_conclude += pt.get("conclude_ms", 0)
+        total_tool_retrieve += pt.get("tool_retrieve_total_ms", 0)
+        total_tool_think += pt.get("tool_think_total_ms", 0)
+        total_rewrite += pt.get("rewrite_total_ms", 0)
+        total_vector += pt.get("vector_search_total_ms", 0)
+
+    accounted = total_step + total_tool_retrieve + total_tool_think + total_conclude
+    overhead = max(total_elapsed - accounted, 0)
+
+    def pct(v: float) -> float:
+        return (v / total_elapsed * 100) if total_elapsed > 0 else 0
+
+    print("\n" + "=" * 70)
+    print("LATENCY ANALYSIS")
+    print("=" * 70)
+    print(f"  {n} queries  |  total wall-clock: {total_elapsed / 1000:.1f}s")
+    print(
+        f"  p50: {_percentile(elapsed_vals, 50) / 1000:.1f}s  |  "
+        f"p90: {_percentile(elapsed_vals, 90) / 1000:.1f}s  |  "
+        f"p95: {_percentile(elapsed_vals, 95) / 1000:.1f}s  |  "
+        f"max: {max(elapsed_vals) / 1000:.1f}s"
+    )
+
+    print("\n  Phase breakdown (summed across all queries):")
+    print(f"    LLM turns (Agent.step):      {total_step / 1000:8.1f}s  ({pct(total_step):5.1f}%)")
+    print(f"    Tool: retrieve calls:         {total_tool_retrieve / 1000:7.1f}s  ({pct(total_tool_retrieve):5.1f}%)")
+    print(f"      - query rewriting (LLM):    {total_rewrite / 1000:7.1f}s  ({pct(total_rewrite):5.1f}%)")
+    print(f"      - vector search (embed):    {total_vector / 1000:7.1f}s  ({pct(total_vector):5.1f}%)")
+    print(f"    Tool: think calls:            {total_tool_think / 1000:7.1f}s  ({pct(total_tool_think):5.1f}%)")
+    print(f"    Post-loop (RRF + selection):  {total_conclude / 1000:7.1f}s  ({pct(total_conclude):5.1f}%)")
+    print(f"    Overhead / other:             {overhead / 1000:7.1f}s  ({pct(overhead):5.1f}%)")
+
+    sorted_by_elapsed = sorted(
+        per_query_trace.items(),
+        key=lambda x: x[1].get("elapsed_ms", 0),
+        reverse=True,
+    )
+
+    print("\n  Top 5 slowest queries:")
+    for qid, trace in sorted_by_elapsed[:5]:
+        pt = tracker.build_phase_timing(qid)
+        idx = int(qid) if qid.isdigit() else -1
+        query_text = queries[idx] if 0 <= idx < len(queries) else "?"
+        truncated = (query_text[:55] + "...") if len(query_text) > 55 else query_text
+        print(
+            f"    #{qid:>3}  {trace['elapsed_ms'] / 1000:6.1f}s  "
+            f"LLM:{pt.get('step_total_ms', 0) / 1000:5.1f}s({pt.get('step_count', 0)}t) "
+            f"sel:{pt.get('conclude_ms', 0) / 1000:5.1f}s "
+            f"retr:{pt.get('tool_retrieve_total_ms', 0) / 1000:5.1f}s"
+        )
+        print(f'          "{truncated}"')
+
+    mean_turns = sum(t.get("llm_turns", 0) for t in per_query_trace.values()) / n
+    mean_retr = sum(t.get("num_retrieval_calls", 0) for t in per_query_trace.values()) / n
+    sel_count = sum(1 for t in per_query_trace.values() if t.get("selection_agent_ran"))
+    rrf_count = sum(1 for t in per_query_trace.values() if t.get("rrf_used"))
+    rw_count = sum(1 for t in per_query_trace.values() if t.get("query_rewriting_used"))
+
+    print(f"\n  Means:  {mean_turns:.1f} LLM turns/query  |  " f"{mean_retr:.1f} retrieve calls/query")
+    print(f"  Selection agent: {sel_count}/{n}  |  " f"RRF: {rrf_count}/{n}  |  " f"Rewriting: {rw_count}/{n}")
+    print("=" * 70)
+
+    return {
+        "total_elapsed_s": round(total_elapsed / 1000, 2),
+        "p50_query_s": round(_percentile(elapsed_vals, 50) / 1000, 2),
+        "p90_query_s": round(_percentile(elapsed_vals, 90) / 1000, 2),
+        "p95_query_s": round(_percentile(elapsed_vals, 95) / 1000, 2),
+        "max_query_s": round(max(elapsed_vals) / 1000, 2),
+        "pct_llm_turns": round(pct(total_step), 1),
+        "pct_tool_retrieve": round(pct(total_tool_retrieve), 1),
+        "pct_query_rewriting": round(pct(total_rewrite), 1),
+        "pct_vector_search": round(pct(total_vector), 1),
+        "pct_conclude_rrf_selection": round(pct(total_conclude), 1),
+        "pct_overhead": round(pct(overhead), 1),
+    }
+
 
 # ---------------------------------------------------------------------------
 # Main pipeline
@@ -177,13 +443,18 @@ def run_agentic_retrieval(
     )
     index_time = time.time() - t0
 
-    # -- 5. Agentic retrieve ----------------------------------------------
+    # -- 5. Agentic retrieve (with latency instrumentation) -----------------
     print(f"\nStarting agentic retrieval " f"(agent LLM: {llm_model}, concurrency: {num_concurrent}) ...")
-    t0 = time.time()
-    result = pipeline.search(query_ids=query_ids, queries=queries)
-    run_dict = result[0] if isinstance(result, tuple) else result
-    infos = result[1] if isinstance(result, tuple) and len(result) > 1 else {}
-    retrieval_time = time.time() - t0
+    tracker = _LatencyTracker()
+    tracker.install()
+    try:
+        t0 = time.time()
+        result = pipeline.search(query_ids=query_ids, queries=queries)
+        run_dict = result[0] if isinstance(result, tuple) else result
+        infos = result[1] if isinstance(result, tuple) and len(result) > 1 else {}
+        retrieval_time = time.time() - t0
+    finally:
+        tracker.uninstall()
 
     # -- 6. Expand chunk hits to full-page markdown -----------------------
     output_queries: dict[str, dict] = {}
@@ -197,9 +468,12 @@ def run_agentic_retrieval(
         total_page_misses += misses
         output_queries[query_text] = {"chunks": chunks, "metadata": meta}
 
-    # -- 7. Write FileRetriever JSON --------------------------------------
+    # -- 7. Merge phase timing into per-query trace -------------------------
     per_query_trace = infos.get("per_query_trace", {})
-    agentic_stats = {}
+    for qid in per_query_trace:
+        per_query_trace[qid]["phase_timing"] = tracker.build_phase_timing(qid)
+
+    agentic_stats: dict[str, Any] = {}
     if per_query_trace:
         retrieval_calls = [t.get("num_retrieval_calls", 0) for t in per_query_trace.values()]
         agentic_stats = {
@@ -210,6 +484,10 @@ def run_agentic_retrieval(
             "queries_with_fallback": sum(1 for t in per_query_trace.values() if t.get("fallback_used")),
         }
 
+    # -- 8. Latency summary ------------------------------------------------
+    latency_summary = _print_latency_summary(per_query_trace, tracker, queries)
+
+    # -- 9. Write FileRetriever JSON ---------------------------------------
     file_output: dict[str, Any] = {
         "metadata": {
             "retrieval_method": "agentic",
@@ -228,7 +506,9 @@ def run_agentic_retrieval(
             "query_count": len(output_queries),
             "page_index_misses": total_page_misses,
             **agentic_stats,
+            "latency_summary": latency_summary,
         },
+        "per_query_trace": per_query_trace,
         "queries": output_queries,
     }
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
@@ -249,6 +529,7 @@ def run_agentic_retrieval(
         "page_index_misses": total_page_misses,
         "output_path": output,
         **agentic_stats,
+        "latency_summary": latency_summary,
     }
 
 

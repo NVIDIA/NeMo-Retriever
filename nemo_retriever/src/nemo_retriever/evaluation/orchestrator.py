@@ -16,8 +16,8 @@ Architecture:
     - QAEvalPipeline is a *molecule* (not an atom). It composes generation,
       judging, and scoring internally for multi-model sweeps.
     - ``evaluate()`` delegates to ``process()`` -- single codepath.
-    - Not Ray-reconstructable (non-serializable constructor args).
-      Use ``Graph.execute()`` or ``InprocessExecutor`` with instance reuse.
+    - Instantiate once outside the executor and pass by reference.
+      Works with ``InprocessExecutor`` and Ray actor handles.
 """
 
 from __future__ import annotations
@@ -56,8 +56,8 @@ class QAEvalPipeline(EvalOperator):
     ``evaluate(qa_pairs)`` returns the legacy dict format for backward compat.
     ``process(df)`` provides the DataFrame-in/out interface for composition.
 
-    This is a molecule operator -- not Ray-reconstructable due to
-    non-serializable constructor args (retriever, llm_clients, judge).
+    Like other operators, instantiate outside the executor and pass by
+    reference.  Works with ``InprocessExecutor`` and Ray actor handles.
     """
 
     required_columns: ClassVar[tuple[str, ...]] = (
@@ -77,7 +77,12 @@ class QAEvalPipeline(EvalOperator):
         include_chunks_in_results: bool = True,
         chunk_char_limit: int = 500,
     ):
-        super().__init__()
+        super().__init__(
+            top_k=top_k,
+            max_workers=max_workers,
+            include_chunks_in_results=include_chunks_in_results,
+            chunk_char_limit=chunk_char_limit,
+        )
         self.retriever = retriever
         self.llm_clients = llm_clients
         self.judge = judge

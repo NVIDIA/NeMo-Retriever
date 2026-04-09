@@ -287,6 +287,7 @@ def _label_for_subtype(subtype: Any, *, fallback: str) -> str:
     return subtype_map.get(subtype.strip().lower(), fallback)
 
 
+# Includes both singular and plural forms for backward compat with older extraction Parquets.
 _MARKDOWN_PARQUET_COLUMNS = frozenset(
     {
         "path",

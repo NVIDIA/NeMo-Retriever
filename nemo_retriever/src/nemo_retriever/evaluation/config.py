@@ -68,6 +68,21 @@ logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
+
+def check_unresolved_env(value: str | None, field: str, context: str) -> None:
+    """Raise if *value* still contains an unexpanded ``${VAR}`` reference.
+
+    Call this on ``api_key`` (or any secret) after ``_expand_env_vars``
+    to fail fast with a clear message instead of sending a literal
+    ``${VAR}`` string to an API endpoint.
+    """
+    if value and _ENV_VAR_RE.search(value):
+        var = _ENV_VAR_RE.search(value).group(1)  # type: ignore[union-attr]
+        raise ValueError(
+            f"{field} for {context} contains unresolved env var ${{{var}}}. " f"Set it with: export {var}=<value>"
+        )
+
+
 _VALID_SECTION_SETS = (
     frozenset(("generators", "judge")),
     frozenset(("models", "evaluations")),
@@ -107,6 +122,8 @@ def _normalize_config(config: dict) -> dict:
     if "models" in config and "evaluations" in config:
         models = config["models"]
         evals = config["evaluations"]
+        if not evals:
+            raise ValueError("'evaluations' list is empty -- need at least one generator/judge combo")
 
         seen_generators: dict[str, dict] = {}
         for entry in evals:

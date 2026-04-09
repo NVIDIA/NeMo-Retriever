@@ -12,11 +12,14 @@ local vLLM / Ollama servers via a model name prefix convention.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Optional
 
 from nemo_retriever.evaluation.text_utils import strip_think_tags
 from nemo_retriever.evaluation.types import GenerationResult
+
+logger = logging.getLogger(__name__)
 
 _RAG_SYSTEM_PROMPT = (
     "You are a precise question-answering assistant. "
@@ -63,6 +66,7 @@ class LiteLLMClient:
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         temperature: float = 0.0,
+        top_p: float = 1.0,
         max_tokens: int = 4096,
         extra_params: Optional[dict[str, Any]] = None,
         num_retries: int = 3,
@@ -72,6 +76,7 @@ class LiteLLMClient:
         self.api_base = api_base
         self.api_key = api_key
         self.temperature = temperature
+        self.top_p = top_p
         self.max_tokens = max_tokens
         self.extra_params = extra_params or {}
         self.num_retries = num_retries
@@ -89,6 +94,8 @@ class LiteLLMClient:
             "num_retries": self.num_retries,
             "timeout": self.timeout,
         }
+        if self.top_p is not None and self.top_p != 1.0:
+            call_kwargs["top_p"] = self.top_p
         if self.api_base:
             call_kwargs["api_base"] = self.api_base
         if self.api_key:
@@ -96,7 +103,22 @@ class LiteLLMClient:
         call_kwargs.update(self.extra_params)
 
         t0 = time.monotonic()
-        response = litellm.completion(**call_kwargs)
+        try:
+            response = litellm.completion(**call_kwargs)
+        except Exception as exc:
+            err = str(exc)
+            if "temperature" in err and "top_p" in err:
+                logger.error(
+                    "Model %s rejected the request because both `temperature` "
+                    "and `top_p` were specified. Some providers (e.g. Bedrock) "
+                    "only accept one. Either remove `top_p` from the model "
+                    "config or set `temperature` to null. Sent: "
+                    "temperature=%s, top_p=%s",
+                    self.model,
+                    call_kwargs.get("temperature"),
+                    call_kwargs.get("top_p"),
+                )
+            raise
         latency = time.monotonic() - t0
         content = (response.choices[0].message.content or "").strip()
         return content, latency
@@ -116,6 +138,7 @@ class LiteLLMClient:
                 )
             return GenerationResult(answer=answer, latency_s=latency, model=self.model)
         except Exception as exc:
+            logger.debug("Generation failed for model=%s: %s", self.model, exc)
             return GenerationResult(
                 answer="",
                 latency_s=0.0,

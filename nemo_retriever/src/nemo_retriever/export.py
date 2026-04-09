@@ -99,18 +99,17 @@ def expand_hits_to_pages(
     return chunks, metadata, miss_count
 
 
-def export_retrieval_json(
+def query_lancedb(
     lancedb_uri: str,
     lancedb_table: str,
     queries: list[dict],
-    output_path: str | Path,
     *,
     top_k: int = 5,
     embedder: str = "nvidia/llama-nemotron-embed-1b-v2",
     page_index: dict[str, dict[str, str]] | None = None,
     batch_size: int = 50,
-) -> dict:
-    """Query LanceDB, optionally expand to full-page markdown, write FileRetriever JSON.
+) -> tuple[dict[str, dict], dict[str, Any]]:
+    """Query LanceDB and return results without writing to disk.
 
     Parameters
     ----------
@@ -120,8 +119,6 @@ def export_retrieval_json(
         LanceDB table name.
     queries : list[dict]
         Each dict must have a ``"query"`` key.
-    output_path : str or Path
-        Where to write the output JSON.
     top_k : int
         Number of chunks to retrieve per query.
     embedder : str
@@ -134,8 +131,10 @@ def export_retrieval_json(
 
     Returns
     -------
-    dict
-        The output JSON structure (also written to *output_path*).
+    tuple[dict[str, dict], dict[str, Any]]
+        ``(all_results, metadata)`` where *all_results* maps query text to
+        ``{"chunks": [...], "metadata": [...]}`` and *metadata* is the
+        envelope metadata dict.
     """
     from nemo_retriever.retriever import Retriever
 
@@ -175,24 +174,102 @@ def export_retrieval_json(
             all_results[query] = {"chunks": chunks, "metadata": metadata}
 
     chunk_mode = "full-page markdown" if use_fullpage else "sub-page chunks"
+    meta: dict[str, Any] = {
+        "vdb_backend": "lancedb",
+        "collection_name": lancedb_table,
+        "top_k": top_k,
+        "embedding_model": embedder,
+        "chunk_mode": chunk_mode,
+        "query_count": len(all_results),
+    }
+    if use_fullpage:
+        meta["page_index_misses"] = total_page_misses
+
+    return all_results, meta
+
+
+def write_retrieval_json(
+    all_results: dict[str, dict],
+    output_path: str | Path,
+    metadata: dict[str, Any],
+) -> dict:
+    """Write retrieval results to a FileRetriever-compatible JSON file.
+
+    Parameters
+    ----------
+    all_results : dict
+        Query text -> ``{"chunks": [...], "metadata": [...]}``.
+    output_path : str or Path
+        Destination file path.
+    metadata : dict
+        Envelope metadata (vdb_backend, top_k, etc.).
+
+    Returns
+    -------
+    dict
+        The full JSON structure written to disk.
+    """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     output: dict[str, Any] = {
-        "metadata": {
-            "vdb_backend": "lancedb",
-            "collection_name": lancedb_table,
-            "top_k": top_k,
-            "embedding_model": embedder,
-            "chunk_mode": chunk_mode,
-            "query_count": len(all_results),
-        },
+        "metadata": metadata,
         "queries": all_results,
     }
-    if use_fullpage:
-        output["metadata"]["page_index_misses"] = total_page_misses
 
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2)
 
     return output
+
+
+def export_retrieval_json(
+    lancedb_uri: str,
+    lancedb_table: str,
+    queries: list[dict],
+    output_path: str | Path,
+    *,
+    top_k: int = 5,
+    embedder: str = "nvidia/llama-nemotron-embed-1b-v2",
+    page_index: dict[str, dict[str, str]] | None = None,
+    batch_size: int = 50,
+) -> dict:
+    """Query LanceDB, optionally expand to full-page markdown, write FileRetriever JSON.
+
+    Convenience wrapper around :func:`query_lancedb` + :func:`write_retrieval_json`.
+
+    Parameters
+    ----------
+    lancedb_uri : str
+        Path to LanceDB directory.
+    lancedb_table : str
+        LanceDB table name.
+    queries : list[dict]
+        Each dict must have a ``"query"`` key.
+    output_path : str or Path
+        Where to write the output JSON.
+    top_k : int
+        Number of chunks to retrieve per query.
+    embedder : str
+        Embedding model name for the Retriever.
+    page_index : dict, optional
+        ``{source_id: {page_str: markdown}}``.  When provided, chunk hits are
+        expanded to full-page markdown.
+    batch_size : int
+        Number of queries per retrieval batch.
+
+    Returns
+    -------
+    dict
+        The output JSON structure (also written to *output_path*).
+    """
+    all_results, meta = query_lancedb(
+        lancedb_uri=lancedb_uri,
+        lancedb_table=lancedb_table,
+        queries=queries,
+        top_k=top_k,
+        embedder=embedder,
+        page_index=page_index,
+        batch_size=batch_size,
+    )
+    return write_retrieval_json(all_results, output_path, meta)

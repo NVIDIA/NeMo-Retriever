@@ -26,7 +26,6 @@ from nemo_retriever.evaluation.types import (
     GenerationResult,
     JudgeResult,
     LLMClient,
-    QAQueryResult,
     RetrievalResult,
     RetrieverStrategy,
 )
@@ -42,6 +41,7 @@ _LAZY_IMPORTS = {
     "load_eval_config": "nemo_retriever.evaluation.config",
     "build_eval_chain": "nemo_retriever.evaluation.config",
     "build_eval_pipeline": "nemo_retriever.evaluation.config",
+    "run_eval_sweep": "nemo_retriever.evaluation.runner",
 }
 
 
@@ -65,7 +65,6 @@ __all__ = [
     "LiteLLMClient",
     "QAEvalPipeline",
     "QAGenerationOperator",
-    "QAQueryResult",
     "RetrievalLoaderOperator",
     "RetrievalResult",
     "RetrieverStrategy",
@@ -73,5 +72,6 @@ __all__ = [
     "build_eval_chain",
     "build_eval_pipeline",
     "load_eval_config",
+    "run_eval_sweep",
     "score_dataframe",
 ]

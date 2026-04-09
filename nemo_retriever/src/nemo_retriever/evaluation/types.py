@@ -65,17 +65,3 @@ class JudgeResult:
     score: Optional[int] = None
     reasoning: str = ""
     error: Optional[str] = None
-
-
-@dataclass
-class QAQueryResult:
-    """Aggregated per-query results across all configured LLMs."""
-
-    query: str
-    reference_answer: str
-    retrieval: RetrievalResult
-    generations: dict[str, GenerationResult] = field(default_factory=dict)
-    judgements: dict[str, JudgeResult] = field(default_factory=dict)
-    answer_in_context: Optional[bool] = None
-    token_f1: dict[str, dict] = field(default_factory=dict)
-    failure_mode: dict[str, str] = field(default_factory=dict)
