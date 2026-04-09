@@ -104,7 +104,7 @@ BEIR evaluation tools. Not needed for production use.
 
 ```toml
 torch = [
-  { index = "torch-cuda", marker = "sys_platform == 'linux'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux'" },
   # Mac: falls through to PyPI CPU wheel
 ]
 ```

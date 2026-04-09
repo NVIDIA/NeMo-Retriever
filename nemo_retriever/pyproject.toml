@@ -148,10 +148,10 @@ nemotron-ocr = { index = "test-pypi" }
 # On Linux, resolve torch/torchvision from the CUDA wheel index.
 # On Mac, fall through to PyPI to get CPU wheels.
 torch = [
-  { index = "torch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchvision = [
-  { index = "torch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 vllm = [
   { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
@@ -164,7 +164,7 @@ url = "https://test.pypi.org/simple/"
 explicit = true
 
 [[tool.uv.index]]
-name = "torch-cuda"
+name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
