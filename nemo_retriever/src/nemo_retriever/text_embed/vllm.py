@@ -77,11 +77,11 @@ def create_vllm_llm(
 
     Uses bfloat16 and FLASH_ATTN backend (fixed for this module).
 
-    .. warning::
+    .. note::
         When ``compile_cache_dir`` is set (or auto-detected), ``TORCHINDUCTOR_CACHE_DIR`` and
-        ``TRITON_CACHE_DIR`` are overwritten as process-global side effects. A second call with a
-        different cache dir will silently overwrite the earlier values, potentially affecting
-        concurrently compiling code in the same process.
+        ``TRITON_CACHE_DIR`` are set as process-global side effects if not already present in the
+        environment. The first call wins; subsequent calls with a different cache dir will not
+        overwrite the earlier values.
     """
     try:
         from vllm import LLM
@@ -92,8 +92,10 @@ def create_vllm_llm(
         cache_dir = compile_cache_dir if compile_cache_dir is not None else _default_compile_cache_dir()
         if cache_dir:
             os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-            os.environ["TORCHINDUCTOR_CACHE_DIR"] = cache_dir
-            os.environ["TRITON_CACHE_DIR"] = cache_dir
+            if "TORCHINDUCTOR_CACHE_DIR" not in os.environ:
+                os.environ["TORCHINDUCTOR_CACHE_DIR"] = cache_dir
+            if "TRITON_CACHE_DIR" not in os.environ:
+                os.environ["TRITON_CACHE_DIR"] = cache_dir
             logger.debug("vLLM: using compile cache dir %s", cache_dir)
 
     pooler_config = None
