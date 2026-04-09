@@ -130,6 +130,7 @@ class InprocessExecutor(AbstractExecutor):
             tqdm = None
 
         import logging as _logging
+
         _exec_log = _logging.getLogger(__name__)
 
         if self._show_progress and tqdm is not None:

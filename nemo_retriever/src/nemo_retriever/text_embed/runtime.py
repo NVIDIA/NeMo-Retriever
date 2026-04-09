@@ -149,9 +149,7 @@ def embed_text_main_text_embed(
     except BaseException as exc:
         import logging as _logging
 
-        _logging.getLogger(__name__).error(
-            "Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True
-        )
+        _logging.getLogger(__name__).error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         raise
 
     if embedding_dim_column:

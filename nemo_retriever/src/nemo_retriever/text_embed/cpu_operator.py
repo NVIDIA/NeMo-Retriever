@@ -38,6 +38,7 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
     def process(self, data: Any, **kwargs: Any) -> Any:
         import logging as _logging
         import pandas as pd
+
         _log = _logging.getLogger(__name__)
         if isinstance(data, pd.DataFrame):
             text_col = self._kwargs.get("text_column", "text")
@@ -45,7 +46,9 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
             n_with_text = int(data[text_col].notna().sum()) if text_col in data.columns else -1
             _log.debug(
                 "[embed] input: %d rows, %d with non-null '%s', endpoint=%s",
-                n_total, n_with_text, text_col,
+                n_total,
+                n_with_text,
+                text_col,
                 self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url"),
             )
         out = embed_text_main_text_embed(data, model=self._model, **self._kwargs)

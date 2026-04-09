@@ -30,9 +30,7 @@ Image.MAX_IMAGE_PIXELS = None
 logger = logging.getLogger(__name__)
 
 
-def _resize_image_opencv(
-    array: np.ndarray, target_size: Tuple[int, int], interpolation=None
-) -> np.ndarray:
+def _resize_image_opencv(array: np.ndarray, target_size: Tuple[int, int], interpolation=None) -> np.ndarray:
     """
     Resizes a NumPy array representing an image using OpenCV.
 
@@ -549,6 +547,7 @@ def numpy_to_base64_png(array: np.ndarray) -> str:
             png_bytes = _encode_opencv_png(array)
         else:
             from io import BytesIO
+
             pil_img = Image.fromarray(array.astype(np.uint8))
             buf = BytesIO()
             pil_img.save(buf, format="PNG", compress_level=3)
@@ -586,6 +585,7 @@ def numpy_to_base64_jpeg(array: np.ndarray, quality: int = 100) -> str:
             jpeg_bytes = _encode_opencv_jpeg(array, quality=quality)
         else:
             from io import BytesIO
+
             pil_img = Image.fromarray(array.astype(np.uint8)).convert("RGB")
             buf = BytesIO()
             pil_img.save(buf, format="JPEG", quality=quality)
@@ -703,6 +703,7 @@ def base64_to_numpy(base64_string: str) -> np.ndarray:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         else:
             from io import BytesIO
+
             pil_img = Image.open(BytesIO(image_bytes)).convert("RGB")
             img = np.array(pil_img)
     except ImportError:
