@@ -147,21 +147,12 @@ def embed_text_main_text_embed(
                 parts.append(part)
             out_df = pd.concat(parts).sort_index()
     except BaseException as exc:
-        import traceback as traceback_module
+        import logging as _logging
 
-        print(f"Warning: embedding failed: {type(exc).__name__}: {exc}")
-        traceback_module.print_exc()
-        err_payload = {
-            "embedding": None,
-            "error": {"stage": "embed", "type": exc.__class__.__name__, "message": str(exc)},
-        }
-        out_df = batch_df.copy()
-        if output_column:
-            out_df[output_column] = [err_payload for _ in range(len(out_df.index))]
-        out_df[embedding_dim_column] = [0 for _ in range(len(out_df.index))]
-        out_df[has_embedding_column] = [False for _ in range(len(out_df.index))]
-        out_df["_contains_embeddings"] = [False for _ in range(len(out_df.index))]
-        return out_df
+        _logging.getLogger(__name__).error(
+            "Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True
+        )
+        raise
 
     if embedding_dim_column:
 

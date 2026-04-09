@@ -110,21 +110,33 @@ def _render_page_to_base64(
         arr = arr[:, :, :3]
 
     # Encode.
+    from io import BytesIO
+    from PIL import Image as _PILImage
+
     fmt = image_format.lower()
-    if fmt == "jpeg":
-        # convert_bitmap_to_corrected_numpy returns RGB; OpenCV needs BGR.
-        bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-        ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, int(jpeg_quality)])
-        if not ok:
-            raise RuntimeError("cv2.imencode failed for JPEG")
-        encoded_bytes = buf.tobytes()
+    if cv2 is not None:
+        if fmt == "jpeg":
+            bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, int(jpeg_quality)])
+            if not ok:
+                raise RuntimeError("cv2.imencode failed for JPEG")
+            encoded_bytes = buf.tobytes()
+        else:
+            bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            ok, buf = cv2.imencode(".png", bgr, [cv2.IMWRITE_PNG_COMPRESSION, 3])
+            if not ok:
+                raise RuntimeError("cv2.imencode failed for PNG")
+            encoded_bytes = buf.tobytes()
     else:
-        # PNG with fast compression.
-        bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-        ok, buf = cv2.imencode(".png", bgr, [cv2.IMWRITE_PNG_COMPRESSION, 3])
-        if not ok:
-            raise RuntimeError("cv2.imencode failed for PNG")
-        encoded_bytes = buf.tobytes()
+        # PIL fallback when opencv-python is not installed (e.g. Intel Mac slim install).
+        pil_img = _PILImage.fromarray(arr)
+        buf = BytesIO()
+        if fmt == "jpeg":
+            pil_img = pil_img.convert("RGB")
+            pil_img.save(buf, format="JPEG", quality=int(jpeg_quality))
+        else:
+            pil_img.save(buf, format="PNG", compress_level=3)
+        encoded_bytes = buf.getvalue()
 
     return {
         "image_b64": base64.b64encode(encoded_bytes).decode("ascii"),

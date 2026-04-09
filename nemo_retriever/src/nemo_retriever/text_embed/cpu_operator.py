@@ -36,7 +36,26 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
+        import logging as _logging
+        import pandas as pd
+        _log = _logging.getLogger(__name__)
+        if isinstance(data, pd.DataFrame):
+            text_col = self._kwargs.get("text_column", "text")
+            n_total = len(data)
+            n_with_text = int(data[text_col].notna().sum()) if text_col in data.columns else -1
+            _log.debug(
+                "[embed] input: %d rows, %d with non-null '%s', endpoint=%s",
+                n_total, n_with_text, text_col,
+                self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url"),
+            )
+        out = embed_text_main_text_embed(data, model=self._model, **self._kwargs)
+        if isinstance(out, pd.DataFrame):
+            dim_col = self._kwargs.get("embedding_dim_column", "text_embeddings_1b_v2_dim")
+            has_col = self._kwargs.get("has_embedding_column", "text_embeddings_1b_v2_has_embedding")
+            n_embedded = int(out[has_col].sum()) if has_col in out.columns else -1
+            dims = out[dim_col].unique().tolist() if dim_col in out.columns else []
+            _log.debug("[embed] output: %d rows, %d with embeddings, dims=%s", len(out), n_embedded, dims)
+        return out
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

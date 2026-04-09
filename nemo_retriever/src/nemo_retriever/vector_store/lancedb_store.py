@@ -326,6 +326,9 @@ def handle_lancedb(
     )  # Use the same LanceDB config for writing and recall.
     db = lancedb.connect(uri=lancedb_config.uri)
     cleaned_rows = _build_lancedb_rows_from_df(rows)
+    if not cleaned_rows:
+        logger.warning("No embedding rows to write; skipping LanceDB index creation.")
+        return {}
     _write_rows_to_lancedb(cleaned_rows, cfg=lancedb_config)
     table = db.open_table(lancedb_config.table_name)  # Ensure table is open and metadata is updated before proceeding.
     create_lancedb_index(table, cfg=lancedb_config)

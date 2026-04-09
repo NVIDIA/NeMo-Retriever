@@ -101,9 +101,15 @@ def convert_bitmap_to_corrected_numpy(bitmap: pdfium.PdfBitmap) -> np.ndarray:
     # CFX_AggDeviceDriver::GetDIBits() that SIGTRAPs under concurrent rendering.
     mode = bitmap.mode
     if mode in {"BGRA", "BGRX"}:
-        cv2.cvtColor(img_arr, cv2.COLOR_BGRA2RGBA, dst=img_arr)
+        if cv2 is not None:
+            cv2.cvtColor(img_arr, cv2.COLOR_BGRA2RGBA, dst=img_arr)
+        else:
+            img_arr[:, :, :3] = img_arr[:, :, 2::-1]  # BGR→RGB in-place, preserve alpha
     elif mode == "BGR":
-        cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB, dst=img_arr)
+        if cv2 is not None:
+            cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB, dst=img_arr)
+        else:
+            img_arr[:, :, [0, 2]] = img_arr[:, :, [2, 0]]  # swap R and B channels in-place
 
     return img_arr
 

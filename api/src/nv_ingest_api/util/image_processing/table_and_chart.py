@@ -172,12 +172,14 @@ def convert_ocr_response_to_psuedo_markdown(bboxes, texts):
     )
     preds_df = preds_df.sort_values("y0")
 
-    from sklearn.cluster import DBSCAN
+    try:
+        from sklearn.cluster import DBSCAN
 
-    dbscan = DBSCAN(eps=10, min_samples=1)
-    dbscan.fit(preds_df["y0"].values[:, None])
-
-    preds_df["cluster"] = dbscan.labels_
+        dbscan = DBSCAN(eps=10, min_samples=1)
+        dbscan.fit(preds_df["y0"].values[:, None])
+        preds_df["cluster"] = dbscan.labels_
+    except ImportError:
+        preds_df["cluster"] = (preds_df["y0"] / 10).round().astype(int)
     preds_df = preds_df.sort_values(["cluster", "x0"])
 
     results = ""

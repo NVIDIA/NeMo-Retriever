@@ -545,10 +545,14 @@ def numpy_to_base64_png(array: np.ndarray) -> str:
         If there is an issue during the image conversion or base64 encoding process.
     """
     try:
-        # Encode to PNG bytes using OpenCV
-        png_bytes = _encode_opencv_png(array)
-
-        # Convert to base64
+        if cv2 is not None:
+            png_bytes = _encode_opencv_png(array)
+        else:
+            from io import BytesIO
+            pil_img = Image.fromarray(array.astype(np.uint8))
+            buf = BytesIO()
+            pil_img.save(buf, format="PNG", compress_level=3)
+            png_bytes = buf.getvalue()
         base64_img = bytetools.base64frombytes(png_bytes)
     except Exception as e:
         raise RuntimeError(f"Failed to encode image to base64 PNG: {e}")
@@ -578,10 +582,14 @@ def numpy_to_base64_jpeg(array: np.ndarray, quality: int = 100) -> str:
         If there is an issue during the image conversion or base64 encoding process.
     """
     try:
-        # Encode to JPEG bytes using OpenCV
-        jpeg_bytes = _encode_opencv_jpeg(array, quality=quality)
-
-        # Convert to base64
+        if cv2 is not None:
+            jpeg_bytes = _encode_opencv_jpeg(array, quality=quality)
+        else:
+            from io import BytesIO
+            pil_img = Image.fromarray(array.astype(np.uint8)).convert("RGB")
+            buf = BytesIO()
+            pil_img.save(buf, format="JPEG", quality=quality)
+            jpeg_bytes = buf.getvalue()
         base64_img = bytetools.base64frombytes(jpeg_bytes)
     except Exception as e:
         raise RuntimeError(f"Failed to encode image to base64 JPEG: {e}")
@@ -632,13 +640,14 @@ def numpy_to_base64(array: np.ndarray, format: str = "PNG", **kwargs) -> str:
     >>> isinstance(encoded_str_jpeg, str)
     True
     """
-    # Centralized preprocessing of the numpy array
-    processed_array = _preprocess_numpy_array(array)
-
     # Quick format normalization
     format = format.upper().strip()
     if format == "JPG":
         format = "JPEG"
+
+    # _preprocess_numpy_array converts RGB→BGR for OpenCV; skip it when cv2 is unavailable
+    # since numpy_to_base64_png/jpeg already handle the PIL fallback path with RGB input.
+    processed_array = _preprocess_numpy_array(array) if cv2 is not None else array
 
     if format == "PNG":
         return numpy_to_base64_png(processed_array)
@@ -682,21 +691,20 @@ def base64_to_numpy(base64_string: str) -> np.ndarray:
     except Exception as e:
         raise ValueError("Invalid base64 string") from e
 
-    # Create numpy buffer from bytes and decode using OpenCV
-    buf = np.frombuffer(image_bytes, dtype=np.uint8)
     try:
-        img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
-        if img is None:
-            raise ValueError("OpenCV failed to decode image")
-
-        # Convert 4 channel to 3 channel if necessary
-        if img.shape[2] == 4:
-            img = rgba_to_rgb_white_bg(img)
-
-        # Convert BGR to RGB for consistent processing (OpenCV loads as BGR)
-        # Only convert if it's a 3-channel color image
-        if img.ndim == 3 and img.shape[2] == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if cv2 is not None:
+            buf = np.frombuffer(image_bytes, dtype=np.uint8)
+            img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
+            if img is None:
+                raise ValueError("OpenCV failed to decode image")
+            if img.ndim == 3 and img.shape[2] == 4:
+                img = rgba_to_rgb_white_bg(img)
+            if img.ndim == 3 and img.shape[2] == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        else:
+            from io import BytesIO
+            pil_img = Image.open(BytesIO(image_bytes)).convert("RGB")
+            img = np.array(pil_img)
     except ImportError:
         raise
     except Exception as e:
