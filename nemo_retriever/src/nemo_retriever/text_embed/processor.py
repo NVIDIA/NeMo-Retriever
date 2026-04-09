@@ -89,7 +89,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
     if has_endpoint or not use_local:
         return
 
-    from nemo_retriever.model import create_local_embedder, resolve_embed_model
+    from nemo_retriever.model import create_local_embedder, resolve_embed_model, is_vl_embed_model
 
     embed_model = resolve_embed_model(
         task_config.get("embed_model_name")
@@ -112,10 +112,18 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
 
     prefix = f"{transform_config.input_type}: " if getattr(transform_config, "input_type", None) else ""
 
-    def _embed(texts):
-        prefixed = [prefix + t for t in texts] if prefix else texts
-        vecs = embedder_instance.embed(prefixed, batch_size=local_batch_size, prefix="")
-        return vecs.tolist()
+    if is_vl_embed_model(embed_model):
+
+        def _embed(texts):
+            vecs = embedder_instance.embed(texts, batch_size=local_batch_size)
+            return vecs.tolist()
+
+    else:
+
+        def _embed(texts):
+            prefixed = [prefix + t for t in texts] if prefix else texts
+            vecs = embedder_instance.embed(prefixed, batch_size=local_batch_size, prefix="")
+            return vecs.tolist()
 
     task_config["endpoint_url"] = None
     task_config["embedder"] = _embed
