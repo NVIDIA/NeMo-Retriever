@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 
+from nemo_retriever.io.image_store import load_image_b64_from_uri
 from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.params.models import IMAGE_MODALITIES
 
@@ -49,6 +50,17 @@ def _deep_copy_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _resolve_image_b64(container: dict) -> Optional[str]:
+    """Return image_b64, reloading from stored_image_uri if stripped."""
+    b64 = container.get("image_b64")
+    if b64 is not None:
+        return b64
+    uri = container.get("stored_image_uri")
+    if uri:
+        return load_image_b64_from_uri(uri)
+    return None
+
+
 def explode_content_to_rows(
     batch_df: Any,
     *,
@@ -71,7 +83,7 @@ def explode_content_to_rows(
         batch_df = batch_df.copy()
         if text_mod in IMAGE_MODALITIES and "page_image" in batch_df.columns:
             batch_df["_image_b64"] = batch_df["page_image"].apply(
-                lambda page_image: page_image.get("image_b64") if isinstance(page_image, dict) else None
+                lambda page_image: _resolve_image_b64(page_image) if isinstance(page_image, dict) else None
             )
         batch_df["_embed_modality"] = text_mod
         return batch_df
@@ -84,7 +96,7 @@ def explode_content_to_rows(
         page_image = row_dict.get("page_image")
         page_image_b64: Optional[str] = None
         if any_images and isinstance(page_image, dict):
-            page_image_b64 = page_image.get("image_b64")
+            page_image_b64 = _resolve_image_b64(page_image)
 
         page_text = row_dict.get(text_column)
         if isinstance(page_text, str) and page_text.strip():
@@ -112,15 +124,19 @@ def explode_content_to_rows(
                     content_row[text_column] = value.strip()
                     content_row["_embed_modality"] = struct_mod
                     content_row["_content_type"] = content_type
-                    if struct_mod in IMAGE_MODALITIES and page_image_b64:
-                        bbox = item.get("bbox_xyxy_norm")
-                        if bbox and len(bbox) == 4:
-                            cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_image_b64, bbox_xyxy_norm=bbox)
-                            content_row["_image_b64"] = cropped_b64
+                    if struct_mod in IMAGE_MODALITIES:
+                        item_b64 = _resolve_image_b64(item)
+                        if item_b64:
+                            content_row["_image_b64"] = item_b64
+                        elif page_image_b64:
+                            bbox = item.get("bbox_xyxy_norm")
+                            if bbox and len(bbox) == 4:
+                                cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_image_b64, bbox_xyxy_norm=bbox)
+                                content_row["_image_b64"] = cropped_b64
+                            else:
+                                content_row["_image_b64"] = page_image_b64
                         else:
-                            content_row["_image_b64"] = page_image_b64
-                    elif struct_mod in IMAGE_MODALITIES:
-                        content_row["_image_b64"] = None
+                            content_row["_image_b64"] = None
                     new_rows.append(content_row)
                     exploded_any = True
 
@@ -155,7 +171,7 @@ def collapse_content_to_page_rows(
     if modality in IMAGE_MODALITIES:
         if "page_image" in batch_df.columns:
             batch_df["_image_b64"] = batch_df["page_image"].apply(
-                lambda page_image: page_image.get("image_b64") if isinstance(page_image, dict) else None
+                lambda page_image: _resolve_image_b64(page_image) if isinstance(page_image, dict) else None
             )
         else:
             batch_df["_image_b64"] = None
