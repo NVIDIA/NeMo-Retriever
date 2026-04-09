@@ -14,7 +14,11 @@ from datetime import timedelta
 from nv_ingest_client.util.vdb.lancedb import LanceDB
 from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
 import pandas as pd
-import lancedb
+
+try:
+    import lancedb
+except ImportError:
+    lancedb = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +325,11 @@ def handle_lancedb(
         Reads `*.text_embeddings.json` files from `input_dir`, extracts embeddings, and uploads to LanceDB.
     )
     """
+    if lancedb is None:
+        raise RuntimeError(
+            "LanceDB write requested but dependencies are missing. "
+            "Install `lancedb` and `pyarrow` in this environment."
+        )
     lancedb_config = LanceDBConfig(
         uri=uri, table_name=table_name, hybrid=hybrid
     )  # Use the same LanceDB config for writing and recall.

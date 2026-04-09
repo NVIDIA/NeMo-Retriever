@@ -49,8 +49,11 @@ def _resize_image_opencv(array: np.ndarray, target_size: Tuple[int, int], interp
         The resized image as a NumPy array.
     """
     if interpolation is None:
-        interpolation = cv2.INTER_LANCZOS4
-    return cv2.resize(array, target_size, interpolation=interpolation)
+        interpolation = cv2.INTER_LANCZOS4 if cv2 is not None else 4  # 4 == INTER_LANCZOS4 constant
+    if cv2 is not None:
+        return cv2.resize(array, target_size, interpolation=interpolation)
+    pil_img = Image.fromarray(array)
+    return np.array(pil_img.resize(target_size, resample=Image.LANCZOS))
 
 
 def rgba_to_rgb_white_bg(rgba_image):

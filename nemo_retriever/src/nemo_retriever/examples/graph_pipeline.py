@@ -50,7 +50,6 @@ from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
-from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
@@ -553,6 +552,8 @@ def main(
         # Write to LanceDB
         # ------------------------------------------------------------------
         lancedb_write_start = time.perf_counter()
+        from nemo_retriever.vector_store.lancedb_store import handle_lancedb  # noqa: PLC0415
+
         handle_lancedb(ingest_local_results, lancedb_uri, LANCEDB_TABLE, hybrid=hybrid, mode="overwrite")
         lancedb_write_time = time.perf_counter() - lancedb_write_start
 

@@ -44,7 +44,25 @@ try:
     from pymilvus.orm.types import CONSISTENCY_BOUNDED
     from scipy.sparse import csr_array
 except ImportError:
+    Minio = None
+    AnnSearchRequest = None
+    BulkInsertState = None
+    Collection = None
+    CollectionSchema = None
+    DataType = None
+    Function = None
+    FunctionType = None
+    MilvusClient = None
+    RRFRanker = None
+    connections = None
+    utility = None
+    BulkFileType = None
+    RemoteBulkWriter = None
+    IndexParams = None
+    BM25EmbeddingFunction = None
+    build_default_analyzer = None
     CONSISTENCY_BOUNDED = None
+    csr_array = None
 
 
 logger = logging.getLogger(__name__)

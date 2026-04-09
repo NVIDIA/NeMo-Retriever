@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, List, Optional, Sequence
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from nemo_retriever.model import resolve_embed_model
 from nemo_retriever.params.models import IMAGE_MODALITIES
@@ -146,11 +149,16 @@ def embed_text_main_text_embed(
                 )
                 parts.append(part)
             out_df = pd.concat(parts).sort_index()
-    except BaseException as exc:
-        import logging as _logging
-
-        _logging.getLogger(__name__).error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
-        raise
+    except Exception as exc:
+        logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
+        out_df = batch_df.copy()
+        out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)
+        out_df[embedding_dim_column] = 0
+        out_df[has_embedding_column] = False
+        for column in ("_image_b64", "_embed_modality"):
+            if column in out_df.columns:
+                out_df = out_df.drop(columns=[column])
+        return out_df
 
     if embedding_dim_column:
 
