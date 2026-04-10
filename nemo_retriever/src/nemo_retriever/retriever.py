@@ -53,7 +53,7 @@ class Retriever:
 
     lancedb_uri: str = "lancedb"
     lancedb_table: str = "nv-ingest"
-    embedder: str = "nvidia/llama-nemotron-embed-1b-v2"
+    embedder: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedding_http_endpoint: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
@@ -68,7 +68,7 @@ class Retriever:
     # Reranking -----------------------------------------------------------
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
-    reranker_model_name: Optional[str] = "nvidia/llama-nemotron-rerank-1b-v2"
+    reranker_model_name: Optional[str] = "nvidia/llama-nemotron-rerank-vl-1b-v2"
     """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2')."""
     reranker_endpoint: Optional[str] = None
     """Base URL of a vLLM / NIM ranking endpoint. Appends ``/v1/ranking`` unless already using ``/reranking``."""
