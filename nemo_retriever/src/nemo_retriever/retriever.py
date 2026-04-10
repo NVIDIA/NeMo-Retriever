@@ -9,6 +9,19 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 from tqdm import tqdm
 
+_KEEP_KEYS = frozenset(
+    {
+        "text",
+        "metadata",
+        "source",
+        "page_number",
+        "pdf_page",
+        "pdf_basename",
+        "source_id",
+        "path",
+    }
+)
+
 
 @dataclass
 class Retriever:
@@ -228,7 +241,7 @@ class Retriever:
                     .limit(int(top_k))
                     .to_list()
                 )
-            results.append(hits)
+            results.append([{k: v for k, v in h.items() if k in _KEEP_KEYS} for h in hits])
         return results
 
     # ------------------------------------------------------------------

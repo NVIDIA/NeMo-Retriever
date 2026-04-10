@@ -65,6 +65,48 @@ def test_load_harness_config_precedence(tmp_path: Path, monkeypatch: pytest.Monk
     assert cfg.recall_required is True
 
 
+def test_load_harness_config_supports_run_mode_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,source,page\nq,a,1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    _write_harness_config(cfg_path, dataset_dir, query_csv)
+
+    monkeypatch.setenv("HARNESS_RUN_MODE", "inprocess")
+
+    cfg = load_harness_config(
+        config_file=str(cfg_path),
+        dataset="tiny",
+        preset="base",
+    )
+    assert cfg.run_mode == "inprocess"
+
+
+def test_load_harness_config_rejects_invalid_run_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                f"  dataset_dir: {dataset_dir}",
+                "  run_mode: invalid",
+                "  preset: base",
+                "  recall_required: false",
+                "presets:",
+                "  base: {}",
+                "datasets: {}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="run_mode must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
 def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
