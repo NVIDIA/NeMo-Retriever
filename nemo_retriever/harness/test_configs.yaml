@@ -58,13 +58,13 @@ presets:
     ocr_workers: 24
     ocr_batch_size: 16
     embed_workers: 24
-    embed_batch_size: 256
+    embed_batch_size: 64
     page_elements_cpus_per_actor: 1.0
     ocr_cpus_per_actor: 1.0
     embed_cpus_per_actor: 1.0
     gpu_page_elements: 0.1
     gpu_ocr: 0.1
-    gpu_embed: 0.25
+    gpu_embed: 1.0
 
 datasets:
   bo20:
@@ -74,10 +74,13 @@ datasets:
     recall_required: false
 
   bo767:
-    path: /datasets/nv-ingest/bo767
-    query_csv: data/bo767_query_gt.csv
+    path: /raid/cjarrett/nv-ingest/data/bo767
+    query_csv: data/bo767_annotations.csv
     input_type: pdf
-    recall_required: true
+    recall_required: false
+    evaluation_mode: beir
+    beir_loader: bo767_csv
+    beir_doc_id_field: pdf_page_modality
 
   jp20:
     path: /datasets/nv-ingest/jp20

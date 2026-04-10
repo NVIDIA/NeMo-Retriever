@@ -276,11 +276,14 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     ]
 
     if cfg.evaluation_mode == "beir":
+        beir_dataset_name = cfg.beir_dataset_name or cfg.dataset_label
+        if cfg.beir_loader == "bo767_csv" and cfg.query_csv:
+            beir_dataset_name = str(Path(cfg.query_csv).resolve())
         cmd += [
             "--beir-loader",
             str(cfg.beir_loader),
             "--beir-dataset-name",
-            str(cfg.beir_dataset_name or cfg.dataset_label),
+            str(beir_dataset_name),
             "--beir-split",
             cfg.beir_split,
             "--beir-doc-id-field",
