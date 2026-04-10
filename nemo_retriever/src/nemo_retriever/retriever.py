@@ -165,6 +165,16 @@ class Retriever:
         table_columns = {f.name for f in table.schema}
         has_image_uri = "stored_image_uri" in table_columns
 
+        if self.reranker:
+            from nemo_retriever.model import is_vl_rerank_model
+
+            if is_vl_rerank_model(self.reranker_model_name) and not has_image_uri:
+                raise ValueError(
+                    f"VL reranker '{self.reranker_model_name}' requires images stored via .store() during ingestion. "
+                    f"The LanceDB table '{lancedb_table}' has no 'stored_image_uri' column. "
+                    "Re-ingest with .store(StoreParams(storage_uri='/path/to/images')) to enable multimodal reranking."
+                )
+
         results: list[list[dict[str, Any]]] = []
         for i, vector in enumerate(query_vectors):
             q = np.asarray(vector, dtype="float32")

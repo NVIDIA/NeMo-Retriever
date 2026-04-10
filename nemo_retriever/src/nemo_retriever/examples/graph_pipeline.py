@@ -491,6 +491,13 @@ def main(
                 )
             )
 
+        from nemo_retriever.model import is_vl_rerank_model
+
+        if reranker and is_vl_rerank_model(reranker_model_name) and not store_images_uri:
+            raise typer.BadParameter(
+                f"VL reranker '{reranker_model_name}' requires --store-images-uri to persist images for reranking."
+            )
+
         if store_images_uri is not None:
             ingestor = ingestor.store(
                 StoreParams(
