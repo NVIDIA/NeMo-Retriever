@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 import warnings
 
@@ -289,11 +291,7 @@ class StoreParams(_ParamsModel):
     @model_validator(mode="after")
     def _resolve_local_storage_uri(self) -> "StoreParams":
         """Resolve relative local paths to absolute so they survive Ray serialization."""
-        from urllib.parse import urlparse
-
         if not urlparse(self.storage_uri).scheme:
-            from pathlib import Path
-
             self.storage_uri = str(Path(self.storage_uri).resolve())
         return self
 
