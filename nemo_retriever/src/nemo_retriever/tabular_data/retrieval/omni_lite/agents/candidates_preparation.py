@@ -29,10 +29,11 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
     Labels,
+    _apply_foreign_key_hints,
+    dedupe_merge_relevant_tables,
     get_relevant_fks_from_candidates_tables,
     get_relevant_queries,
     get_relevant_tables,
-    
 )
 
 logger = logging.getLogger(__name__)
@@ -53,8 +54,6 @@ class CandidatePreparationAgent(BaseAgent):
     - path_state["tables_rows"]: Output of ``get_relevant_fks_from_candidates_tables``
         (same per-table dict shape as ``get_relevant_tables``)
     - path_state["relevant_fks"]: Flat list of FK relationship dicts
-    - path_state["table_groups"]: Connected table groups with FKs
-        Each group: {"tables": [...], "fks": [...]}
     - path_state["relevant_queries"]: Relevant queries for context
     - path_state["similar_questions"]: Similar questions from history
     - path_state["complex_candidates"]: Filtered complex candidates
@@ -103,14 +102,13 @@ class CandidatePreparationAgent(BaseAgent):
 
         relevant_fks.extend(additional_fks)
 
+        relevant_tables = dedupe_merge_relevant_tables(relevant_tables)
+        _apply_foreign_key_hints(relevant_tables, relevant_fks)
+
         self.logger.info(
             f"Found {len(relevant_tables)} relevant tables and {len(relevant_fks)} foreign keys"
         )
 
-        table_groups = self._group_tables_by_fks(relevant_tables, relevant_fks)
-        self.logger.info(
-            f"Grouped {len(relevant_tables)} tables into {len(table_groups)} connected groups"
-        )
 
         relevant_queries = get_relevant_queries(
             candidates,
@@ -127,7 +125,7 @@ class CandidatePreparationAgent(BaseAgent):
         #     f"Found {len(similar_questions)} similar questions from conversations"
         # )
 
-        # Filter complex candidates (SQL snippets, certified assets, rich column context)
+        # Filter complex candidates ()
         complex_candidates = [
             {
                 "name": x["name"],
@@ -152,7 +150,6 @@ class CandidatePreparationAgent(BaseAgent):
                 **path_state,
                 "relevant_tables": relevant_tables,
                 "relevant_fks": relevant_fks,
-                "table_groups": table_groups,  # Grouped tables by FK relationships
                 "relevant_queries": relevant_queries,
                 # "similar_questions": similar_questions,
                 "complex_candidates": complex_candidates,
@@ -160,110 +157,6 @@ class CandidatePreparationAgent(BaseAgent):
             }
         }
 
-    def _group_tables_by_fks(
-        self,
-        tables_rows: list[dict],
-        fks: list[dict],
-    ) -> list[dict]:
-        """
-        Group tables by foreign key relationships using networkx.
-
-        Args:
-            tables_rows: List of table dicts (see ``get_relevant_tables`` / ``get_relevant_fks_from_candidates_tables``).
-            fks: Flat list of FK relationship dicts (table1, table2, columns, ...)
-
-        Returns:
-            List of {"tables": [...], "fks": [...]}.
-        """
-        if not tables_rows:
-            return []
-
-        table_by_name = {}
-        for table in tables_rows:
-            table_name = table.get("schema_name", "") + "." + table.get("name", "")
-            if table_name:
-                if table_name not in table_by_name:
-                    table_by_name[table_name] = {"table": table}
-
-        # Create graph
-        G = nx.Graph()
-
-        # # Add all tables as nodes (using table names)
-        # for table_name in table_by_name.keys():
-        #     G.add_node(table_name)
-
-        covered_nodes = set()
-
-        for fk in fks:
-            table1 = fk.get("table1")
-            table2 = fk.get("table2")
-            if table1 not in covered_nodes:
-                G.add_node(table1)
-                covered_nodes.add(table1)
-            if table2 not in covered_nodes:
-                G.add_node(table2)
-                covered_nodes.add(table2)
-
-            # if table1 and table2 and table1 in table_by_name and table2 in table_by_name:
-            G.add_edge(table1, table2)
-
-        # Find connected components
-        connected_components = list(nx.connected_components(G))
-
-        # Group tables from table_by_name by connected_components
-        grouped_tables_by_component = []
-        for component in connected_components:
-            # Get tables that exist in both component and table_by_name
-            tables_in_component = [
-                {
-                    "table_name": table_name,
-                    "table": table_by_name[table_name]["table"],
-                }
-                for table_name in component
-                if table_name in table_by_name
-            ]
-            if tables_in_component:  # Only add non-empty groups
-                grouped_tables_by_component.append(
-                    {"component": component, "tables": tables_in_component}
-                )
-
-        table_groups = []
-        for component in connected_components:
-            # Get all tables in this component
-            group_tables = [
-                table_by_name[table_name]["table"]
-                for table_name in component
-                if table_name in table_by_name
-            ]
-
-            group_fks = []
-            for fk in fks:
-                table1 = fk.get("table1")
-                table2 = fk.get("table2")
-                if table1 in component and table2 in component:
-                    group_fks.append(fk)
-
-            table_groups.append(
-                {
-                    "tables": group_tables,
-                    "fks": group_fks,
-                }
-            )
-
-        # add all tables that are not in any component to the table_groups
-        for table_name in table_by_name.keys():
-            if table_name not in covered_nodes:
-                table_groups.append(
-                    {
-                        "tables": [table_by_name[table_name]["table"]],
-                        "fks": [],
-                    }
-                )
-
-        # Sort groups by size (largest first) for consistency
-        table_groups.sort(key=lambda g: len(g["tables"]), reverse=True)
-
-        return table_groups
 
     def _build_complex_candidates_str(self, candidates: list) -> list[str]:
         """

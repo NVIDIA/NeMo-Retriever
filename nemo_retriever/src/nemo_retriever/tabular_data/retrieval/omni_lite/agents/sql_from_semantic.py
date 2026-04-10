@@ -26,7 +26,10 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.utils import build_semantic_items_section, get_semantic_entities_ids
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
+    build_semantic_items_section,
+    get_semantic_entities_ids,
+)
 
 from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
     AgentState,
@@ -43,13 +46,13 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.models import SQLGeneration
 logger = logging.getLogger(__name__)
 
 
-
 def format_tables_for_prompt(tables: list[dict]) -> str:
     """
     Format tables with clear column information to prevent cross-table column confusion.
 
     Args:
-        tables: List of table dictionaries with columns, db_name, schema_name
+        tables: Table dicts from ``path_state["relevant_tables"]`` — each must expose
+            ``columns`` as a list of dicts (from ``_normalize_table_to_relevant_shape`` / prep).
 
     Returns:
         Formatted string clearly showing which columns belong to each table
@@ -89,12 +92,15 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         if "foreign_key" in table:
             table_parts.append(f"  Foreign Key: {table['foreign_key']}")
 
-        # Columns - MOST IMPORTANT: explicitly list each column
-        if "columns" in table and table["columns"]:
+        # Columns — from ``table["columns"]`` (populated upstream)
+        columns = table.get("columns")
+        if not isinstance(columns, list):
+            columns = []
+        if columns:
             table_parts.append(
                 "  AVAILABLE COLUMNS (only use these columns for this table):"
             )
-            for col in table["columns"]:
+            for col in columns:
                 # Handle both dict and string column formats
                 if isinstance(col, dict):
                     col_name = col.get("name", "UNKNOWN")
@@ -111,10 +117,6 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
                 else:
                     # Unknown format, convert to string
                     table_parts.append(f"    - {str(col)}")
-        else:
-            # Fallback to table_info if columns not parsed
-            if "table_info" in table:
-                table_parts.append(f"  Info: {table['table_info']}")
 
         formatted_tables.append("\n".join(table_parts))
 
@@ -130,7 +132,7 @@ class SQLFromSemanticAgent(BaseAgent):
 
     Input Requirements:
     - path_state["retrieved_candidates"]: Candidate dicts from preparation (flat list; legacy wrapped shape still accepted)
-    - path_state["relevant_tables"] / table_groups / relevant_fks: schema context
+    - path_state["relevant_tables"] / relevant_fks: schema context
     - path_state["relevant_queries"]: Relevant queries (from CandidatePreparationAgent)
 
     Output:
@@ -173,10 +175,9 @@ class SQLFromSemanticAgent(BaseAgent):
         llm = state["llm"]
         dialects = state["dialects"]
         question = get_question_for_processing(state)
-        candidates = path_state["retrieved_candidates"]
+        # candidates = path_state["retrieved_candidates"]
 
         # Get pre-fetched data from CandidatePreparationAgent
-        table_groups = path_state.get("table_groups", [])
         relevant_tables = path_state.get("relevant_tables", [])
         relevant_fks = path_state.get("relevant_fks", [])
         relevant_queries = path_state.get("relevant_queries", [])

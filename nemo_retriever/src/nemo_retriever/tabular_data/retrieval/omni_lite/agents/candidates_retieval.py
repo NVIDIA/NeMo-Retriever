@@ -22,7 +22,6 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
     Labels,
     clean_results,
-    expand_info,
     extract_candidates,
 )
 
@@ -34,8 +33,9 @@ class CandidateRetrievalAgent(BaseAgent):
     Agent that retrieves candidates from semantic search (custom analyses and columns).
 
     Retrieval Strategy:
-    - Semantic search over custom analyses and columns.
-    - Clean and expand candidate properties
+    - Semantic search over custom analyses and columns (graph expansion via ``expand_info``
+      happens inside ``get_semantic_candidates_information`` / ``extract_candidates``).
+    - Clean candidate list (dedupe)
 
     Output:
     - path_state["retrieved_custom_analyses"]: Cleaned custom_analysis stream.
@@ -58,7 +58,7 @@ class CandidateRetrievalAgent(BaseAgent):
         """
         Retrieve candidates from semantic search.
 
-        Performs semantic search, cleans results, expands properties.
+        Performs semantic search and cleans results (Neo4j expansion already applied in ``extract_candidates``).
 
         Args:
             state: Current agent state
@@ -105,20 +105,6 @@ class CandidateRetrievalAgent(BaseAgent):
                     for c in cleaned_mixed
                     if c.get("label") == Labels.COLUMN
                 ]
-
-            ids_and_labels = [
-                {"label": c["label"], "id": c["id"]}
-                for c in (retrieved_custom_analyses + retrieved_column_candidates)
-            ]
-            candidates_properties = expand_info(ids_and_labels) if ids_and_labels else {}
-
-            for candidate in retrieved_custom_analyses + retrieved_column_candidates:
-                cid = candidate.get("id")
-                if cid is None:
-                    continue
-                extra = candidates_properties.get(cid) or candidates_properties.get(str(cid))
-                if isinstance(extra, dict):
-                    candidate.update(extra)
 
             path_state["retrieved_custom_analyses"] = retrieved_custom_analyses
             path_state["retrieved_column_candidates"] = retrieved_column_candidates

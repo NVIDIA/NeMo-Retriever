@@ -126,8 +126,8 @@ def route_decision(state: AgentState) -> str:
 
     Maps agent decisions to valid graph edges:
     - "constructable" → "validate_sql_query" (from SQL construction agents)
-    - "unconstructable" → "unconstructable" (from SQL construction agents)
-    - Preserves other valid decisions as-is
+    - "unconstructable" → "unconstructable"
+    - Any other value (stale entry-point names, empty string, etc.) → "unconstructable"
 
     Args:
         state: Current agent state
@@ -135,23 +135,26 @@ def route_decision(state: AgentState) -> str:
     Returns:
         Valid graph edge name
     """
-    decision = state.get("decision", "")
+    decision = state.get("decision", "") or ""
 
     # Map agent-specific decisions to graph edges
-    # SQL construction agents return "constructable" which needs to map to "validate_sql_query"
     decision_mapping = {
         "constructable": "validate_sql_query",
-        # "unconstructable" maps to "unconstructable" (valid edge from construct_sql_from_semantic)
-        # Other decisions are already valid edge names, so pass through
     }
 
-    # Apply mapping if needed, otherwise return decision as-is
-    # This preserves valid decisions like "calculation_search", "construct_sql_chosen_snippet", etc.
     mapped_decision = decision_mapping.get(decision, decision)
 
-    # Log if we're mapping a decision (for debugging)
     if decision != mapped_decision:
-        logger.debug(f"Mapped decision '{decision}' → '{mapped_decision}'")
+        logger.debug("Mapped decision '%s' → '%s'", decision, mapped_decision)
+
+    # construct_sql_from_semantic only wires "validate_sql_query" | "unconstructable"
+    _semantic_edges = frozenset({"validate_sql_query", "unconstructable"})
+    if mapped_decision not in _semantic_edges:
+        logger.warning(
+            "route_decision: decision %r is not a valid semantic-SQL edge → unconstructable",
+            mapped_decision,
+        )
+        return "unconstructable"
 
     return mapped_decision
 

@@ -206,9 +206,16 @@ queries_for_columns_params_keys = ", ".join(
 
 
 def expand_info(ids_and_labels):
-    # define a function for key
-    def key_func(k):
-        return k["label"]
+    """Fetch Neo4j properties per (label, id). Column nodes merge parent table into ``relevant_tables``."""
+    items: list[dict] = []
+    for x in ids_and_labels or []:
+        if not isinstance(x, dict):
+            continue
+        if x.get("id") is None:
+            continue
+        if str(x.get("label") or "").strip() == "":
+            continue
+        items.append({"id": x["id"], "label": x["label"]})
 
     results = {}
 
@@ -218,18 +225,38 @@ def expand_info(ids_and_labels):
         _cnt_str,
     ) = get_queries_usage_percentiles("sql_node")
 
-    for label, ids in groupby(ids_and_labels, key_func):
+    for label, ids in groupby(
+        sorted(items, key=lambda d: str(d.get("label") or "").strip()),
+        key=lambda d: str(d.get("label") or "").strip(),
+    ):
         label_id_pairs_for_current_label = list(ids)
+        if not label:
+            continue
         query = f"""UNWIND $label_id_pairs as label_id
-                    MATCH (n:{label} {{id:label_id.id}})
+                    MATCH (n:{label} {{id: label_id.id}})
                     CALL apoc.case([
-                        n:custom_analysis,
+                        n:Custom_analysis,
                             'MATCH(n)-[:analysis_of]->(sql:sql)
                             WITH n, collect(distinct {{sql_code: sql.sql_full_query}}) as sql
                             RETURN apoc.map.setKey(properties(n), "sql", sql) as item',
-                        n:column,
-                            'MATCH(n)<-[:schema]-(parent)
-                            RETURN apoc.map.setPairs(properties(n),[["table_name", parent.name],["table_type", parent.type], ["parent_id", parent.id]]) as item'
+                        n:Column,
+                            'MATCH(n)<-[:CONTAINS]-(parent)
+                            WITH n, parent,
+                                 [(parent)-[:CONTAINS]->(c:Column) |
+                                  {{name: c.name, data_type: toString(coalesce(c.data_type, ""))}}] AS column_list
+                            WITH n, parent, column_list,
+                                 apoc.map.merge(
+                                     properties(parent),
+                                     {{label: coalesce(parent.label, toLower(head(labels(parent))), "table"), columns: column_list}}
+                                 ) AS t0
+                            RETURN apoc.map.merge(
+                                     apoc.map.setPairs(properties(n),[
+                                         ["table_name", parent.name],
+                                         ["table_type", parent.type],
+                                         ["parent_id", parent.id]
+                                     ]),
+                                     {{relevant_tables: [t0]}}
+                                 ) as item'
                         ],
                         'with n RETURN n{{ .*}} as item ',
                         {{n:n, sql_type: $sql_type, usage_percentile_25: $usage_percentile_25,
@@ -278,49 +305,41 @@ def _parse_lancedb_row_metadata(hit: dict) -> dict:
     return {}
 
 
-def _label_matches_semantic_filter(lab: object, allowed_labels: set[str]) -> bool:
-    """
-    True if ``lab`` is allowed or there is no filter.
-
-    Matching is case-insensitive so Neo4j ``Table`` matches ``Labels.TABLE`` (``table``).
-    When a filter is set, rows with unknown / missing label are excluded.
-    """
-    if not allowed_labels:
-        return True
-    if lab is None or (isinstance(lab, str) and not lab.strip()):
-        return False
-    ls = str(lab).strip().lower()
-    allowed_lower = {str(x).strip().lower() for x in allowed_labels if x is not None}
-    return ls in allowed_lower
-
-
-def _l2_distance_to_score(distance: object | None) -> float:
-    """Map LanceDB L2 distance (lower is better) to a positive score (higher is better)."""
+def _vector_distance_value(distance: object | None) -> float:
+    """LanceDB dense search ``_distance`` (L2); lower is better. Missing → +inf for sorting."""
     if distance is None:
-        return 0.0
+        return float("inf")
     try:
-        d = float(distance)
+        return float(distance)
     except (TypeError, ValueError):
-        return 0.0
-    return 1.0 / (1.0 + max(d, 0.0))
+        return float("inf")
 
 
-def _hits_to_semantic_rows(hits: list[dict], allowed_labels: set[str], k: int) -> list[dict]:
-    """Turn raw LanceDB hits into candidate dicts; optional filter by ``label`` in metadata."""
+def _hits_to_semantic_rows(hits: list[dict], _allowed_labels: set[str], k: int) -> list[dict]:
+    """Turn raw LanceDB hits into candidate dicts.
+
+    Label filtering is already applied in LanceDB via ``label_in``; each row uses ``text`` as
+    the candidate string. ``id`` / ``label`` are taken from metadata (minimal parse) for
+    ``expand_info`` / Neo4j enrichment only.
+
+    ``score`` is the raw vector ``_distance`` from Lance (lower is better; see sorts below).
+    """
     rows: list[dict] = []
     for hit in hits:
         meta = _parse_lancedb_row_metadata(hit)
-        top_label = hit.get("label")
-        lab = top_label if top_label is not None else meta.get("label")
-        if not _label_matches_semantic_filter(lab, allowed_labels):
+        cid = meta.get("id")
+        if cid is None:
             continue
-        score = _l2_distance_to_score(hit.get("_distance"))
-        row = {**meta, "score": score}
-        if top_label is not None and "label" not in meta:
-            row["label"] = top_label
-        if row.get("id") is None:
-            continue
-        rows.append(row)
+        lab = meta.get("label") if meta.get("label") is not None else hit.get("label")
+        score = _vector_distance_value(hit.get("_distance"))
+        rows.append(
+            {
+                "text": (hit.get("text") or "").strip(),
+                "id": cid,
+                "label": lab,
+                "score": score,
+            }
+        )
         if len(rows) >= int(k):
             break
     return rows[: int(k)]
@@ -366,7 +385,8 @@ def search_lancedb_semantic_index(
 
     ``OmniLiteRetriever`` applies ``label_filter`` in LanceDB with ``(label IN (...)) OR
     (metadata LIKE …)`` when those columns exist (substring patterns include Neo4j-style
-    ``Column`` vs ``column``). Rows are tightened again in ``_hits_to_semantic_rows``.
+    ``Column`` vs ``column``). ``_hits_to_semantic_rows`` maps hits to ``text`` + ``id``/``label``
+    for downstream enrichment (no second label filter).
 
     Env — LanceDB: ``OMNI_SEMANTIC_LANCEDB_URI`` (default ``lancedb``),
     ``OMNI_SEMANTIC_LANCEDB_TABLE`` (default ``nv-ingest-tabular``).
@@ -411,6 +431,9 @@ def get_semantic_candidates_information(
     """
     Vector search over LanceDB, then merge graph properties from ``expand_info``.
 
+    Column nodes get ``relevant_tables``: one normalized table dict (parent ``:table`` via
+    ``<-[:schema]-``), same shape as :func:`get_relevant_tables` / ``_normalize_table_to_relevant_shape``.
+
     Matches the call shape used by ``extract_candidates``:
     ``get_semantic_candidates_information(text, k=..., list_of_semantic=[...])``.
     """
@@ -435,26 +458,36 @@ def get_semantic_candidates_information(
         extra = props_by_id.get(cid) or props_by_id.get(str(cid))
         if isinstance(extra, dict):
             c.update(extra)
+            rel_tabs = c.get("relevant_tables")
+            if isinstance(rel_tabs, list):
+                c["relevant_tables"] = [
+                    _normalize_table_to_relevant_shape(t)
+                    for t in rel_tabs
+                    if isinstance(t, dict)
+                ]
 
-    results.sort(key=lambda item: item.get("score", 0), reverse=True)
+    results.sort(key=lambda item: float(item.get("score") if item.get("score") is not None else float("inf")))
     return results
 
 
 def _dedupe_best_score_sort_cap(combined: list[dict]) -> list[dict]:
-    """Deduplicate by (label, id), keep best score, sort descending, cap."""
+    """Deduplicate by (label, id), keep lowest ``score`` (L2 distance), sort ascending, cap."""
     best_by_key: dict[tuple[str | None, str], dict] = {}
     for c in combined:
         cid = c.get("id")
         if cid is None:
             continue
         key = (c.get("label"), str(cid))
-        score = float(c.get("score") or 0)
+        dist = c.get("score")
+        score = float(dist) if dist is not None else float("inf")
         prev = best_by_key.get(key)
-        if prev is None or score > float(prev.get("score") or 0):
+        prev_d = prev.get("score") if prev is not None else None
+        prev_score = float(prev_d) if prev_d is not None else float("inf")
+        if prev is None or score < prev_score:
             best_by_key[key] = c
 
     unique = list(best_by_key.values())
-    unique.sort(key=lambda x: float(x.get("score") or 0), reverse=True)
+    unique.sort(key=lambda x: float(x.get("score")) if x.get("score") is not None else float("inf"))
     return unique[:MAX_CALCULATION_CANDIDATES]
 
 
@@ -466,34 +499,28 @@ def extract_candidates(
     """
     One semantic search per string: ``query_no_values``, ``query_with_values`` (if distinct),
     and each entity name. For each string, pull custom analyses and columns via
-    ``get_semantic_candidates_information``. Merge streams, dedupe by (label, id) keeping best score,
-    sort by score, cap at ``MAX_CALCULATION_CANDIDATES`` per stream.
+    ``get_semantic_candidates_information``. Merge streams, dedupe by (label, id) keeping the
+    lowest vector distance (``score``), sort ascending by distance, cap at ``MAX_CALCULATION_CANDIDATES`` per stream.
 
     Returns:
         ``(custom_analysis_candidates, column_candidates)``
     """
-    qnv_text = (query_no_values or "").strip()
-    qwv_text = (query_with_values or "").strip()
-
+    qnv = (query_no_values or "").strip()
     pulls: list[str] = []
-    if qnv_text:
-        pulls.append(qnv_text)
-    if qwv_text and qwv_text != qnv_text:
-        pulls.append(qwv_text)
+    if qnv:
+        pulls.append(qnv)
+    if (qwv := (query_with_values or "").strip()) and qwv != qnv:
+        pulls.append(qwv)
     for ent in entities_and_concepts or []:
-        t = (ent or "").strip()
-        if t:
+        if (t := (ent or "").strip()):
             pulls.append(t)
 
     combined_custom: list[dict] = []
     combined_columns: list[dict] = []
     for text in pulls:
-        t = (text or "").strip()
-        if not t:
-            continue
         combined_custom.extend(
             get_semantic_candidates_information(
-                t,
+                text,
                 k=SEMANTIC_CANDIDATES_K,
                 list_of_semantic=[Labels.CUSTOM_ANALYSIS],
             )
@@ -501,7 +528,7 @@ def extract_candidates(
         )
         combined_columns.extend(
             get_semantic_candidates_information(
-                t,
+                text,
                 k=SEMANTIC_CANDIDATES_K,
                 list_of_semantic=[Labels.COLUMN],
             )
@@ -800,7 +827,7 @@ def get_relevant_fks(tables_ids):
 
 
 def _parse_table_text(text: str) -> dict:
-    """Parse db_name, schema_name, and columns from LanceDB-style table text."""
+    """Parse db_name, schema_name, table_name, and columns from LanceDB-style table text."""
     parsed: dict = {}
     try:
         if not isinstance(text, str):
@@ -813,6 +840,10 @@ def _parse_table_text(text: str) -> dict:
         schema_match = re.search(r"schema_name:\s*([^,]+)", text)
         if schema_match:
             parsed["schema_name"] = schema_match.group(1).strip()
+
+        table_match = re.search(r"table_name:\s*([^,]+)", text)
+        if table_match:
+            parsed["table_name"] = table_match.group(1).strip()
 
         columns_match = re.search(r"columns:\s*(.+)$", text)
         if columns_match:
@@ -1019,8 +1050,11 @@ def _normalize_table_to_relevant_shape(table: dict) -> dict:
     """Build the same per-table dict shape as :func:`get_relevant_tables` returns."""
     text = str(table.get("table_info") or table.get("text") or "")
     parsed = _parse_table_text(text)
+    name = str(table.get("name") or "").strip()
+    if not name:
+        name = str(parsed.get("table_name") or "").strip()
     entry: dict = {
-        "name": str(table.get("name") or ""),
+        "name": name,
         "label": str(table.get("label") or Labels.TABLE),
         "id": str(table.get("id") or ""),
         "table_info": text,
@@ -1034,7 +1068,63 @@ def _normalize_table_to_relevant_shape(table: dict) -> dict:
         entry["columns"] = table["columns"]
     if table.get("pk") is not None:
         entry["primary_key"] = table["pk"]
+    if not isinstance(entry.get("columns"), list):
+        entry["columns"] = []
     return entry
+
+
+def _merge_two_relevant_table_dicts(a: dict, b: dict) -> dict:
+    """Merge two table dicts with the same ``id`` (e.g. Neo4j vs Lance); prefer non-empty / richer fields."""
+    out = dict(a)
+    for k, v in b.items():
+        if v is None:
+            continue
+        if k == "columns":
+            ca = out.get("columns") if isinstance(out.get("columns"), list) else []
+            cb = v if isinstance(v, list) else []
+            if len(cb) > len(ca):
+                out["columns"] = cb
+            elif not ca and cb:
+                out["columns"] = cb
+            continue
+        if k in ("table_info", "text"):
+            sa = str(out.get(k) or "").strip()
+            sb = str(v).strip()
+            if len(sb) > len(sa):
+                out[k] = v
+            elif not sa and sb:
+                out[k] = v
+            continue
+        if k in ("foreign_key", "primary_key"):
+            if not out.get(k) and v:
+                out[k] = v
+            continue
+        cur = out.get(k)
+        if cur in (None, "") or (isinstance(cur, list) and len(cur) == 0):
+            if v not in (None, ""):
+                out[k] = v
+    return out
+
+
+def dedupe_merge_relevant_tables(tables: list[dict]) -> list[dict]:
+    """Return one dict per table ``id``, merging sparse and rich rows so ``table_info`` / ``columns`` are filled."""
+    by_id: dict[str, list[dict]] = {}
+    for t in tables:
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get("id") or "").strip()
+        if not tid:
+            continue
+        by_id.setdefault(tid, []).append(t)
+
+    merged: list[dict] = []
+    for tid in sorted(by_id.keys()):
+        group = by_id[tid]
+        acc = dict(group[0])
+        for other in group[1:]:
+            acc = _merge_two_relevant_table_dicts(acc, other)
+        merged.append(_normalize_table_to_relevant_shape(acc))
+    return merged
 
 
 def _apply_foreign_key_hints(tables: list[dict], relevant_fks: list) -> None:

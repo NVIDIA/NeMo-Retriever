@@ -104,7 +104,7 @@ def get_agent_response(payload: AgentPayload):
         "dialects": payload.get("dialects"),
         "db_connector": payload.get("db_connector"),
         "messages": messages,
-        "decision": "entities_extraction",
+        "decision": "",
         "path_state": initial_path_state,
     }
 
