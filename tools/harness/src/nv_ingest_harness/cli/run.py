@@ -20,7 +20,6 @@ CASES = [
     "e2e_with_llm_summary",
     "recall",
     "e2e_recall",
-    "qa_eval",
     "e2e_qa_eval",
     "page_elements",
     "table_structure",
