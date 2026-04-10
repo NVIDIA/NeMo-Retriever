@@ -22,8 +22,11 @@ _UNKNOWN_PAGE = -1
 _RECORD_LIST_KEYS = ("records", "df_records", "extracted_df_records", "primitives")
 _PAGE_CONTENT_COLUMNS = (
     ("tables", "Table"),
+    ("table", "Table"),
     ("charts", "Chart"),
+    ("chart", "Chart"),
     ("infographics", "Infographic"),
+    ("infographic", "Infographic"),
 )
 
 
@@ -121,8 +124,11 @@ def _looks_like_record(record: Mapping[str, Any]) -> bool:
             "content",
             "metadata",
             "tables",
+            "table",
             "charts",
+            "chart",
             "infographics",
+            "infographic",
         )
     )
 
@@ -291,8 +297,11 @@ _MARKDOWN_PARQUET_COLUMNS = frozenset(
         "_content_type",
         "metadata",
         "tables",
+        "table",
         "charts",
+        "chart",
         "infographics",
+        "infographic",
         "images",
     }
 )
@@ -372,7 +381,7 @@ def build_page_index(
     if path_col not in df.columns:
         raise KeyError(f"Neither 'path' nor 'source_id' found in columns: {list(df.columns)}")
 
-    list_keys = ("tables", "charts", "infographics")
+    list_keys = ("tables", "table", "charts", "chart", "infographics", "infographic")
 
     docs_grouped: dict[str, list[dict]] = defaultdict(list)
     for _, row in df.iterrows():
