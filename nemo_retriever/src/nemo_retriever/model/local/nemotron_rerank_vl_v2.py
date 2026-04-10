@@ -66,8 +66,13 @@ class NemotronRerankVLV2(BaseModel):
 
         self._processor = AutoProcessor.from_pretrained(
             model_name,
+            use_thumbnail=True,
             **kwargs,
         )
+        if hasattr(self._processor, "max_input_tiles"):
+            self._processor.max_input_tiles = 6
+        if hasattr(self._processor, "rerank_max_length"):
+            self._processor.rerank_max_length = 10240
 
         self._model = (
             AutoModelForSequenceClassification.from_pretrained(

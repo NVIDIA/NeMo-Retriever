@@ -493,7 +493,7 @@ def main(
 
         from nemo_retriever.model import is_vl_rerank_model
 
-        if reranker and is_vl_rerank_model(reranker_model_name) and not store_images_uri:
+        if reranker and is_vl_rerank_model(reranker_model_name) and not store_images_uri and embed_modality != "text":
             raise typer.BadParameter(
                 f"VL reranker '{reranker_model_name}' requires --store-images-uri to persist images for reranking."
             )
