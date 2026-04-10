@@ -608,7 +608,8 @@ class TestStoreText:
 class TestStoreParams:
     def test_defaults(self):
         p = StoreParams()
-        assert p.storage_uri == "stored_images"
+        assert p.storage_uri.endswith("/stored_images")
+        assert Path(p.storage_uri).is_absolute()
         assert p.store_page_images is True
         assert p.store_tables is True
         assert p.image_format == "png"

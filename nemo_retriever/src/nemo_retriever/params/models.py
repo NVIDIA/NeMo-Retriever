@@ -286,6 +286,17 @@ class StoreParams(_ParamsModel):
     image_format: str = "png"
     strip_base64: bool = True
 
+    @model_validator(mode="after")
+    def _resolve_local_storage_uri(self) -> "StoreParams":
+        """Resolve relative local paths to absolute so they survive Ray serialization."""
+        from urllib.parse import urlparse
+
+        if not urlparse(self.storage_uri).scheme:
+            from pathlib import Path
+
+            self.storage_uri = str(Path(self.storage_uri).resolve())
+        return self
+
 
 class PageElementsParams(_ParamsModel):
     remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
