@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from nemo_retriever.io.image_store import _safe_stem, load_image_b64_from_uri, store_extracted
+from nemo_retriever.io.image_store import _safe_stem, load_image_b64_from_uri, resolve_image_b64, store_extracted
 from nemo_retriever.params import StoreParams
 
 
@@ -509,6 +509,32 @@ class TestLoadImageB64FromUri:
 
     def test_missing_file_returns_none(self):
         result = load_image_b64_from_uri("file:///nonexistent/path/image.png")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_image_b64
+# ---------------------------------------------------------------------------
+
+
+class TestResolveImageB64:
+    def test_returns_b64_when_present(self):
+        assert resolve_image_b64({"image_b64": "AAAA"}) == "AAAA"
+
+    def test_reloads_from_stored_uri(self, tmp_path: Path):
+        from PIL import Image
+
+        dest = tmp_path / "img.png"
+        Image.new("RGB", (2, 2), (0, 0, 0)).save(dest, format="PNG")
+        result = resolve_image_b64({"image_b64": None, "stored_image_uri": dest.as_uri()})
+        assert result is not None
+        assert base64.b64decode(result).startswith(b"\x89PNG")
+
+    def test_returns_none_when_both_absent(self):
+        assert resolve_image_b64({}) is None
+
+    def test_propagates_none_on_load_failure(self):
+        result = resolve_image_b64({"image_b64": None, "stored_image_uri": "file:///no/such/file.png"})
         assert result is None
 
 
