@@ -136,7 +136,16 @@ def get_qa_dataset_loader(dataset_name: str) -> Callable[[Optional[str]], list[d
     lower = dataset_name.lower()
 
     if lower == "bo767_infographic":
-        return load_infographic_qa
+
+        def _infographic_loader(data_dir: Optional[str] = None) -> list[dict]:
+            if data_dir is None:
+                raise ValueError(
+                    "bo767_infographic dataset requires data_dir to be set. "
+                    "Pass data_dir= or use 'csv:/path/to/file.csv' instead."
+                )
+            return load_infographic_qa(data_dir)
+
+        return _infographic_loader
 
     if lower.startswith("vidore/"):
         _ds_name = dataset_name

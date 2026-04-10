@@ -273,13 +273,12 @@ def build_eval_chain(
     judge_cfg = config["judge"]
 
     retrieval_json = retrieval.get("file_path", "")
-    ground_truth_csv = dataset.get("source", "")
-    if ground_truth_csv.startswith("csv:"):
-        ground_truth_csv = ground_truth_csv[4:]
+    ground_truth_source = dataset.get("source", "")
 
     loader = RetrievalLoaderOperator(
         retrieval_json=retrieval_json,
-        ground_truth_csv=ground_truth_csv,
+        ground_truth_csv=ground_truth_source,
+        data_dir=dataset.get("data_dir"),
         query_column=dataset.get("query_column", "query"),
         answer_column=dataset.get("answer_column", "answer"),
         top_k=execution.get("top_k", 5),

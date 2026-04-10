@@ -100,7 +100,7 @@ class TopKRetriever:
             raw = self._retrieval_func(
                 [query],
                 self.collection_name,
-                hybrid=self.sparse,
+                hybrid=self.hybrid,
                 embedding_endpoint=self.embedding_endpoint,
                 model_name=self.model_name,
                 top_k=top_k,

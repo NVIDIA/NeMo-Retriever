@@ -39,6 +39,7 @@ class RetrievalLoaderOperator(EvalOperator):
         retrieval_json: str,
         ground_truth_csv: str,
         *,
+        data_dir: str | None = None,
         query_column: str = "query",
         answer_column: str = "answer",
         top_k: int = 5,
@@ -47,6 +48,7 @@ class RetrievalLoaderOperator(EvalOperator):
         super().__init__(
             retrieval_json=str(retrieval_json),
             ground_truth_csv=str(ground_truth_csv),
+            data_dir=data_dir,
             query_column=query_column,
             answer_column=answer_column,
             top_k=top_k,
@@ -54,6 +56,7 @@ class RetrievalLoaderOperator(EvalOperator):
         )
         self._retrieval_json = str(retrieval_json)
         self._ground_truth_csv = str(ground_truth_csv)
+        self._data_dir = data_dir
         self._query_column = query_column
         self._answer_column = answer_column
         self._top_k = top_k
@@ -62,10 +65,15 @@ class RetrievalLoaderOperator(EvalOperator):
         if isinstance(data, pd.DataFrame) and not data.empty:
             return data
 
-        from nemo_retriever.evaluation.ground_truth import load_generic_csv
+        from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader, load_generic_csv
         from nemo_retriever.evaluation.retrievers import FileRetriever
 
-        qa_pairs = load_generic_csv(self._ground_truth_csv)
+        source = self._ground_truth_csv
+        try:
+            loader_fn = get_qa_dataset_loader(source)
+            qa_pairs = loader_fn(self._data_dir)
+        except ValueError:
+            qa_pairs = load_generic_csv(source)
         retriever = FileRetriever(file_path=self._retrieval_json)
 
         coverage = retriever.check_coverage(qa_pairs)

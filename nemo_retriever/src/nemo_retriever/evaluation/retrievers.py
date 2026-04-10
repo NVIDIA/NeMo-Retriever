@@ -57,6 +57,8 @@ class FileRetriever:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"FileRetriever: retrieval results file not found: {file_path}")
 
+        self.file_path = file_path
+
         with open(file_path) as f:
             data = json.load(f)
 
