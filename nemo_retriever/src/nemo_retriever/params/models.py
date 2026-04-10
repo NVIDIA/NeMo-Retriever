@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Literal, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 import warnings
 
+
+from upath import UPath
 
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -292,7 +293,7 @@ class StoreParams(_ParamsModel):
     def _resolve_local_storage_uri(self) -> "StoreParams":
         """Resolve relative local paths to absolute so they survive Ray serialization."""
         if not urlparse(self.storage_uri).scheme:
-            self.storage_uri = str(Path(self.storage_uri).resolve())
+            self.storage_uri = str(UPath(self.storage_uri).resolve())
         return self
 
 
