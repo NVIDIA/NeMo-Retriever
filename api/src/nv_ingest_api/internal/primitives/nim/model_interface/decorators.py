@@ -4,21 +4,22 @@
 
 import logging
 from functools import wraps
-from multiprocessing import Lock
-from multiprocessing import Manager
+from threading import RLock
 
 logger = logging.getLogger(__name__)
 
-# Create a shared manager and lock for thread-safe access
-manager = Manager()
-global_cache = manager.dict()
-lock = Lock()
+# Keep a module-level cache shared by all decorated functions in the current
+# process. This avoids import-time process creation on Windows and still gives
+# us the retry-deduping behavior the callers rely on.
+global_cache = {}
+lock = RLock()
 
 
 def multiprocessing_cache(max_calls):
     """
-    A decorator that creates a global cache shared between multiple processes.
-    The cache is invalidated after `max_calls` number of accesses.
+    A decorator that creates a global cache shared between multiple functions
+    within the current process. The cache is invalidated after `max_calls`
+    number of accesses for the decorated function.
 
     Args:
         max_calls (int): The number of calls after which the cache is cleared.
@@ -28,18 +29,19 @@ def multiprocessing_cache(max_calls):
     """
 
     def decorator(func):
-        call_count = manager.Value("i", 0)  # Shared integer for call counting
+        call_count = 0
 
         @wraps(func)
         def wrapper(*args, **kwargs):
+            nonlocal call_count
             key = (func.__name__, args, frozenset(kwargs.items()))
 
             with lock:
-                call_count.value += 1
+                call_count += 1
 
-                if call_count.value > max_calls:
+                if call_count > max_calls:
                     global_cache.clear()
-                    call_count.value = 0
+                    call_count = 0
 
                 if key in global_cache:
                     return global_cache[key]
