@@ -148,8 +148,8 @@ class IntentValidationAgent(BaseAgent):
         question = get_question_for_processing(state)
 
         # Get entities from action_input
-        action_input = path_state.get("action_input", {})
-        required_entities = action_input.get("required_entity_name", [])
+       
+        required_entities = path_state.get("entities_and_concepts", [])
 
         if required_entities:
             self.logger.info(

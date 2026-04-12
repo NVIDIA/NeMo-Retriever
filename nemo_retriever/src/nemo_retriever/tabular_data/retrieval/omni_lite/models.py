@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import List, Annotated, Literal
 
 
@@ -66,23 +66,20 @@ class SQLGenerationModel(StrictModel):
         default_factory=list,
         description="A valid python list with ids of all tables selected in the SQL query.",
     )
-    semantic_elements: List[ItemScore] = Field(
-        default_factory=list,
-        description=(
-            "Semantic elements is a list of metrics, analyses and attributes that were in the candidates list.\n"
-            "A list of dictionaries with classification of the usage in the final SQL of the given snippets.\n"
-            "Only included if snippets of semantic entities were provided.\n"
-            "Each dictionary must have:\n"
-            "  - 'id': the unique semantic entity ID from the provided list.\n"
-            "  - 'label': the label of the semantic entity (attribute|metric|analysis).\n"
-            "  - 'classification': True if at least one table or column taken from that snippet appears in your final sql_code.\n"
-        ),
-    )
-    connection: NonEmptyStr = Field(
-        ...,
-        description="The SQL query was constructed using the connection type—e.g., snowflake from the predefined list of permitted dialects. This field is REQUIRED.",
-    )
+
     response: NonEmptyStr = Field(
         ...,
         description="A short explanation of the answer and SQL parts: what the query does, which tables/columns are used, and how the SQL components work together to answer the question.",
     )
+
+    @field_validator("sql_code", "response")
+    @classmethod
+    def reject_placeholder_strings(cls, v: str, info) -> str:
+        """Block LLM stubs like literal '...' that satisfy min length but are not valid output."""
+        t = (v or "").strip()
+        if t in ("...", "…", "..", ".") or (len(t) <= 3 and not t.isalnum() and set(t) <= {".", "…", " "}):
+            raise ValueError(
+                f"{info.field_name!r} must be real content, not an ellipsis placeholder. "
+                "sql_code must be the full executable statement; response must be a real explanation."
+            )
+        return v

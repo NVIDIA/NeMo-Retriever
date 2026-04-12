@@ -622,7 +622,7 @@ def extract_entities_with_id_name_label(data):
 
 
 
-def highlight_entity(items_present: dict, text: str, account_id: str) -> str:
+def highlight_entity(items_present: dict, text: str) -> str:
     """
     Processes [[[entity]]] patterns in the text.
 
@@ -667,7 +667,7 @@ def highlight_entity(items_present: dict, text: str, account_id: str) -> str:
 
             # no entity in candidates
             try:
-                item = get_item_by_id(account_id, eid, name_or_label)
+                item = get_item_by_id(eid, name_or_label)
             except Exception:
                 logger.error("Something not ok with id, error raised")
                 return f"*{display_name or name_or_label}*"
@@ -687,14 +687,14 @@ def highlight_entity(items_present: dict, text: str, account_id: str) -> str:
 
 
 
-def format_response(account_id, candidates, response):
+def format_response(candidates, response):
     final_response_formatted = response.replace("%%%", "```").replace("**", "*")
     final_response_formatted = re.sub(r"(\\+n|\n)", "\n ", final_response_formatted)
     all_entities_present = extract_entities_with_id_name_label(candidates)
 
     try:
         final_response_highlighted = highlight_entity(
-            all_entities_present, final_response_formatted, account_id
+            all_entities_present, final_response_formatted
         )
     except Exception:
         return final_response_formatted
@@ -1240,4 +1240,16 @@ def get_relevant_tables(
     _apply_foreign_key_hints(relevant_tables_list, relevant_fks)
 
     return relevant_tables_list, relevant_fks
+
+
+
+def prepare_link(name: str, id: str, label: Labels, parent_id: str = None) -> str:
+    match label:
+        case label if label in [Labels.CUSTOM_ANALYSIS]:
+            return f"{label}/{id}|{name}"
+        case Labels.COLUMN:
+            return f"data/{parent_id}?searchId={id}|{name}"
+        case _:
+            return f"data/{id}|{name}"
+
 

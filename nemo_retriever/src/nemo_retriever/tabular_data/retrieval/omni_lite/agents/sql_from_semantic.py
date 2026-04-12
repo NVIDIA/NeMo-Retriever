@@ -275,11 +275,11 @@ class SQLFromSemanticAgent(BaseAgent):
         if has_sql:
             # Extract semantic elements
             semantic_elements = []
-            if hasattr(response, "semantic_elements"):
+            if hasattr(response, "semantic_elements") and response.semantic_elements: # TODO check, fix
                 # Filter semantic elements to keep only those found in candidates
                 candidates_ids = {
                     c.get("id") if isinstance(c, dict) else getattr(c, "id", None)
-                    for c in candidates
+                    for c in path_state["retrieved_candidates"]
                 }
                 filtered_elements = [
                     elem
@@ -306,7 +306,7 @@ class SQLFromSemanticAgent(BaseAgent):
             semantic_elements = []
             if hasattr(response, "semantic_elements"):
                 response.response += build_semantic_items_section(
-                    response.semantic_elements, candidates
+                    response.semantic_elements, path_state["retrieved_candidates"]
                 )
                 semantic_elements = get_semantic_entities_ids(
                     response.semantic_elements

@@ -27,12 +27,12 @@ ONTOLOGY = {
 # User prompt template for SQL generation
 create_sql_user_prompt = (
     "You are an expert SQL query builder.\n"
-    "Your task is to construct a SQL query that answers the user's question based only on the provided tables and foreign keys.\n"
+    "Your task is to construct a SQL query that answers the user's question based on the provided semantic entities (if present), tables and foreign keys(if present).\n"
     "NEVER EVER MAKE UP SCHEMAS OR TABLES OR COLUMNS THAT ARE NOT PROVIDED IN THE PROMPT.\n"
     "Allowed SQL dialects: {dialects}.\n"
     "Question from user: {main_question}\n"
     "{observation_block}\n"
-    "Construct SQL based ONLY on these tables and their explicitly listed columns:\n\n{tables}\n\n"
+    "Construct SQL based ONLY on these semantic entities (if present), tables and their explicitly listed columns:\n\n{tables}\n\n"
     "CRITICAL: Each table above lists its AVAILABLE COLUMNS. You can ONLY use columns that are explicitly listed under each table. "
     "DO NOT assume a column exists in a table if it is not listed under that table's AVAILABLE COLUMNS section.\n"
     "list of foreign keys (if present): {fks}.\n"
@@ -108,7 +108,6 @@ def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
 
     Used by ``SQLFromSemanticAgent`` with prepared candidates from CandidatePreparationAgent.
     """
-    has_semantic_candidates = bool(complex_candidates)
 
     return f""" 
     You will receive:
@@ -120,8 +119,6 @@ def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
     
     DECISION LOGIC:
       - You MUST always produce a SQL query. Do NOT answer purely in text.
-      - Treat file contents as a **source of constants, values, thresholds, business rules or filters** that should be used INSIDE the SQL (e.g., specific prices, dates, categories, or flags).
-      - Do NOT treat file contents as a standalone answer; they only provide values that must be plugged into the SQL query.
       - Use SQL whenever the question requires querying, aggregating, filtering, or joining data from the provided tables to derive the answer.
       - Combine sources when needed: use file contents for literal values and business rules, and use tables/snippets for structure and joins.
 
@@ -130,14 +127,13 @@ def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
          - the provided tables,
          - the semantic entities/snippets, and
          - any relevant constants or business rules from the file contents (used as literals, filters, or CASE logic inside the SQL) if needed.
-      2) **Candidate Selection Priority**: When multiple semantic entities/snippets can answer the question, prefer candidates marked [CERTIFIED] over non-certified ones. Certified candidates have been validated and approved, making them more reliable. However, if a non-certified candidate is clearly more relevant to the specific question, use it instead.
-      3) **CRITICAL - Table Aliases**: When using SQL snippets as reference, DO NOT copy the table aliases from the snippets. You MUST define your OWN aliases in your FROM/JOIN clauses and use ONLY those aliases throughout your query. Example snippets may use aliases like 'ol', 'po', etc. - these are for reference only. Create fresh aliases and ensure every alias you reference exists in your FROM/JOIN clauses.
-      4) Do NOT normalize, lowercase, or uppercase user-provided values. Treat them exactly as given (case-sensitive literals).
-      5) Time windows: interpret phrases like "last week/month/year" as the most recent COMPLETED calendar period.
+      2) **CRITICAL - Table Aliases**: When using SQL snippets as reference, DO NOT copy the table aliases from the snippets. You MUST define your OWN aliases in your FROM/JOIN clauses and use ONLY those aliases throughout your query. Example snippets may use aliases like 'ol', 'po', etc. - these are for reference only. Create fresh aliases and ensure every alias you reference exists in your FROM/JOIN clauses.
+      3) Do NOT normalize, lowercase, or uppercase user-provided values. Treat them exactly as given (case-sensitive literals).
+      4) Time windows: interpret phrases like "last week/month/year" as the most recent COMPLETED calendar period.
          - Do NOT use rolling windows (e.g., DATED(day,-7,CURRENT_DATE)).
          - Do NOT include partial current periods.
-         - Use functions appropriate for the given `connection` (dialect-aware date logic).
-      6) The SQL must handle complex scenarios where needed:
+         - Use functions appropriate for the given dialect (dialect-aware date logic).
+      5) The SQL must handle complex scenarios where needed:
          - Joins (inner/left/right/full)
          - Aggregations (SUM, AVG, COUNT, etc.)
          - Subqueries / CTEs
@@ -162,10 +158,10 @@ def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
     
     Output Requirements:
       - **Always construct SQL**: You must always produce a SQL query. File contents are only used as inputs (constants, filters, thresholds) within the SQL.
+      - **Never use `...` or ellipsis as placeholder** in `sql_code` or `response`. Output the complete SQL statement and a real explanation (validation rejects literal ellipsis).
       - In `sql_code` — provide the SQL code without comments or delimiters.
       - In `tables_ids` — list of table IDs used in the SQL.
-      - In `semantic_elements` — include the list of custom analyses used with their classification.
-      - In `thought` — provide a brief explanation of your SQL construction approach and reasoning.
+      - In `response` — provide a brief explanation of your SQL construction approach and reasoning.
       - Do NOT include comments in the SQL.
       - IMPORTANT: All fields are required. Use empty strings "" or empty lists [] for fields that are not applicable, but DO NOT omit any fields.
     
@@ -186,10 +182,6 @@ def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
     tables_ids:
     ["sales-table-id", "customers-table-id"]
     
-    semantic_elements:
-    [
-        {{"id": "custom_analysis-id-1", "label": "custom_analysis", "classification": true}},
-    ]
     
     
     response:
@@ -201,14 +193,6 @@ def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
     tables_ids (Example 2):
     ["orders-table-id", "orderlines-table-id"]
     
-    {{
-        '''semantic_elements:
-        [
-            {{"id":"12b3d4ba-cfda-5c0d-6d78-f9f8f77030df", "label": "custom_analysis", "classification":true}},
-        ]'''
-        if {has_semantic_candidates}
-        else ""
-    }}
 
     
     thought:

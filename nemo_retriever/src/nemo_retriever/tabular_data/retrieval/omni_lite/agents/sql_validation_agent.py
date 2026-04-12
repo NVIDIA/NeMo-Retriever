@@ -86,26 +86,29 @@ class SQLValidationAgent(BaseAgent):
     
         # Convert schema IDs to schemas dict format (keyed by schema name)
         # relevant_schemas_ids is a set of schema IDs, need to convert to dict format
-        schemas = get_schemas_slim(list(get_all_schemas_ids())) 
+        # TODO, uncomment when parser is ready, fix
+        # schemas = get_schemas_slim(list(get_all_schemas_ids())) 
 
         # Validate SQL using query_validation
         # This extracts columns, checks syntax, validates logic
-        validation_result = query_validation(
-            schemas,
-            response.sql_code,
-            dialects,
-        )
+        # TODO, uncomment when parser is ready, fix
+        # validation_result = query_validation(
+        #     schemas,
+        #     response.sql_code,
+        #     dialects,
+        # )
+        validation_result = {}
 
         # query_validation returns a dict, not an object
-        if validation_result.get("error"):
-            # SQL is invalid
-            error_msg = validation_result["error"]
-            self.logger.info(f"SQL validation failed: {error_msg}")
-            path_state["error"] = error_msg
-            return {
-                "decision": "invalid_sql",
-                "path_state": path_state,
-            }
+        # if validation_result.get("error"):
+        #     # SQL is invalid
+        #     error_msg = validation_result["error"]
+        #     self.logger.info(f"SQL validation failed: {error_msg}")
+        #     path_state["error"] = error_msg
+        #     return {
+        #         "decision": "invalid_sql",
+        #         "path_state": path_state,
+        #     }
 
         # SQL is valid, extract columns and semantic elements
         sql_columns = validation_result.get("sql_columns") or []

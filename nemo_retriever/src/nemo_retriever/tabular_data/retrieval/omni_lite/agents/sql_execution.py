@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 
-def _run_sql_duckdb(sql: str, path_state: dict) -> QueryResponse:
+def _run_sql_duckdb(sql: str, state: AgentState) -> QueryResponse:
     """Use ``path_state['db_connector']`` (or legacy ``duckdb_connector``); else ``duckdb_path`` / env."""
-    connector = path_state.get("db_connector") or path_state.get("duckdb_connector")
+    connector = state.get("db_connector") or state.get("duckdb_connector")
     if connector is not None:
         try:
             df = connector.execute(sql)
@@ -73,7 +73,7 @@ class SQLExecutionAgent(BaseAgent):
             llm = path_state.get("llm_calc_response")
             sql_code = getattr(llm, "sql_code", "") if llm else ""
 
-        response_from_db = _run_sql_duckdb(sql_code, path_state)
+        response_from_db = _run_sql_duckdb(sql_code, state)
 
         if response_from_db.error:
             self.logger.info("SQL execution error: %s", response_from_db.error)

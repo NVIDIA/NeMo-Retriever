@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional
 from langchain_core.messages import AIMessage
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import Labels, format_response, prepare_link
 
 
 
@@ -83,7 +84,7 @@ class SQLResponseFormattingAgent(BaseAgent):
 
         # Get additional context
         relevant_tables = path_state.get("relevant_tables", [])
-        extracted_file_data = path_state.get("extracted_file_data")
+   
         candidates_with_entities = path_state.get("candidates", [])
 
         # Extract just the candidate objects for processing
@@ -101,13 +102,11 @@ class SQLResponseFormattingAgent(BaseAgent):
             relevant_tables=relevant_tables,
             response_explanation=response_explanation,
             semantic_elements=semantic_elements,
-            extracted_file_data=extracted_file_data,
             candidates=candidates,
         )
 
         # Format response (adds citations, formatting, etc.)
         formatted_response_with_citations = format_response(
-            account_id=state["account_id"],
             candidates=candidates,
             response=formatted_response,
         )
@@ -128,10 +127,8 @@ class SQLResponseFormattingAgent(BaseAgent):
         sql_code: str,
         tables_ids: list[str],
         relevant_tables: list,
-        connection: str,
         response_explanation: str,
         semantic_elements: list,
-        extracted_file_data: Optional[str] = None,
         candidates: list = None,
     ) -> str:
         """
@@ -158,8 +155,7 @@ class SQLResponseFormattingAgent(BaseAgent):
         # 1. Summary and explanation from response_explanation
         if response_explanation:
             parts.append(response_explanation.strip())
-        else:
-            parts.append(f"This query retrieves data using {connection}.")
+        
 
         # 2. SQL Code Block
         parts.append("")
