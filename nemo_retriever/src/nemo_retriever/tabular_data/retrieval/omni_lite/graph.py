@@ -9,7 +9,6 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.candidates_preparation import CandidatePreparationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.candidates_retieval import CandidateRetrievalAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.entities_extraction import EntitiesExtractionAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.agents.formatting import SQLResponseFormattingAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.intent_validation import IntentValidationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.response import CalculationResponseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_execution import SQLExecutionAgent
@@ -117,46 +116,28 @@ def route_translation(state: AgentState) -> str:
 
 def route_decision(state: AgentState) -> str:
     """
-    Route based on state decision.
+    Generic router — returns the current ``decision`` value from state,
+    applying optional aliases first.
 
-    This function is used by multiple nodes with different valid edges:
-    - calculation node: "calculation_search", "construct_sql_chosen_snippet"
-    - construct_sql_* nodes: "validate_sql_query", "extract_from_file_snippets", "ambiguity_check", "unconstructable"
-    - ambiguity_check node: "ask_user_clarification", "validate_sql_query"
+    Each caller's ``add_conditional_edges`` edge-map defines which values
+    are legal; LangGraph will raise if the returned string isn't a key in
+    that map, so no extra guard-rail set is needed here.
 
-    Maps agent decisions to valid graph edges:
-    - "constructable" → "validate_sql_query" (from SQL construction agents)
-    - "unconstructable" → "unconstructable"
-    - Any other value (stale entry-point names, empty string, etc.) → "unconstructable"
-
-    Args:
-        state: Current agent state
-
-    Returns:
-        Valid graph edge name
+    Alias mappings (agent-specific convenience):
+    - "constructable" → "validate_sql_query"
     """
     decision = state.get("decision", "") or ""
 
-    # Map agent-specific decisions to graph edges
     decision_mapping = {
         "constructable": "validate_sql_query",
     }
 
-    mapped_decision = decision_mapping.get(decision, decision)
+    mapped = decision_mapping.get(decision, decision)
 
-    if decision != mapped_decision:
-        logger.debug("Mapped decision '%s' → '%s'", decision, mapped_decision)
+    if decision != mapped:
+        logger.debug("Mapped decision '%s' → '%s'", decision, mapped)
 
-    # construct_sql_from_semantic only wires "validate_sql_query" | "unconstructable"
-    _semantic_edges = frozenset({"validate_sql_query", "unconstructable"})
-    if mapped_decision not in _semantic_edges:
-        logger.warning(
-            "route_decision: decision %r is not a valid semantic-SQL edge → unconstructable",
-            mapped_decision,
-        )
-        return "unconstructable"
-
-    return mapped_decision
+    return mapped
 
 
 
@@ -206,7 +187,6 @@ def create_graph():
     sql_from_tables_agent = SQLFromTablesAgent()
     sql_from_semantic_agent = SQLFromSemanticAgent()  
     sql_reconstruction_agent = SQLReconstructionAgent()
-    sql_formatting_agent = SQLResponseFormattingAgent()
     sql_validation_agent = SQLValidationAgent()
     intent_validation_agent = IntentValidationAgent()
     sql_execution_agent = SQLExecutionAgent()
@@ -234,9 +214,6 @@ def create_graph():
         "construct_sql_from_semantic",
         agent_wrapper(sql_from_semantic_agent),
     )
-    format_sql_response_node = _make_node(
-        "format_sql_response", agent_wrapper(sql_formatting_agent)
-    )
     reconstruct_sql_node = _make_node(
         "reconstruct_sql", agent_wrapper(sql_reconstruction_agent)
     )
@@ -250,8 +227,8 @@ def create_graph():
     execute_sql_query_node = _make_node(
         "execute_sql_query", agent_wrapper(sql_execution_agent)
     )
-    calc_respond_node = _make_node(
-        "calc_respond", agent_wrapper(calculation_response_agent)
+    format_and_respond_node = _make_node(
+        "format_and_respond", agent_wrapper(calculation_response_agent)
     )
     unconstructable_sql_response_node = _make_node(
         "unconstructable_sql_response", agent_wrapper(sql_unconstructable_agent)
@@ -273,12 +250,11 @@ def create_graph():
     graph.add_node("prepare_candidates", prepare_candidates_node)
     graph.add_node("construct_sql_not_from_snippets", construct_sql_not_from_snippets_node)
     graph.add_node("construct_sql_from_semantic", construct_sql_from_semantic_node)
-    graph.add_node("format_sql_response", format_sql_response_node)
     graph.add_node("reconstruct_sql", reconstruct_sql_node)
     graph.add_node("validate_sql_query", validate_sql_query_node)
     graph.add_node("validate_intent", validate_intent_node)
     graph.add_node("execute_sql_query", execute_sql_query_node)
-    graph.add_node("calc_respond", calc_respond_node)
+    graph.add_node("format_and_respond", format_and_respond_node)
     graph.add_node("unconstructable_sql_response", unconstructable_sql_response_node)
 
     # Minimal flow using only the defined nodes.
@@ -303,7 +279,7 @@ def create_graph():
         route_sql_validation,
         {
             "valid_sql": "validate_intent",  # Validate intent after syntax validation succeeds
-            "skip_intent_validation": "format_sql_response",  # Skip intent validation after 5+ reconstructions
+            "skip_intent_validation": "execute_sql_query",  # Skip intent validation after 5+ reconstructions
             "invalid_sql": "reconstruct_sql",
             "fallback": "construct_sql_not_from_snippets",
             "unconstructable": "unconstructable_sql_response",
@@ -315,23 +291,26 @@ def create_graph():
         "validate_intent",
         route_intent_validation,
         {
-            "valid_sql": "format_sql_response",  # Format after both validations succeed
+            "valid_sql": "execute_sql_query",  # Format after both validations succeed
             "invalid_sql": "reconstruct_sql",  # Reconstruct if intent is invalid
         },
     )
 
+    # SQL execution → route
+    graph.add_conditional_edges(
+        "execute_sql_query",
+        route_decision,
+        {
+            "valid_sql": "format_and_respond",
+            "invalid_sql": "reconstruct_sql",
+        },
+    )
 
-
-    # Full flow using all defined nodes.
     graph.add_edge("construct_sql_not_from_snippets", "validate_sql_query")
-    
-   
-    graph.add_edge("format_sql_response", "execute_sql_query")
-    graph.add_edge("execute_sql_query", "calc_respond")
     graph.add_edge("reconstruct_sql", "validate_sql_query")
 
     graph.add_edge("unconstructable_sql_response", END)
-    graph.add_edge("calc_respond", END)
+    graph.add_edge("format_and_respond", END)
 
 
     return graph

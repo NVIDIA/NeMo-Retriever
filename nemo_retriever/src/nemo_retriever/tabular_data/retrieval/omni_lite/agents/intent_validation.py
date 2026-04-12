@@ -42,15 +42,15 @@ class IntentValidationModel(BaseModel):
     )
     missing_entities: list[str] = Field(
         default_factory=list,
-        description="List of CRITICAL entity names that are completely missing and essential for the query",
+        description="List of CRITICAL entity names that are completely missing and essential for the query. Leave EMPTY [] if no entities are missing — do NOT add explanatory text like 'no missing entities'.",
     )
     join_issues: list[str] = Field(
         default_factory=list,
-        description="List of CRITICAL join issues that would produce completely wrong results",
+        description="List of CRITICAL join issues that would produce completely wrong results. Leave EMPTY [] if there are no join issues — do NOT add explanatory text like 'no join issues'.",
     )
     aggregation_issues: list[str] = Field(
         default_factory=list,
-        description="List of CRITICAL aggregation issues that are clearly wrong (not minor variations)",
+        description="List of CRITICAL aggregation issues that are clearly wrong (not minor variations). Leave EMPTY [] if there are no aggregation issues — do NOT add explanatory text like 'no aggregation issues'.",
     )
 
 
@@ -201,6 +201,18 @@ Provide your analysis."""
         # Check if valid
         if validation_result.is_valid:
             self.logger.info("SQL validation passed (no critical issues)")
+            return {
+                "decision": "intent_valid",
+                "path_state": path_state,
+            }
+
+        has_real_issues = (
+            validation_result.missing_entities
+            or validation_result.join_issues
+            or validation_result.aggregation_issues
+        )
+        if not has_real_issues:
+            self.logger.info("SQL validation passed (is_valid=False but no real issues listed)")
             return {
                 "decision": "intent_valid",
                 "path_state": path_state,

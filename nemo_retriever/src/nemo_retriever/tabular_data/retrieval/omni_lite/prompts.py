@@ -127,13 +127,14 @@ def create_sql_from_semantic_prompt(complex_candidates: list) -> str:
          - the provided tables,
          - the semantic entities/snippets, and
          - any relevant constants or business rules from the file contents (used as literals, filters, or CASE logic inside the SQL) if needed.
-      2) **CRITICAL - Table Aliases**: When using SQL snippets as reference, DO NOT copy the table aliases from the snippets. You MUST define your OWN aliases in your FROM/JOIN clauses and use ONLY those aliases throughout your query. Example snippets may use aliases like 'ol', 'po', etc. - these are for reference only. Create fresh aliases and ensure every alias you reference exists in your FROM/JOIN clauses.
-      3) Do NOT normalize, lowercase, or uppercase user-provided values. Treat them exactly as given (case-sensitive literals).
-      4) Time windows: interpret phrases like "last week/month/year" as the most recent COMPLETED calendar period.
+      2) **CRITICAL - Fully Qualified Table Names**: Always use the full table name exactly as provided (e.g., `schema.table_name` or `db.schema.table_name`). NEVER drop the schema/database prefix.
+      3) **CRITICAL - Table Aliases**: When using SQL snippets as reference, DO NOT copy the table aliases from the snippets. You MUST define your OWN aliases in your FROM/JOIN clauses and use ONLY those aliases throughout your query. Example snippets may use aliases like 'ol', 'po', etc. - these are for reference only. Create fresh aliases and ensure every alias you reference exists in your FROM/JOIN clauses.
+      4) Do NOT normalize, lowercase, or uppercase user-provided values. Treat them exactly as given (case-sensitive literals).
+      5) Time windows: interpret phrases like "last week/month/year" as the most recent COMPLETED calendar period.
          - Do NOT use rolling windows (e.g., DATED(day,-7,CURRENT_DATE)).
          - Do NOT include partial current periods.
          - Use functions appropriate for the given dialect (dialect-aware date logic).
-      5) The SQL must handle complex scenarios where needed:
+      6) The SQL must handle complex scenarios where needed:
          - Joins (inner/left/right/full)
          - Aggregations (SUM, AVG, COUNT, etc.)
          - Subqueries / CTEs

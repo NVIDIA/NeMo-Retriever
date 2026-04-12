@@ -138,13 +138,19 @@ class SQLReconstructionAgent(BaseAgent):
         # Invoke LLM for reconstruction
         response = invoke_with_structured_output(llm, messages, schema)
 
-        self.logger.info(
-            f"SQL reconstructed: {response.sql_code[:100] if response.sql_code else 'None'}..."
-        )
-        # Log response explanation (from 'response' for new model, 'thought' for old)
+        if response is None:
+            self.logger.warning("SQL reconstruction returned None — marking unconstructable")
+            return {
+                "decision": "unconstructable",
+                "path_state": path_state,
+            }
+
+        sql_preview = (getattr(response, "sql_code", "") or "")[:100]
+        self.logger.info(f"SQL reconstructed: {sql_preview}...")
+
         response_explanation = getattr(
             response, "response", getattr(response, "thought", "No explanation")
-        )
+        ) or ""
         self.logger.info(f"Reconstruction explanation: {response_explanation[:100]}...")
 
         # Extract semantic elements
@@ -153,10 +159,10 @@ class SQLReconstructionAgent(BaseAgent):
             semantic_elements = get_semantic_entities_ids(response.semantic_elements)
 
         return {
-            "messages": messages,  # Don't add formatted response here - formatting agent will do it
+            "messages": messages,
             "path_state": {
                 **path_state,
-                "llm_calc_response": response,  # Keep as object (Pydantic model)
+                "llm_calc_response": response,
                 "relevant_tables": all_tables
                 if all_tables is not None
                 else path_state.get("relevant_tables", []),
