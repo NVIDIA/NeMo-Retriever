@@ -20,7 +20,7 @@ Design Decisions:
 import logging
 from typing import Dict, Any
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.agents.query_validation import query_validation
+from nemo_retriever.tabular_data.ingestion.services.queries import parse_query_single
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import get_all_schemas_ids, get_schemas_slim, get_semantic_entities_ids
@@ -87,28 +87,19 @@ class SQLValidationAgent(BaseAgent):
         # Convert schema IDs to schemas dict format (keyed by schema name)
         # relevant_schemas_ids is a set of schema IDs, need to convert to dict format
         # TODO, uncomment when parser is ready, fix
-        # schemas = get_schemas_slim(list(get_all_schemas_ids())) 
+        schemas = get_schemas_slim(list(get_all_schemas_ids())) 
 
-        # Validate SQL using query_validation
-        # This extracts columns, checks syntax, validates logic
-        # TODO, uncomment when parser is ready, fix
-        # validation_result = query_validation(
-        #     schemas,
-        #     response.sql_code,
-        #     dialects,
-        # )
-        validation_result = {}
-
-        # query_validation returns a dict, not an object
-        # if validation_result.get("error"):
-        #     # SQL is invalid
-        #     error_msg = validation_result["error"]
-        #     self.logger.info(f"SQL validation failed: {error_msg}")
-        #     path_state["error"] = error_msg
-        #     return {
-        #         "decision": "invalid_sql",
-        #         "path_state": path_state,
-        #     }
+        validation_result = self._sql_parse_validation(schemas, response.sql_code, dialects)
+        
+        if validation_result.get("error"):
+            # SQL is invalid
+            error_msg = validation_result["error"]
+            self.logger.info(f"SQL validation failed: {error_msg}")
+            path_state["error"] = error_msg
+            return {
+                "decision": "invalid_sql",
+                "path_state": path_state,
+            }
 
         # SQL is valid, extract columns and semantic elements
         sql_columns = validation_result.get("sql_columns") or []
@@ -133,3 +124,17 @@ class SQLValidationAgent(BaseAgent):
             "decision": "valid_sql",
             "path_state": updated_path_state,
         }
+
+    @staticmethod
+    def _sql_parse_validation(schemas, sql: str, dialects: list) -> dict:
+        result: dict = {}
+        try:
+            query = parse_query_single(
+                sql=sql,
+                dialect=dialects[0],
+                schemas=schemas,
+            )
+            result["success"] = True
+        except Exception as error:
+            result.update({"error": str(error), "another_try": 1})
+        return result

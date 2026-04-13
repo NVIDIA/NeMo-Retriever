@@ -12,9 +12,7 @@ from typing import Any, Dict
 
 
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.query_executor import QueryResponse
-from nemo_retriever.tabular_data.retrieval.omni_lite.agents.query_validation import (
-    is_infra_or_auth_error,
-)
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import is_infra_or_auth_error
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
 

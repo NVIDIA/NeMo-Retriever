@@ -6,6 +6,9 @@ from itertools import groupby
 import os
 import re
 import time
+from typing import Union
+from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
+from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 import pandas as pd
 
 from langchain_community.vectorstores import PGVector
@@ -69,6 +72,7 @@ def _make_llm() -> ChatNVIDIA:
 class Labels(StrEnum):
     """Semantic labels used by omni-lite candidate retrieval."""
 
+    DB = "Db"
     CUSTOM_ANALYSIS = "custom_analysis"
     COLUMN = "column"
     QUERY = "query"
@@ -873,16 +877,16 @@ def get_slim_account_schemas(
     relevant_schemas_ids: list | None = None,
 ) -> list[dict[str, str]]:
     if relevant_schemas_ids is not None and len(relevant_schemas_ids) > 0:
-        query = """ MATCH (db:db)-[:schema]->(schema:schema WHERE schema.id in $relevant_schemas_ids)
-                    -[:schema]->(table:table WHERE coalesce(table.deleted, FALSE)=FALSE)
-                    -[:schema]->(column:column WHERE coalesce(column.deleted, FALSE)=FALSE AND NOT column.db_name IS NULL)
+        query = """ MATCH (db:Db)-[:CONTAINS]->(schema:Schema WHERE schema.id in $relevant_schemas_ids)
+                    -[:CONTAINS]->(table:Table WHERE coalesce(table.deleted, FALSE)=FALSE)
+                    -[:CONTAINS]->(column:Column WHERE coalesce(column.deleted, FALSE)=FALSE AND NOT column.db_name IS NULL)
                     RETURN collect({
                     db_name:column.db_name,
                     id:column.id,
-                    name:column.name, 
+                    name:column.name,
                     table_name:column.table_name,
-                    data_type:column.data_type, 
-                    schema_name:column.schema_name, 
+                    data_type:column.data_type,
+                    schema_name:column.schema_name,
                     label:labels(column)[0]
                     }) as data
                     """
@@ -891,14 +895,14 @@ def get_slim_account_schemas(
             {"relevant_schemas_ids": relevant_schemas_ids},
         )
     else:
-        query = """ MATCH (column:column WHERE coalesce(column.deleted, FALSE)=FALSE AND NOT column.db_name IS NULL)
+        query = """ MATCH (column:Column WHERE coalesce(column.deleted, FALSE)=FALSE AND NOT column.db_name IS NULL)
                     RETURN collect({
                     db_name:column.db_name,
                     id:column.id,
-                    name:column.name, 
+                    name:column.name,
                     table_name:column.table_name,
-                    data_type:column.data_type, 
-                    schema_name:column.schema_name, 
+                    data_type:column.data_type,
+                    schema_name:column.schema_name,
                     label:labels(column)[0]
                     }) as data
                     """
@@ -909,7 +913,7 @@ def get_slim_account_schemas(
 
 
 def get_all_schemas_ids():
-    query = f"""MATCH(s:schema)
+    query = f"""MATCH(s:Schema)
                 RETURN s.id as schema_id
             """
     result = pd.DataFrame(
@@ -938,7 +942,7 @@ def get_schemas_slim(relevant_schemas_ids: list = None):
     schema_dfs = {}
     dbs_nodes = {}
     for db_name in dbs:
-        db_node = Node(name=db_name, label=Labels.DB, props={"name": db_name})
+        db_node = Neo4jNode(name=db_name, label=Labels.DB, props={"name": db_name})
         dbs_nodes[db_name] = db_node
 
     tables_df = data_df[["schema_name", "db_name", "table_name"]]
@@ -967,7 +971,6 @@ def get_schemas_slim(relevant_schemas_ids: list = None):
             columns_df = columns_df.rename(columns={"schema_name": "schema"})
             columns_df["is_temp"] = False
             all_schemas[schema_name.lower()] = Schema(
-                account_id,
                 schema_db_node,
                 tables_df,
                 columns_df,
@@ -1253,3 +1256,70 @@ def prepare_link(name: str, id: str, label: Labels, parent_id: str = None) -> st
             return f"data/{id}|{name}"
 
 
+_INFRA_AUTH_ERROR_PATTERNS = [
+    # Snowflake
+    "insufficient privileges",
+    "incorrect username or password",
+    "user temporarily locked",
+    "user is not found",
+    "saml response is invalid",
+    "failed to connect",
+    "connection refused",
+    "connection reset",
+    "network is unreachable",
+    "no trusted certificate found",
+    "ssl peer certificate",
+    "ssh remote key",
+    "failed to find the root",
+    "broken pipe",
+    "remote host terminated",
+    "target server failed",
+    "communication error",
+    # MSSQL
+    "login failed",
+    "cannot open database",
+    "user does not have permission",
+    "the server was not found or was not accessible",
+    "error locating server/instance",
+    "could not open a connection",
+    "timeout expired",
+    "cannot generate sspi context",
+    "insufficient system memory",
+    "filegroup is full",
+    "transaction log for database is full",
+    "access denied",
+    # Databricks
+    "permission_denied",
+    "does not have permission",
+    "not authorized",
+    "user not authorized",
+    "invalid access token",
+    "unauthorized",
+    "forbidden",
+    "authentication failed",
+    "connection timed out",
+    "host not found",
+    "no route to host",
+    "out of memory",
+    "memory limit exceeded",
+    "no space left on device",
+    "insufficient capacity",
+    "quota exceeded",
+]
+
+_INFRA_AUTH_RE = re.compile(
+    "|".join(re.escape(p) for p in _INFRA_AUTH_ERROR_PATTERNS),
+    re.IGNORECASE,
+)
+
+
+def is_infra_or_auth_error(error: Union[Exception, str]) -> bool:
+    """Return True if *error* looks like an infrastructure / auth problem
+    rather than a SQL logic mistake the agent could fix."""
+    msg = str(error)
+    logger.error("Error from query execution: %s", msg)
+
+    if re.search(r"^'?Connection [\w-]+ not found'?$", msg, re.IGNORECASE):
+        return True
+
+    return bool(_INFRA_AUTH_RE.search(msg))

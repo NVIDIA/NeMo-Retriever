@@ -16,7 +16,7 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_semantic im
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_from_tables import SQLFromTablesAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_reconstruction import SQLReconstructionAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_unconstructable import SQLUnconstructableAgent
-from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_validation_agent import SQLValidationAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.agents.sql_parse_validation import SQLValidationAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import agent_wrapper
 import logging
 
