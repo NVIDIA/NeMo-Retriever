@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
 
@@ -29,10 +30,14 @@ class LlamaNemotronEmbed1BV2Embedder:
 
     vLLM device placement follows the process environment (see vLLM docs).
     ``max_length`` is passed to vLLM as ``max_model_len`` when set positive.
+
+    ``device`` is deprecated and ignored; it remains only for backward compatibility
+    with callers that constructed the former HuggingFace embedder with ``device=``.
     """
 
     model_id: Optional[str] = None
     hf_cache_dir: Optional[str] = None
+    device: Optional[str] = None
     gpu_memory_utilization: float = 0.45
     enforce_eager: bool = False
     dimensions: Optional[int] = None
@@ -42,6 +47,15 @@ class LlamaNemotronEmbed1BV2Embedder:
     _llm: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.device is not None:
+            warnings.warn(
+                "LlamaNemotronEmbed1BV2Embedder no longer uses 'device'; "
+                "vLLM follows process-level GPU placement. Use CUDA_VISIBLE_DEVICES "
+                "or vLLM's tensor_parallel_size instead. 'device' will be removed "
+                "in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         from nemo_retriever.model import _DEFAULT_EMBED_MODEL
         from nemo_retriever.text_embed.vllm import create_vllm_llm
 

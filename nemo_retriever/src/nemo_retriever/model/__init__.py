@@ -54,8 +54,9 @@ def create_local_embedder(
     Non-VL models use vLLM via ``LlamaNemotronEmbed1BV2Embedder`` in
     ``nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder``.
 
-    ``device`` applies only to the VL (HuggingFace) path; the text vLLM embedder
-    does not take a device field (vLLM uses process / environment placement).
+    ``device`` applies only to the VL (HuggingFace) path. For non-VL text models,
+    ``device`` is forwarded for compatibility but deprecated and ignored (vLLM
+    placement is process-level); passing it emits ``DeprecationWarning``.
 
     Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
     ``normalize``, and ``max_length`` apply to the non-VL (vLLM) path only;
@@ -81,6 +82,7 @@ def create_local_embedder(
     return LlamaNemotronEmbed1BV2Embedder(
         model_id=model_id,
         hf_cache_dir=hf_cache_dir,
+        device=device,
         gpu_memory_utilization=gpu_memory_utilization,
         enforce_eager=enforce_eager,
         dimensions=dimensions,

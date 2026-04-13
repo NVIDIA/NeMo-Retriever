@@ -5,6 +5,7 @@
 """Unit tests for nemo_retriever.model.create_local_embedder factory."""
 
 import sys
+import warnings
 from types import ModuleType
 from unittest.mock import MagicMock
 
@@ -85,7 +86,7 @@ def test_kwargs_forwarded_to_text_embedder(_patch_embedders):
         max_length=4096,
     )
     kw = fake_text.call_args.kwargs
-    assert "device" not in kw
+    assert kw["device"] == "cuda:1"
     assert kw["hf_cache_dir"] == "/tmp/cache"
     assert kw["gpu_memory_utilization"] == 0.6
     assert kw["normalize"] is False
@@ -110,3 +111,30 @@ def test_unknown_model_passes_through(_patch_embedders):
     create_local_embedder("custom-org/my-embed-model")
     kw = fake_text.call_args.kwargs
     assert kw["model_id"] == "custom-org/my-embed-model"
+
+
+def test_llama_nemotron_text_embedder_deprecates_device(monkeypatch):
+    # Autouse _patch_embedders shadows this submodule with a MagicMock; load the real class.
+    import importlib
+
+    monkeypatch.delitem(
+        sys.modules,
+        "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder",
+        raising=False,
+    )
+    mod = importlib.import_module("nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder")
+    monkeypatch.setattr(
+        "nemo_retriever.text_embed.vllm.create_vllm_llm",
+        MagicMock(return_value=MagicMock()),
+    )
+    Embed = mod.LlamaNemotronEmbed1BV2Embedder
+
+    with warnings.catch_warnings(record=True) as wrec:
+        warnings.simplefilter("always", category=DeprecationWarning)
+        Embed(device="cuda:0")
+    assert any("no longer uses 'device'" in str(w.message) for w in wrec)
+
+    with warnings.catch_warnings(record=True) as wrec2:
+        warnings.simplefilter("always", category=DeprecationWarning)
+        Embed(device=None)
+    assert not any("no longer uses 'device'" in str(w.message) for w in wrec2)
