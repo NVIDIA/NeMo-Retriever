@@ -11,12 +11,23 @@ from nemo_retriever.tabular_data.ingestion.utils import (
 )
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import (
+    Edges,
     Labels,
-    RelTypes,
 )
 from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 
 logger = logging.getLogger(__name__)
+
+conn = get_neo4j_conn()
+
+
+def get_db_ids_and_names():
+    query = f""" MATCH (db:{Labels.DB})
+                RETURN collect({{id: db.id, name: db.name}}) AS dbs"""
+    return conn.query_read(
+        query=query, parameters={}
+    )[0]["dbs"]
+
 
 
 def load_schema_from_graph(
@@ -40,7 +51,7 @@ def load_schema_from_graph(
 
 def get_schemas_ids_and_names(db_id: str = None):
     db_filter = " {id:$db_id}" if db_id else ""
-    query = f"""MATCH(db:{Labels.DB}{db_filter})-[:{RelTypes.CONTAINS}]->(s:{Labels.SCHEMA})
+    query = f"""MATCH(db:{Labels.DB}{db_filter})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})
                 RETURN s.name as schema_name, s.id as schema_id
             """
     result = pd.DataFrame(
@@ -54,9 +65,9 @@ def get_schemas_ids_and_names(db_id: str = None):
 
 def get_schema_columns(db_name, schema_name):
     # Use c_id alias: "id" is reserved in Cypher
-    query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{RelTypes.CONTAINS}]->
-                (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{RelTypes.CONTAINS}]->
-                (t:{Labels.TABLE})-[:{RelTypes.CONTAINS}]->(c:{Labels.COLUMN})
+    query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{Edges.CONTAINS}]->
+                (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{Edges.CONTAINS}]->
+                (t:{Labels.TABLE})-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
                 WITH d.name as database,
                 s.name as schema,
                 t.name as table_name,
@@ -87,8 +98,8 @@ def get_schema_columns(db_name, schema_name):
 
 def get_schema_tables(db_name, schema_name):
     # Use t_id alias: "id" is reserved in Cypher
-    query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{RelTypes.CONTAINS}]->
-                (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{RelTypes.CONTAINS}]->
+    query = f"""MATCH (d:{Labels.DB}{{name:$db_name}})-[:{Edges.CONTAINS}]->
+                (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{Edges.CONTAINS}]->
                 (t:{Labels.TABLE})
                 WITH d.name as database, s.name as schema, t.name as table_name, t.id as t_id,
                 tostring(t.created) as created, t.description as description
@@ -132,7 +143,7 @@ def add_schemas_edge(edge, created):
             call apoc.merge.node.eager($to_label, $to_identProps, $u_props, {{id:$u_props.id}})
             yield node as v2
             set v2.created = coalesce(v2.created, $created)
-            MERGE (v1)-[r:{RelTypes.CONTAINS}]->(v2)
+            MERGE (v1)-[r:{Edges.CONTAINS}]->(v2)
             SET r = $optional_edge_props
             """
 
@@ -155,7 +166,7 @@ def add_schemas_edge(edge, created):
 
 
 def delete_old_fks(last_seen):
-    query = f""" OPTIONAL MATCH (:{Labels.COLUMN})-[old_fk:{RelTypes.FOREIGN_KEY}]->(:{Labels.COLUMN})
+    query = f""" OPTIONAL MATCH (:{Labels.COLUMN})-[old_fk:{Edges.FOREIGN_KEY}]->(:{Labels.COLUMN})
                 WHERE old_fk.last_seen<>$last_seen
                 DELETE old_fk
             """
@@ -172,12 +183,12 @@ def add_fks(fks_df, last_seen):
                MATCH (t1:{Labels.TABLE}{{
                    name: fkd.pk_table_name, schema_name: fkd.pk_schema_name,
                    db_name: fkd.pk_database_name
-               }})-[:{RelTypes.CONTAINS}]->(col1:{Labels.COLUMN}{{name: fkd.pk_column_name}})
+               }})-[:{Edges.CONTAINS}]->(col1:{Labels.COLUMN}{{name: fkd.pk_column_name}})
                MATCH (t2:{Labels.TABLE}{{
                    name: fkd.fk_table_name, schema_name: fkd.fk_schema_name,
                    db_name: fkd.fk_database_name
-               }})-[:{RelTypes.CONTAINS}]->(col2:{Labels.COLUMN}{{name: fkd.fk_column_name}})
-               MERGE (col1)-[:{RelTypes.FOREIGN_KEY} {{last_seen: $last_seen}}]->(col2)"""
+               }})-[:{Edges.CONTAINS}]->(col2:{Labels.COLUMN}{{name: fkd.fk_column_name}})
+               MERGE (col1)-[:{Edges.FOREIGN_KEY} {{last_seen: $last_seen}}]->(col2)"""
     get_neo4j_conn().query_write(
         query=query,
         parameters={
@@ -199,7 +210,7 @@ def add_pks(pks_df):
                MATCH (t:{Labels.TABLE}{{
                    name: pkd.table_name, schema_name: pkd.schema_name,
                    db_name: pkd.database_name
-               }})-[:{RelTypes.CONTAINS}]->(col:{Labels.COLUMN}{{name: pkd.column_name}})
+               }})-[:{Edges.CONTAINS}]->(col:{Labels.COLUMN}{{name: pkd.column_name}})
                SET t.pk = CASE WHEN t.pk is NULL THEN [col.name] ELSE t.pk + [col.name] END"""
     get_neo4j_conn().query_write(
         query=query,
@@ -228,7 +239,7 @@ def merge_schema_edges(edges, from_label, to_label):
                             UNWIND $edges as edge
                             MATCH (v:{from_label} {{id:edge.vid}})
                             MATCH (u:{to_label} {{id:edge.uid}})
-                            CALL apoc.merge.relationship(v, "{RelTypes.CONTAINS}", {{}}, edge.props, u, {{}})
+                            CALL apoc.merge.relationship(v, "{Edges.CONTAINS}", {{}}, edge.props, u, {{}})
                             YIELD rel RETURN rel
                         """
     get_neo4j_conn().query_write(query=merge_edges_query, parameters={"edges": edges})

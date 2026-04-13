@@ -35,6 +35,7 @@ def data_for_populate_tabular(connector: SQLDatabase):
         "views": views,
         "pks": pks,
         "fks": fks,
+        "queries": queries,
     }
     # queries is not used by populate_tabular_data(); include if needed elsewhere
     return data

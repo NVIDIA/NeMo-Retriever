@@ -8,6 +8,12 @@ from datetime import timezone
 import pandas as pd
 
 
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+
 def flat_list_recursive(nested_list):
     output = []
     for i in nested_list:
@@ -42,8 +48,6 @@ def remove_redundant_parentheses(text):
             }[f]
     s = r[2]
     r = r[1]
-    # z = 0
-
     while 1:
         m = regex.subn(r, s, text, count, flags)
         text = m[0]
