@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""CPU graph operator for remote-only text embeddings."""
+"""CPU graph operator for text embeddings (remote HTTP or local HF on CPU)."""
 
 from __future__ import annotations
 
@@ -16,21 +16,32 @@ from nemo_retriever.text_embed.shared import build_embed_kwargs
 
 
 class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
-    """CPU-only embedding actor that always targets a remote endpoint."""
-
-    DEFAULT_EMBED_INVOKE_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+    """CPU-only embedding: remote when ``embed_invoke_url`` / ``embedding_endpoint`` is set, else local HF."""
 
     def __init__(self, params: EmbedParams) -> None:
         super().__init__()
         self._params = params
         self._kwargs = build_embed_kwargs(params)
-        if "embedding_endpoint" not in self._kwargs:
-            self._kwargs["embedding_endpoint"] = self._kwargs.get("embed_invoke_url") or self.DEFAULT_EMBED_INVOKE_URL
 
         endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
-        if not endpoint:
-            self._kwargs["embedding_endpoint"] = self.DEFAULT_EMBED_INVOKE_URL
-        self._model = None
+        if endpoint:
+            self._model = None
+            if "embedding_endpoint" not in self._kwargs and self._kwargs.get("embed_invoke_url"):
+                self._kwargs["embedding_endpoint"] = self._kwargs.get("embed_invoke_url")
+            return
+
+        from nemo_retriever.model import create_local_embedder
+
+        device = self._kwargs.get("device") or "cpu"
+        self._model = create_local_embedder(
+            self._kwargs.get("model_name"),
+            device=str(device) if device else None,
+            hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+            normalize=bool(self._kwargs.get("normalize", True)),
+            max_length=int(self._kwargs.get("max_length", 8192)),
+        )
+        self._kwargs["embedding_endpoint"] = None
+        self._kwargs["embed_invoke_url"] = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
