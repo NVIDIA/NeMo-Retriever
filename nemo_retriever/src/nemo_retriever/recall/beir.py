@@ -174,8 +174,7 @@ def _build_csv_corpus_id(
     if doc_id_field == "pdf_page_modality":
         return f"{pdf_basename}_{page_number}_{modality}"
     raise ValueError(
-        f"{loader_name} only supports doc_id_field values "
-        f"'pdf_page' or 'pdf_page_modality', got {doc_id_field!r}"
+        f"{loader_name} only supports doc_id_field values " f"'pdf_page' or 'pdf_page_modality', got {doc_id_field!r}"
     )
 
 
