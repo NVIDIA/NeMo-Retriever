@@ -138,7 +138,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         meta = row.get("metadata")
         if not isinstance(meta, dict):
             continue
-        meta = dict(meta)
+        meta = meta.copy()
 
         embedding = meta.get("embedding")
         if embedding is None:
