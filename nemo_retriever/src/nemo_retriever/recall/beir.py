@@ -161,19 +161,21 @@ def _resolve_annotations_csv_path(dataset_name: str, *, loader_name: str) -> Pat
     )
 
 
-def _build_bo767_corpus_id(
+def _build_csv_corpus_id(
     *,
     pdf_basename: str,
     page_number: int,
     modality: str,
     doc_id_field: str,
+    loader_name: str,
 ) -> str:
     if doc_id_field == "pdf_page":
         return f"{pdf_basename}_{page_number}"
     if doc_id_field == "pdf_page_modality":
         return f"{pdf_basename}_{page_number}_{modality}"
     raise ValueError(
-        "bo767_csv loader only supports doc_id_field values " f"'pdf_page' or 'pdf_page_modality', got {doc_id_field!r}"
+        f"{loader_name} only supports doc_id_field values "
+        f"'pdf_page' or 'pdf_page_modality', got {doc_id_field!r}"
     )
 
 
@@ -203,11 +205,12 @@ def _load_annotations_csv_dataset(*, dataset_name: str, doc_id_field: str, loade
                 continue
 
             query_id = str(row.get("query_id") or idx)
-            corpus_id = _build_bo767_corpus_id(
+            corpus_id = _build_csv_corpus_id(
                 pdf_basename=pdf_basename,
                 page_number=page_number,
                 modality=modality,
                 doc_id_field=doc_id_field,
+                loader_name=loader_name,
             )
             query_ids.append(query_id)
             queries.append(query_text)
