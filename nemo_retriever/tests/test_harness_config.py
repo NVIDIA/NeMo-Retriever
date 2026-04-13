@@ -579,7 +579,7 @@ def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.Mo
     assert cfg.recall_required is False
     assert cfg.evaluation_mode == "beir"
     assert cfg.beir_loader == "bo767_csv"
-    assert cfg.beir_doc_id_field == "pdf_page_modality"
+    assert cfg.beir_doc_id_field == "pdf_page"
 
 
 def test_load_harness_config_supports_bo10k_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -603,7 +603,7 @@ def test_load_harness_config_supports_bo10k_beir_defaults(monkeypatch: pytest.Mo
     assert cfg.recall_required is False
     assert cfg.evaluation_mode == "beir"
     assert cfg.beir_loader == "bo10k_csv"
-    assert cfg.beir_doc_id_field == "pdf_page_modality"
+    assert cfg.beir_doc_id_field == "pdf_page"
 
 
 def test_load_harness_config_supports_store_options(tmp_path: Path) -> None:
