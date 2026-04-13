@@ -16,16 +16,16 @@ from nemo_retriever.table.shared import table_structure_ocr_page_elements
 
 class TableStructureActor(AbstractOperator, GPUOperator):
     """
-    Ray-friendly callable that initializes both table-structure and OCR
-    models once per actor and runs the combined stage.
+    Ray-friendly callable that initializes the table-structure model once
+    per actor and runs the structure stage.
     """
 
     def __init__(
         self,
         *,
         table_structure_invoke_url: Optional[str] = None,
-        ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
+        ocr_invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -34,8 +34,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         remote_max_429_retries: int = 5,
     ) -> None:
         super().__init__()
-        self._table_structure_invoke_url = (table_structure_invoke_url or "").strip()
-        self._ocr_invoke_url = (ocr_invoke_url or invoke_url or "").strip()
+        self._table_structure_invoke_url = (table_structure_invoke_url or invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._table_output_format = table_output_format
@@ -52,13 +51,6 @@ class TableStructureActor(AbstractOperator, GPUOperator):
 
             self._table_structure_model = NemotronTableStructureV1()
 
-        if self._ocr_invoke_url:
-            self._ocr_model = None
-        else:
-            from nemo_retriever.model.local import NemotronOCRV1
-
-            self._ocr_model = NemotronOCRV1()
-
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
@@ -66,9 +58,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         return table_structure_ocr_page_elements(
             data,
             table_structure_model=self._table_structure_model,
-            ocr_model=self._ocr_model,
             table_structure_invoke_url=self._table_structure_invoke_url,
-            ocr_invoke_url=self._ocr_invoke_url,
             api_key=self._api_key,
             table_output_format=self._table_output_format,
             request_timeout_s=self._request_timeout_s,
