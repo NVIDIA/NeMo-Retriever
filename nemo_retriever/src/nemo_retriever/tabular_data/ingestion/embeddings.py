@@ -4,6 +4,7 @@
 
 from typing import List
 
+from nemo_retriever.tabular_data.retrieval.omni_lite.utils import Labels
 import pandas as pd
 
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
@@ -12,7 +13,7 @@ from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 def query_neo4j_tables_for_embedding() -> List[dict]:
     """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
     neo4j_conn = get_neo4j_conn()
-    query = """MATCH (d:Db)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)
+    query = """MATCH (d:Database)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)
                MATCH (t)-[:CONTAINS]->(c:Column)
                WITH d, s, t, collect(
                  "{name: " + c.name + ", data_type: " + c.data_type +
@@ -37,7 +38,7 @@ def query_neo4j_tables_for_embedding() -> List[dict]:
 def query_neo4j_columns_for_embedding() -> List[dict]:
     """Return one doc per ``Column`` node for embedding (distinct from table-level rows)."""
     neo4j_conn = get_neo4j_conn()
-    query = """MATCH (d:Db)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)-[:CONTAINS]->(c:Column)
+    query = """MATCH (d:Database)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)-[:CONTAINS]->(c:Column)
                RETURN collect({
                  text: "db_name: " + d.name + ", schema_name: " + s.name +
                    ", table_name: " + t.name + ", column_name: " + c.name +

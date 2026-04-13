@@ -72,7 +72,7 @@ def _make_llm() -> ChatNVIDIA:
 class Labels(StrEnum):
     """Semantic labels used by omni-lite candidate retrieval."""
 
-    DB = "Db"
+    DB = "Database"
     CUSTOM_ANALYSIS = "custom_analysis"
     COLUMN = "column"
     QUERY = "query"
@@ -97,7 +97,7 @@ def store_usage_percentiles(
     usage_percentile_75: int,
 ):
     query = """
-            MATCH (n:db)
+            MATCH (n:Database)
             WITH n
             CALL apoc.create.setProperties(n, [$percentiles_type_name_25, $percentiles_type_name_75], [$usage_percentile_25, $usage_percentile_75]) 
             YIELD node
@@ -117,7 +117,7 @@ def store_usage_percentiles(
 
 def get_stored_usage_percentiles(percentiles_type_name: str):
     query = f"""
-                MATCH (n:db)
+                MATCH (n:Database)
                 RETURN n.{f"{percentiles_type_name}_25"} as usage_percentile_25, n.{f"{percentiles_type_name}_75"} as usage_percentile_75
                 """
     results = conn.query_read(
@@ -595,11 +595,8 @@ def extract_entities_with_id_name_label(data):
         if isinstance(obj, dict):
             # Main entity case: id + name + (type or label)
             if "id" in obj and "name" in obj and ("type" in obj or "label" in obj):
-                if "type" in obj:
-                    label = type_to_labels(obj["type"])
-                    final_label = label[0] if label else obj["type"]
-                else:
-                    final_label = obj["label"]
+
+                final_label = obj["label"]
 
                 result[obj["id"]] = (
                     obj["name"],
@@ -713,25 +710,25 @@ def get_relevant_fks(tables_ids):
     WITH $tables_ids as current_ids
     
     // Level 1: Find tables connected via FK
-    OPTIONAL MATCH (t0:table WHERE t0.id IN current_ids)
-          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t1:table)
+    OPTIONAL MATCH (t0:Table WHERE t0.id IN current_ids)
+          -[:schema]->(:Column)-[:fk]-(:Column)<-[:schema]-(t1:Table)
     WITH current_ids, collect(DISTINCT t1.id) as new_ids_1
     WITH current_ids + new_ids_1 as level_1_ids
     
     // Level 2
-    OPTIONAL MATCH (t1:table WHERE t1.id IN level_1_ids)
-          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t2:table)
+    OPTIONAL MATCH (t1:Table WHERE t1.id IN level_1_ids)
+          -[:schema]->(:Column)-[:fk]-(:Column)<-[:schema]-(t2:Table)
     WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
     WITH level_1_ids + new_ids_2 as level_2_ids
     
     // Level 3
-    OPTIONAL MATCH (t2:table WHERE t2.id IN level_2_ids)
-          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t3:table)
+    OPTIONAL MATCH (t2:Table WHERE t2.id IN level_2_ids)
+          -[:schema]->(:Column)-[:fk]-(:Column)<-[:schema]-(t3:Table)
     WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
     WITH level_2_ids + new_ids_3 as all_table_ids
     
     // Get all FK relationships between these tables
-    MATCH (t1:table)-[:schema]->(col1:column)-[:fk]-(col2:column)<-[:schema]-(t2:table)
+    MATCH (t1:Table)-[:schema]->(col1:Column)-[:fk]-(col2:Column)<-[:schema]-(t2:Table)
     WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
       AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
     
@@ -755,22 +752,22 @@ def get_relevant_fks(tables_ids):
     // Start with target tables and expand outward to find connected tables
     
     // Level 1: Find tables connected via FK
-    OPTIONAL MATCH (t0:table WHERE t0.id IN $tables_ids)-[:join]-(t1:table)
+    OPTIONAL MATCH (t0:Table WHERE t0.id IN $tables_ids)-[:join]-(t1:Table)
     WITH collect(DISTINCT t1.id) as new_ids_1
     WITH $tables_ids + new_ids_1 as level_1_ids
     
     // Level 2
-    OPTIONAL MATCH (t1:table WHERE t1.id IN level_1_ids)-[:join]-(t2:table)
+    OPTIONAL MATCH (t1:Table WHERE t1.id IN level_1_ids)-[:join]-(t2:Table)
     WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
     WITH level_1_ids + new_ids_2 as level_2_ids
     
     // Level 3
-    OPTIONAL MATCH (t2:table WHERE t2.id IN level_2_ids)-[:join]-(t3:table)
+    OPTIONAL MATCH (t2:Table WHERE t2.id IN level_2_ids)-[:join]-(t3:Table)
     WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
     WITH level_2_ids + new_ids_3 as all_table_ids
     
     // Get all join relationships between these tables and parse the join property
-    MATCH (t1:table)-[rel:join]-(t2:table)
+    MATCH (t1:Table)-[rel:join]-(t2:Table)
     WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
       AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
       AND rel.join IS NOT NULL
@@ -792,10 +789,10 @@ def get_relevant_fks(tables_ids):
       AND right_schema IS NOT NULL AND right_table IS NOT NULL AND right_column IS NOT NULL
     
     // Match the actual column nodes for left side
-    OPTIONAL MATCH (s1:schema{name: left_schema})-[:schema]->(tbl1:table{name: left_table})-[:schema]->(col1:column{name: left_column})
+    OPTIONAL MATCH (s1:Schema{name: left_schema})-[:schema]->(tbl1:Table{name: left_table})-[:schema]->(col1:Column{name: left_column})
     
     // Match the actual column nodes for right side
-    OPTIONAL MATCH (s2:schema{name: right_schema})-[:schema]->(tbl2:table{name: right_table})-[:schema]->(col2:column{name: right_column})
+    OPTIONAL MATCH (s2:Schema{name: right_schema})-[:schema]->(tbl2:Table{name: right_table})-[:schema]->(col2:Column{name: right_column})
     
     // Return the structured format
     RETURN collect(DISTINCT {
@@ -877,7 +874,7 @@ def get_slim_account_schemas(
     relevant_schemas_ids: list | None = None,
 ) -> list[dict[str, str]]:
     if relevant_schemas_ids is not None and len(relevant_schemas_ids) > 0:
-        query = """ MATCH (db:Db)-[:CONTAINS]->(schema:Schema WHERE schema.id in $relevant_schemas_ids)
+        query = """ MATCH (db:Database)-[:CONTAINS]->(schema:Schema WHERE schema.id in $relevant_schemas_ids)
                     -[:CONTAINS]->(table:Table WHERE coalesce(table.deleted, FALSE)=FALSE)
                     -[:CONTAINS]->(column:Column WHERE coalesce(column.deleted, FALSE)=FALSE AND NOT column.db_name IS NULL)
                     RETURN collect({
