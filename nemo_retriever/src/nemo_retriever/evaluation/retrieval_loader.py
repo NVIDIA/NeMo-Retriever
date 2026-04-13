@@ -71,9 +71,10 @@ class RetrievalLoaderOperator(EvalOperator):
         source = self._ground_truth_csv
         try:
             loader_fn = get_qa_dataset_loader(source)
-            qa_pairs = loader_fn(self._data_dir)
         except ValueError:
             qa_pairs = load_generic_csv(source)
+        else:
+            qa_pairs = loader_fn(self._data_dir)
         retriever = FileRetriever(file_path=self._retrieval_json)
 
         coverage = retriever.check_coverage(qa_pairs)
