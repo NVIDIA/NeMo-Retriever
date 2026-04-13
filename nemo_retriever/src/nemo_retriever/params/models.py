@@ -5,9 +5,12 @@
 from __future__ import annotations
 
 from typing import Any, Literal, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 import warnings
 
+
+from upath import UPath
 
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -285,6 +288,13 @@ class StoreParams(_ParamsModel):
     store_text: bool = False
     image_format: str = "png"
     strip_base64: bool = True
+
+    @model_validator(mode="after")
+    def _resolve_local_storage_uri(self) -> "StoreParams":
+        """Resolve relative local paths to absolute so they survive Ray serialization."""
+        if not urlparse(self.storage_uri).scheme:
+            self.storage_uri = str(UPath(self.storage_uri).resolve())
+        return self
 
 
 class PageElementsParams(_ParamsModel):

@@ -3,6 +3,7 @@
 active:
   dataset: jp20
   preset: single_gpu
+  run_mode: batch
   query_csv: data/jp20_query_gt.csv
   input_type: pdf
   recall_required: true

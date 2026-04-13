@@ -170,6 +170,17 @@ def load_image_b64_from_uri(uri: str) -> Optional[str]:
         return None
 
 
+def resolve_image_b64(container: dict) -> Optional[str]:
+    """Return image_b64, reloading from stored_image_uri if stripped."""
+    b64 = container.get("image_b64")
+    if b64 is not None:
+        return b64
+    uri = container.get("stored_image_uri")
+    if uri:
+        return load_image_b64_from_uri(uri)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Per-row context and helpers for store_extracted
 # ---------------------------------------------------------------------------
