@@ -41,6 +41,7 @@ def _create_local_model(kwargs: dict) -> "Any":
         model_path=kwargs.get("model_name", _DEFAULT_MODEL_NAME),
         device=kwargs.get("device"),
         hf_cache_dir=kwargs.get("hf_cache_dir"),
+        max_new_tokens=kwargs.get("max_tokens", 1024),
         tensor_parallel_size=kwargs.get("tensor_parallel_size", 1),
         gpu_memory_utilization=kwargs.get("gpu_memory_utilization", 0.5),
     )
@@ -145,6 +146,8 @@ def _caption_batch_remote(
     prompt: str,
     system_prompt: str | None,
     temperature: float,
+    top_p: float | None = None,
+    max_tokens: int = 1024,
 ) -> List[str]:
     """Send a batch of images to a remote VLM endpoint and return captions."""
     from nv_ingest_api.util.image_processing.transforms import scale_image_to_encoding_size
@@ -158,7 +161,14 @@ def _caption_batch_remote(
     if system_prompt:
         data["system_prompt"] = system_prompt
 
-    return nim_client.infer(data, model_name=model_name, temperature=temperature)
+    from nemo_retriever.params.models import LLMInferenceParams
+
+    infer_kwargs: Dict[str, Any] = {"model_name": model_name}
+    infer_kwargs.update(
+        LLMInferenceParams(temperature=temperature, top_p=top_p, max_tokens=max_tokens).to_sampling_kwargs()
+    )
+
+    return nim_client.infer(data, **infer_kwargs)
 
 
 def _caption_batch_local(
@@ -168,6 +178,8 @@ def _caption_batch_local(
     prompt: str,
     system_prompt: str | None,
     temperature: float,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
 ) -> List[str]:
     """Generate captions using a local ``NemotronVLMCaptioner`` model."""
     return model.caption_batch(
@@ -175,6 +187,8 @@ def _caption_batch_local(
         prompt=prompt,
         system_prompt=system_prompt,
         temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
     )
 
 
@@ -187,6 +201,8 @@ def _caption_one(
     prompt: str,
     system_prompt: str | None,
     temperature: float,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Caption a single image (used when each image gets a unique prompt)."""
     if model is not None:
@@ -196,6 +212,8 @@ def _caption_one(
             prompt=prompt,
             system_prompt=system_prompt,
             temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
         )
     else:
         captions = _caption_batch_remote(
@@ -205,6 +223,8 @@ def _caption_one(
             prompt=prompt,
             system_prompt=system_prompt,
             temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
         )
     return captions[0] if captions else ""
 
@@ -219,6 +239,8 @@ def caption_images(
     prompt: str = "Caption the content of this image:",
     system_prompt: str | None = "/no_think",
     temperature: float = 1.0,
+    top_p: float | None = None,
+    max_tokens: int = 1024,
     batch_size: int = 8,
     context_text_max_chars: int = 0,
     caption_infographics: bool = False,
@@ -321,6 +343,8 @@ def caption_images(
                 prompt=enriched_prompt,
                 system_prompt=system_prompt,
                 temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
             )
             # Infographics keep OCR text; VLM caption goes to a separate field.
             field = "caption" if col == "infographic" else "text"
@@ -335,6 +359,8 @@ def caption_images(
                 prompt=prompt,
                 system_prompt=system_prompt,
                 temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
             )
         else:
             all_captions: List[str] = []
@@ -346,6 +372,8 @@ def caption_images(
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=temperature,
+                    top_p=top_p,
+                    max_tokens=max_tokens,
                 )
                 all_captions.extend(captions)
 

@@ -191,11 +191,18 @@ class NemotronVLMCaptioner(BaseModel):
         prompt: str = "Caption the content of this image:",
         system_prompt: Optional[str] = "/no_think",
         temperature: float = 1.0,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate a caption for a single base64-encoded image."""
-        return self.caption_batch([base64_image], prompt=prompt, system_prompt=system_prompt, temperature=temperature)[
-            0
-        ]
+        return self.caption_batch(
+            [base64_image],
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+        )[0]
 
     def caption_batch(
         self,
@@ -204,6 +211,8 @@ class NemotronVLMCaptioner(BaseModel):
         prompt: str = "Caption the content of this image:",
         system_prompt: Optional[str] = "/no_think",
         temperature: float = 1.0,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> List[str]:
         """Generate captions for a list of base64-encoded images.
 
@@ -212,7 +221,13 @@ class NemotronVLMCaptioner(BaseModel):
         from vllm import SamplingParams
 
         conversations = [self._build_messages(b64, prompt=prompt, system_prompt=system_prompt) for b64 in base64_images]
-        sampling_params = SamplingParams(temperature=temperature, max_tokens=self._max_new_tokens)
+        sp_kwargs: dict = {
+            "temperature": temperature,
+            "max_tokens": max_tokens if max_tokens is not None else self._max_new_tokens,
+        }
+        if top_p is not None:
+            sp_kwargs["top_p"] = top_p
+        sampling_params = SamplingParams(**sp_kwargs)
         outputs = self._llm.chat(conversations, sampling_params=sampling_params)
         return [out.outputs[0].text.strip() for out in outputs]
 
