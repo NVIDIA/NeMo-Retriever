@@ -177,6 +177,41 @@ class TestQueriesNoReranking:
 
 
 # ---------------------------------------------------------------------------
+# local_query_embed_backend (HF vs vLLM for local query vectors)
+# ---------------------------------------------------------------------------
+
+
+class TestLocalQueryEmbedBackend:
+    def test_invalid_backend_raises(self):
+        r = _make_retriever(local_query_embed_backend="nope")
+        with pytest.raises(ValueError, match="local_query_embed_backend"):
+            r._get_local_embedder("nvidia/llama-nemotron-embed-1b-v2")
+
+    def test_hf_text_model_uses_create_local_query_embedder(self, monkeypatch):
+        recorded: list[tuple[str, str]] = []
+
+        def fake_cq(_model_name: str, *, backend: str = "auto", **_kwargs):
+            recorded.append(("cq", backend))
+            m = MagicMock()
+            import torch
+
+            m.embed_queries.return_value = torch.zeros(1, 2)
+            return m
+
+        def fake_ce(*_a, **_k):
+            recorded.append(("ce", "vllm"))
+            raise AssertionError("create_local_embedder should not run for hf text backend")
+
+        monkeypatch.setattr("nemo_retriever.model.create_local_query_embedder", fake_cq)
+        monkeypatch.setattr("nemo_retriever.model.create_local_embedder", fake_ce)
+
+        r = _make_retriever(local_query_embed_backend="hf")
+        r._get_local_embedder("nvidia/llama-nemotron-embed-1b-v2")
+        r._get_local_embedder("nvidia/llama-nemotron-embed-1b-v2")
+        assert recorded == [("cq", "hf")]
+
+
+# ---------------------------------------------------------------------------
 # Retriever.query() — single-query convenience wrapper
 # ---------------------------------------------------------------------------
 

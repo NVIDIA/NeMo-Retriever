@@ -53,6 +53,13 @@ def _coerce_endpoint_str(v: Optional[str]) -> Optional[str]:
     return s
 
 
+def _normalize_local_query_embed_backend(value: str) -> str:
+    raw = (value or "auto").strip().lower()
+    if raw not in ("auto", "hf", "vllm"):
+        raise typer.BadParameter("local query embed backend must be 'auto', 'hf', or 'vllm', " f"got {value!r}")
+    return raw
+
+
 def _resolve_endpoints(
     *,
     embedding_endpoint: Optional[str],
@@ -131,8 +138,17 @@ def recall_with_main(
         min=1,
         help="Batch size for local HF embedding inference.",
     ),
+    local_query_embed_backend: str = typer.Option(
+        "auto",
+        "--local-query-embed-backend",
+        help=(
+            "When no remote embedding endpoint is set: 'auto'/'vllm' use the local vLLM path; "
+            "'hf' uses HuggingFace for query vectors (e.g. index built with vLLM, queries with HF)."
+        ),
+    ),
 ) -> None:
     query_csv = _resolve_query_csv(Path(query_csv))
+    _lqeb = _normalize_local_query_embed_backend(local_query_embed_backend)
 
     metrics_ks = (1, 5, 10)
     search_k = max(int(top_k), max(metrics_ks))
@@ -155,6 +171,7 @@ def recall_with_main(
         local_hf_device=_coerce_endpoint_str(local_hf_device),
         local_hf_cache_dir=(str(local_hf_cache_dir) if local_hf_cache_dir is not None else None),
         local_hf_batch_size=int(local_hf_batch_size),
+        local_query_embed_backend=_lqeb,
     )
 
     print("Reading and normalizing query CSV...")
@@ -251,6 +268,14 @@ def run(
         min=1,
         help="Batch size for local HF embedding inference.",
     ),
+    local_query_embed_backend: str = typer.Option(
+        "auto",
+        "--local-query-embed-backend",
+        help=(
+            "When no remote embedding endpoint is set: 'auto'/'vllm' use the local vLLM path; "
+            "'hf' uses HuggingFace for query vectors."
+        ),
+    ),
     print_hits: bool = typer.Option(True, "--print-hits/--no-print-hits", help="Print top-k hits per query."),
 ) -> None:
     """
@@ -260,6 +285,7 @@ def run(
     search_k = max(top_k, 10) but only print the first `--top-k`.
     """
     query_csv = _resolve_query_csv(Path(query_csv))
+    _lqeb = _normalize_local_query_embed_backend(local_query_embed_backend)
 
     metrics_ks = (1, 5, 10)
     search_k = max(int(top_k), max(metrics_ks))
@@ -282,6 +308,7 @@ def run(
         local_hf_device=_coerce_endpoint_str(local_hf_device),
         local_hf_cache_dir=(str(local_hf_cache_dir) if local_hf_cache_dir is not None else None),
         local_hf_batch_size=int(local_hf_batch_size),
+        local_query_embed_backend=_lqeb,
     )
 
     df_query, gold, raw_hits, retrieved_keys, metrics = retrieve_and_score(

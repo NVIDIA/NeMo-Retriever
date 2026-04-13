@@ -293,6 +293,12 @@ def main(
     beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field"),
     beir_k: list[int] = typer.Option([], "--beir-k"),
     recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details"),
+    recall_local_query_embed_backend: str = typer.Option(
+        "auto",
+        "--recall-local-query-embed-backend",
+        help="Local query embedding for recall/BEIR when --embed-invoke-url is unset: "
+        "auto|vllm (same as document ingest) or hf (HuggingFace text embedder).",
+    ),
     runtime_metrics_dir: Optional[Path] = typer.Option(None, "--runtime-metrics-dir", path_type=Path),
     runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix"),
     detection_summary_file: Optional[Path] = typer.Option(None, "--detection-summary-file", path_type=Path),
@@ -309,6 +315,13 @@ def main(
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"recall", "beir"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+
+        _rqeb = (recall_local_query_embed_backend or "auto").strip().lower()
+        if _rqeb not in ("auto", "hf", "vllm"):
+            raise ValueError(
+                "--recall-local-query-embed-backend must be one of auto, hf, vllm; "
+                f"got {recall_local_query_embed_backend!r}"
+            )
 
         if run_mode == "batch":
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
@@ -623,6 +636,7 @@ def main(
                 hybrid=hybrid,
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
+                local_query_embed_backend=_rqeb,
             )
             evaluation_start = time.perf_counter()
             beir_dataset, _raw_hits, _run, evaluation_metrics = evaluate_lancedb_beir(cfg)
@@ -672,6 +686,7 @@ def main(
                 match_mode=recall_match_mode,
                 audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
+                local_query_embed_backend=_rqeb,
             )
             evaluation_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
@@ -702,6 +717,7 @@ def main(
                 "recall_details": bool(recall_details),
                 "lancedb_uri": str(lancedb_uri),
                 "lancedb_table": str(LANCEDB_TABLE),
+                "recall_local_query_embed_backend": _rqeb,
             },
         )
 

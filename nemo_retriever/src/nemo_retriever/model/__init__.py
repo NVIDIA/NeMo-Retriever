@@ -87,3 +87,71 @@ def create_local_embedder(
         normalize=normalize,
         max_length=int(max_length),
     )
+
+
+_LOCAL_QUERY_BACKENDS = frozenset({"auto", "hf", "vllm"})
+
+
+def create_local_query_embedder(
+    model_name: str | None = None,
+    *,
+    backend: str = "auto",
+    device: str | None = None,
+    hf_cache_dir: str | None = None,
+    gpu_memory_utilization: float = 0.45,
+    enforce_eager: bool = False,
+    dimensions: int | None = None,
+    normalize: bool = True,
+    max_length: int = 8192,
+) -> Any:
+    """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
+
+    For non-VL text models:
+
+    - ``backend="auto"`` or ``"vllm"``: same as :func:`create_local_embedder` (vLLM on this branch).
+    - ``backend="hf"``: HuggingFace mean pooling with ``query:`` / ``passage:`` prefixes
+      (``LlamaNemotronEmbed1BV2HFEmbedder``), for recall when LanceDB was built with vLLM
+      document vectors but you want cheaper or better-aligned query embeddings.
+
+    VL models always use the HuggingFace VL embedder (same as :func:`create_local_embedder`);
+    *backend* does not change that path.
+    """
+    b = (backend or "auto").strip().lower()
+    if b not in _LOCAL_QUERY_BACKENDS:
+        raise ValueError(f"backend must be one of {sorted(_LOCAL_QUERY_BACKENDS)}, got {backend!r}")
+    model_id = resolve_embed_model(model_name)
+
+    if is_vl_embed_model(model_name):
+        return create_local_embedder(
+            model_name,
+            device=device,
+            hf_cache_dir=hf_cache_dir,
+            gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
+            dimensions=dimensions,
+            normalize=normalize,
+            max_length=int(max_length),
+        )
+
+    if b == "hf":
+        from nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder import (
+            LlamaNemotronEmbed1BV2HFEmbedder,
+        )
+
+        return LlamaNemotronEmbed1BV2HFEmbedder(
+            device=device,
+            hf_cache_dir=hf_cache_dir,
+            normalize=normalize,
+            max_length=int(max_length),
+            model_id=model_id,
+        )
+
+    return create_local_embedder(
+        model_name,
+        hf_cache_dir=hf_cache_dir,
+        gpu_memory_utilization=gpu_memory_utilization,
+        enforce_eager=enforce_eager,
+        dimensions=dimensions,
+        normalize=normalize,
+        max_length=int(max_length),
+    )

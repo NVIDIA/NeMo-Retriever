@@ -52,6 +52,11 @@ class Retriever:
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[Path] = None
     local_hf_batch_size: int = 64
+    #: When embedding queries locally (no HTTP endpoint): ``auto`` / ``vllm`` use
+    #: :func:`~nemo_retriever.model.create_local_embedder`; ``hf`` uses the HF text
+    #: embedder from :func:`~nemo_retriever.model.create_local_query_embedder`. VL
+    #: models always use HF regardless.
+    local_query_embed_backend: str = "auto"
     # Reranking -----------------------------------------------------------
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
@@ -112,16 +117,46 @@ class Retriever:
 
     def _get_local_embedder(self, model_name: str) -> Any:
         """Lazily load and cache the local embedder for *model_name*."""
-        if model_name not in self._embedder_cache:
-            from nemo_retriever.model import create_local_embedder, resolve_embed_model
+        from nemo_retriever.model import (
+            create_local_embedder,
+            create_local_query_embedder,
+            is_vl_embed_model,
+            resolve_embed_model,
+        )
 
-            resolved = resolve_embed_model(model_name)
-            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            self._embedder_cache[model_name] = create_local_embedder(
-                resolved,
-                hf_cache_dir=cache_dir,
+        resolved = resolve_embed_model(model_name)
+        backend_raw = (self.local_query_embed_backend or "auto").strip().lower()
+        if backend_raw not in ("auto", "hf", "vllm"):
+            raise ValueError(
+                "local_query_embed_backend must be 'auto', 'hf', or 'vllm', " f"got {self.local_query_embed_backend!r}"
             )
-        return self._embedder_cache[model_name]
+        if is_vl_embed_model(model_name):
+            cache_key: tuple[str, str] = (resolved, "vl")
+        else:
+            cache_key = (resolved, "hf" if backend_raw == "hf" else "vllm")
+
+        if cache_key not in self._embedder_cache:
+            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
+            dev = str(self.local_hf_device) if self.local_hf_device else None
+            if is_vl_embed_model(model_name):
+                self._embedder_cache[cache_key] = create_local_embedder(
+                    resolved,
+                    device=dev,
+                    hf_cache_dir=cache_dir,
+                )
+            elif backend_raw == "hf":
+                self._embedder_cache[cache_key] = create_local_query_embedder(
+                    resolved,
+                    backend="hf",
+                    device=dev,
+                    hf_cache_dir=cache_dir,
+                )
+            else:
+                self._embedder_cache[cache_key] = create_local_embedder(
+                    resolved,
+                    hf_cache_dir=cache_dir,
+                )
+        return self._embedder_cache[cache_key]
 
     def _embed_queries_local(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
         embedder = self._get_local_embedder(model_name)
