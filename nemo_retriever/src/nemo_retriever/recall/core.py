@@ -28,7 +28,7 @@ class RecallConfig:
     # Embedding endpoints (optional).
     #
     # If neither HTTP nor gRPC endpoint is provided (and embedding_endpoint is empty),
-    # stage7 will fall back to local HuggingFace embeddings via:
+    # stage7 will fall back to local vLLM embeddings via:
     #   nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder
     embedding_http_endpoint: Optional[str] = None
     embedding_grpc_endpoint: Optional[str] = None

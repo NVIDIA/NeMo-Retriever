@@ -541,7 +541,7 @@ def create_text_embeddings_for_df(
         - **model_name**: optional str
         - **dimensions**: optional int
         - **embedder**: optional callable(texts)->vectors; used when endpoint_url is empty/None (injected by pipeline
-                        or processor, e.g. from LlamaNemotronEmbed1BV2VLLMEmbedder via create_local_embedder)
+                        or processor, e.g. from LlamaNemotronEmbed1BV2Embedder via create_local_embedder)
         - **local_batch_size**: int; used to sub-batch for the callable embedder path
     transform_config:
         Optional TextEmbeddingConfig; if omitted, defaults are used.

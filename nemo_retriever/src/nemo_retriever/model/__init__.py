@@ -45,14 +45,18 @@ def create_local_embedder(
     gpu_memory_utilization: float = 0.45,
     enforce_eager: bool = False,
     dimensions: int | None = None,
+    normalize: bool = True,
+    max_length: int = 8192,
 ) -> Any:
     """Create the appropriate local embedding model (VL or non-VL).
 
     VL models always use HuggingFace (supports image + text+image modalities).
-    Non-VL models always use vLLM for maximum throughput.
+    Non-VL models use vLLM via ``LlamaNemotronEmbed1BV2Embedder`` in
+    ``nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder``.
 
-    Note: ``gpu_memory_utilization``, ``enforce_eager``, and
-    ``dimensions`` are vLLM-specific and are ignored for VL models.
+    Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
+    ``normalize``, and ``max_length`` apply to the non-VL (vLLM) path only;
+    VL models ignore them.
     """
     model_id = resolve_embed_model(model_name)
 
@@ -68,14 +72,16 @@ def create_local_embedder(
         )
 
     from nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder import (
-        LlamaNemotronEmbed1BV2VLLMEmbedder,
+        LlamaNemotronEmbed1BV2Embedder,
     )
 
-    return LlamaNemotronEmbed1BV2VLLMEmbedder(
+    return LlamaNemotronEmbed1BV2Embedder(
         model_id=model_id,
         device=device,
         hf_cache_dir=hf_cache_dir,
         gpu_memory_utilization=gpu_memory_utilization,
         enforce_eager=enforce_eager,
         dimensions=dimensions,
+        normalize=normalize,
+        max_length=int(max_length),
     )

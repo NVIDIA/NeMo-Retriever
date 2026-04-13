@@ -16,7 +16,7 @@ class Retriever:
 
     Retrieval pipeline
     ------------------
-    1. Embed query strings (NIM endpoint or local HuggingFace model).
+    1. Embed query strings (NIM endpoint or local vLLM embedder for the default model).
     2. Search LanceDB (vector or hybrid vector+BM25).
     3. Optionally rerank the results with ``nvidia/llama-nemotron-rerank-1b-v2``
        (NIM/vLLM endpoint or local HuggingFace model).
@@ -70,7 +70,7 @@ class Retriever:
     Set to 1 to rerank only the top_k results."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
-    # Internal cache for local HF embedders, keyed by model name.
+    # Internal cache for local text embedders, keyed by model name.
     _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def _resolve_embedding_endpoint(self) -> Optional[str]:
