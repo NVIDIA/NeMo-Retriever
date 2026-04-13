@@ -418,10 +418,14 @@ class TestLanceDBStoredImageURI:
         row.page_number = 1
         row.text = "hello"
         row._stored_image_uri = "file:///tmp/page_1.png"
+        row._content_type = "text"
+        row._bbox_xyxy_norm = None
 
         result = build_lancedb_row(row)
         assert result is not None
         assert result["stored_image_uri"] == "file:///tmp/page_1.png"
+        assert result["content_type"] == "text"
+        assert result["bbox_xyxy_norm"] == ""
 
     def test_build_lancedb_row_empty_when_no_uri(self):
         from nemo_retriever.vector_store.lancedb_utils import build_lancedb_row
@@ -432,6 +436,8 @@ class TestLanceDBStoredImageURI:
         row.page_number = 1
         row.text = "hello"
         row._stored_image_uri = None
+        row._content_type = None
+        row._bbox_xyxy_norm = None
 
         result = build_lancedb_row(row)
         assert result is not None

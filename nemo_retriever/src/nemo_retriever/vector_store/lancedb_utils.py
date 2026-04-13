@@ -144,6 +144,12 @@ def build_lancedb_row(
     stored_uri = getattr(row, "_stored_image_uri", None)
     row_out["stored_image_uri"] = str(stored_uri) if stored_uri else ""
 
+    content_type = getattr(row, "_content_type", None)
+    row_out["content_type"] = str(content_type) if content_type else ""
+
+    bbox = getattr(row, "_bbox_xyxy_norm", None)
+    row_out["bbox_xyxy_norm"] = json.dumps(bbox) if bbox else ""
+
     return row_out
 
 
@@ -187,6 +193,8 @@ def lancedb_schema(vector_dim: int = 2048) -> Any:
             pa.field("text", pa.string()),
             pa.field("metadata", pa.string()),
             pa.field("stored_image_uri", pa.string()),
+            pa.field("content_type", pa.string()),
+            pa.field("bbox_xyxy_norm", pa.string()),
         ]
     )
 

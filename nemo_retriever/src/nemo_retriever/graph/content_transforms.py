@@ -102,6 +102,7 @@ def explode_content_to_rows(
             if text_mod in IMAGE_MODALITIES:
                 page_row["_image_b64"] = page_image_b64
             page_row["_stored_image_uri"] = page_stored_uri
+            page_row["_bbox_xyxy_norm"] = None
             new_rows.append(page_row)
             exploded_any = True
 
@@ -135,6 +136,7 @@ def explode_content_to_rows(
                         else:
                             content_row["_image_b64"] = None
                     content_row["_stored_image_uri"] = item.get("stored_image_uri") or page_stored_uri
+                    content_row["_bbox_xyxy_norm"] = item.get("bbox_xyxy_norm")
                     new_rows.append(content_row)
                     exploded_any = True
 
@@ -145,6 +147,7 @@ def explode_content_to_rows(
             if text_mod in IMAGE_MODALITIES:
                 preserved["_image_b64"] = page_image_b64
             preserved["_stored_image_uri"] = page_stored_uri
+            preserved["_bbox_xyxy_norm"] = None
             new_rows.append(preserved)
 
     return pd.DataFrame(new_rows).reset_index(drop=True)

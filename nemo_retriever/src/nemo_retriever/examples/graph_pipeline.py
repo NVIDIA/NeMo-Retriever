@@ -227,7 +227,7 @@ def main(
     table_structure_invoke_url: Optional[str] = typer.Option(None, "--table-structure-invoke-url"),
     embed_invoke_url: Optional[str] = typer.Option(None, "--embed-invoke-url"),
     # Embedding
-    embed_model_name: str = typer.Option("nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name"),
+    embed_model_name: str = typer.Option("nvidia/llama-nemotron-embed-vl-1b-v2", "--embed-model-name"),
     embed_modality: str = typer.Option("text", "--embed-modality"),
     embed_granularity: str = typer.Option("element", "--embed-granularity"),
     text_elements_modality: Optional[str] = typer.Option(None, "--text-elements-modality"),
@@ -285,7 +285,7 @@ def main(
     audio_split_interval: int = typer.Option(500000, "--audio-split-interval", min=1),
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
-    reranker_model_name: str = typer.Option("nvidia/llama-nemotron-rerank-1b-v2", "--reranker-model-name"),
+    reranker_model_name: str = typer.Option("nvidia/llama-nemotron-rerank-vl-1b-v2", "--reranker-model-name"),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -489,13 +489,6 @@ def main(
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
                 )
-            )
-
-        from nemo_retriever.model import is_vl_rerank_model
-
-        if reranker and is_vl_rerank_model(reranker_model_name) and not store_images_uri and embed_modality != "text":
-            raise typer.BadParameter(
-                f"VL reranker '{reranker_model_name}' requires --store-images-uri to persist images for reranking."
             )
 
         if store_images_uri is not None:

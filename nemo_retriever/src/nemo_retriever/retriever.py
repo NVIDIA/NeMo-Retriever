@@ -19,6 +19,9 @@ _KEEP_KEYS = frozenset(
         "pdf_basename",
         "source_id",
         "path",
+        "stored_image_uri",
+        "content_type",
+        "bbox_xyxy_norm",
     }
 )
 
@@ -177,16 +180,8 @@ class Retriever:
         # Check whether the table has a stored_image_uri column (added for VL reranking).
         table_columns = {f.name for f in table.schema}
         has_image_uri = "stored_image_uri" in table_columns
-
-        if self.reranker:
-            from nemo_retriever.model import is_vl_rerank_model
-
-            if is_vl_rerank_model(self.reranker_model_name) and not has_image_uri:
-                raise ValueError(
-                    f"VL reranker '{self.reranker_model_name}' requires images stored via .store() during ingestion. "
-                    f"The LanceDB table '{lancedb_table}' has no 'stored_image_uri' column. "
-                    "Re-ingest with .store(StoreParams(storage_uri='/path/to/images')) to enable multimodal reranking."
-                )
+        has_content_type = "content_type" in table_columns
+        has_bbox = "bbox_xyxy_norm" in table_columns
 
         results: list[list[dict[str, Any]]] = []
         for i, vector in enumerate(query_vectors):
@@ -208,6 +203,10 @@ class Retriever:
                 ]
                 if has_image_uri:
                     select_cols.append("stored_image_uri")
+                if has_content_type:
+                    select_cols.append("content_type")
+                if has_bbox:
+                    select_cols.append("bbox_xyxy_norm")
                 hits = (
                     table.search(query_type="hybrid")
                     .vector(q)
@@ -233,6 +232,10 @@ class Retriever:
                 ]
                 if has_image_uri:
                     select_cols.append("stored_image_uri")
+                if has_content_type:
+                    select_cols.append("content_type")
+                if has_bbox:
+                    select_cols.append("bbox_xyxy_norm")
                 hits = (
                     table.search(q, vector_column_name=self.vector_column_name)
                     .nprobes(effective_nprobes)

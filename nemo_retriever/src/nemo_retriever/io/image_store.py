@@ -170,6 +170,30 @@ def load_image_b64_from_uri(uri: str) -> Optional[str]:
         return None
 
 
+def render_page_image_b64(pdf_path: str, page_number: int, *, dpi: int = 200) -> Optional[str]:
+    """Render a PDF page to base64-encoded JPEG.
+
+    Uses pypdfium2 to open the PDF and render the specified page.
+    Returns ``None`` on failure (missing file, invalid page, etc.).
+    """
+    try:
+        import pypdfium2 as pdfium
+
+        doc = pdfium.PdfDocument(pdf_path)
+        try:
+            page = doc[int(page_number)]
+            bitmap = page.render(scale=dpi / 72)
+            pil_image = bitmap.to_pil().convert("RGB")
+            buf = io.BytesIO()
+            pil_image.save(buf, format="JPEG", quality=100)
+            return base64.b64encode(buf.getvalue()).decode("ascii")
+        finally:
+            doc.close()
+    except Exception as exc:
+        logger.warning("Failed to render page %s of %s: %s", page_number, pdf_path, exc)
+        return None
+
+
 def resolve_image_b64(container: dict) -> Optional[str]:
     """Return image_b64, reloading from stored_image_uri if stripped."""
     b64 = container.get("image_b64")
@@ -365,12 +389,6 @@ def store_extracted(
     """
     if not isinstance(df, pd.DataFrame) or df.empty:
         return df
-
-    if not os.path.isabs(storage_uri) and not storage_uri.startswith(("s3://", "gs://", "az://")):
-        raise ValueError(
-            f"storage_uri must be an absolute path (got {storage_uri!r}). "
-            "Relative paths break in Ray batch mode where workers run in a temporary directory."
-        )
 
     df = df.copy()
     logger.info("Storing extracted content to %s", storage_uri)

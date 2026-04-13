@@ -219,15 +219,45 @@ def rerank_hits(
     from nemo_retriever.model import is_vl_rerank_model
 
     if is_vl_rerank_model(_model_name):
-        from nemo_retriever.io.image_store import load_image_b64_from_uri
+        from nemo_retriever.io.image_store import load_image_b64_from_uri, render_page_image_b64
+        from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
 
+        render_cache: dict[tuple[str, int], Optional[str]] = {}
+        needs_render = False
         images_b64 = []
         for h in hits:
             uri = str(h.get("stored_image_uri") or "").strip()
             if uri:
                 images_b64.append(load_image_b64_from_uri(uri))
+            elif h.get("path") and h.get("page_number") is not None:
+                needs_render = True
+                cache_key = (h["path"], int(h["page_number"]))
+                if cache_key not in render_cache:
+                    render_cache[cache_key] = render_page_image_b64(h["path"], int(h["page_number"]))
+                page_b64 = render_cache[cache_key]
+                # Crop to element bbox if available (tables/charts).
+                bbox_str = h.get("bbox_xyxy_norm", "")
+                if page_b64 and bbox_str:
+                    try:
+                        import json as _json
+
+                        bbox = _json.loads(bbox_str)
+                        if isinstance(bbox, list) and len(bbox) == 4:
+                            cropped, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
+                            images_b64.append(cropped)
+                            continue
+                    except Exception:
+                        pass
+                images_b64.append(page_b64)
             else:
                 images_b64.append(None)
+        if needs_render and not getattr(rerank_hits, "_render_warned", False):
+            print(
+                "WARNING: No stored images found; re-rendering pages from PDF for VL reranking. "
+                "Use .store(StoreParams(storage_uri=...)) during ingestion to avoid this overhead.",
+                flush=True,
+            )
+            rerank_hits._render_warned = True
 
     if invoke_url:
         scores = _rerank_via_endpoint(
