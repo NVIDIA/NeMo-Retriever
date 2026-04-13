@@ -101,57 +101,6 @@ recall:
   recall_top_k: 10
   ground_truth_dir: null
 
-# QA evaluation configuration (only used when running qa_eval or e2e_qa_eval tests)
-# These settings measure how well an LLM can answer questions given retrieved context.
-#
-# API keys are read from environment variables automatically by litellm:
-#   NVIDIA_API_KEY  -> nvidia_nim/ prefixed models
-#   OPENAI_API_KEY  -> openai/ prefixed models
-# Do NOT put API keys in this file.
-#
-# To use a local vLLM/Ollama server instead of NIM:
-#   model: openai/<model-name>   # openai/ prefix = any OpenAI-spec server
-#   api_base: http://localhost:8000/v1
-#   (remove api_base to use NIM defaults)
-#
-# Legacy dataset: set qa_dataset to "bo767_infographic" to use the older
-# infographic-only ground truth (368 queries) instead of the full annotations.
-qa_eval:
-  qa_dataset: csv:data/bo767_annotations.csv
-  qa_top_k: 5
-  qa_retriever: file   # "topk" (queries existing VDB collection) | "file" (reads JSON)
-  qa_retriever_config:
-    file_path: data/test_retrieval/bo767_retrieval_fullpage.json
-  qa_max_workers: 8
-
-  # qa_llm_configs: list of LLMs to evaluate in a single run.
-  # Each entry produces its own mean_score / latency entry in results.json.
-  # model uses litellm provider-prefix routing.
-  # extra_params: forwarded as **kwargs to litellm.completion (e.g. reasoning mode).
-  qa_llm_configs:
-    - name: nemotron_super_49b        # best accuracy preset (reasoning off for speed)
-      model: nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
-      api_key: ${NVIDIA_API_KEY}
-    - name: qwen3_next_80b            # fast + good accuracy preset
-      model: nvidia_nim/qwen/qwen3-next-80b-a3b-instruct
-      api_key: ${NVIDIA_API_KEY}
-
-  # qa_judge_config: judge LLM used for scoring answers 1-5.
-  # Default: Mixtral-8x22B (strong general-purpose judge).
-  qa_judge_config:
-    model: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1
-    api_key: ${NVIDIA_API_KEY}
-
-  # To restore TopK retrieval (VDB must be ingested first), replace the above with:
-  # qa_retriever: topk
-  # qa_retriever_config: null
-
-  # Example: use ViDoRe v3 dataset instead of bo767_infographic
-  # qa_dataset: vidore/vidore_v3_finance_en
-  # qa_retriever: file
-  # qa_retriever_config:
-  #   file_path: /path/to/vidore_retrieval_results.json
-
 # Pre-configured datasets
 # Each dataset includes path, extraction settings, and recall evaluator
 # Use: uv run nv-ingest-harness-run --case=e2e --dataset=bo767
@@ -164,7 +113,6 @@ datasets:
     extract_images: false
     extract_infographics: false
     recall_dataset: bo767
-    qa_dataset: csv:data/bo767_annotations.csv
 
   earnings:
     path: /path/to/earnings_consulting

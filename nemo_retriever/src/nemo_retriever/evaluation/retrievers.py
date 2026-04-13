@@ -69,6 +69,13 @@ class FileRetriever:
                 'Expected format: {"queries": {"query text": {"chunks": [...], "metadata": [...]}}}'
             )
 
+        sample = next(iter(raw_index.values()), {})
+        if not isinstance(sample.get("chunks"), list):
+            raise ValueError(
+                f"FileRetriever: first entry in {file_path} is missing a 'chunks' list. "
+                'Expected: {"queries": {"query": {"chunks": ["..."]}}}'
+            )
+
         self._norm_index: dict[str, dict] = {}
         self._raw_keys: dict[str, str] = {}
         for raw_key, value in raw_index.items():

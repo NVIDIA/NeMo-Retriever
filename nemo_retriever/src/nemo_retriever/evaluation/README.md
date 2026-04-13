@@ -1,12 +1,10 @@
 # QA Evaluation Pipeline
 
-**This document is the canonical QA evaluation guide** for the harness. The top-level [harness README](../../../../README.md) (`tools/harness/README.md`) only summarizes and links here so we avoid duplicating steps and env vars in two places.
-
-The evaluation framework lives in **`nemo_retriever.evaluation`** (install `nemo-retriever[eval]` from PyPI, or **`uv pip install -e "./nemo_retriever[eval]"` from this repo root** so `graph_pipeline` and local changes resolve). The harness `utils/qa/` package only retains `TopKRetriever` (which depends on harness-specific recall utilities). All other evaluation components -- types, scoring, generators, judges, orchestrator, operators -- are imported from `nemo_retriever.evaluation`.
+The evaluation framework lives in **`nemo_retriever.evaluation`** (install `nemo-retriever[eval]` from PyPI, or **`uv pip install -e "./nemo_retriever[eval]"` from this repo root** so `graph_pipeline` and local changes resolve).
 
 Measures LLM answer quality over a RAG pipeline: retrieve context from a VDB, generate answers with one or more LLMs, and score each answer against ground-truth references using multi-tier scoring and an LLM-as-judge.
 
-**Pluggable retrieval:** The eval harness does not care how you retrieved chunks -- only that you produce a JSON file that matches the **[retrieval JSON specification](#retrieval-json-format-interface-contract)** expected by `retriever eval run` / `FileRetriever`. Vector search, hybrid, agentic pipelines, or any custom system can plug in as long as the file format and query strings align with your chosen ground-truth dataset.
+**Pluggable retrieval:** The evaluation framework does not care how you retrieved chunks -- only that you produce a JSON file that matches the **[retrieval JSON specification](#retrieval-json-format-interface-contract)** expected by `retriever eval run` / `FileRetriever`. Vector search, hybrid, agentic pipelines, or any custom system can plug in as long as the file format and query strings align with your chosen ground-truth dataset.
 
 **Default ground truth:** Standalone runs default to **`data/bo767_annotations.csv`** at the repo root -- the **bo767 annotations subset** maintained for this benchmark (multi-modality Q&A over the bo767 PDFs). Override with `QA_DATASET` or another registered loader when comparing different corpora.
 
@@ -16,10 +14,8 @@ Designed to be **plug-and-play** -- swap retrievers, generators, or judges indep
 
 - [Pipeline File Map and Data Flow](#pipeline-file-map-and-data-flow)
 - [Reproducing the bo767 Run](#reproducing-the-bo767-run)
-- [Harness CLI Path (Alternative)](#harness-cli-path-alternative)
 - [Retrieval JSON Format (Interface Contract)](#retrieval-json-format-interface-contract)
 - [Custom Datasets (CSV Loader)](#custom-datasets-csv-loader)
-- [Retrieval Benchmarking](#retrieval-benchmarking)
 - [Architecture](#architecture)
   - [Operator Graph Chain (single-model)](#operator-graph-chain-single-model)
   - [QAEvalPipeline (multi-model sweeps)](#qaevalpipeline-multi-model-sweeps)
@@ -29,7 +25,6 @@ Designed to be **plug-and-play** -- swap retrievers, generators, or judges indep
   - [Graph Framework Integration](#graph-framework-integration)
   - [Entry Points](#entry-points)
 - [Configuration](#configuration)
-  - [Harness CLI Config](#harness-cli-config-test_configsyaml)
   - [Eval Config File (YAML / JSON)](#eval-config-file-yaml--json)
 - [Scoring System (Three-Tier Hierarchy)](#scoring-system-three-tier-hierarchy)
 - [Adding a New Component](#adding-a-new-component)
@@ -44,14 +39,14 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
 |-------|-------------------|----------------------|
 | **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `python -m nemo_retriever.examples.graph_pipeline` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nv-ingest`). |
 | **2. Full-page markdown index** | `data/bo767_page_markdown.json` (`source_id` -> page -> markdown) | `retriever eval build-page-index` -> `nemo_retriever.io.markdown.build_page_index()` (which calls `to_markdown_by_page` per document); numpy list columns are coerced so structured content is not dropped. |
-| **3. Retrieval export** | `data/test_retrieval/bo767_retrieval_fullpage.json` (or sub-page JSON) | `retriever eval export` -> `nemo_retriever.export.export_retrieval_json()` queries LanceDB; if `--page-index` is provided, hits are expanded/deduped by `(source_id, page)` and replaced with full-page markdown strings. |
+| **3. Retrieval export** | `data/eval/bo767_retrieval_fullpage.json` (or sub-page JSON) | `retriever eval export` -> `nemo_retriever.export.export_retrieval_json()` queries LanceDB; if `--page-index` is provided, hits are expanded/deduped by `(source_id, page)` and replaced with full-page markdown strings. |
 | **4. Ground truth** | `data/bo767_annotations.csv` (repo root) | Questions/answers for export and eval; must align with **query string normalization** in `FileRetriever` (see retrieval JSON rules). |
 | **5. Evaluation** | `qa_results_*.json` | `retriever eval run` or operator graph chain -> `nemo_retriever.evaluation`: `RetrievalLoaderOperator >> QAGenerationOperator >> JudgingOperator >> ScoringOperator`, or `QAEvalPipeline` for multi-model sweeps. |
 
 **Data flow (conceptual):** PDFs -> (A) **chunked embeddings in LanceDB** for similarity search; (B) **Parquet** for full-page reconstruction. **Export** runs search on (A), then **replaces** hit chunks with pages from (B) via the index. **Eval** never talks to LanceDB -- it only reads the retrieval JSON + ground-truth CSV.
 
 ```
- NeMo Retriever (steps 1-3)                            Universal (step 4)
+ NeMo Retriever (steps 1-3)                            Universal (steps 4-5)
  ──────────────────────────                             ─────────────────────
  Step 1                         Step 2      Step 3
  Ingest + Embed                 Index       Export           QA Eval
@@ -74,32 +69,29 @@ lancedb/    *.parquet (opt.)
 
 Steps 1-3 are one reference implementation (NeMo Retriever + LanceDB).
 Any retrieval system that produces a conforming JSON can replace them.
-Step 4 can be re-run with different LLM configs without repeating retrieval.
+Steps 4-5 can be re-run with different LLM configs without repeating retrieval.
 
-**Harness CLI alternative:** See [Harness CLI Path](#harness-cli-path-alternative) for the `nv-ingest-harness-run` workflow that drives the same eval through `test_configs.yaml`.
+**Bring your own retrieval:** Skip steps 1-3 entirely if you already have a retrieval system. Produce a JSON conforming to the [interface contract](#retrieval-json-format-interface-contract) and proceed directly to step 4.
 
 ## Reproducing the bo767 Run
 
 Exact commands to reproduce the full-page markdown QA evaluation from scratch.
 
-**Working directory:** Step 1 (`graph_pipeline.py`) runs from the **repo root**; steps 2-4 run from `tools/harness/`.
+**Working directory:** All commands below run from the **repo root** unless otherwise noted.
 
-**Debug:** Lance index build can hit `No space left on device` when `/tmp` is a tiny tmpfs; set `TMPDIR` to a large filesystem (see [disk space requirements](#prerequisites-data-keys-and-disk-space)) before step 1. If `extraction.parquet` was written but LanceDB failed, retry with `python -c "from nemo_retriever.utils.parquet_to_lancedb import reload_parquet_to_lancedb; reload_parquet_to_lancedb('<parquet_dir>', '<lancedb_uri>')"` (substituting your paths); otherwise re-run `graph_pipeline`.
+**Debug:** Lance index build can hit `No space left on device` when `/tmp` is a tiny tmpfs; set `export TMPDIR=/path/to/large/filesystem/tmp` and `mkdir -p "$TMPDIR"` before step 1. If `extraction.parquet` was written but LanceDB failed, retry with `python -c "from nemo_retriever.utils.parquet_to_lancedb import reload_parquet_to_lancedb; reload_parquet_to_lancedb('<parquet_dir>', '<lancedb_uri>')""`; otherwise re-run `graph_pipeline`.
 
 <details>
 <summary><strong>Quick reference -- full-page markdown (all commands)</strong></summary>
 
 ```bash
-# ── repo root ──
+# All commands from repo root
 cd /path/to/nv-ingest
 
 # 1. Ingest + embed + save Parquet in one pass (~45-90 min)
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
   --lancedb-uri lancedb \
-  --save-intermediate tools/harness/data/bo767_extracted
-
-# ── tools/harness ──
-cd tools/harness
+  --save-intermediate data/bo767_extracted
 
 # 2. Build page markdown index (~5-10 min)
 retriever eval build-page-index \
@@ -109,13 +101,13 @@ retriever eval build-page-index \
 # 3. Export retrieval results (~5-15 min)
 retriever eval export \
   --lancedb-uri lancedb \
-  --query-csv ../../data/bo767_annotations.csv \
-  --output data/test_retrieval/bo767_retrieval_fullpage.json \
+  --query-csv data/bo767_annotations.csv \
+  --output data/eval/bo767_retrieval_fullpage.json \
   --page-index data/bo767_page_markdown.json
 
 # 4. Run QA evaluation (~1-2 hrs)
 export NVIDIA_API_KEY="nvapi-..."
-retriever eval run --config eval_sweep.yaml
+retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 ```
 
 </details>
@@ -129,25 +121,21 @@ retrieval context, which may produce lower scores for structured content
 (tables, charts, infographics).
 
 ```bash
-# ── repo root ──
 cd /path/to/nv-ingest
 
 # 1. Ingest + embed into LanceDB
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
   --lancedb-uri lancedb
 
-# ── tools/harness ──
-cd tools/harness
-
 # 2. Export retrieval (sub-page chunks, no page index)
 retriever eval export \
   --lancedb-uri lancedb \
-  --query-csv ../../data/bo767_annotations.csv \
-  --output data/test_retrieval/bo767_retrieval.json
+  --query-csv data/bo767_annotations.csv \
+  --output data/eval/bo767_retrieval.json
 
 # 3. Run QA evaluation
 export NVIDIA_API_KEY="nvapi-..."
-retriever eval run --config eval_sweep.yaml
+retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 ```
 
 </details>
@@ -166,14 +154,12 @@ mapping each ground-truth question string to `{ "chunks": ["...", ...] }`.
 See the [interface contract](#retrieval-json-format-interface-contract) for the
 full schema, required fields, and a worked example.
 
-**Alternative: retrieval-bench integration.** If you want to benchmark dense
-retrieval (or any retrieval-bench pipeline) against the LanceDB baseline on the
-same bo767 dataset, see [Retrieval Benchmarking](#retrieval-benchmarking) for
-ready-made scripts and exact commands.
+Any retrieval system that produces a conforming JSON can be evaluated -- see
+the [interface contract](#retrieval-json-format-interface-contract) below.
 
 ### Python environment
 
-Steps 1-3 (ingest, build index, export) require the **`nemo_retriever`** library with LanceDB, CUDA, and Ray support. Step 4 (QA eval) additionally requires **`litellm`**. These are **not** part of the minimal harness install (`uv pip install -e .`).
+Steps 1-3 (ingest, build index, export) require the **`nemo_retriever`** library with LanceDB, CUDA, and Ray support. Step 4 (QA eval) additionally requires **`litellm`**.
 
 **Recommended setup:** create an isolated Python 3.12 virtual environment and install the **local** `nemo_retriever` checkout in editable mode (required when working in this repo so `python -m nemo_retriever.examples.graph_pipeline` resolves):
 
@@ -186,13 +172,9 @@ uv pip install -e "./nemo_retriever[eval]"
 
 The `[eval]` extra installs `litellm` for LLM generation and judging. If you are not using this tree, you can instead `uv pip install "nemo-retriever[eval]"` from PyPI (package name uses a hyphen).
 
-For the full harness install (includes Milvus-lite, nemotron models, etc.), see **Installation** in the [harness README](../../../../README.md) and [`tools/harness/pyproject.toml`](../../pyproject.toml).
-
 **Eval-only path:** if you already have a retrieval JSON and only need to run `retriever eval run`, an environment with `nemo_retriever[eval]` installed is sufficient.
 
-### Prerequisites (data, keys, and disk space)
-
-**Disk space:** The full-page pipeline needs ~55 GB (mostly extraction Parquet). If `/tmp` is a small tmpfs, redirect `TMPDIR` to a filesystem with more space before running step 1 (`export TMPDIR=/path/to/large/tmp && mkdir -p "$TMPDIR"`).
+### Prerequisites (data and keys)
 
 ```bash
 # bo767 PDFs (767 files)
@@ -219,12 +201,12 @@ to reconstruct full pages and generally yields better results on structured cont
 ```bash
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
   --lancedb-uri lancedb \
-  --save-intermediate tools/harness/data/bo767_extracted
+  --save-intermediate data/bo767_extracted
 ```
 
 Output:
 - `lancedb/nv-ingest/` (~84k chunks) -- used by step 3 for retrieval queries.
-- `tools/harness/data/bo767_extracted/*.parquet` -- used by step 2 for full-page markdown.
+- `data/bo767_extracted/*.parquet` -- used by step 2 for full-page markdown.
 
 **Minimal (skip Parquet / full-page path):** omit `--save-intermediate` if you only need
 LanceDB and will skip step 2. Step 3 will use raw sub-page chunks instead of full-page
@@ -246,14 +228,14 @@ without Ray, pass `--run-mode inprocess`. Both modes produce the same output.
 > **Requires** `--save-intermediate` from step 1. If you skipped it, you can
 > skip this step too -- step 3 will fall back to raw sub-page chunks.
 
+Steps 2-4 are run from the repo root (or adjust paths accordingly).
+
 Groups Parquet records by (document, page number) and renders each page via
 `nemo_retriever.io.markdown.to_markdown_by_page()`. Outputs a JSON index
 mapping `source_id -> page_number -> markdown`.
 **Estimated time: ~5-10 min** (CPU-only, reads Parquet and renders markdown).
 
 ```bash
-cd tools/harness
-
 retriever eval build-page-index \
   --parquet-dir data/bo767_extracted \
   --output data/bo767_page_markdown.json
@@ -269,12 +251,10 @@ from the same page are deduplicated into a single full-page chunk.
 **Estimated time: ~5-15 min** (1005 LanceDB queries + page index lookup).
 
 ```bash
-cd tools/harness
-
 retriever eval export \
   --lancedb-uri lancedb \
-  --query-csv ../../data/bo767_annotations.csv \
-  --output data/test_retrieval/bo767_retrieval_fullpage.json \
+  --query-csv data/bo767_annotations.csv \
+  --output data/eval/bo767_retrieval_fullpage.json \
   --page-index data/bo767_page_markdown.json
 ```
 
@@ -288,55 +268,20 @@ retriever eval export \
 | `--page-index` | _(unset)_ | Page markdown index JSON (enables full-page mode) |
 | `--output` | _(required)_ | Output JSON path |
 
-Output: `data/test_retrieval/bo767_retrieval_fullpage.json` (~50 MB, 1005 queries).
+Output: `data/eval/bo767_retrieval_fullpage.json` (~50 MB, 1005 queries).
 
 **Sub-page chunk mode:** omit `--page-index` to skip full-page
 expansion. The export will use raw sub-page chunks directly from LanceDB, which requires
 only step 1 without `--save-intermediate` (no Parquet or page index needed).
 
-### Step 3 (alternative): Export via harness stack
-
-> **Skip this** if you already ran Step 3 above -- both produce the same retrieval JSON.
-
-If you used the harness CLI for ingestion (e.g., `--case=e2e --dataset=bo767` into Milvus),
-use `retrieve_and_export.py` instead of `retriever eval export`. It queries Milvus or
-LanceDB through the harness retrieval utilities and writes the same JSON format:
-
-```bash
-cd tools/harness
-
-uv run python retrieve_and_export.py
-```
-
-Both exporters produce identical JSON conforming to the
-[retrieval JSON specification](#retrieval-json-format-interface-contract).
-
 ### Step 4: Run QA evaluation
-
-> **Preferred:** `retriever eval run --config eval_sweep.yaml` (see below).
-> Run `retriever eval --help` for all available subcommands.
 
 **Estimated time: ~15 min - 45 min** (1005 queries, ~12s per query for generation + judge, 8 concurrent workers).
 
-**Config-driven (recommended):**
-
 ```bash
-cd tools/harness
-
 export NVIDIA_API_KEY="nvapi-..."
-retriever eval run --config eval_sweep.yaml
-```
-
-**Tip:** Run `retriever eval --help` to discover all available subcommands.
-
-**Env-var mode (single model, Docker/CI):**
-
-```bash
-cd tools/harness
-
-export NVIDIA_API_KEY="nvapi-..."
-export RETRIEVAL_FILE=data/test_retrieval/bo767_retrieval_fullpage.json
-export QA_DATASET="csv:../../data/bo767_annotations.csv"
+export RETRIEVAL_FILE=data/eval/bo767_retrieval_fullpage.json
+export QA_DATASET="csv:data/bo767_annotations.csv"
 export QA_MAX_WORKERS=8
 retriever eval run --from-env
 ```
@@ -351,7 +296,7 @@ retriever eval run --from-env
 | `QA_TOP_K` | `5` | Chunks per query |
 | `QA_MAX_WORKERS` | `4` | Concurrent API calls |
 | `QA_LIMIT` | `0` (all) | Evaluate only first N queries |
-| `RESULTS_DIR` | `data/test_retrieval` | Directory for auto-timestamped result JSONs |
+| `RESULTS_DIR` | `data/eval` | Directory for auto-timestamped result JSONs |
 | `GEN_MODEL` | `nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5` | Generator (single) |
 | `GEN_MODEL_NAME` | `generator` | Short label for the generator |
 | `GEN_API_BASE` | _(unset)_ | Override endpoint URL for the generator |
@@ -364,7 +309,7 @@ retriever eval run --from-env
 
 **API key resolution:** `GEN_API_KEY` and `JUDGE_API_KEY` each fall back to `NVIDIA_API_KEY` when unset. Set only `NVIDIA_API_KEY` if generator and judge share the same provider. Set individual keys when they use different providers.
 
-**Auto-timestamped output:** Results are written to `{RESULTS_DIR}/qa_results_{dataset}_{model}_{YYYYMMDD_HHMMSS}.json` so consecutive runs never overwrite each other.
+**Auto-timestamped output:** Results are written to `{RESULTS_DIR}/qa_results_{dataset}_{generator}_{judge}_{YYYYMMDD_HHMMSS}.json` so consecutive runs never overwrite each other.
 
 **Switching inference providers:** To use a different provider for the generator, set `GEN_MODEL`, `GEN_API_BASE`, and `GEN_API_KEY`:
 
@@ -383,10 +328,10 @@ LiteLLM routes by model prefix (`nvidia_nim/`, `openai/`, `huggingface/`). See [
 **Multi-model sweeps and repeated runs:** To evaluate multiple generator/judge combos or run each configuration N times for statistical confidence, use a YAML config file instead of env vars:
 
 ```bash
-retriever eval run --config eval_sweep.yaml
+retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 ```
 
-The config defines models once and composes evaluation combos with per-combo run counts.  See [Eval Config File](#eval-config-file-yaml--json) and `eval_sweep.yaml` for the full schema.
+The config defines models once and composes evaluation combos with per-combo run counts. An example config is provided at `nemo_retriever/examples/eval_sweep.yaml`. See [Eval Config File](#eval-config-file-yaml--json) for the full schema.
 
 ### Results (March 2026 -- full-page markdown, bo767_annotations.csv)
 
@@ -418,42 +363,17 @@ plus `generation_miss` (model had the context but answered incorrectly).
 ### Sub-page chunk mode
 
 To skip full-page markdown and use raw sub-page chunks instead, omit
-`--save-intermediate` from step 1, skip step 2, and do not set
+`--save-intermediate` from step 1, skip step 2, and omit
 `--page-index` in step 3. This produces smaller context windows and may
 result in lower scores for queries that span structured content (tables, charts,
 infographics). See the sub-page quick reference above.
 
-## Harness CLI Path (Alternative)
-
-If you use the harness CLI (`nv-ingest-harness-run`) instead of the standalone
-`retriever eval` commands, the same pipeline runs through `cases/qa_eval.py`
-and `test_configs.yaml`:
-
-```bash
-cd tools/harness
-
-# 1. Ingest PDFs into VDB
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
-
-# 2. Export retrieval results for all ground-truth queries
-uv run python retrieve_and_export.py
-
-# 3. Run QA evaluation (requires NVIDIA_API_KEY)
-export NVIDIA_API_KEY="nvapi-..."
-export NVIDIA_NIM_API_KEY="$NVIDIA_API_KEY"
-uv run nv-ingest-harness-run --case=qa_eval --dataset=bo767
-```
-
-Results are written to `artifacts/<run>/_test_results.json`.
-Align `qa_dataset` and `file_path` in `test_configs.yaml` with the
-standalone flow when comparing results across the two paths.
-
 ## Retrieval JSON Format (Interface Contract)
 
 The retrieval JSON is the **only interface** between your retrieval system and the
-QA eval harness. Any retrieval method -- vector search, agentic retrieval, hybrid
+QA evaluation framework. Any retrieval method -- vector search, agentic retrieval, hybrid
 pipelines, BM25, reranked, or a fully custom system -- can plug in by producing
-a single JSON file that **matches this specification** (loaded via `FileRetriever`). The harness takes it from there: generates answers with one
+a single JSON file that **matches this specification** (loaded via `FileRetriever`). The framework takes it from there: generates answers with one
 or more LLMs and scores them with the judge. If your JSON does not match, the
 eval script will not load or align queries correctly.
 
@@ -474,7 +394,7 @@ eval script will not load or align queries correctly.
 
 Rules:
 - **`"queries"`** (required): dict mapping query strings to result objects.
-- **`"chunks"`** (required per query): list of plain-text strings, one per retrieved passage. Order matters -- put the best/most relevant chunk first. The harness uses the first `qa_top_k` entries (default 5).
+- **`"chunks"`** (required per query): list of plain-text strings, one per retrieved passage. Order matters -- put the best/most relevant chunk first. The framework uses the first `top_k` entries (default 5).
 - **`"metadata"`** (optional per query): list of per-chunk provenance dicts (e.g. `{"source_id": "file.pdf", "page_number": 3}`). Carried through to the results JSON for traceability but not used for scoring.
 - Top-level **`"metadata"`** (optional): free-form dict for your records (retrieval method, model, timing, etc.). Ignored by FileRetriever.
 - Query matching is normalized (NFKC unicode, case-folded, whitespace-collapsed) so trivial formatting differences between the ground-truth CSV and the retrieval JSON don't cause misses.
@@ -504,12 +424,11 @@ Rules:
 }
 ```
 
-### Using it with the harness
+### Using it with the CLI
 
 ```bash
-# Point the harness at your retrieval JSON and run
+# Point the eval at your retrieval JSON and run
 export RETRIEVAL_FILE="path/to/my_retrieval_results.json"
-export QA_DATASET="csv:data/bo767_annotations.csv"
 export NVIDIA_API_KEY="nvapi-..."
 retriever eval run --from-env
 ```
@@ -528,7 +447,7 @@ query,answer,category
 "What year was Python released?","1991","tech"
 ```
 
-Point the harness at it with the `csv:` prefix:
+Point the eval at it with the `csv:` prefix:
 
 ```bash
 export QA_DATASET="csv:/path/to/my_questions.csv"
@@ -539,167 +458,6 @@ retriever eval run --from-env
 All columns beyond `query` and `answer` are preserved as metadata in the output. Rows with empty query or answer are silently skipped.
 
 Built-in datasets: `bo767_infographic`, `vidore/<hf_dataset_id>`, `csv:/path/to/file.csv`. The default dataset is `csv:data/bo767_annotations.csv` (1007 Q&A pairs across text, table, chart, and infographic modalities).
-
-## Retrieval Benchmarking
-
-Compare different retrieval strategies head-to-head by generating FileRetriever
-JSON from alternative retrieval systems and running the same QA evaluation.
-Three scripts in `retrieval_bench/` bridge the
-[retrieval-bench](../../../../retrieval-bench/) framework with the QA eval
-harness -- any pipeline (dense, agentic, hybrid, reranked) that produces a
-conforming JSON can be evaluated without changing the generator or judge.
-
-| Script | Purpose |
-|--------|---------|
-| `run_dense_retrieval_bo767.py` | Run **dense** (single-shot) retrieval on the bo767 corpus using sub-page chunks from extraction Parquet, then expand hits to full-page markdown. Enables apples-to-apples comparison with LanceDB retrieval (same chunk granularity, different embedding model). |
-| `run_agentic_retrieval_bo767.py` | Run **agentic** retrieval on the same bo767 corpus. An LLM agent iteratively searches with multi-angle queries, query rewriting, and a selection agent -- then hits are expanded to full-page markdown. Same corpus/expansion as the dense script; the variable is the retrieval strategy. |
-| `convert_traces_to_retrieval.py` | Importable helper -- converts retrieval-bench per-query trace files into FileRetriever JSON for any dataset (ViDoRe, BRIGHT, custom). |
-
-**Prerequisites:** `retrieval-bench` must be installed (`pip install -e path/to/retrieval-bench`
-or equivalent). For Path A, **both** the extraction Parquet (`data/bo767_extracted/`)
-from [step 1](#step-1-ingest--embed-nemo-retriever) and the page markdown index
-(`data/bo767_page_markdown.json`) from [step 2](#step-2-build-page-markdown-index-nemo-retriever)
-are required.
-
-### Path A: bo767 corpus (self-contained, recommended starting point)
-
-Run dense retrieval on the bo767 sub-page chunks from extraction Parquet.
-The script indexes the same chunks that nv-ingest stores in LanceDB, embeds
-them with a retrieval-bench backend, retrieves the top scoring chunks per
-query, then expands hits to full-page markdown (same dedup + expansion logic
-as the LanceDB export). This path is self-contained -- no external
-retrieval-bench run is needed beforehand:
-
-```bash
-cd tools/harness
-
-python retrieval_bench/run_dense_retrieval_bo767.py \
-  --backend llama-nv-embed-reasoning-3b \
-  --top-k 5 \
-  --retriever-top-k 100 \
-  --parquet-dir data/bo767_extracted \
-  --output data/test_retrieval/bo767_retrieval_dense.json
-```
-
-Then evaluate -- the generator and judge are the same as for LanceDB, so any
-score difference is purely from retrieval quality:
-
-```bash
-export NVIDIA_API_KEY="nvapi-..."
-export RETRIEVAL_FILE=data/test_retrieval/bo767_retrieval_dense.json
-export QA_DATASET="csv:../../data/bo767_annotations.csv"
-export QA_MAX_WORKERS=8
-retriever eval run --from-env
-```
-
-To use a non-NIM generator (e.g., an OpenAI-compatible endpoint), add
-`GEN_MODEL`, `GEN_API_BASE`, and `GEN_API_KEY` as described in
-[Step 4](#step-4-run-qa-evaluation).
-
-### Path A-2: bo767 agentic retrieval (LLM agent + dense backend)
-
-Same corpus and post-retrieval expansion as Path A, but replaces the
-single-shot dense retrieval with an **LLM-driven agent** that iteratively
-searches from multiple angles, rewrites sub-queries for embedding model
-compatibility, and re-ranks results via a selection agent.  This is the
-same agentic pipeline that placed 1st on the
-[ViDoRe V3 leaderboard](https://huggingface.co/spaces/vidore/vidore-leaderboard).
-
-Requires an OpenAI-compatible LLM endpoint for the agent (NVIDIA NIM,
-vLLM, OpenAI, etc.).  The embedding backend is the same as Path A.
-
-```bash
-cd tools/harness
-
-export NVIDIA_API_KEY="nvapi-..."
-
-python retrieval_bench/run_agentic_retrieval_bo767.py \
-  --backend llama-nv-embed-reasoning-3b \
-  --llm-model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --api-key "$NVIDIA_API_KEY" \
-  --top-k 5 \
-  --num-concurrent 4 \
-  --output data/test_retrieval/bo767_retrieval_agentic.json
-```
-
-Then evaluate identically to Path A:
-
-```bash
-export RETRIEVAL_FILE=data/test_retrieval/bo767_retrieval_agentic.json
-export QA_DATASET="csv:../../data/bo767_annotations.csv"
-export QA_MAX_WORKERS=8
-retriever eval run --from-env
-```
-
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `--backend` | `llama-nv-embed-reasoning-3b` | Embedding backend for the underlying dense retriever |
-| `--llm-model` | _(required)_ | LiteLLM model string for the agent LLM |
-| `--api-key` | `NVIDIA_API_KEY` / `OPENAI_API_KEY` env | API key for the agent LLM |
-| `--base-url` | `OPENAI_BASE_URL` env | Override LLM endpoint URL |
-| `--top-k` | `5` | Full-page chunks per query in output |
-| `--retriever-top-k` | `500` | Sub-page candidates per agent `retrieve()` call |
-| `--num-concurrent` | `1` | Concurrent agent queries (increase for throughput) |
-| `--max-steps` | `200` | Max agent iterations per query |
-| `--target-top-k` | `10` | Documents the agent selects via `final_results` |
-
-**Estimated time:** ~2-4 hours for 1,005 queries at `--num-concurrent 4`,
-depending on LLM latency. Each query involves multiple LLM round-trips.
-The corpus embedding step reuses the same cache as Path A -- if you
-already ran Path A with the same backend, indexing will load instantly.
-
-**Three-way comparison:** Run Path A (dense), Path A-2 (agentic), and
-the LanceDB baseline on the same bo767 corpus. All three use the same
-sub-page chunks and full-page expansion.  The only variables are the
-embedding model (LanceDB vs retrieval-bench) and retrieval strategy
-(single-shot vs agentic).  Evaluate each with the same generator/judge
-to isolate retrieval quality.
-
-### Path B: ViDoRe dataset (requires retrieval-bench traces)
-
-> **Prerequisite:** This path requires a completed `retrieval-bench` run that
-> produced per-query trace files. You must run retrieval-bench separately on
-> your chosen ViDoRe dataset **before** using the converter script below. If
-> you have not set up retrieval-bench yet, use **Path A** above instead.
-
-Convert the per-query traces into FileRetriever JSON:
-
-```python
-from retrieval_bench.convert_traces_to_retrieval import convert_traces
-
-convert_traces(
-    traces_dir="/path/to/retrieval-bench/traces",
-    trace_run_name="DenseRetrievalPipeline__llama-nv-embed-reasoning-3b",
-    dataset_name="vidore/vidore_v3_finance_en",
-    top_k=5,
-    output="data/test_retrieval/vidore_finance_retrieval.json",
-)
-```
-
-Then evaluate with the standard QA pipeline:
-
-```bash
-export NVIDIA_API_KEY="nvapi-..."
-export RETRIEVAL_FILE=data/test_retrieval/vidore_finance_retrieval.json
-export QA_DATASET="vidore/vidore_v3_finance_en"
-export QA_MAX_WORKERS=8
-retriever eval run --from-env
-```
-
-### Extending to other retrieval systems
-
-Any retrieval pipeline -- agentic RAG, hybrid search, BM25 + reranker, or a
-fully custom system -- can be benchmarked through the same workflow. Produce a
-JSON file conforming to the [retrieval JSON specification](#retrieval-json-format-interface-contract)
-and point `RETRIEVAL_FILE` at it. The QA eval harness treats all retrieval
-sources identically.
-
-For the most direct comparison, use the **same dataset** (e.g., bo767) across
-all retrieval methods. Path A above uses the same sub-page chunks, ground-truth
-CSV, and page expansion logic as the LanceDB baseline from
-[Reproducing the bo767 Run](#reproducing-the-bo767-run), so the only variable
-is the embedding model. Run QA eval with the same generator and judge on
-each retrieval JSON and compare the resulting scores side-by-side.
 
 ## Architecture
 
@@ -754,7 +512,6 @@ nemo_retriever.evaluation.orchestrator (QAEvalPipeline)
     |
     |-- retriever  : RetrieverStrategy protocol
     |     |-- FileRetriever   (cached JSON -- recommended, in nemo_retriever.evaluation)
-    |     |-- TopKRetriever   (live VDB query -- in nv_ingest_harness.utils.qa)
     |
     |-- llm_clients : dict[str, LLMClient protocol]
     |     |-- LiteLLMClient   (NVIDIA NIM, OpenAI, vLLM, Ollama)
@@ -790,7 +547,7 @@ signature works -- no inheritance or registration required.
 
 ### Files (`nemo_retriever.evaluation`)
 
-The evaluation framework lives in `nemo_retriever/src/nemo_retriever/evaluation/`. The harness `utils/qa/` package only contains `TopKRetriever` (which depends on harness-specific recall utilities).
+The evaluation framework lives in `nemo_retriever/src/nemo_retriever/evaluation/`.
 
 | Module | Purpose |
 |--------|---------|
@@ -810,10 +567,6 @@ The evaluation framework lives in `nemo_retriever/src/nemo_retriever/evaluation/
 | `text_utils.py` | Shared text processing (`strip_think_tags`) |
 | `runner.py` | `run_eval_sweep()` -- reusable config-driven evaluation loop |
 | `cli.py` | `retriever eval` Typer subcommands (`run`, `export`, `build-page-index`) |
-
-| Harness module | Purpose |
-|----------------|---------|
-| `nv_ingest_harness.utils.qa.TopKRetriever` | Live VDB retriever (Milvus/LanceDB, depends on harness recall utilities) |
 
 ### Graph framework integration
 
@@ -838,45 +591,11 @@ independently of any ingestion or retrieval pipeline.
 | `python -m nemo_retriever.examples.graph_pipeline` | Ingest PDFs into LanceDB (extract + embed + VDB upload via operator graph). |
 | `retriever eval build-page-index` | Build full-page markdown index from Parquet extraction results |
 | `retriever eval export` | Export retrieval from NeMo Retriever LanceDB (supports full-page markdown) |
-| `retrieve_and_export.py` | Export retrieval via harness stack (Milvus or LanceDB) |
 | `retriever eval run` | QA eval runner -- env-var (`--from-env`) or config-driven (`--config`), uses `QAEvalPipeline` |
 | `load_eval_config()` + `build_eval_chain()` | Config-driven single-model eval via operator graph chain |
 | `load_eval_config()` + `build_eval_pipeline()` | Config-driven multi-model eval via `QAEvalPipeline` |
-| `cases/qa_eval.py` | Harness CLI integration (`--case=qa_eval`) -- reads `test_configs.yaml` |
-| `retrieval_bench/run_dense_retrieval_bo767.py` | Dense (single-shot) retrieval on bo767 sub-page chunks via retrieval-bench, with full-page expansion |
-| `retrieval_bench/run_agentic_retrieval_bo767.py` | Agentic (LLM agent loop) retrieval on the same bo767 corpus, with full-page expansion |
-| `retrieval_bench/convert_traces_to_retrieval.py` | Importable helper -- converts retrieval-bench traces to FileRetriever JSON (any dataset) |
 
 ## Configuration
-
-There are **two configuration surfaces** depending on how you run the evaluation.
-
-### Harness CLI config (`test_configs.yaml`)
-
-When using the harness CLI (`--case=qa_eval`), all QA settings live in the
-`qa_eval` section of `test_configs.yaml`:
-
-```yaml
-qa_eval:
-  qa_dataset: csv:data/bo767_annotations.csv  # ground-truth dataset (or bo767_infographic, vidore/...)
-  qa_top_k: 5                                 # chunks per query
-  qa_retriever: file                           # "file" or "topk"
-  qa_retriever_config:
-    file_path: data/test_retrieval/bo767_retrieval_fullpage.json
-  qa_max_workers: 8                            # concurrent threads
-
-  qa_llm_configs:
-    - name: nemotron_super_49b
-      model: nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
-      api_key: ${NVIDIA_API_KEY}
-    - name: qwen3_next_80b
-      model: nvidia_nim/qwen/qwen3-next-80b-a3b-instruct
-      api_key: ${NVIDIA_API_KEY}
-
-  qa_judge_config:
-    model: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1
-    api_key: ${NVIDIA_API_KEY}
-```
 
 ### Eval config file (YAML / JSON)
 
@@ -894,7 +613,7 @@ dataset:
 
 retrieval:
   type: "file"
-  file_path: "data/test_retrieval/bo767_retrieval_fullpage.json"
+  file_path: "data/eval/bo767_retrieval_fullpage.json"
 
 models:
   generator-a:
@@ -929,14 +648,14 @@ execution:
 | `models` | Dict of model definitions keyed by short name. Fields: `model` (litellm string), `api_base`, `api_key`, `temperature`, `max_tokens`, `extra_params`, `num_retries`. |
 | `evaluations` | List of generator+judge combos. Each entry references model names and has an optional `runs` count (default: `execution.runs`, then 1). Per-evaluation `temperature`/`max_tokens` overrides are supported. |
 | `execution` | Shared settings: `top_k`, `max_workers`, `runs` (default for evaluations that omit it), `min_coverage` (abort if retrieval covers fewer queries than this fraction, default 0.0). |
-| `output` | Optional `results_dir` (default: `data/test_retrieval`). |
+| `output` | Optional `results_dir` (default: `data/eval`). |
 
 **Config-driven sweep** -- run all evaluations with one command:
 
 ```bash
 export GEN_API_KEY="your-api-key"    # for generators using an OpenAI-compatible endpoint
 export NVIDIA_API_KEY="nvapi-..."    # for NIM models
-retriever eval run --config eval_sweep.yaml
+retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 ```
 
 Each run produces a timestamped output file:
@@ -989,6 +708,15 @@ LiteLLM routes by prefix:
 | `huggingface/` | HuggingFace Inference Endpoints | `huggingface/meta-llama/Llama-3-70b-instruct` |
 
 For local vLLM/Ollama, use `openai/<model>` with `api_base: http://localhost:8000/v1`.
+
+### Environment Variables
+
+| Variable | Used By | Purpose |
+|----------|---------|---------|
+| `NVIDIA_API_KEY` | Config expansion, fallback for `GEN_API_KEY`/`JUDGE_API_KEY` | Default API key for NIM models |
+| `NVIDIA_NIM_API_KEY` | litellm's `nvidia_nim` provider | Alias -- set to same value as `NVIDIA_API_KEY` |
+| `GEN_API_KEY` | `retriever eval run --from-env`, config `${GEN_API_KEY}` | Generator API key (falls back to `NVIDIA_API_KEY`) |
+| `JUDGE_API_KEY` | `retriever eval run --from-env`, config `${JUDGE_API_KEY}` | Judge API key (falls back to `NVIDIA_API_KEY`) |
 
 ## Scoring System (Three-Tier Hierarchy)
 
@@ -1188,7 +916,7 @@ No registration step needed -- pass the instance directly to `QAEvalPipeline`.
 ```json
 {
   "dataset": "csv:data/bo767_annotations.csv",
-  "retrieval_file": "data/test_retrieval/bo767_retrieval_fullpage.json",
+  "retrieval_file": "data/eval/bo767_retrieval_fullpage.json",
   "top_k": 5,
   "qa_results": {
     "summary": {
@@ -1257,3 +985,16 @@ across all modalities (text, table, chart, infographic) for 767 bo767 PDFs.
 4. **Reasoning model truncation**: Models with extended thinking (e.g., Nemotron Super) may spend their token budget reasoning and never produce a final answer. The pipeline detects this (`thinking_truncated`) and nullifies the score.
 
 5. **Model refusal failures**: The model sometimes responds "no information found" even when the answer is in the retrieved chunks. The failure breakdown splits these into `refused_missing_context` (answer genuinely absent -- retrieval problem) vs `refused_with_context` (answer present but model refused -- generator problem). Together they account for ~13% of queries in the reference run.
+
+## Standalone Runner (Docker / CI)
+
+For Docker or CI environments:
+
+```bash
+export RETRIEVAL_FILE=/data/bo767_retrieval.json
+export QA_DATASET="csv:data/bo767_annotations.csv"
+export NVIDIA_API_KEY="nvapi-..."
+retriever eval run --from-env
+```
+
+Run `retriever eval run --help` for the full list of supported environment variables.

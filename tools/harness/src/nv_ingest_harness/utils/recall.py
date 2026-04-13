@@ -17,7 +17,7 @@ from nv_ingest_client.util.milvus import nvingest_retrieval
 from nv_ingest_harness.utils.cases import get_repo_root
 
 
-def get_retrieval_func(
+def _get_retrieval_func(
     vdb_backend: str,
     table_path: Optional[str] = None,
     table_name: Optional[str] = None,
@@ -28,9 +28,6 @@ def get_retrieval_func(
 
     For LanceDB, returns a partial of lancedb_retrieval with table_path pre-filled.
     For Milvus, returns nvingest_retrieval directly.
-
-    Shared by both recall evaluation (utils/recall.py) and QA evaluation
-    (utils/qa/retrievers.py) so VDB routing logic lives in one place.
 
     Args:
         vdb_backend: "milvus" or "lancedb"
@@ -105,7 +102,7 @@ def get_recall_scores(
 
     # Create retrieval function once, outside the batch loop
     if vdb_backend == "lancedb":
-        retrieval_func = get_retrieval_func(
+        retrieval_func = _get_retrieval_func(
             "lancedb",
             table_path,
             table_name=collection_name,
@@ -224,7 +221,7 @@ def get_recall_scores_pdf_only(
 
     # Create retrieval function once, outside the batch loop
     if vdb_backend == "lancedb":
-        retrieval_func = get_retrieval_func(
+        retrieval_func = _get_retrieval_func(
             "lancedb",
             table_path,
             table_name=collection_name,

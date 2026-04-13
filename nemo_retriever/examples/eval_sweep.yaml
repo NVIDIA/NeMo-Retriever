@@ -1,20 +1,22 @@
 # QA Evaluation Sweep Configuration
 #
-# Usage:
+# Usage (from repo root):
 #   export GEN_API_KEY="your-api-key"    # for generator-b (any OpenAI-compatible provider)
 #   export GEN_API_BASE="https://your-endpoint/v1"
 #   export NVIDIA_API_KEY="nvapi-..."    # for NIM models (judge, nemotron generators)
-#   retriever eval run --config eval_sweep.yaml
+#   retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 #
 # Secrets use ${VAR} expansion -- they are resolved from environment
 # variables at load time.  Never commit real keys in this file.
+#
+# All paths below are relative to the working directory (repo root).
 
 dataset:
-  source: "csv:../../data/bo767_annotations.csv"
+  source: "csv:data/bo767_annotations.csv"
 
 retrieval:
   type: "file"
-  file_path: "data/test_retrieval/bo767_retrieval_fullpage.json"
+  file_path: "data/eval/bo767_retrieval_fullpage.json"
 
 # Define models once, reference by name in evaluations.
 # Any model can serve as generator or judge.
@@ -60,4 +62,4 @@ execution:
   # min_coverage: 0.8  # abort if retrieval file covers < 80% of queries (default: 0.0 = no check)
 
 output:
-  results_dir: "data/test_retrieval"
+  results_dir: "data/eval"

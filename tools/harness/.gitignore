@@ -1,8 +1,0 @@
-# Generated data artifacts (retrieval JSONs, QA results, extracted Parquets, page indexes)
-data/
-
-# Retrieval-bench embedding cache
-cache/
-
-# Personal sweep configs (may contain API keys or local paths)
-eval_sweep_personal.yaml
