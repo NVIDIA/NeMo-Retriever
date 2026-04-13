@@ -85,7 +85,7 @@ def test_kwargs_forwarded_to_text_embedder(_patch_embedders):
         max_length=4096,
     )
     kw = fake_text.call_args.kwargs
-    assert kw["device"] == "cuda:1"
+    assert "device" not in kw
     assert kw["hf_cache_dir"] == "/tmp/cache"
     assert kw["gpu_memory_utilization"] == 0.6
     assert kw["normalize"] is False

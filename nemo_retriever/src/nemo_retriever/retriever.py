@@ -119,7 +119,6 @@ class Retriever:
             cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
             self._embedder_cache[model_name] = create_local_embedder(
                 resolved,
-                device=self.local_hf_device,
                 hf_cache_dir=cache_dir,
             )
         return self._embedder_cache[model_name]

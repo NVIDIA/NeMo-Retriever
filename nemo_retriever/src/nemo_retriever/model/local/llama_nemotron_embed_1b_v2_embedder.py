@@ -27,13 +27,11 @@ class LlamaNemotronEmbed1BV2Embedder:
     Uses vLLM's pooling runner (``llm.embed()``) for throughput. No HTTP remote
     calls — load and inference stay in-process.
 
-    ``device`` is accepted for API compatibility with callers that pin GPUs;
     vLLM device placement follows the process environment (see vLLM docs).
     ``max_length`` is passed to vLLM as ``max_model_len`` when set positive.
     """
 
     model_id: Optional[str] = None
-    device: Optional[str] = None
     hf_cache_dir: Optional[str] = None
     gpu_memory_utilization: float = 0.45
     enforce_eager: bool = False
