@@ -15,6 +15,7 @@ NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
+VALID_RUN_MODES = {"batch", "inprocess"}
 VALID_EVALUATION_MODES = {"recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
 VALID_BEIR_LOADERS = {"vidore_hf"}
@@ -54,6 +55,7 @@ class HarnessConfig:
     dataset_dir: str
     dataset_label: str
     preset: str
+    run_mode: str = "batch"
 
     query_csv: str | None = None
     input_type: str = "pdf"
@@ -113,6 +115,9 @@ class HarnessConfig:
 
         if self.query_csv is not None and not Path(self.query_csv).exists():
             errors.append(f"query_csv does not exist: {self.query_csv}")
+
+        if self.run_mode not in VALID_RUN_MODES:
+            errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
 
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
@@ -263,6 +268,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_DATASET": ("dataset", str),
         "HARNESS_DATASET_DIR": ("dataset_dir", str),
         "HARNESS_PRESET": ("preset", str),
+        "HARNESS_RUN_MODE": ("run_mode", str),
         "HARNESS_QUERY_CSV": ("query_csv", str),
         "HARNESS_INPUT_TYPE": ("input_type", str),
         "HARNESS_RECALL_REQUIRED": ("recall_required", _parse_bool),
