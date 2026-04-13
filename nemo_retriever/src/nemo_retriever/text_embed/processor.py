@@ -106,7 +106,6 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
         hf_cache_dir=task_config.get("local_hf_cache_dir"),
         gpu_memory_utilization=float(task_config.get("gpu_memory_utilization", 0.45)),
         enforce_eager=bool(task_config.get("enforce_eager", False)),
-        compile_cache_dir=task_config.get("compile_cache_dir"),
         dimensions=task_config.get("dimensions"),
     )
 

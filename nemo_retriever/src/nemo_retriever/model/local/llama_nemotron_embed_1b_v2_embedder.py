@@ -146,7 +146,6 @@ class LlamaNemotronEmbed1BV2VLLMEmbedder:
     hf_cache_dir: Optional[str] = None
     gpu_memory_utilization: float = 0.45
     enforce_eager: bool = False
-    compile_cache_dir: Optional[str] = None
     dimensions: Optional[int] = None
 
     def __post_init__(self) -> None:
@@ -163,7 +162,6 @@ class LlamaNemotronEmbed1BV2VLLMEmbedder:
             dimensions=self.dimensions,
             gpu_memory_utilization=self.gpu_memory_utilization,
             enforce_eager=self.enforce_eager,
-            compile_cache_dir=self.compile_cache_dir,
         )
 
     @property

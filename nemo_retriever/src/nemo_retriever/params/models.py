@@ -39,7 +39,6 @@ class ModelRuntimeParams(_ParamsModel):
     model_name: Optional[str] = None
     gpu_memory_utilization: float = 0.45
     enforce_eager: bool = False
-    compile_cache_dir: Optional[str] = None
 
 
 class IngestorCreateParams(_ParamsModel):

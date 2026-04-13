@@ -11,51 +11,17 @@ the same embedding model (e.g. nvidia/llama-3.2-nv-embedqa-1b-v2) with vLLM's ba
 inference and no HTTP server.
 
 Uses bfloat16 and FLASH_ATTN backend by default for best throughput.
-
-Troubleshooting enforce_eager=False (torch.compile):
-  If you see "failed to map segment from shared object", the cache dir is on a
-  filesystem that does not allow executing shared libs (e.g. noexec mount). /tmp
-  and /dev/shm are often noexec on Linux. We auto-pick a dir under /run/user/<uid>
-  (if present), then ~/.cache/vllm/torch_compile_inductor, then /dev/shm. Set
-  compile_cache_dir to a path on a non-noexec filesystem if needed, or use
-  enforce_eager=True.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
 VLLM_DTYPE = "bfloat16"
 VLLM_ATTENTION_BACKEND = "FLASH_ATTN"
-
-
-def _default_compile_cache_dir() -> Optional[str]:
-    """Return a cache dir for torch inductor/triton that supports loading shared libs (no noexec).
-    Prefer /run/user/<uid> (often exec-enabled tmpfs), then ~/.cache, then /dev/shm.
-    Avoid /tmp and /dev/shm when they are mounted noexec (common on Linux)."""
-    candidates: List[tuple[str, str]] = []
-    uid = os.getuid() if hasattr(os, "getuid") else 0
-    run_user = f"/run/user/{uid}"
-    if os.path.isdir(run_user) and os.access(run_user, os.W_OK):
-        candidates.append((run_user, os.path.join(run_user, "vllm_torch_compile")))
-    cache_home = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
-    vllm_cache = os.path.join(cache_home, "vllm", "torch_compile_inductor")
-    if cache_home:
-        candidates.append((cache_home, vllm_cache))
-    shm = "/dev/shm"
-    if os.path.isdir(shm) and os.access(shm, os.W_OK):
-        candidates.append((shm, os.path.join(shm, f"vllm_torch_compile_{uid}")))
-    for _parent, path in candidates:
-        try:
-            os.makedirs(path, mode=0o700, exist_ok=True)
-            return path
-        except OSError:
-            continue
-    return None
 
 
 def create_vllm_llm(
@@ -68,7 +34,6 @@ def create_vllm_llm(
     max_model_len: Optional[int] = None,
     gpu_memory_utilization: float = 0.45,
     enforce_eager: bool = False,
-    compile_cache_dir: Optional[str] = None,
     hf_overrides: Optional[dict] = None,
 ) -> Any:
     """
@@ -77,35 +42,23 @@ def create_vllm_llm(
 
     Uses bfloat16 and FLASH_ATTN backend (fixed for this module).
 
-    .. note::
-        When ``compile_cache_dir`` is set (or auto-detected), ``TORCHINDUCTOR_CACHE_DIR`` and
-        ``TRITON_CACHE_DIR`` are set as process-global side effects if not already present in the
-        environment. The first call wins; subsequent calls with a different cache dir will not
-        overwrite the earlier values.
     """
     try:
         from vllm import LLM
     except ImportError as e:
         raise RuntimeError("vLLM is not installed. Install with: uv pip install -e '.' or pip install -e '.'") from e
 
-    if not enforce_eager:
-        cache_dir = compile_cache_dir if compile_cache_dir is not None else _default_compile_cache_dir()
-        if cache_dir:
-            os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-            if "TORCHINDUCTOR_CACHE_DIR" not in os.environ:
-                os.environ["TORCHINDUCTOR_CACHE_DIR"] = cache_dir
-            if "TRITON_CACHE_DIR" not in os.environ:
-                os.environ["TRITON_CACHE_DIR"] = cache_dir
-            logger.debug("vLLM: using compile cache dir %s", cache_dir)
-
     pooler_config = None
     try:
         from vllm.config.pooler import PoolerConfig
 
         try:
-            pooler_config = PoolerConfig(seq_pooling_type="MEAN", normalize=True, dimensions=dimensions)
+            pooler_config = PoolerConfig(seq_pooling_type="MEAN", dimensions=dimensions)
         except TypeError:
-            pooler_config = PoolerConfig(pooling_type="MEAN", normalize=True, dimensions=dimensions)
+            try:
+                pooler_config = PoolerConfig(pooling_type="MEAN", dimensions=dimensions)
+            except (TypeError, ValueError):
+                pooler_config = PoolerConfig()
     except ImportError:
         pooler_config = None
 
@@ -178,7 +131,6 @@ def embed_via_vllm(
     max_model_len: Optional[int] = None,
     gpu_memory_utilization: float = 0.45,
     enforce_eager: bool = False,
-    compile_cache_dir: Optional[str] = None,
 ) -> List[List[float]]:
     """
     Compute embeddings via vLLM's Python API (no server).
@@ -208,8 +160,6 @@ def embed_via_vllm(
         Fraction of GPU memory for vLLM (default 0.45).
     enforce_eager : bool
         If False (default), use torch.compile/CUDAGraphs for speed. If True, disable for stability.
-    compile_cache_dir : str, optional
-        Directory for PyTorch inductor/Triton JIT cache.
 
     Returns
     -------
@@ -225,7 +175,6 @@ def embed_via_vllm(
         max_model_len=max_model_len,
         gpu_memory_utilization=gpu_memory_utilization,
         enforce_eager=enforce_eager,
-        compile_cache_dir=compile_cache_dir,
     )
     return embed_with_vllm_llm(prompts, llm, batch_size=batch_size, prefix=prefix)
 

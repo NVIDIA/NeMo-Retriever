@@ -44,7 +44,6 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
             gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
             enforce_eager=bool(self._kwargs.get("enforce_eager", False)),
-            compile_cache_dir=self._kwargs.get("compile_cache_dir"),
         )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
