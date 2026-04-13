@@ -10,33 +10,26 @@ class Query:
         q,
         ltimestamp,
         count,
-        sql_node=None,
         dialect=None,
-        query_tag=None,
     ):
         self.id = id
         self.tables: list = []
         self.tables_ids: list[str] = []
-        self.reached_columns_ids: list[str] = []
         self.edges: list = []
         self.nodes_counter: int = 0
 
-        if sql_node is None:
-            month = ltimestamp.month
-            year = ltimestamp.year
-            string_query = q.replace('"', '\\"')
-            props = {
-                "name": f"query_{str(id)}",
-                f"cnt_{month}_{year}": count,
-                "total_counter": count,
-                "sql_full_query": string_query,
-                "last_query_timestamp": ltimestamp,
-                "query_tag": query_tag,
-            }
-            sql_node = Neo4jNode(
-                name="query_" + str(id), label=Labels.SQL, props=props, existing_id=id
-            )
-        self.sql_node = sql_node
+        month = ltimestamp.month
+        year = ltimestamp.year
+        props = {
+            "name": f"query_{str(id)}",
+            f"cnt_{month}_{year}": count,
+            "total_counter": count,
+            "sql_full_query": q,
+            "last_query_timestamp": ltimestamp,
+        }
+        self.sql_node = Neo4jNode(
+            name="query_" + str(id), label=Labels.SQL, props=props, existing_id=id
+        )
 
     def add_table_to_query(self, table_node, table_name: str):
         if not isinstance(table_node, Query):
@@ -47,12 +40,6 @@ class Query:
 
     def get_tables_ids(self) -> list[str]:
         return list(set(self.tables_ids))
-
-    def get_reached_columns_ids(self) -> list[str]:
-        return list(set(self.reached_columns_ids))
-
-    def set_reached_columns_ids(self, columns_ids: list[str]):
-        self.reached_columns_ids = columns_ids
 
     def get_nodes_counter(self) -> int:
         return self.nodes_counter

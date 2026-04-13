@@ -78,6 +78,30 @@ def parse_query_slim(q: str, query_obj: Query, dialect: str, schemas: dict) -> b
     return bool(query_obj.get_tables_ids())
 
 
+def parse_query_single(
+    sql: str,
+    dialect: str,
+    schemas: dict,
+) -> Query | None:
+    """Parse a single SQL string and return a populated :class:`Query`, or ``None`` if no
+    recognised tables were found."""
+    from datetime import datetime
+
+    query_obj = Query(
+        schemas=schemas,
+        id=str(uuid.uuid4()),
+        q=sql,
+        ltimestamp=datetime.now(),
+        count=1,
+        dialect=dialect,
+    )
+    is_parsed = parse_query_slim(q=sql, query_obj=query_obj, dialect=dialect, schemas=schemas)
+    if not is_parsed:
+        return None
+    query_obj.sql_node.add_property("nodes_count", query_obj.get_nodes_counter())
+    return query_obj
+
+
 def parse_queries_df(
     dialect: str,
     parsed_queries: dict[str, Query],
@@ -92,7 +116,6 @@ def parse_queries_df(
             q_timestamp = row["end_time"]
             q_count = row["count"] if "count" in row else 1
             q_count = int(q_count) if isinstance(q_count, str) else q_count
-            q_tag = row["query_tag"] if "query_tag" in row else None
             query_obj = Query(
                 schemas=schemas,
                 id=sql_id,
@@ -100,7 +123,6 @@ def parse_queries_df(
                 ltimestamp=q_timestamp,
                 count=q_count,
                 dialect=dialect,
-                query_tag=q_tag,
             )
             is_parsed = parse_query_slim(
                 q=q,
