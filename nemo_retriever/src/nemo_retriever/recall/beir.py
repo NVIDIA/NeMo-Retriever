@@ -17,12 +17,13 @@ from nemo_retriever.retriever import Retriever
 logger = logging.getLogger(__name__)
 
 DEFAULT_BEIR_KS: tuple[int, ...] = (1, 3, 5, 10)
-VALID_BEIR_LOADERS: frozenset[str] = frozenset({"bo767_csv", "vidore_hf"})
+VALID_BEIR_LOADERS: frozenset[str] = frozenset({"bo10k_csv", "bo767_csv", "vidore_hf"})
 VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
     {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 )
 REPO_ROOT = Path(__file__).resolve().parents[4]
 BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_annotations.csv"
+BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.csv"
 _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "caption": "image",
     "chart_caption": "chart",
@@ -144,16 +145,20 @@ def _build_pdf_page_modality(pdf_basename: str, page_number: Any, element_type: 
     return f"{basename}_{normalized_page}_{normalized_type}"
 
 
-def _resolve_bo767_annotations_path(dataset_name: str) -> Path:
+def _resolve_annotations_csv_path(dataset_name: str, *, loader_name: str) -> Path:
     dataset_str = str(dataset_name).strip()
     candidate = Path(dataset_str).expanduser()
     if candidate.suffix.lower() == ".csv":
         if not candidate.is_absolute():
             candidate = (REPO_ROOT / candidate).resolve()
         return candidate
-    if dataset_str.lower() == "bo767":
+    if loader_name == "bo767_csv" and dataset_str.lower() == "bo767":
         return BO767_ANNOTATIONS_PATH
-    raise ValueError("bo767_csv loader expects dataset_name='bo767' or a path to a CSV file, " f"got {dataset_name!r}")
+    if loader_name == "bo10k_csv" and dataset_str.lower() == "bo10k":
+        return BO10K_ANNOTATIONS_PATH
+    raise ValueError(
+        f"{loader_name} expects dataset_name='{dataset_str.lower()}' or a path to a CSV file, got {dataset_name!r}"
+    )
 
 
 def _build_bo767_corpus_id(
@@ -172,10 +177,10 @@ def _build_bo767_corpus_id(
     )
 
 
-def _load_bo767_dataset(*, dataset_name: str, doc_id_field: str) -> BeirDataset:
-    dataset_path = _resolve_bo767_annotations_path(dataset_name)
+def _load_annotations_csv_dataset(*, dataset_name: str, doc_id_field: str, loader_name: str) -> BeirDataset:
+    dataset_path = _resolve_annotations_csv_path(dataset_name, loader_name=loader_name)
     if not dataset_path.exists():
-        raise FileNotFoundError(f"BO767 annotations CSV not found: {dataset_path}")
+        raise FileNotFoundError(f"Annotations CSV not found: {dataset_path}")
 
     query_ids: list[str] = []
     queries: list[str] = []
@@ -277,8 +282,12 @@ def load_beir_dataset(
 ) -> BeirDataset:
     """Load a BEIR-style dataset for evaluation."""
     loader_name = str(loader).strip().lower()
-    if loader_name == "bo767_csv":
-        return _load_bo767_dataset(dataset_name=dataset_name, doc_id_field=str(doc_id_field))
+    if loader_name in {"bo767_csv", "bo10k_csv"}:
+        return _load_annotations_csv_dataset(
+            dataset_name=dataset_name,
+            doc_id_field=str(doc_id_field),
+            loader_name=loader_name,
+        )
     if loader_name != "vidore_hf":
         raise ValueError(f"Unsupported BEIR loader: {loader}")
 

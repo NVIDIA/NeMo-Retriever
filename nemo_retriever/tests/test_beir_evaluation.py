@@ -97,6 +97,29 @@ def test_load_beir_dataset_supports_bo767_csv_pdf_page(tmp_path: Path) -> None:
     }
 
 
+def test_load_beir_dataset_supports_bo10k_csv_pdf_page_modality(tmp_path: Path) -> None:
+    annotations = tmp_path / "digital_corpora_10k_annotations.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is doc a?,Answer A,1001,0",
+                "table,What is doc b?,Answer B,1002.pdf,4",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("bo10k_csv", dataset_name=str(annotations), doc_id_field="pdf_page_modality")
+
+    assert dataset.query_ids == ["0", "1"]
+    assert dataset.queries == ["What is doc a?", "What is doc b?"]
+    assert dataset.qrels == {
+        "0": {"1001_1_text": 1},
+        "1": {"1002_5_table": 1},
+    }
+
+
 def test_build_beir_run_from_hits_synthesizes_pdf_page_modality() -> None:
     raw_hits = [
         [

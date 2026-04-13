@@ -58,13 +58,13 @@ presets:
     ocr_workers: 24
     ocr_batch_size: 16
     embed_workers: 24
-    embed_batch_size: 64
+    embed_batch_size: 256
     page_elements_cpus_per_actor: 1.0
     ocr_cpus_per_actor: 1.0
     embed_cpus_per_actor: 1.0
     gpu_page_elements: 0.1
     gpu_ocr: 0.1
-    gpu_embed: 1.0
+    gpu_embed: 0.25
 
 datasets:
   bo20:
@@ -80,7 +80,7 @@ datasets:
     recall_required: false
     evaluation_mode: beir
     beir_loader: bo767_csv
-    beir_doc_id_field: pdf_page_modality
+    beir_doc_id_field: pdf_page
 
   jp20:
     path: /datasets/nv-ingest/jp20
@@ -98,15 +98,14 @@ datasets:
     recall_match_mode: pdf_page
     recall_adapter: page_plus_one
 
-  # Wiring for bo10k-style CSVs with zero-based page numbers.
-  # Keep recall optional by default until a local query CSV path is configured.
   bo10k:
     path: /datasets/nv-ingest/bo10k
-    query_csv: null
+    query_csv: data/digital_corpora_10k_annotations.csv
     input_type: pdf
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: page_plus_one
+    evaluation_mode: beir
+    beir_loader: bo10k_csv
+    beir_doc_id_field: pdf_page
 
   # FinanceBench is document-level recall using the repository fixture JSON.
   financebench:

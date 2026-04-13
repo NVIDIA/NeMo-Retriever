@@ -136,6 +136,32 @@ def test_build_command_supports_bo767_beir_pdf_page_modality_doc_id_field(tmp_pa
     assert effective_query_csv is None
 
 
+def test_build_command_supports_bo10k_beir_pdf_page_modality_doc_id_field(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_csv = tmp_path / "digital_corpora_10k_annotations.csv"
+    annotations_csv.write_text("modality,query,answer,pdf,page\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="bo10k",
+        preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="bo10k_csv",
+        beir_doc_id_field="pdf_page_modality",
+        query_csv=str(annotations_csv),
+        recall_required=False,
+    )
+
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert cmd[cmd.index("--beir-loader") + 1] == "bo10k_csv"
+    assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
+    assert cmd[cmd.index("--beir-doc-id-field") + 1] == "pdf_page_modality"
+    assert "--query-csv" not in cmd
+    assert effective_query_csv is None
+
+
 def test_build_command_uses_top_level_detection_file_when_enabled(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
