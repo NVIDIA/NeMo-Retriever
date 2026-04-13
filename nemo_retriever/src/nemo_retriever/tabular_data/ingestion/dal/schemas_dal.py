@@ -21,15 +21,6 @@ logger = logging.getLogger(__name__)
 conn = get_neo4j_conn()
 
 
-def get_db_ids_and_names():
-    query = f""" MATCH (db:{Labels.DB})
-                RETURN collect({{id: db.id, name: db.name}}) AS dbs"""
-    return conn.query_read(
-        query=query, parameters={}
-    )[0]["dbs"]
-
-
-
 def load_schema_from_graph(
     db_name,
     schema_name,

@@ -8,28 +8,13 @@ from datetime import datetime
 from nemo_retriever.tabular_data.ingestion.utils import chunks
 from nemo_retriever.tabular_data.ingestion.dal.schemas_dal import (
     add_schemas_edge,
-    get_db_ids_and_names,
-    get_schemas_ids_and_names,
-    load_schema_from_graph,
     merge_schema_edges,
     merge_schema_nodes,
 )
-from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 
 logger = logging.getLogger(__name__)
-
-
-def get_schemas():
-    db = get_db_ids_and_names()[0]
-    db_node = Neo4jNode(
-        name=db["name"], label=Labels.DB, props={"name": db["name"]}, existing_id=db["id"]
-    )
-    return {
-        s["schema_name"].lower(): load_schema_from_graph(db["name"], s["schema_name"], db_node)
-        for s in get_schemas_ids_and_names(db["id"])
-    }
 
 
 def add_table(table_edges):
