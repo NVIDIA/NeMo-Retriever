@@ -134,11 +134,11 @@ nv-ingest-etcd-0
 nv-ingest-milvus-standalone-7f8ffbdfbc-jpmlj
 nv-ingest-minio-7cbd4f5b9d-99hl4
 nv-ingest-opentelemetry-collector-7bb59d57fc-4h59q
-nv-ingest-ocr-0
+nemoretriever-ocr-v1-557dd99578-s8428
+nemotron-page-elements-v3-59dfbf5997-vgxtz
 nv-ingest-redis-master-0
 nv-ingest-redis-replicas-0
-nv-ingest-yolox-0
-nv-ingest-zipkin-77b5fc459f-ptsj6
+nv-ingest-zipkin-66d5b4444d-b68k8
 ```
 
 ```bash
@@ -197,7 +197,7 @@ kubectl get nodes -o json | jq -r '.items[] | select(.metadata.name | test("-wor
 #### Enable NVIDIA GPU MIG
 
 [NVIDIA MIG](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html) is a technology that enables a specific GPU to be sliced into individual virtual GPUs.
-This approach is considered better for production environments than time-slicing, because it isolates it process to a pre-allocated amount of compute and memory.
+This approach is considered better for production environments than time-slicing, because it isolates its process to a pre-allocated amount of compute and memory.
 
 Use this section to learn how to enable NVIDIA GPU MIG.
 
@@ -258,7 +258,7 @@ Validate that the configuration was applied by running the following code.
 kubectl logs -n gpu-operator -l app=nvidia-mig-manager -c nvidia-mig-manager
 ```
 
-You can adjust Kubernetes request and limit resources for MIG by using a Helm values file. To use a MIG values file in conjunction with other values files, append `-f mig/nv-ingest-mig-values.yaml` to your Helm command. For an example Helm values file for MIG settings, refer to [mig/nv-ingest-mig-config.yaml](mig/nv-ingest-mig-config.yaml). This file is only an example, and you should adjust the values for your environment and specific needs.
+You can adjust Kubernetes request and limit resources for MIG by using a Helm values file. To use a MIG values file in conjunction with other values files, append `-f mig/nv-ingest-mig-values.yaml` to your Helm command. For an example Helm values file for MIG settings, refer to [mig/nv-ingest-mig-values.yaml](mig/nv-ingest-mig-values.yaml). This file is only an example, and you should adjust the values for your environment and specific needs.
 
 #### Running Jobs
 
