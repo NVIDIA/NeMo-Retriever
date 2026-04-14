@@ -24,10 +24,10 @@ jobs:
   build:
     runs-on: linux-large-disk
     steps:
+      # Use the ref that triggered the workflow (e.g. branch chosen for workflow_dispatch).
+      # Do not pin ref: main here — that forced manual runs to build from main while testing other branches.
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
