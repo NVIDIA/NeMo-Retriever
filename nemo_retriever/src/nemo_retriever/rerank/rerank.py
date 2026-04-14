@@ -12,14 +12,16 @@ Provides:
 Remote endpoint
 ---------------
 When ``invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
-server that exposes the OpenAI-compatible ``/rerank`` REST API::
+server that exposes the NIM ranking REST API. The helper accepts
+either a fully qualified ``.../reranking`` URL or a base URL and appends
+``/v1/ranking`` automatically::
 
-    POST /rerank
+    POST /v1/ranking
     {
       "model": "nvidia/llama-nemotron-rerank-1b-v2",
-      "query": "...",
-      "documents": ["...", "..."],
-      "top_n": N
+      "query": {"text": "..."},
+      "passages": [{"text": "..."}, {"text": "..."}],
+      "truncate": "END"
     }
 
 Local model
@@ -54,13 +56,16 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
 _SCORE_COLUMN = "rerank_score"
+_DEFAULT_RERANK_ENDPOINT = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 
 
 # ---------------------------------------------------------------------------
@@ -77,13 +82,14 @@ def _rerank_via_endpoint(
     api_key: str = "",
 ) -> List[float]:
     """
-    Call a vLLM / NIM ``/rerank`` REST endpoint and return per-document scores.
+    Call a vLLM / NIM ranking endpoint and return per-document scores.
 
-    The server must expose the OpenAI-compatible rerank API introduced in
-    vLLM >= 0.14.0::
+    The server must expose the ranking API used by NeMo Retriever and NIM. Pass
+    either a full ``.../reranking`` URL or a base URL; base URLs are
+    normalized to ``.../v1/ranking``::
 
-        POST {endpoint}/rerank
-        {"model": ..., "query": ..., "documents": [...], "top_n": N}
+        POST {endpoint}/v1/ranking
+        {"model": ..., "query": {"text": ...}, "passages": [{"text": ...}]}
 
     Parameters
     ----------
@@ -93,7 +99,7 @@ def _rerank_via_endpoint(
         List of document strings to score against the query.
     endpoint:
         Base URL of the reranking endpoint (e.g. ``http://localhost:8015
-        ``).  The function will append ``/v1/ranking`` if the URL does not
+        ``). The function will append ``/v1/ranking`` if the URL does not
         already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
@@ -171,8 +177,9 @@ def rerank_hits(
         A ``NemotronRerankV2`` instance (local GPU inference).  Ignored when
         *invoke_url* is set.
     invoke_url:
-        Base URL of a vLLM / NIM ``/rerank`` endpoint.  Takes priority over
-        *model*.
+        Base URL of a vLLM / NIM ranking endpoint. Takes priority over
+        *model*. Base URLs are normalized to ``/v1/ranking`` unless they
+        already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
         ``"nvidia/llama-nemotron-rerank-1b-v2"``).
@@ -192,8 +199,8 @@ def rerank_hits(
     -------
     List[dict]
         Hits sorted by ``"_rerank_score"`` descending.  Each dict has a new
-        ``"_rerank_score"`` key with the raw logit (local) or relevance score
-        (remote).
+        ``"_rerank_score"`` key with the model score returned by the selected
+        reranker (local or remote).
     """
     if not hits:
         return hits
@@ -243,7 +250,7 @@ def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-class NemotronRerankActor(AbstractOperator, GPUOperator):
+class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
 
@@ -277,10 +284,6 @@ class NemotronRerankActor(AbstractOperator, GPUOperator):
     ----------
     model_name:
         HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-1b-v2"``).
-    invoke_url:
-        Base URL of a vLLM / NIM ``/rerank`` endpoint.  When set the actor
-        skips local model creation and delegates all scoring to the endpoint.
-        Also accepted as ``rerank_invoke_url``.
     api_key:
         Bearer token for the remote endpoint.
     device:
@@ -306,19 +309,17 @@ class NemotronRerankActor(AbstractOperator, GPUOperator):
         self._kwargs = dict(kwargs)
 
         invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
-        if invoke_url and "invoke_url" not in self._kwargs:
-            self._kwargs["invoke_url"] = invoke_url
-
         if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronRerankV2
-
-            self._model = NemotronRerankV2(
-                model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
-                device=self._kwargs.get("device") or None,
-                hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+            raise ValueError(
+                "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
+        from nemo_retriever.model.local import NemotronRerankV2
+
+        self._model = NemotronRerankV2(
+            model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
+            device=self._kwargs.get("device") or None,
+            hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+        )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -340,6 +341,53 @@ class NemotronRerankActor(AbstractOperator, GPUOperator):
                 out[score_col] = [payload for _ in range(len(out.index))]
                 return out
             return [{"rerank_score": _error_payload(stage="actor_call", exc=exc)}]
+
+
+class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only reranking actor that delegates to a remote endpoint."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._kwargs = dict(kwargs)
+        invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
+        if not invoke_url:
+            invoke_url = _DEFAULT_RERANK_ENDPOINT
+        self._kwargs["invoke_url"] = invoke_url
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        return _rerank_batch(batch_df, model=self._model, **self._kwargs, **override_kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as exc:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="actor_call", exc=exc)
+                score_col = str(self._kwargs.get("score_column", _SCORE_COLUMN))
+                out[score_col] = [payload for _ in range(len(out.index))]
+                return out
+            return [{"rerank_score": _error_payload(stage="actor_call", exc=exc)}]
+
+
+class NemotronRerankActor(ArchetypeOperator):
+    _cpu_variant_class = NemotronRerankCPUActor
+    _gpu_variant_class = NemotronRerankGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("rerank_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
 
 
 # ---------------------------------------------------------------------------

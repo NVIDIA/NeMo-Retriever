@@ -9,6 +9,19 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 from tqdm import tqdm
 
+_KEEP_KEYS = frozenset(
+    {
+        "text",
+        "metadata",
+        "source",
+        "page_number",
+        "pdf_page",
+        "pdf_basename",
+        "source_id",
+        "path",
+    }
+)
+
 
 @dataclass
 class Retriever:
@@ -58,7 +71,7 @@ class Retriever:
     reranker_model_name: Optional[str] = "nvidia/llama-nemotron-rerank-1b-v2"
     """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2')."""
     reranker_endpoint: Optional[str] = None
-    """Base URL of a vLLM / NIM /rerank endpoint.  Takes priority over local model."""
+    """Base URL of a vLLM / NIM ranking endpoint. Appends ``/v1/ranking`` unless already using ``/reranking``."""
     reranker_api_key: str = ""
     """Bearer token for the remote rerank endpoint."""
     reranker_max_length: int = 512
@@ -175,9 +188,6 @@ class Retriever:
                     .text(query_texts[i])
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(
-                        ["text", "metadata", "source", "page_number", "pdf_page", "pdf_basename", "source_id", "path"]
-                    )
                     .limit(int(top_k))
                     .rerank(RRFReranker())
                     .to_list()
@@ -203,7 +213,7 @@ class Retriever:
                     .limit(int(top_k))
                     .to_list()
                 )
-            results.append(hits)
+            results.append([{k: v for k, v in h.items() if k in _KEEP_KEYS} for h in hits])
         return results
 
     # ------------------------------------------------------------------
@@ -318,6 +328,12 @@ class Retriever:
             results = self._rerank_results(query_texts, results)
 
         return results
+
+    def generate_sql(self, query: str) -> str:
+        """Generate a SQL query for a given natural language query."""
+        from nemo_retriever.tabular_data.retrieval import generate_sql
+
+        return generate_sql(query)
 
 
 # Backward compatibility alias.

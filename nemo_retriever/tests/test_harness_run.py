@@ -1,9 +1,12 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from typer.testing import CliRunner
 
 from nemo_retriever.harness.cli import app as harness_app
+from nemo_retriever.harness import artifacts as harness_artifacts
 from nemo_retriever.harness.artifacts import create_run_artifact_dir
 from nemo_retriever.harness.config import HarnessConfig
 from nemo_retriever.harness import run as harness_run
@@ -45,6 +48,66 @@ def test_create_run_artifact_dir_defaults_to_dataset_label(tmp_path: Path) -> No
     assert out.name.startswith("jp20_")
 
 
+@pytest.mark.parametrize(
+    ("ref_commit", "packed_refs_line", "expected_short_sha"),
+    [
+        (
+            "abc1234def5678abc1234def5678abc1234def",
+            None,
+            "abc1234",
+        ),
+        (
+            None,
+            "def5678abc1234def5678abc1234def5678abc refs/heads/fix/harness_metrics",
+            "def5678",
+        ),
+    ],
+    ids=["loose-ref-file", "packed-refs"],
+)
+def test_last_commit_fallback_reads_git_metadata(
+    monkeypatch,
+    tmp_path: Path,
+    ref_commit: str | None,
+    packed_refs_line: str | None,
+    expected_short_sha: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    nemo_root = repo_root / "nemo_retriever"
+    nemo_root.mkdir()
+
+    git_dir = repo_root / "git-meta" / "worktrees" / "nr-dev"
+    git_dir.mkdir(parents=True)
+    (repo_root / ".git").write_text("gitdir: git-meta/worktrees/nr-dev\n", encoding="utf-8")
+    (git_dir / "HEAD").write_text("ref: refs/heads/fix/harness_metrics\n", encoding="utf-8")
+
+    if ref_commit is not None:
+        ref_path = git_dir / "refs" / "heads" / "fix" / "harness_metrics"
+        ref_path.parent.mkdir(parents=True, exist_ok=True)
+        ref_path.write_text(ref_commit + "\n", encoding="utf-8")
+
+    if packed_refs_line is not None:
+        (git_dir / "packed-refs").write_text(
+            "\n".join(
+                [
+                    "# pack-refs with: peeled fully-peeled sorted",
+                    packed_refs_line,
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(harness_artifacts, "NEMO_RETRIEVER_ROOT", nemo_root)
+    monkeypatch.setattr(
+        harness_artifacts.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout="", stderr=""),
+    )
+
+    assert harness_artifacts.last_commit() == expected_short_sha
+
+
 def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -59,6 +122,8 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
         write_detection_file=False,
     )
     cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--run-mode" in cmd
+    assert cmd[cmd.index("--run-mode") + 1] == "batch"
     assert "--detection-summary-file" in cmd
     assert "--evaluation-mode" in cmd
     assert cmd[cmd.index("--evaluation-mode") + 1] == "recall"
@@ -78,17 +143,28 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert "element" in cmd
     assert "--extract-page-as-image" in cmd
     assert "--no-extract-page-as-image" not in cmd
-    assert "--pdf-extract-workers" not in cmd
-    assert "--pdf-extract-num-cpus" not in cmd
-    assert "--page-elements-workers" not in cmd
-    assert "--ocr-workers" not in cmd
-    assert "--embed-workers" not in cmd
-    assert "--gpu-page-elements" not in cmd
-    assert "--gpu-ocr" not in cmd
-    assert "--gpu-embed" not in cmd
     assert detection_file.parent == runtime_dir
     assert detection_file.name == ".detection_summary.json"
     assert effective_query_csv == query_csv
+
+
+def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        run_mode="inprocess",
+        query_csv=str(query_csv),
+        write_detection_file=False,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--run-mode" in cmd
+    assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
 
 
 def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
@@ -189,6 +265,83 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
     csv_contents = effective_query_csv.read_text(encoding="utf-8")
     assert "query,pdf_page" in csv_contents
     assert "q,doc_name_1" in csv_contents
+    assert "--segment-audio" not in cmd
+    assert "--no-segment-audio" not in cmd
+    assert "--audio-split-type" not in cmd
+    assert "--audio-split-interval" not in cmd
+
+
+def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text(
+        "query,expected_media_id,expected_start_time,expected_end_time\nq,clip,1.0,2.0\n",
+        encoding="utf-8",
+    )
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="audio_retrieval",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        input_type="audio",
+        segment_audio=True,
+        audio_split_type="time",
+        audio_split_interval=45,
+        recall_match_mode="audio_segment",
+        audio_match_tolerance_secs=3.25,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--input-type" in cmd
+    assert cmd[cmd.index("--input-type") + 1] == "audio"
+    assert "--recall-match-mode" in cmd
+    assert cmd[cmd.index("--recall-match-mode") + 1] == "audio_segment"
+    assert "--audio-match-tolerance-secs" in cmd
+    assert cmd[cmd.index("--audio-match-tolerance-secs") + 1] == "3.25"
+    assert "--segment-audio" in cmd
+    assert "--no-segment-audio" not in cmd
+    assert "--audio-split-type" in cmd
+    assert cmd[cmd.index("--audio-split-type") + 1] == "time"
+    assert "--audio-split-interval" in cmd
+    assert cmd[cmd.index("--audio-split-interval") + 1] == "45"
+
+
+def test_build_command_omits_tuning_flags_when_use_heuristics(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        use_heuristics=True,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--pdf-extract-tasks" not in cmd
+    assert "--pdf-extract-cpus-per-task" not in cmd
+    assert "--pdf-extract-batch-size" not in cmd
+    assert "--pdf-split-batch-size" not in cmd
+    assert "--page-elements-batch-size" not in cmd
+    assert "--page-elements-actors" not in cmd
+    assert "--ocr-actors" not in cmd
+    assert "--ocr-batch-size" not in cmd
+    assert "--embed-actors" not in cmd
+    assert "--embed-batch-size" not in cmd
+    assert "--page-elements-cpus-per-actor" not in cmd
+    assert "--ocr-cpus-per-actor" not in cmd
+    assert "--embed-cpus-per-actor" not in cmd
+    assert "--page-elements-gpus-per-actor" not in cmd
+    assert "--ocr-gpus-per-actor" not in cmd
+    assert "--embed-gpus-per-actor" not in cmd
+    # non-tuning flags still present
+    assert "--embed-model-name" in cmd
+    assert "--evaluation-mode" in cmd
 
 
 def test_normalize_recall_metric_key_removes_duplicate_prefix() -> None:
@@ -203,6 +356,18 @@ def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> 
     query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
     runtime_dir = tmp_path / "runtime_metrics"
     runtime_dir.mkdir()
+    runtime_summary_file = runtime_dir / "r1.runtime.summary.json"
+    runtime_summary_file.write_text(
+        json.dumps(
+            {
+                "num_pages": 100,
+                "num_rows": 200,
+                "ingestion_only_secs": 10.0,
+                "evaluation_metrics": {"recall@1": 0.5, "recall@5": 0.8},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
@@ -217,12 +382,7 @@ def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> 
         lambda *_args, **_kwargs: (["python", "-V"], runtime_dir, runtime_dir / ".detection_summary.json", query_csv),
     )
 
-    def _fake_run_subprocess(_cmd: list[str], metrics) -> int:
-        metrics.files = 20
-        metrics.pages = 100
-        metrics.ingest_secs = 10.0
-        metrics.pages_per_sec_ingest = 10.0
-        metrics.recall_metrics = {"recall@1": 0.5, "recall@5": 0.8}
+    def _fake_run_subprocess(_cmd: list[str]) -> int:
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -294,6 +454,7 @@ def test_run_entry_returns_tags(monkeypatch, tmp_path: Path) -> None:
             "return_code": 0,
             "failure_reason": None,
             "summary_metrics": {"pages": 0, "ingest_secs": 1.0, "pages_per_sec_ingest": 0.0, "recall_5": None},
+            "tags": tags,
         }
 
     monkeypatch.setattr(harness_run, "_run_single", _fake_run_single)
@@ -440,7 +601,20 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
     detection_file = artifact_dir / "detection_summary.json"
     detection_file.write_text(json.dumps({"total_detections": 7}), encoding="utf-8")
     runtime_summary_file = runtime_dir / "jp20_single.runtime.summary.json"
-    runtime_summary_file.write_text(json.dumps({"elapsed_secs": 12.5}), encoding="utf-8")
+    runtime_summary_file.write_text(
+        json.dumps(
+            {
+                "run_mode": "batch",
+                "num_pages": 1940,
+                "input_pages": 1940,
+                "num_rows": 3181,
+                "ingestion_only_secs": 12.5,
+                "evaluation_mode": "recall",
+                "evaluation_metrics": {"recall@5": 0.9},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
@@ -461,14 +635,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
         ),
     )
 
-    def _fake_run_subprocess(_cmd: list[str], metrics) -> int:
-        metrics.files = None
-        metrics.pages = None
-        metrics.ingest_secs = 12.5
-        metrics.pages_per_sec_ingest = None
-        metrics.rows_processed = 3181
-        metrics.rows_per_sec_ingest = 254.48
-        metrics.recall_metrics = {"recall@5": 0.9}
+    def _fake_run_subprocess(_cmd: list[str]) -> int:
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -488,6 +655,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
 
     result = harness_run._run_single(cfg, artifact_dir, run_id="jp20_single")
     payload = json.loads((artifact_dir / "results.json").read_text(encoding="utf-8"))
+    expected_tuning = {field: getattr(cfg, field) for field in sorted(harness_run.TUNING_FIELDS)}
 
     expected = {
         "timestamp": "20260305_120000_UTC",
@@ -499,12 +667,17 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "dataset_label": "jp20",
             "dataset_dir": str(dataset_dir),
             "preset": "single_gpu",
+            "run_mode": "batch",
             "query_csv": str(query_csv),
             "effective_query_csv": str(query_csv),
             "input_type": cfg.input_type,
             "recall_required": cfg.recall_required,
             "recall_match_mode": cfg.recall_match_mode,
             "recall_adapter": cfg.recall_adapter,
+            "audio_match_tolerance_secs": cfg.audio_match_tolerance_secs,
+            "segment_audio": cfg.segment_audio,
+            "audio_split_type": cfg.audio_split_type,
+            "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
             "beir_loader": cfg.beir_loader,
             "beir_dataset_name": cfg.beir_dataset_name,
@@ -520,22 +693,26 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "extract_page_as_image": cfg.extract_page_as_image,
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": True,
+            "use_heuristics": cfg.use_heuristics,
+            "store_images_uri": None,
+            "store_text": False,
+            "strip_base64": True,
             "lancedb_uri": str((artifact_dir / "lancedb").resolve()),
-            "tuning": {field: getattr(cfg, field) for field in sorted(harness_run.TUNING_FIELDS)},
+            "tuning": expected_tuning,
         },
         "metrics": {
             "files": None,
-            "pages": None,
+            "pages": 1940,
             "ingest_secs": 12.5,
-            "pages_per_sec_ingest": None,
+            "pages_per_sec_ingest": 155.2,
             "rows_processed": 3181,
             "rows_per_sec_ingest": 254.48,
             "recall_5": 0.9,
         },
         "summary_metrics": {
-            "pages": None,
+            "pages": 1940,
             "ingest_secs": 12.5,
-            "pages_per_sec_ingest": None,
+            "pages_per_sec_ingest": 155.2,
             "recall_5": 0.9,
             "ndcg_10": None,
         },
@@ -546,7 +723,15 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "ray_version": "2.49.0",
             "python_version": "3.12.4",
         },
-        "runtime_summary": {"elapsed_secs": 12.5},
+        "runtime_summary": {
+            "run_mode": "batch",
+            "num_pages": 1940,
+            "input_pages": 1940,
+            "num_rows": 3181,
+            "ingestion_only_secs": 12.5,
+            "evaluation_mode": "recall",
+            "evaluation_metrics": {"recall@5": 0.9},
+        },
         "detection_summary": {"total_detections": 7},
         "artifacts": {
             "command_file": str((artifact_dir / "command.txt").resolve()),
@@ -591,10 +776,7 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
         ),
     )
 
-    def _fake_run_subprocess(_cmd: list[str], metrics) -> int:
-        metrics.rows_processed = 42
-        metrics.rows_per_sec_ingest = 3.5
-        metrics.ingest_secs = 12.0
+    def _fake_run_subprocess(_cmd: list[str]) -> int:
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -607,12 +789,13 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
     assert result["success"] is True
     assert result["runtime_summary"] is None
     assert result["detection_summary"] is None
-    assert result["metrics"]["rows_processed"] == 42
-    assert result["metrics"]["rows_per_sec_ingest"] == 3.5
+    assert result["metrics"]["rows_processed"] is None
+    assert result["metrics"]["rows_per_sec_ingest"] is None
     assert result["metrics"]["pages"] is None
+    assert "effective_tuning" not in result["test_config"]
     assert result["summary_metrics"] == {
         "pages": None,
-        "ingest_secs": 12.0,
+        "ingest_secs": None,
         "pages_per_sec_ingest": None,
         "recall_5": None,
         "ndcg_10": None,
@@ -679,3 +862,70 @@ def test_cli_run_accepts_repeated_tags(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert captured["tags"] == ["nightly", "candidate"]
+
+
+def test_build_command_includes_store_flags(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        store_images_uri="stored_images",
+        store_text=True,
+        strip_base64=True,
+    )
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--store-images-uri" in cmd
+    resolved = cmd[cmd.index("--store-images-uri") + 1]
+    assert resolved == str((tmp_path / "stored_images").resolve())
+    assert "--store-text" in cmd
+    assert "--strip-base64" in cmd
+    assert "--no-strip-base64" not in cmd
+
+
+def test_build_command_omits_store_when_uri_is_none(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        store_images_uri=None,
+    )
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--store-images-uri" not in cmd
+    assert "--store-text" not in cmd
+    assert "--strip-base64" not in cmd
+    assert "--no-strip-base64" not in cmd
+
+
+def test_build_command_store_no_strip_base64(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        store_images_uri="/absolute/path/store",
+        store_text=False,
+        strip_base64=False,
+    )
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    assert "--store-images-uri" in cmd
+    assert cmd[cmd.index("--store-images-uri") + 1] == "/absolute/path/store"
+    assert "--store-text" not in cmd
+    assert "--no-strip-base64" in cmd
+    assert "--strip-base64" not in cmd

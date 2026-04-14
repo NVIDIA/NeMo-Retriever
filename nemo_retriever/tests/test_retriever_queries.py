@@ -370,3 +370,111 @@ class TestRetrieverDefaults:
         from nemo_retriever.retriever import retriever, Retriever
 
         assert retriever is Retriever
+
+
+# ---------------------------------------------------------------------------
+# Retriever._search_lancedb — post-filter strips unwanted columns
+# ---------------------------------------------------------------------------
+
+
+class TestSearchLancedbKeepKeys:
+    """Verify that _search_lancedb strips columns not in _KEEP_KEYS."""
+
+    def _fake_table(self, raw_hits: list[dict]):
+        """Return a mock LanceDB table whose search chains return *raw_hits*."""
+        chain = MagicMock()
+        chain.nprobes.return_value = chain
+        chain.refine_factor.return_value = chain
+        chain.select.return_value = chain
+        chain.limit.return_value = chain
+        chain.to_list.return_value = raw_hits
+        chain.list_indices.return_value = []
+
+        table = MagicMock()
+        table.search.return_value = chain
+        table.list_indices.return_value = []
+        return table
+
+    def test_extra_keys_stripped_from_dense_results(self):
+        from nemo_retriever.retriever import _KEEP_KEYS
+
+        raw = [
+            {
+                "text": "hello",
+                "metadata": "{}",
+                "source": "{}",
+                "page_number": 0,
+                "pdf_page": "doc_0",
+                "pdf_basename": "doc",
+                "source_id": "doc.pdf",
+                "path": "/doc.pdf",
+                # These should be stripped:
+                "vector": [0.1, 0.2, 0.3],
+                "_distance": 0.42,
+                "_rowid": 7,
+            }
+        ]
+        r = _make_retriever(hybrid=False)
+        mock_db = MagicMock()
+        mock_db.open_table.return_value = self._fake_table(raw)
+
+        with patch("lancedb.connect", return_value=mock_db):
+            results = r._search_lancedb(
+                lancedb_uri="fake",
+                lancedb_table="t",
+                query_vectors=[_DUMMY_VECTOR],
+                query_texts=["q"],
+            )
+
+        hit = results[0][0]
+        assert set(hit.keys()) <= _KEEP_KEYS
+        assert "vector" not in hit
+        assert "_distance" not in hit
+        assert "_rowid" not in hit
+        assert hit["text"] == "hello"
+
+    def test_extra_keys_stripped_from_hybrid_results(self):
+        from nemo_retriever.retriever import _KEEP_KEYS
+
+        raw = [
+            {
+                "text": "hello",
+                "metadata": "{}",
+                "source": "{}",
+                "page_number": 0,
+                "pdf_page": "doc_0",
+                "pdf_basename": "doc",
+                "source_id": "doc.pdf",
+                "path": "/doc.pdf",
+                # These should be stripped:
+                "vector": [0.1, 0.2, 0.3],
+                "_score": 1.5,
+                "_relevance_score": 0.9,
+            }
+        ]
+        r = _make_retriever(hybrid=True)
+        mock_db = MagicMock()
+        fake_table = self._fake_table(raw)
+        # Hybrid chain also needs .vector(), .text(), .rerank()
+        chain = fake_table.search.return_value
+        chain.vector.return_value = chain
+        chain.text.return_value = chain
+        chain.rerank.return_value = chain
+        mock_db.open_table.return_value = fake_table
+
+        with (
+            patch("lancedb.connect", return_value=mock_db),
+            patch("lancedb.rerankers.RRFReranker"),
+        ):
+            results = r._search_lancedb(
+                lancedb_uri="fake",
+                lancedb_table="t",
+                query_vectors=[_DUMMY_VECTOR],
+                query_texts=["q"],
+            )
+
+        hit = results[0][0]
+        assert set(hit.keys()) <= _KEEP_KEYS
+        assert "vector" not in hit
+        assert "_score" not in hit
+        assert "_relevance_score" not in hit

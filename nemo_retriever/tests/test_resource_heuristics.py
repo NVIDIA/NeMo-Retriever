@@ -105,6 +105,21 @@ def test_gather_cluster_resources_missing_keys() -> None:
     assert cr.available_gpu_count() == 0
 
 
+def test_gather_cluster_resources_coerces_fractional_values() -> None:
+    mock_ray = types.SimpleNamespace(
+        is_initialized=lambda: True,
+        cluster_resources=lambda: {"CPU": 32.0, "GPU": 1.0},
+        available_resources=lambda: {"CPU": 24.4, "GPU": 1.0},
+    )
+
+    cr = rh.gather_cluster_resources(mock_ray)
+
+    assert cr.total_cpu_count() == 32
+    assert cr.total_gpu_count() == 1
+    assert cr.available_cpu_count() == 24
+    assert cr.available_gpu_count() == 1
+
+
 # ---------------------------------------------------------------------------
 # resolve_requested_plan — defaults
 # ---------------------------------------------------------------------------

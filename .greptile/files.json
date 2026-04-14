@@ -1,0 +1,43 @@
+{
+  "files": [
+    {
+      "path": "CONTRIBUTING.md",
+      "description": "Architectural guidelines (SRP, DIP, SoC, ADP, etc.), coding patterns, testing standards, and DCO/licensing requirements."
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "description": "PR checklist: contributing guidelines, test coverage, documentation, docker-compose/Helm parity."
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "description": "Enforced pre-commit hooks: Black (120 char), Flake8 (120 char), trailing whitespace, large file checks, AST validation, debug statement detection."
+    },
+    {
+      "path": "setup.cfg",
+      "description": "Extended Flake8 configuration with per-file ignores, isort settings, and coding style rules."
+    },
+    {
+      "path": ".github/CODEOWNERS",
+      "description": "Code ownership: nv-ingest-maintainers and nemo-retriever-research own everything; specialized teams for docs, devops, CI."
+    },
+    {
+      "path": "docs/docs/extraction/overview.md",
+      "description": "High-level architecture overview of the ingestion pipeline, scaling modes, and system design."
+    },
+    {
+      "path": "api/pyproject.toml",
+      "description": "Shared API package dependencies. This is the lowest-level package; its dependencies constrain the entire monorepo.",
+      "scope": ["api/**"]
+    },
+    {
+      "path": "client/pyproject.toml",
+      "description": "Client library dependencies. Must remain lightweight since external users install this package independently.",
+      "scope": ["client/**"]
+    },
+    {
+      "path": ".github/workflows/ci-pull-request.yml",
+      "description": "PR CI pipeline: pre-commit checks, Docker build and test with coverage.",
+      "scope": [".github/**"]
+    }
+  ]
+}

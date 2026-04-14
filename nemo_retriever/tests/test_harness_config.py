@@ -65,6 +65,48 @@ def test_load_harness_config_precedence(tmp_path: Path, monkeypatch: pytest.Monk
     assert cfg.recall_required is True
 
 
+def test_load_harness_config_supports_run_mode_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,source,page\nq,a,1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    _write_harness_config(cfg_path, dataset_dir, query_csv)
+
+    monkeypatch.setenv("HARNESS_RUN_MODE", "inprocess")
+
+    cfg = load_harness_config(
+        config_file=str(cfg_path),
+        dataset="tiny",
+        preset="base",
+    )
+    assert cfg.run_mode == "inprocess"
+
+
+def test_load_harness_config_rejects_invalid_run_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                f"  dataset_dir: {dataset_dir}",
+                "  run_mode: invalid",
+                "  preset: base",
+                "  recall_required: false",
+                "presets:",
+                "  base: {}",
+                "datasets: {}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="run_mode must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
 def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -182,6 +224,50 @@ def test_load_harness_config_supports_recall_adapter_and_match_mode(tmp_path: Pa
     cfg = load_harness_config(config_file=str(cfg_path))
     assert cfg.recall_adapter == "page_plus_one"
     assert cfg.recall_match_mode == "pdf_page"
+
+
+def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text(
+        "query,expected_media_id,expected_start_time,expected_end_time\nq,clip,1.5,3.5\n",
+        encoding="utf-8",
+    )
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny_audio",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny_audio:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    input_type: audio",
+                "    segment_audio: true",
+                "    audio_split_type: time",
+                "    audio_split_interval: 30",
+                "    recall_required: true",
+                "    recall_adapter: none",
+                "    recall_match_mode: audio_segment",
+                "    audio_match_tolerance_secs: 3.5",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.input_type == "audio"
+    assert cfg.segment_audio is True
+    assert cfg.audio_split_type == "time"
+    assert cfg.audio_split_interval == 30
+    assert cfg.recall_adapter == "none"
+    assert cfg.recall_match_mode == "audio_segment"
+    assert cfg.audio_match_tolerance_secs == 3.5
 
 
 def test_load_harness_config_supports_multimodal_embedding_options(tmp_path: Path) -> None:
@@ -512,3 +598,36 @@ def test_load_harness_config_uses_financebench_repo_fixture(monkeypatch: pytest.
     assert cfg.dataset_dir == str(Path("/raid/tester/financebench").resolve())
     assert cfg.query_csv == str(expected_query_csv)
     assert cfg.recall_required is True
+
+
+def test_load_harness_config_supports_store_options(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: true",
+                "    store_images_uri: stored_images",
+                "    store_text: true",
+                "    strip_base64: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.store_images_uri == "stored_images"
+    assert cfg.store_text is True
+    assert cfg.strip_base64 is False

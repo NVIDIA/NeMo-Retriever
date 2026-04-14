@@ -452,15 +452,12 @@ def run_pipeline_process(
     try:
         signal.signal(signal.SIGINT, _handle_signal)
         signal.signal(signal.SIGTERM, _handle_signal)
+        # SIGUSR1 is used for quiet shutdown from the parent process.
+        # Unlike SIGTERM, it does not trigger gRPC/abseil's FailureSignalHandler,
+        # so the subprocess can exit without noisy stack traces on stderr.
+        signal.signal(signal.SIGUSR1, _handle_signal)
     except Exception as e:
         logger.debug(f"Signal handlers not set: {e}")
-
-    # Test output redirection
-    print("DEBUG: Direct print to stdout - should appear in parent process")
-    sys.stderr.write("DEBUG: Direct write to stderr - should appear in parent process\n")
-
-    # Test logging output
-    logger.info("DEBUG: Logger info - may not appear if logging handlers not redirected")
 
     # If requested, start the simple broker inside this subprocess so it shares the process group
     broker_proc = None
