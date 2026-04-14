@@ -77,13 +77,16 @@ class Retriever:
     """Base URL of a vLLM / NIM ranking endpoint. Appends ``/v1/ranking`` unless already using ``/reranking``."""
     reranker_api_key: str = ""
     """Bearer token for the remote rerank endpoint."""
-    reranker_max_length: int = 512
+    reranker_max_length: int = 10240
     """Tokenizer truncation length for local reranking (max 8 192)."""
     reranker_batch_size: int = 32
     """GPU micro-batch size for local reranking."""
     reranker_refine_factor: int = 4
     """Number of candidates to rerank = top_k * reranker_refine_factor.
     Set to 1 to rerank only the top_k results."""
+    rerank_modality: str = "text"
+    """Reranking modality, typically matches embed_modality. Set to 'text_image'
+    to enable multimodal reranking with images."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
     # Internal cache for local HF embedders, keyed by model name.
@@ -271,6 +274,7 @@ class Retriever:
                     max_length=int(self.reranker_max_length),
                     batch_size=int(self.reranker_batch_size),
                     top_n=int(self.top_k),
+                    modality=self.rerank_modality,
                 )
             )
         return reranked

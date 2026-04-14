@@ -15,7 +15,7 @@ from ..model import BaseModel, RunMode
 
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 _DEFAULT_MAX_LENGTH = 10240
-_DEFAULT_BATCH_SIZE = 32
+_DEFAULT_BATCH_SIZE = 1
 
 
 class NemotronRerankVLV2(BaseModel):
@@ -87,6 +87,15 @@ class NemotronRerankVLV2(BaseModel):
         if self._model.config.pad_token_id is None:
             tokenizer = getattr(self._processor, "tokenizer", self._processor)
             self._model.config.pad_token_id = getattr(tokenizer, "eos_token_id", 0)
+
+    def unload(self) -> None:
+        """Release GPU memory held by the model and processor."""
+        import torch
+
+        del self._model
+        del self._processor
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     # ------------------------------------------------------------------
     # BaseModel abstract properties

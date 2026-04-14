@@ -52,6 +52,7 @@ Ray Data actor usage::
 from __future__ import annotations
 
 import json
+import logging
 import traceback
 from typing import Any, Dict, List, Optional
 
@@ -62,6 +63,8 @@ from nemo_retriever.model import is_vl_rerank_model
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
+
+logger = logging.getLogger(__name__)
 
 _render_warned = False
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
@@ -168,6 +171,7 @@ def rerank_hits(
     batch_size: int = _DEFAULT_BATCH_SIZE,
     top_n: Optional[int] = None,
     text_key: str = "text",
+    modality: str = "text",
 ) -> List[Dict[str, Any]]:
     """
     Rerank *hits* (list of LanceDB result dicts) by relevance to *query*.
@@ -219,7 +223,7 @@ def rerank_hits(
     # Load images from stored URIs when using a VL reranker.
     images_b64: Optional[List[Optional[str]]] = None
     _model_name = getattr(model, "model_name", model_name) if model is not None else model_name
-    if is_vl_rerank_model(_model_name):
+    if is_vl_rerank_model(_model_name) and modality != "text":
         from nemo_retriever.io.image_store import load_image_b64_from_uri, render_page_image_b64
         from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
 
@@ -245,17 +249,16 @@ def rerank_hits(
                             cropped, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
                             images_b64.append(cropped)
                             continue
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Failed to crop page image by bbox; using full page: %s", exc)
                 images_b64.append(page_b64)
             else:
                 images_b64.append(None)
         global _render_warned
         if needs_render and not _render_warned:
-            print(
-                "WARNING: No stored images found; re-rendering pages from PDF for VL reranking. "
-                "Use .store(StoreParams(storage_uri=...)) during ingestion to avoid this overhead.",
-                flush=True,
+            logger.warning(
+                "No stored images found; re-rendering pages from PDF for VL reranking. "
+                "Use .store(StoreParams(storage_uri=...)) during ingestion to avoid this overhead."
             )
             _render_warned = True
 

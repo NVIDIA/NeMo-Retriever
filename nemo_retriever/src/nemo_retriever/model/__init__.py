@@ -4,6 +4,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nemo_retriever.model.model import BaseModel
+
 _VL_EMBED_MODEL_IDS = frozenset(
     {
         "nvidia/llama-nemotron-embed-vl-1b-v2",
@@ -92,7 +97,7 @@ def create_local_reranker(
     *,
     device: str | None = None,
     hf_cache_dir: str | None = None,
-):
+) -> "BaseModel":
     """Create the appropriate local reranker model (VL or text-only).
 
     Dispatches to ``NemotronRerankVLV2`` when *model_name* matches a VL

@@ -57,7 +57,7 @@ class TestNemotronRerankVLV2Properties:
 
     def test_input_batch_size(self):
         obj = self._make_instance()
-        assert obj.input_batch_size == 32
+        assert obj.input_batch_size == 1
 
 
 class TestNemotronRerankVLV2Score:
@@ -109,6 +109,7 @@ class TestNemotronRerankVLV2Score:
                 "What is ML?",
                 ["Machine learning is...", "Paris is..."],
                 images_b64=["iVBOR...", None],
+                batch_size=2,
             )
 
         assert scores == [3.5, -1.2]
@@ -227,7 +228,7 @@ class TestRerankHitsVL:
 
         with patch("nemo_retriever.io.image_store.load_image_b64_from_uri") as mock_load:
             mock_load.side_effect = ["b64_data_1", "b64_data_2"]
-            out = rerank_hits("q", hits, model=model)
+            out = rerank_hits("q", hits, model=model, modality="text_image")
 
         assert mock_load.call_count == 2
         model.score.assert_called_once()
@@ -258,7 +259,7 @@ class TestRerankHitsVL:
         model.score.return_value = [2.0, 1.0]
 
         hits = [{"text": "doc1"}, {"text": "doc2", "stored_image_uri": ""}]
-        out = rerank_hits("q", hits, model=model)
+        out = rerank_hits("q", hits, model=model, modality="text_image")
 
         call_kwargs = model.score.call_args
         assert call_kwargs.kwargs["images_b64"] == [None, None]
