@@ -8,7 +8,7 @@ class Labels:
     COLUMN = "Column"
     TABLE = "Table"
     SCHEMA = "Schema"
-    DB = "Db"
+    DB = "Database"
     ALIAS = "Alias"
     SET_OP_COLUMN = "SetOpColumn"
     OPERATOR = "Operator"

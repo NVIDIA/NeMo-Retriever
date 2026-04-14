@@ -48,8 +48,6 @@ def remove_redundant_parentheses(text):
             }[f]
     s = r[2]
     r = r[1]
-    # z = 0
-
     while 1:
         m = regex.subn(r, s, text, count, flags)
         text = m[0]

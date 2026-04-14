@@ -15,7 +15,7 @@ from nemo_retriever.tabular_data.ingestion.dal.db_dal import (
 from nemo_retriever.tabular_data.ingestion.indexes import add_indices
 from concurrent.futures import ThreadPoolExecutor
 from nemo_retriever.tabular_data.ingestion.parsers import schemas_parser
-from nemo_retriever.tabular_data.ingestion.services.queries import populate_queries, populate_views
+from nemo_retriever.tabular_data.ingestion.services.queries import populate_queries
 from nemo_retriever.tabular_data.ingestion.dal.schemas_dal import (
     get_schemas_ids_and_names,
     add_fks,
@@ -61,8 +61,6 @@ def populate_tabular_data(data, num_workers, dialect):
 
     if "queries" in data:
         populate_queries(all_schemas, data["queries"], num_workers, dialect)
-    if "views" in data:
-        populate_views(all_schemas, data["views"], num_workers, dialect)
 
     return []
 

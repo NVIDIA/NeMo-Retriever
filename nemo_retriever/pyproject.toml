@@ -83,6 +83,7 @@ dependencies = [
   "neo4j>=5.0",
   "langchain-nvidia-ai-endpoints>=0.3.0",
   "sqloxide>=0.1.56",
+  "sqllineage>=1.5.0",
 ]
 
 [project.optional-dependencies]

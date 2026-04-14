@@ -3,174 +3,82 @@ import logging
 import time
 import uuid
 import pandas as pd
-from nemo_retriever.tabular_data.ingestion.graph.utils import chunks
-from nemo_retriever.tabular_data.ingestion.graph.dal.queries_dal import load_sqls_to_tables
-from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import SQLType
-from sqloxide import parse_sql
+from nemo_retriever.tabular_data.ingestion.utils import chunks
 from tqdm import tqdm
 
-from nemo_retriever.tabular_data.ingestion.graph.parsers.sql.queries_parser import parse_single, dispatch_sqls, pre_process
-from nemo_retriever.tabular_data.ingestion.graph.services.queries_comparison import (
-    find_identical_queries,
-)
-from nemo_retriever.tabular_data.ingestion.graph.dal.schemas_dal import add_schemas_edge
-from nemo_retriever.tabular_data.ingestion.graph.dal.queries_dal import (
-    add_query,
-    get_sql_by_full_query,
-    update_counters_and_timestamps_for_query_and_affected_data,
-)
-from nemo_retriever.tabular_data.ingestion.graph.parsers.sql.views_parser import parse as parse_views
+from nemo_retriever.tabular_data.ingestion.parsers.sql.queries_parser import pre_process
+from nemo_retriever.tabular_data.ingestion.dal.queries_dal import add_query
 
 
-from nemo_retriever.tabular_data.ingestion.graph.model.query import Query, MissingDataError, UnsupportedQueryError
+from nemo_retriever.tabular_data.ingestion.model.query import Query
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import Props
+from nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor import extract_tables_and_columns
 
-logger = logging.getLogger("queries_parser.py")
-keep_string_values = False
-
-
-def filter_by_query_types(
-    query_text: str, dialect: str, allowed_sql_types: list[SQLType]
-) -> bool:
-    try:
-        sql_type = next(iter(parse_sql(pre_process(query_text), dialect)[0]))
-    except ValueError:
-        # sqloxide error
-        return False
-    except Exception:
-        return False
-    if sql_type.lower() in allowed_sql_types:
-        return True
-    return False
+logger = logging.getLogger(__name__)
 
 
-def filter_and_sort_queries_df(queries_df: pd.DataFrame, dialect: str):
-    drop_dup_columns = (
-        ["schema", "query_text"] if "schema" in queries_df else ["query_text"]
-    )
-    queries_df = queries_df.drop_duplicates(drop_dup_columns)
+def parse_query_slim(q: str, query_obj: Query, dialect: str, schemas: dict) -> bool:
+    """Parse a SQL query in slim mode using sqllineage + sqlglot extraction.
 
-    allowed_sql_types = [
-        SQLType.QUERY,
-        SQLType.INSERT,
-        SQLType.CREATE_TABLE,
-        SQLType.UPDATE,
-        SQLType.MERGE,
-    ]
-    queries_df["allowed"] = queries_df["query_text"].apply(
-        lambda x: filter_by_query_types(x, dialect, allowed_sql_types)
-    )
-    queries_df = queries_df[queries_df["allowed"]]
+    Identifies referenced tables and columns for all SQL statement types without
+    building a full AST.  Populates ``query_obj.tables_ids`` and
+    ``query_obj.reached_columns_ids``.
 
-    if queries_df.empty:
-        logger.info(
-            "There are no queries that passed the stage of filtering by query type compatability and sqloxide correctness."
-        )
-        return [], []
-
-    queries_df["is_create_query"] = queries_df["query_text"].apply(
-        lambda x: filter_by_query_types(x, dialect, [SQLType.CREATE_TABLE])
-    )
-    create_tables_queries = queries_df[queries_df["is_create_query"]]
-    create_tables_queries.sort_values(by="end_time", inplace=True)
-
-    queries_df = queries_df[~queries_df["is_create_query"]]
-    queries_df.sort_values(by="end_time", inplace=True)
-
-    return create_tables_queries, queries_df
-
-
-def parse_create_tables_queries(
-    create_tables_queries: pd.DataFrame,
-    schemas: dict,
-    dialect: str,
-    keep_string_vals: bool,
-    sqls_tables_from_graph_df: pd.DataFrame,
-):
-    if schemas is None:
-        raise Exception("Schemas are required")
-    global keep_string_values
-    keep_string_values = keep_string_vals
-
-    failed_queries: list[dict[str, str]] = []
-    parsed_queries: dict[str, Query] = dict()
-    found_in_graph_or_in_memory = 0
-
-    # The create queries are not ordered according to the creation order, so it is required to loop over and over as
-    # long as there is a chance that some creation query depends on another creation query that has not been parsed yet.
-    max_no_change = 2  # len(create_temp_tables_queries)
-    no_change_counter = 0
-    while len(create_tables_queries) > 0:
-        if no_change_counter > max_no_change:
-            break
-
-        old_len = len(create_tables_queries)
-
-        failed_queries = []
-        failed_indexes, found_queries_counter = parse_queries_df(
-            dialect=dialect,
-            failed_queries=failed_queries,
-            keep_string_values=keep_string_values,
-            parsed_queries=parsed_queries,
-            queries_df=create_tables_queries,
-            schemas=schemas,
-            sqls_tables_from_graph_df=sqls_tables_from_graph_df,
-        )
-        found_in_graph_or_in_memory += found_queries_counter
-        # keep for the next round only the failed create queries
-        create_tables_queries = create_tables_queries.filter(
-            items=failed_indexes, axis=0
-        )
-
-        new_len = len(create_tables_queries)
-        if old_len == new_len:
-            no_change_counter += 1
-        else:
-            no_change_counter = 0
-
-    return parsed_queries, failed_queries, found_in_graph_or_in_memory
-
-
-def parse_not_create_queries(
-    queries_df: pd.DataFrame,
-    schemas: dict,
-    dialect: str,
-    keep_string_vals: bool,
-    sqls_tables_from_graph_df: pd.DataFrame,
-):
-    if schemas is None:
-        raise Exception("Schemas are required")
-    global keep_string_values
-    keep_string_values = keep_string_vals
-
-    failed_queries: list[dict[str, str]] = []
-    parsed_queries: dict[str, Query] = dict()
-    found_in_graph_or_in_memory = 0
-
-    _, found_queries_counter = parse_queries_df(
+    Returns True when at least one recognised table was found, False otherwise.
+    """
+    tables_and_columns: dict[str, set[str]] = extract_tables_and_columns(
+        sql=q,
         dialect=dialect,
-        failed_queries=failed_queries,
-        keep_string_values=keep_string_values,
-        parsed_queries=parsed_queries,
-        queries_df=queries_df,
-        schemas=schemas,
-        sqls_tables_from_graph_df=sqls_tables_from_graph_df,
+        all_schemas=schemas,
     )
-    found_in_graph_or_in_memory += found_queries_counter
 
-    return parsed_queries, failed_queries, found_in_graph_or_in_memory
+    if not tables_and_columns:
+        return False
+
+    column_ids: list[str] = []
+    for table_name, columns in tables_and_columns.items():
+        if table_name == "<unresolved>":
+            continue
+
+        table_node = None
+        for schema in schemas.values():
+            if schema.table_exists(table_name):
+                try:
+                    table_node = schema.get_table_node(table_name)
+                except Exception:
+                    continue
+                break
+
+        if table_node is None:
+            logger.debug("Table %r not found in any schema – skipping.", table_name)
+            continue
+
+        query_obj.add_table_to_query(table_node, table_name)
+        edge_props = {Props.SQL_ID: str(query_obj.id)}
+        query_obj.edges.append((query_obj.sql_node, table_node, edge_props))
+
+        for col_name in columns:
+            for schema in schemas.values():
+                try:
+                    if schema.is_column_in_table(table_node, col_name):
+                        col_node = schema.get_column_node(col_name, table_name)
+                        column_ids.append(str(col_node.id))
+                        query_obj.edges.append((query_obj.sql_node, col_node, edge_props))
+                        break
+                except Exception:
+                    continue
+
+    query_obj.set_reached_columns_ids(column_ids)
+    return bool(query_obj.get_tables_ids())
 
 
 def parse_queries_df(
     dialect: str,
     failed_queries: list[dict[str, str]],
-    keep_string_values: bool,
     parsed_queries: dict[str, Query],
     queries_df: pd.DataFrame,
     schemas: dict,
-    sqls_tables_from_graph_df: pd.DataFrame,
 ):
-    found_in_graph_or_in_memory = 0
-    # unsupported_query_type = 0
     failed_indexes = []
     for index, row in queries_df.iterrows():
         try:
@@ -195,234 +103,66 @@ def parse_queries_df(
                 utterance=q_utterance,
                 ltimestamp=q_timestamp,
                 count=q_count,
-                is_subselect=False,
                 default_schema=default_schema,
                 dialect=dialect,
                 query_tag=q_tag,
             )
-            parsed_query = parse_sql(sql=q, dialect=dialect)
-            is_parsed = dispatch_sqls(
-                parsed_query=parsed_query,
-                sql_text=q,
+            is_parsed = parse_query_slim(
+                q=q,
                 query_obj=query_obj,
-                keep_string_values=keep_string_values,
+                dialect=dialect,
                 schemas=schemas,
-                is_full_parse=False,
             )
-            existing_query_id = get_sql_by_full_query(q)
-            if existing_query_id:
-                update_counters_and_timestamps_for_query_and_affected_data(
-                    identical_sql_id=existing_query_id,
-                    sql_node=query_obj.sql_node,
-                )
-                found_in_graph_or_in_memory += 1
-                logger.info(f"found in graph by text. index {index}")
-                continue
             if is_parsed:
-                (
-                    identical_ids_from_graph,
-                    identical_ids_in_memory,
-                    _,
-                    _,
-                ) = find_identical_queries(
-                    main_sql=q,
-                    get_parsed_query=lambda sql_query: parse_single(
-                        q=sql_query,
-                        schemas=schemas,
-                        dialects=[dialect],
-                        default_schema=query_obj.default_schema,
-                        is_full_parse=True,
-                    ),
-                    sqls_tbls_from_graph_df=sqls_tables_from_graph_df,
-                    is_subgraph=False,
-                    remove_aliases=False,
-                    in_memory_queries=parsed_queries,
+                query_obj.sql_node.add_property(
+                    "nodes_count", query_obj.get_nodes_counter()
                 )
-                if identical_ids_from_graph:
-                    identical_sql_id = identical_ids_from_graph[0]
-                    update_counters_and_timestamps_for_query_and_affected_data(
-                        identical_sql_id=identical_sql_id,
-                        sql_node=query_obj.sql_node,
-                    )
-                    found_in_graph_or_in_memory += 1
-                elif identical_ids_in_memory:
-                    identical_sql_id = identical_ids_in_memory[0]
-                    identical_query_obj = parsed_queries[identical_sql_id]
-                    identical_query_obj.increase_sql_counter(query_obj)
-                    found_in_graph_or_in_memory += 1
-                else:
-                    query_obj.sql_node.add_property(
-                        "nodes_count", query_obj.get_nodes_counter()
-                    )
-                    parsed_queries.update({query_obj.id: query_obj})
-        except MissingDataError as err:
-            logger.info("missing data")
-            logger.exception(err)
-            # logger.info(f"Failed parsing: {row['query_text']}")
-            failed_queries.append(row)
-            failed_indexes.append(index)
-        except UnsupportedQueryError:
-            # unsupported_query_type += 1
-            logger.info("Unsupported Query Error")
-        except RecursionError as r:
-            logger.info(r)
+                parsed_queries.update({query_obj.id: query_obj})
         except Exception as err:
             logger.info("Failed parsing query")
             logger.exception(err)
-            # logger.info(f"Failed parsing: {row['query_text']}")
             failed_queries.append(row)
             failed_indexes.append(index)
-    return failed_indexes, found_in_graph_or_in_memory
-
-
-def populate_subset_of_queries(
-    schemas,
-    queries: pd.DataFrame,
-    num_workers,
-    dialect,
-    keep_string_values,
-    sqls_tables_from_graph_df,
-    is_create_queries: bool,
-):
-    before_parsing_queries = time.time()
-    logger.info(
-        f"Starting to parse {len(queries)} {'create ' if is_create_queries else ''}queries."
-    )
-
-    failed_queries_total = []
-    chunk_size = len(queries) if is_create_queries else 500
-    queries_chunks = list(chunks(queries.to_dict(orient="records"), chunk_size))
-    for i, chunk in enumerate(queries_chunks):
-        logger.info(f"chunk {i + 1} out of {len(queries_chunks)} chunks")
-        if is_create_queries:
-            parsed_queries, failed_queries, found_in_graph_or_in_memory = (
-                parse_create_tables_queries(
-                    create_tables_queries=pd.DataFrame(chunk),
-                    schemas=schemas,
-                    dialect=dialect,
-                    keep_string_vals=keep_string_values,
-                    sqls_tables_from_graph_df=sqls_tables_from_graph_df,
-                )
-            )
-        else:
-            parsed_queries, failed_queries, found_in_graph_or_in_memory = (
-                parse_not_create_queries(
-                    queries_df=pd.DataFrame(chunk),
-                    schemas=schemas,
-                    dialect=dialect,
-                    keep_string_vals=keep_string_values,
-                    sqls_tables_from_graph_df=sqls_tables_from_graph_df,
-                )
-            )
-
-        failed_queries_total += failed_queries
-
-        with tqdm(
-            desc="Total Added Queries",
-            total=len(parsed_queries),
-            mininterval=10,
-            maxinterval=10,
-        ) as pbar:
-            with ThreadPoolExecutor(num_workers) as executor:
-                futures = (
-                    executor.submit(add_query, q.get_edges())
-                    for q in parsed_queries.values()
-                )
-                for future in as_completed(futures):
-                    future.result()
-                    pbar.update(1)
-
-    logger.info(
-        f"Time took to parse and insert queries to the graph:{time.time() - before_parsing_queries}"
-    )
-    return failed_queries_total
+    return failed_indexes
 
 
 def populate_queries(
-    schemas, queries, num_workers, dialect, keep_string_values
+    schemas, queries_df, num_workers, dialect
 ):
-    logger.info(
-        "Preparation step: Load from graph all existing SQL nodes with their reached tables."
-    )
-    sqls_tables_from_graph_df = load_sqls_to_tables()
+    before = time.time()
+    logger.info(f"Starting to parse {len(queries_df)} queries.")
 
-    logger.info(f"Starting to parse {len(queries)} queries.")
-    create_tables_queries, queries_df = filter_and_sort_queries_df(queries, dialect)
-
-    failed_create_queries = []
-    failed_queries = []
-    if len(create_tables_queries) > 0:
-        failed_create_queries = populate_subset_of_queries(
-            schemas,
-            create_tables_queries,
-            num_workers,
-            dialect,
-            keep_string_values,
-            sqls_tables_from_graph_df,
-            is_create_queries=True,
-        )
-    if len(queries_df) > 0:
-        # reload the sqls to tables df, because the ids of temp tables have been updated when parsing the
-        # create temp table queries
-        sqls_tables_from_graph_df = load_sqls_to_tables()
-        failed_queries = populate_subset_of_queries(
-            schemas,
-            queries_df,
-            num_workers,
-            dialect,
-            keep_string_values,
-            sqls_tables_from_graph_df,
-            is_create_queries=False,
-        )
-
-    logger.info("Finished inserting the queries into the graph.")
-    return failed_create_queries + failed_queries
-
-
-def populate_views(
-    schemas: dict,
-    views: list,
-    num_workers: int,
-    dialect: str,
-    keep_string_values: bool,
-):
-    logger.info(
-        "Preparation step: Load from graph all existing SQL nodes with their reached tables."
-    )
-    sqls_tables_df = load_sqls_to_tables(is_view=True)
-
-    before_parsing_views = time.time()
-    logger.info(f"Starting to parse {len(views)} views.")
-    parsed_views, failed_views = parse_views(
-        views, schemas, dialect, keep_string_values, sqls_tables_df
-    )
-    views_queries = parsed_views.values()
-    after_parse_views = time.time()
-
-    logger.info(f"Time took to parse views:{after_parse_views - before_parsing_views}")
-    logger.info(
-        f"Successfully finished parsing {len(views_queries)} views. Starting to insert into the graph."
-    )
-    logger.info(f"Adding views to graph using {num_workers} workers")
-
-    with tqdm(
-        desc="Total Added Views",
-        total=len(views_queries),
-        mininterval=10,
-        maxinterval=10,
-    ) as pbar:
-        with ThreadPoolExecutor(num_workers) as executor:
-            futures = (
-                executor.submit(add_query, q.get_edges())
-                for q in views_queries
+    failed_queries: list[dict[str, str]] = []
+    if not queries_df.empty:
+        queries_chunks = list(chunks(queries_df.to_dict(orient="records"), 500))
+        for i, chunk in enumerate(queries_chunks):
+            logger.info(f"chunk {i + 1} out of {len(queries_chunks)} chunks")
+            chunk_failed: list[dict[str, str]] = []
+            parsed_queries: dict[str, Query] = {}
+            parse_queries_df(
+                dialect=dialect,
+                failed_queries=chunk_failed,
+                parsed_queries=parsed_queries,
+                queries_df=pd.DataFrame(chunk),
+                schemas=schemas,
             )
-            for future in as_completed(futures):
-                future.result()
-                pbar.update(1)
+            failed_queries += chunk_failed
 
-    logger.info(
-        f"Time took to insert views to the graph:{time.time() - after_parse_views}"
-    )
+            with tqdm(
+                desc="Total Added Queries",
+                total=len(parsed_queries),
+                mininterval=10,
+                maxinterval=10,
+            ) as pbar:
+                with ThreadPoolExecutor(num_workers) as executor:
+                    futures = (
+                        executor.submit(add_query, q.get_edges())
+                        for q in parsed_queries.values()
+                    )
+                    for future in as_completed(futures):
+                        future.result()
+                        pbar.update(1)
 
-    logger.info("Finished inserting the views into the graph.")
-    return failed_views
+    logger.info(f"Time took to parse and insert queries: {time.time() - before}")
+    logger.info("Finished inserting the queries into the graph.")
+    return failed_queries
