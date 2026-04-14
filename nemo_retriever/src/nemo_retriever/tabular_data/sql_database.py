@@ -44,10 +44,18 @@ class SQLDatabase(ABC):
     ----------
     connection_string:
         A driver-specific connection string or database path.
+    dialect:
+        SQL dialect used by this connector (e.g. ``"duckdb"``, ``"snowflake"``).
+        Defaults to ``"sqlite"``.  Used by the text-to-SQL agent to emit
+        dialect-appropriate SQL.
     """
 
+    #: SQL dialect reported by this connector.  Subclasses should override
+    #: this in ``__init__`` when a different dialect is required.
+    dialect: str = "sqlite"
+
     @abstractmethod
-    def __init__(self, connection_string: str) -> None: ...
+    def __init__(self, connection_string: str, *, dialect: str = "sqlite") -> None: ...
 
     # ------------------------------------------------------------------
     # Execution
