@@ -107,7 +107,7 @@ class _DummyDuckDB(SQLDatabase):
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-EXPECTED_DATA_KEYS = {"tables", "columns", "views", "pks", "fks"}
+EXPECTED_DATA_KEYS = {"tables", "columns", "views", "pks", "fks", "queries"}
 
 
 def test_pull_tabular_db_entities():
@@ -125,6 +125,7 @@ def test_pull_tabular_db_entities():
     assert data["columns"]["column_name"].iloc[0] == "id"
     assert data["views"]["table_name"].iloc[0] == "v_orders"
     assert data["fks"].empty
+    assert data["queries"].empty
 
     # ── params=None returns an empty dict ─────────────────────────────────────
     data_default = extract_tabular_db_data(params=None)
@@ -183,11 +184,11 @@ def test_data_for_populate_tabular(monkeypatch):
     assert str(data["columns"]["ordinal_position"].dtype) == "Int16"
     assert data["columns"]["ordinal_position"].iloc[0] == 1
 
-    # views is a raw pass-through; pks/fks are empty; queries not surfaced
+    # views and queries are raw pass-through; pks/fks are empty
     assert len(data["views"]) == 1
     assert data["pks"].empty
     assert data["fks"].empty
-    assert "queries" not in data
+    assert data["queries"].equals(raw_queries)
 
 
 # ── store_relational_db_in_neo4j ───────────────────────────────────────────────

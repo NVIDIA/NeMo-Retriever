@@ -50,7 +50,7 @@ def extract_tabular_db_data(params=None):
                 ``params.connector`` is ``None``, an empty data dict is returned.
 
     Returns:
-        data dict with keys: tables, columns, views, pks, fks.
+        data dict with keys: tables, columns, views, pks, fks, queries.
     """
     if params is None or params.connector is None:
         return {}
