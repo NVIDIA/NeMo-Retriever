@@ -22,8 +22,8 @@ conn = get_neo4j_conn()
 
 
 def get_db_ids_and_names():
-    query = """ match (db:db) 
-                return collect({id: db.id, name:db.name}) as dbs"""
+    query = f""" MATCH (db:{Labels.DB})
+                RETURN collect({{id: db.id, name: db.name}}) AS dbs"""
     return conn.query_read(
         query=query, parameters={}
     )[0]["dbs"]
