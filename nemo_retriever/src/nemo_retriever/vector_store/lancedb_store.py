@@ -12,7 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple  # noqa:
 from datetime import timedelta
 
 from nv_ingest_client.util.vdb.lancedb import LanceDB
-from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
+from nemo_retriever.vector_store.lancedb_utils import lancedb_schema, update_metadata_with_content_type
 import pandas as pd
 import lancedb
 
@@ -138,6 +138,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         meta = row.get("metadata")
         if not isinstance(meta, dict):
             continue
+        meta = meta.copy()
 
         embedding = meta.get("embedding")
         if embedding is None:
@@ -150,6 +151,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
             except Exception:
                 continue
         meta.pop("embedding", None)  # Remove embedding from metadata to save space in LanceDB.
+        update_metadata_with_content_type(meta, content_type=row.get("_content_type"))
         # path, source_id = _extract_source_path_and_id(meta)
         path = row.get("path", "")
         source_id = meta.get("source_path", path)
