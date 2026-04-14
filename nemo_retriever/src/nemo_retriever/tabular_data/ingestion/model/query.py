@@ -7,7 +7,7 @@ class Query:
         self,
         schemas,
         id,
-        q,
+        sql_text,
         ltimestamp,
         count,
         dialect=None,
@@ -24,7 +24,7 @@ class Query:
             "name": f"query_{str(id)}",
             f"cnt_{month}_{year}": count,
             "total_counter": count,
-            "sql_full_query": q,
+            "sql_full_query": sql_text,
             "last_query_timestamp": ltimestamp,
         }
         self.sql_node = Neo4jNode(

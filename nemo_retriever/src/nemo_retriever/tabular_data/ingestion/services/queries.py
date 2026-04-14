@@ -89,7 +89,7 @@ def parse_query_single(
     query_obj = Query(
         schemas=schemas,
         id=str(uuid.uuid4()),
-        q=sql,
+        sql_text=sql,
         ltimestamp=datetime.now(),
         count=1,
         dialect=dialect,
@@ -118,7 +118,7 @@ def parse_queries_df(
             query_obj = Query(
                 schemas=schemas,
                 id=sql_id,
-                q=q,
+                sql_text=q,
                 ltimestamp=q_timestamp,
                 count=q_count,
                 dialect=dialect,
