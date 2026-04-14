@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.fusion import FusedOperator, ProcessOnlyFusionSafe, compile_graph_for_fusion
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
@@ -72,6 +73,42 @@ class AppendOperator(AbstractOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+
+class DataFrameMarkerOperator(AbstractOperator):
+    """Adds a label to a DataFrame trace column and increments ``value``."""
+
+    def __init__(self, label: str, increment: int = 1) -> None:
+        super().__init__()
+        self.label = label
+        self.increment = increment
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        out = data.copy()
+        out["value"] = out["value"] + self.increment
+        if "trace" not in out.columns:
+            out["trace"] = [self.label for _ in range(len(out.index))]
+        else:
+            out["trace"] = out["trace"].astype(str) + f">{self.label}"
+        return out
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class FusionPageElementsOperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "page_elements"
+    fusion_next_stage_ids = ("ocr",)
+    fusion_can_start_segment = True
+
+
+class FusionOCROperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "ocr"
+    fusion_next_stage_ids = ()
+    fusion_can_start_segment = False
 
 
 class ParamsHolderOperator(AbstractOperator):
@@ -1070,3 +1107,86 @@ class TestInprocessExecutor:
 
         assert isinstance(result, pd.DataFrame)
         assert result["val"].iloc[0] == 13
+
+
+def _build_fusable_dataframe_graph() -> Graph:
+    graph = Graph()
+    graph.add_chain(
+        Node(
+            DataFrameMarkerOperator("extract", increment=1),
+            name="PDFExtractionActor",
+            operator_class=DataFrameMarkerOperator,
+            operator_kwargs={"label": "extract", "increment": 1},
+        ),
+        Node(
+            FusionPageElementsOperator("page", increment=2),
+            name="PageElementDetectionActor",
+            operator_class=FusionPageElementsOperator,
+            operator_kwargs={"label": "page", "increment": 2},
+        ),
+        Node(
+            FusionOCROperator("ocr", increment=4),
+            name="OCRActor",
+            operator_class=FusionOCROperator,
+            operator_kwargs={"label": "ocr", "increment": 4},
+        ),
+    )
+    return graph
+
+
+class TestFusionCompiler:
+    def test_compile_graph_for_fusion_collapses_eligible_segment(self):
+        graph = _build_fusable_dataframe_graph()
+        overrides = {
+            "PageElementDetectionActor": {
+                "batch_size": 8,
+                "target_num_rows_per_block": 8,
+                "concurrency": 3,
+                "num_cpus": 1.0,
+                "num_gpus": 0.1,
+            },
+            "OCRActor": {
+                "batch_size": 4,
+                "target_num_rows_per_block": 4,
+                "concurrency": 2,
+                "num_cpus": 2.0,
+                "num_gpus": 0.2,
+            },
+        }
+
+        compiled = compile_graph_for_fusion(graph, enable_fusion=True, node_overrides=overrides)
+        nodes = InprocessExecutor._linearize(compiled.graph)
+
+        assert [node.name for node in nodes] == [
+            "PDFExtractionActor",
+            "Fused[PageElementDetectionActor+OCRActor]",
+        ]
+        assert nodes[1].operator_class is FusedOperator
+        assert compiled.fusion_summary["applied"] is True
+        assert compiled.fusion_summary["compiled_stage_count"] == 2
+        assert compiled.fusion_summary["fused_segments"] == [
+            {
+                "name": "Fused[PageElementDetectionActor+OCRActor]",
+                "stage_names": ["PageElementDetectionActor", "OCRActor"],
+                "operator_classes": ["FusionPageElementsOperator", "FusionOCROperator"],
+                "stage_count": 2,
+                "aggregated_overrides": {
+                    "batch_size": 4,
+                    "target_num_rows_per_block": 4,
+                    "concurrency": 2,
+                    "num_cpus": 2.0,
+                    "num_gpus": pytest.approx(0.3),
+                },
+            }
+        ]
+
+    def test_inprocess_executor_preserves_dataframe_results_with_fusion(self):
+        data = pd.DataFrame({"value": [10]})
+        graph = _build_fusable_dataframe_graph()
+
+        baseline = InprocessExecutor(graph, enable_fusion=False, show_progress=False).ingest(data.copy())
+        fused = InprocessExecutor(graph, enable_fusion=True, show_progress=False).ingest(data.copy())
+
+        assert baseline.to_dict("records") == fused.to_dict("records")
+        assert fused["value"].iloc[0] == 17
+        assert fused["trace"].iloc[0] == "extract>page>ocr"

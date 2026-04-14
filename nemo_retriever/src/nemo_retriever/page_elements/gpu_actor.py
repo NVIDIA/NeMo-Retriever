@@ -9,17 +9,22 @@ from typing import Any
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.fusion import ProcessOnlyFusionSafe
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.page_elements.shared import _error_payload, detect_page_elements_v3
 
 
-class PageElementDetectionActor(AbstractOperator, GPUOperator):
+class PageElementDetectionActor(ProcessOnlyFusionSafe, AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Page Elements v3 once.
 
     Use with Ray Data:
       ds = ds.map_batches(PageElementDetectionActor, fn_constructor_kwargs={...}, batch_format="pandas")
     """
+
+    fusion_stage_id = "page_elements"
+    fusion_next_stage_ids = ("ocr",)
+    fusion_can_start_segment = True
 
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)

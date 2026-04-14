@@ -56,6 +56,7 @@ class HarnessConfig:
     dataset_label: str
     preset: str
     run_mode: str = "batch"
+    enable_fusion: bool = False
 
     query_csv: str | None = None
     input_type: str = "pdf"
@@ -76,6 +77,7 @@ class HarnessConfig:
 
     artifacts_dir: str | None = None
     ray_address: str | None = None
+    ray_object_store_memory_bytes: int | None = None
     lancedb_uri: str = "lancedb"
     hybrid: bool = False
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
@@ -118,6 +120,8 @@ class HarnessConfig:
 
         if self.run_mode not in VALID_RUN_MODES:
             errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
+        if self.ray_object_store_memory_bytes is not None and int(self.ray_object_store_memory_bytes) < 1:
+            errors.append("ray_object_store_memory_bytes must be >= 1")
 
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
@@ -241,6 +245,10 @@ def _resolve_dataset_dir_path(value: str) -> str:
     if alternate.exists():
         return str(alternate)
 
+    home_datasets = (Path.home() / "datasets" / "nv-ingest" / relative).resolve()
+    if home_datasets.exists():
+        return str(home_datasets)
+
     return str(resolved)
 
 
@@ -269,6 +277,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_DATASET_DIR": ("dataset_dir", str),
         "HARNESS_PRESET": ("preset", str),
         "HARNESS_RUN_MODE": ("run_mode", str),
+        "HARNESS_ENABLE_FUSION": ("enable_fusion", _parse_bool),
         "HARNESS_QUERY_CSV": ("query_csv", str),
         "HARNESS_INPUT_TYPE": ("input_type", str),
         "HARNESS_RECALL_REQUIRED": ("recall_required", _parse_bool),
@@ -286,6 +295,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_BEIR_DOC_ID_FIELD": ("beir_doc_id_field", str),
         "HARNESS_ARTIFACTS_DIR": ("artifacts_dir", str),
         "HARNESS_RAY_ADDRESS": ("ray_address", str),
+        "HARNESS_RAY_OBJECT_STORE_MEMORY_BYTES": ("ray_object_store_memory_bytes", _parse_number),
         "HARNESS_LANCEDB_URI": ("lancedb_uri", str),
         "HARNESS_HYBRID": ("hybrid", _parse_bool),
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),

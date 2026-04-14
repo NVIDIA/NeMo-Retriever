@@ -167,6 +167,43 @@ def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
     assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
 
 
+def test_build_command_includes_enable_fusion_flag(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        enable_fusion=True,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--enable-fusion" in cmd
+
+
+def test_build_command_includes_object_store_memory_flag(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        ray_object_store_memory_bytes=900000000000,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--ray-object-store-memory-bytes" in cmd
+    assert cmd[cmd.index("--ray-object-store-memory-bytes") + 1] == "900000000000"
+
+
 def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

@@ -15,7 +15,7 @@ from upath import UPath
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-RunMode = Literal["inprocess", "batch", "fused", "online"]
+RunMode = Literal["inprocess", "batch", "online"]
 
 
 class _ParamsModel(BaseModel):

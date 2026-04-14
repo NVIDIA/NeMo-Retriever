@@ -83,6 +83,42 @@ def test_load_harness_config_supports_run_mode_override(tmp_path: Path, monkeypa
     assert cfg.run_mode == "inprocess"
 
 
+def test_load_harness_config_supports_enable_fusion_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,source,page\nq,a,1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    _write_harness_config(cfg_path, dataset_dir, query_csv)
+
+    monkeypatch.setenv("HARNESS_ENABLE_FUSION", "true")
+
+    cfg = load_harness_config(
+        config_file=str(cfg_path),
+        dataset="tiny",
+        preset="base",
+    )
+    assert cfg.enable_fusion is True
+
+
+def test_load_harness_config_supports_object_store_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,source,page\nq,a,1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    _write_harness_config(cfg_path, dataset_dir, query_csv)
+
+    monkeypatch.setenv("HARNESS_RAY_OBJECT_STORE_MEMORY_BYTES", "900000000000")
+
+    cfg = load_harness_config(
+        config_file=str(cfg_path),
+        dataset="tiny",
+        preset="base",
+    )
+    assert cfg.ray_object_store_memory_bytes == 900000000000
+
+
 def test_load_harness_config_rejects_invalid_run_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
