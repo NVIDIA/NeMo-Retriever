@@ -57,7 +57,7 @@ class TestNemotronRerankVLV2Properties:
 
     def test_input_batch_size(self):
         obj = self._make_instance()
-        assert obj.input_batch_size == 1
+        assert obj.input_batch_size == 32
 
 
 class TestNemotronRerankVLV2Score:

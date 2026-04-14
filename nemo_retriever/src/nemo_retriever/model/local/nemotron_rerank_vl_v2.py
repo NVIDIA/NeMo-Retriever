@@ -17,7 +17,7 @@ from nemo_retriever.model import VL_RERANK_MODEL
 
 _DEFAULT_MODEL = VL_RERANK_MODEL
 _DEFAULT_MAX_LENGTH = 10240
-_DEFAULT_BATCH_SIZE = 1
+_DEFAULT_BATCH_SIZE = 32
 
 
 class NemotronRerankVLV2(BaseModel):
