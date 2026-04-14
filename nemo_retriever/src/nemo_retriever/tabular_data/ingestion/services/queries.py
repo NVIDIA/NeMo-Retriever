@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_query_slim(q: str, query_obj: Query, dialect: str, schemas: dict) -> bool:
-    """Parse a SQL query in slim mode using sqllineage + sqlglot extraction.
+    """Parse a SQL query using sqlglot extraction.
 
     Identifies referenced tables and columns for all SQL statement types without
     building a full AST.  Populates ``query_obj.tables_ids`` and

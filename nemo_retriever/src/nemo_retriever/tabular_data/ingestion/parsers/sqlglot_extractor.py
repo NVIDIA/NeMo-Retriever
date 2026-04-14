@@ -2,21 +2,20 @@
 
 Strategy
 --------
-sqlglot parses the full query into an AST to enumerate all CTEs and inline
-subqueries.  For each scope (CTE body or inline subquery) that references at
-least one **real** (non-CTE) table, sqllineage is run on that scope in
-isolation so it can accurately attribute columns to their source tables.
+sqlglot parses the full query into an AST, then the ``qualify`` optimizer
+pass annotates every ``Column`` node with its resolved source table by
+propagating schema information through CTEs and subquery scopes.
 
-Scopes that only reference other CTEs are skipped — their columns are already
-resolved by the base-CTE scopes that first introduced the real tables.
+A pre-pass builds an alias→table map so that table aliases
+(``SELECT o.id FROM orders AS o``) are transparently resolved when reading
+``col.table`` from the qualified AST.
 
-Any column that survives all scopes without a real-table parent is looked up
-in ``all_schemas`` (Neo4j metadata):
-  - unique match within the query's source tables → attributed to that table
-  - ambiguous / not found → remains ``"<unresolved>"``
+Columns that remain unresolved after qualification are looked up in
+``all_schemas`` (Neo4j metadata) and attributed when the match is
+unambiguous within the query's source tables.
 
-When ``all_schemas`` is ``None`` (default), ``get_account_schemas()`` is
-called automatically.  Pass ``{}`` to skip schema-assisted resolution.
+Pass ``all_schemas={}`` (the default) to skip schema-assisted resolution
+and rely solely on ``qualify()``.
 
 Usage (standalone):
     python sqlglot_extractor.py [--dialect <dialect>]
@@ -26,9 +25,7 @@ from __future__ import annotations
 
 import sqlglot
 from sqlglot import exp
-from sqllineage.runner import LineageRunner
-
-_SYNTHETIC_TARGET = "__target__"
+from sqlglot.optimizer.qualify import qualify
 
 
 # ---------------------------------------------------------------------------
@@ -36,135 +33,52 @@ _SYNTHETIC_TARGET = "__target__"
 # ---------------------------------------------------------------------------
 
 
-def _bare_column_name(raw_name: str) -> str:
-    """Extract the innermost column identifier from a SQL expression.
+def _qualified_table_name(table: exp.Table) -> str:
+    """Return the fully-qualified table name as ``schema.table`` when a schema is
+    present in the AST, or just ``table`` otherwise."""
+    parts = [p for p in [table.db, table.name] if p]
+    return ".".join(parts).lower()
 
-    Strips function wrappers, DISTINCT modifiers, and type casts so that
-    e.g. ``MAX(order_purchase_timestamp)`` → ``order_purchase_timestamp``
-    and ``COUNT(DISTINCT order_id)`` → ``order_id``.
+
+def _alias_to_table_map(statement: exp.Expression, cte_names: set[str]) -> dict[str, str]:
+    """Return ``{alias_or_bare_name: qualified_table_name}`` for every real table.
+
+    Qualified names are ``schema.table`` when the SQL references a schema prefix,
+    or plain ``table`` otherwise.  Both the alias *and* the bare table name are
+    registered so that ``col.table`` from the qualified AST always resolves,
+    regardless of whether an alias was used.
     """
-    try:
-        parsed = sqlglot.parse_one(raw_name)
-        # Walk the expression tree and return the first leaf Column identifier.
-        for col in parsed.find_all(exp.Column):
-            return col.name.lower()
-        # Bare identifier with no table qualifier (e.g. just "price")
-        if isinstance(parsed, exp.Identifier):
-            return parsed.name.lower()
-    except Exception:
-        pass
-    # Fallback: recursively strip the outermost function wrapper with regex.
-    import re
-    m = re.match(r"^\w+\s*\((.+)\)\s*$", raw_name.strip(), re.DOTALL)
-    if m:
-        inner = re.sub(r"^(?:distinct|all)\s+", "", m.group(1).strip(), flags=re.IGNORECASE)
-        first_arg = inner.split(",")[0].strip()
-        return _bare_column_name(first_arg) if "(" in first_arg else first_arg.lower()
-    return raw_name.lower().strip()
+    mapping: dict[str, str] = {}
+    for table in statement.find_all(exp.Table):
+        if table.name.lower() in cte_names:
+            continue
+        qualified = _qualified_table_name(table)
+        alias = table.alias.lower() if table.alias else table.name.lower()
+        mapping[alias] = qualified
+        mapping[table.name.lower()] = qualified  # fallback for unaliased bare references
+    return mapping
 
 
-def _build_column_to_tables(all_schemas: dict) -> dict[str, list[str]]:
-    """``{column_name: [table_name, ...]}`` reverse-index from Neo4j schemas."""
-    col_to_tables: dict[str, list[str]] = {}
-    for schema in all_schemas.values():
-        df = schema.columns_df
+def _build_schema_dict(all_schemas: dict) -> dict[str, dict[str, str]]:
+    """Build a flat ``{table: {col: "TEXT"}}`` dict for sqlglot's qualify pass.
+
+    qualify() resolves bare column references using this flat mapping.  A flat
+    dict works for both unqualified SQL (``FROM orders``) and schema-qualified
+    SQL (``FROM schema_a.orders AS a``): in the latter case qualify() resolves
+    columns through the alias, so the schema prefix is not needed here.
+    Multi-schema disambiguation is handled separately via ``alias_map`` and
+    ``source_table_names`` (which use fully-qualified keys).
+    """
+    schema: dict[str, dict[str, str]] = {}
+    for s in all_schemas.values():
+        df = s.columns_df
         if df is None or df.empty:
             continue
         for _, row in df.iterrows():
-            col = str(row["column_name"]).lower()
             tbl = str(row["table_name"]).lower()
-            col_to_tables.setdefault(col, [])
-            if tbl not in col_to_tables[col]:
-                col_to_tables[col].append(tbl)
-    return col_to_tables
-
-
-def _real_tables_in_select(select_node: exp.Expression, cte_names: set[str]) -> set[str]:
-    """Return the set of real (non-CTE) table names referenced inside *select_node*."""
-    return {
-        t.name.lower()
-        for t in select_node.find_all(exp.Table)
-        if t.name.lower() not in cte_names
-    }
-
-
-def _using_columns(scope_node: exp.Expression) -> set[str]:
-    """Return column names that appear in USING clauses within *scope_node*.
-
-    These are shared join keys that genuinely belong to all joined tables,
-    so attributing them to multiple tables is correct.
-    """
-    cols: set[str] = set()
-    for join in scope_node.find_all(exp.Join):
-        for using_col in join.args.get("using") or []:
-            cols.add(using_col.name.lower())
-    return cols
-
-
-def _run_lineage_on_scope(
-    scope_sql: str,
-    scope_node: exp.Expression,
-    sqllineage_dialect: str,
-    scope_real_tables: set[str],
-    result: dict[str, set[str]],
-    col_to_tables: dict[str, list[str]] | None,
-) -> None:
-    """Run sqllineage on a single scope and merge column→table into *result*.
-
-    After sqllineage, unresolved columns are looked up in *col_to_tables*
-    restricted to *scope_real_tables*:
-      - unique match  → attributed to that table
-      - multiple matches AND column is a USING join key → attributed to all
-      - multiple matches but NOT a join key → left as ``"<unresolved>"``
-      - no match      → left as ``"<unresolved>"``
-    """
-    scope_unresolved: set[str] = set()
-    wrapped = f"INSERT INTO {_SYNTHETIC_TARGET} {scope_sql}"
-    try:
-        runner = LineageRunner(wrapped, dialect=sqllineage_dialect)
-        for path in runner.get_column_lineage():
-            src_col = path[0]
-            col_name = _bare_column_name(src_col.raw_name)
-            parent = src_col.parent
-            if parent is not None:
-                tbl = parent.raw_name.lower()
-                if tbl != _SYNTHETIC_TARGET.lower():
-                    result.setdefault(tbl, set()).add(col_name)
-                    continue
-            scope_unresolved.add(col_name)
-    except Exception:
-        pass
-
-    # Schema-assisted resolution scoped to this scope's real tables only.
-    if col_to_tables and scope_unresolved:
-        join_keys = _using_columns(scope_node)
-        for col_name in scope_unresolved:
-            candidates = col_to_tables.get(col_name, [])
-            in_scope = [t for t in candidates if t in scope_real_tables]
-            if len(in_scope) == 1:
-                result.setdefault(in_scope[0], set()).add(col_name)
-            elif len(in_scope) > 1 and col_name in join_keys:
-                # Verified USING join key — belongs to all joined tables.
-                for tbl in in_scope:
-                    result.setdefault(tbl, set()).add(col_name)
-            else:
-                # Ambiguous: column exists in multiple tables but is not a
-                # confirmed join key — leave unresolved rather than guess.
-                result.setdefault("<unresolved>", set()).add(col_name)
-    else:
-        result.setdefault("<unresolved>", set()).update(scope_unresolved)
-
-
-# Mapping from sqlglot dialect names to sqllineage/sqlfluff dialect names.
-_DIALECT_MAP = {
-    "spark": "sparksql",
-    "spark2": "sparksql",
-    "tsql": "tsql",
-}
-
-
-def _to_sqllineage_dialect(dialect: str) -> str:
-    return _DIALECT_MAP.get(dialect.lower(), dialect.lower())
+            col = str(row["column_name"]).lower()
+            schema.setdefault(tbl, {})[col] = "TEXT"
+    return schema
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +89,7 @@ def _to_sqllineage_dialect(dialect: str) -> str:
 def extract_tables_and_columns(
     sql: str,
     dialect: str = "sqlite",
-    all_schemas: dict | None = None,
+    all_schemas: dict = {},
 ) -> dict[str, set[str]]:
     """Return ``{table_name: {column, ...}}`` for all real source tables in *sql*.
 
@@ -184,75 +98,157 @@ def extract_tables_and_columns(
     sql:
         Raw SQL string.
     dialect:
-        sqlglot / sqllineage dialect (e.g. ``"sqlite"``, ``"duckdb"``,
-        ``"snowflake"``).  Defaults to ``"sqlite"``.
+        sqlglot dialect (e.g. ``"sqlite"``, ``"duckdb"``, ``"snowflake"``).
+        Defaults to ``"sqlite"``.
     all_schemas:
-        Optional ``{schema_name: Schema}`` dict from Neo4j.  When ``None``
-        (default), ``get_account_schemas()`` is called automatically.
-        Pass ``{}`` to skip schema-assisted resolution.
+        ``{schema_name: Schema}`` dict from Neo4j.  Pass ``{}`` (default) to
+        skip schema-assisted resolution and rely solely on ``qualify()``.
 
     Returns
     -------
     dict
         ``{table_name: set_of_column_names}``.
+        Keys are qualified (``schema.table``) when the SQL uses a schema prefix,
+        or bare (``table``) otherwise.
     """
-    statement = sqlglot.parse_one(sql, dialect=dialect)
-    sqllineage_dialect = _to_sqllineage_dialect(dialect)
+    try:
+        statement = sqlglot.parse_one(sql, dialect=dialect)
+    except Exception:
+        return {}
 
-    # ── Collect all CTE names (virtual – not real tables) ────────────────────
+    # CTE names are virtual — not real source tables.
     cte_names: set[str] = {cte.alias.lower() for cte in statement.find_all(exp.CTE)}
 
-    # ── All real tables referenced anywhere in the query ────────────────────
+    # Real (non-CTE) table names referenced anywhere in the query.
+    # Uses qualified names (``schema.table``) when the SQL includes a schema prefix,
+    # so that same-named tables from different schemas are kept distinct.
     source_table_names: set[str] = {
-        t.name.lower()
+        _qualified_table_name(t)
         for t in statement.find_all(exp.Table)
         if t.name.lower() not in cte_names
     }
 
+    if not source_table_names:
+        return {}
+
+    # alias → real table name (e.g. "o" → "orders")
+    alias_map = _alias_to_table_map(statement, cte_names)
+
     result: dict[str, set[str]] = {t: set() for t in source_table_names}
-    result["<unresolved>"] = set()
+    unresolved: set[str] = set()
 
-    # ── Fetch schema metadata once (used per-scope below) ───────────────────
-    if all_schemas is None:
-        from nemo_retriever.tabular_data.ingestion.services.schema import get_account_schemas
-        all_schemas = get_account_schemas()
+    # qualify() mutates the AST in-place, rewriting USING into ON — extract
+    # join keys now, before qualify destroys them.
+    # Maps each USING column to the set of real tables joined on that column,
+    # derived from the ordered FROM + JOIN chain of each SELECT scope.
+    join_keys: dict[str, set[str]] = {}
+    for select in statement.find_all(exp.Select):
+        from_clause = select.args.get("from_")  # sqlglot uses "from_" — "from" is a Python keyword
+        joins = select.args.get("joins") or []
+        if not from_clause or not joins:
+            continue
+        # Build the ordered list of real tables for this SELECT's join chain.
+        chain: list[str] = []
+        ft = from_clause.this
+        if isinstance(ft, exp.Table):
+            n = alias_map.get((ft.alias or ft.name).lower())
+            if n:
+                chain.append(n)
+        for join in joins:
+            right = join.this
+            right_name = None
+            if isinstance(right, exp.Table):
+                right_name = alias_map.get((right.alias or right.name).lower())
 
-    col_to_tables = _build_column_to_tables(all_schemas) if all_schemas else None
+            # Collect join-key column names from USING or equivalent ON conditions.
+            # Some dialects (or sqlglot itself) convert USING to ON during parsing,
+            # so we check both: USING args first, then ON equalities where both sides
+            # share the same column name (t1.col = t2.col ≡ USING (col)).
+            key_cols: list[str] = [c.name.lower() for c in (join.args.get("using") or [])]
+            if not key_cols:
+                on_expr = join.args.get("on")
+                if on_expr:
+                    for eq in on_expr.find_all(exp.EQ):
+                        lc, rc = eq.left, eq.right
+                        if (
+                            isinstance(lc, exp.Column)
+                            and isinstance(rc, exp.Column)
+                            and lc.name.lower() == rc.name.lower()
+                        ):
+                            key_cols.append(lc.name.lower())
 
-    # ── Run sqllineage scope by scope ────────────────────────────────────────
-    #
-    # Collect all scopes: CTE bodies + inline subqueries.
-    # Only process those that reference at least one real table directly.
-    scopes: list[exp.Expression] = []
+            for col_name in key_cols:
+                participants = {t for t in chain if t in source_table_names}
+                if right_name and right_name in source_table_names:
+                    participants.add(right_name)
+                if participants:
+                    join_keys.setdefault(col_name, set()).update(participants)
 
-    for cte in statement.find_all(exp.CTE):
-        scopes.append(cte.this)
+            if right_name:
+                chain.append(right_name)
 
-    for subquery in statement.find_all(exp.Subquery):
-        scopes.append(subquery.this)
-
-    if isinstance(statement, exp.Select):
-        scopes.append(statement)
-    elif hasattr(statement, "this") and isinstance(statement.this, exp.Select):
-        scopes.append(statement.this)
-
-    for scope in scopes:
-        scope_real_tables = _real_tables_in_select(scope, cte_names)
-        if not scope_real_tables:
-            continue  # scope only references other CTEs — skip
-        _run_lineage_on_scope(
-            scope_sql=scope.sql(dialect=dialect),
-            scope_node=scope,
-            sqllineage_dialect=sqllineage_dialect,
-            scope_real_tables=scope_real_tables,
-            result=result,
-            col_to_tables=col_to_tables,
+    # qualify() annotates every Column node with its resolved source table.
+    schema_dict = _build_schema_dict(all_schemas) if all_schemas else {}
+    try:
+        qualified = qualify(
+            statement,
+            dialect=dialect,
+            schema=schema_dict,
+            qualify_columns=True,
+            validate_qualify_columns=False,
+            expand_stars=bool(schema_dict),
         )
+    except Exception:
+        qualified = statement  # fall back to unqualified AST if optimizer fails
 
-    if not result.get("<unresolved>"):
-        result.pop("<unresolved>", None)
+    # Walk every Column node; after qualify, col.table names the resolved table/alias.
+    for col in qualified.find_all(exp.Column):
+        col_name = col.name.lower() if col.name else None
+        if not col_name:
+            continue
+        table_ref = col.table.lower() if col.table else None
+        real_table = alias_map.get(table_ref) if table_ref else None
+        if real_table and real_table in source_table_names:
+            result[real_table].add(col_name)
+        elif not table_ref or table_ref in cte_names:
+            # Bare / CTE-referencing column — candidate for schema-assisted lookup.
+            unresolved.add(col_name)
+        # else: alias or subquery reference that doesn't map to a real table — skip.
 
-    return result
+    # Schema-assisted resolution for columns not attributed by qualify.
+    if unresolved and all_schemas:
+        col_to_tables: dict[str, list[str]] = {}
+        for schema_name, s in all_schemas.items():
+            df = s.columns_df
+            if df is None or df.empty:
+                continue
+            skey = schema_name.lower()
+            for _, row in df.iterrows():
+                col_n = str(row["column_name"]).lower()
+                tbl_n = str(row["table_name"]).lower()
+                # Try the qualified name first (schema.table); fall back to bare
+                # table name for SQL that doesn't prefix tables with a schema.
+                qualified = f"{skey}.{tbl_n}"
+                matched = qualified if qualified in source_table_names else (
+                    tbl_n if tbl_n in source_table_names else None
+                )
+                if matched and matched not in col_to_tables.get(col_n, []):
+                    col_to_tables.setdefault(col_n, []).append(matched)
+
+        for col_name in unresolved:
+            candidates = col_to_tables.get(col_name, [])
+            if len(candidates) == 1:
+                result[candidates[0]].add(col_name)
+            elif len(candidates) > 1 and col_name in join_keys:
+                # Cross-validate: only attribute to tables that are both in the
+                # schema candidates AND in the actual USING join for this column.
+                matched = [t for t in candidates if t in join_keys[col_name]]
+                for tbl in (matched or candidates):
+                    result[tbl].add(col_name)
+            # else: ambiguous — omit rather than guess.
+
+    # Drop real-table entries that ended up with no columns attributed.
+    return {k: v for k, v in result.items() if v}
 
 
 # ---------------------------------------------------------------------------
@@ -318,12 +314,18 @@ GROUP BY RFM_Bucket
 if __name__ == "__main__":
     import argparse
 
+    import pandas as pd
+
     parser = argparse.ArgumentParser(description="Extract tables and columns from SQL.")
     parser.add_argument("--dialect", default="sqlite", help="SQL dialect (default: sqlite)")
     args = parser.parse_args()
 
-    # Pass all_schemas={} to skip Neo4j when running standalone.
-    tables_and_columns = extract_tables_and_columns(_EXAMPLE_SQL, dialect=args.dialect)
+    from nemo_retriever.tabular_data.ingestion.services.schema import get_account_schemas
+    all_schemas = get_account_schemas()
+
+    tables_and_columns = extract_tables_and_columns(
+        _EXAMPLE_SQL, dialect=args.dialect, all_schemas=all_schemas
+    )
 
     print(f"Tables and columns extracted (dialect={args.dialect!r}):")
     print("=" * 50)
