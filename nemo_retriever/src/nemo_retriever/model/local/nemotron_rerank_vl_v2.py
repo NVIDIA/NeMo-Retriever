@@ -14,7 +14,7 @@ from ..model import BaseModel, RunMode
 
 
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
-_DEFAULT_MAX_LENGTH = 512
+_DEFAULT_MAX_LENGTH = 10240
 _DEFAULT_BATCH_SIZE = 32
 
 
@@ -182,6 +182,9 @@ class NemotronRerankVLV2(BaseModel):
         image_dicts = self._prepare_images(images_b64, len(documents))
         all_scores: List[float] = []
 
+        if hasattr(self._processor, "rerank_max_length"):
+            self._processor.rerank_max_length = max_length
+
         with torch.inference_mode():
             for start in range(0, len(documents), batch_size):
                 end = start + batch_size
@@ -237,6 +240,9 @@ class NemotronRerankVLV2(BaseModel):
 
         image_dicts = self._prepare_images(images_b64, len(pairs))
         all_scores: List[float] = []
+
+        if hasattr(self._processor, "rerank_max_length"):
+            self._processor.rerank_max_length = max_length
 
         with torch.inference_mode():
             for start in range(0, len(pairs), batch_size):

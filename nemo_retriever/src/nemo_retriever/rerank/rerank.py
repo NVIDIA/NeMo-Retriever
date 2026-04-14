@@ -51,16 +51,19 @@ Ray Data actor usage::
 
 from __future__ import annotations
 
+import json
 import traceback
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.model import is_vl_rerank_model
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 
+_render_warned = False
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
@@ -216,8 +219,6 @@ def rerank_hits(
     # Load images from stored URIs when using a VL reranker.
     images_b64: Optional[List[Optional[str]]] = None
     _model_name = getattr(model, "model_name", model_name) if model is not None else model_name
-    from nemo_retriever.model import is_vl_rerank_model
-
     if is_vl_rerank_model(_model_name):
         from nemo_retriever.io.image_store import load_image_b64_from_uri, render_page_image_b64
         from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
@@ -239,9 +240,7 @@ def rerank_hits(
                 bbox_str = h.get("bbox_xyxy_norm", "")
                 if page_b64 and bbox_str:
                     try:
-                        import json as _json
-
-                        bbox = _json.loads(bbox_str)
+                        bbox = json.loads(bbox_str)
                         if isinstance(bbox, list) and len(bbox) == 4:
                             cropped, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
                             images_b64.append(cropped)
@@ -251,13 +250,14 @@ def rerank_hits(
                 images_b64.append(page_b64)
             else:
                 images_b64.append(None)
-        if needs_render and not getattr(rerank_hits, "_render_warned", False):
+        global _render_warned
+        if needs_render and not _render_warned:
             print(
                 "WARNING: No stored images found; re-rendering pages from PDF for VL reranking. "
                 "Use .store(StoreParams(storage_uri=...)) during ingestion to avoid this overhead.",
                 flush=True,
             )
-            rerank_hits._render_warned = True
+            _render_warned = True
 
     if invoke_url:
         scores = _rerank_via_endpoint(

@@ -191,29 +191,12 @@ class Retriever:
             if self.hybrid:
                 from lancedb.rerankers import RRFReranker  # type: ignore
 
-                select_cols = [
-                    "text",
-                    "metadata",
-                    "source",
-                    "page_number",
-                    "pdf_page",
-                    "pdf_basename",
-                    "source_id",
-                    "path",
-                ]
-                if has_image_uri:
-                    select_cols.append("stored_image_uri")
-                if has_content_type:
-                    select_cols.append("content_type")
-                if has_bbox:
-                    select_cols.append("bbox_xyxy_norm")
                 hits = (
                     table.search(query_type="hybrid")
                     .vector(q)
                     .text(query_texts[i])
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(select_cols)
                     .limit(int(top_k))
                     .rerank(RRFReranker())
                     .to_list()
