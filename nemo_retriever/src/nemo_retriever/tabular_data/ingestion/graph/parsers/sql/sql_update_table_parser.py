@@ -1,11 +1,11 @@
-from shared.graph.parsers.sql.sql_select_parser import (
+from nemo_retriever.tabular_data.ingestion.graph.parsers.sql.sql_select_parser import (
     handle_expression,
     build_query_obj as build_select_query,
     add_alias,
 )
-from shared.graph.parsers.sql.utils import get_name_and_parent_name
-from shared.graph.model.reserved_words import Props, SQL
-from shared.graph.model.query import Query
+from nemo_retriever.tabular_data.ingestion.graph.parsers.sql.utils import get_name_and_parent_name
+from nemo_retriever.tabular_data.ingestion.graph.model.reserved_words import Props, SQL
+from nemo_retriever.tabular_data.ingestion.graph.model.query import Query
 
 
 def build_query_obj(
