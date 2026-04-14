@@ -18,6 +18,17 @@ from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 
 logger = logging.getLogger(__name__)
 
+conn = get_neo4j_conn()
+
+
+def get_db_ids_and_names():
+    query = """ match (db:db) 
+                return collect({id: db.id, name:db.name}) as dbs"""
+    return conn.query_read(
+        query=query, parameters={}
+    )[0]["dbs"]
+
+
 
 def load_schema_from_graph(
     db_name,
