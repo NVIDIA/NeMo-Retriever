@@ -42,17 +42,9 @@ def populate_tabular_data(data, num_workers, dialect):
         logger.warning("No tables found in source database; skipping graph population.")
         return
 
-    unique_databases = tables_df.database.unique()
-    for database in unique_databases:
-        sub_tables_df = tables_df.loc[tables_df["database"] == database]
-        sub_columns_df = columns_df.loc[columns_df["database"] == database]
-        logger.info(f"Started parsing db {database}.")
-        schemas = populate_db(
-            sub_tables_df,
-            sub_columns_df,
-            num_workers,
-        )
-        all_schemas.update(schemas)
+    database = tables_df["database"].iloc[0]
+    logger.info(f"Started parsing db {database}.")
+    all_schemas = populate_db(tables_df, columns_df, num_workers)
 
     if "fks" in data:
         populate_fks(fks=data["fks"])
