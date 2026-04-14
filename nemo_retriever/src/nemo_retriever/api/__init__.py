@@ -4,4 +4,4 @@
 
 from nemo_retriever.ingestor import Ingestor, RunMode, create_ingestor
 
-__all__ = ["Ingestor", "RunMode", "create_ingestor"]
+__all__ = ["RunMode", "create_ingestor"]

@@ -16,4 +16,5 @@ class GPUOperator:
 
     Executors can inspect ``isinstance(op, GPUOperator)`` to allocate
     GPU resources or route work to GPU-capable workers.
+
     """

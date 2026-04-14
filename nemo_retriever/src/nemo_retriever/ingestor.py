@@ -23,10 +23,11 @@ from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import IngestExecuteParams
 from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import RunMode
+from nemo_retriever.params import StoreParams
+from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VdbUploadParams
 
 
@@ -154,8 +155,9 @@ class ingestor:
         _ = _merge_params(params, kwargs)
         self._not_implemented("split")
 
-    def store(self) -> "ingestor":
+    def store(self, params: StoreParams | None = None, **kwargs: Any) -> "ingestor":
         """Record a store task configuration."""
+        _ = _merge_params(params, kwargs)
         self._not_implemented("store")
 
     def store_embed(self) -> "ingestor":

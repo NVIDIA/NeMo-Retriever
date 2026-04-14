@@ -10,6 +10,18 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+_CONTENT_TYPE_ALIASES: dict[str, str] = {
+    "chart": "chart",
+    "chart_caption": "chart",
+    "image": "image",
+    "image_caption": "image",
+    "infographic": "infographic",
+    "infographic_caption": "infographic",
+    "table": "table",
+    "table_caption": "table",
+    "text": "text",
+}
+
 
 def extract_embedding_from_row(
     row: Any,
@@ -91,6 +103,20 @@ def _build_detection_metadata(row: Any) -> Dict[str, Any]:
     return out
 
 
+def normalize_content_type(value: Any) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return None
+    return _CONTENT_TYPE_ALIASES.get(normalized, normalized)
+
+
+def update_metadata_with_content_type(metadata_obj: Dict[str, Any], *, content_type: Any) -> None:
+    normalized = normalize_content_type(content_type)
+    if normalized is None:
+        return
+    metadata_obj["_content_type"] = normalized
+
+
 def build_lancedb_row(
     row: Any,
     *,
@@ -115,6 +141,7 @@ def build_lancedb_row(
     if pdf_page:
         metadata_obj["pdf_page"] = pdf_page
     metadata_obj.update(_build_detection_metadata(row))
+    update_metadata_with_content_type(metadata_obj, content_type=getattr(row, "_content_type", None))
 
     orig_meta = getattr(row, "metadata", None)
     if isinstance(orig_meta, dict):

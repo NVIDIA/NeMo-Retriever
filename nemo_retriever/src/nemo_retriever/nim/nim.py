@@ -107,6 +107,11 @@ def _post_with_retries(
                 attempt += 1
                 continue
 
+            if 400 <= status_code < 500:
+                raise requests.HTTPError(
+                    f"HTTP {status_code} from {invoke_url}: {response.text}",
+                    response=response,
+                )
             response.raise_for_status()
             return response.json()
 
@@ -125,6 +130,9 @@ def _post_with_retries(
             time.sleep(backoff_time)
             attempt += 1
         except requests.RequestException as exc:
+            resp = getattr(exc, "response", None)
+            if resp is not None and 400 <= resp.status_code < 500:
+                raise  # client errors are not retryable
             if attempt == int(max_retries) - 1:
                 raise
             backoff_time = base_delay * (2**attempt)
@@ -153,6 +161,7 @@ def invoke_image_inference_batches(
     *,
     invoke_url: str,
     image_b64_list: Sequence[str],
+    merge_levels: Optional[Sequence[str]] = None,
     api_key: Optional[str] = None,
     timeout_s: float = 60.0,
     max_batch_size: int = 8,
@@ -165,6 +174,14 @@ def invoke_image_inference_batches(
 
     `invoke_url` may be a single URL or a comma-separated URL list.
     When multiple URLs are provided, batches are distributed round-robin.
+
+    Parameters
+    ----------
+    merge_levels
+        Optional per-image merge level (``"word"``, ``"sentence"``, or
+        ``"paragraph"``).  When provided, must have the same length as
+        *image_b64_list*.  Passed as ``merge_levels`` in the JSON payload
+        so the NIM can apply per-crop merging behaviour.
 
     Returns one response item per input image, in the same order.
     """
@@ -179,6 +196,9 @@ def invoke_image_inference_batches(
     if n == 0:
         return []
 
+    if merge_levels is not None and len(merge_levels) != n:
+        raise ValueError(f"merge_levels length ({len(merge_levels)}) must match image_b64_list length ({n})")
+
     ranges = _chunk_ranges(n, int(max_batch_size))
     flattened: List[Optional[Any]] = [None] * n
 
@@ -190,7 +210,9 @@ def invoke_image_inference_batches(
             }
             for b64 in image_b64_list[start:end]
         ]
-        payload = {"input": inputs}
+        payload: Dict[str, Any] = {"input": inputs}
+        if merge_levels is not None:
+            payload["merge_levels"] = list(merge_levels[start:end])
         response_json = _post_with_retries(
             invoke_url=endpoint_url,
             payload=payload,
