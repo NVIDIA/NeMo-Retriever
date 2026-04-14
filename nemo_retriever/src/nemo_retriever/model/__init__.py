@@ -9,16 +9,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nemo_retriever.model.model import BaseModel
 
+VL_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
+VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+
 _VL_EMBED_MODEL_IDS = frozenset(
     {
-        "nvidia/llama-nemotron-embed-vl-1b-v2",
+        VL_EMBED_MODEL,
         "llama-nemotron-embed-vl-1b-v2",
     }
 )
 
 _VL_RERANK_MODEL_IDS = frozenset(
     {
-        "nvidia/llama-nemotron-rerank-vl-1b-v2",
+        VL_RERANK_MODEL,
         "llama-nemotron-rerank-vl-1b-v2",
     }
 )
@@ -26,7 +29,7 @@ _VL_RERANK_MODEL_IDS = frozenset(
 # Short name → full HF repo ID.
 _EMBED_MODEL_ALIASES: dict[str, str] = {
     "nemo_retriever_v1": "nvidia/llama-nemotron-embed-1b-v2",
-    "llama-nemotron-embed-vl-1b-v2": "nvidia/llama-nemotron-embed-vl-1b-v2",
+    "llama-nemotron-embed-vl-1b-v2": VL_EMBED_MODEL,
 }
 
 _DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"

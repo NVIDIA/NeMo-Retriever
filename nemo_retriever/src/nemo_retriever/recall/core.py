@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.retriever import Retriever
 
 logger = logging.getLogger(__name__)
@@ -520,7 +521,7 @@ def retrieve_and_score(
     retriever = Retriever(
         lancedb_uri=cfg.lancedb_uri,
         lancedb_table=cfg.lancedb_table,
-        embedder=cfg.embedding_model or "nvidia/llama-nemotron-embed-1b-v2",
+        embedder=cfg.embedding_model or VL_EMBED_MODEL,
         embedding_http_endpoint=cfg.embedding_http_endpoint,
         embedding_api_key=cfg.embedding_api_key,
         top_k=cfg.top_k,
@@ -531,7 +532,7 @@ def retrieve_and_score(
         local_hf_cache_dir=cfg.local_hf_cache_dir,
         local_hf_batch_size=cfg.local_hf_batch_size,
         reranker=bool(cfg.reranker),
-        reranker_model_name=cfg.reranker or "nvidia/llama-nemotron-rerank-1b-v2",
+        reranker_model_name=cfg.reranker or VL_RERANK_MODEL,
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=cfg.reranker_api_key,
         reranker_batch_size=cfg.reranker_batch_size,

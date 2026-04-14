@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 from tqdm import tqdm
 
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
+
 _KEEP_KEYS = frozenset(
     {
         "text",
@@ -56,7 +58,7 @@ class Retriever:
 
     lancedb_uri: str = "lancedb"
     lancedb_table: str = "nv-ingest"
-    embedder: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    embedder: str = VL_EMBED_MODEL
     embedding_http_endpoint: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
@@ -71,7 +73,7 @@ class Retriever:
     # Reranking -----------------------------------------------------------
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
-    reranker_model_name: Optional[str] = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+    reranker_model_name: Optional[str] = VL_RERANK_MODEL
     """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2')."""
     reranker_endpoint: Optional[str] = None
     """Base URL of a vLLM / NIM ranking endpoint. Appends ``/v1/ranking`` unless already using ``/reranking``."""

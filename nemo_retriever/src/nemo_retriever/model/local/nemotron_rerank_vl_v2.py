@@ -13,7 +13,9 @@ from nemo_retriever.utils.hf_model_registry import get_hf_revision
 from ..model import BaseModel, RunMode
 
 
-_DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+from nemo_retriever.model import VL_RERANK_MODEL
+
+_DEFAULT_MODEL = VL_RERANK_MODEL
 _DEFAULT_MAX_LENGTH = 10240
 _DEFAULT_BATCH_SIZE = 1
 

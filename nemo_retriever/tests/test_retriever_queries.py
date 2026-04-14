@@ -357,7 +357,7 @@ class TestRetrieverDefaults:
         from nemo_retriever.retriever import Retriever
 
         r = Retriever()
-        assert r.reranker_max_length == 512
+        assert r.reranker_max_length == 10240
 
     def test_reranker_model_not_initialized_at_construction(self):
         from nemo_retriever.retriever import Retriever
