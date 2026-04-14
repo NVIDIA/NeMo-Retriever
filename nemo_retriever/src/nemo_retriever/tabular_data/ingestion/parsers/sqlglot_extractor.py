@@ -140,9 +140,7 @@ def extract_tables_and_columns(
     # Uses qualified names (``schema.table``) when the SQL includes a schema prefix,
     # so that same-named tables from different schemas are kept distinct.
     source_table_names: set[str] = {
-        _qualified_table_name(t)
-        for t in statement.find_all(exp.Table)
-        if t.name.lower() not in cte_names
+        _qualified_table_name(t) for t in statement.find_all(exp.Table) if t.name.lower() not in cte_names
     }
 
     if not source_table_names:
@@ -179,10 +177,7 @@ def extract_tables_and_columns(
                 table_to_schema[tbl] = skey
                 bare_tables.discard(tbl)
 
-    result: dict[str, TableMatch] = {
-        t: TableMatch(schema_name=table_to_schema.get(t))
-        for t in source_table_names
-    }
+    result: dict[str, TableMatch] = {t: TableMatch(schema_name=table_to_schema.get(t)) for t in source_table_names}
     unresolved: set[str] = set()
 
     # qualify() mutates the AST in-place, rewriting USING into ON — extract
@@ -277,8 +272,8 @@ def extract_tables_and_columns(
                 # Try the qualified name first (schema.table); fall back to bare
                 # table name for SQL that doesn't prefix tables with a schema.
                 qualified = f"{skey}.{tbl_n}"
-                matched = qualified if qualified in source_table_names else (
-                    tbl_n if tbl_n in source_table_names else None
+                matched = (
+                    qualified if qualified in source_table_names else (tbl_n if tbl_n in source_table_names else None)
                 )
                 if matched and matched not in col_to_tables.get(col_n, []):
                     col_to_tables.setdefault(col_n, []).append(matched)
@@ -291,7 +286,7 @@ def extract_tables_and_columns(
                 # Cross-validate: only attribute to tables that are both in the
                 # schema candidates AND in the actual USING join for this column.
                 matched = [t for t in candidates if t in join_keys[col_name]]
-                for tbl in (matched or candidates):
+                for tbl in matched or candidates:
                     result[tbl].columns.add(col_name)
             # else: ambiguous — omit rather than guess.
 

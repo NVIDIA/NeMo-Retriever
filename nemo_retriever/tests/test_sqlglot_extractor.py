@@ -32,18 +32,20 @@ class _MockSchema:
 
 
 # Shared schema covering all tables used by the test queries below.
-_SCHEMA = _MockSchema([
-    {"table_name": "orders",         "column_name": "order_id"},
-    {"table_name": "orders",         "column_name": "customer_id"},
-    {"table_name": "orders",         "column_name": "order_status"},
-    {"table_name": "orders",         "column_name": "order_purchase_timestamp"},
-    {"table_name": "customers",      "column_name": "customer_id"},
-    {"table_name": "customers",      "column_name": "customer_unique_id"},
-    {"table_name": "order_items",    "column_name": "order_id"},
-    {"table_name": "order_items",    "column_name": "price"},
-    {"table_name": "order_payments", "column_name": "order_id"},
-    {"table_name": "order_payments", "column_name": "payment_value"},
-])
+_SCHEMA = _MockSchema(
+    [
+        {"table_name": "orders", "column_name": "order_id"},
+        {"table_name": "orders", "column_name": "customer_id"},
+        {"table_name": "orders", "column_name": "order_status"},
+        {"table_name": "orders", "column_name": "order_purchase_timestamp"},
+        {"table_name": "customers", "column_name": "customer_id"},
+        {"table_name": "customers", "column_name": "customer_unique_id"},
+        {"table_name": "order_items", "column_name": "order_id"},
+        {"table_name": "order_items", "column_name": "price"},
+        {"table_name": "order_payments", "column_name": "order_id"},
+        {"table_name": "order_payments", "column_name": "payment_value"},
+    ]
+)
 
 _ALL_SCHEMAS = {"ecommerce": _SCHEMA}
 

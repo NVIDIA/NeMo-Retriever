@@ -103,7 +103,6 @@ def accumulate_added_column_props(added_column, edges_to_add, new_schema):
     )
 
 
-
 def accumulate_updated_column(column_in_intersection, items_to_update_in_graph, new_schema):
     # verify that the node with the correct id is in hand
     # new_schema.replace_id(column_in_intersection.props_y["id"], column_in_intersection.props_x["id"])

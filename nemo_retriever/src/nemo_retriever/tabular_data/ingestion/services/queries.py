@@ -133,9 +133,7 @@ def parse_queries_df(
                 schemas=schemas,
             )
             if is_parsed:
-                query_obj.sql_node.add_property(
-                    "nodes_count", query_obj.get_nodes_counter()
-                )
+                query_obj.sql_node.add_property("nodes_count", query_obj.get_nodes_counter())
                 parsed_queries.update({query_obj.id: query_obj})
         except Exception as err:
             logger.info("Failed parsing query")
@@ -144,9 +142,7 @@ def parse_queries_df(
     return failed_queries
 
 
-def populate_queries(
-    schemas, queries_df, num_workers, dialect
-):
+def populate_queries(schemas, queries_df, num_workers, dialect):
     before = time.time()
     logger.info(f"Starting to parse {len(queries_df)} queries.")
 
@@ -171,10 +167,7 @@ def populate_queries(
                 maxinterval=10,
             ) as pbar:
                 with ThreadPoolExecutor(num_workers) as executor:
-                    futures = (
-                        executor.submit(add_query, q.get_edges())
-                        for q in parsed_queries.values()
-                    )
+                    futures = (executor.submit(add_query, q.get_edges()) for q in parsed_queries.values())
                     for future in as_completed(futures):
                         future.result()
                         pbar.update(1)
