@@ -188,7 +188,9 @@ def render_page_image_b64(pdf_path: str, page_number: int, *, dpi: int = 300) ->
 
         doc = pdfium.PdfDocument(pdf_path)
         try:
-            page_idx = max(0, int(page_number) - 1)
+            page_idx = int(page_number) - 1
+            if page_idx < 0:
+                return None
             page = doc[page_idx]
             render_info = _render_page_to_base64(page, dpi=dpi)
             return render_info.get("image_b64")
