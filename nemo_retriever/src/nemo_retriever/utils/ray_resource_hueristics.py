@@ -200,13 +200,26 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
     if not ray.is_initialized():
         raise ValueError("Ray is not initialized")
 
+    def _coerce_count(value: object) -> int:
+        try:
+            parsed = float(value)  # Ray may report fractional available resources.
+        except (TypeError, ValueError):
+            return 0
+        if parsed <= 0:
+            return 0
+        return int(parsed)
+
     total_resources: dict[str, object] = ray.cluster_resources()
     available_resources: dict[str, object] = ray.available_resources()
 
     return ClusterResources(
-        total_resources=Resources(cpu_count=total_resources.get("CPU", 0), gpu_count=total_resources.get("GPU", 0)),
+        total_resources=Resources(
+            cpu_count=_coerce_count(total_resources.get("CPU", 0)),
+            gpu_count=_coerce_count(total_resources.get("GPU", 0)),
+        ),
         available_resources=Resources(
-            cpu_count=available_resources.get("CPU", 0), gpu_count=available_resources.get("GPU", 0)
+            cpu_count=_coerce_count(available_resources.get("CPU", 0)),
+            gpu_count=_coerce_count(available_resources.get("GPU", 0)),
         ),
     )
 

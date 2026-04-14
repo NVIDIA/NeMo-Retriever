@@ -10,6 +10,18 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+_CONTENT_TYPE_ALIASES: dict[str, str] = {
+    "chart": "chart",
+    "chart_caption": "chart",
+    "image": "image",
+    "image_caption": "image",
+    "infographic": "infographic",
+    "infographic_caption": "infographic",
+    "table": "table",
+    "table_caption": "table",
+    "text": "text",
+}
+
 
 def extract_embedding_from_row(
     row: Any,
@@ -91,6 +103,20 @@ def _build_detection_metadata(row: Any) -> Dict[str, Any]:
     return out
 
 
+def normalize_content_type(value: Any) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return None
+    return _CONTENT_TYPE_ALIASES.get(normalized, normalized)
+
+
+def update_metadata_with_content_type(metadata_obj: Dict[str, Any], *, content_type: Any) -> None:
+    normalized = normalize_content_type(content_type)
+    if normalized is None:
+        return
+    metadata_obj["_content_type"] = normalized
+
+
 def build_lancedb_row(
     row: Any,
     *,
@@ -115,6 +141,7 @@ def build_lancedb_row(
     if pdf_page:
         metadata_obj["pdf_page"] = pdf_page
     metadata_obj.update(_build_detection_metadata(row))
+    update_metadata_with_content_type(metadata_obj, content_type=getattr(row, "_content_type", None))
 
     orig_meta = getattr(row, "metadata", None)
     if isinstance(orig_meta, dict):
@@ -140,6 +167,15 @@ def build_lancedb_row(
         row_out["text"] = str(text) if isinstance(text, str) else ""
     else:
         row_out["text"] = ""
+
+    stored_uri = getattr(row, "_stored_image_uri", None)
+    row_out["stored_image_uri"] = str(stored_uri) if stored_uri else ""
+
+    content_type = getattr(row, "_content_type", None)
+    row_out["content_type"] = str(content_type) if content_type else ""
+
+    bbox = getattr(row, "_bbox_xyxy_norm", None)
+    row_out["bbox_xyxy_norm"] = json.dumps(bbox) if bbox else ""
 
     return row_out
 
@@ -183,6 +219,9 @@ def lancedb_schema(vector_dim: int = 2048) -> Any:
             pa.field("path", pa.string()),
             pa.field("text", pa.string()),
             pa.field("metadata", pa.string()),
+            pa.field("stored_image_uri", pa.string()),
+            pa.field("content_type", pa.string()),
+            pa.field("bbox_xyxy_norm", pa.string()),
         ]
     )
 

@@ -41,7 +41,9 @@ class LlamaNemotronEmbedVL1BV2Embedder:
     def __post_init__(self) -> None:
         from transformers import AutoModel
 
-        model_id = self.model_id or "nvidia/llama-nemotron-embed-vl-1b-v2"
+        from nemo_retriever.model import VL_EMBED_MODEL
+
+        model_id = self.model_id or VL_EMBED_MODEL
         dev = torch.device(self.device or ("cuda" if torch.cuda.is_available() else "cpu"))
         hf_cache_dir = configure_global_hf_cache_base(self.hf_cache_dir)
 

@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.retriever import Retriever
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ class RecallConfig:
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
+    embed_modality: str = "text"
 
 
 def _normalize_pdf_name(value: str) -> str:
@@ -519,7 +521,7 @@ def retrieve_and_score(
     retriever = Retriever(
         lancedb_uri=cfg.lancedb_uri,
         lancedb_table=cfg.lancedb_table,
-        embedder=cfg.embedding_model or "nvidia/llama-nemotron-embed-1b-v2",
+        embedder=cfg.embedding_model or VL_EMBED_MODEL,
         embedding_http_endpoint=cfg.embedding_http_endpoint,
         embedding_api_key=cfg.embedding_api_key,
         top_k=cfg.top_k,
@@ -529,10 +531,12 @@ def retrieve_and_score(
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,
         local_hf_batch_size=cfg.local_hf_batch_size,
-        reranker=cfg.reranker,
+        reranker=bool(cfg.reranker),
+        reranker_model_name=cfg.reranker or VL_RERANK_MODEL,
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=cfg.reranker_api_key,
         reranker_batch_size=cfg.reranker_batch_size,
+        rerank_modality=cfg.embed_modality,
     )
     start = time.time()
     raw_hits = retriever.queries(queries)

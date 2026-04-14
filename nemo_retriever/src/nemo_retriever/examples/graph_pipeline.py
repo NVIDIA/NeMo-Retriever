@@ -48,6 +48,7 @@ from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vector_store.lancedb_store import handle_lancedb
@@ -227,7 +228,7 @@ def main(
     table_structure_invoke_url: Optional[str] = typer.Option(None, "--table-structure-invoke-url"),
     embed_invoke_url: Optional[str] = typer.Option(None, "--embed-invoke-url"),
     # Embedding
-    embed_model_name: str = typer.Option("nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name"),
+    embed_model_name: str = typer.Option(VL_EMBED_MODEL, "--embed-model-name"),
     embed_modality: str = typer.Option("text", "--embed-modality"),
     embed_granularity: str = typer.Option("element", "--embed-granularity"),
     text_elements_modality: Optional[str] = typer.Option(None, "--text-elements-modality"),
@@ -285,7 +286,7 @@ def main(
     audio_split_interval: int = typer.Option(500000, "--audio-split-interval", min=1),
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
-    reranker_model_name: str = typer.Option("nvidia/llama-nemotron-rerank-1b-v2", "--reranker-model-name"),
+    reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name"),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -672,6 +673,7 @@ def main(
                 match_mode=recall_match_mode,
                 audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
+                embed_modality=embed_modality,
             )
             evaluation_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
