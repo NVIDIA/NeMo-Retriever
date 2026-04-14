@@ -74,7 +74,6 @@ def parse_query_slim(q: str, query_obj: Query, dialect: str, schemas: dict) -> b
             except Exception:
                 continue
 
-    query_obj.set_reached_columns_ids(column_ids)
     return bool(query_obj.get_tables_ids())
 
 
