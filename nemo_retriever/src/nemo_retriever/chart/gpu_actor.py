@@ -9,16 +9,21 @@ from typing import Any, Optional
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.fusion import ProcessOnlyFusionSafe
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.chart.shared import graphic_elements_ocr_page_elements
 
 
-class GraphicElementsActor(AbstractOperator, GPUOperator):
+class GraphicElementsActor(ProcessOnlyFusionSafe, AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes both graphic-elements and OCR
     models once per actor and runs the combined stage.
     """
+
+    fusion_stage_id = "graphic_elements"
+    fusion_next_stage_ids = ("ocr",)
+    fusion_can_start_segment = False
 
     def __init__(
         self,

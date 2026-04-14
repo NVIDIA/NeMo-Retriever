@@ -23,7 +23,7 @@ class PageElementDetectionCPUActor(ProcessOnlyFusionSafe, AbstractOperator, CPUO
 
     DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
     fusion_stage_id = "page_elements"
-    fusion_next_stage_ids = ("ocr",)
+    fusion_next_stage_ids = ("table_structure", "graphic_elements", "ocr")
     fusion_can_start_segment = True
 
     def __init__(self, **detect_kwargs: Any) -> None:

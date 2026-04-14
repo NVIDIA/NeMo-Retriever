@@ -101,8 +101,20 @@ class DataFrameMarkerOperator(AbstractOperator):
 
 class FusionPageElementsOperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
     fusion_stage_id = "page_elements"
-    fusion_next_stage_ids = ("ocr",)
+    fusion_next_stage_ids = ("table_structure", "graphic_elements", "ocr")
     fusion_can_start_segment = True
+
+
+class FusionTableStructureOperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "table_structure"
+    fusion_next_stage_ids = ("graphic_elements", "ocr")
+    fusion_can_start_segment = False
+
+
+class FusionGraphicElementsOperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "graphic_elements"
+    fusion_next_stage_ids = ("ocr",)
+    fusion_can_start_segment = False
 
 
 class FusionOCROperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
@@ -1134,6 +1146,43 @@ def _build_fusable_dataframe_graph() -> Graph:
     return graph
 
 
+def _build_extended_fusable_dataframe_graph() -> Graph:
+    graph = Graph()
+    graph.add_chain(
+        Node(
+            DataFrameMarkerOperator("extract", increment=1),
+            name="PDFExtractionActor",
+            operator_class=DataFrameMarkerOperator,
+            operator_kwargs={"label": "extract", "increment": 1},
+        ),
+        Node(
+            FusionPageElementsOperator("page", increment=2),
+            name="PageElementDetectionActor",
+            operator_class=FusionPageElementsOperator,
+            operator_kwargs={"label": "page", "increment": 2},
+        ),
+        Node(
+            FusionTableStructureOperator("table", increment=8),
+            name="TableStructureActor",
+            operator_class=FusionTableStructureOperator,
+            operator_kwargs={"label": "table", "increment": 8},
+        ),
+        Node(
+            FusionGraphicElementsOperator("graphic", increment=16),
+            name="GraphicElementsActor",
+            operator_class=FusionGraphicElementsOperator,
+            operator_kwargs={"label": "graphic", "increment": 16},
+        ),
+        Node(
+            FusionOCROperator("ocr", increment=4),
+            name="OCRActor",
+            operator_class=FusionOCROperator,
+            operator_kwargs={"label": "ocr", "increment": 4},
+        ),
+    )
+    return graph
+
+
 class TestFusionCompiler:
     def test_compile_graph_for_fusion_collapses_eligible_segment(self):
         graph = _build_fusable_dataframe_graph()
@@ -1179,6 +1228,84 @@ class TestFusionCompiler:
                 },
             }
         ]
+
+    def test_compile_graph_for_fusion_collapses_extended_linear_segment(self):
+        graph = _build_extended_fusable_dataframe_graph()
+        overrides = {
+            "PageElementDetectionActor": {
+                "batch_size": 16,
+                "target_num_rows_per_block": 16,
+                "concurrency": 4,
+                "num_cpus": 1.0,
+                "num_gpus": 0.1,
+            },
+            "TableStructureActor": {
+                "batch_size": 8,
+                "target_num_rows_per_block": 8,
+                "concurrency": 3,
+                "num_cpus": 1.5,
+                "num_gpus": 0.1,
+            },
+            "GraphicElementsActor": {
+                "batch_size": 6,
+                "target_num_rows_per_block": 6,
+                "concurrency": 2,
+                "num_cpus": 1.25,
+                "num_gpus": 0.1,
+            },
+            "OCRActor": {
+                "batch_size": 4,
+                "target_num_rows_per_block": 4,
+                "concurrency": 2,
+                "num_cpus": 2.0,
+                "num_gpus": 0.2,
+            },
+        }
+
+        compiled = compile_graph_for_fusion(graph, enable_fusion=True, node_overrides=overrides)
+        nodes = InprocessExecutor._linearize(compiled.graph)
+
+        assert [node.name for node in nodes] == [
+            "PDFExtractionActor",
+            "Fused[PageElementDetectionActor+TableStructureActor+GraphicElementsActor+OCRActor]",
+        ]
+        assert nodes[1].operator_class is FusedOperator
+        assert compiled.fusion_summary["applied"] is True
+        assert compiled.fusion_summary["compiled_stage_count"] == 2
+        assert compiled.fusion_summary["fused_segments"] == [
+            {
+                "name": "Fused[PageElementDetectionActor+TableStructureActor+GraphicElementsActor+OCRActor]",
+                "stage_names": [
+                    "PageElementDetectionActor",
+                    "TableStructureActor",
+                    "GraphicElementsActor",
+                    "OCRActor",
+                ],
+                "operator_classes": [
+                    "FusionPageElementsOperator",
+                    "FusionTableStructureOperator",
+                    "FusionGraphicElementsOperator",
+                    "FusionOCROperator",
+                ],
+                "stage_count": 4,
+                "aggregated_overrides": {
+                    "batch_size": 4,
+                    "target_num_rows_per_block": 4,
+                    "concurrency": 2,
+                    "num_cpus": 2.0,
+                    "num_gpus": pytest.approx(0.5),
+                },
+            }
+        ]
+
+    def test_inprocess_executor_preserves_dataframe_results_with_extended_fusion(self):
+        data = pd.DataFrame({"value": [10]})
+        graph = _build_extended_fusable_dataframe_graph()
+
+        baseline = InprocessExecutor(graph, enable_fusion=False).ingest(data.copy())
+        fused = InprocessExecutor(graph, enable_fusion=True).ingest(data.copy())
+
+        pd.testing.assert_frame_equal(fused, baseline)
 
     def test_inprocess_executor_preserves_dataframe_results_with_fusion(self):
         data = pd.DataFrame({"value": [10]})

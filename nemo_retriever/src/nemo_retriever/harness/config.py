@@ -83,8 +83,14 @@ class HarnessConfig:
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
     embed_granularity: str = "element"
+    extract_text: bool = True
+    extract_tables: bool = True
+    extract_charts: bool = True
     extract_page_as_image: bool = True
     extract_infographics: bool = False
+    use_graphic_elements: bool = False
+    use_table_structure: bool = False
+    table_output_format: str | None = None
     write_detection_file: bool = False
     use_heuristics: bool = False
     store_images_uri: str | None = None
@@ -301,8 +307,14 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
+        "HARNESS_EXTRACT_TEXT": ("extract_text", _parse_bool),
+        "HARNESS_EXTRACT_TABLES": ("extract_tables", _parse_bool),
+        "HARNESS_EXTRACT_CHARTS": ("extract_charts", _parse_bool),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
+        "HARNESS_USE_GRAPHIC_ELEMENTS": ("use_graphic_elements", _parse_bool),
+        "HARNESS_USE_TABLE_STRUCTURE": ("use_table_structure", _parse_bool),
+        "HARNESS_TABLE_OUTPUT_FORMAT": ("table_output_format", str),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
         "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
