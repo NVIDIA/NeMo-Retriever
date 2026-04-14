@@ -4,17 +4,32 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nemo_retriever.model.model import BaseModel
+
+VL_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
+VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+
 _VL_EMBED_MODEL_IDS = frozenset(
     {
-        "nvidia/llama-nemotron-embed-vl-1b-v2",
+        VL_EMBED_MODEL,
         "llama-nemotron-embed-vl-1b-v2",
+    }
+)
+
+_VL_RERANK_MODEL_IDS = frozenset(
+    {
+        VL_RERANK_MODEL,
+        "llama-nemotron-rerank-vl-1b-v2",
     }
 )
 
 # Short name → full HF repo ID.
 _EMBED_MODEL_ALIASES: dict[str, str] = {
     "nemo_retriever_v1": "nvidia/llama-nemotron-embed-1b-v2",
-    "llama-nemotron-embed-vl-1b-v2": "nvidia/llama-nemotron-embed-vl-1b-v2",
+    "llama-nemotron-embed-vl-1b-v2": VL_EMBED_MODEL,
 }
 
 _DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
@@ -33,6 +48,11 @@ def resolve_embed_model(model_name: str | None) -> str:
 def is_vl_embed_model(model_name: str | None) -> bool:
     """Return True if *model_name* refers to the VL embedding model."""
     return resolve_embed_model(model_name) in _VL_EMBED_MODEL_IDS
+
+
+def is_vl_rerank_model(model_name: str | None) -> bool:
+    """Return True if *model_name* refers to the VL reranker model."""
+    return (model_name or "") in _VL_RERANK_MODEL_IDS
 
 
 def create_local_embedder(
@@ -72,4 +92,33 @@ def create_local_embedder(
         normalize=normalize,
         max_length=max_length,
         model_id=model_id,
+    )
+
+
+def create_local_reranker(
+    model_name: str | None = None,
+    *,
+    device: str | None = None,
+    hf_cache_dir: str | None = None,
+) -> "BaseModel":
+    """Create the appropriate local reranker model (VL or text-only).
+
+    Dispatches to ``NemotronRerankVLV2`` when *model_name* matches a VL
+    reranker ID, otherwise returns the text-only ``NemotronRerankV2``.
+    """
+    if is_vl_rerank_model(model_name):
+        from nemo_retriever.model.local.nemotron_rerank_vl_v2 import NemotronRerankVLV2
+
+        return NemotronRerankVLV2(
+            model_name=model_name,
+            device=device,
+            hf_cache_dir=hf_cache_dir,
+        )
+
+    from nemo_retriever.model.local.nemotron_rerank_v2 import NemotronRerankV2
+
+    return NemotronRerankV2(
+        model_name=model_name or "nvidia/llama-nemotron-rerank-1b-v2",
+        device=device,
+        hf_cache_dir=hf_cache_dir,
     )
