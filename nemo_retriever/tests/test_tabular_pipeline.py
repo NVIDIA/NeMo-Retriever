@@ -80,6 +80,10 @@ class _DummyDuckDB(SQLDatabase):
     def __init__(self, connection_string: str) -> None:
         pass
 
+    @property
+    def dialect(self) -> str:
+        return "duckdb"
+
     def execute(self, sql: str, parameters=None) -> pd.DataFrame:
         return pd.DataFrame()
 
