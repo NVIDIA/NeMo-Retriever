@@ -28,9 +28,7 @@ EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 NEMOTRON_PARSE_INITIAL_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
 NEMOTRON_PARSE_MIN_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
 NEMOTRON_PARSE_MAX_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
-VLLM_GPUS_PER_ACTOR = (
-    1.0  # vLLM owns the full GPU for KV-cache management and continuous batching.  # noqa: E501
-)
+VLLM_GPUS_PER_ACTOR = 1.0  # vLLM owns the full GPU for KV-cache management and continuous batching.  # noqa: E501
 NEMOTRON_PARSE_BATCH_SIZE = 64  # Ray batch size AND Nemotron Parse inference batch size
 
 # OCR Actor constants (PER-GPU)
