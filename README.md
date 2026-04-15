@@ -95,7 +95,7 @@ dict_keys([1, 2, 3])
 dict_keys(['multimodal_test.pdf'])
 ```
 
-### Step 3: Query Ingested Content
+### Query Ingested Content
 
 To query for relevant snippets of the ingested content, and use them with an LLM to generate answers, use the following code.
 
