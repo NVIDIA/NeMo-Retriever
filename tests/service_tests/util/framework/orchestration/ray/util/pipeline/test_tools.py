@@ -18,7 +18,7 @@ from nv_ingest_api.internal.primitives.ingest_control_message import IngestContr
 def ray_startup_and_shutdown():
     # Only start if not already started (lets you run under pytest-xdist or interactively)
     if not ray.is_initialized():
-        ray.init(local_mode=True, ignore_reinit_error=True)
+        ray.init(num_cpus=1, ignore_reinit_error=True)
     yield
     ray.shutdown()
 

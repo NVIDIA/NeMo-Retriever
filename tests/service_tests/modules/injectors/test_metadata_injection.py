@@ -25,7 +25,7 @@ from nv_ingest_api.internal.schemas.meta.metadata_schema import ContentHierarchy
 def ray_fixture():
     """Initialize Ray for the entire test module."""
     if not ray.is_initialized():
-        ray.init(local_mode=True, ignore_reinit_error=True)
+        ray.init(num_cpus=1, ignore_reinit_error=True)
     yield
     if ray.is_initialized():
         ray.shutdown()
