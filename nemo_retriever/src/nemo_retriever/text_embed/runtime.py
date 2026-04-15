@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, List, Optional, Sequence
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from nemo_retriever.model import resolve_embed_model
 from nemo_retriever.params.models import IMAGE_MODALITIES
@@ -150,21 +153,15 @@ def embed_text_main_text_embed(
                 )
                 parts.append(part)
             out_df = pd.concat(parts).sort_index()
-    except BaseException as exc:
-        import traceback as traceback_module
-
-        print(f"Warning: embedding failed: {type(exc).__name__}: {exc}")
-        traceback_module.print_exc()
-        err_payload = {
-            "embedding": None,
-            "error": {"stage": "embed", "type": exc.__class__.__name__, "message": str(exc)},
-        }
+    except Exception as exc:
+        logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         out_df = batch_df.copy()
-        if output_column:
-            out_df[output_column] = [err_payload for _ in range(len(out_df.index))]
-        out_df[embedding_dim_column] = [0 for _ in range(len(out_df.index))]
-        out_df[has_embedding_column] = [False for _ in range(len(out_df.index))]
-        out_df["_contains_embeddings"] = [False for _ in range(len(out_df.index))]
+        out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)
+        out_df[embedding_dim_column] = 0
+        out_df[has_embedding_column] = False
+        for column in ("_image_b64", "_embed_modality"):
+            if column in out_df.columns:
+                out_df = out_df.drop(columns=[column])
         return out_df
 
     if embedding_dim_column:

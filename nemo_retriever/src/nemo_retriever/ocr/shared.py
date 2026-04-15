@@ -368,8 +368,6 @@ def _blocks_to_pseudo_markdown(
     if not valid:
         return ""
 
-    from sklearn.cluster import DBSCAN
-
     df = pd.DataFrame(valid)
     df = df.sort_values("sort_y")
 
@@ -377,11 +375,9 @@ def _blocks_to_pseudo_markdown(
     crop_h = crop_hw[0] if crop_hw else 0
 
     if crop_h > 0:
-        # Pixel-space clustering (matches nv-ingest eps=10).
         y_pixels = (y_vals * crop_h).astype(int)
         eps = 10
     else:
-        # Fallback: normalise to [0,1] when pixel dims are unknown.
         y_range = y_vals.max() - y_vals.min()
         if y_range > 0:
             y_pixels = (y_vals - y_vals.min()) / y_range
@@ -390,9 +386,15 @@ def _blocks_to_pseudo_markdown(
             y_pixels = y_vals
             eps = 0.1
 
-    dbscan = DBSCAN(eps=eps, min_samples=1)
-    dbscan.fit(y_pixels.reshape(-1, 1))
-    df["cluster"] = dbscan.labels_
+    try:
+        from sklearn.cluster import DBSCAN
+
+        dbscan = DBSCAN(eps=eps, min_samples=1)
+        dbscan.fit(y_pixels.reshape(-1, 1))
+        df["cluster"] = dbscan.labels_
+    except ImportError:
+        # Naive fallback: round y to a coarse grid to simulate row grouping.
+        df["cluster"] = (y_pixels / (eps if eps > 0 else 1)).round().astype(int)
 
     df = df.sort_values(["cluster", "sort_x"])
 

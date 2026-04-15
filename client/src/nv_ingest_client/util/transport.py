@@ -1,6 +1,7 @@
 import re
 import logging
 from nv_ingest_api.internal.primitives.nim import NimClient
+from nv_ingest_api.util.string_processing import ensure_openai_embeddings_http_url
 from nv_ingest_api.internal.primitives.nim.model_interface.text_embedding import EmbeddingModelInterface
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ def infer_microservice(
             output_names=output_names,
         )
     else:
-        embedding_endpoint = f"{embedding_endpoint}/embeddings"
+        embedding_endpoint = ensure_openai_embeddings_http_url(str(embedding_endpoint))
         client = NimClient(
             model_interface=EmbeddingModelInterface(),
             protocol="http",
