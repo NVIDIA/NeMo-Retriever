@@ -20,7 +20,7 @@ Design Decisions:
 
 import logging
 from typing import Dict, Any
-from nemo_retriever.tabular_data.retrieval.text_to_sql.ai_services import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import (
     INTENT_VALIDATION_SYSTEM_PROMPT,

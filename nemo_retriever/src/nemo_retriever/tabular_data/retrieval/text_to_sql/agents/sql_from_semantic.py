@@ -24,7 +24,7 @@ from typing import Dict, Any, Optional
 from langchain_core.messages import AIMessage, SystemMessage
 
 
-from nemo_retriever.tabular_data.retrieval.text_to_sql.ai_services import safe_invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import safe_invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
     build_semantic_items_section,
