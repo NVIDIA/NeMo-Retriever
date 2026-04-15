@@ -530,9 +530,10 @@ def resolve_requested_plan(
         else:
             caption_gpus_per_actor = VLLM_GPUS_PER_ACTOR
 
-        # When caption barely fits, push embed to CPU so it doesn't deadlock.
+        # On a single GPU, reduce embed from its default (0.5) so all actors
+        # fit within the GPU budget while still retaining CUDA access.
         if override_embed_gpus_per_actor is None and available_gpu_count <= 1:
-            embed_gpus_per_actor = 0.0
+            embed_gpus_per_actor = 0.1
     else:
         caption_gpus_per_actor = 0.0
 
