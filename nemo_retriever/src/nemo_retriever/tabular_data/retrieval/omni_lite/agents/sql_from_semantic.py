@@ -24,7 +24,7 @@ from typing import Dict, Any, Optional
 from langchain_core.messages import AIMessage, SystemMessage
 
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import safe_invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import (
     build_semantic_items_section,
@@ -247,26 +247,42 @@ class SQLFromSemanticAgent(BaseAgent):
 
         schema = SQLGenerationModel
 
-        def run_with_context(        ) -> tuple:
+        def run_with_context() -> tuple:
             """Invoke LLM with messages, optionally including file snippets and extracted data."""
             messages = build_messages()
-            response = invoke_with_structured_output(llm, messages, schema)
-            # Log response explanation
-            # SQLGenerationModel uses 'response' field; feedback models may use 'thought'
-            if hasattr(response, "response"):
-                self.logger.info(
-                    f"LLM response generated, explanation: {response.response[:100]}..."
+            try:
+                response = safe_invoke_with_structured_output(llm, messages, schema)
+            except Exception as e:
+                self.logger.error(
+                    "LLM structured output failed: %s: %s", type(e).__name__, e,
+                    exc_info=True,
                 )
-            elif hasattr(response, "thought"):
+                return None, messages
+            if response and hasattr(response, "response") and response.response:
                 self.logger.info(
-                    f"LLM response generated, thought: {response.thought[:100]}..."
+                    "LLM response generated: %s...", response.response[:100],
                 )
             return response, messages
 
+        MAX_RETRIES = 3
+        response, messages = None, []
+        for attempt in range(1, MAX_RETRIES + 1):
+            response, messages = run_with_context()
+            if response is not None:
+                break
+            self.logger.warning(
+                "LLM returned None on attempt %d/%d — retrying.", attempt, MAX_RETRIES,
+            )
 
-        # Call LLM for SQL construction (with extracted data from files if available) 
-        response, messages = run_with_context(
-        )
+        if response is None:
+            self.logger.error("LLM returned None after %d attempts.", MAX_RETRIES)
+            return {
+                "path_state": {
+                    **path_state,
+                    "unconstructable_explanation": "LLM failed to produce a response.",
+                },
+                "decision": "unconstructable",
+            }
 
         # Check if we have a valid response (either SQL or text-based answer from file contents)
         has_sql = bool(response.sql_code and response.sql_code.strip())
