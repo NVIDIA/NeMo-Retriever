@@ -84,6 +84,10 @@ class _DummyDuckDB(SQLDatabase):
     def dialect(self) -> str:
         return "duckdb"
 
+    @property
+    def database_name(self) -> str:
+        return "mydb"
+
     def execute(self, sql: str, parameters=None) -> pd.DataFrame:
         return pd.DataFrame()
 
@@ -111,7 +115,8 @@ class _DummyDuckDB(SQLDatabase):
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-EXPECTED_DATA_KEYS = {"tables", "columns", "views", "pks", "fks", "queries"}
+EXPECTED_DATA_KEYS = {"database_name", "tables", "columns", "views", "pks", "fks", "queries"}
+EXPECTED_DATAFRAME_KEYS = EXPECTED_DATA_KEYS - {"database_name"}
 
 
 def test_pull_tabular_db_entities():
@@ -122,7 +127,8 @@ def test_pull_tabular_db_entities():
 
     assert isinstance(data, dict)
     assert set(data.keys()) == EXPECTED_DATA_KEYS
-    for key in EXPECTED_DATA_KEYS:
+    assert data["database_name"] == "mydb"
+    for key in EXPECTED_DATAFRAME_KEYS:
         assert isinstance(data[key], pd.DataFrame), f"data['{key}'] must be a DataFrame"
 
     assert data["tables"]["table_name"].iloc[0] == "orders"
@@ -169,14 +175,15 @@ def test_data_for_populate_tabular(monkeypatch):
 
     monkeypatch.setattr(
         "nemo_retriever.tabular_data.ingestion.extract_data.create_dataframe",
-        lambda settings: (raw_tables, raw_columns, raw_views, raw_queries, raw_pks, raw_fks),
+        lambda connector: (raw_tables, raw_columns, raw_views, raw_queries, raw_pks, raw_fks),
     )
 
-    data = data_for_populate_tabular({"connection_string": "dummy.duckdb"})
+    data = data_for_populate_tabular(_DummyDuckDB("dummy.duckdb"))
 
-    # required keys, all DataFrames
+    # required keys; database_name is a str, the rest are DataFrames
     assert set(data.keys()) == EXPECTED_DATA_KEYS
-    for key in EXPECTED_DATA_KEYS:
+    assert data["database_name"] == "mydb"
+    for key in EXPECTED_DATAFRAME_KEYS:
         assert isinstance(data[key], pd.DataFrame)
 
     # normalize_tables: owner dropped, dtypes applied
@@ -214,7 +221,10 @@ def test_store_relational_db_in_neo4j_delegates_to_populate(monkeypatch):
         lambda data, num_workers, dialect: calls.append({"data": data, "num_workers": num_workers, "dialect": dialect}),
     )
 
-    dummy_data = {k: pd.DataFrame() for k in ("tables", "columns", "views", "pks", "fks", "queries")}
+    dummy_data = {
+        "database_name": "mydb",
+        **{k: pd.DataFrame() for k in ("tables", "columns", "views", "pks", "fks", "queries")},
+    }
     store_relational_db_in_neo4j(data=dummy_data, dialect="duckdb")
 
     assert len(calls) == 1

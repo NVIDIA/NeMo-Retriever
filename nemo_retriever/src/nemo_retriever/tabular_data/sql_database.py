@@ -127,6 +127,15 @@ class SQLDatabase(ABC):
             A sqlglot-compatible dialect name for this engine (e.g. ``"duckdb"``, ``"snowflake"``).
         """
 
+    @property
+    @abstractmethod
+    def database_name(self) -> str:
+        """Return the name of the connected database.
+
+        Returns:
+            The database name as reported by the backend (e.g. ``"mydb"``).
+        """
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

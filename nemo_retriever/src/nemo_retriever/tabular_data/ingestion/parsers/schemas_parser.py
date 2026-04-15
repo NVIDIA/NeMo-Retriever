@@ -12,15 +12,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def parse_df(tables_df, columns_df, db_node=None):
+def parse_df(tables_df, columns_df, db_name: str, db_node=None):
     """
     Every schema manager assumes a single database in the input file
-    :param filename: a csv file with the following columns:
-    database,schema,table_name,column_name,ordinal_position,data_type
+    :param tables_df: DataFrame with columns: database, schema, table_name
+    :param columns_df: DataFrame with columns: database, schema, table_name, column_name, ...
+    :param db_name: name of the database, taken from the connector
+    :param db_node: optional existing Neo4j database node
     Assumption: the file contains schemas of a single database
     :return:
     """
-    db_name = tables_df.iloc[0]["database"]
     if not db_node:
         db_node = Neo4jNode(
             name=db_name,
