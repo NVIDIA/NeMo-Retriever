@@ -129,22 +129,14 @@ class InprocessExecutor(AbstractExecutor):
         except ImportError:
             tqdm = None
 
-        import logging as _logging
-
-        _exec_log = _logging.getLogger(__name__)
-
         if self._show_progress and tqdm is not None:
             pbar = tqdm(operators, desc="Pipeline stages", unit="stage")
             for name, op in pbar:
                 pbar.set_postfix_str(name)
-                _exec_log.debug("[inprocess] %s: input rows=%d, cols=%s", name, len(df), list(df.columns))
                 df = op.run(df)
-                _exec_log.debug("[inprocess] %s: output rows=%d, cols=%s", name, len(df), list(df.columns))
         else:
-            for name, op in operators:
-                _exec_log.debug("[inprocess] %s: input rows=%d, cols=%s", name, len(df), list(df.columns))
+            for _name, op in operators:
                 df = op.run(df)
-                _exec_log.debug("[inprocess] %s: output rows=%d, cols=%s", name, len(df), list(df.columns))
 
         return df
 

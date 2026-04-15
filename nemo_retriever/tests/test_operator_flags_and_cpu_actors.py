@@ -322,19 +322,13 @@ class TestBatchEmbedCPUActor:
         assert issubclass(_BatchEmbedCPUActor, CPUOperator)
         assert not issubclass(_BatchEmbedCPUActor, GPUOperator)
 
-    @patch("nemo_retriever.model.create_local_embedder")
-    def test_uses_local_embedder_when_no_remote_endpoint(self, mock_create):
-        """No HTTP endpoint → load local HF embedder (see cpu_operator / embed URL normalization)."""
+    def test_uses_default_invoke_url(self):
         from nemo_retriever.text_embed.cpu_operator import _BatchEmbedCPUActor
         from nemo_retriever.params import EmbedParams
 
-        mock_model = object()
-        mock_create.return_value = mock_model
         actor = _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model"))
-        mock_create.assert_called_once()
-        assert actor._model is mock_model
-        assert actor._kwargs.get("embedding_endpoint") is None
-        assert actor._kwargs.get("embed_invoke_url") is None
+        assert actor._model is None
+        assert "integrate.api.nvidia.com" in actor._kwargs["embedding_endpoint"]
 
     def test_creates_with_custom_invoke_url(self):
         from nemo_retriever.text_embed.cpu_operator import _BatchEmbedCPUActor
