@@ -28,69 +28,95 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
+  # Core orchestration and framework
   "ray[data,serve]>=2.49.0",
-  "pypdfium2==4.30.0",
   "pandas>=2.0,<3",
   "tqdm>=4.66.0",
   "typer>=0.12.0",
   "pyyaml>=6.0",
-  "lancedb",
-  "nv-ingest",
-  "nv-ingest-api",
-  "nv-ingest-client",
+  # Service layer
   "fastapi>=0.114.0",
   "uvicorn[standard]>=0.30.0",
+  "python-multipart>=0.0.9",
+  # HTTP clients
   "httpx>=0.27.0",
   "requests>=2.32.5",
+  "urllib3==2.6.3",
+  # Utilities
   "pydantic>=2.8.0",
-  "typer>=0.12.0",
   "rich>=13.7.0",
-  "pillow==12.1.1",
   "universal-pathlib>=0.2.0",
   "numpy>=1.26.0",
-  "nltk==3.9.3",
-  "urllib3==2.6.3",
   "debugpy>=1.8.0",
-  "python-multipart>=0.0.9",
-  # transformers>=4.57 includes native nvidia/parakeet-ctc-1.1b support.
+  # Core ingest packages
+  "nv-ingest-api",
+  "nv-ingest-client",
+  # Document parsing and NIM client libs
+  "pypdfium2==4.30.0",
+  "pillow==12.1.1",
+  "nltk==3.9.3",
+  "markitdown",
+  "langchain-nvidia-ai-endpoints>=0.3.0",
+  # Default VDB solution
+  "lancedb",
+]
+
+[project.optional-dependencies]
+
+# ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
+# Adds HuggingFace transformers, torch, nemotron models, GPU monitoring, and vLLM.
+local = [
   "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",
-  "accelerate>=1.1.0",
+  "accelerate==1.12.0",
   "torch~=2.9.1",
   "torchvision>=0.24,<0.25",
   "einops",
   "easydict",
   "addict",
+  "scikit-learn>=1.6.0",
+  "timm==1.0.22",
+  "albumentations==2.0.8",
   "nemotron-page-elements-v3>=0.dev0",
   "nemotron-graphic-elements-v1>=0.dev0",
   "nemotron-table-structure-v1>=0.dev0",
   "nemotron-ocr>=0.dev0; sys_platform == 'linux'",
-  "markitdown",
-  "timm==1.0.22",
-  "tqdm",
-  "accelerate==1.12.0",
-  "albumentations==2.0.8",
-  "scikit-learn>=1.6.0",
-  "datasets>=4.8.2",
-  "open-clip-torch==3.2.0",
-  # Local ASR (Parakeet): read chunk files and resample to 16 kHz mono
-  "soundfile>=0.12.0",
-  "scipy>=1.11.0",
   "nvidia-ml-py",
   "vllm==0.16.0; sys_platform == 'linux'",
+]
+
+# ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
+# soundfile + scipy enable local Parakeet ASR on audio/video content.
+# cairosvg enables SVG-to-image rendering (requires libcairo system library).
+multimedia = [
+  "soundfile>=0.12.0",
+  "scipy>=1.11.0",
+  "cairosvg>=2.7.0",
+]
+
+# ── Independent extras ───────────────────────────────────────────────────────
+
+# SQL and graph storage backends (lancedb is in core deps).
+stores = [
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
-  "langchain-nvidia-ai-endpoints>=0.3.0",
 ]
 
-[project.optional-dependencies]
-svg = [
-  "cairosvg>=2.7.0",
+# BEIR benchmarking and evaluation tools (not needed for production use).
+benchmarks = [
+  "datasets>=4.8.2",
+  "open-clip-torch==3.2.0",
 ]
+
 dev = [
   "build>=1.2.2",
   "pytest>=8.0.2",
+]
+
+# ── Convenience: full install ─────────────────────────────────────────────────
+all = [
+  "nemo_retriever[local,multimedia,stores,benchmarks]",
 ]
 
 [project.scripts]
@@ -101,15 +127,20 @@ retriever-harness = "nemo_retriever.harness:main"
 version = {attr = "nemo_retriever.version.get_build_version"}
 
 [tool.uv.sources]
-nv-ingest = { path = "../src/", editable = true }
 nv-ingest-api = { path = "../api/", editable = true }
 nv-ingest-client = { path = "../client/", editable = true }
 nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
-torch = { index = "torch-cuda", marker = "sys_platform != 'darwin'" }
-torchvision = { index ="torch-cuda", marker = "sys_platform != 'darwin'" }
+# On Linux, resolve torch/torchvision from the CUDA wheel index.
+# On Mac, fall through to PyPI to get CPU wheels.
+torch = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
 vllm = [
   { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
   { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
@@ -121,7 +152,7 @@ url = "https://test.pypi.org/simple/"
 explicit = true
 
 [[tool.uv.index]]
-name = "torch-cuda"
+name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 

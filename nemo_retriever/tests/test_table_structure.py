@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the combined table-structure + OCR stage."""
+"""Tests for the table-structure stage."""
 
 from __future__ import annotations
 
@@ -155,26 +155,23 @@ def _make_page_df(
 @_needs_requests
 @_needs_torch
 class TestTableStructureOCRPageElements:
-    """Test the full table_structure_ocr_page_elements function with mocked models."""
+    """Test the table-structure stage with mocked models."""
 
     def test_no_tables_produces_empty_table_column(self) -> None:
         from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df(has_table=False)
         mock_ts_model = MagicMock()
-        mock_ocr_model = MagicMock()
 
         result = table_structure_ocr_page_elements(
             df,
             table_structure_model=mock_ts_model,
-            ocr_model=mock_ocr_model,
         )
         assert "table" in result.columns
         assert "table_structure_ocr_v1" in result.columns
         assert result.iloc[0]["table"] == []
         # No model calls should have been made.
         mock_ts_model.invoke.assert_not_called()
-        mock_ocr_model.invoke.assert_not_called()
 
     def test_no_page_image_produces_empty_table_column(self) -> None:
         from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
@@ -192,12 +189,10 @@ class TestTableStructureOCRPageElements:
             ]
         )
         mock_ts_model = MagicMock()
-        mock_ocr_model = MagicMock()
 
         result = table_structure_ocr_page_elements(
             df,
             table_structure_model=mock_ts_model,
-            ocr_model=mock_ocr_model,
         )
         assert result.iloc[0]["table"] == []
 
@@ -222,26 +217,20 @@ class TestTableStructureOCRPageElements:
         mock_ts_model.preprocess.return_value = torch.zeros(1, 3, 100, 200)
         mock_ts_model.invoke.return_value = mock_pred
 
-        # Mock OCR model
-        mock_ocr_model = MagicMock()
-        mock_ocr_model.invoke.return_value = [
-            {"left": 0.1, "right": 0.9, "upper": 0.1, "lower": 0.9, "text": "TestValue"},
-        ]
-
         result = table_structure_ocr_page_elements(
             df,
             table_structure_model=mock_ts_model,
-            ocr_model=mock_ocr_model,
         )
 
         assert "table" in result.columns
         table_entries = result.iloc[0]["table"]
         assert len(table_entries) == 1
-        assert "TestValue" in table_entries[0]["text"]
+        assert "|" in table_entries[0]["text"]
         assert table_entries[0]["bbox_xyxy_norm"] == [0.0, 0.0, 1.0, 1.0]
+        assert table_entries[0]["structure_counts"] == {"cell": 1, "row": 1, "column": 1}
 
-    def test_fallback_to_pseudo_markdown_when_no_cells(self) -> None:
-        """When table-structure returns no cells, should fall back to pseudo-markdown."""
+    def test_with_no_cells_produces_structure_summary(self) -> None:
+        """When table-structure returns no cells, it should still produce structure-only output."""
         from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 
         import torch
@@ -261,25 +250,15 @@ class TestTableStructureOCRPageElements:
         mock_ts_model.preprocess.return_value = torch.zeros(1, 3, 100, 200)
         mock_ts_model.invoke.return_value = mock_pred
 
-        # Mock OCR model
-        mock_ocr_model = MagicMock()
-        mock_ocr_model.invoke.return_value = [
-            {"left": 0.1, "right": 0.9, "upper": 0.1, "lower": 0.4, "text": "Row1"},
-            {"left": 0.1, "right": 0.9, "upper": 0.6, "lower": 0.9, "text": "Row2"},
-        ]
-
         result = table_structure_ocr_page_elements(
             df,
             table_structure_model=mock_ts_model,
-            ocr_model=mock_ocr_model,
         )
 
         table_entries = result.iloc[0]["table"]
         assert len(table_entries) == 1
         text = table_entries[0]["text"]
-        # Fallback pseudo-markdown should contain the OCR text.
-        assert "Row1" in text
-        assert "Row2" in text
+        assert "|" in text or "Table structure detected:" in text
 
     def test_model_error_recorded_in_metadata(self) -> None:
         """When model raises an exception, it should be recorded in metadata, not crash."""
@@ -292,12 +271,9 @@ class TestTableStructureOCRPageElements:
         mock_ts_model._model.labels = ["cell", "row", "column"]
         mock_ts_model.preprocess.side_effect = RuntimeError("model exploded")
 
-        mock_ocr_model = MagicMock()
-
         result = table_structure_ocr_page_elements(
             df,
             table_structure_model=mock_ts_model,
-            ocr_model=mock_ocr_model,
         )
 
         meta = result.iloc[0]["table_structure_ocr_v1"]
@@ -305,15 +281,12 @@ class TestTableStructureOCRPageElements:
         assert meta["error"]["type"] == "RuntimeError"
         assert "model exploded" in meta["error"]["message"]
 
-    def test_requires_model_when_no_url(self) -> None:
+    def test_requires_table_structure_model_when_no_url(self) -> None:
         from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df()
         with pytest.raises(ValueError, match="table_structure_model"):
-            table_structure_ocr_page_elements(df, ocr_model=MagicMock())
-
-        with pytest.raises(ValueError, match="ocr_model"):
-            table_structure_ocr_page_elements(df, table_structure_model=MagicMock())
+            table_structure_ocr_page_elements(df)
 
 
 # ---------------------------------------------------------------------------
@@ -333,9 +306,7 @@ class TestTableStructureActor:
         with (patch("nemo_retriever.table.table_detection.TableStructureGPUActor.__init__", return_value=None),):
             actor = TableStructureGPUActor.__new__(TableStructureGPUActor)
             actor._table_structure_model = None
-            actor._ocr_model = None
             actor._table_structure_invoke_url = ""
-            actor._ocr_invoke_url = ""
             actor._api_key = None
             actor._request_timeout_s = 120.0
             actor._remote_retry = None

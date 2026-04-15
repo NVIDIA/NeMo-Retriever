@@ -221,10 +221,7 @@ class TestTableStructureActor:
     def _make(self):
         from nemo_retriever.table.table_detection import TableStructureActor
 
-        return TableStructureActor(
-            table_structure_invoke_url="http://fake",
-            ocr_invoke_url="http://fake",
-        )
+        return TableStructureActor(table_structure_invoke_url="http://fake")
 
     def test_inherits(self):
         from nemo_retriever.table.table_detection import TableStructureActor

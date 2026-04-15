@@ -14,6 +14,7 @@ from datetime import timedelta
 from nv_ingest_client.util.vdb.lancedb import LanceDB
 from nemo_retriever.vector_store.lancedb_utils import lancedb_schema, update_metadata_with_content_type
 import pandas as pd
+
 import lancedb
 
 logger = logging.getLogger(__name__)
@@ -231,14 +232,6 @@ def _write_rows_to_lancedb(rows: Sequence[Dict[str, Any]], *, cfg: LanceDBConfig
     if dim <= 0:
         raise ValueError("Failed to infer embedding dimension from rows.")
 
-    try:
-        import lancedb  # type: ignore
-    except Exception as e:
-        raise RuntimeError(
-            "LanceDB write requested but dependencies are missing. "
-            "Install `lancedb` and `pyarrow` in this environment."
-        ) from e
-
     db = lancedb.connect(uri=cfg.uri)
 
     schema = lancedb_schema(vector_dim=dim)
@@ -332,6 +325,9 @@ def handle_lancedb(
     )  # Use the same LanceDB config for writing and recall.
     db = lancedb.connect(uri=lancedb_config.uri)
     cleaned_rows = _build_lancedb_rows_from_df(rows)
+    if not cleaned_rows:
+        logger.warning("No embedding rows to write; skipping LanceDB index creation.")
+        return {}
     _write_rows_to_lancedb(cleaned_rows, cfg=lancedb_config)
     table = db.open_table(lancedb_config.table_name)  # Ensure table is open and metadata is updated before proceeding.
     create_lancedb_index(table, cfg=lancedb_config)
