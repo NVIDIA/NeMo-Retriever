@@ -51,6 +51,8 @@ def batch_tuning_to_node_overrides(
     embed_params: Any | None,
     cluster_resources: ClusterResources | None = None,
     allow_no_gpu: bool | None = None,
+    caption_enabled: bool = False,
+    caption_gpus_per_actor: float | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
 
@@ -66,7 +68,12 @@ def batch_tuning_to_node_overrides(
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.available_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
     plan = (
-        resolve_requested_plan(cluster_resources=cluster_resources, allow_no_gpu=effective_allow_no_gpu)
+        resolve_requested_plan(
+            cluster_resources=cluster_resources,
+            allow_no_gpu=effective_allow_no_gpu,
+            caption_enabled=caption_enabled,
+            override_caption_gpus_per_actor=caption_gpus_per_actor,
+        )
         if cluster_resources is not None
         else None
     )
@@ -126,6 +133,9 @@ def batch_tuning_to_node_overrides(
                 getattr(embed_tuning, "gpu_embed", None) if embed_tuning is not None else None,
                 plan.embed_gpus_per_actor if plan else None,
             )
+
+    if caption_enabled and plan and plan.caption_gpus_per_actor > 0:
+        _set_gpu(CaptionActor.__name__, caption_gpus_per_actor, plan.caption_gpus_per_actor)
 
     extract_tuning = _batch_tuning(extract_params)
     ocr_concurrency: int = 0

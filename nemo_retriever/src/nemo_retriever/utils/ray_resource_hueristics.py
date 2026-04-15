@@ -267,6 +267,9 @@ class RequestedPlan(BaseModel):
     page_elements_gpus_per_actor: float
     page_elements_batch_size: int
 
+    # Caption resources requested to satisfy DAG plan
+    caption_gpus_per_actor: float
+
     # PDF Extraction resources requested to satisfy DAG plan
     pdf_extract_batch_size: int
     pdf_extract_cpus_per_task: float
@@ -342,7 +345,7 @@ class RequestedPlan(BaseModel):
         return self.pdf_extract_tasks
 
     def __str__(self) -> str:
-        return f"RequestedPlan(embed_initial_actors={self.embed_initial_actors}, embed_min_actors={self.embed_min_actors}, embed_max_actors={self.embed_max_actors}, embed_gpus_per_actor={self.embed_gpus_per_actor}, embed_batch_size={self.embed_batch_size}, nemotron_parse_initial_actors={self.nemotron_parse_initial_actors}, nemotron_parse_min_actors={self.nemotron_parse_min_actors}, nemotron_parse_max_actors={self.nemotron_parse_max_actors}, nemotron_parse_gpus_per_actor={self.nemotron_parse_gpus_per_actor}, nemotron_parse_batch_size={self.nemotron_parse_batch_size}, ocr_initial_actors={self.ocr_initial_actors}, ocr_min_actors={self.ocr_min_actors}, ocr_max_actors={self.ocr_max_actors}, ocr_gpus_per_actor={self.ocr_gpus_per_actor}, ocr_batch_size={self.ocr_batch_size}, page_elements_initial_actors={self.page_elements_initial_actors}, page_elements_min_actors={self.page_elements_min_actors}, page_elements_max_actors={self.page_elements_max_actors}, page_elements_gpus_per_actor={self.page_elements_gpus_per_actor}, page_elements_batch_size={self.page_elements_batch_size}, pdf_extract_batch_size={self.pdf_extract_batch_size}, pdf_extract_cpus_per_task={self.pdf_extract_cpus_per_task}, pdf_extract_tasks={self.pdf_extract_tasks})"  # noqa: E501
+        return f"RequestedPlan(embed_initial_actors={self.embed_initial_actors}, embed_min_actors={self.embed_min_actors}, embed_max_actors={self.embed_max_actors}, embed_gpus_per_actor={self.embed_gpus_per_actor}, embed_batch_size={self.embed_batch_size}, nemotron_parse_initial_actors={self.nemotron_parse_initial_actors}, nemotron_parse_min_actors={self.nemotron_parse_min_actors}, nemotron_parse_max_actors={self.nemotron_parse_max_actors}, nemotron_parse_gpus_per_actor={self.nemotron_parse_gpus_per_actor}, nemotron_parse_batch_size={self.nemotron_parse_batch_size}, caption_gpus_per_actor={self.caption_gpus_per_actor}, ocr_initial_actors={self.ocr_initial_actors}, ocr_min_actors={self.ocr_min_actors}, ocr_max_actors={self.ocr_max_actors}, ocr_gpus_per_actor={self.ocr_gpus_per_actor}, ocr_batch_size={self.ocr_batch_size}, page_elements_initial_actors={self.page_elements_initial_actors}, page_elements_min_actors={self.page_elements_min_actors}, page_elements_max_actors={self.page_elements_max_actors}, page_elements_gpus_per_actor={self.page_elements_gpus_per_actor}, page_elements_batch_size={self.page_elements_batch_size}, pdf_extract_batch_size={self.pdf_extract_batch_size}, pdf_extract_cpus_per_task={self.pdf_extract_cpus_per_task}, pdf_extract_tasks={self.pdf_extract_tasks})"  # noqa: E501
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -360,6 +363,7 @@ class RequestedPlan(BaseModel):
                 self.nemotron_parse_max_actors,
                 self.nemotron_parse_gpus_per_actor,
                 self.nemotron_parse_batch_size,
+                self.caption_gpus_per_actor,
                 self.ocr_initial_actors,
                 self.ocr_min_actors,
                 self.ocr_max_actors,
@@ -390,6 +394,7 @@ class RequestedPlan(BaseModel):
             and self.nemotron_parse_max_actors == other.nemotron_parse_max_actors
             and self.nemotron_parse_gpus_per_actor == other.nemotron_parse_gpus_per_actor
             and self.nemotron_parse_batch_size == other.nemotron_parse_batch_size
+            and self.caption_gpus_per_actor == other.caption_gpus_per_actor
             and self.ocr_initial_actors == other.ocr_initial_actors
             and self.ocr_min_actors == other.ocr_min_actors
             and self.ocr_max_actors == other.ocr_max_actors
@@ -436,6 +441,8 @@ def resolve_requested_plan(
     override_pdf_extract_cpus_per_task: Optional[float] = None,
     override_pdf_extract_tasks: Optional[int] = None,
     allow_no_gpu: bool = False,
+    caption_enabled: bool = False,
+    override_caption_gpus_per_actor: Optional[float] = None,
 ) -> RequestedPlan:
     available_gpu_count = max(0, int(cluster_resources.available_gpu_count()))
 
@@ -510,6 +517,23 @@ def resolve_requested_plan(
     pdf_extract_cpus_per_task = _resolve_float(override_pdf_extract_cpus_per_task, PDF_EXTRACT_CPUS_PER_TASK, False)
     pdf_extract_tasks = _resolve_int_actors(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, True)
 
+    # Caption GPU budget.  On a single GPU the caption actor (vLLM) must share
+    # with OCR / page-elements / embed, so we halve its reservation and drop
+    # embed to CPU-only.  On 2+ GPUs caption gets a dedicated GPU.
+    if caption_enabled:
+        if override_caption_gpus_per_actor is not None:
+            caption_gpus_per_actor = override_caption_gpus_per_actor
+        elif available_gpu_count <= 1:
+            caption_gpus_per_actor = 0.5
+        else:
+            caption_gpus_per_actor = VLLM_GPUS_PER_ACTOR
+
+        # When caption barely fits, push embed to CPU so it doesn't deadlock.
+        if override_embed_gpus_per_actor is None and available_gpu_count <= 1:
+            embed_gpus_per_actor = 0.0
+    else:
+        caption_gpus_per_actor = 0.0
+
     return RequestedPlan(
         embed_initial_actors=embed_initial_actors,
         embed_min_actors=embed_min_actors,
@@ -521,6 +545,7 @@ def resolve_requested_plan(
         nemotron_parse_max_actors=nemotron_parse_max_actors,
         nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
         nemotron_parse_batch_size=nemotron_parse_batch_size,
+        caption_gpus_per_actor=caption_gpus_per_actor,
         ocr_initial_actors=ocr_initial_actors,
         ocr_min_actors=ocr_min_actors,
         ocr_max_actors=ocr_max_actors,
