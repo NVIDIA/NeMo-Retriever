@@ -134,7 +134,7 @@ def batch_tuning_to_node_overrides(
                 plan.embed_gpus_per_actor if plan else None,
             )
 
-    if caption_enabled and plan and plan.caption_gpus_per_actor > 0:
+    if caption_enabled and not effective_allow_no_gpu and plan and plan.caption_gpus_per_actor > 0:
         _set_gpu(CaptionActor.__name__, caption_gpus_per_actor, plan.caption_gpus_per_actor)
 
     extract_tuning = _batch_tuning(extract_params)

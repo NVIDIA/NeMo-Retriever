@@ -523,6 +523,8 @@ def resolve_requested_plan(
     if caption_enabled:
         if override_caption_gpus_per_actor is not None:
             caption_gpus_per_actor = override_caption_gpus_per_actor
+        elif available_gpu_count == 0:
+            caption_gpus_per_actor = 0.0
         elif available_gpu_count <= 1:
             caption_gpus_per_actor = 0.5
         else:
