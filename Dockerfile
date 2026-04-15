@@ -174,6 +174,7 @@ CMD ["/bin/bash"]
 FROM nv_ingest_install AS docs
 
 COPY docs docs
+COPY THIRD_PARTY_LICENSES.md THIRD_PARTY_LICENSES.md
 
 # Docs needs all the source code present so add it to the container
 COPY src src
