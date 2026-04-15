@@ -106,6 +106,6 @@ If you are building the container yourself and want to pre-download this model, 
 
 ## Related Topics
 
-- [Use the Python API](nv-ingest-python-api.md)
+- [Use the Python API](python-api-reference.md)
 - [NeMo Retriever Library V2 API Guide](v2-api-guide.md)
 - [Environment Variables](environment-variables.md)

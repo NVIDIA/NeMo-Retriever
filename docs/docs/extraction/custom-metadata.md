@@ -56,7 +56,7 @@ meta_df.to_csv(file_path)
 ### Example: Add Custom Metadata During Ingestion
 
 The following example adds custom metadata during ingestion. 
-For more information about the `Ingestor` class, see [Use the Python API](nv-ingest-python-api.md).
+For more information about the `Ingestor` class, see [Use the Python API](python-api-reference.md).
 For more information about the `vdb_upload` method, see [Upload Data](data-store.md).
 
 ```python

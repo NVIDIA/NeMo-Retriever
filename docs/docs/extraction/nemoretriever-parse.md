@@ -110,4 +110,4 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
 
 - [Support Matrix](support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Use the Python API](nv-ingest-python-api.md)
+- [Use the Python API](python-api-reference.md)

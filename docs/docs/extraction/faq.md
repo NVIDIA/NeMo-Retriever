@@ -32,7 +32,7 @@ For more information, refer to [Data Upload](data-store.md).
 For images that `nemoretriever-page-elements-v3` does not classify as tables, charts, or infographics,
 you can use our VLM caption task to create a dense caption of the detected image. 
 That caption is then be embedded along with the rest of your content. 
-For more information, refer to [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images).
+For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
 
 
 
@@ -74,10 +74,10 @@ For examples of `*_ENDPOINT` variables, refer to [nv-ingest/docker-compose.yaml]
 See the [Profile Information](quickstart-guide.md#profile-information) section 
 for information about the optional NIM components of the pipeline.
 
-You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](nv-ingest-python-api.md).
+You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](python-api-reference.md).
 
 To choose what types of content to extract, use code similar to the following. 
-For more information, refer to [Extract Specific Elements from PDFs](nv-ingest-python-api.md#extract-specific-elements-from-pdfs).
+For more information, refer to [Extract Specific Elements from PDFs](python-api-reference.md#extract-specific-elements-from-pdfs).
 
 ```python
 Ingestor(client=client)
@@ -93,7 +93,7 @@ Ingestor(client=client)
 ```
 
 To generate captions for images, use code similar to the following.
-For more information, refer to [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images).
+For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
 
 ```python
 Ingestor(client=client)
