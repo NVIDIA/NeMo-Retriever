@@ -27,6 +27,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
@@ -272,7 +273,11 @@ class GraphIngestor(ingestor):
             import ray
 
             if self._ray_address or not ray.is_initialized():
-                ray.init(address=self._ray_address, ignore_reinit_error=True)
+                runtime_env = {}
+                hf_token = os.environ.get("HF_TOKEN")
+                if hf_token:
+                    runtime_env["env_vars"] = {"HF_TOKEN": hf_token}
+                ray.init(address=self._ray_address, ignore_reinit_error=True, runtime_env=runtime_env or None)
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(

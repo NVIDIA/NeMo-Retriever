@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
@@ -235,7 +236,11 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         if self._ray_address or not ray.is_initialized():
-            ray.init(address=self._ray_address, ignore_reinit_error=True)
+            runtime_env = {}
+            hf_token = os.environ.get("HF_TOKEN")
+            if hf_token:
+                runtime_env["env_vars"] = {"HF_TOKEN": hf_token}
+            ray.init(address=self._ray_address, ignore_reinit_error=True, runtime_env=runtime_env or None)
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
