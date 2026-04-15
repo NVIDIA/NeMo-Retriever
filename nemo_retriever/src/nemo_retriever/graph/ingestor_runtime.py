@@ -84,6 +84,12 @@ def batch_tuning_to_node_overrides(
         if v is not None:
             overrides.setdefault(node_name, {})[key] = v
 
+    def _set_gpu(node_name: str, explicit: Any, fallback: Any = None) -> None:
+        """Like _set for num_gpus, but treats 0.0 as a valid explicit value."""
+        v = explicit if explicit is not None else fallback
+        if v is not None:
+            overrides.setdefault(node_name, {})["num_gpus"] = v
+
     def _force_cpu_only(node_name: str) -> None:
         overrides.setdefault(node_name, {})["num_gpus"] = 0.0
 
@@ -115,9 +121,8 @@ def batch_tuning_to_node_overrides(
         if effective_allow_no_gpu:
             _force_cpu_only(_BatchEmbedActor.__name__)
         elif not embed_invoke_url:
-            _set(
+            _set_gpu(
                 _BatchEmbedActor.__name__,
-                "num_gpus",
                 getattr(embed_tuning, "gpu_embed", None) if embed_tuning is not None else None,
                 plan.embed_gpus_per_actor if plan else None,
             )
@@ -153,9 +158,8 @@ def batch_tuning_to_node_overrides(
         if effective_allow_no_gpu:
             _force_cpu_only(OCRActor.__name__)
         elif not ocr_invoke_url:
-            _set(
+            _set_gpu(
                 OCRActor.__name__,
-                "num_gpus",
                 getattr(extract_tuning, "gpu_ocr", None) if extract_tuning is not None else None,
                 plan.ocr_gpus_per_actor if plan else None,
             )
@@ -184,9 +188,8 @@ def batch_tuning_to_node_overrides(
         if effective_allow_no_gpu:
             _force_cpu_only(PageElementDetectionActor.__name__)
         elif not page_elements_invoke_url:
-            _set(
+            _set_gpu(
                 PageElementDetectionActor.__name__,
-                "num_gpus",
                 getattr(extract_tuning, "gpu_page_elements", None) if extract_tuning is not None else None,
                 plan.page_elements_gpus_per_actor if plan else None,
             )
@@ -204,9 +207,8 @@ def batch_tuning_to_node_overrides(
         if effective_allow_no_gpu:
             _force_cpu_only(NemotronParseActor.__name__)
         else:
-            _set(
+            _set_gpu(
                 NemotronParseActor.__name__,
-                "num_gpus",
                 getattr(extract_tuning, "gpu_nemotron_parse", None) if extract_tuning is not None else None,
                 plan.nemotron_parse_gpus_per_actor if plan else None,
             )
