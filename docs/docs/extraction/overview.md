@@ -1,6 +1,6 @@
 # What is NeMo Retriever Library?
 
-NNVIDIA NeMo Retriever Library is a scalable, performance-oriented framework for document content and metadata extraction. It supports both NVIDIA NIM microservices and a wide range of models to find, contextualize, and extract text, tables, charts, and infographics for use in downstream generative and retrieval-augmented applications.
+NVIDIA NeMo Retriever Library is a scalable, performance-oriented framework for document content and metadata extraction. It supports both NVIDIA NIM microservices and a wide range of models to find, contextualize, and extract text, tables, charts, and infographics for use in downstream generative and retrieval-augmented applications.
 
 !!! note
 
