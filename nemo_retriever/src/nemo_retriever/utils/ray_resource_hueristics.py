@@ -28,7 +28,7 @@ EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 NEMOTRON_PARSE_INITIAL_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
 NEMOTRON_PARSE_MIN_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
 NEMOTRON_PARSE_MAX_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
-NEMOTRON_PARSE_GPUS_PER_ACTOR = (
+VLLM_GPUS_PER_ACTOR = (
     1.0  # vLLM owns the full GPU for KV-cache management and continuous batching.  # noqa: E501
 )
 NEMOTRON_PARSE_BATCH_SIZE = 64  # Ray batch size AND Nemotron Parse inference batch size
@@ -488,7 +488,7 @@ def resolve_requested_plan(
     nemotron_parse_min_actors = _resolve_int_actors(override_nemotron_parse_min_actors, NEMOTRON_PARSE_MIN_ACTORS, True)
     nemotron_parse_max_actors = _resolve_int_actors(override_nemotron_parse_max_actors, NEMOTRON_PARSE_MAX_ACTORS, True)
     nemotron_parse_gpus_per_actor = _resolve_float_actors(
-        override_nemotron_parse_gpus_per_actor, NEMOTRON_PARSE_GPUS_PER_ACTOR, False
+        override_nemotron_parse_gpus_per_actor, VLLM_GPUS_PER_ACTOR, False
     )
     nemotron_parse_batch_size = _resolve_int(override_nemotron_parse_batch_size, NEMOTRON_PARSE_BATCH_SIZE, False)
 
