@@ -94,7 +94,6 @@ class DuckDB(SQLDatabase):
         return self.execute(
             """
             SELECT
-                table_catalog AS "database",
                 table_schema  AS "schema",
                 table_name    AS "table_name"
             FROM information_schema.tables
@@ -107,12 +106,12 @@ class DuckDB(SQLDatabase):
         return self.execute(
             """
             SELECT
-                table_catalog    AS "database",
                 table_schema     AS "schema",
                 table_name       AS "table_name",
                 column_name      AS "column_name",
                 data_type        AS "data_type",
-                is_nullable      AS "is_nullable"
+                is_nullable      AS "is_nullable",
+                ordinal_position AS "ordinal_position"
             FROM information_schema.columns
             ORDER BY table_catalog, table_schema, table_name, ordinal_position
         """
@@ -130,7 +129,6 @@ class DuckDB(SQLDatabase):
         return self.execute(
             """
             SELECT
-                table_catalog   AS database,
                 table_schema    AS schema,
                 table_name,
                 view_definition
@@ -143,12 +141,11 @@ class DuckDB(SQLDatabase):
     def get_pks(self) -> pd.DataFrame:
         """Return primary key columns from duckdb_constraints() as a DataFrame.
 
-        Columns: database, schema, table_name, column_name, ordinal_position.
+        Columns: schema, table_name, column_name, ordinal_position.
         If duckdb_constraints() is unavailable, returns an empty DataFrame with those columns.
         """
         empty = pd.DataFrame(
             columns=[
-                "database",
                 "schema",
                 "table_name",
                 "column_name",
@@ -160,7 +157,6 @@ class DuckDB(SQLDatabase):
             df = self.execute(
                 """
                 SELECT
-                    current_database() AS "database",
                     c.schema_name      AS "schema",
                     c.table_name       AS "table_name",
                     unnest(c.constraint_column_names) AS "column_name",
@@ -178,12 +174,11 @@ class DuckDB(SQLDatabase):
     def get_fks(self) -> pd.DataFrame:
         """Return foreign key columns from duckdb_constraints() as a DataFrame.
 
-        Columns: database, schema, table_name, column_name, and referenced_* if available.
+        Columns: schema, table_name, column_name, and referenced_* if available.
         If duckdb_constraints() is unavailable, returns an empty DataFrame with standard columns.
         """
         empty = pd.DataFrame(
             columns=[
-                "database",
                 "schema",
                 "table_name",
                 "column_name",
@@ -196,7 +191,6 @@ class DuckDB(SQLDatabase):
             df = self.execute(
                 """
                 SELECT
-                    current_database() AS "database",
                     c.schema_name      AS "schema",
                     c.table_name       AS "table_name",
                     unnest(c.constraint_column_names) AS "column_name"
