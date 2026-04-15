@@ -126,8 +126,12 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
     Returns ``(config, qa_dataset, ground_truth_dir, results_dir, min_coverage)``.
     """
     retrieval_file = os.environ.get("RETRIEVAL_FILE", "")
-    if not retrieval_file:
-        typer.echo("ERROR: RETRIEVAL_FILE environment variable is required with --from-env", err=True)
+    lancedb_uri = os.environ.get("LANCEDB_URI", "")
+    if not retrieval_file and not lancedb_uri:
+        typer.echo(
+            "ERROR: set RETRIEVAL_FILE (file mode) or LANCEDB_URI (lancedb mode) with --from-env",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     qa_dataset = os.environ.get("QA_DATASET", "")
@@ -187,6 +191,17 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
         os.path.dirname(os.environ.get("OUTPUT_FILE", "")) or "data/test_retrieval",
     )
 
+    if retrieval_file:
+        retrieval_block: dict[str, str | None] = {"type": "file", "file_path": retrieval_file}
+    else:
+        retrieval_block = {
+            "type": "lancedb",
+            "lancedb_uri": lancedb_uri,
+            "lancedb_table": os.environ.get("LANCEDB_TABLE", "nv-ingest"),
+            "embedder": os.environ.get("EMBEDDER", "nvidia/llama-nemotron-embed-1b-v2"),
+            "save_path": os.environ.get("RETRIEVAL_SAVE_PATH"),
+        }
+
     config = {
         "execution": {
             "runs": 1,
@@ -196,7 +211,7 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
             "min_coverage": min_coverage,
         },
         "dataset": {"source": qa_dataset, "ground_truth_dir": ground_truth_dir},
-        "retrieval": {"file_path": retrieval_file},
+        "retrieval": retrieval_block,
         "models": models,
         "evaluations": evaluations,
         "output": {"results_dir": results_dir},
@@ -258,11 +273,6 @@ def run_cmd(
         typer.echo("ERROR: dataset.source is required in config", err=True)
         raise typer.Exit(code=1)
 
-    retrieval_file = retrieval_cfg.get("file_path", "")
-    if not retrieval_file:
-        typer.echo("ERROR: retrieval.file_path is required in config", err=True)
-        raise typer.Exit(code=1)
-
     results_dir = output_cfg.get("results_dir", "data/test_retrieval")
     qa_limit = execution.get("limit", 0)
     min_coverage = execution.get("min_coverage", 0.0)
@@ -276,13 +286,38 @@ def run_cmd(
         qa_pairs = qa_pairs[:qa_limit]
         typer.echo(f"limit={qa_limit}: evaluating first {len(qa_pairs)} pairs")
 
-    retriever = FileRetriever(file_path=retrieval_file)
+    retrieval_type = retrieval_cfg.get("type", "file")
+    if retrieval_type == "lancedb":
+        page_index_path = retrieval_cfg.get("page_index")
+        page_idx = None
+        if page_index_path:
+            with open(page_index_path, encoding="utf-8") as f:
+                page_idx = json.load(f)
+            typer.echo(f"Loaded page index: {len(page_idx)} documents")
+
+        save_path = retrieval_cfg.get("save_path")
+        retriever = FileRetriever.from_lancedb(
+            qa_pairs=qa_pairs,
+            lancedb_uri=retrieval_cfg.get("lancedb_uri", "lancedb"),
+            lancedb_table=retrieval_cfg.get("lancedb_table", "nv-ingest"),
+            embedder=retrieval_cfg.get("embedder", "nvidia/llama-nemotron-embed-1b-v2"),
+            top_k=execution.get("top_k", 5),
+            page_index=page_idx,
+            save_path=save_path,
+        )
+        typer.echo("Built retriever from LanceDB (in-memory)")
+    else:
+        retrieval_file = retrieval_cfg.get("file_path", "")
+        if not retrieval_file:
+            typer.echo("ERROR: retrieval.file_path is required when type='file'", err=True)
+            raise typer.Exit(code=1)
+        retriever = FileRetriever(file_path=retrieval_file)
+
     coverage = retriever.check_coverage(qa_pairs)
     typer.echo(f"Coverage: {coverage:.1%}")
     if coverage < min_coverage:
         typer.echo(
-            f"ERROR: retrieval file covers only {coverage:.1%} of queries "
-            f"(min_coverage={min_coverage:.0%}). Aborting.",
+            f"ERROR: retrieval covers only {coverage:.1%} of queries " f"(min_coverage={min_coverage:.0%}). Aborting.",
             err=True,
         )
         raise typer.Exit(code=1)

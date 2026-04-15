@@ -4,7 +4,7 @@ The evaluation framework lives in **`nemo_retriever.evaluation`** (install `nemo
 
 Measures LLM answer quality over a RAG pipeline: retrieve context from a VDB, generate answers with one or more LLMs, and score each answer against ground-truth references using multi-tier scoring and an LLM-as-judge.
 
-**Pluggable retrieval:** The evaluation framework does not care how you retrieved chunks -- only that you produce a JSON file that matches the **[retrieval JSON specification](#retrieval-json-format-interface-contract)** expected by `retriever eval run` / `FileRetriever`. Vector search, hybrid, agentic pipelines, or any custom system can plug in as long as the file format and query strings align with your chosen ground-truth dataset.
+**Pluggable retrieval:** The evaluation framework does not care how you retrieved chunks -- only that you produce a JSON file that matches the **[retrieval JSON specification](#retrieval-json-format-interface-contract)** expected by `retriever eval run` / `FileRetriever`. Vector search, hybrid, agentic pipelines, or any custom system can plug in as long as the file format and query strings align with your chosen ground-truth dataset. Alternatively, set `retrieval.type: "lancedb"` to **[query LanceDB live in-memory](#in-memory-lancedb-retrieval)** -- skipping the export step entirely while optionally saving the JSON for future re-runs.
 
 **Default ground truth:** Standalone runs default to **`data/bo767_annotations.csv`** at the repo root -- the **bo767 annotations subset** maintained for this benchmark (multi-modality Q&A over the bo767 PDFs). Override with `QA_DATASET` or another registered loader when comparing different corpora.
 
@@ -14,6 +14,7 @@ Designed to be **plug-and-play** -- swap retrievers, generators, or judges indep
 
 - [Pipeline File Map and Data Flow](#pipeline-file-map-and-data-flow)
 - [Reproducing the bo767 Run](#reproducing-the-bo767-run)
+  - [Which Path Should I Use?](#which-path-should-i-use)
 - [Retrieval JSON Format (Interface Contract)](#retrieval-json-format-interface-contract)
 - [Custom Datasets (CSV Loader)](#custom-datasets-csv-loader)
 - [Architecture](#architecture)
@@ -26,6 +27,7 @@ Designed to be **plug-and-play** -- swap retrievers, generators, or judges indep
   - [Entry Points](#entry-points)
 - [Configuration](#configuration)
   - [Eval Config File (YAML / JSON)](#eval-config-file-yaml--json)
+  - [In-Memory LanceDB Retrieval](#in-memory-lancedb-retrieval)
 - [Scoring System (Three-Tier Hierarchy)](#scoring-system-three-tier-hierarchy)
 - [Adding a New Component](#adding-a-new-component)
 - [Output Format](#output-format)
@@ -43,7 +45,7 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
 | **4. Ground truth** | `data/bo767_annotations.csv` (repo root) | Questions/answers for export and eval; must align with **query string normalization** in `FileRetriever` (see retrieval JSON rules). |
 | **5. Evaluation** | `qa_results_*.json` | `retriever eval run` or operator graph chain -> `nemo_retriever.evaluation`: `RetrievalLoaderOperator >> QAGenerationOperator >> JudgingOperator >> ScoringOperator`, or `QAEvalPipeline` for multi-model sweeps. |
 
-**Data flow (conceptual):** PDFs -> (A) **chunked embeddings in LanceDB** for similarity search; (B) **Parquet** for full-page reconstruction. **Export** runs search on (A), then **replaces** hit chunks with pages from (B) via the index. **Eval** never talks to LanceDB -- it only reads the retrieval JSON + ground-truth CSV.
+**Data flow (conceptual):** PDFs -> (A) **chunked embeddings in LanceDB** for similarity search; (B) **Parquet** for full-page reconstruction. **Export** runs search on (A), then **replaces** hit chunks with pages from (B) via the index. In **file mode**, eval reads the retrieval JSON + ground-truth CSV. In **[lancedb mode](#in-memory-lancedb-retrieval)**, eval queries LanceDB directly in-memory (optionally saving the JSON for later re-runs).
 
 ```
  NeMo Retriever (steps 1-3)                            Universal (steps 4-5)
@@ -81,11 +83,27 @@ Exact commands to reproduce the full-page markdown QA evaluation from scratch.
 
 **Debug:** Lance index build can hit `No space left on device` when `/tmp` is a tiny tmpfs; set `export TMPDIR=/path/to/large/filesystem/tmp` and `mkdir -p "$TMPDIR"` before step 1. If `extraction.parquet` was written but LanceDB failed, retry with `python -c "from nemo_retriever.utils.parquet_to_lancedb import reload_parquet_to_lancedb; reload_parquet_to_lancedb('<parquet_dir>', '<lancedb_uri>')""`; otherwise re-run `graph_pipeline`.
 
+**Before running any quick reference below**, complete the one-time setup:
+
+```bash
+# 1. Create and activate a Python 3.12 environment
+uv venv qa-retriever --python 3.12
+source qa-retriever/bin/activate
+
+# 2. Install nemo_retriever with eval extras (from repo root)
+cd /path/to/nv-ingest
+uv pip install -e "./nemo_retriever[eval]"
+
+# 3. Set your API key (used by generation + judging)
+export NVIDIA_API_KEY="nvapi-..."
+```
+
+See [Python environment](#python-environment) and [Prerequisites](#prerequisites-data-and-keys) for details.
+
 <details>
 <summary><strong>Quick reference -- full-page markdown (all commands)</strong></summary>
 
 ```bash
-# All commands from repo root
 cd /path/to/nv-ingest
 
 # 1. Ingest + embed + save Parquet in one pass (~45-90 min)
@@ -106,7 +124,6 @@ retriever eval export \
   --page-index data/bo767_page_markdown.json
 
 # 4. Run QA evaluation (~1-2 hrs)
-export NVIDIA_API_KEY="nvapi-..."
 retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 ```
 
@@ -134,11 +151,63 @@ retriever eval export \
   --output data/eval/bo767_retrieval.json
 
 # 3. Run QA evaluation
-export NVIDIA_API_KEY="nvapi-..."
 retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 ```
 
 </details>
+
+<details>
+<summary><strong>Quick reference -- end-to-end in-memory (single command: ingest + eval)</strong></summary>
+
+Alternative to the separable export+eval path above. One command ingests
+PDFs, builds the full-page markdown index in-memory, queries LanceDB, and
+runs generation + judging + scoring. Optionally saves the retrieval JSON
+so you can re-run eval later without re-querying.
+
+```bash
+cd /path/to/nv-ingest
+
+# Single command: ingest -> page index -> LanceDB query -> QA eval
+python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
+  --lancedb-uri lancedb \
+  --evaluation-mode qa \
+  --eval-config nemo_retriever/examples/eval_sweep.yaml \
+  --query-csv data/bo767_annotations.csv \
+  --retrieval-save-path data/eval/bo767_retrieval.json
+```
+
+The page index is built automatically from the ingestion results (no
+separate step needed). Pass `--page-index <path>` to use a pre-built
+index instead, or `--save-intermediate <dir>` if you also want the
+extraction Parquet saved for other uses.
+
+Or, if you already have a LanceDB from a previous ingestion and want to
+run eval standalone (no re-ingestion):
+
+```bash
+export LANCEDB_URI="lancedb"
+export QA_DATASET="csv:data/bo767_annotations.csv"
+export RETRIEVAL_SAVE_PATH="data/eval/bo767_retrieval.json"  # optional
+retriever eval run --from-env
+```
+
+</details>
+
+### Which path should I use?
+
+| | **Option A: Separable (recommended)** | **Option B: End-to-end in-memory** |
+|---|---|---|
+| **Steps** | Ingest -> Export JSON -> Run eval | Single command: Ingest -> Page index -> LanceDB query -> Eval |
+| **Re-run eval with a different model?** | Instant -- just re-run step 4 with the same JSON | Must re-query LanceDB (or pass `save_path` to cache) |
+| **Share results with teammates?** | Send the retrieval JSON file | Must share LanceDB or use `save_path` |
+| **Best for** | Benchmarking, CI, reproducible comparisons | Quick end-to-end validation, development iteration |
+| **Commands** | `retriever eval export` + `retriever eval run` | `--evaluation-mode qa` on `graph_pipeline` or `LANCEDB_URI` with `--from-env` |
+
+Option A is the primary design -- the retrieval JSON is the interface contract
+that lets you re-run eval N times without re-querying, swap retrievers, and
+share results. Option B is a convenience shortcut for when you want a single
+end-to-end pass (e.g. validating a new ingestion pipeline). Both produce
+identical evaluation results.
 
 ### Bring your own retrieval (skip steps 1-3)
 
@@ -245,6 +314,9 @@ Output: `data/bo767_page_markdown.json` (~180 MB, ~6k pages across 767 docs).
 
 ### Step 3: Export retrieval results (NeMo Retriever)
 
+> **Skip this step** if using the [end-to-end in-memory path](#which-path-should-i-use)
+> (`--evaluation-mode qa`), which queries LanceDB live instead of reading a JSON file.
+
 Queries LanceDB for each ground-truth question via `nemo_retriever.export.export_retrieval_json()`,
 then looks up the full-page markdown for each hit's page. Multiple sub-page hits
 from the same page are deduplicated into a single full-page chunk.
@@ -275,6 +347,11 @@ expansion. The export will use raw sub-page chunks directly from LanceDB, which 
 only step 1 without `--save-intermediate` (no Parquet or page index needed).
 
 ### Step 4: Run QA evaluation
+
+> **Alternative:** skip steps 3 and 4 and use `--evaluation-mode qa` on
+> `graph_pipeline` to query LanceDB in-memory and run eval in one pass.
+> See [Which path should I use?](#which-path-should-i-use) and the
+> end-to-end quick reference above.
 
 **Estimated time: ~15 min - 45 min** (1005 queries, ~12s per query for generation + judge, 8 concurrent workers).
 
@@ -709,6 +786,65 @@ LiteLLM routes by prefix:
 
 For local vLLM/Ollama, use `openai/<model>` with `api_base: http://localhost:8000/v1`.
 
+### In-Memory LanceDB Retrieval
+
+Instead of pre-exporting a retrieval JSON, the eval pipeline can query LanceDB
+live and feed results directly to generation/judging. Set `retrieval.type` to
+`"lancedb"` in your config:
+
+```yaml
+retrieval:
+  type: "lancedb"
+  lancedb_uri: "lancedb"
+  lancedb_table: "nv-ingest"
+  embedder: "nvidia/llama-nemotron-embed-1b-v2"
+  save_path: "data/eval/bo767_retrieval.json"   # optional -- persists for re-runs
+  page_index: "data/bo767_page_markdown.json"    # optional -- full-page expansion
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `type` | `"file"` | `"file"` reads a pre-exported JSON; `"lancedb"` queries live |
+| `lancedb_uri` | `"lancedb"` | LanceDB directory path |
+| `lancedb_table` | `"nv-ingest"` | Table name inside the LanceDB directory |
+| `embedder` | `"nvidia/llama-nemotron-embed-1b-v2"` | Embedding model for query encoding |
+| `save_path` | *none* | If set, writes the retrieval JSON for later `type: "file"` re-runs |
+| `page_index` | *none* | JSON page-markdown index for full-page chunk expansion |
+
+Three usage modes from a single config:
+
+- **End-to-end + save**: `type: lancedb, save_path: retrieval.json` -- queries live, saves for future, runs eval
+- **End-to-end no save**: `type: lancedb` -- queries live, pure in-memory, runs eval
+- **File-only (existing)**: `type: file, file_path: retrieval.json` -- unchanged, reads saved file
+
+**CLI (--from-env mode):** set `LANCEDB_URI` instead of `RETRIEVAL_FILE`:
+
+```bash
+export LANCEDB_URI="lancedb"
+export LANCEDB_TABLE="nv-ingest"           # optional, default: nv-ingest
+export EMBEDDER="nvidia/llama-nemotron-embed-1b-v2"  # optional
+export RETRIEVAL_SAVE_PATH="data/eval/retrieval.json" # optional
+export QA_DATASET="csv:data/bo767_annotations.csv"
+retriever eval run --from-env
+```
+
+**Graph pipeline (single command: ingest + page index + QA eval):**
+
+The page index is built automatically from the ingestion results -- no
+separate `build-page-index` step is needed.
+
+```bash
+python -m nemo_retriever.examples.graph_pipeline /data/pdfs \
+    --lancedb-uri lancedb \
+    --evaluation-mode qa \
+    --eval-config nemo_retriever/examples/eval_sweep.yaml \
+    --query-csv data/bo767_annotations.csv \
+    --retrieval-save-path data/eval/bo767_retrieval.json
+```
+
+Pass `--page-index <path>` to use a pre-built index instead of the
+automatic in-memory build.
+
 ### Environment Variables
 
 | Variable | Used By | Purpose |
@@ -717,6 +853,10 @@ For local vLLM/Ollama, use `openai/<model>` with `api_base: http://localhost:800
 | `NVIDIA_NIM_API_KEY` | litellm's `nvidia_nim` provider | Alias -- set to same value as `NVIDIA_API_KEY` |
 | `GEN_API_KEY` | `retriever eval run --from-env`, config `${GEN_API_KEY}` | Generator API key (falls back to `NVIDIA_API_KEY`) |
 | `JUDGE_API_KEY` | `retriever eval run --from-env`, config `${JUDGE_API_KEY}` | Judge API key (falls back to `NVIDIA_API_KEY`) |
+| `LANCEDB_URI` | `retriever eval run --from-env` (lancedb mode) | LanceDB directory path (activates lancedb mode when `RETRIEVAL_FILE` is unset) |
+| `LANCEDB_TABLE` | `retriever eval run --from-env` (lancedb mode) | LanceDB table name (default: `nv-ingest`) |
+| `EMBEDDER` | `retriever eval run --from-env` (lancedb mode) | Embedding model name |
+| `RETRIEVAL_SAVE_PATH` | `retriever eval run --from-env` (lancedb mode) | Optional path to persist the retrieval JSON |
 
 ## Scoring System (Three-Tier Hierarchy)
 
