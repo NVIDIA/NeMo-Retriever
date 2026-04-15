@@ -153,7 +153,6 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     return pd.DataFrame(out_rows)
 
 
-<<<<<<< HEAD
 @designer_component(
     name="Doc-to-PDF Converter",
     category="Document Processing",
@@ -161,10 +160,7 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     description="Converts document formats (DOCX, PPTX, etc.) to PDF",
     category_color="#64b4ff",
 )
-class DocToPdfConversionActor(AbstractOperator, CPUOperator):
-=======
 class DocToPdfConversionCPUActor(AbstractOperator, CPUOperator):
->>>>>>> nvidia/main
     """Ray Data actor that converts DOCX/PPTX batches to PDF.
 
     Used with ``ray.data.Dataset.map_batches`` in the same style as
