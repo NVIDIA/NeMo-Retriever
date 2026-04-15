@@ -287,6 +287,9 @@ def main(
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
     reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name"),
+    reranker_backend: str = typer.Option(
+        "vllm", "--reranker-backend", help="Reranker backend: 'vllm' or 'transformers'."
+    ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -624,6 +627,7 @@ def main(
                 hybrid=hybrid,
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
+                reranker_backend=reranker_backend,
             )
             evaluation_start = time.perf_counter()
             beir_dataset, _raw_hits, _run, evaluation_metrics = evaluate_lancedb_beir(cfg)
@@ -673,6 +677,7 @@ def main(
                 match_mode=recall_match_mode,
                 audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
+                reranker_backend=reranker_backend,
                 embed_modality=embed_modality,
             )
             evaluation_start = time.perf_counter()

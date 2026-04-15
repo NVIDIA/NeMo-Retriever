@@ -89,6 +89,10 @@ class Retriever:
     rerank_modality: str = "text"
     """Reranking modality, typically matches embed_modality. Set to 'text_image'
     to enable multimodal reranking with images."""
+    reranker_backend: str = "vllm"
+    """Backend for local VL reranking: ``"vllm"`` (default) or ``"transformers"``."""
+    reranker_gpu_memory_utilization: float = 0.5
+    """Fraction of GPU memory for the vLLM reranker engine."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
     # Internal cache for local HF embedders, keyed by model name.
@@ -249,6 +253,8 @@ class Retriever:
                 model_name=self.reranker_model_name,
                 device=self.local_hf_device,
                 hf_cache_dir=cache_dir,
+                backend=self.reranker_backend,
+                gpu_memory_utilization=self.reranker_gpu_memory_utilization,
             )
         return self._reranker_model
 

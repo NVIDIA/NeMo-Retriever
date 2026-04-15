@@ -56,8 +56,8 @@ dependencies = [
   "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",
   "accelerate>=1.1.0",
-  "torch~=2.9.1",
-  "torchvision>=0.24,<0.25",
+  "torch~=2.10.0",
+  "torchvision>=0.25,<0.26",
   "einops",
   "easydict",
   "addict",
@@ -77,7 +77,7 @@ dependencies = [
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
-  "vllm==0.16.0; sys_platform == 'linux'",
+  "vllm==0.17.0; sys_platform == 'linux'",
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
@@ -107,12 +107,12 @@ nv-ingest-client = { path = "../client/", editable = true }
 nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
-nemotron-ocr = { index = "test-pypi" }
+nemotron-ocr = { path = "../nemotron_ocr-1.0.0-py3-none-any.whl" }
 torch = { index = "torch-cuda", marker = "sys_platform != 'darwin'" }
 torchvision = { index ="torch-cuda", marker = "sys_platform != 'darwin'" }
 vllm = [
-  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
-  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
 ]
 
 [[tool.uv.index]]

@@ -48,7 +48,7 @@ Use the CUDA 13.0 wheels from the dedicated index by running the following comma
 
 ```bash
 uv pip uninstall torch torchvision
-uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.10.0 torchvision -i https://download.pytorch.org/whl/cu130
 ```
 This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
 

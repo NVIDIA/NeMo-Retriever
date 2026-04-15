@@ -100,13 +100,38 @@ def create_local_reranker(
     *,
     device: str | None = None,
     hf_cache_dir: str | None = None,
+    backend: str = "vllm",
+    gpu_memory_utilization: float = 0.5,
 ) -> "BaseModel":
     """Create the appropriate local reranker model (VL or text-only).
 
-    Dispatches to ``NemotronRerankVLV2`` when *model_name* matches a VL
-    reranker ID, otherwise returns the text-only ``NemotronRerankV2``.
+    Dispatches to ``NemotronRerankVLV2VLLM`` (default) or
+    ``NemotronRerankVLV2`` when *model_name* matches a VL reranker ID,
+    depending on *backend*.  Otherwise returns the text-only
+    ``NemotronRerankV2``.
+
+    Parameters
+    ----------
+    backend:
+        ``"vllm"`` (default) uses vLLM's pooling runner for the VL
+        reranker.  ``"transformers"`` uses HuggingFace
+        ``AutoModelForSequenceClassification``.  Only affects VL reranker
+        dispatch; the text-only reranker always uses transformers.
+    gpu_memory_utilization:
+        Fraction of GPU memory for the vLLM engine (only used when
+        *backend* is ``"vllm"``).
     """
     if is_vl_rerank_model(model_name):
+        if backend == "vllm":
+            from nemo_retriever.model.local.nemotron_rerank_vl_v2_vllm import NemotronRerankVLV2VLLM
+
+            return NemotronRerankVLV2VLLM(
+                model_name=model_name,
+                device=device,
+                hf_cache_dir=hf_cache_dir,
+                gpu_memory_utilization=gpu_memory_utilization,
+            )
+
         from nemo_retriever.model.local.nemotron_rerank_vl_v2 import NemotronRerankVLV2
 
         return NemotronRerankVLV2(

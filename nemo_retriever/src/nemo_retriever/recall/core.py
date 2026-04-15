@@ -58,6 +58,7 @@ class RecallConfig:
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
+    reranker_backend: str = "vllm"
     embed_modality: str = "text"
 
 
@@ -536,6 +537,7 @@ def retrieve_and_score(
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=cfg.reranker_api_key,
         reranker_batch_size=cfg.reranker_batch_size,
+        reranker_backend=cfg.reranker_backend,
         rerank_modality=cfg.embed_modality,
     )
     start = time.time()

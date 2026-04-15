@@ -194,7 +194,7 @@ class TestModelRegistration:
             MockVL.return_value = MagicMock()
             from nemo_retriever.model import create_local_reranker
 
-            result = create_local_reranker("nvidia/llama-nemotron-rerank-vl-1b-v2")
+            result = create_local_reranker("nvidia/llama-nemotron-rerank-vl-1b-v2", backend="transformers")
             MockVL.assert_called_once()
             assert result is MockVL.return_value
 
