@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 
-from nemo_retriever.tabular_data.retrieval.omni_lite.agents.query_executor import QueryResponse
+from typing import Optional
+
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import is_infra_or_auth_error
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
@@ -20,6 +21,11 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentState
 logger = logging.getLogger(__name__)
 
 
+class QueryResponse:
+    def __init__(self, result: list[str], sliced: bool, error: Optional[str] = None):
+        self.result = result
+        self.sliced = sliced
+        self.error = error
 
 
 def _run_sql_duckdb(sql: str, state: AgentState) -> QueryResponse:

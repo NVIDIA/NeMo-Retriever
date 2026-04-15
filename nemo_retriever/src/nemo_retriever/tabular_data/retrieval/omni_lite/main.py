@@ -7,10 +7,9 @@ from pathlib import Path
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables.graph import MermaidDrawMethod
-from nemo_retriever.tabular_data.retrieval.deep_agent.prompts import main_system_prompt_template
 from nemo_retriever.tabular_data.retrieval.omni_lite.graph import create_graph
 from nemo_retriever.tabular_data.retrieval.omni_lite.state import AgentPayload, AgentState
-from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import ONTOLOGY, get_ontology_prompt
+from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import main_system_prompt_template, ONTOLOGY, get_ontology_prompt
 from nemo_retriever.tabular_data.retrieval.omni_lite.utils import _make_llm
 
 logger = logging.getLogger(__name__)

@@ -16,6 +16,7 @@ from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
 )
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import create_entity_extraction_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -58,25 +59,9 @@ class EntitiesExtractionAgent(BaseAgent):
         question = get_question_for_processing(state)
 
         try:
-            extraction_prompt = f"""
-You are extracting entities and concepts from a user question for SQL calculation.
-
-User Question:
-{question}
-
-Extract:
-1) required_entity_name: list of entities/concepts mentioned in the question.
-- extract ALL entities that most likely refer to a specific entity in the database.
-   - Ignore time frames, quantities, or constants.
-   - Examples: ["Customer", "Order"], ["Product", "Price"]
-
-2) query_no_values: same question with specific values stripped.
-- Remove dates, numbers, names, specific identifiers
-   - Keep the structure and intent
-   - Example: "What is the average order value in 2023?" → "What is the average order value?"
-
-"""
-            extraction_messages = base_messages + [SystemMessage(content=extraction_prompt)]
+            extraction_messages = base_messages + [
+                SystemMessage(content=create_entity_extraction_prompt(question))
+            ]
             extraction_result = invoke_with_structured_output(
                 llm, extraction_messages, EntitiesExtractionModel
             )

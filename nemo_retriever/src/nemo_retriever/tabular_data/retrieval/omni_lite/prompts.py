@@ -1,3 +1,10 @@
+main_system_prompt_template = (
+    "Today's date is: {{ 'Year': {date.year}, 'Month': {date.month}, 'Day': {date.day}, "
+    "'Time': '{date.hour:02}:{date.minute:02}:{date.second:02}' }}.\n\n"
+    "Ontology: {ontology_prompt}\n\n"
+    "dialects: {dialects}"
+)
+
 ONTOLOGY = {
         "industry": [],
         "dictionary": [
@@ -252,5 +259,58 @@ create_sql_general_prompt = f"""
     You must surround sql snippets with triple percent delimiter!
     Do not refer to corrected errors if any in your explanation.
     Do NOT force a match if the tables are not semantically relevant to the user's question.
+"""
+
+
+INTENT_VALIDATION_SYSTEM_PROMPT = """You are a SQL validation expert. Your job is to check if a generated SQL query has any CRITICAL issues that would prevent it from answering the user's question.
+
+Be LENIENT - only mark as invalid if there are serious problems. Minor issues or alternative approaches are acceptable.
+
+Check for CRITICAL issues only:
+1. **Missing Critical Entities**: Are any ESSENTIAL entities completely missing? (It's OK if some optional entities are missing)
+2. **Seriously Wrong Joins**: Are there joins that would produce completely wrong results? (Minor join variations are acceptable)
+3. **Clearly Wrong Aggregations**: Are aggregations completely incorrect? (e.g., COUNT when user explicitly asks for SUM) (Minor variations are acceptable)
+
+IMPORTANT: Be generous in your validation. If the SQL could reasonably answer the question, mark it as valid. Only fail validation for serious, critical errors that would make the query unusable."""
+
+
+def create_intent_validation_prompt(question: str, entities_text: str, sql_code: str) -> str:
+    return f"""User's Question: {question}
+
+Required Semantic Entities:
+{entities_text}
+
+Generated SQL Query:
+```sql
+{sql_code}
+```
+
+Check for CRITICAL issues ONLY (be lenient):
+1. Are any ESSENTIAL entities completely missing? (Minor omissions are OK)
+2. Are there any joins that would produce COMPLETELY WRONG results? (Alternative join approaches are OK)
+3. Are aggregations CLEARLY WRONG for the question? (e.g., COUNT when explicitly asking for SUM) (Variations are OK)
+
+Only mark as invalid if there are SERIOUS problems. If the SQL could reasonably work, mark it as VALID.
+
+Provide your analysis."""
+
+
+def create_entity_extraction_prompt(question: str) -> str:
+    return f"""
+You are extracting entities and concepts from a user question for SQL calculation.
+
+User Question:
+{question}
+
+Extract:
+1) required_entity_name: list of entities/concepts mentioned in the question.
+- extract ALL entities that most likely refer to a specific entity in the database.
+   - Ignore time frames, quantities, or constants.
+   - Examples: ["Customer", "Order"], ["Product", "Price"]
+
+2) query_no_values: same question with specific values stripped.
+- Remove dates, numbers, names, specific identifiers
+   - Keep the structure and intent
+   - Example: "What is the average order value in 2023?" → "What is the average order value?"
 """
 

@@ -115,17 +115,6 @@ class CandidatePreparationAgent(BaseAgent):
         )
         self.logger.info(f"Found {len(relevant_queries)} relevant queries")
 
-        # Find similar questions from conversation history
-        # similar_questions = []
-        # embeddings_client = _optional_embeddings_client()  #TODO store and retrieve from somewhere
-        # similar_questions = find_similar_questions(
-        #     embeddings_client.embed_query(question), 
-        # )
-        # self.logger.info(
-        #     f"Found {len(similar_questions)} similar questions from conversations"
-        # )
-
-        # Filter complex candidates ()
         complex_candidates = [
             {
                 "name": x["name"],
@@ -151,7 +140,6 @@ class CandidatePreparationAgent(BaseAgent):
                 "relevant_tables": relevant_tables,
                 "relevant_fks": relevant_fks,
                 "relevant_queries": relevant_queries,
-                # "similar_questions": similar_questions,
                 "complex_candidates": complex_candidates,
                 "complex_candidates_str": complex_candidates_str,
             }

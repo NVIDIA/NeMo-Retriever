@@ -22,6 +22,10 @@ import logging
 from typing import Dict, Any
 from nemo_retriever.tabular_data.retrieval.omni_lite.ai_services import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.omni_lite.base import BaseAgent
+from nemo_retriever.tabular_data.retrieval.omni_lite.prompts import (
+    INTENT_VALIDATION_SYSTEM_PROMPT,
+    create_intent_validation_prompt,
+)
 from nemo_retriever.tabular_data.retrieval.omni_lite.state import (
     AgentState,
     get_question_for_processing,
@@ -54,16 +58,6 @@ class IntentValidationModel(BaseModel):
     )
 
 
-INTENT_VALIDATION_SYSTEM_PROMPT = """You are a SQL validation expert. Your job is to check if a generated SQL query has any CRITICAL issues that would prevent it from answering the user's question.
-
-Be LENIENT - only mark as invalid if there are serious problems. Minor issues or alternative approaches are acceptable.
-
-Check for CRITICAL issues only:
-1. **Missing Critical Entities**: Are any ESSENTIAL entities completely missing? (It's OK if some optional entities are missing)
-2. **Seriously Wrong Joins**: Are there joins that would produce completely wrong results? (Minor join variations are acceptable)
-3. **Clearly Wrong Aggregations**: Are aggregations completely incorrect? (e.g., COUNT when user explicitly asks for SUM) (Minor variations are acceptable)
-
-IMPORTANT: Be generous in your validation. If the SQL could reasonably answer the question, mark it as valid. Only fail validation for serious, critical errors that would make the query unusable."""
 
 
 class IntentValidationAgent(BaseAgent):
@@ -160,25 +154,7 @@ class IntentValidationAgent(BaseAgent):
             self.logger.info("No required entities specified for intent validation")
             entities_text = "No specific entities required"
 
-        # Build validation prompt
-        validation_prompt = f"""User's Question: {question}
-
-Required Semantic Entities:
-{entities_text}
-
-Generated SQL Query:
-```sql
-{sql_code}
-```
-
-Check for CRITICAL issues ONLY (be lenient):
-1. Are any ESSENTIAL entities completely missing? (Minor omissions are OK)
-2. Are there any joins that would produce COMPLETELY WRONG results? (Alternative join approaches are OK)
-3. Are aggregations CLEARLY WRONG for the question? (e.g., COUNT when explicitly asking for SUM) (Variations are OK)
-
-Only mark as invalid if there are SERIOUS problems. If the SQL could reasonably work, mark it as VALID.
-
-Provide your analysis."""
+        validation_prompt = create_intent_validation_prompt(question, entities_text, sql_code)
 
         messages = [
             SystemMessage(content=INTENT_VALIDATION_SYSTEM_PROMPT),
