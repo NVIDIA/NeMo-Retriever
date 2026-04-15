@@ -170,6 +170,37 @@ def load_image_b64_from_uri(uri: str) -> Optional[str]:
         return None
 
 
+def render_page_image_b64(pdf_path: str, page_number: int, *, dpi: int = 300) -> Optional[str]:
+    """Render a PDF page to base64-encoded JPEG.
+
+    Uses the same rendering pipeline as PDF extraction
+    (``_render_page_to_base64`` with ``fit_to_model`` mode) so the
+    output is consistent with images produced during ingestion.
+
+    *page_number* is 1-indexed (as stored in LanceDB); internally
+    converted to 0-indexed for pypdfium2.
+    Returns ``None`` on failure (missing file, invalid page, etc.).
+    """
+    try:
+        import pypdfium2 as pdfium
+
+        from nemo_retriever.pdf.extract import _render_page_to_base64
+
+        doc = pdfium.PdfDocument(pdf_path)
+        try:
+            page_idx = int(page_number) - 1
+            if page_idx < 0:
+                return None
+            page = doc[page_idx]
+            render_info = _render_page_to_base64(page, dpi=dpi)
+            return render_info.get("image_b64")
+        finally:
+            doc.close()
+    except Exception as exc:
+        logger.warning("Failed to render page %s of %s: %s", page_number, pdf_path, exc)
+        return None
+
+
 def resolve_image_b64(container: dict) -> Optional[str]:
     """Return image_b64, reloading from stored_image_uri if stripped."""
     b64 = container.get("image_b64")
