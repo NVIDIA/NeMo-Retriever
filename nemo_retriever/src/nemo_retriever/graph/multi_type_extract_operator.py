@@ -38,11 +38,8 @@ from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.txt.ray_data import TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
-<<<<<<< HEAD
 from nemo_retriever.graph.designer import designer_component
-=======
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
->>>>>>> nvidia/main
 
 
 # Define file type mappings
@@ -54,17 +51,6 @@ IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
 VIDEO_EXTENSIONS = {".mp4"}
 
 
-<<<<<<< HEAD
-@designer_component(
-    name="Multi-Type Extractor",
-    category="Document Processing",
-    compute="gpu",
-    description="Extracts content from multiple file types (PDF, image, text, audio)",
-    category_color="#64b4ff",
-)
-class MultiTypeExtractOperator(AbstractOperator):
-    """Extract mixed or single-type Ray batches without recursing into the ingestor API."""
-=======
 def _has_endpoint(*values: Any) -> bool:
     return any(bool(str(value or "").strip()) for value in values)
 
@@ -122,7 +108,6 @@ def _extract_params_need_local_gpu(extraction_mode: str, extract_params: Extract
 
 class _MultiTypeExtractBase(AbstractOperator):
     """Shared implementation for GPU and CPU multi-type extract actors."""
->>>>>>> nvidia/main
 
     def __init__(
         self,
@@ -372,6 +357,13 @@ class MultiTypeExtractCPUActor(_MultiTypeExtractBase, CPUOperator):
     pass
 
 
+@designer_component(
+    name="Multi-Type Extractor",
+    category="Document Processing",
+    compute="gpu",
+    description="Extracts content from multiple file types (PDF, image, text, audio)",
+    category_color="#64b4ff",
+)
 class MultiTypeExtractOperator(ArchetypeOperator):
     """Graph-facing multi-type extraction archetype."""
 

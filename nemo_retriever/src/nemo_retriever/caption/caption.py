@@ -13,11 +13,8 @@ from PIL import Image
 
 from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.graph.abstract_operator import AbstractOperator
-<<<<<<< HEAD
 from nemo_retriever.graph.designer import designer_component
-=======
 from nemo_retriever.graph.cpu_operator import CPUOperator
->>>>>>> nvidia/main
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import CaptionParams
@@ -57,7 +54,6 @@ def _get_cached_local_model(kwargs: dict) -> "Any":
     return _cached_local_model
 
 
-<<<<<<< HEAD
 @designer_component(
     name="Image Captioner",
     category="Embeddings & Ranking",
@@ -65,16 +61,8 @@ def _get_cached_local_model(kwargs: dict) -> "Any":
     description="Generates captions for images using a vision-language model",
     category_color="#e06cff",
 )
-class CaptionActor(AbstractOperator, GPUOperator):
-    """Ray Data actor that holds a local VLM captioner on a single GPU.
-
-    When ``endpoint_url`` is provided, the actor delegates to a remote VLM
-    endpoint and no local model is loaded.
-    """
-=======
 class CaptionGPUActor(AbstractOperator, GPUOperator):
     """Ray Data actor that holds a local VLM captioner on a single GPU."""
->>>>>>> nvidia/main
 
     def __init__(self, params: CaptionParams) -> None:
         super().__init__(params=params)

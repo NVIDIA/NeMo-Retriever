@@ -9,6 +9,7 @@ from importlib import metadata
 import json
 import os
 import pty
+import re
 import select
 import shlex
 import shutil
@@ -35,8 +36,11 @@ from nemo_retriever.harness.config import (
     load_harness_config,
     load_nightly_config,
 )
+from nemo_retriever.harness.parsers import StreamMetrics
 from nemo_retriever.harness.recall_adapters import prepare_recall_query_file
 from nemo_retriever.utils.input_files import resolve_input_files
+
+ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 def _collect_gpu_metadata() -> tuple[int | None, str | None, str | None]:
@@ -617,6 +621,14 @@ def _read_json_if_exists(path: Path) -> dict[str, Any] | None:
     return data
 
 
+def _consume_parseable_output(metrics: StreamMetrics, parse_buffer: str) -> str:
+    while "\n" in parse_buffer:
+        line, parse_buffer = parse_buffer.split("\n", 1)
+        cleaned = ANSI_ESCAPE_RE.sub("", line)
+        metrics.consume(cleaned + "\n")
+    return parse_buffer
+
+
 def _run_subprocess_with_tty(cmd: list[str]) -> int:
     """
     Run command in a pseudo-terminal so Ray renders rich progress while still
@@ -685,16 +697,7 @@ def _run_single(
     typer.echo(f"\n=== Running {run_id} ===")
     typer.echo(command_text)
 
-<<<<<<< HEAD
-    import time as _time
-
-    metrics = StreamMetrics()
-    _wall_start = _time.perf_counter()
-    process_rc = _run_subprocess_with_tty(cmd, metrics)
-    subprocess_elapsed_secs = round(_time.perf_counter() - _wall_start, 2)
-=======
     process_rc = _run_subprocess_with_tty(cmd)
->>>>>>> nvidia/main
     run_metadata = _collect_run_metadata()
 
     ray_addr = cfg.ray_address
@@ -713,85 +716,18 @@ def _run_single(
     if not cfg.write_detection_file and detection_summary_file.exists():
         detection_summary_file.unlink()
 
-<<<<<<< HEAD
-    # ----- Metrics: structured JSON written by batch_pipeline is authoritative.
-    # The stream parser (StreamMetrics) is only a fallback for legacy pipelines
-    # that don't write the JSON file.  This avoids coupling to stdout formatting.
-    pipeline_metrics = _read_json_if_exists(metrics_output_file)
-
-    if isinstance(pipeline_metrics, dict):
-        recall_raw: dict[str, float] = pipeline_metrics.get("recall_metrics") or {}
-        eval_raw: dict[str, float] = pipeline_metrics.get("evaluation_metrics") or {}
-        pm_files = pipeline_metrics.get("files")
-        pm_pages = pipeline_metrics.get("pages")
-        pm_ingest_secs = pipeline_metrics.get("ingest_secs")
-        pm_pps = pipeline_metrics.get("pages_per_sec_ingest")
-        if pm_files is not None:
-            pm_files = int(pm_files)
-        if pm_pages is not None:
-            pm_pages = int(pm_pages)
-        if pm_ingest_secs is not None:
-            pm_ingest_secs = float(pm_ingest_secs)
-        if pm_pps is not None:
-            pm_pps = float(pm_pps)
-    else:
-        recall_raw = {}
-        eval_raw = {}
-        pm_files = None
-        pm_pages = None
-        pm_ingest_secs = None
-        pm_pps = None
-
-    # Stream-parsed values serve as fallback when the JSON is unavailable or incomplete
-    if pm_files is None:
-        pm_files = metrics.files
-    if pm_pages is None:
-        pm_pages = metrics.pages
-    if pm_ingest_secs is None:
-        pm_ingest_secs = metrics.ingest_secs
-    if pm_pps is None:
-        pm_pps = metrics.pages_per_sec_ingest
-    if not recall_raw:
-        recall_raw = dict(metrics.recall_metrics)
-    if not eval_raw:
-        eval_raw = dict(metrics.evaluation_metrics)
-
-    recall_metrics_normalized: dict[str, float] = {}
-    for key, val in recall_raw.items():
-        recall_metrics_normalized[_normalize_recall_metric_key(key)] = val
-    evaluation_metrics_normalized: dict[str, float] = {}
-    for key, val in eval_raw.items():
-        evaluation_metrics_normalized[_normalize_recall_metric_key(key)] = val
-=======
     metrics_payload, recall_metrics, evaluation_metrics = _build_structured_metrics_payload(runtime_summary)
->>>>>>> nvidia/main
 
     effective_rc, failure_reason, success = _evaluate_run_outcome(
         process_rc=process_rc,
         evaluation_mode=cfg.evaluation_mode,
         recall_required=bool(cfg.recall_required),
-<<<<<<< HEAD
-        recall_metrics=recall_raw,
-        evaluation_metrics=eval_raw,
-    )
-
-    metrics_payload = {
-        "files": pm_files,
-        "pages": pm_pages,
-        "ingest_secs": pm_ingest_secs,
-        "pages_per_sec_ingest": pm_pps,
-        **recall_metrics_normalized,
-        **evaluation_metrics_normalized,
-    }
-    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary, subprocess_elapsed_secs)
-=======
         recall_metrics=recall_metrics,
         evaluation_metrics=evaluation_metrics,
     )
 
     summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary)
     configured_tuning = {field: getattr(cfg, field) for field in sorted(TUNING_FIELDS)}
->>>>>>> nvidia/main
 
     result_payload: dict[str, Any] = {
         "timestamp": now_timestr(),
@@ -837,18 +773,7 @@ def _run_single(
             "tuning": configured_tuning,
         },
         "metrics": {
-<<<<<<< HEAD
-            "files": pm_files,
-            "pages": pm_pages,
-            "ingest_secs": pm_ingest_secs,
-            "pages_per_sec_ingest": pm_pps,
-            "rows_processed": metrics.rows_processed,
-            "rows_per_sec_ingest": metrics.rows_per_sec_ingest,
-            **recall_metrics_normalized,
-            **evaluation_metrics_normalized,
-=======
             **metrics_payload,
->>>>>>> nvidia/main
         },
         "summary_metrics": summary_metrics,
         "run_metadata": run_metadata,
@@ -875,7 +800,7 @@ def _run_single(
             pass
 
     if failure_reason:
-        _print_failure_report(result_payload, command_text, artifact_dir, metrics.tail_lines)
+        _print_failure_report(result_payload, command_text, artifact_dir, [])
 
     return result_payload
 
@@ -1219,23 +1144,9 @@ def _run_entry(
 
     resolved_run_name = run_name or cfg.dataset_label
     normalized_tags = _normalize_tags(tags)
-<<<<<<< HEAD
-
-    if graph_code:
-        result = _run_graph_pipeline(
-            cfg, graph_code, artifact_dir,
-            run_id=resolved_run_name, tags=normalized_tags,
-            skip_local_history=skip_local_history,
-        )
-    else:
-        result = _run_single(
-            cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags, skip_local_history=skip_local_history
-        )
-=======
     result = _run_single(cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags)
     result["run_name"] = resolved_run_name
     result["artifact_dir"] = str(artifact_dir.resolve())
->>>>>>> nvidia/main
     return result
 
 
