@@ -18,8 +18,6 @@ from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 
 logger = logging.getLogger(__name__)
 
-conn = get_neo4j_conn()
-
 
 def load_schema_from_graph(
     db_name,
