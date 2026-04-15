@@ -345,8 +345,14 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
     retrieval_type = retrieval.get("type", "file")
     if retrieval_type == "file":
         retriever = FileRetriever(file_path=retrieval["file_path"])
+    elif retrieval_type == "lancedb":
+        raise ValueError(
+            "retrieval.type='lancedb' requires the caller to build the retriever "
+            "via FileRetriever.from_lancedb() and pass it to run_eval_sweep(retriever=...). "
+            "build_eval_pipeline() cannot construct it because it needs qa_pairs."
+        )
     else:
-        raise ValueError(f"Unsupported retrieval type: {retrieval_type!r}. " "Currently only 'file' is supported.")
+        raise ValueError(f"Unsupported retrieval type: {retrieval_type!r}. " "Supported: 'file', 'lancedb'.")
 
     llm_clients: dict[str, LiteLLMClient] = {}
     for gen_cfg in generators:
