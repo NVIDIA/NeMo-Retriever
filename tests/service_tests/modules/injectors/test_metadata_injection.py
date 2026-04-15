@@ -23,9 +23,9 @@ from nv_ingest_api.internal.schemas.meta.metadata_schema import ContentHierarchy
 # Initialize Ray once at the module level
 @pytest.fixture(scope="module", autouse=True)
 def ray_fixture():
-    """Initialize Ray for the entire test module."""
+    """Initialize Ray for the entire test module (local cluster; Ray 2.x removed local_mode)."""
     if not ray.is_initialized():
-        ray.init(local_mode=True, ignore_reinit_error=True)
+        ray.init(ignore_reinit_error=True)
     yield
     if ray.is_initialized():
         ray.shutdown()
