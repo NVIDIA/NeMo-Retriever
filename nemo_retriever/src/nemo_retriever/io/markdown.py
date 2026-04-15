@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -52,7 +53,17 @@ def to_markdown_by_page(results: object) -> dict[int, str]:
 
     rendered: dict[int, str] = {}
     for page_number, page_content in sorted(by_page.items(), key=_page_sort_key):
-        blocks = _dedupe_blocks(page_content.text_blocks + page_content.sections)
+        # deduplicate sections by content only (ignore auto-incremented header numbers)
+        seen_section_content: set[str] = set()
+        deduped_sections: list[str] = []
+        for block in page_content.sections:
+            content_key = re.sub(r"^### \S+ \d+\n\n", "", block.strip())
+            if content_key not in seen_section_content:
+                seen_section_content.add(content_key)
+                deduped_sections.append(block)
+        # exclude text blocks whose content is already represented by a section
+        text_blocks = [b for b in page_content.text_blocks if b.strip() not in seen_section_content]
+        blocks = _dedupe_blocks(text_blocks + deduped_sections)
         header = f"## Page {page_number}" if page_number != _UNKNOWN_PAGE else "## Page Unknown"
         rendered[page_number] = header + ("\n\n" + "\n\n".join(blocks) if blocks else "\n")
 
