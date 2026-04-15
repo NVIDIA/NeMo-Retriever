@@ -40,6 +40,8 @@ class ModelRuntimeParams(_ParamsModel):
     normalize: bool = True
     max_length: int = 8192
     model_name: Optional[str] = None
+    gpu_memory_utilization: float = 0.45
+    enforce_eager: bool = False
 
 
 class IngestorCreateParams(_ParamsModel):
@@ -227,6 +229,7 @@ class EmbedParams(_ParamsModel):
     model_name: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
+    embed_model_name: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types

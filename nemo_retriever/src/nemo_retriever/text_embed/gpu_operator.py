@@ -40,10 +40,9 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
         self._model = create_local_embedder(
             self._kwargs.get("model_name"),
-            device=str(self._kwargs["device"]) if self._kwargs.get("device") else None,
             hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
-            normalize=bool(self._kwargs.get("normalize", True)),
-            max_length=int(self._kwargs.get("max_length", 8192)),
+            gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
+            enforce_eager=bool(self._kwargs.get("enforce_eager", False)),
         )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

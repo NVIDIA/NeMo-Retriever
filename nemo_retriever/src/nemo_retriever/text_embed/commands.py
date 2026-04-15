@@ -169,7 +169,7 @@ def run(
         # No CLI endpoint and no config-file endpoint — override the schema default
         # so maybe_inject_local_hf_embedder() will inject the local HF fallback.
         task_cfg["endpoint_url"] = None
-    if model_name is not None:
+    if model_name is not None and "model_name" not in task_cfg:
         task_cfg["model_name"] = model_name
     if dimensions is not None:
         task_cfg["dimensions"] = int(dimensions)

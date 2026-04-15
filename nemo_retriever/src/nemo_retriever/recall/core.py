@@ -29,7 +29,7 @@ class RecallConfig:
     # Embedding endpoints (optional).
     #
     # If neither HTTP nor gRPC endpoint is provided (and embedding_endpoint is empty),
-    # stage7 will fall back to local HuggingFace embeddings via:
+    # stage7 will fall back to local vLLM embeddings via:
     #   nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder
     embedding_http_endpoint: Optional[str] = None
     embedding_grpc_endpoint: Optional[str] = None
@@ -48,6 +48,11 @@ class RecallConfig:
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
     local_hf_batch_size: int = 64
+    # When using local query embedding (no HTTP endpoint), select backend for *queries* only.
+    # ``auto`` / ``vllm`` use :func:`~nemo_retriever.model.create_local_embedder`; ``hf`` uses the
+    # HF mean-pooled text embedder (see ``LlamaNemotronEmbed1BV2HFEmbedder``). Ignored when an
+    # embedding HTTP endpoint is set. VL models always use HF regardless of this field.
+    local_query_embed_backend: str = "auto"
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys
@@ -290,14 +295,15 @@ def _embed_queries_local_hf(
     batch_size: int,
     model_name: Optional[str] = None,
 ) -> List[List[float]]:
-    from nemo_retriever.model import create_local_embedder, is_vl_embed_model
+    from nemo_retriever.model import create_local_query_embedder
 
-    embedder = create_local_embedder(model_name, device=device, hf_cache_dir=cache_dir)
-
-    if is_vl_embed_model(model_name):
-        vecs = embedder.embed_queries(queries, batch_size=int(batch_size))
-    else:
-        vecs = embedder.embed(["query: " + q for q in queries], batch_size=int(batch_size))
+    embedder = create_local_query_embedder(
+        model_name,
+        backend="hf",
+        device=device,
+        hf_cache_dir=cache_dir,
+    )
+    vecs = embedder.embed_queries(queries, batch_size=int(batch_size))
     return vecs.detach().to("cpu").tolist()
 
 
@@ -517,7 +523,6 @@ def retrieve_and_score(
 
     queries = df_query["query"].astype(str).tolist()
     gold = df_query["golden_answer"].astype(str).tolist()
-    endpoint, use_grpc = _resolve_embedding_endpoint(cfg)
     retriever = Retriever(
         lancedb_uri=cfg.lancedb_uri,
         lancedb_table=cfg.lancedb_table,
@@ -531,6 +536,7 @@ def retrieve_and_score(
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,
         local_hf_batch_size=cfg.local_hf_batch_size,
+        local_query_embed_backend=cfg.local_query_embed_backend,
         reranker=bool(cfg.reranker),
         reranker_model_name=cfg.reranker or VL_RERANK_MODEL,
         reranker_endpoint=cfg.reranker_endpoint,

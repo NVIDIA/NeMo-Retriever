@@ -46,10 +46,10 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
-from urllib.parse import urlparse  # noqa: F401
 
 import pandas as pd
 
+from nemo_retriever.model import _DEFAULT_EMBED_MODEL
 from nemo_retriever.params.models import IMAGE_MODALITIES
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class TextEmbeddingConfig:
     # Remote / NIM-like settings
     api_key: Optional[str] = None
     embedding_nim_endpoint: Optional[str] = None  # e.g. "http://host:8000/v1"
-    embedding_model: str = "nvidia/llama-nemotron-embed-1b-v2"
+    embedding_model: str = _DEFAULT_EMBED_MODEL
     encoding_format: str = "float"  # OpenAI-compatible embeddings often accept "float"
     input_type: str = "passage"
     truncate: str = "END"
@@ -540,7 +540,8 @@ def create_text_embeddings_for_df(
         - **endpoint_url**: optional str; if set, remote HTTP embeddings are used
         - **model_name**: optional str
         - **dimensions**: optional int
-        - **embedder**: optional callable(texts)->vectors; used when endpoint_url is empty/None
+        - **embedder**: optional callable(texts)->vectors; used when endpoint_url is empty/None (injected by pipeline
+                        or processor, e.g. from LlamaNemotronEmbed1BV2Embedder via create_local_embedder)
         - **local_batch_size**: int; used to sub-batch for the callable embedder path
     transform_config:
         Optional TextEmbeddingConfig; if omitted, defaults are used.

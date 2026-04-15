@@ -89,24 +89,41 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
     if has_endpoint or not use_local:
         return
 
-    from nemo_retriever.model import create_local_embedder
+    from nemo_retriever.model import create_local_embedder, resolve_embed_model, is_vl_embed_model
 
-    local_device = task_config.get("local_hf_device")
-    local_cache_dir = task_config.get("local_hf_cache_dir")
-    local_batch_size = int(task_config.get("local_hf_batch_size") or 64)
+    embed_model = resolve_embed_model(
+        task_config.get("embed_model_name")
+        or task_config.get("model_name")
+        or getattr(transform_config, "embedding_model", None)
+    )
+    embed_model = str(embed_model).strip() if embed_model else resolve_embed_model(None)
 
-    embedder = create_local_embedder(
-        task_config.get("model_name"),
-        device=local_device,
-        hf_cache_dir=local_cache_dir,
+    local_batch_size = int(task_config.get("local_batch_size") or task_config.get("local_hf_batch_size") or 64)
+
+    embedder_instance = create_local_embedder(
+        embed_model,
+        device=task_config.get("local_hf_device"),
+        hf_cache_dir=task_config.get("local_hf_cache_dir"),
+        gpu_memory_utilization=float(task_config.get("gpu_memory_utilization", 0.45)),
+        enforce_eager=bool(task_config.get("enforce_eager", False)),
+        dimensions=task_config.get("dimensions"),
     )
 
-    def _embed(texts):
-        prefix = f"{transform_config.input_type}: " if getattr(transform_config, "input_type", None) else ""
-        vecs = embedder.embed([prefix + t for t in texts], batch_size=local_batch_size)
-        return vecs.tolist()
+    prefix = f"{transform_config.input_type}: " if getattr(transform_config, "input_type", None) else ""
 
-    # Force the API transform to use the callable path by explicitly overriding endpoint_url to None.
+    if is_vl_embed_model(embed_model):
+
+        def _embed(texts):
+            vecs = embedder_instance.embed(texts, batch_size=local_batch_size)
+            return vecs.tolist()
+
+    else:
+
+        def _embed(texts):
+            prefixed = [prefix + t for t in texts] if prefix else texts
+            vecs = embedder_instance.embed(prefixed, batch_size=local_batch_size, prefix="")
+            return vecs.tolist()
+
     task_config["endpoint_url"] = None
     task_config["embedder"] = _embed
     task_config["local_batch_size"] = local_batch_size

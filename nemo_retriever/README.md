@@ -80,7 +80,22 @@ ingestor = (
   .embed()
   .vdb_upload()
 )
+```
 
+### Optional extras
+
+- **`asr`** — Local ASR (Parakeet). Has a different `transformers` requirement than the core package; install only if you need local ASR:
+  ```bash
+  uv pip install -e './nemo_retriever[asr]'
+  ```
+
+Run the batch pipeline script and point it at the directory that contains your PDFs using the following command.
+
+```bash
+uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/pdfs
+```
+
+```python
 # ingestor.ingest() actually executes the pipeline
 # results are returned as a ray dataset and inspectable as chunks
 ray_dataset = ingestor.ingest()

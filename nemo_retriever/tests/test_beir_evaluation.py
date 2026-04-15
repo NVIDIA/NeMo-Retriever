@@ -177,9 +177,12 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
         lambda *args, **kwargs: dataset,
     )
 
+    retriever_instances: list = []
+
     class _FakeRetriever:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            retriever_instances.append(self)
 
         def queries(self, queries):
             assert queries == ["what is a qubit?"]
@@ -200,3 +203,5 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     assert loaded_dataset == dataset
     assert metrics["ndcg@10"] == 1.0
     assert metrics["recall@5"] == 1.0
+    assert "embed_use_vllm" not in retriever_instances[0].kwargs
+    assert retriever_instances[0].kwargs.get("local_query_embed_backend") == "auto"
