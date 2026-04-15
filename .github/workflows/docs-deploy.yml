@@ -20,10 +20,10 @@ jobs:
     name: Build Documentation
     runs-on: linux-large-disk
     steps:
+      # Use the ref that triggered the workflow (e.g. branch chosen for workflow_dispatch).
+      # Do not pin ref: main here — that forced manual runs to build from main while testing other branches.
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -44,8 +44,16 @@ jobs:
           CONTAINER_ID=$(docker run -d nv-ingest-docs:latest)
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
+      # docker wait reports the container exit code but does not fail the step if it is non-zero.
+      # Emit logs here and exit with the same code so CI fails on make docs and the log shows why.
       - name: Wait for documentation generation
-        run: docker wait $CONTAINER_ID
+        run: |
+          EXIT_CODE=$(docker wait "$CONTAINER_ID")
+          echo "Container exit code: ${EXIT_CODE}"
+          echo "--- Container logs (make docs output) ---"
+          docker logs "$CONTAINER_ID"
+          echo "--- End container logs ---"
+          exit "${EXIT_CODE}"
 
       - name: Copy generated docs from container
         run: docker cp $CONTAINER_ID:/workspace/docs/site ./generated-site
