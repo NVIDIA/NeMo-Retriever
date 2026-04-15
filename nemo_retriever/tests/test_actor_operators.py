@@ -148,7 +148,7 @@ class TestPageElementDetectionActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.page_elements.page_elements.detect_page_elements_v3")
+    @patch("nemo_retriever.page_elements.cpu_actor.detect_page_elements_v3")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"page_elements_v3": ["det"]})
         mock_fn.return_value = expected
@@ -157,7 +157,7 @@ class TestPageElementDetectionActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.page_elements.page_elements.detect_page_elements_v3")
+    @patch("nemo_retriever.page_elements.cpu_actor.detect_page_elements_v3")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"page_elements_v3": ["det"]})
         mock_fn.return_value = expected
@@ -165,7 +165,7 @@ class TestPageElementDetectionActor:
         result = actor(pd.DataFrame({"page_image": ["x"]}))
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.page_elements.page_elements.detect_page_elements_v3", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.page_elements.cpu_actor.detect_page_elements_v3", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -196,7 +196,7 @@ class TestGraphicElementsActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.chart.chart_detection.graphic_elements_ocr_page_elements")
+    @patch("nemo_retriever.chart.cpu_actor.graphic_elements_ocr_page_elements")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"chart": [[]]})
         mock_fn.return_value = expected
@@ -205,7 +205,7 @@ class TestGraphicElementsActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.chart.chart_detection.graphic_elements_ocr_page_elements", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.chart.cpu_actor.graphic_elements_ocr_page_elements", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -236,7 +236,7 @@ class TestTableStructureActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.table.table_detection.table_structure_ocr_page_elements")
+    @patch("nemo_retriever.table.cpu_actor.table_structure_ocr_page_elements")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"table": [[]]})
         mock_fn.return_value = expected
@@ -245,7 +245,7 @@ class TestTableStructureActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.table.table_detection.table_structure_ocr_page_elements", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.table.cpu_actor.table_structure_ocr_page_elements", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -273,7 +273,7 @@ class TestOCRActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.ocr.ocr.ocr_page_elements")
+    @patch("nemo_retriever.ocr.cpu_ocr.ocr_page_elements")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"ocr_v1": ["res"]})
         mock_fn.return_value = expected
@@ -282,7 +282,7 @@ class TestOCRActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.ocr.ocr.ocr_page_elements", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.ocr.cpu_ocr.ocr_page_elements", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -296,12 +296,12 @@ class TestOCRActor:
 # ---------------------------------------------------------------------------
 class TestNemotronParseActor:
     def _make(self):
-        from nemo_retriever.ocr.ocr import NemotronParseActor
+        from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 
         return NemotronParseActor(nemotron_parse_invoke_url="http://fake")
 
     def test_inherits(self):
-        from nemo_retriever.ocr.ocr import NemotronParseActor
+        from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 
         assert issubclass(NemotronParseActor, AbstractOperator)
 
@@ -310,7 +310,7 @@ class TestNemotronParseActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.ocr.ocr.nemotron_parse_page_elements")
+    @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"nemotron_parse_v1_2": ["res"]})
         mock_fn.return_value = expected
@@ -319,7 +319,7 @@ class TestNemotronParseActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.ocr.ocr.nemotron_parse_page_elements", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -497,13 +497,13 @@ class TestHtmlSplitActor:
 class TestBatchEmbedActor:
     def _make(self):
         from nemo_retriever.params import EmbedParams
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
 
         params = EmbedParams(model_name="test-model", embed_invoke_url="http://fake")
         return _BatchEmbedActor(params=params)
 
     def test_inherits(self):
-        from nemo_retriever.ingest_modes.batch import _BatchEmbedActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
 
         assert issubclass(_BatchEmbedActor, AbstractOperator)
 
@@ -517,7 +517,7 @@ class TestBatchEmbedActor:
         df = pd.DataFrame({"text": ["hello"]})
         pd.testing.assert_frame_equal(actor.postprocess(df), df)
 
-    @patch("nemo_retriever.ingest_modes.inprocess.embed_text_main_text_embed")
+    @patch("nemo_retriever.text_embed.cpu_operator.embed_text_main_text_embed")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected
@@ -526,7 +526,7 @@ class TestBatchEmbedActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.ingest_modes.inprocess.embed_text_main_text_embed")
+    @patch("nemo_retriever.text_embed.cpu_operator.embed_text_main_text_embed")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected

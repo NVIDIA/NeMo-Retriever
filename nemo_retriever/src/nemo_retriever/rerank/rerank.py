@@ -12,14 +12,16 @@ Provides:
 Remote endpoint
 ---------------
 When ``invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
-server that exposes the OpenAI-compatible ``/rerank`` REST API::
+server that exposes the NIM ranking REST API. The helper accepts
+either a fully qualified ``.../reranking`` URL or a base URL and appends
+``/v1/ranking`` automatically::
 
-    POST /rerank
+    POST /v1/ranking
     {
       "model": "nvidia/llama-nemotron-rerank-1b-v2",
-      "query": "...",
-      "documents": ["...", "..."],
-      "top_n": N
+      "query": {"text": "..."},
+      "passages": [{"text": "..."}, {"text": "..."}],
+      "truncate": "END"
     }
 
 Local model
@@ -49,19 +51,28 @@ Ray Data actor usage::
 
 from __future__ import annotations
 
+import json
+import logging
 import traceback
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.model import is_vl_rerank_model
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 
+logger = logging.getLogger(__name__)
+
+_render_warned = False
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
 _SCORE_COLUMN = "rerank_score"
+_DEFAULT_RERANK_ENDPOINT = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 
 
 # ---------------------------------------------------------------------------
@@ -76,15 +87,17 @@ def _rerank_via_endpoint(
     endpoint: str,
     model_name: str = _DEFAULT_MODEL,
     api_key: str = "",
+    images_b64: Optional[List[Optional[str]]] = None,
 ) -> List[float]:
     """
-    Call a vLLM / NIM ``/rerank`` REST endpoint and return per-document scores.
+    Call a vLLM / NIM ranking endpoint and return per-document scores.
 
-    The server must expose the OpenAI-compatible rerank API introduced in
-    vLLM >= 0.14.0::
+    The server must expose the ranking API used by NeMo Retriever and NIM. Pass
+    either a full ``.../reranking`` URL or a base URL; base URLs are
+    normalized to ``.../v1/ranking``::
 
-        POST {endpoint}/rerank
-        {"model": ..., "query": ..., "documents": [...], "top_n": N}
+        POST {endpoint}/v1/ranking
+        {"model": ..., "query": {"text": ...}, "passages": [{"text": ...}]}
 
     Parameters
     ----------
@@ -94,7 +107,7 @@ def _rerank_via_endpoint(
         List of document strings to score against the query.
     endpoint:
         Base URL of the reranking endpoint (e.g. ``http://localhost:8015
-        ``).  The function will append ``/v1/ranking`` if the URL does not
+        ``). The function will append ``/v1/ranking`` if the URL does not
         already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
@@ -117,11 +130,16 @@ def _rerank_via_endpoint(
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    texts = [{"text": d} for d in documents]
+    passages = []
+    for i, d in enumerate(documents):
+        entry: Dict[str, Any] = {"text": d}
+        if images_b64 and i < len(images_b64) and images_b64[i]:
+            entry["image"] = images_b64[i]
+        passages.append(entry)
     payload = {
         "model": model_name,
         "query": {"text": query},
-        "passages": texts,
+        "passages": passages,
         "truncate": "END",
     }
     response = requests.post(url, json=payload, headers=headers)
@@ -154,6 +172,7 @@ def rerank_hits(
     batch_size: int = _DEFAULT_BATCH_SIZE,
     top_n: Optional[int] = None,
     text_key: str = "text",
+    modality: str = "text",
 ) -> List[Dict[str, Any]]:
     """
     Rerank *hits* (list of LanceDB result dicts) by relevance to *query*.
@@ -172,8 +191,9 @@ def rerank_hits(
         A ``NemotronRerankV2`` instance (local GPU inference).  Ignored when
         *invoke_url* is set.
     invoke_url:
-        Base URL of a vLLM / NIM ``/rerank`` endpoint.  Takes priority over
-        *model*.
+        Base URL of a vLLM / NIM ranking endpoint. Takes priority over
+        *model*. Base URLs are normalized to ``/v1/ranking`` unless they
+        already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
         ``"nvidia/llama-nemotron-rerank-1b-v2"``).
@@ -193,13 +213,56 @@ def rerank_hits(
     -------
     List[dict]
         Hits sorted by ``"_rerank_score"`` descending.  Each dict has a new
-        ``"_rerank_score"`` key with the raw logit (local) or relevance score
-        (remote).
+        ``"_rerank_score"`` key with the model score returned by the selected
+        reranker (local or remote).
     """
     if not hits:
         return hits
 
     documents = [str(h.get(text_key) or "") for h in hits]
+
+    # Load images from stored URIs when using a VL reranker.
+    images_b64: Optional[List[Optional[str]]] = None
+    _model_name = getattr(model, "model_name", model_name) if model is not None else model_name
+    if is_vl_rerank_model(_model_name) and modality != "text":
+        from nemo_retriever.io.image_store import load_image_b64_from_uri, render_page_image_b64
+        from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
+
+        render_cache: dict[tuple[str, int], Optional[str]] = {}
+        needs_render = False
+        images_b64 = []
+        for h in hits:
+            uri = str(h.get("stored_image_uri") or "").strip()
+            if uri:
+                images_b64.append(load_image_b64_from_uri(uri))
+            elif h.get("path") and h.get("page_number") is not None:
+                needs_render = True
+                cache_key = (h["path"], int(h["page_number"]))
+                if cache_key not in render_cache:
+                    render_cache[cache_key] = render_page_image_b64(h["path"], int(h["page_number"]))
+                page_b64 = render_cache[cache_key]
+                # Crop to element bbox if available (tables/charts).
+                bbox_str = h.get("bbox_xyxy_norm", "")
+                if page_b64 and bbox_str:
+                    try:
+                        bbox = json.loads(bbox_str)
+                        if isinstance(bbox, list) and len(bbox) == 4:
+                            cropped, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
+                            images_b64.append(cropped)
+                            continue
+                    except Exception as exc:
+                        logger.debug("Failed to crop page image by bbox; using full page: %s", exc)
+                images_b64.append(page_b64)
+            else:
+                images_b64.append(None)
+        global _render_warned
+        if needs_render and not _render_warned:
+            logger.warning(
+                "No stored images found; re-rendering pages from PDF for VL reranking. "
+                "Use .store(StoreParams(storage_uri=...)) during ingestion to avoid this overhead."
+            )
+            _render_warned = True
+
     if invoke_url:
         scores = _rerank_via_endpoint(
             query,
@@ -207,9 +270,13 @@ def rerank_hits(
             endpoint=invoke_url,
             model_name=model_name,
             api_key=api_key,
+            images_b64=images_b64,
         )
     elif model is not None:
-        scores = model.score(query, documents, max_length=max_length, batch_size=batch_size)
+        if images_b64 is not None:
+            scores = model.score(query, documents, images_b64=images_b64, max_length=max_length, batch_size=batch_size)
+        else:
+            scores = model.score(query, documents, max_length=max_length, batch_size=batch_size)
     else:
         raise ValueError("Either 'model' (NemotronRerankV2 instance) or 'invoke_url' must be provided.")
 
@@ -251,7 +318,7 @@ def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
     description="Reranks search results using a Nemotron reranking model",
     category_color="#e06cff",
 )
-class NemotronRerankActor(AbstractOperator, GPUOperator):
+class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
 
@@ -285,10 +352,6 @@ class NemotronRerankActor(AbstractOperator, GPUOperator):
     ----------
     model_name:
         HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-1b-v2"``).
-    invoke_url:
-        Base URL of a vLLM / NIM ``/rerank`` endpoint.  When set the actor
-        skips local model creation and delegates all scoring to the endpoint.
-        Also accepted as ``rerank_invoke_url``.
     api_key:
         Bearer token for the remote endpoint.
     device:
@@ -314,19 +377,17 @@ class NemotronRerankActor(AbstractOperator, GPUOperator):
         self._kwargs = dict(kwargs)
 
         invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
-        if invoke_url and "invoke_url" not in self._kwargs:
-            self._kwargs["invoke_url"] = invoke_url
-
         if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronRerankV2
-
-            self._model = NemotronRerankV2(
-                model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
-                device=self._kwargs.get("device") or None,
-                hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+            raise ValueError(
+                "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
+        from nemo_retriever.model import create_local_reranker
+
+        self._model = create_local_reranker(
+            model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
+            device=self._kwargs.get("device") or None,
+            hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+        )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -350,6 +411,53 @@ class NemotronRerankActor(AbstractOperator, GPUOperator):
             return [{"rerank_score": _error_payload(stage="actor_call", exc=exc)}]
 
 
+class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only reranking actor that delegates to a remote endpoint."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._kwargs = dict(kwargs)
+        invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
+        if not invoke_url:
+            invoke_url = _DEFAULT_RERANK_ENDPOINT
+        self._kwargs["invoke_url"] = invoke_url
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        return _rerank_batch(batch_df, model=self._model, **self._kwargs, **override_kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as exc:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="actor_call", exc=exc)
+                score_col = str(self._kwargs.get("score_column", _SCORE_COLUMN))
+                out[score_col] = [payload for _ in range(len(out.index))]
+                return out
+            return [{"rerank_score": _error_payload(stage="actor_call", exc=exc)}]
+
+
+class NemotronRerankActor(ArchetypeOperator):
+    _cpu_variant_class = NemotronRerankCPUActor
+    _gpu_variant_class = NemotronRerankGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("rerank_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Batch processing function (called by actor and usable standalone)
 # ---------------------------------------------------------------------------
@@ -364,6 +472,7 @@ def _rerank_batch(
     api_key: str = "",
     query_column: str = "query",
     text_column: str = "text",
+    image_column: str = "",
     score_column: str = _SCORE_COLUMN,
     max_length: int = _DEFAULT_MAX_LENGTH,
     batch_size: int = _DEFAULT_BATCH_SIZE,
@@ -383,20 +492,30 @@ def _rerank_batch(
     texts = batch_df[text_column].tolist()
     pairs = list(zip(queries, texts))
 
+    # Extract images when an image column is present.
+    images_b64: Optional[List[Optional[str]]] = None
+    if image_column and image_column in batch_df.columns:
+        images_b64 = batch_df[image_column].tolist()
+
     if invoke_url:
         # Remote endpoint: score pair-by-pair (each row may have a different query).
         scores: List[float] = []
-        for q, d in pairs:
+        for i, (q, d) in enumerate(pairs):
+            img = [images_b64[i]] if images_b64 else None
             row_scores = _rerank_via_endpoint(
                 q,
                 [d],
                 endpoint=invoke_url,
                 model_name=model_name,
                 api_key=api_key,
+                images_b64=img,
             )
             scores.append(row_scores[0])
     elif model is not None:
-        scores = model.score_pairs(pairs, max_length=max_length, batch_size=batch_size)
+        if images_b64 is not None:
+            scores = model.score_pairs(pairs, images_b64=images_b64, max_length=max_length, batch_size=batch_size)
+        else:
+            scores = model.score_pairs(pairs, max_length=max_length, batch_size=batch_size)
     else:
         raise ValueError("Either 'model' or 'invoke_url' must be provided to NemotronRerankActor.")
 

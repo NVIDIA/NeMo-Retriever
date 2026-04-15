@@ -16,6 +16,7 @@ from nemo_retriever.params import HtmlChunkParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 from .convert import html_bytes_to_chunks_df
 
@@ -27,7 +28,7 @@ from .convert import html_bytes_to_chunks_df
     description="Splits and processes HTML documents",
     category_color="#42d6a4",
 )
-class HtmlSplitActor(AbstractOperator, CPUOperator):
+class HtmlSplitCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of chunks.
 
@@ -72,3 +73,11 @@ class HtmlSplitActor(AbstractOperator, CPUOperator):
 
     def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         return self.run(batch_df)
+
+
+class HtmlSplitActor(ArchetypeOperator):
+    _cpu_variant_class = HtmlSplitCPUActor
+
+    def __init__(self, params: HtmlChunkParams | None = None) -> None:
+        super().__init__(params=params)
+        self._params = params

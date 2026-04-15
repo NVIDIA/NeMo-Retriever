@@ -1,6 +1,13 @@
+import sys
+import json
+from types import SimpleNamespace
+
 from typer.testing import CliRunner
 
-import nemo_retriever.examples.batch_pipeline as batch_pipeline
+import nemo_retriever.examples.graph_pipeline as batch_pipeline
+import nemo_retriever.model as model_module
+import nemo_retriever.recall.beir as beir_module
+import nemo_retriever.utils.detection_summary as detection_summary_module
 from nemo_retriever.utils.input_files import resolve_input_patterns
 
 RUNNER = CliRunner()
@@ -27,11 +34,6 @@ class _FakeDataset:
         return _FakeGrouped()
 
 
-class _FakeIngestResult:
-    def get_dataset(self):
-        return _FakeDataset()
-
-
 class _FakeErrorRows:
     def materialize(self):
         return self
@@ -43,6 +45,8 @@ class _FakeErrorRows:
 class _FakeIngestor:
     def __init__(self) -> None:
         self.extract_params = None
+        self.audio_extract_params = None
+        self.audio_asr_params = None
         self.embed_params = None
         self.file_patterns = None
 
@@ -56,6 +60,11 @@ class _FakeIngestor:
 
     def extract_image_files(self, params):
         self.extract_params = params
+        return self
+
+    def extract_audio(self, params=None, asr_params=None):
+        self.audio_extract_params = params
+        self.audio_asr_params = asr_params
         return self
 
     def extract_txt(self, params):
@@ -72,7 +81,7 @@ class _FakeIngestor:
         return self
 
     def ingest(self, params=None):
-        return _FakeIngestResult()
+        return _FakeDataset()
 
     def get_error_rows(self, dataset=None):
         return _FakeErrorRows()
@@ -98,9 +107,21 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
     missing_query_csv = tmp_path / "missing.csv"
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(batch_pipeline, "create_ingestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(batch_pipeline, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
     monkeypatch.setattr(batch_pipeline, "_ensure_lancedb_table", lambda *args, **kwargs: None)
     monkeypatch.setattr(batch_pipeline, "handle_lancedb", lambda *args, **kwargs: None)
+    monkeypatch.setitem(sys.modules, "ray", SimpleNamespace(shutdown=lambda: None))
+
+    class _FakeTable:
+        def count_rows(self) -> int:
+            return 1
+
+    class _FakeDb:
+        def open_table(self, _name):
+            return _FakeTable()
+
+    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
 
     result = RUNNER.invoke(
         batch_pipeline.app,
@@ -125,16 +146,69 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
     assert fake_ingestor.embed_params.embed_granularity == "page"
 
 
+def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.mp3").write_text("placeholder", encoding="utf-8")
+    missing_query_csv = tmp_path / "missing.csv"
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(batch_pipeline, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(batch_pipeline, "_ensure_lancedb_table", lambda *args, **kwargs: None)
+    monkeypatch.setattr(batch_pipeline, "handle_lancedb", lambda *args, **kwargs: None)
+    monkeypatch.setitem(sys.modules, "ray", SimpleNamespace(shutdown=lambda: None))
+    monkeypatch.setattr(
+        batch_pipeline, "asr_params_from_env", lambda: SimpleNamespace(model_copy=lambda update: update)
+    )
+
+    class _FakeTable:
+        def count_rows(self) -> int:
+            return 1
+
+    class _FakeDb:
+        def open_table(self, _name):
+            return _FakeTable()
+
+    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--input-type",
+            "audio",
+            "--query-csv",
+            str(missing_query_csv),
+            "--recall-match-mode",
+            "audio_segment",
+            "--audio-match-tolerance-secs",
+            "3.0",
+            "--segment-audio",
+            "--audio-split-type",
+            "time",
+            "--audio-split-interval",
+            "45",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert isinstance(fake_ingestor.file_patterns, list)
+    assert fake_ingestor.audio_extract_params.split_type == "time"
+    assert fake_ingestor.audio_extract_params.split_interval == 45
+    assert fake_ingestor.audio_asr_params["segment_audio"] is True
+
+
 def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(batch_pipeline, "create_ingestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(batch_pipeline, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
     monkeypatch.setattr(batch_pipeline, "_ensure_lancedb_table", lambda *args, **kwargs: None)
     monkeypatch.setattr(batch_pipeline, "handle_lancedb", lambda *args, **kwargs: None)
-    monkeypatch.setattr(batch_pipeline, "print_run_summary", lambda *args, **kwargs: None)
+    monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
 
     class _FakeTable:
         def count_rows(self) -> int:
@@ -149,7 +223,9 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
         def connect(_uri):
             return _FakeDb()
 
-    monkeypatch.setattr(batch_pipeline, "_lancedb", lambda: _FakeLanceModule())
+    monkeypatch.setitem(sys.modules, "lancedb", _FakeLanceModule())
+    monkeypatch.setitem(sys.modules, "ray", SimpleNamespace(shutdown=lambda: None))
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
 
     captured = {}
 
@@ -157,7 +233,7 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
         captured["cfg"] = cfg
         return type("Dataset", (), {"query_ids": ["1", "2"]})(), [], {}, {"ndcg@10": 0.75, "recall@5": 0.6}
 
-    monkeypatch.setattr(batch_pipeline, "evaluate_lancedb_beir", _fake_evaluate)
+    monkeypatch.setattr(beir_module, "evaluate_lancedb_beir", _fake_evaluate)
 
     result = RUNNER.invoke(
         batch_pipeline.app,
@@ -180,3 +256,49 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
     assert captured["cfg"].loader == "vidore_hf"
     assert captured["cfg"].dataset_name == "vidore_v3_computer_science"
     assert tuple(captured["cfg"].ks) == (5, 10)
+
+
+def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+    missing_query_csv = tmp_path / "missing.csv"
+    runtime_dir = tmp_path / "runtime_metrics"
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(batch_pipeline, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(batch_pipeline, "_ensure_lancedb_table", lambda *args, **kwargs: None)
+    monkeypatch.setattr(batch_pipeline, "handle_lancedb", lambda *args, **kwargs: None)
+    monkeypatch.setitem(sys.modules, "ray", SimpleNamespace(shutdown=lambda: None))
+
+    class _FakeTable:
+        def count_rows(self) -> int:
+            return 1
+
+    class _FakeDb:
+        def open_table(self, _name):
+            return _FakeTable()
+
+    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--query-csv",
+            str(missing_query_csv),
+            "--runtime-metrics-dir",
+            str(runtime_dir),
+            "--runtime-metrics-prefix",
+            "sample-run",
+            "--no-recall-details",
+        ],
+    )
+
+    assert result.exit_code == 0
+    summary_path = runtime_dir / "sample-run.runtime.summary.json"
+    assert summary_path.exists()
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["recall_details"] is False
+    assert payload["evaluation_mode"] == "recall"

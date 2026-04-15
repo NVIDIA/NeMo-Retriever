@@ -20,8 +20,10 @@ import traceback
 
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.nim.nim import invoke_image_inference_batches
 
@@ -263,7 +265,7 @@ def detect_infographic_elements_v1(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     inference_batch_size: int = 8,
     output_column: str = "infographic_elements_v1",
     num_detections_column: str = "infographic_elements_v1_num_detections",
@@ -272,9 +274,9 @@ def detect_infographic_elements_v1(
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
     Run Nemotron Graphic Elements v1 on an infographic image source.
@@ -439,7 +441,7 @@ def detect_infographic_elements_v1_from_page_elements_v3(
     model: Any = None,
     invoke_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    request_timeout_s: float = 120.0,
+    request_timeout_s: float = 60.0,
     inference_batch_size: int = 8,
     page_elements_column: str = "page_elements_v3",
     page_elements_counts_by_label_column: str = "page_elements_v3_counts_by_label",
@@ -452,9 +454,9 @@ def detect_infographic_elements_v1_from_page_elements_v3(
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
-        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
-        remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
-        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
+        remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 8)),
+        remote_max_retries=int(kwargs.get("remote_max_retries", 5)),
+        remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
     Run Nemotron Graphic Elements v1 only on cropped infographic/title regions.
@@ -742,7 +744,7 @@ def detect_infographic_elements_v1_from_page_elements_v3(
     compute="gpu",
     description="Detects and extracts infographic content from documents",
 )
-class InfographicDetectionActor(AbstractOperator, GPUOperator):
+class InfographicDetectionGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Graphic Elements v1 once.
     """
@@ -753,14 +755,14 @@ class InfographicDetectionActor(AbstractOperator, GPUOperator):
         invoke_url = str(
             self.detect_kwargs.get("infographic_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
         ).strip()
-        if invoke_url and "invoke_url" not in self.detect_kwargs:
-            self.detect_kwargs["invoke_url"] = invoke_url
         if invoke_url:
-            self._model = None
-        else:
-            from nemo_retriever.model.local import NemotronGraphicElementsV1
+            raise ValueError(
+                "InfographicDetectionGPUActor does not support remote endpoint execution. "
+                "Use InfographicDetectionCPUActor instead."
+            )
+        from nemo_retriever.model.local import NemotronGraphicElementsV1
 
-            self._model = NemotronGraphicElementsV1()
+        self._model = NemotronGraphicElementsV1()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -794,3 +796,65 @@ class InfographicDetectionActor(AbstractOperator, GPUOperator):
                 out["infographic_elements_v1_counts_by_label"] = [{} for _ in range(len(out.index))]
                 return out
             return [{"infographic_elements_v1": _error_payload(stage="actor_call", exc=e)}]
+
+
+class InfographicDetectionCPUActor(AbstractOperator, CPUOperator):
+    """CPU-only infographic detection actor that delegates to a remote endpoint."""
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
+        self.detect_kwargs = dict(detect_kwargs)
+        invoke_url = str(
+            self.detect_kwargs.get("infographic_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
+        ).strip()
+        if not invoke_url:
+            raise ValueError("InfographicDetectionCPUActor requires infographic_invoke_url or invoke_url.")
+        if "invoke_url" not in self.detect_kwargs:
+            self.detect_kwargs["invoke_url"] = invoke_url
+        self._model = None
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        if isinstance(batch_df, pd.DataFrame) and (
+            "page_elements_v3" in batch_df.columns or "page_elements_v3_counts_by_label" in batch_df.columns
+        ):
+            return detect_infographic_elements_v1_from_page_elements_v3(
+                batch_df,
+                model=self._model,
+                **self.detect_kwargs,
+                **override_kwargs,
+            )
+        return detect_infographic_elements_v1(batch_df, model=self._model, **self.detect_kwargs, **override_kwargs)
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
+        try:
+            return self.run(batch_df, **override_kwargs)
+        except BaseException as e:
+            if isinstance(batch_df, pd.DataFrame):
+                out = batch_df.copy()
+                payload = _error_payload(stage="actor_call", exc=e)
+                out["infographic_elements_v1"] = [
+                    {"regions": [], "timing": None, "error": payload.get("error")} for _ in range(len(out.index))
+                ]
+                out["infographic_elements_v1_num_detections"] = [0 for _ in range(len(out.index))]
+                out["infographic_elements_v1_counts_by_label"] = [{} for _ in range(len(out.index))]
+                return out
+            return [{"infographic_elements_v1": _error_payload(stage="actor_call", exc=e)}]
+
+
+class InfographicDetectionActor(ArchetypeOperator):
+    _cpu_variant_class = InfographicDetectionCPUActor
+    _gpu_variant_class = InfographicDetectionGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(str(kwargs.get("infographic_invoke_url") or kwargs.get("invoke_url") or "").strip())
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)

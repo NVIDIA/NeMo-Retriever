@@ -28,7 +28,11 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+<<<<<<< HEAD
 from nemo_retriever.graph.designer import designer_component
+=======
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+>>>>>>> nvidia/main
 from nemo_retriever.params import ASRParams
 
 
@@ -123,6 +127,7 @@ def _get_client(params: ASRParams):  # noqa: ANN201
     )
 
 
+<<<<<<< HEAD
 @designer_component(
     name="ASR (Speech-to-Text)",
     category="Audio",
@@ -131,6 +136,9 @@ def _get_client(params: ASRParams):  # noqa: ANN201
     category_color="#ff6b6b",
 )
 class ASRActor(AbstractOperator, CPUOperator):
+=======
+class ASRCPUActor(AbstractOperator, CPUOperator):
+>>>>>>> nvidia/main
     """
     Ray Data map_batches callable: chunk rows (path/bytes) -> rows with text (transcript).
 
@@ -374,6 +382,17 @@ class ASRActor(AbstractOperator, CPUOperator):
             if transcript is None:
                 return []
             return self._build_output_rows(row, transcript)
+
+
+class ASRActor(ArchetypeOperator):
+    """Graph-facing ASR archetype resolved to the best concrete runtime implementation."""
+
+    _cpu_variant_class = ASRCPUActor
+
+    def __init__(self, params: ASRParams | None = None) -> None:
+        resolved_params = params or ASRParams()
+        super().__init__(params=resolved_params)
+        self._params = resolved_params
 
 
 def apply_asr_to_df(

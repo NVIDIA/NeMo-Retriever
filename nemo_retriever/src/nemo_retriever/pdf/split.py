@@ -15,6 +15,7 @@ from nemo_retriever.params import PdfSplitParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
     import pypdfium2 as pdfium
@@ -179,7 +180,7 @@ def split_pdf_batch(pdf_batch: Any, params: PdfSplitParams | None = None) -> pd.
     description="Splits multi-page PDFs into individual pages",
     category_color="#64b4ff",
 )
-class PDFSplitActor(AbstractOperator, CPUOperator):
+class PDFSplitCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, split_params: PdfSplitParams | None = None) -> None:
         super().__init__()
         self.split_params = split_params or PdfSplitParams()
@@ -195,6 +196,14 @@ class PDFSplitActor(AbstractOperator, CPUOperator):
 
     def __call__(self, pdf_batch: Any) -> Any:
         return self.run(pdf_batch)
+
+
+class PDFSplitActor(ArchetypeOperator):
+    _cpu_variant_class = PDFSplitCPUActor
+
+    def __init__(self, split_params: PdfSplitParams | None = None) -> None:
+        super().__init__(split_params=split_params)
+        self.split_params = split_params
 
 
 def split_pdf(pdf_ds: Any, params: PdfSplitParams | None = None) -> Any:

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import traceback
@@ -17,6 +18,7 @@ import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".pptx"})
 
@@ -65,6 +67,12 @@ def convert_to_pdf_bytes(file_bytes: bytes, extension: str) -> bytes:
 
     if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported extension: {extension!r}")
+
+    if shutil.which("libreoffice") is None:
+        raise FileNotFoundError(
+            "LibreOffice is required to convert DOCX/PPTX files to PDF but was not found on $PATH. "
+            "Please install LibreOffice (e.g. `apt-get install libreoffice`) and try again."
+        )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Strip leading dot for the filename suffix (e.g. ".docx" -> "docx").
@@ -131,6 +139,8 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
             pdf_bytes = convert_to_pdf_bytes(bytes(file_bytes), ext)
             # Preserve original path so downstream metadata tracks the source file.
             out_rows.append({"bytes": pdf_bytes, "path": file_path})
+        except FileNotFoundError:
+            raise  # LibreOffice not installed — fail fast, don't swallow.
         except BaseException as e:
             out_rows.append(
                 _error_record(
@@ -143,6 +153,7 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     return pd.DataFrame(out_rows)
 
 
+<<<<<<< HEAD
 @designer_component(
     name="Doc-to-PDF Converter",
     category="Document Processing",
@@ -151,6 +162,9 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     category_color="#64b4ff",
 )
 class DocToPdfConversionActor(AbstractOperator, CPUOperator):
+=======
+class DocToPdfConversionCPUActor(AbstractOperator, CPUOperator):
+>>>>>>> nvidia/main
     """Ray Data actor that converts DOCX/PPTX batches to PDF.
 
     Used with ``ray.data.Dataset.map_batches`` in the same style as
@@ -171,3 +185,10 @@ class DocToPdfConversionActor(AbstractOperator, CPUOperator):
 
     def __call__(self, batch_df: Any) -> Any:
         return self.run(batch_df)
+
+
+class DocToPdfConversionActor(ArchetypeOperator):
+    _cpu_variant_class = DocToPdfConversionCPUActor
+
+    def __init__(self) -> None:
+        super().__init__()

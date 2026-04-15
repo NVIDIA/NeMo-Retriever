@@ -402,7 +402,7 @@ class TestRerankHits:
 
 
 class TestRerankViaEndpoint:
-    def test_posts_to_rerank_url(self):
+    def test_posts_to_ranking_url(self):
         from nemo_retriever.rerank.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
@@ -426,6 +426,8 @@ class TestRerankViaEndpoint:
         call_kwargs = mock_post.call_args
         assert call_kwargs[0][0] == "http://localhost:8000/v1/ranking"
         assert call_kwargs[1]["json"]["query"] == {"text": "What is ML?"}
+        assert call_kwargs[1]["json"]["truncate"] == "END"
+        assert call_kwargs[1]["json"]["passages"][0] == {"text": "Machine learning is…"}
         assert len(call_kwargs[1]["json"]["passages"]) == 2
 
         assert scores == [0.9, 0.3]
@@ -459,7 +461,7 @@ class TestRerankViaEndpoint:
         from nemo_retriever.rerank.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"results": [{"index": 0, "relevance_score": 1.0}]}
+        mock_resp.json.return_value = {"rankings": [{"index": 0, "logit": 1.0}]}
         mock_resp.raise_for_status = MagicMock()
 
         with patch("requests.post", return_value=mock_resp) as mock_post:
@@ -477,7 +479,7 @@ class TestRerankViaEndpoint:
         from nemo_retriever.rerank.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"results": [{"index": 0, "relevance_score": 0.5}]}
+        mock_resp.json.return_value = {"rankings": [{"index": 0, "logit": 0.5}]}
         mock_resp.raise_for_status = MagicMock()
 
         with patch("requests.post", return_value=mock_resp) as mock_post:
@@ -490,7 +492,7 @@ class TestRerankViaEndpoint:
         from nemo_retriever.rerank.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"results": [{"index": 0, "relevance_score": 0.5}]}
+        mock_resp.json.return_value = {"rankings": [{"index": 0, "logit": 0.5}]}
         mock_resp.raise_for_status = MagicMock()
 
         with patch("requests.post", return_value=mock_resp) as mock_post:
@@ -509,15 +511,15 @@ class TestNemotronRerankActor:
     """Test the Ray Data-compatible actor."""
 
     def test_actor_with_invoke_url_skips_local_model(self):
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
 
-        actor = NemotronRerankActor(invoke_url="http://localhost:8000")
+        actor = NemotronRerankCPUActor(invoke_url="http://localhost:8000")
         assert actor._model is None
 
     def test_actor_with_rerank_invoke_url_alias(self):
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
 
-        actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
+        actor = NemotronRerankCPUActor(rerank_invoke_url="http://localhost:8000")
         assert actor._model is None
         assert actor._kwargs.get("invoke_url") == "http://localhost:8000"
 
@@ -532,8 +534,8 @@ class TestNemotronRerankActor:
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.side_effect = [
-            {"results": [{"index": 0, "relevance_score": 0.9}]},
-            {"results": [{"index": 0, "relevance_score": 0.4}]},
+            {"rankings": [{"index": 0, "logit": 0.9}]},
+            {"rankings": [{"index": 0, "logit": 0.4}]},
         ]
 
         with patch("requests.post", return_value=mock_resp):
@@ -552,8 +554,8 @@ class TestNemotronRerankActor:
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.side_effect = [
-            {"results": [{"index": 0, "relevance_score": 0.1}]},
-            {"results": [{"index": 0, "relevance_score": 0.9}]},
+            {"rankings": [{"index": 0, "logit": 0.1}]},
+            {"rankings": [{"index": 0, "logit": 0.9}]},
         ]
 
         with patch("requests.post", return_value=mock_resp):
@@ -587,7 +589,7 @@ class TestNemotronRerankActor:
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
-        mock_resp.json.return_value = {"results": [{"index": 0, "relevance_score": 0.7}]}
+        mock_resp.json.return_value = {"rankings": [{"index": 0, "logit": 0.7}]}
 
         with patch("requests.post", return_value=mock_resp):
             out = actor(df)

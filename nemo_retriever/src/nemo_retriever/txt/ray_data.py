@@ -16,6 +16,7 @@ from nemo_retriever.params import TextChunkParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 from .split import txt_bytes_to_chunks_df
 
@@ -27,7 +28,7 @@ from .split import txt_bytes_to_chunks_df
     description="Chunks text documents into smaller segments",
     category_color="#42d6a4",
 )
-class TextChunkActor(AbstractOperator, CPUOperator):
+class TextChunkCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: re-chunk existing ``text`` column by token count.
 
@@ -67,7 +68,7 @@ class TextChunkActor(AbstractOperator, CPUOperator):
     description="Splits raw text files for processing",
     category_color="#42d6a4",
 )
-class TxtSplitActor(AbstractOperator, CPUOperator):
+class TxtSplitCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of chunks.
 
@@ -112,3 +113,19 @@ class TxtSplitActor(AbstractOperator, CPUOperator):
 
     def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         return self.run(batch_df)
+
+
+class TextChunkActor(ArchetypeOperator):
+    _cpu_variant_class = TextChunkCPUActor
+
+    def __init__(self, params: TextChunkParams | None = None) -> None:
+        super().__init__(params=params)
+        self._params = params
+
+
+class TxtSplitActor(ArchetypeOperator):
+    _cpu_variant_class = TxtSplitCPUActor
+
+    def __init__(self, params: TextChunkParams | None = None) -> None:
+        super().__init__(params=params)
+        self._params = params

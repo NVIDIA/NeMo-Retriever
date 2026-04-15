@@ -15,10 +15,11 @@ NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
+VALID_RUN_MODES = {"batch", "inprocess"}
 VALID_EVALUATION_MODES = {"recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
-VALID_BEIR_LOADERS = {"vidore_hf"}
-VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "source_id", "path"}
+VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "vidore_hf"}
+VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
 VALID_EMBED_GRANULARITIES = {"element", "page"}
 REMOVED_HARNESS_KEYS = {"image_elements_modality"}
@@ -54,12 +55,17 @@ class HarnessConfig:
     dataset_dir: str
     dataset_label: str
     preset: str
+    run_mode: str = "batch"
 
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = True
     recall_match_mode: str = "pdf_page"
     recall_adapter: str = "none"
+    audio_match_tolerance_secs: float = 2.0
+    segment_audio: bool = False
+    audio_split_type: str = "size"
+    audio_split_interval: int = 500000
     evaluation_mode: str = "recall"
     beir_loader: str | None = None
     beir_dataset_name: str | None = None
@@ -79,6 +85,9 @@ class HarnessConfig:
     extract_infographics: bool = False
     write_detection_file: bool = False
     use_heuristics: bool = False
+    store_images_uri: str | None = None
+    store_text: bool = False
+    strip_base64: bool = True
 
     pdf_extract_workers: int = 8
     pdf_extract_num_cpus: float = 2.0
@@ -107,21 +116,30 @@ class HarnessConfig:
         if self.query_csv is not None and not Path(self.query_csv).exists():
             errors.append(f"query_csv does not exist: {self.query_csv}")
 
+        if self.run_mode not in VALID_RUN_MODES:
+            errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
+
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
 
         if self.evaluation_mode == "recall" and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
 
-        if self.input_type not in {"pdf", "txt", "html", "doc"}:
-            errors.append(f"input_type must be one of pdf/txt/html/doc, got '{self.input_type}'")
+        if self.input_type not in {"pdf", "txt", "html", "doc", "audio"}:
+            errors.append(f"input_type must be one of pdf/txt/html/doc/audio, got '{self.input_type}'")
 
         if self.evaluation_mode == "recall":
-            if self.recall_match_mode not in {"pdf_page", "pdf_only"}:
-                errors.append("recall_match_mode must be one of pdf_page/pdf_only")
+            if self.recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
+                errors.append("recall_match_mode must be one of pdf_page/pdf_only/audio_segment")
 
             if self.recall_adapter not in VALID_RECALL_ADAPTERS:
                 errors.append(f"recall_adapter must be one of {sorted(VALID_RECALL_ADAPTERS)}")
+            if float(self.audio_match_tolerance_secs) < 0.0:
+                errors.append("audio_match_tolerance_secs must be >= 0.0")
+            if self.audio_split_type not in {"size", "time", "frame"}:
+                errors.append("audio_split_type must be one of size/time/frame")
+            if int(self.audio_split_interval) < 1:
+                errors.append("audio_split_interval must be >= 1")
         else:
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
@@ -149,7 +167,7 @@ class HarnessConfig:
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
 
-        _ZERO_ALLOWED_WORKERS = {"page_elements_workers"}
+        _ZERO_ALLOWED_WORKERS = {f for f in TUNING_FIELDS if f.endswith("_workers")} if self.use_heuristics else set()
         for name in TUNING_FIELDS:
             val = getattr(self, name)
             if name.startswith("gpu_") and float(val) < 0.0:
@@ -250,11 +268,16 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_DATASET": ("dataset", str),
         "HARNESS_DATASET_DIR": ("dataset_dir", str),
         "HARNESS_PRESET": ("preset", str),
+        "HARNESS_RUN_MODE": ("run_mode", str),
         "HARNESS_QUERY_CSV": ("query_csv", str),
         "HARNESS_INPUT_TYPE": ("input_type", str),
         "HARNESS_RECALL_REQUIRED": ("recall_required", _parse_bool),
         "HARNESS_RECALL_MATCH_MODE": ("recall_match_mode", str),
         "HARNESS_RECALL_ADAPTER": ("recall_adapter", str),
+        "HARNESS_AUDIO_MATCH_TOLERANCE_SECS": ("audio_match_tolerance_secs", _parse_number),
+        "HARNESS_SEGMENT_AUDIO": ("segment_audio", _parse_bool),
+        "HARNESS_AUDIO_SPLIT_TYPE": ("audio_split_type", str),
+        "HARNESS_AUDIO_SPLIT_INTERVAL": ("audio_split_interval", _parse_number),
         "HARNESS_EVALUATION_MODE": ("evaluation_mode", str),
         "HARNESS_BEIR_LOADER": ("beir_loader", str),
         "HARNESS_BEIR_DATASET_NAME": ("beir_dataset_name", str),
@@ -271,6 +294,10 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
+        "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
+        "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
+        "HARNESS_STORE_TEXT": ("store_text", _parse_bool),
+        "HARNESS_STRIP_BASE64": ("strip_base64", _parse_bool),
     }
 
     for key in TUNING_FIELDS:

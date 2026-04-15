@@ -278,9 +278,9 @@ class TestGraphicElementsActor:
 
     def test_actor_error_returns_dataframe_with_error(self) -> None:
         """Actor should never raise; errors go into metadata columns."""
-        from nemo_retriever.chart.chart_detection import GraphicElementsActor
+        from nemo_retriever.chart.chart_detection import GraphicElementsGPUActor
 
-        actor = GraphicElementsActor.__new__(GraphicElementsActor)
+        actor = GraphicElementsGPUActor.__new__(GraphicElementsGPUActor)
         actor._graphic_elements_model = None
         actor._ocr_model = None
         actor._graphic_elements_invoke_url = ""
@@ -312,7 +312,7 @@ class TestGraphicElementsOCRConfig:
         assert cfg.graphic_elements_invoke_url == ""
         assert cfg.ocr_invoke_url == ""
         assert cfg.api_key == ""
-        assert cfg.request_timeout_s == 120.0
+        assert cfg.request_timeout_s == 60.0
 
     def test_load_config_with_values(self) -> None:
         from nemo_retriever.chart.config import load_graphic_elements_ocr_config_from_dict

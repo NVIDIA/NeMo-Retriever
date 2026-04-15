@@ -4,13 +4,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any
 
-import base64
-import io
-import time
-import traceback
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.chart.shared import _prediction_to_detections, graphic_elements_ocr_page_elements
 
+<<<<<<< HEAD
 import pandas as pd
 from nemo_retriever.nim.nim import invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
@@ -18,17 +17,18 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.designer import designer_component
+=======
+__all__ = [
+    "graphic_elements_ocr_page_elements",
+    "_prediction_to_detections",
+]
+>>>>>>> nvidia/main
 
-try:
-    import numpy as np
-except Exception:  # pragma: no cover
-    np = None  # type: ignore[assignment]
 
-try:
-    import torch
-except Exception:  # pragma: no cover
-    torch = None  # type: ignore[assignment]
+class GraphicElementsActor(ArchetypeOperator):
+    """Graph-facing graphic-elements archetype."""
 
+<<<<<<< HEAD
 try:
     from PIL import Image
 except Exception:  # pragma: no cover
@@ -607,45 +607,33 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
             remote_retry=self._remote_retry,
             inference_batch_size=self._inference_batch_size,
             **kwargs,
+=======
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return bool(
+            str(kwargs.get("graphic_elements_invoke_url") or "").strip()
+            or str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip()
+>>>>>>> nvidia/main
         )
 
-    def postprocess(self, data: Any, **kwargs: Any) -> Any:
-        return data
+    @classmethod
+    def cpu_variant_class(cls):
+        from nemo_retriever.chart.cpu_actor import GraphicElementsCPUActor
 
-    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
-        try:
-            return self.run(batch_df, **override_kwargs)
-        except BaseException as e:
-            if isinstance(batch_df, pd.DataFrame):
-                out = batch_df.copy()
-                payload = {
-                    "timing": None,
-                    "error": {
-                        "stage": "chart_graphic_elements_ocr_actor_call",
-                        "type": e.__class__.__name__,
-                        "message": str(e),
-                        "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-                    },
-                }
-                n = len(out.index)
-                out["chart"] = [[] for _ in range(n)]
-                out["graphic_elements_ocr_v1"] = [payload for _ in range(n)]
-                return out
-            return [
-                {
-                    "graphic_elements_ocr_v1": {
-                        "timing": None,
-                        "error": {
-                            "stage": "chart_graphic_elements_ocr_actor_call",
-                            "type": e.__class__.__name__,
-                            "message": str(e),
-                            "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-                        },
-                    }
-                }
-            ]
+        return GraphicElementsCPUActor
+
+    @classmethod
+    def gpu_variant_class(cls):
+        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GraphicElementsGPUActor
+
+        return GraphicElementsGPUActor
+
+    def __init__(self, **detect_kwargs: Any) -> None:
+        super().__init__(**detect_kwargs)
 
 
+<<<<<<< HEAD
 @designer_component(
     name="Graphic Elements Detection (CPU)",
     category="Detection & OCR",
@@ -654,59 +642,15 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
 )
 class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`GraphicElementsActor`.
+=======
+def __getattr__(name: str):
+    if name == "GraphicElementsCPUActor":
+        from nemo_retriever.chart.cpu_actor import GraphicElementsCPUActor
+>>>>>>> nvidia/main
 
-    Defaults to build.nvidia.com endpoints for ``nemotron-graphic-elements-v1``
-    and ``nemotron-ocr-v1``.  No local GPU models are loaded.
-    """
+        return GraphicElementsCPUActor
+    if name == "GraphicElementsGPUActor":
+        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GraphicElementsGPUActor
 
-    DEFAULT_GRAPHIC_ELEMENTS_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
-    DEFAULT_OCR_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
-
-    def __init__(
-        self,
-        *,
-        graphic_elements_invoke_url: Optional[str] = None,
-        ocr_invoke_url: Optional[str] = None,
-        invoke_url: Optional[str] = None,
-        api_key: Optional[str] = None,
-        request_timeout_s: float = 120.0,
-        remote_max_pool_workers: int = 16,
-        remote_max_retries: int = 10,
-        remote_max_429_retries: int = 5,
-        inference_batch_size: int = 8,
-    ) -> None:
-        super().__init__()
-        self._graphic_elements_invoke_url = (
-            graphic_elements_invoke_url or self.DEFAULT_GRAPHIC_ELEMENTS_INVOKE_URL
-        ).strip()
-        self._ocr_invoke_url = (ocr_invoke_url or invoke_url or self.DEFAULT_OCR_INVOKE_URL).strip()
-        self._api_key = api_key
-        self._request_timeout_s = float(request_timeout_s)
-        self._remote_retry = RemoteRetryParams(
-            remote_max_pool_workers=int(remote_max_pool_workers),
-            remote_max_retries=int(remote_max_retries),
-            remote_max_429_retries=int(remote_max_429_retries),
-        )
-        self._inference_batch_size = int(inference_batch_size)
-        self._graphic_elements_model = None
-        self._ocr_model = None
-
-    def preprocess(self, data: Any, **kwargs: Any) -> Any:
-        return data
-
-    def process(self, data: Any, **kwargs: Any) -> Any:
-        return graphic_elements_ocr_page_elements(
-            data,
-            graphic_elements_model=self._graphic_elements_model,
-            ocr_model=self._ocr_model,
-            graphic_elements_invoke_url=self._graphic_elements_invoke_url,
-            ocr_invoke_url=self._ocr_invoke_url,
-            api_key=self._api_key,
-            request_timeout_s=self._request_timeout_s,
-            remote_retry=self._remote_retry,
-            inference_batch_size=self._inference_batch_size,
-            **kwargs,
-        )
-
-    def postprocess(self, data: Any, **kwargs: Any) -> Any:
-        return data
+        return GraphicElementsGPUActor
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

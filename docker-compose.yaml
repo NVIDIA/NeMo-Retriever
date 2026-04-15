@@ -184,7 +184,7 @@ services:
       - reranker
 
   nemotron-parse:
-    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse}:${NEMOTRON_PARSE_TAG:-1.5.0}
+    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NEMOTRON_PARSE_TAG:-1.7.0-variant}
     shm_size: 16gb
     ports:
       - "${NEMOTRON_PARSE_HTTP_PORT:-8018}:8000"
@@ -328,7 +328,7 @@ services:
       # - NEMOTRON_PARSE_HTTP_ENDPOINT=https://integrate.api.nvidia.com/v1/chat/completions
       - NEMOTRON_PARSE_HTTP_ENDPOINT=http://nemotron-parse:8000/v1/chat/completions
       - NEMOTRON_PARSE_INFER_PROTOCOL=http
-      - NEMOTRON_PARSE_MODEL_NAME=nvidia/nemotron-parse
+      - NEMOTRON_PARSE_MODEL_NAME=${NEMOTRON_PARSE_MODEL_NAME:-nvidia/nemotron-parse-v1.2}
       - NGC_API_KEY=${NGC_API_KEY:-ngcapikey}
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-${NGC_API_KEY:-ngcapikey}}
       - NV_INGEST_MAX_UTIL=${NV_INGEST_MAX_UTIL:-32}
@@ -520,3 +520,26 @@ services:
       - "milvus"
     profiles:
       - retrieval
+
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol
+    environment:
+      NEO4J_AUTH: ${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-neo4jpassword}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-neo4jpassword}", "RETURN 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    profiles:
+      - graph
+
+volumes:
+  neo4j_data:

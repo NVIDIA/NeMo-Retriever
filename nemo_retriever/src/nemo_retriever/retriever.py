@@ -9,6 +9,24 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 from tqdm import tqdm
 
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
+
+_KEEP_KEYS = frozenset(
+    {
+        "text",
+        "metadata",
+        "source",
+        "page_number",
+        "pdf_page",
+        "pdf_basename",
+        "source_id",
+        "path",
+        "stored_image_uri",
+        "content_type",
+        "bbox_xyxy_norm",
+    }
+)
+
 
 @dataclass
 class Retriever:
@@ -40,7 +58,7 @@ class Retriever:
 
     lancedb_uri: str = "lancedb"
     lancedb_table: str = "nv-ingest"
-    embedder: str = "nvidia/llama-nemotron-embed-1b-v2"
+    embedder: str = VL_EMBED_MODEL
     embedding_http_endpoint: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
@@ -55,21 +73,26 @@ class Retriever:
     # Reranking -----------------------------------------------------------
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
-    reranker_model_name: Optional[str] = "nvidia/llama-nemotron-rerank-1b-v2"
+    reranker_model_name: Optional[str] = VL_RERANK_MODEL
     """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2')."""
     reranker_endpoint: Optional[str] = None
-    """Base URL of a vLLM / NIM /rerank endpoint.  Takes priority over local model."""
+    """Base URL of a vLLM / NIM ranking endpoint. Appends ``/v1/ranking`` unless already using ``/reranking``."""
     reranker_api_key: str = ""
     """Bearer token for the remote rerank endpoint."""
-    reranker_max_length: int = 512
+    reranker_max_length: int = 10240
     """Tokenizer truncation length for local reranking (max 8 192)."""
     reranker_batch_size: int = 32
     """GPU micro-batch size for local reranking."""
     reranker_refine_factor: int = 4
     """Number of candidates to rerank = top_k * reranker_refine_factor.
     Set to 1 to rerank only the top_k results."""
+    rerank_modality: str = "text"
+    """Reranking modality, typically matches embed_modality. Set to 'text_image'
+    to enable multimodal reranking with images."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
+    # Internal cache for local HF embedders, keyed by model name.
+    _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def _resolve_embedding_endpoint(self) -> Optional[str]:
         http_ep = self.embedding_http_endpoint.strip() if isinstance(self.embedding_http_endpoint, str) else None
@@ -108,11 +131,23 @@ class Retriever:
                 out.append(list(embedding))
         return out
 
-    def _embed_queries_local_hf(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
-        from nemo_retriever.model import create_local_embedder, is_vl_embed_model
+    def _get_local_embedder(self, model_name: str) -> Any:
+        """Lazily load and cache the local HF embedder for *model_name*."""
+        if model_name not in self._embedder_cache:
+            from nemo_retriever.model import create_local_embedder
 
-        cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-        embedder = create_local_embedder(model_name, device=self.local_hf_device, hf_cache_dir=cache_dir)
+            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
+            self._embedder_cache[model_name] = create_local_embedder(
+                model_name,
+                device=self.local_hf_device,
+                hf_cache_dir=cache_dir,
+            )
+        return self._embedder_cache[model_name]
+
+    def _embed_queries_local_hf(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
+        from nemo_retriever.model import is_vl_embed_model
+
+        embedder = self._get_local_embedder(model_name)
 
         if is_vl_embed_model(model_name):
             vectors = embedder.embed_queries(query_texts, batch_size=int(self.local_hf_batch_size))
@@ -147,6 +182,12 @@ class Retriever:
             if effective_nprobes <= 0:
                 effective_nprobes = 16
 
+        # Check whether the table has a stored_image_uri column (added for VL reranking).
+        table_columns = {f.name for f in table.schema}
+        has_image_uri = "stored_image_uri" in table_columns
+        has_content_type = "content_type" in table_columns
+        has_bbox = "bbox_xyxy_norm" in table_columns
+
         results: list[list[dict[str, Any]]] = []
         for i, vector in enumerate(query_vectors):
             q = np.asarray(vector, dtype="float32")
@@ -161,35 +202,37 @@ class Retriever:
                     .text(query_texts[i])
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(
-                        ["text", "metadata", "source", "page_number", "pdf_page", "pdf_basename", "source_id", "path"]
-                    )
                     .limit(int(top_k))
                     .rerank(RRFReranker())
                     .to_list()
                 )
             else:
+                select_cols = [
+                    "text",
+                    "metadata",
+                    "source",
+                    "page_number",
+                    "_distance",
+                    "pdf_page",
+                    "pdf_basename",
+                    "source_id",
+                    "path",
+                ]
+                if has_image_uri:
+                    select_cols.append("stored_image_uri")
+                if has_content_type:
+                    select_cols.append("content_type")
+                if has_bbox:
+                    select_cols.append("bbox_xyxy_norm")
                 hits = (
                     table.search(q, vector_column_name=self.vector_column_name)
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .select(
-                        [
-                            "text",
-                            "metadata",
-                            "source",
-                            "page_number",
-                            "_distance",
-                            "pdf_page",
-                            "pdf_basename",
-                            "source_id",
-                            "path",
-                        ]
-                    )
+                    .select(select_cols)
                     .limit(int(top_k))
                     .to_list()
                 )
-            results.append(hits)
+            results.append([{k: v for k, v in h.items() if k in _KEEP_KEYS} for h in hits])
         return results
 
     # ------------------------------------------------------------------
@@ -197,12 +240,12 @@ class Retriever:
     # ------------------------------------------------------------------
 
     def _get_reranker_model(self) -> Any:
-        """Lazily load and cache the local NemotronRerankV2 model."""
+        """Lazily load and cache the local reranker model (text-only or VL)."""
         if self._reranker_model is None and self.reranker:
-            from nemo_retriever.model.local import NemotronRerankV2
+            from nemo_retriever.model import create_local_reranker
 
             cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            self._reranker_model = NemotronRerankV2(
+            self._reranker_model = create_local_reranker(
                 model_name=self.reranker_model_name,
                 device=self.local_hf_device,
                 hf_cache_dir=cache_dir,
@@ -233,6 +276,7 @@ class Retriever:
                     max_length=int(self.reranker_max_length),
                     batch_size=int(self.reranker_batch_size),
                     top_n=int(self.top_k),
+                    modality=self.rerank_modality,
                 )
             )
         return reranked
@@ -304,6 +348,12 @@ class Retriever:
             results = self._rerank_results(query_texts, results)
 
         return results
+
+    def generate_sql(self, query: str) -> str:
+        """Generate a SQL query for a given natural language query."""
+        from nemo_retriever.tabular_data.retrieval import generate_sql
+
+        return generate_sql(query)
 
 
 # Backward compatibility alias.

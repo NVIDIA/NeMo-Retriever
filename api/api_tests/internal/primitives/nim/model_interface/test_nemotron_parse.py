@@ -83,11 +83,14 @@ class TestNemotronParseModelInterface(unittest.TestCase):
         self.assertEqual(len(payload["messages"]), 1)
         self.assertEqual(payload["messages"][0]["role"], "user")
 
-        # Check the content structure
         content = payload["messages"][0]["content"]
         self.assertEqual(len(content), 1)
         self.assertEqual(content[0]["type"], "image_url")
         self.assertTrue("base64_encoded" in content[0]["image_url"]["url"])
+
+        # Sampling parameters are always included
+        self.assertEqual(payload["temperature"], 0.0)
+        self.assertEqual(payload["repetition_penalty"], 1.1)
 
     def test_format_input_http_multiple_images(self):
         """Test format_input method with HTTP protocol and multiple images."""
@@ -174,11 +177,10 @@ class TestNemotronParseModelInterface(unittest.TestCase):
         self.assertTrue("Invalid protocol" in str(context.exception))
 
     def test_process_inference_results(self):
-        """Test process_inference_results method."""
-        # This method simply returns the input unchanged
-        test_output = {"key": "value"}
+        """Test process_inference_results wraps output in a list."""
+        test_output = [{"type": "Text", "bbox": {}, "text": "hello"}]
         result = self.model_interface.process_inference_results(test_output)
-        self.assertEqual(result, test_output)
+        self.assertEqual(result, [test_output])
 
     def test_prepare_nemotron_parse_payload(self):
         """Test _prepare_nemotron_parse_payload method."""
@@ -190,15 +192,37 @@ class TestNemotronParseModelInterface(unittest.TestCase):
         self.assertEqual(payload["model"], "nvidia/nemotron-parse")
         self.assertEqual(len(payload["messages"]), 2)
 
-        # Check the first message
+        # Old NIM (default): image_url only per message
         self.assertEqual(payload["messages"][0]["role"], "user")
         self.assertEqual(payload["messages"][0]["content"][0]["type"], "image_url")
         self.assertEqual(payload["messages"][0]["content"][0]["image_url"]["url"], "data:image/png;base64,base64_data1")
 
-        # Check the second message
         self.assertEqual(payload["messages"][1]["role"], "user")
         self.assertEqual(payload["messages"][1]["content"][0]["type"], "image_url")
         self.assertEqual(payload["messages"][1]["content"][0]["image_url"]["url"], "data:image/png;base64,base64_data2")
+
+    def test_prepare_payload_v1_2_includes_text_prompt(self):
+        """Test that v1.2 model includes text prompt and sampling params."""
+        v12_interface = NemotronParseModelInterface(model_name="nvidia/nemotron-parse-v1.2")
+        payload = v12_interface._prepare_nemotron_parse_payload(["base64_data1"])
+
+        content = payload["messages"][0]["content"]
+        self.assertEqual(len(content), 2)
+        self.assertEqual(content[0]["type"], "text")
+        self.assertIn("<predict_bbox>", content[0]["text"])
+        self.assertEqual(content[1]["type"], "image_url")
+
+        self.assertEqual(payload["temperature"], 0.0)
+        self.assertEqual(payload["repetition_penalty"], 1.1)
+
+    def test_custom_sampling_params(self):
+        """Test that custom temperature and repetition_penalty are used."""
+        custom_interface = NemotronParseModelInterface(
+            model_name="nvidia/nemotron-parse", temperature=0.5, repetition_penalty=1.3
+        )
+        payload = custom_interface._prepare_nemotron_parse_payload(["base64_data1"])
+        self.assertEqual(payload["temperature"], 0.5)
+        self.assertEqual(payload["repetition_penalty"], 1.3)
 
     def test_extract_content_from_nemotron_parse_response(self):
         """Test _extract_content_from_nemotron_parse_response method."""

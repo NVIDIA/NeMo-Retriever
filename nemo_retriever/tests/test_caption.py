@@ -74,7 +74,7 @@ def test_pdf_extraction_populates_images(mock_extract):
 
 
 def test_explode_includes_captioned_images():
-    from nemo_retriever.ingest_modes.inprocess import explode_content_to_rows
+    from nemo_retriever.graph.content_transforms import explode_content_to_rows
 
     b64 = _make_test_png_b64()
     df = pd.DataFrame(

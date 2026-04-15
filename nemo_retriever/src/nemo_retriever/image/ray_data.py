@@ -15,6 +15,7 @@ import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 from .load import image_bytes_to_pages_df
 
@@ -40,7 +41,7 @@ _PAGE_COLUMNS = [
     description="Loads and prepares images for processing",
     category_color="#42d6a4",
 )
-class ImageLoadActor(AbstractOperator, CPUOperator):
+class ImageLoadCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of page rows.
 
@@ -71,6 +72,8 @@ class ImageLoadActor(AbstractOperator, CPUOperator):
                 page_df = image_bytes_to_pages_df(raw, path_str)
                 if not page_df.empty:
                     out_dfs.append(page_df)
+            except ImportError:
+                raise
             except Exception:
                 continue
         if not out_dfs:
@@ -82,3 +85,10 @@ class ImageLoadActor(AbstractOperator, CPUOperator):
 
     def __call__(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         return self.run(batch_df)
+
+
+class ImageLoadActor(ArchetypeOperator):
+    _cpu_variant_class = ImageLoadCPUActor
+
+    def __init__(self) -> None:
+        super().__init__()
