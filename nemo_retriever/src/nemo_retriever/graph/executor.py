@@ -262,12 +262,13 @@ class RayDataExecutor(AbstractExecutor):
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
 
-            # NemotronParseGPUActor uses vLLM which handles its own batching
-            # efficiently, so feed it more rows per map_batches call.
+            # vLLM-backed actors handle their own batching efficiently
+            # (continuous batching), so feed them more rows per map_batches call.
             from nemo_retriever.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+            from nemo_retriever.caption.caption import CaptionGPUActor
 
             if batch_size == self._default_batch_size and issubclass(
-                node.operator_class, (NemotronParseActor, NemotronParseGPUActor)
+                node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
 
