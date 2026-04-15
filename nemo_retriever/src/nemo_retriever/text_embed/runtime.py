@@ -49,9 +49,13 @@ def _embed_group(
                 return vectors  # type: ignore[return-value]
 
     default_remote_image_batch_size = 4
+    default_local_image_batch_size = 8
     effective_batch_size = inference_batch_size
-    if endpoint is not None and group_modality in IMAGE_MODALITIES:
-        effective_batch_size = min(inference_batch_size, default_remote_image_batch_size)
+    if group_modality in IMAGE_MODALITIES:
+        if endpoint is not None:
+            effective_batch_size = min(inference_batch_size, default_remote_image_batch_size)
+        else:
+            effective_batch_size = min(inference_batch_size, default_local_image_batch_size)
 
     cfg = TextEmbeddingConfig(
         text_column=str(text_column),
