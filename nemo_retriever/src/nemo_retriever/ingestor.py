@@ -10,7 +10,6 @@ Concrete implementations are provided by runmodes:
 
 - inprocess: local Python process, no framework assumptions
 - batch: large-scale batch execution
-- fused: low-latency single-actor GPU model fusion
 - online: low-latency, multi-request serving
 """
 

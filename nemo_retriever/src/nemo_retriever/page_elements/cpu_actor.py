@@ -10,10 +10,11 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.fusion import ProcessOnlyFusionSafe
 from nemo_retriever.page_elements.shared import _error_payload, detect_page_elements_v3
 
 
-class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
+class PageElementDetectionCPUActor(ProcessOnlyFusionSafe, AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`PageElementDetectionActor`.
 
     Defaults to the build.nvidia.com endpoint for ``nemotron-page-elements-v3``.
@@ -21,6 +22,9 @@ class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
     """
 
     DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
+    fusion_stage_id = "page_elements"
+    fusion_next_stage_ids = ("table_structure", "graphic_elements", "ocr")
+    fusion_can_start_segment = True
 
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
