@@ -1,9 +1,11 @@
 name: Retriever Unit Tests
 
 on:
+  # push: only default branch — feature-branch pushes also fire pull_request when a
+  # PR exists, so a broad push trigger duplicates every PR synchronize.
   push:
     branches:
-      - "**"
+      - main
   pull_request:
 
 jobs:
