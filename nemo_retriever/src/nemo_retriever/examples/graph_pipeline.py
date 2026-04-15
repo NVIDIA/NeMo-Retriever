@@ -39,12 +39,16 @@ from typing import Optional, TextIO
 
 import typer
 
+from nemo_retriever.audio import asr_params_from_env
 from nemo_retriever.graph_ingestor import GraphIngestor
+from nemo_retriever.params import AudioChunkParams
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vector_store.lancedb_store import handle_lancedb
@@ -148,6 +152,14 @@ def _write_runtime_summary(
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _count_input_units(result_df) -> int:
+    if "source_id" in result_df.columns:
+        return int(result_df["source_id"].nunique())
+    if "source_path" in result_df.columns:
+        return int(result_df["source_path"].nunique())
+    return int(len(result_df.index))
+
+
 def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     import glob as _glob
 
@@ -163,6 +175,7 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
         "txt": ["*.txt"],
         "html": ["*.html"],
         "image": ["*.jpg", "*.jpeg", "*.png", "*.tiff", "*.bmp"],
+        "audio": ["*.mp3", "*.wav", "*.m4a"],
     }
     exts = ext_map.get(input_type)
     if exts is None:
@@ -195,7 +208,9 @@ def main(
     ),
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable debug-level logging."),
     dpi: int = typer.Option(300, "--dpi", min=72, help="Render DPI for PDF page images."),
-    input_type: str = typer.Option("pdf", "--input-type", help="Input type: 'pdf', 'doc', 'txt', 'html', or 'image'."),
+    input_type: str = typer.Option(
+        "pdf", "--input-type", help="Input type: 'pdf', 'doc', 'txt', 'html', 'image', or 'audio'."
+    ),
     method: str = typer.Option("pdfium", "--method", help="PDF text extraction method."),
     extract_text: bool = typer.Option(True, "--extract-text/--no-extract-text"),
     extract_tables: bool = typer.Option(True, "--extract-tables/--no-extract-tables"),
@@ -213,7 +228,7 @@ def main(
     table_structure_invoke_url: Optional[str] = typer.Option(None, "--table-structure-invoke-url"),
     embed_invoke_url: Optional[str] = typer.Option(None, "--embed-invoke-url"),
     # Embedding
-    embed_model_name: str = typer.Option("nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name"),
+    embed_model_name: str = typer.Option(VL_EMBED_MODEL, "--embed-model-name"),
     embed_modality: str = typer.Option("text", "--embed-modality"),
     embed_granularity: str = typer.Option("element", "--embed-granularity"),
     text_elements_modality: Optional[str] = typer.Option(None, "--text-elements-modality"),
@@ -228,6 +243,11 @@ def main(
     caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
     caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
     # Text chunking
+    store_images_uri: Optional[str] = typer.Option(
+        None, "--store-images-uri", help="Store extracted images to this URI."
+    ),
+    store_text: bool = typer.Option(False, "--store-text/--no-store-text", help="Also store extracted text."),
+    strip_base64: bool = typer.Option(True, "--strip-base64/--no-strip-base64", help="Strip base64 after storing."),
     text_chunk: bool = typer.Option(False, "--text-chunk"),
     text_chunk_max_tokens: Optional[int] = typer.Option(None, "--text-chunk-max-tokens"),
     text_chunk_overlap_tokens: Optional[int] = typer.Option(None, "--text-chunk-overlap-tokens"),
@@ -260,9 +280,13 @@ def main(
     hybrid: bool = typer.Option(False, "--hybrid/--no-hybrid"),
     query_csv: Path = typer.Option("./data/bo767_query_gt.csv", "--query-csv", path_type=Path),
     recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode"),
+    audio_match_tolerance_secs: float = typer.Option(2.0, "--audio-match-tolerance-secs", min=0.0),
+    segment_audio: bool = typer.Option(False, "--segment-audio/--no-segment-audio"),
+    audio_split_type: str = typer.Option("size", "--audio-split-type"),
+    audio_split_interval: int = typer.Option(500000, "--audio-split-interval", min=1),
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
-    reranker_model_name: str = typer.Option("nvidia/llama-nemotron-rerank-1b-v2", "--reranker-model-name"),
+    reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name"),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -280,8 +304,10 @@ def main(
     try:
         if run_mode not in {"batch", "inprocess"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
-        if recall_match_mode not in {"pdf_page", "pdf_only"}:
+        if recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
             raise ValueError(f"Unsupported --recall-match-mode: {recall_match_mode!r}")
+        if audio_split_type not in {"size", "time", "frame"}:
+            raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"recall", "beir"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
 
@@ -434,6 +460,12 @@ def main(
             ingestor = ingestor.extract_html(text_chunk_params)
         elif input_type == "image":
             ingestor = ingestor.extract_image_files(extract_params)
+        elif input_type == "audio":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_audio(
+                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+                asr_params=asr_params,
+            )
         else:
             # "pdf" or "doc"
             ingestor = ingestor.extract(extract_params)
@@ -457,6 +489,15 @@ def main(
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
+                )
+            )
+
+        if store_images_uri is not None:
+            ingestor = ingestor.store(
+                StoreParams(
+                    storage_uri=store_images_uri,
+                    store_text=store_text,
+                    strip_base64=strip_base64,
                 )
             )
 
@@ -489,14 +530,14 @@ def main(
             import pandas as pd
 
             result_df = pd.DataFrame(ingest_local_results)
-            num_rows = result.groupby("source_id").count().count()
+            num_rows = _count_input_units(result_df)
         else:
             import pandas as pd
 
             result_df = result
             ingest_local_results = result_df.to_dict("records")
             ray_download_time = 0.0
-            num_rows = result_df["source_id"].nunique() if "source_id" in result_df.columns else len(result_df)
+            num_rows = _count_input_units(result_df)
 
         if detection_summary_file is not None:
             from nemo_retriever.utils.detection_summary import (
@@ -630,7 +671,9 @@ def main(
                 ks=(1, 5, 10),
                 hybrid=hybrid,
                 match_mode=recall_match_mode,
+                audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
+                embed_modality=embed_modality,
             )
             evaluation_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(

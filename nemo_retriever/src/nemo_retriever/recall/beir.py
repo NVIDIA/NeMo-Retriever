@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 from collections import defaultdict
+import csv
 from dataclasses import dataclass
 import json
 import logging
@@ -15,7 +17,27 @@ from nemo_retriever.retriever import Retriever
 logger = logging.getLogger(__name__)
 
 DEFAULT_BEIR_KS: tuple[int, ...] = (1, 3, 5, 10)
-VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset({"pdf_basename", "pdf_page", "source_id", "path"})
+VALID_BEIR_LOADERS: frozenset[str] = frozenset({"bo10k_csv", "bo767_csv", "vidore_hf"})
+VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
+    {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
+)
+REPO_ROOT = Path(__file__).resolve().parents[4]
+BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_annotations.csv"
+BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.csv"
+_ELEMENT_TYPE_ALIASES: dict[str, str] = {
+    "caption": "image",
+    "chart_caption": "chart",
+    "figure": "image",
+    "image": "image",
+    "image_caption": "image",
+    "infographic": "infographic",
+    "infographic_caption": "infographic",
+    "page_image": "image",
+    "structured_image": "image",
+    "table": "table",
+    "table_caption": "table",
+    "text": "text",
+}
 
 
 @dataclass(frozen=True)
@@ -56,6 +78,152 @@ def _row_get(row: Any, key: str, default: Any = None) -> Any:
     if isinstance(row, dict):
         return row.get(key, default)
     return getattr(row, key, default)
+
+
+def _normalize_pdf_basename(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    path = Path(text)
+    basename = path.name if path.name else text
+    return basename[:-4] if basename.lower().endswith(".pdf") else Path(basename).stem
+
+
+def _parse_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return {}
+
+    text = value.strip()
+    if not text:
+        return {}
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+
+    try:
+        parsed = ast.literal_eval(text)
+    except (SyntaxError, ValueError):
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+
+    return {}
+
+
+def _normalize_element_type(value: Any, *, subtype: Any = None) -> str | None:
+    candidates = [value, subtype]
+    for candidate in candidates:
+        normalized = str(candidate or "").strip().lower()
+        if not normalized:
+            continue
+        alias = _ELEMENT_TYPE_ALIASES.get(normalized)
+        if alias:
+            return alias
+    return None
+
+
+def _build_pdf_page_modality(pdf_basename: str, page_number: Any, element_type: str) -> str | None:
+    basename = _normalize_pdf_basename(pdf_basename)
+    if not basename:
+        return None
+
+    try:
+        normalized_page = int(page_number)
+    except (TypeError, ValueError):
+        return None
+
+    normalized_type = _normalize_element_type(element_type)
+    if not normalized_type:
+        return None
+
+    return f"{basename}_{normalized_page}_{normalized_type}"
+
+
+def _resolve_annotations_csv_path(dataset_name: str, *, loader_name: str) -> Path:
+    dataset_str = str(dataset_name).strip()
+    candidate = Path(dataset_str).expanduser()
+    if candidate.suffix.lower() == ".csv":
+        if not candidate.is_absolute():
+            candidate = (REPO_ROOT / candidate).resolve()
+        return candidate
+    if loader_name == "bo767_csv" and dataset_str.lower() == "bo767":
+        return BO767_ANNOTATIONS_PATH
+    if loader_name == "bo10k_csv" and dataset_str.lower() == "bo10k":
+        return BO10K_ANNOTATIONS_PATH
+    raise ValueError(
+        f"{loader_name} expects dataset_name='{dataset_str.lower()}' or a path to a CSV file, got {dataset_name!r}"
+    )
+
+
+def _build_csv_corpus_id(
+    *,
+    pdf_basename: str,
+    page_number: int,
+    modality: str,
+    doc_id_field: str,
+    loader_name: str,
+) -> str:
+    if doc_id_field == "pdf_page":
+        return f"{pdf_basename}_{page_number}"
+    if doc_id_field == "pdf_page_modality":
+        return f"{pdf_basename}_{page_number}_{modality}"
+    raise ValueError(
+        f"{loader_name} only supports doc_id_field values " f"'pdf_page' or 'pdf_page_modality', got {doc_id_field!r}"
+    )
+
+
+def _load_annotations_csv_dataset(*, dataset_name: str, doc_id_field: str, loader_name: str) -> BeirDataset:
+    dataset_path = _resolve_annotations_csv_path(dataset_name, loader_name=loader_name)
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Annotations CSV not found: {dataset_path}")
+
+    query_ids: list[str] = []
+    queries: list[str] = []
+    qrels: dict[str, dict[str, int]] = {}
+
+    with dataset_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for idx, row in enumerate(reader):
+            query_text = str(row.get("query") or "").strip()
+            pdf_basename = _normalize_pdf_basename(row.get("pdf"))
+            modality = _normalize_element_type(row.get("modality"))
+            raw_page = row.get("page")
+
+            if not query_text or not pdf_basename or modality is None:
+                continue
+
+            try:
+                page_number = int(raw_page) + 1
+            except (TypeError, ValueError):
+                continue
+
+            query_id = str(row.get("query_id") or idx)
+            corpus_id = _build_csv_corpus_id(
+                pdf_basename=pdf_basename,
+                page_number=page_number,
+                modality=modality,
+                doc_id_field=doc_id_field,
+                loader_name=loader_name,
+            )
+            query_ids.append(query_id)
+            queries.append(query_text)
+            qrels[query_id] = {corpus_id: 1}
+
+    if not query_ids:
+        raise ValueError(f"No BO767 queries loaded from {dataset_path}")
+
+    return BeirDataset(
+        dataset_name=str(dataset_name),
+        query_ids=query_ids,
+        queries=queries,
+        qrels=qrels,
+    )
 
 
 def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = None) -> tuple[list[str], list[str]]:
@@ -107,10 +275,21 @@ def build_qrels_by_query_id(
 
 
 def load_beir_dataset(
-    loader: str, *, dataset_name: str, split: str = "test", query_language: str | None = None
+    loader: str,
+    *,
+    dataset_name: str,
+    split: str = "test",
+    query_language: str | None = None,
+    doc_id_field: str = "pdf_basename",
 ) -> BeirDataset:
     """Load a BEIR-style dataset for evaluation."""
     loader_name = str(loader).strip().lower()
+    if loader_name in {"bo767_csv", "bo10k_csv"}:
+        return _load_annotations_csv_dataset(
+            dataset_name=dataset_name,
+            doc_id_field=str(doc_id_field),
+            loader_name=loader_name,
+        )
     if loader_name != "vidore_hf":
         raise ValueError(f"Unsupported BEIR loader: {loader}")
 
@@ -146,29 +325,91 @@ def load_beir_dataset(
     )
 
 
+def _extract_source_path_from_hit(hit: dict[str, Any]) -> str:
+    source_id = hit.get("source_id")
+    if isinstance(source_id, str) and source_id.strip():
+        return source_id.strip()
+
+    parsed_source = _parse_mapping(hit.get("source"))
+    source_value = parsed_source.get("source_id")
+    return str(source_value).strip() if isinstance(source_value, str) else ""
+
+
+def _extract_page_number_from_hit(hit: dict[str, Any]) -> int | None:
+    direct_page = hit.get("page_number")
+    try:
+        if direct_page is not None:
+            return int(direct_page)
+    except (TypeError, ValueError):
+        pass
+
+    metadata = _parse_mapping(hit.get("metadata"))
+    try:
+        if metadata.get("page_number") is not None:
+            return int(metadata["page_number"])
+    except (TypeError, ValueError):
+        pass
+
+    content_metadata = metadata.get("content_metadata")
+    if isinstance(content_metadata, dict):
+        try:
+            if content_metadata.get("page_number") is not None:
+                return int(content_metadata["page_number"])
+        except (TypeError, ValueError):
+            pass
+
+    return None
+
+
+def _extract_element_type_from_hit(hit: dict[str, Any]) -> str | None:
+    direct_type = _normalize_element_type(
+        hit.get("element_type") or hit.get("_content_type") or hit.get("content_type") or hit.get("document_type")
+    )
+    if direct_type is not None:
+        return direct_type
+
+    metadata = _parse_mapping(hit.get("metadata"))
+    content_metadata = metadata.get("content_metadata") if isinstance(metadata.get("content_metadata"), dict) else {}
+    normalized = _normalize_element_type(
+        metadata.get("_content_type") or metadata.get("content_type") or metadata.get("document_type"),
+        subtype=content_metadata.get("subtype") if isinstance(content_metadata, dict) else None,
+    )
+    if normalized is not None:
+        return normalized
+
+    normalized = _normalize_element_type(content_metadata.get("type") if isinstance(content_metadata, dict) else None)
+    if normalized is not None:
+        return normalized
+
+    for metadata_key, fallback_type in (
+        ("table_metadata", "table"),
+        ("chart_metadata", "chart"),
+        ("image_metadata", "image"),
+        ("infographic_metadata", "infographic"),
+    ):
+        if metadata_key in metadata:
+            return fallback_type
+
+    return None
+
+
 def _extract_doc_id_from_hit(hit: dict[str, Any], *, doc_id_field: str) -> str | None:
     direct_value = hit.get(doc_id_field)
     if isinstance(direct_value, str) and direct_value.strip():
         return direct_value.strip()
 
-    source_id = hit.get("source_id")
-    if isinstance(source_id, str) and source_id.strip():
-        source_path = source_id.strip()
-    else:
-        source_path = ""
-        raw_source = hit.get("source")
-        if isinstance(raw_source, str) and raw_source.strip():
-            try:
-                parsed_source = json.loads(raw_source)
-            except json.JSONDecodeError:
-                parsed_source = {}
-            if isinstance(parsed_source, dict):
-                source_path = str(parsed_source.get("source_id") or "").strip()
-
+    source_path = _extract_source_path_from_hit(hit)
     if not source_path:
         return None
 
     path = Path(source_path)
+    if doc_id_field == "pdf_page_modality":
+        return _build_pdf_page_modality(
+            path.stem,
+            _extract_page_number_from_hit(hit),
+            _extract_element_type_from_hit(hit) or "",
+        )
+
     fallbacks = {
         "pdf_basename": path.stem,
         "source_id": source_path,
@@ -271,6 +512,7 @@ def evaluate_lancedb_beir(
         dataset_name=cfg.dataset_name,
         split=cfg.split,
         query_language=cfg.query_language,
+        doc_id_field=cfg.doc_id_field,
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
     retriever = Retriever(

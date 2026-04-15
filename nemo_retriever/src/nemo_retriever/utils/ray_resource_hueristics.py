@@ -25,11 +25,11 @@ EMBED_GPUS_PER_ACTOR = (
 EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 
 # Nemotron Parse Actor constants (PER-GPU)
-NEMOTRON_PARSE_INITIAL_ACTORS = 1  # Hueristic initial num actors per GPU (initial_size of ActorPoolStrategy). Ray starts up this many actors on start-up.  # noqa: E501
-NEMOTRON_PARSE_MIN_ACTORS = 1  # Hueristic minimum num actors per GPU (min_size of ActorPoolStrategy). Ray tries to never let running actors fall below this number.  # noqa: E501
-NEMOTRON_PARSE_MAX_ACTORS = 4  # Hueristic baseline num actors per GPU (max_size of ActorPoolStrategy). Ray will grow to this size when resources are available.  # noqa: E501
+NEMOTRON_PARSE_INITIAL_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
+NEMOTRON_PARSE_MIN_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
+NEMOTRON_PARSE_MAX_ACTORS = 1  # vLLM manages batching internally; one actor is sufficient.  # noqa: E501
 NEMOTRON_PARSE_GPUS_PER_ACTOR = (
-    0.1  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on. # noqa: E501
+    1.0  # vLLM owns the full GPU for KV-cache management and continuous batching.  # noqa: E501
 )
 NEMOTRON_PARSE_BATCH_SIZE = 64  # Ray batch size AND Nemotron Parse inference batch size
 
@@ -200,13 +200,26 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
     if not ray.is_initialized():
         raise ValueError("Ray is not initialized")
 
+    def _coerce_count(value: object) -> int:
+        try:
+            parsed = float(value)  # Ray may report fractional available resources.
+        except (TypeError, ValueError):
+            return 0
+        if parsed <= 0:
+            return 0
+        return int(parsed)
+
     total_resources: dict[str, object] = ray.cluster_resources()
     available_resources: dict[str, object] = ray.available_resources()
 
     return ClusterResources(
-        total_resources=Resources(cpu_count=total_resources.get("CPU", 0), gpu_count=total_resources.get("GPU", 0)),
+        total_resources=Resources(
+            cpu_count=_coerce_count(total_resources.get("CPU", 0)),
+            gpu_count=_coerce_count(total_resources.get("GPU", 0)),
+        ),
         available_resources=Resources(
-            cpu_count=available_resources.get("CPU", 0), gpu_count=available_resources.get("GPU", 0)
+            cpu_count=_coerce_count(available_resources.get("CPU", 0)),
+            gpu_count=_coerce_count(available_resources.get("GPU", 0)),
         ),
     )
 

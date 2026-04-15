@@ -540,14 +540,15 @@ class TestRunPipelineProcess:
 class TestKillPipelineProcessGroup:
     """Test suite for kill_pipeline_process_group function."""
 
-    @patch("nv_ingest.framework.orchestration.process.execution.os.getpgid")
-    @patch("nv_ingest.framework.orchestration.process.execution.os.killpg")
-    def test_kill_pipeline_process_group_success(self, mock_killpg, mock_getpgid):
+    @patch("nv_ingest.framework.orchestration.process.termination.os.getpgid")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.killpg")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.kill")
+    def test_kill_pipeline_process_group_success(self, mock_kill, mock_killpg, mock_getpgid):
         """Test successful process group termination."""
         # Setup
         mock_process = Mock()
         mock_process.pid = 12345
-        # Configure process to terminate gracefully after first SIGTERM
+        # Configure process to terminate gracefully after SIGUSR1
         mock_process.is_alive.side_effect = [True, False]  # Alive initially, then terminates
         pgid = 54321
         mock_getpgid.return_value = pgid
@@ -555,14 +556,16 @@ class TestKillPipelineProcessGroup:
         # Execute
         kill_pipeline_process_group(mock_process)
 
-        # Verify graceful termination
+        # Verify graceful termination via SIGUSR1 (not SIGTERM, to avoid gRPC stack traces)
         mock_getpgid.assert_called_once_with(mock_process.pid)
-        mock_killpg.assert_called_once_with(pgid, signal.SIGTERM)
+        mock_kill.assert_called_once_with(mock_process.pid, signal.SIGUSR1)
+        mock_killpg.assert_not_called()
         mock_process.join.assert_called_once_with(timeout=5.0)
 
-    @patch("nv_ingest.framework.orchestration.process.execution.os.getpgid")
-    @patch("nv_ingest.framework.orchestration.process.execution.os.killpg")
-    def test_kill_pipeline_process_group_already_dead(self, mock_killpg, mock_getpgid):
+    @patch("nv_ingest.framework.orchestration.process.termination.os.getpgid")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.killpg")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.kill")
+    def test_kill_pipeline_process_group_already_dead(self, mock_kill, mock_killpg, mock_getpgid):
         """Test kill_pipeline_process_group when process is already dead."""
         # Setup
         mock_process = Mock()
@@ -574,12 +577,14 @@ class TestKillPipelineProcessGroup:
 
         # Verify - should not attempt to kill if already dead
         mock_getpgid.assert_not_called()
+        mock_kill.assert_not_called()
         mock_killpg.assert_not_called()
         mock_process.join.assert_not_called()
 
-    @patch("nv_ingest.framework.orchestration.process.execution.os.getpgid")
-    @patch("nv_ingest.framework.orchestration.process.execution.os.killpg")
-    def test_kill_pipeline_process_group_getpgid_exception(self, mock_killpg, mock_getpgid):
+    @patch("nv_ingest.framework.orchestration.process.termination.os.getpgid")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.killpg")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.kill")
+    def test_kill_pipeline_process_group_getpgid_exception(self, mock_kill, mock_killpg, mock_getpgid):
         """Test kill_pipeline_process_group when getpgid fails."""
         # Setup
         mock_process = Mock()
@@ -592,49 +597,52 @@ class TestKillPipelineProcessGroup:
 
         # Verify
         mock_getpgid.assert_called_once_with(mock_process.pid)
+        mock_kill.assert_not_called()
         mock_killpg.assert_not_called()
         mock_process.join.assert_not_called()
 
-    @patch("nv_ingest.framework.orchestration.process.execution.os.getpgid")
-    @patch("nv_ingest.framework.orchestration.process.execution.os.killpg")
-    def test_kill_pipeline_process_group_killpg_exception(self, mock_killpg, mock_getpgid):
-        """Test kill_pipeline_process_group when killpg fails."""
+    @patch("nv_ingest.framework.orchestration.process.termination.os.getpgid")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.killpg")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.kill")
+    def test_kill_pipeline_process_group_kill_exception(self, mock_kill, mock_killpg, mock_getpgid):
+        """Test kill_pipeline_process_group when os.kill fails."""
         # Setup
         mock_process = Mock()
         mock_process.pid = 12345
         mock_process.is_alive.return_value = True
         pgid = 54321
         mock_getpgid.return_value = pgid
-        mock_killpg.side_effect = OSError("Permission denied")
+        mock_kill.side_effect = OSError("Permission denied")
 
         # Execute - should not raise exception
         kill_pipeline_process_group(mock_process)
 
-        # Verify - when killpg fails, the exception is caught and join() is not called
+        # Verify - when os.kill fails, the exception is caught and join() is not called
         mock_getpgid.assert_called_once_with(mock_process.pid)
-        mock_killpg.assert_called_once_with(pgid, signal.SIGTERM)
+        mock_kill.assert_called_once_with(mock_process.pid, signal.SIGUSR1)
         mock_process.join.assert_not_called()
 
-    @patch("nv_ingest.framework.orchestration.process.execution.os.getpgid")
-    @patch("nv_ingest.framework.orchestration.process.execution.os.killpg")
-    def test_kill_pipeline_process_group_graceful_then_force(self, mock_killpg, mock_getpgid):
+    @patch("nv_ingest.framework.orchestration.process.termination.os.getpgid")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.killpg")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.kill")
+    def test_kill_pipeline_process_group_graceful_then_force(self, mock_kill, mock_killpg, mock_getpgid):
         """Test kill_pipeline_process_group escalates to SIGKILL if needed."""
         # Setup
         mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.is_alive.side_effect = [True, True, False]  # alive, still alive after SIGTERM, then dead
+        mock_process.is_alive.side_effect = [True, True, False]  # alive, still alive after SIGUSR1, then dead
         pgid = 54321
         mock_getpgid.return_value = pgid
 
         # Execute
         kill_pipeline_process_group(mock_process)
 
-        # Verify both SIGTERM and SIGKILL were sent
-        # getpgid is called twice - once for SIGTERM, once for SIGKILL
+        # Verify SIGUSR1 was sent to main process, then SIGKILL to group
+        # getpgid is called twice - once for initial check, once for SIGKILL
         assert mock_getpgid.call_count == 2
         mock_getpgid.assert_has_calls([call(mock_process.pid), call(mock_process.pid)])
-        assert mock_killpg.call_count == 2
-        mock_killpg.assert_has_calls([call(pgid, signal.SIGTERM), call(pgid, signal.SIGKILL)])
+        mock_kill.assert_called_once_with(mock_process.pid, signal.SIGUSR1)
+        mock_killpg.assert_called_once_with(pgid, signal.SIGKILL)
         assert mock_process.join.call_count == 2
 
     def test_kill_pipeline_process_group_parameter_validation(self):
@@ -683,9 +691,10 @@ class TestExecutionIntegration:
             # run_pipeline_process only passes block=True to launch_pipeline
             mock_launch.assert_called_once_with(mock_config, block=True)
 
-    @patch("nv_ingest.framework.orchestration.process.execution.os.getpgid")
-    @patch("nv_ingest.framework.orchestration.process.execution.os.killpg")
-    def test_process_lifecycle_management(self, mock_killpg, mock_getpgid):
+    @patch("nv_ingest.framework.orchestration.process.termination.os.getpgid")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.killpg")
+    @patch("nv_ingest.framework.orchestration.process.termination.os.kill")
+    def test_process_lifecycle_management(self, mock_kill, mock_killpg, mock_getpgid):
         """Test complete process lifecycle management."""
         # Setup
         mock_process = Mock()
@@ -693,7 +702,7 @@ class TestExecutionIntegration:
         pgid = 88888
         mock_getpgid.return_value = pgid
 
-        # Configure process to terminate gracefully after first SIGTERM
+        # Configure process to terminate gracefully after SIGUSR1
         mock_process.is_alive.side_effect = [True, False]  # Alive initially, then terminates
 
         # Simulate process lifecycle
@@ -703,7 +712,8 @@ class TestExecutionIntegration:
 
         # Verify cleanup - should only call getpgid once for graceful termination
         mock_getpgid.assert_called_once_with(mock_process.pid)
-        mock_killpg.assert_called_once_with(pgid, signal.SIGTERM)
+        mock_kill.assert_called_once_with(mock_process.pid, signal.SIGUSR1)
+        mock_killpg.assert_not_called()
         mock_process.join.assert_called_once_with(timeout=5.0)
 
     @patch("nv_ingest.framework.orchestration.process.execution.ray.init")

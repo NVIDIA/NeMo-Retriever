@@ -46,6 +46,7 @@ dependencies = [
   "typer>=0.12.0",
   "rich>=13.7.0",
   "pillow==12.1.1",
+  "universal-pathlib>=0.2.0",
   "numpy>=1.26.0",
   "nltk==3.9.3",
   "urllib3==2.6.3",
@@ -63,7 +64,7 @@ dependencies = [
   "nemotron-page-elements-v3>=0.dev0",
   "nemotron-graphic-elements-v1>=0.dev0",
   "nemotron-table-structure-v1>=0.dev0",
-  "nemotron-ocr>=0.dev0",
+  "nemotron-ocr>=0.dev0; sys_platform == 'linux'",
   "markitdown",
   "timm==1.0.22",
   "tqdm",
@@ -76,7 +77,11 @@ dependencies = [
   "soundfile>=0.12.0",
   "scipy>=1.11.0",
   "nvidia-ml-py",
-  "vllm==0.16.0",
+  "vllm==0.16.0; sys_platform == 'linux'",
+  "duckdb>=1.2.0",
+  "duckdb-engine>=0.13.0",
+  "neo4j>=5.0",
+  "langchain-nvidia-ai-endpoints>=0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -103,8 +108,8 @@ nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
-torch = { index = "torch-cuda"}
-torchvision = { index ="torch-cuda"}
+torch = { index = "torch-cuda", marker = "sys_platform != 'darwin'" }
+torchvision = { index ="torch-cuda", marker = "sys_platform != 'darwin'" }
 vllm = [
   { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
   { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
