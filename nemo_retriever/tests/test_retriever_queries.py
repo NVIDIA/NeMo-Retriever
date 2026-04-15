@@ -376,7 +376,7 @@ class TestRetrieverDefaults:
         from nemo_retriever.retriever import Retriever
 
         r = Retriever()
-        assert r.reranker_model_name == "nvidia/llama-nemotron-rerank-1b-v2"
+        assert r.reranker_model_name == "nvidia/llama-nemotron-rerank-vl-1b-v2"
 
     def test_reranker_can_be_disabled(self):
         r = _make_retriever(reranker=None)
@@ -392,7 +392,7 @@ class TestRetrieverDefaults:
         from nemo_retriever.retriever import Retriever
 
         r = Retriever()
-        assert r.reranker_max_length == 512
+        assert r.reranker_max_length == 10240
 
     def test_reranker_model_not_initialized_at_construction(self):
         from nemo_retriever.retriever import Retriever
