@@ -285,16 +285,12 @@ export NVIDIA_API_KEY="your-nvidia-api-key"                                     
 export LLM_SUMMARIZATION_MODEL="nvidia/nemotron-mini-4b-instruct"                # (optional) Model to use
 export LLM_SUMMARIZATION_BASE_URL="https://integrate.api.nvidia.com/v1"          # (optional) OpenAI-compatible API endpoint
 export LLM_SUMMARIZATION_TIMEOUT=60                                              # (optional) API timeout in seconds
-export LLM_SUMMARIZATION_TEMPERATURE=0.7                                         # (optional) Sampling temperature (default: 0.7)
-export LLM_SUMMARIZATION_TOP_P=                                                  # (optional) Nucleus sampling top-p; leave empty for provider default
-export LLM_SUMMARIZATION_MAX_TOKENS=400                                          # (optional) Max tokens to generate (default: 400)
 export LLM_MIN_CONTENT_LENGTH=50                                                 # (optional) Minimum content length to summarize
 export LLM_MAX_CONTENT_LENGTH=12000                                              # (optional) Maximum content length to API
 ```
 
 - `NVIDIA_API_KEY` is required for NVIDIA-hosted endpoints (can use `NGC_API_KEY` as fallback).
 - To use a **local LLM** or other provider, change `LLM_SUMMARIZATION_BASE_URL` and `LLM_SUMMARIZATION_MODEL`.
-- `LLM_SUMMARIZATION_TEMPERATURE`, `LLM_SUMMARIZATION_TOP_P`, and `LLM_SUMMARIZATION_MAX_TOKENS` control LLM generation behaviour. Values are validated through `LLMInferenceParams` (see `nemo_retriever.params.models`).
 - Other settings are optional and will fall back to their defaults if unset.
 
 ### Usage

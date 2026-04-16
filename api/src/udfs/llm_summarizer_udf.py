@@ -14,9 +14,6 @@ Environment variables (can be treated as kwargs):
 - LLM_SUMMARIZATION_MODEL: Model to use (default: nvidia/nemotron-mini-4b-instruct)
 - LLM_SUMMARIZATION_BASE_URL: Base URL for OpenAI-compatible API (default: https://integrate.api.nvidia.com/v1)
 - LLM_SUMMARIZATION_TIMEOUT: API timeout in seconds (default: 60)
-- LLM_SUMMARIZATION_TEMPERATURE: Sampling temperature (default: 0.7)
-- LLM_SUMMARIZATION_TOP_P: Nucleus sampling top-p; omit or empty to use provider default (default: unset)
-- LLM_SUMMARIZATION_MAX_TOKENS: Max tokens to generate (default: 400)
 - LLM_MIN_CONTENT_LENGTH: Minimum content length to summarize (default: 50)
 - LLM_MAX_CONTENT_LENGTH: Maximum content length to send to API (default: 12000)
 
@@ -65,17 +62,6 @@ def content_summarizer(control_message: "IngestControlMessage") -> "IngestContro
     min_content_length = int(os.getenv("LLM_MIN_CONTENT_LENGTH", 50))
     max_content_length = int(os.getenv("LLM_MAX_CONTENT_LENGTH", 12000))
     timeout = int(os.getenv("LLM_SUMMARIZATION_TIMEOUT", 60))
-    from nemo_retriever.params.models import LLMInferenceParams
-
-    raw_top_p = os.getenv("LLM_SUMMARIZATION_TOP_P", "")
-    llm_params = LLMInferenceParams(
-        temperature=float(os.getenv("LLM_SUMMARIZATION_TEMPERATURE", 0.7)),
-        top_p=float(raw_top_p) if raw_top_p else None,
-        max_tokens=int(os.getenv("LLM_SUMMARIZATION_MAX_TOKENS", 400)),
-    )
-    temperature = llm_params.temperature
-    top_p = llm_params.top_p
-    max_tokens = llm_params.max_tokens
 
     stats = {
         "processed": 0,
@@ -139,16 +125,7 @@ def content_summarizer(control_message: "IngestControlMessage") -> "IngestContro
     )
 
     logger.info(f"Calling LLM API ({model_name}) for summarization...")
-    summary, llm_duration = _generate_llm_summary(
-        content,
-        model_name,
-        base_url,
-        api_key,
-        timeout,
-        temperature=temperature,
-        top_p=top_p,
-        max_tokens=max_tokens,
-    )
+    summary, llm_duration = _generate_llm_summary(content, model_name, base_url, api_key, timeout)
 
     if summary:
         tokens_per_sec = stats["tokens"] / llm_duration if llm_duration > 0 else 0
@@ -215,10 +192,6 @@ def _generate_llm_summary(
     base_url: str,
     api_key: str,
     timeout: int,
-    *,
-    temperature: float = 0.7,
-    top_p: float | None = None,
-    max_tokens: int = 400,
 ) -> tuple[str | None, float]:
     """
     Generate summary using LLM API.
@@ -235,17 +208,12 @@ def _generate_llm_summary(
 
         client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
 
-        from nemo_retriever.params.models import LLMInferenceParams
-
-        create_kwargs: dict = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": PROMPT.format(content=content)}],
-        }
-        create_kwargs.update(
-            LLMInferenceParams(temperature=temperature, top_p=top_p, max_tokens=max_tokens).to_sampling_kwargs()
+        completion = client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": PROMPT.format(content=content)}],
+            max_tokens=400,
+            temperature=0.7,
         )
-
-        completion = client.chat.completions.create(**create_kwargs)
 
         duration = time.time() - start_time
 
