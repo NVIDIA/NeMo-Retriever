@@ -159,6 +159,8 @@ plugins:
       highlight_extra_classes: "jupyter-notebook"
   - redirects:
       redirect_maps:
+        # Suite docs/docs/index.md is excluded; still emit site/index.html (redirect to Library overview)
+        index.md: extraction/overview.md
         extraction/index.md: extraction/overview.md
         extraction/nv-ingest_cli.md: extraction/cli-reference.md
         extraction/nv-ingest-python-api.md: extraction/python-api-reference.md
