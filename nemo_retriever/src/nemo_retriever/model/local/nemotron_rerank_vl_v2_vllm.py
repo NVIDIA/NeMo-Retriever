@@ -183,8 +183,9 @@ class NemotronRerankVLV2VLLM(BaseModel):
             Optional base64-encoded images aligned with *documents*.  Entries
             may be ``None`` for documents without images (text-only fallback).
         max_length:
-            Unused (kept for API compatibility with the transformers variant).
-            vLLM uses ``max_model_len`` set at engine init.
+            Kept for API compatibility with the transformers variant.
+            vLLM truncates prompts to ``max_model_len`` set at engine init
+            via ``truncate_prompt_tokens``.
         batch_size:
             Unused (kept for API compatibility). vLLM handles batching
             internally via continuous batching.
@@ -204,7 +205,12 @@ class NemotronRerankVLV2VLLM(BaseModel):
                 img = images_b64[i]
             doc_inputs.append(self._build_document(doc, img))
 
-        outputs = self._llm.score(query, doc_inputs, chat_template=SCORE_TEMPLATE)
+        outputs = self._llm.score(
+            query,
+            doc_inputs,
+            chat_template=SCORE_TEMPLATE,
+            tokenization_kwargs={"truncate_prompt_tokens": -1},
+        )
         return [out.outputs.score for out in outputs]
 
     def score_pairs(
@@ -225,7 +231,8 @@ class NemotronRerankVLV2VLLM(BaseModel):
         images_b64:
             Optional base64-encoded images aligned with *pairs*.
         max_length:
-            Unused (API compatibility).
+            Kept for API compatibility. vLLM truncates prompts to
+            ``max_model_len`` via ``truncate_prompt_tokens``.
         batch_size:
             Unused (API compatibility).
 
@@ -243,7 +250,12 @@ class NemotronRerankVLV2VLLM(BaseModel):
             if images_b64 is not None and i < len(images_b64):
                 img = images_b64[i]
             doc_input = self._build_document(d, img)
-            outputs = self._llm.score(q, [doc_input], chat_template=SCORE_TEMPLATE)
+            outputs = self._llm.score(
+                q,
+                [doc_input],
+                chat_template=SCORE_TEMPLATE,
+                tokenization_kwargs={"truncate_prompt_tokens": -1},
+            )
             all_scores.append(outputs[0].outputs.score)
 
         return all_scores
