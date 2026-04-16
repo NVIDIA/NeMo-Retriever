@@ -103,6 +103,72 @@ def invoke_chat_completions(
     return [r if r is not None else "" for r in results]
 
 
+def invoke_chat_completion_step(
+    *,
+    invoke_url: str,
+    messages: List[Dict[str, Any]],
+    model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: str = "auto",
+    timeout_s: float = 120.0,
+    temperature: float = 0.0,
+    max_tokens: Optional[int] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
+    max_retries: int = 10,
+    max_429_retries: int = 5,
+) -> Dict[str, Any]:
+    """Single synchronous tool-aware chat completion call.
+
+    Unlike :func:`invoke_chat_completions`, this function issues one request
+    and returns the **raw response JSON dict**.  The caller is responsible for
+    inspecting ``choices[0]["message"]``, ``tool_calls``, and ``finish_reason``.
+
+    Parameters
+    ----------
+    invoke_url
+        Full ``/v1/chat/completions`` endpoint URL.
+    messages
+        OpenAI-format message list for this single request.
+    tools
+        List of OpenAI tool-spec dicts.  When provided, ``tool_choice`` is also
+        forwarded so the model knows which tools it may call.
+    tool_choice
+        ``"auto"`` (default) lets the model decide; ``"none"`` suppresses tool
+        use; or a specific tool name dict.
+    """
+    token = (api_key or "").strip()
+    headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    invoke_urls = _parse_invoke_urls(invoke_url)
+    endpoint_url = invoke_urls[0]
+
+    payload: Dict[str, Any] = {
+        "messages": messages,
+        "temperature": temperature,
+    }
+    if model:
+        payload["model"] = model
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = tool_choice
+    if extra_body:
+        payload.update(extra_body)
+
+    return _post_with_retries(
+        invoke_url=endpoint_url,
+        payload=payload,
+        headers=headers,
+        timeout_s=float(timeout_s),
+        max_retries=int(max_retries),
+        max_429_retries=int(max_429_retries),
+    )
+
+
 def invoke_chat_completions_images(
     *,
     invoke_url: str,

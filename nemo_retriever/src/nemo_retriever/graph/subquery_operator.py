@@ -14,10 +14,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
-
-# openai is imported lazily in _ensure_client() so the operator stays
-# serialisable for Ray workers without requiring it at import time.
-
+from nemo_retriever.nim.chat_completions import invoke_chat_completions
 
 # ---------------------------------------------------------------------------
 # Built-in strategy prompts
@@ -75,9 +72,9 @@ Rules:
 class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
     """Expand each query row into sub-query rows using an LLM.
 
-    The operator calls an LLM (via the OpenAI SDK) once per input query and
-    explodes the result into one output row per generated sub-query.  The LLM
-    decides how many sub-queries to generate up to ``max_subqueries``.  This
+    The operator calls an LLM once per input query and explodes the result into
+    one output row per generated sub-query.  The LLM decides how many
+    sub-queries to generate up to ``max_subqueries``.  This
     makes it a natural upstream stage for a retrieval operator: the downstream
     operator can retrieve documents independently for every sub-query row, and
     a subsequent aggregation step (e.g. RRF) can merge the per-sub-query
@@ -116,10 +113,12 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
             Rewrite the query from diverse angles to maximise recall.
     api_key : str, optional
         Literal API key **or** an ``"os.environ/VAR_NAME"`` reference that is
-        resolved at call time.  Omit to rely on the ``OPENAI_API_KEY``
-        environment variable.
+        resolved at call time.
+    invoke_url : str, optional
+        Full ``/v1/chat/completions`` endpoint URL.  Defaults to the NVIDIA
+        build endpoint when omitted (requires ``api_key`` / ``NVIDIA_API_KEY``).
     base_url : str, optional
-        Custom endpoint URL — useful for NIM deployments or self-hosted models.
+        Deprecated alias for ``invoke_url``.  Prefer ``invoke_url``.
     max_tokens : int, optional
         Upper bound on tokens in the LLM response.
     system_prompt_override : str, optional
@@ -133,7 +132,11 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
         import pandas as pd
         from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
 
-        op = SubQueryGeneratorOperator(llm_model="gpt-4o", max_subqueries=5)
+        op = SubQueryGeneratorOperator(
+            llm_model="nvidia/llama-3.3-nemotron-super-49b-v1",
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            max_subqueries=5,
+        )
         df = pd.DataFrame({
             "query_id":   ["q1", "q2"],
             "query_text": ["What causes inflation?", "How do vaccines work?"],
@@ -155,6 +158,8 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
         result_df = executor.ingest(query_df)
     """
 
+    _NVIDIA_BUILD_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+
     def __init__(
         self,
         *,
@@ -162,6 +167,7 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
         max_subqueries: int = 4,
         strategy: Literal["decompose", "hyde", "multi_perspective"] = "decompose",
         api_key: Optional[str] = None,
+        invoke_url: Optional[str] = None,
         base_url: Optional[str] = None,
         max_tokens: Optional[int] = None,
         system_prompt_override: Optional[str] = None,
@@ -171,12 +177,23 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
         self._max_subqueries = max_subqueries
         self._strategy = strategy
         self._api_key = api_key
-        self._base_url = base_url
         self._max_tokens = max_tokens
         self._system_prompt_override = system_prompt_override
 
-        # OpenAI client is created lazily so the operator stays serialisable for Ray.
-        self._client: Any = None
+        # Resolve invoke_url: explicit > deprecated base_url > default NVIDIA endpoint
+        if invoke_url is not None:
+            self._invoke_url = invoke_url
+        elif base_url is not None:
+            import warnings
+
+            warnings.warn(
+                "SubQueryGeneratorOperator: 'base_url' is deprecated, use 'invoke_url' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self._invoke_url = base_url.rstrip("/") + "/v1/chat/completions"
+        else:
+            self._invoke_url = self._NVIDIA_BUILD_ENDPOINT
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -224,7 +241,6 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
 
     def process(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         """Generate sub-queries for every row and explode to one row per sub-query."""
-        self._ensure_client()
         system_prompt = self._build_system_prompt()
 
         passthrough_cols = [c for c in data.columns if c not in ("query_id", "query_text")]
@@ -255,26 +271,12 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _ensure_client(self) -> None:
-        """Lazily create the OpenAI client (once per instance)."""
-        if self._client is not None:
-            return
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise ImportError(
-                "SubQueryGeneratorOperator requires 'openai'. " "Install it with:  pip install 'openai>=1.0'"
-            ) from exc
-
+    def _resolve_api_key(self) -> Optional[str]:
         api_key = self._api_key
         if api_key is not None and api_key.strip().startswith("os.environ/"):
             var = api_key.strip().removeprefix("os.environ/")
-            api_key = os.environ[var]
-
-        self._client = OpenAI(
-            api_key=api_key,
-            **({"base_url": self._base_url} if self._base_url is not None else {}),
-        )
+            return os.environ[var]
+        return api_key
 
     def _build_system_prompt(self) -> str:
         template = self._system_prompt_override or _PROMPTS[self._strategy]
@@ -282,18 +284,22 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
 
     def _generate_one(self, query: str, system_prompt: str) -> List[str]:
         """Call the LLM and return a list of sub-query strings for *query*."""
-        call_kwargs: dict[str, Any] = dict(
-            model=self._llm_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Query: {query}"},
-            ],
-        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Query: {query}"},
+        ]
+        extra_body: dict[str, Any] = {}
         if self._max_tokens is not None:
-            call_kwargs["max_tokens"] = self._max_tokens
+            extra_body["max_tokens"] = self._max_tokens
 
-        response = self._client.chat.completions.create(**call_kwargs)
-        raw = response.choices[0].message.content.strip()
+        results = invoke_chat_completions(
+            invoke_url=self._invoke_url,
+            messages_list=[messages],
+            model=self._llm_model,
+            api_key=self._resolve_api_key(),
+            extra_body=extra_body or None,
+        )
+        raw = results[0].strip()
         return _parse_json_list(raw, fallback=query)
 
 
