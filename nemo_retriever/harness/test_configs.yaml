@@ -82,6 +82,7 @@ datasets:
     evaluation_mode: beir
     beir_loader: bo767_csv
     beir_doc_id_field: pdf_page
+    table_extraction_method: nemotron_parse
 
   jp20:
     path: /datasets/nv-ingest/jp20
@@ -95,9 +96,10 @@ datasets:
     path: /datasets/nv-ingest/earnings_consulting
     query_csv: data/earnings_consulting_multimodal.csv
     input_type: pdf
-    recall_required: true
-    recall_match_mode: pdf_page
-    recall_adapter: page_plus_one
+    recall_required: false
+    evaluation_mode: beir
+    beir_loader: earnings_csv
+    beir_doc_id_field: pdf_page
 
   bo10k:
     path: /datasets/nv-ingest/bo10k

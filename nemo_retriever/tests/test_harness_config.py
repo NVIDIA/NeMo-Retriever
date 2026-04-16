@@ -435,6 +435,22 @@ def test_load_harness_config_falls_back_to_repo_root_for_query_csv(
     assert cfg.query_csv == str(query_csv.resolve())
 
 
+def test_resolve_query_csv_path_prefers_repo_root_for_default_harness_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo_root"
+    repo_root.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(harness_config, "REPO_ROOT", repo_root)
+    monkeypatch.setattr(harness_config, "DEFAULT_TEST_CONFIG_PATH", cfg_path)
+
+    resolved = harness_config._resolve_query_csv_path("data/missing.csv", config_path=cfg_path)
+
+    assert resolved == str((repo_root / "data" / "missing.csv").resolve())
+
+
 def test_load_harness_config_rejects_invalid_recall_adapter(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -645,6 +661,30 @@ def test_load_harness_config_supports_bo10k_beir_defaults(monkeypatch: pytest.Mo
     assert cfg.recall_required is False
     assert cfg.evaluation_mode == "beir"
     assert cfg.beir_loader == "bo10k_csv"
+    assert cfg.beir_doc_id_field == "pdf_page"
+
+
+def test_load_harness_config_supports_earnings_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_exists = Path.exists
+    expected_dataset_dir = Path("/datasets/nv-ingest/earnings_consulting").resolve()
+    expected_query_csv = (harness_config.REPO_ROOT / "data" / "earnings_consulting_multimodal.csv").resolve()
+
+    def _fake_exists(path_self: Path) -> bool:
+        if path_self == expected_dataset_dir:
+            return True
+        if path_self == expected_query_csv:
+            return True
+        return real_exists(path_self)
+
+    monkeypatch.setattr(harness_config.Path, "exists", _fake_exists)
+
+    cfg = load_harness_config(dataset="earnings", preset="single_gpu")
+
+    assert cfg.dataset_dir == str(expected_dataset_dir)
+    assert cfg.query_csv == str(expected_query_csv)
+    assert cfg.recall_required is False
+    assert cfg.evaluation_mode == "beir"
+    assert cfg.beir_loader == "earnings_csv"
     assert cfg.beir_doc_id_field == "pdf_page"
 
 
