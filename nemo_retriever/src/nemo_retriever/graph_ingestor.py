@@ -298,6 +298,7 @@ class GraphIngestor(ingestor):
                 self._embed_params,
                 cluster_resources=cluster_resources,
                 allow_no_gpu=effective_allow_no_gpu,
+                caption_params=self._caption_params,
             )
             merged_overrides: Dict[str, Dict[str, Any]] = {}
             for node_name in set(derived_overrides) | set(self._node_overrides):

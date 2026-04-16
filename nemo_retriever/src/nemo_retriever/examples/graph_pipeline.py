@@ -242,6 +242,7 @@ def main(
     caption_device: Optional[str] = typer.Option(None, "--caption-device"),
     caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
     caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
+    caption_gpus_per_actor: Optional[float] = typer.Option(None, "--caption-gpus-per-actor", max=1.0),
     # Text chunking
     store_images_uri: Optional[str] = typer.Option(
         None, "--store-images-uri", help="Store extracted images to this URI."
@@ -252,27 +253,30 @@ def main(
     text_chunk_max_tokens: Optional[int] = typer.Option(None, "--text-chunk-max-tokens"),
     text_chunk_overlap_tokens: Optional[int] = typer.Option(None, "--text-chunk-overlap-tokens"),
     # Ray / batch tuning
+    # NOTE: *_gpus_per_actor defaults are None (not 0.0) so we can distinguish
+    # "not set → use heuristic" from "explicitly 0 → no GPU".  Other tuning
+    # defaults use 0/0.0 because those values are never valid explicit choices.
     ray_address: Optional[str] = typer.Option(None, "--ray-address"),
     ray_log_to_driver: bool = typer.Option(True, "--ray-log-to-driver/--no-ray-log-to-driver"),
     ocr_actors: Optional[int] = typer.Option(0, "--ocr-actors"),
     ocr_batch_size: Optional[int] = typer.Option(0, "--ocr-batch-size"),
     ocr_cpus_per_actor: Optional[float] = typer.Option(0.0, "--ocr-cpus-per-actor"),
-    ocr_gpus_per_actor: Optional[float] = typer.Option(0.0, "--ocr-gpus-per-actor", max=1.0),
+    ocr_gpus_per_actor: Optional[float] = typer.Option(None, "--ocr-gpus-per-actor", max=1.0),
     page_elements_actors: Optional[int] = typer.Option(0, "--page-elements-actors"),
     page_elements_batch_size: Optional[int] = typer.Option(0, "--page-elements-batch-size"),
     page_elements_cpus_per_actor: Optional[float] = typer.Option(0.0, "--page-elements-cpus-per-actor"),
-    page_elements_gpus_per_actor: Optional[float] = typer.Option(0.0, "--page-elements-gpus-per-actor", max=1.0),
+    page_elements_gpus_per_actor: Optional[float] = typer.Option(None, "--page-elements-gpus-per-actor", max=1.0),
     embed_actors: Optional[int] = typer.Option(0, "--embed-actors"),
     embed_batch_size: Optional[int] = typer.Option(0, "--embed-batch-size"),
     embed_cpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-cpus-per-actor"),
-    embed_gpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-gpus-per-actor", max=1.0),
+    embed_gpus_per_actor: Optional[float] = typer.Option(None, "--embed-gpus-per-actor", max=1.0),
     pdf_split_batch_size: int = typer.Option(1, "--pdf-split-batch-size", min=1),
     pdf_extract_batch_size: Optional[int] = typer.Option(0, "--pdf-extract-batch-size"),
     pdf_extract_tasks: Optional[int] = typer.Option(0, "--pdf-extract-tasks"),
     pdf_extract_cpus_per_task: Optional[float] = typer.Option(0.0, "--pdf-extract-cpus-per-task"),
     nemotron_parse_actors: Optional[int] = typer.Option(0, "--nemotron-parse-actors"),
     nemotron_parse_gpus_per_actor: Optional[float] = typer.Option(
-        0.0, "--nemotron-parse-gpus-per-actor", min=0.0, max=1.0
+        None, "--nemotron-parse-gpus-per-actor", min=0.0, max=1.0
     ),
     nemotron_parse_batch_size: Optional[int] = typer.Option(0, "--nemotron-parse-batch-size"),
     # LanceDB / evaluation
@@ -367,15 +371,19 @@ def main(
                     "gpu_page_elements": (
                         0.0
                         if page_elements_invoke_url
-                        else (page_elements_gpus_per_actor if page_elements_gpus_per_actor else None)
+                        else (page_elements_gpus_per_actor if page_elements_gpus_per_actor is not None else None)
                     ),
                     "ocr_inference_batch_size": ocr_batch_size or None,
                     "ocr_workers": ocr_actors or None,
                     "ocr_cpus_per_actor": ocr_cpus_per_actor or None,
-                    "gpu_ocr": (0.0 if ocr_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor else None)),
+                    "gpu_ocr": (
+                        0.0 if ocr_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor is not None else None)
+                    ),
                     "nemotron_parse_batch_size": nemotron_parse_batch_size or None,
                     "nemotron_parse_workers": nemotron_parse_actors or None,
-                    "gpu_nemotron_parse": (nemotron_parse_gpus_per_actor if nemotron_parse_gpus_per_actor else None),
+                    "gpu_nemotron_parse": (
+                        nemotron_parse_gpus_per_actor if nemotron_parse_gpus_per_actor is not None else None
+                    ),
                 }.items()
                 if v is not None
             }
@@ -417,7 +425,9 @@ def main(
                     "embed_workers": embed_actors or None,
                     "embed_cpus_per_actor": embed_cpus_per_actor or None,
                     "gpu_embed": (
-                        0.0 if embed_invoke_url else (embed_gpus_per_actor if embed_gpus_per_actor else None)
+                        0.0
+                        if embed_invoke_url
+                        else (embed_gpus_per_actor if embed_gpus_per_actor is not None else None)
                     ),
                 }.items()
                 if v is not None
@@ -450,7 +460,11 @@ def main(
         # ------------------------------------------------------------------
         logger.info("Building graph pipeline (run_mode=%s) for %s ...", run_mode, input_path)
 
-        ingestor = GraphIngestor(run_mode=run_mode, ray_address=ray_address)
+        node_overrides = {}
+        if caption_gpus_per_actor is not None:
+            node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
+
+        ingestor = GraphIngestor(run_mode=run_mode, ray_address=ray_address, node_overrides=node_overrides or None)
         ingestor = ingestor.files(file_patterns)
 
         # Extraction stage
