@@ -345,6 +345,11 @@ def main(
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
         if evaluation_mode == "qa" and not eval_config:
             raise ValueError("--eval-config is required when --evaluation-mode=qa")
+        if evaluation_mode == "qa":
+            if not Path(str(eval_config)).exists():
+                raise FileNotFoundError(f"--eval-config file not found: {eval_config}")
+            if not Path(str(query_csv)).exists():
+                raise FileNotFoundError(f"--query-csv file not found: {query_csv}")
 
         if run_mode == "batch":
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
