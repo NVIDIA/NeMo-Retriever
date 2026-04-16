@@ -333,11 +333,6 @@ class RayDataExecutor(AbstractExecutor):
             # fn_constructor_kwargs for deferred construction on workers.
             # AbstractOperator.__call__ delegates to run(), so each stage
             # executes the full preprocess -> process -> postprocess chain.
-            ray_remote_args = overrides.pop("ray_remote_args", {})
-            if worker_runtime_env:
-                ray_remote_args.setdefault("runtime_env", {}).setdefault("env_vars", {}).update(
-                    worker_runtime_env.get("env_vars", {})
-                )
             ds = ds.map_batches(
                 node.operator_class,
                 batch_size=batch_size,
@@ -345,7 +340,7 @@ class RayDataExecutor(AbstractExecutor):
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
                 fn_constructor_kwargs=node.operator_kwargs,
-                ray_remote_args=ray_remote_args or None,
+                runtime_env=worker_runtime_env or None,
                 **overrides,
             )
 
