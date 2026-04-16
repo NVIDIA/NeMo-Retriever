@@ -88,9 +88,6 @@ dependencies = [
 svg = [
   "cairosvg>=2.7.0",
 ]
-llm = [
-  "openai>=1.0",
-]
 dev = [
   "build>=1.2.2",
   "pytest>=8.0.2",
