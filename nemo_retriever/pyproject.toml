@@ -121,9 +121,6 @@ benchmarks = [
 llm = [
   "litellm>=1.40.0",
 ]
-llm = [
-  "openai>=1.0",
-]
 dev = [
   "build>=1.2.2",
   "pytest>=8.0.2",
