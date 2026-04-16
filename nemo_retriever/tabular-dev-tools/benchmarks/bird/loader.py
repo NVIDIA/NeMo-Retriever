@@ -51,80 +51,79 @@ def load_bird(
         Drop and recreate schemas that already exist (default: False).
     """
     conn = duckdb.connect(database=str(db_path))
+    try:
+        # Ensure the sqlite scanner extension is available.
+        conn.execute("INSTALL sqlite; LOAD sqlite;")
 
-    # Ensure the sqlite scanner extension is available.
-    conn.execute("INSTALL sqlite; LOAD sqlite;")
+        root = Path(bird_dir).expanduser().resolve()
+        dev_db_dir = root / "dev_databases"
 
-    root = Path(bird_dir).expanduser().resolve()
-    dev_db_dir = root / "dev_databases"
+        if not dev_db_dir.is_dir():
+            raise ValueError(
+                f"BIRD dev_databases directory not found: {dev_db_dir}\n"
+                "Expected layout: <bird_dir>/dev_databases/<db_name>/<db_name>.sqlite"
+            )
 
-    if not dev_db_dir.is_dir():
-        raise ValueError(
-            f"BIRD dev_databases directory not found: {dev_db_dir}\n"
-            "Expected layout: <bird_dir>/dev_databases/<db_name>/<db_name>.sqlite"
+        sqlite_files = sorted(dev_db_dir.rglob("*.sqlite"))
+
+        if not sqlite_files:
+            raise ValueError(f"No .sqlite files found under {dev_db_dir}")
+
+        loaded_schemas: List[str] = []
+        skipped_schemas: List[str] = []
+        failed: List[Dict[str, str]] = []
+
+        existing_schemas = set(
+            conn.execute(
+                "SELECT schema_name FROM information_schema.schemata "
+                "WHERE schema_name NOT IN ('main', 'information_schema', 'pg_catalog')"
+            )
+            .df()["schema_name"]
+            .tolist()
         )
 
-    sqlite_files = sorted(dev_db_dir.rglob("*.sqlite"))
+        for sqlite_path in sqlite_files:
+            schema = _sanitize(sqlite_path.stem)
 
-    if not sqlite_files:
-        raise ValueError(f"No .sqlite files found under {dev_db_dir}")
+            if schema in existing_schemas and not overwrite:
+                logger.debug("Skipping schema '%s' — already exists.", schema)
+                skipped_schemas.append(schema)
+                continue
 
-    loaded_schemas: List[str] = []
-    skipped_schemas: List[str] = []
-    failed: List[Dict[str, str]] = []
-
-    existing_schemas = set(
-        conn.execute(
-            "SELECT schema_name FROM information_schema.schemata "
-            "WHERE schema_name NOT IN ('main', 'information_schema', 'pg_catalog')"
-        )
-        .df()["schema_name"]
-        .tolist()
-    )
-
-    for sqlite_path in sqlite_files:
-        schema = _sanitize(sqlite_path.stem)
-
-        if schema in existing_schemas and not overwrite:
-            logger.debug("Skipping schema '%s' — already exists.", schema)
-            skipped_schemas.append(schema)
-            continue
-
-        try:
-            if overwrite and schema in existing_schemas:
-                conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
-
-            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-
-            # Attach the SQLite file, copy every table, then detach.
-            conn.execute(f"ATTACH '{sqlite_path}' AS _bird_src (TYPE sqlite, READ_ONLY)")
-
-            # SHOW ALL TABLES returns (database, schema, name, ...) for attached DBs.
-            tables = [row[2] for row in conn.execute("SHOW ALL TABLES").fetchall() if row[0] == "_bird_src"]
-
-            for table in tables:
-                sanitized_table = _sanitize(table)
-                conn.execute(
-                    f'CREATE OR REPLACE TABLE "{schema}"."{sanitized_table}" '
-                    f'AS SELECT * FROM _bird_src.main."{table}"'
-                )
-                logger.debug("Loaded %s → %s.%s", table, schema, sanitized_table)
-
-            conn.execute("DETACH _bird_src")
-
-            loaded_schemas.append(schema)
-            existing_schemas.add(schema)
-            logger.info("Schema '%s' loaded (%d tables).", schema, len(tables))
-
-        except Exception as exc:
             try:
-                conn.execute("DETACH _bird_src")
-            except Exception:
-                pass
-            logger.error("Failed loading schema '%s': %s", schema, exc)
-            failed.append({"database": sqlite_path.stem, "schema": schema, "error": str(exc)})
+                if overwrite and schema in existing_schemas:
+                    conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
 
-    conn.close()
+                conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+
+                conn.execute(f"ATTACH '{sqlite_path}' AS _bird_src (TYPE sqlite, READ_ONLY)")
+
+                # SHOW ALL TABLES returns (database, schema, name, ...) for attached DBs.
+                tables = [row[2] for row in conn.execute("SHOW ALL TABLES").fetchall() if row[0] == "_bird_src"]
+
+                for table in tables:
+                    sanitized_table = _sanitize(table)
+                    conn.execute(
+                        f'CREATE OR REPLACE TABLE "{schema}"."{sanitized_table}" '
+                        f'AS SELECT * FROM _bird_src.main."{table}"'
+                    )
+                    logger.debug("Loaded %s → %s.%s", table, schema, sanitized_table)
+
+                conn.execute("DETACH _bird_src")
+
+                loaded_schemas.append(schema)
+                existing_schemas.add(schema)
+                logger.info("Schema '%s' loaded (%d tables).", schema, len(tables))
+
+            except Exception as exc:
+                try:
+                    conn.execute("DETACH _bird_src")
+                except Exception as detach_exc:
+                    logger.warning("DETACH _bird_src failed during cleanup: %s", detach_exc)
+                logger.error("Failed loading schema '%s': %s", schema, exc)
+                failed.append({"database": sqlite_path.stem, "schema": schema, "error": str(exc)})
+    finally:
+        conn.close()
 
     return {
         "dev_db_dir": str(dev_db_dir),

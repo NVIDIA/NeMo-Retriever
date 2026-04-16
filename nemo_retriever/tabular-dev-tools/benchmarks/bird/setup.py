@@ -50,14 +50,6 @@ DOWNLOAD_URLS = {
     "dev": "https://bird-bench.oss-cn-beijing.aliyuncs.com/dev.zip",
 }
 
-# After extraction the data lives one level deeper inside the zip.
-# mini-dev extracts to minidev/mini_dev_data/
-# dev      extracts to dev_20240627/
-EXTRACTED_SUBDIRS = {
-    "mini-dev": "mini_dev_data",
-    "dev": "",  # dev zip extracts directly to a dated folder; we search at runtime
-}
-
 
 # ---------------------------------------------------------------------------
 # Helpers
