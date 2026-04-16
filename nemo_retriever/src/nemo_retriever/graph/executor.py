@@ -261,6 +261,10 @@ class RayDataExecutor(AbstractExecutor):
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
+            # Ray 2.49+ requires concurrency to be specified for callable classes.
+            # Default to 1 when not explicitly set via node_overrides.
+            if "concurrency" not in overrides:
+                overrides["concurrency"] = 1
 
             # vLLM-backed actors handle their own batching efficiently
             # (continuous batching), so feed them more rows per map_batches call.
