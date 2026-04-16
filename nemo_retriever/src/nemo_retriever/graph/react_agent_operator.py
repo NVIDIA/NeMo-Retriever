@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import pandas as pd
 
@@ -29,44 +29,66 @@ _GOAL = """\
 You are a retrieval agent that finds all documents related to a given query.
 
 <Goal>
-You are given a search query and a list of documents retrieved for that query. Your task is to write new queries and use the given search tool to find *ALL* the related and somewhat related documents to the given query (i.e., maximize recall).
-If the user's query is a question, you should not answer the question yourself. Instead, you should find the related documents for the given query.
+You are given a search query and a list of documents retrieved for that query. Your task is to write new \
+queries and use the given search tool to find *ALL* the related and somewhat related documents to the given \
+query (i.e., maximize recall).
+If the user's query is a question, you should not answer the question yourself. Instead, you should find \
+the related documents for the given query.
 </Goal>"""
 
 _RELEVANCE_DEFINITION = """
 
 <RELEVANCE_DEFINITION>
-- You should be careful, in the context of this task, what it means to be a "query", "document", and "relevant" can sometimes be very complex and might not follow the traditional definition of these terms in standard information retrieval.
-- In standard retrieval, a query is usually a user question (like a web search query), the document is some sort of content that provides information (e.g., a web page), and these two are considered relevant if the document provides information that answers the user's query.
+- You should be careful, in the context of this task, what it means to be a "query", "document", and \
+"relevant" can sometimes be very complex and might not follow the traditional definition of these terms \
+in standard information retrieval.
+- In standard retrieval, a query is usually a user question (like a web search query), the document is \
+some sort of content that provides information (e.g., a web page), and these two are considered relevant if \
+the document provides information that answers the user's query.
 - However, in our setting, this could be different. Here are some examples:
-    * the query is a programming problem and documents are programming language syntax references. A document is relevant if it contains the reference for the programming syntax used for solving the problem.
-    * both query and documents are descriptions programming problems and a query and document are relevant if the same approach is used to solve them.
-    * the query is a math problem and documents are theorems. Relevant documents (theorems) are the ones that are useful for solving the math problem.
-    * the query and document are both math problems. A query and a document are relevant if the same theorem is used for solving them.
-    * the query is a task description (e.g., for an API programmer) and documents are descriptions of available APIs. Relevant documents (e.g., APIs) are the ones needed for completing the task.
-- This is not an exhaustive list. These are just some examples to show you the complexity of queries, documents, and the concept of relevance in this task.
-- Note that even here, the relevant documents are still the ones that are useful for a user who is searching for the given query. But the relation is more nuanced.
-- You should analyze the query and some of the available documents. And then reason about what could be a meaningful definition of relevance in this case, and what the user could be looking for.
-- Moreover, sometimes, the query could be even a prompt that is given to a Large Language Model (LLM) and the user wants to find the useful documents for the LLM that help answering/solving this prompt.
+    * the query is a programming problem and documents are programming language syntax references. A document \
+is relevant if it contains the reference for the programming syntax used for solving the problem.
+    * both query and documents are descriptions programming problems and a query and document are relevant if \
+the same approach is used to solve them.
+    * the query is a math problem and documents are theorems. Relevant documents (theorems) are the ones \
+that are useful for solving the math problem.
+    * the query and document are both math problems. A query and a document are relevant if the same theorem \
+is used for solving them.
+    * the query is a task description (e.g., for an API programmer) and documents are descriptions of \
+available APIs. Relevant documents (e.g., APIs) are the ones needed for completing the task.
+- This is not an exhaustive list. These are just some examples to show you the complexity of queries, \
+documents, and the concept of relevance in this task.
+- Note that even here, the relevant documents are still the ones that are useful for a user who is \
+searching for the given query. But the relation is more nuanced.
+- You should analyze the query and some of the available documents. And then reason about what could be a \
+meaningful definition of relevance in this case, and what the user could be looking for.
+- Moreover, sometimes, the query could be even a prompt that is given to a Large Language Model (LLM) and \
+the user wants to find the useful documents for the LLM that help answering/solving this prompt.
 </RELEVANCE_DEFINITION>"""
 
 _WORKFLOW_TEMPLATE = """
 <WORKFLOW>
-- You are given a retrieval tool, powered by a dense embedding model, that takes a text query and returns the most similar documents.
+- You are given a retrieval tool, powered by a dense embedding model, that takes a text query and returns \
+the most similar documents.
 {extended_relevance_line}\
 - You can call the search tool multiple times.
 - Search for related documents to the user's query from different angles.
 - If needed, revise your search queries based on the documents you find in previous steps.
-- Once you are confident that you have found all the related and somewhat related documents and there are no more related documents in the corpus, call the "final_results" tool to finish the task.
+- Once you are confident that you have found all the related and somewhat related documents and there are \
+no more related documents in the corpus, call the "final_results" tool to finish the task.
 {enforce_top_k_line}\
-- When calling the "final_results" tool, the list of documents must be sorted in the decreasing level of relevance to the query. I.e., the first document is the most relevant to the query, the second document is the second most relevant to the query, and so on.
+- When calling the "final_results" tool, the list of documents must be sorted in the decreasing level of \
+relevance to the query. I.e., the first document is the most relevant to the query, the second document is \
+the second most relevant to the query, and so on.
 </WORKFLOW>"""
 
 _BEST_PRACTICES_TEMPLATE = """
 
 <BEST_PRACTICES>
 - You should be thorough and find all related and somewhat related documents.
-- The goal is to increase the **Recall** of your search attempt. So, if multiple documents are relevant to the given query, you should find and report all of them even if only a subset of them is enough for answering the query.
+- The goal is to increase the **Recall** of your search attempt. So, if multiple documents are relevant \
+to the given query, you should find and report all of them even if only a subset of them is enough \
+for answering the query.
 {with_init_docs_line}\
 </BEST_PRACTICES>"""
 
@@ -90,7 +112,7 @@ def _render_react_agent_prompt(
         else ""
     )
     enforce_line = (
-        f"- When calling \"final_results\", you must select exactly the {top_k} most relevant documents "
+        f'- When calling "final_results", you must select exactly the {top_k} most relevant documents '
         "among all documents you have retrieved.\n"
         if enforce_top_k
         else ""
@@ -115,6 +137,7 @@ def _render_react_agent_prompt(
 # ---------------------------------------------------------------------------
 # Tool specs  (verbatim from retrieval_bench/nemo_agentic/tool_helpers.py)
 # ---------------------------------------------------------------------------
+
 
 def _make_think_tool_spec(extended_relevance: bool = False) -> Dict[str, Any]:
     ext = ""
@@ -396,8 +419,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         missing = required - set(data.columns)
         if missing:
             raise ValueError(
-                f"Input DataFrame is missing required column(s): {sorted(missing)}. "
-                f"Expected: {sorted(required)}."
+                f"Input DataFrame is missing required column(s): {sorted(missing)}. " f"Expected: {sorted(required)}."
             )
         return data[["query_id", "query_text"]].copy()
 
@@ -415,8 +437,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         else:
             with ThreadPoolExecutor(max_workers=min(self._num_concurrent, len(query_rows))) as executor:
                 futures = {
-                    executor.submit(self._run_single_query, qid, qtxt, api_key): (qid, qtxt)
-                    for qid, qtxt in query_rows
+                    executor.submit(self._run_single_query, qid, qtxt, api_key): (qid, qtxt) for qid, qtxt in query_rows
                 }
                 for future in as_completed(futures):
                     try:
@@ -474,10 +495,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 seen_doc_ids.add(d["doc_id"])
 
             doc_content = _docs_to_message_content(init_docs)
-            user_msg_content: List[Dict[str, Any]] = (
-                [{"type": "text", "text": f"Query:\n{query_text}\n\nRetrieved Documents:"}]
-                + doc_content
-            )
+            user_msg_content: List[Dict[str, Any]] = [
+                {"type": "text", "text": f"Query:\n{query_text}\n\nRetrieved Documents:"}
+            ] + doc_content
             messages.append({"role": "user", "content": user_msg_content})
         else:
             messages.append({"role": "user", "content": f"Query:\n{query_text}"})
@@ -548,9 +568,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     tool_content: List[Dict[str, Any]] = [
                         {"type": "text", "text": f"Retrieved {len(retrieved)} documents:"}
                     ] + doc_content
-                    tool_messages.append(
-                        {"role": "tool", "tool_call_id": tc_id, "content": tool_content}
-                    )
+                    tool_messages.append({"role": "tool", "tool_call_id": tc_id, "content": tool_content})
 
                 elif fn_name == "final_results":
                     raw_ids: List[str] = fn_args.get("doc_ids", [])
