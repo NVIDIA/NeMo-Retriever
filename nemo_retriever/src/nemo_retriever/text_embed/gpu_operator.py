@@ -20,6 +20,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
     def __init__(self, params: EmbedParams) -> None:
         super().__init__()
+        import os
         import warnings
 
         warnings.filterwarnings(
@@ -30,6 +31,12 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
         self._params = params
         self._kwargs = build_embed_kwargs(params)
+
+        # Propagate HF_TOKEN into the worker environment so that
+        # huggingface_hub API calls are authenticated.
+        hf_token = self._kwargs.pop("hf_token", None)
+        if hf_token and "HF_TOKEN" not in os.environ:
+            os.environ["HF_TOKEN"] = hf_token
 
         endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
         if endpoint:

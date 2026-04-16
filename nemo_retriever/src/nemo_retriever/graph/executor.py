@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
@@ -242,12 +241,6 @@ class RayDataExecutor(AbstractExecutor):
         ctx.enable_rich_progress_bars = True
         ctx.use_ray_tqdm = False
 
-        # Propagate HF_TOKEN to Ray Data worker processes so that
-        # huggingface_hub API calls (model downloads, tokenizer loading)
-        # are authenticated and not rate-limited.
-        hf_env_vars = {k: v for k, v in os.environ.items() if k.startswith("HF_")}
-        worker_runtime_env = {"env_vars": hf_env_vars} if hf_env_vars else {}
-
         cluster = gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
@@ -340,7 +333,6 @@ class RayDataExecutor(AbstractExecutor):
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
                 fn_constructor_kwargs=node.operator_kwargs,
-                runtime_env=worker_runtime_env or None,
                 **overrides,
             )
 
