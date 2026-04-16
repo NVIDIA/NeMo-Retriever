@@ -727,7 +727,9 @@ def main(
                     logger.info("Built page index: %d documents", len(page_idx))
 
             qa_cfg = load_eval_config(str(eval_config))
-            qa_top_k = qa_cfg.get("execution", {}).get("top_k", 5)
+            execution_cfg = qa_cfg.get("execution", {})
+            qa_top_k = execution_cfg.get("top_k", 5)
+            min_coverage = float(execution_cfg.get("min_coverage", 0.0))
             results_dir = qa_cfg.get("output", {}).get("results_dir", "data/qa_results")
 
             evaluation_start = time.perf_counter()
@@ -742,6 +744,10 @@ def main(
             )
             coverage = retriever.check_coverage(qa_pairs)
             logger.info("Retrieval coverage: %.1f%%", coverage * 100)
+            if coverage < min_coverage:
+                raise ValueError(
+                    f"Retrieval covers only {coverage:.1%} of queries " f"(min_coverage={min_coverage:.0%}). Aborting."
+                )
             sweep_results = run_eval_sweep(qa_cfg, qa_pairs, results_dir, retriever=retriever)
 
             evaluation_total_time = time.perf_counter() - evaluation_start
