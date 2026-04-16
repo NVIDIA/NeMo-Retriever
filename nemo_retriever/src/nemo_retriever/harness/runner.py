@@ -84,7 +84,9 @@ def _upload_artifacts(base_url: str, run_id: int, artifact_dir: str, timeout: in
                 if file_mb > _ARTIFACT_MAX_UPLOAD_MB:
                     logger.warning(
                         "Skipping large file %s (%.1f MB > %d MB limit)",
-                        fp.name, file_mb, _ARTIFACT_MAX_UPLOAD_MB,
+                        fp.name,
+                        file_mb,
+                        _ARTIFACT_MAX_UPLOAD_MB,
                     )
                     continue
                 compress = _zipfile.ZIP_STORED if fp.suffix == ".nsys-rep" else _zipfile.ZIP_DEFLATED
@@ -97,10 +99,14 @@ def _upload_artifacts(base_url: str, run_id: int, artifact_dir: str, timeout: in
 
     boundary = f"----RunnerUpload{run_id}"
     body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="artifacts.zip"\r\n'
-        f"Content-Type: application/zip\r\n\r\n"
-    ).encode("utf-8") + raw + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="artifacts.zip"\r\n'
+            f"Content-Type: application/zip\r\n\r\n"
+        ).encode("utf-8")
+        + raw
+        + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    )
 
     url = f"{base_url}/api/runs/{run_id}/upload-artifacts"
     req = urllib.request.Request(
@@ -245,14 +251,16 @@ def _write_update_marker(previous_commit: str, new_commit: str) -> None:
     """
     try:
         _UPDATE_MARKER_FILE.write_text(
-            json_module.dumps({
-                "previous_commit": previous_commit,
-                "new_commit": new_commit,
-                "ts": time.time(),
-                "ray_address": _runner_ray_address,
-                "run_code_ref": _runner_run_code_ref,
-                "num_gpus": _runner_num_gpus,
-            }),
+            json_module.dumps(
+                {
+                    "previous_commit": previous_commit,
+                    "new_commit": new_commit,
+                    "ts": time.time(),
+                    "ray_address": _runner_ray_address,
+                    "run_code_ref": _runner_run_code_ref,
+                    "num_gpus": _runner_num_gpus,
+                }
+            ),
         )
     except Exception as exc:
         logger.warning("Failed to write update marker: %s", exc)
@@ -597,10 +605,13 @@ def _nsys_prefix(output_path: str) -> list[str]:
     sizes manageable (typically tens of MB) while capturing all GPU activity.
     """
     return [
-        "nsys", "profile",
-        "-o", output_path,
+        "nsys",
+        "profile",
+        "-o",
+        output_path,
         "--force-overwrite=true",
-        "-t", "cuda,nvtx",
+        "-t",
+        "cuda,nvtx",
     ]
 
 
@@ -620,8 +631,7 @@ def _collect_nsys_report_info(nsys_output_dir: Path | None) -> dict[str, Any]:
         all_files = list(nsys_output_dir.iterdir())
         if all_files:
             info["error"] = (
-                f"No .nsys-rep files found in {nsys_output_dir}. "
-                f"Files present: {[f.name for f in all_files[:10]]}"
+                f"No .nsys-rep files found in {nsys_output_dir}. " f"Files present: {[f.name for f in all_files[:10]]}"
             )
         else:
             info["error"] = (
@@ -715,7 +725,9 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
             stderr_text = getattr(exc, "stderr", "") or ""
             logger.warning(
                 "uv sync failed for job %s, falling back to uv pip install: %s\n%s",
-                job_id, exc, stderr_text[:1000],
+                job_id,
+                exc,
+                stderr_text[:1000],
             )
             print(f"[venv] uv sync failed, falling back to uv pip install …")
 
@@ -723,8 +735,7 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
     try:
         print(f"[venv] Running uv pip install -e ./nemo_retriever …")
         result = subprocess.run(
-            ["uv", "pip", "install", "-e", "./nemo_retriever",
-             "--python", venv_python],
+            ["uv", "pip", "install", "-e", "./nemo_retriever", "--python", venv_python],
             cwd=str(repo_root),
             capture_output=True,
             text=True,
@@ -978,27 +989,37 @@ def _enrich_standalone_graph_result(result: dict[str, Any], job: dict[str, Any])
     pps = round(rows / elapsed, 2) if rows and elapsed and elapsed > 0 else None
 
     result["timestamp"] = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_UTC")
-    result.setdefault("test_config", {
-        "dataset_label": job.get("dataset", "graph-run"),
-        "preset": job.get("preset"),
-        "input_type": "graph",
-        "graph_pipeline": True,
-    })
-    result.setdefault("metrics", {
-        "pages": rows,
-        "files": rows,
-        "ingest_secs": elapsed,
-        "pages_per_sec_ingest": pps,
-        "rows_processed": rows,
-    })
-    result.setdefault("summary_metrics", {
-        "pages": rows,
-        "files": rows,
-        "ingest_secs": elapsed,
-        "pages_per_sec_ingest": pps,
-    })
+    result.setdefault(
+        "test_config",
+        {
+            "dataset_label": job.get("dataset", "graph-run"),
+            "preset": job.get("preset"),
+            "input_type": "graph",
+            "graph_pipeline": True,
+        },
+    )
+    result.setdefault(
+        "metrics",
+        {
+            "pages": rows,
+            "files": rows,
+            "ingest_secs": elapsed,
+            "pages_per_sec_ingest": pps,
+            "rows_processed": rows,
+        },
+    )
+    result.setdefault(
+        "summary_metrics",
+        {
+            "pages": rows,
+            "files": rows,
+            "ingest_secs": elapsed,
+            "pages_per_sec_ingest": pps,
+        },
+    )
     try:
         import socket as _sock
+
         host = _sock.gethostname().strip() or "unknown"
     except Exception:
         host = "unknown"
@@ -1011,6 +1032,12 @@ def _enrich_standalone_graph_result(result: dict[str, Any], job: dict[str, Any])
 def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 0) -> None:
     """Claim a job, execute it locally, and report results back."""
     job_id = job["id"]
+
+    logger.info(
+        "===== RAW JOB PAYLOAD (job %s) =====\n%s\n===== END RAW JOB PAYLOAD =====",
+        job_id,
+        json_module.dumps(job, indent=2, default=str),
+    )
 
     dataset_error = _validate_dataset_path(job)
     if dataset_error:
@@ -1519,8 +1546,12 @@ def runner_start_command(
     if manager_url:
         base_url = manager_url.rstrip("/")
         reg_payload = _build_registration_payload(
-            runner_name, meta, tag or [], heartbeat_interval,
-            ray_address=_runner_ray_address, num_gpus=_runner_num_gpus,
+            runner_name,
+            meta,
+            tag or [],
+            heartbeat_interval,
+            ray_address=_runner_ray_address,
+            num_gpus=_runner_num_gpus,
         )
         typer.echo(f"\nRegistering with {base_url} ...")
         runner_id = _register_with_portal(base_url, reg_payload)
