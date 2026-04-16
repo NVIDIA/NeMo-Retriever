@@ -1033,11 +1033,10 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     """Claim a job, execute it locally, and report results back."""
     job_id = job["id"]
 
-    logger.info(
-        "===== RAW JOB PAYLOAD (job %s) =====\n%s\n===== END RAW JOB PAYLOAD =====",
-        job_id,
-        json_module.dumps(job, indent=2, default=str),
-    )
+    _payload_dump = json_module.dumps(job, indent=2, default=str)
+    print(f"\n===== RAW JOB PAYLOAD (job {job_id}) =====")
+    print(_payload_dump)
+    print("===== END RAW JOB PAYLOAD =====\n", flush=True)
 
     dataset_error = _validate_dataset_path(job)
     if dataset_error:
