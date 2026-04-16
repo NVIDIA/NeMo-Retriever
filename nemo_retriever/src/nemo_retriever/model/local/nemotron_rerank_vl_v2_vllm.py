@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, List, Optional, Sequence
 
@@ -15,9 +16,17 @@ from ..model import BaseModel, RunMode
 
 from nemo_retriever.model import VL_RERANK_MODEL
 
+logger = logging.getLogger(__name__)
+
 _DEFAULT_MODEL = VL_RERANK_MODEL
 _DEFAULT_MAX_LENGTH = 10240
 _DEFAULT_BATCH_SIZE = 32
+
+# Worst-case image token budget from processor_config.json:
+# (max_input_tiles + thumbnail) * per_tile_len = (6 + 1) * 256
+_MAX_IMAGE_TOKENS = 1792
+# Conservative overhead for template tokens ("question:", "passage:", whitespace, BOS, etc.)
+_TEMPLATE_OVERHEAD = 20
 
 # Jinja2 chat template for vLLM's ``llm.score()`` API.
 # The model expects ``question:`` / ``passage:`` labels with an optional
@@ -94,6 +103,7 @@ class NemotronRerankVLV2VLLM(BaseModel):
             gpu_memory_utilization=gpu_memory_utilization,
             **engine_kwargs,
         )
+        self._tokenizer = self._llm.get_tokenizer()
 
     def unload(self) -> None:
         """Release GPU memory held by the vLLM engine."""
@@ -134,6 +144,37 @@ class NemotronRerankVLV2VLLM(BaseModel):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _truncate_doc_text(
+        self, query: str, doc_text: str, has_image: bool = False,
+    ) -> str:
+        """Truncate *doc_text* so the rendered prompt fits within ``max_model_len``.
+
+        Reserves token budget for the query, template overhead, and (when
+        *has_image*) the worst-case image token expansion.
+        """
+        query_token_len = len(
+            self._tokenizer.encode(query, add_special_tokens=False)
+        )
+        image_budget = _MAX_IMAGE_TOKENS if has_image else 0
+        doc_budget = (
+            _DEFAULT_MAX_LENGTH
+            - query_token_len
+            - _TEMPLATE_OVERHEAD
+            - image_budget
+        )
+        if doc_budget <= 0:
+            return ""
+
+        doc_tokens = self._tokenizer.encode(doc_text, add_special_tokens=False)
+        if len(doc_tokens) <= doc_budget:
+            return doc_text
+
+        logger.debug(
+            "Truncating document from %d to %d tokens (image=%s)",
+            len(doc_tokens), doc_budget, has_image,
+        )
+        return self._tokenizer.decode(doc_tokens[:doc_budget])
 
     @staticmethod
     def _build_document(text: str, image_b64: Optional[str] = None) -> Any:
@@ -183,9 +224,8 @@ class NemotronRerankVLV2VLLM(BaseModel):
             Optional base64-encoded images aligned with *documents*.  Entries
             may be ``None`` for documents without images (text-only fallback).
         max_length:
-            Kept for API compatibility with the transformers variant.
-            vLLM truncates prompts to ``max_model_len`` set at engine init
-            via ``truncate_prompt_tokens``.
+            Unused (kept for API compatibility).  Document text is
+            automatically truncated to fit ``max_model_len``.
         batch_size:
             Unused (kept for API compatibility). vLLM handles batching
             internally via continuous batching.
@@ -203,13 +243,11 @@ class NemotronRerankVLV2VLLM(BaseModel):
             img = None
             if images_b64 is not None and i < len(images_b64):
                 img = images_b64[i]
+            doc = self._truncate_doc_text(query, doc, has_image=bool(img))
             doc_inputs.append(self._build_document(doc, img))
 
         outputs = self._llm.score(
-            query,
-            doc_inputs,
-            chat_template=SCORE_TEMPLATE,
-            tokenization_kwargs={"truncate_prompt_tokens": -1},
+            query, doc_inputs, chat_template=SCORE_TEMPLATE,
         )
         return [out.outputs.score for out in outputs]
 
@@ -231,8 +269,8 @@ class NemotronRerankVLV2VLLM(BaseModel):
         images_b64:
             Optional base64-encoded images aligned with *pairs*.
         max_length:
-            Kept for API compatibility. vLLM truncates prompts to
-            ``max_model_len`` via ``truncate_prompt_tokens``.
+            Unused (API compatibility).  Document text is automatically
+            truncated to fit ``max_model_len``.
         batch_size:
             Unused (API compatibility).
 
@@ -249,12 +287,10 @@ class NemotronRerankVLV2VLLM(BaseModel):
             img = None
             if images_b64 is not None and i < len(images_b64):
                 img = images_b64[i]
+            d = self._truncate_doc_text(q, d, has_image=bool(img))
             doc_input = self._build_document(d, img)
             outputs = self._llm.score(
-                q,
-                [doc_input],
-                chat_template=SCORE_TEMPLATE,
-                tokenization_kwargs={"truncate_prompt_tokens": -1},
+                q, [doc_input], chat_template=SCORE_TEMPLATE,
             )
             all_scores.append(outputs[0].outputs.score)
 
