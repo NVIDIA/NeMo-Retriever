@@ -51,7 +51,7 @@ def batch_tuning_to_node_overrides(
     embed_params: Any | None,
     cluster_resources: ClusterResources | None = None,
     allow_no_gpu: bool | None = None,
-    caption_enabled: bool = False,
+    caption_params: Any | None = None,
     caption_gpus_per_actor: float | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
@@ -71,7 +71,7 @@ def batch_tuning_to_node_overrides(
         resolve_requested_plan(
             cluster_resources=cluster_resources,
             allow_no_gpu=effective_allow_no_gpu,
-            caption_enabled=caption_enabled,
+            caption_enabled=caption_params is not None,
             override_caption_gpus_per_actor=caption_gpus_per_actor,
         )
         if cluster_resources is not None
@@ -134,8 +134,16 @@ def batch_tuning_to_node_overrides(
                 plan.embed_gpus_per_actor if plan else None,
             )
 
-    if caption_enabled and not effective_allow_no_gpu and plan and plan.caption_gpus_per_actor > 0:
-        _set_gpu(CaptionActor.__name__, caption_gpus_per_actor, plan.caption_gpus_per_actor)
+    if caption_params is not None:
+        caption_invoke_url = _positive(getattr(caption_params, "endpoint_url", None))
+        if effective_allow_no_gpu:
+            _force_cpu_only(CaptionActor.__name__)
+        elif not caption_invoke_url:
+            _set_gpu(
+                CaptionActor.__name__,
+                caption_gpus_per_actor,
+                plan.caption_gpus_per_actor if plan else None,
+            )
 
     extract_tuning = _batch_tuning(extract_params)
     ocr_concurrency: int = 0
@@ -245,7 +253,7 @@ def batch_tuning_to_node_overrides(
         if pdf_extract_tasks is not None and cluster_resources is not None:
             # Fixed overhead: ReadBinary + DocToPdf + PDFSplit + UDFOperator.
             # Caption adds CaptionGPUActor + a second UDFOperator.
-            fixed_cpu_overhead = 4 + (2 if caption_enabled else 0)
+            fixed_cpu_overhead = 4 + (2 if caption_params is not None else 0)
             non_pdf_cpu_overhead = (
                 fixed_cpu_overhead
                 + page_elements_concurrency * page_elements_cpus
