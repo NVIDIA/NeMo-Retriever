@@ -236,15 +236,17 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         if self._ray_address or not ray.is_initialized():
-            runtime_env = {}
-            hf_token = os.environ.get("HF_TOKEN")
-            if hf_token:
-                runtime_env["env_vars"] = {"HF_TOKEN": hf_token}
-            ray.init(address=self._ray_address, ignore_reinit_error=True, runtime_env=runtime_env or None)
+            ray.init(address=self._ray_address, ignore_reinit_error=True)
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
         ctx.use_ray_tqdm = False
+
+        # Propagate HF_TOKEN to Ray Data worker processes so that
+        # huggingface_hub API calls (model downloads, tokenizer loading)
+        # are authenticated and not rate-limited.
+        hf_env_vars = {k: v for k, v in os.environ.items() if k.startswith("HF_")}
+        worker_runtime_env = {"env_vars": hf_env_vars} if hf_env_vars else {}
 
         cluster = gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
@@ -331,6 +333,11 @@ class RayDataExecutor(AbstractExecutor):
             # fn_constructor_kwargs for deferred construction on workers.
             # AbstractOperator.__call__ delegates to run(), so each stage
             # executes the full preprocess -> process -> postprocess chain.
+            ray_remote_args = overrides.pop("ray_remote_args", {})
+            if worker_runtime_env:
+                ray_remote_args.setdefault("runtime_env", {}).setdefault("env_vars", {}).update(
+                    worker_runtime_env.get("env_vars", {})
+                )
             ds = ds.map_batches(
                 node.operator_class,
                 batch_size=batch_size,
@@ -338,6 +345,7 @@ class RayDataExecutor(AbstractExecutor):
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
                 fn_constructor_kwargs=node.operator_kwargs,
+                ray_remote_args=ray_remote_args or None,
                 **overrides,
             )
 
