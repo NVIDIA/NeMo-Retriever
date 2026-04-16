@@ -50,15 +50,7 @@ class TextToSqlRetriever(Retriever):
         field_names: list[str],
         label_in: Optional[Sequence[str]],
     ) -> Optional[str]:
-        """Return a DataFusion/Lance ``WHERE`` fragment, or ``None`` if no filter.
-
-        Typical ``nv-ingest-tabular`` rows (see ``handle_lancedb`` / tabular embed pipeline) have
-        **no** top-level ``label`` column—only a string ``metadata`` column, often
-        ``str({'id': ..., 'label': 'Table', ...})`` i.e. Neo4j ``labels(n)[0]`` (e.g. ``Table``).
-        Then only the ``metadata LIKE`` branch applies; ``label IN`` is used when a real column
-        exists. Empty hits for ``column`` / ``custom_analysis`` usually mean those labels were
-        never written into this Lance table, not a failed predicate.
-        """
+        """Return a DataFusion/Lance ``WHERE`` fragment, or ``None`` if no filter is needed."""
         if not label_in:
             return None
         labels = [str(x).strip() for x in label_in if x is not None and str(x).strip()]
