@@ -73,14 +73,14 @@ class SQLDatabase(ABC):
     def get_tables(self) -> pd.DataFrame:
         """Return all tables.
 
-        Expected columns: ``database``, ``schema``, ``table_name``.
+        Expected columns: ``table_schema``, ``table_name``.
         """
 
     @abstractmethod
     def get_columns(self) -> pd.DataFrame:
         """Return all columns.
 
-        Expected columns: ``database``, ``schema``, ``table_name``,
+        Expected columns: ``table_schema``, ``table_name``,
         ``column_name``, ``data_type``, ``is_nullable``.
         """
 
@@ -97,7 +97,7 @@ class SQLDatabase(ABC):
     def get_views(self) -> pd.DataFrame:
         """Return all views.
 
-        Expected columns: ``database``, ``schema``, ``table_name``,
+        Expected columns: ``table_schema``, ``table_name``,
         ``view_definition``.
         """
 
@@ -105,7 +105,7 @@ class SQLDatabase(ABC):
     def get_pks(self) -> pd.DataFrame:
         """Return primary key columns.
 
-        Expected columns: ``database``, ``schema``, ``table_name``,
+        Expected columns: ``table_schema``, ``table_name``,
         ``column_name``, ``ordinal_position``.
         """
 
@@ -113,9 +113,27 @@ class SQLDatabase(ABC):
     def get_fks(self) -> pd.DataFrame:
         """Return foreign key columns.
 
-        Expected columns: ``database``, ``schema``, ``table_name``,
+        Expected columns: ``table_schema``, ``table_name``,
         ``column_name``, ``referenced_schema``, ``referenced_table``,
         ``referenced_column``.
+        """
+
+    @property
+    @abstractmethod
+    def dialect(self) -> str:
+        """Return the dialect of the database.
+
+        Returns:
+            A sqlglot-compatible dialect name for this engine (e.g. ``"duckdb"``, ``"snowflake"``).
+        """
+
+    @property
+    @abstractmethod
+    def database_name(self) -> str:
+        """Return the name of the connected database.
+
+        Returns:
+            The database name as reported by the backend (e.g. ``"mydb"``).
         """
 
     # ------------------------------------------------------------------

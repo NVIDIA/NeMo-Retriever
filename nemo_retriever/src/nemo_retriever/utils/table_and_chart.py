@@ -19,7 +19,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple  # noqa: F401
 
 import numpy as np
 import pandas as pd
-from sklearn.cluster import DBSCAN
 
 logger = logging.getLogger(__name__)
 
@@ -424,12 +423,14 @@ def reorder_boxes(
     if dbscan_eps:
         do_naive_sorting = False
         try:
+            from sklearn.cluster import DBSCAN
+
             dbscan = DBSCAN(eps=dbscan_eps, min_samples=1)
             dbscan.fit(df["y"].values[:, None])
             df["cluster"] = dbscan.labels_
             df["cluster_centers"] = df.groupby("cluster")["y"].transform("mean").astype(int)
             df = df.sort_values(["cluster_centers", "x"], ascending=[True, True], ignore_index=True)
-        except ValueError:
+        except (ImportError, ValueError):
             do_naive_sorting = True
     else:
         do_naive_sorting = True

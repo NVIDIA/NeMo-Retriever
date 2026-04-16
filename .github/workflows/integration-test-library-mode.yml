@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Library Mode Integration Tests (Windows & macOS)
+
+on:
+  schedule:
+    # Runs every day at 11:30PM (UTC)
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+    inputs:
+      source-ref:
+        description: 'Git ref to test (branch, tag, or SHA). Defaults to the dispatched branch.'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  integration-test:
+    name: Integration Tests (${{ matrix.os-label }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            os-label: windows-x64
+          - runner: macos-26
+            os-label: macos-arm64
+          - runner: macos-26-intel
+            os-label: macos-x64
+
+    env:
+      # NIM endpoint URLs — edit these directly to point at different deployments
+      PAGE_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
+      OCR_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1"
+      GRAPHIC_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
+      TABLE_STRUCTURE_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
+      EMBED_INVOKE_URL: "https://integrate.api.nvidia.com/v1"
+      EMBED_MODEL_NAME: "nvidia/llama-nemotron-embed-1b-v2"
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source-ref != '' && inputs.source-ref || github.ref }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install nemo-retriever and dependencies
+        shell: bash
+        run: |
+          uv pip install --system -e "nemo_retriever"
+
+      - name: Run graph pipeline on PDFs
+        shell: bash
+        env:
+          PYTHONPATH: nemo_retriever/src
+        run: |
+          python -m nemo_retriever.examples.graph_pipeline ./data \
+            --run-mode inprocess \
+            --input-type pdf \
+            --api-key "${{ secrets.NVCF_API_KEY }}" \
+            --page-elements-invoke-url "$PAGE_ELEMENTS_INVOKE_URL" \
+            --ocr-invoke-url "$OCR_INVOKE_URL" \
+            --use-graphic-elements \
+            --graphic-elements-invoke-url "$GRAPHIC_ELEMENTS_INVOKE_URL" \
+            --use-table-structure \
+            --table-structure-invoke-url "$TABLE_STRUCTURE_INVOKE_URL" \
+            --embed-invoke-url "$EMBED_INVOKE_URL" \
+            --embed-model-name "$EMBED_MODEL_NAME"

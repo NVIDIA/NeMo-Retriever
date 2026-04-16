@@ -6,7 +6,6 @@ import logging
 from typing import Optional
 
 import backoff
-import cv2
 import numpy as np
 import requests
 
@@ -14,7 +13,12 @@ from nv_ingest_api.internal.primitives.nim.model_interface.decorators import mul
 from nv_ingest_api.util.image_processing.transforms import pad_image, normalize_image
 from nv_ingest_api.util.string_processing import generate_url, remove_url_endpoints
 
-cv2.setNumThreads(1)
+try:
+    import cv2
+
+    cv2.setNumThreads(1)
+except ImportError:
+    cv2 = None
 logger = logging.getLogger(__name__)
 
 
