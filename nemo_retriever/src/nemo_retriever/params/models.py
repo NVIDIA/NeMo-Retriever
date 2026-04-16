@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any, Literal, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
@@ -229,7 +228,6 @@ class EmbedParams(_ParamsModel):
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
     api_key: Optional[str] = None
-    hf_token: Optional[str] = Field(default_factory=lambda: os.environ.get("HF_TOKEN"))
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types
     embed_granularity: Literal["element", "page"] = "element"  # "element" = per-element rows, "page" = one row per page
