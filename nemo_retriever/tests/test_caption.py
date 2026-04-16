@@ -147,7 +147,7 @@ class TestLLMInferenceParamsValidation:
     def test_negative_temperature_rejected(self):
         from nemo_retriever.params.models import LLMInferenceParams
 
-        with pytest.raises(ValueError, match="temperature must be >= 0"):
+        with pytest.raises(ValueError, match="temperature must be between"):
             LLMInferenceParams(temperature=-0.1)
 
     def test_top_p_out_of_range_rejected(self):
@@ -215,7 +215,7 @@ class TestCaptionParamsInheritance:
     def test_validation_inherited(self):
         from nemo_retriever.params import CaptionParams
 
-        with pytest.raises(ValueError, match="temperature must be >= 0"):
+        with pytest.raises(ValueError, match="temperature must be between"):
             CaptionParams(temperature=-1.0)
 
 
