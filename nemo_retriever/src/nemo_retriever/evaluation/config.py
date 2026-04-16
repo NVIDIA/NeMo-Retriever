@@ -272,6 +272,12 @@ def build_eval_chain(
     dataset = config.get("dataset", {})
     judge_cfg = config["judge"]
 
+    retrieval_type = retrieval.get("type", "file")
+    if retrieval_type != "file":
+        raise ValueError(
+            f"build_eval_chain() only supports retrieval.type='file', got {retrieval_type!r}. "
+            "For LanceDB retrieval, use FileRetriever.from_lancedb() with run_eval_sweep()."
+        )
     retrieval_json = retrieval.get("file_path", "")
     ground_truth_source = dataset.get("source", "")
 
