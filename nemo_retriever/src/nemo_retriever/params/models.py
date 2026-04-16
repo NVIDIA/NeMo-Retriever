@@ -344,8 +344,8 @@ class LLMInferenceParams(_ParamsModel):
     @field_validator("temperature")
     @classmethod
     def _check_temperature(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("temperature must be >= 0")
+        if not (0.0 <= v <= 2.0):
+            raise ValueError("temperature must be between 0.0 and 2.0")
         return v
 
     @field_validator("top_p")
