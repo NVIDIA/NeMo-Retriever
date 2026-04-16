@@ -494,6 +494,18 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
         cmd += ["--structured-elements-modality", cfg.embed_modality]
+    if cfg.page_elements_invoke_url:
+        cmd += ["--page-elements-invoke-url", cfg.page_elements_invoke_url]
+    if cfg.ocr_invoke_url:
+        cmd += ["--ocr-invoke-url", cfg.ocr_invoke_url]
+    if cfg.graphic_elements_invoke_url:
+        cmd += ["--graphic-elements-invoke-url", cfg.graphic_elements_invoke_url]
+    if cfg.table_structure_invoke_url:
+        cmd += ["--table-structure-invoke-url", cfg.table_structure_invoke_url]
+    if cfg.embed_invoke_url:
+        cmd += ["--embed-invoke-url", cfg.embed_invoke_url]
+    if cfg.api_key:
+        cmd += ["--api-key", cfg.api_key]
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
     if cfg.hybrid:

@@ -89,6 +89,13 @@ class HarnessConfig:
     store_text: bool = False
     strip_base64: bool = True
 
+    page_elements_invoke_url: str | None = None
+    ocr_invoke_url: str | None = None
+    graphic_elements_invoke_url: str | None = None
+    table_structure_invoke_url: str | None = None
+    embed_invoke_url: str | None = None
+    api_key: str | None = None
+
     pdf_extract_workers: int = 8
     pdf_extract_num_cpus: float = 2.0
     pdf_extract_batch_size: int = 4
