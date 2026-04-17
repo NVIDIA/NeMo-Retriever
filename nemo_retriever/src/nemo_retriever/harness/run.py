@@ -358,7 +358,7 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
 
     if cfg.evaluation_mode == "beir":
         beir_dataset_name = cfg.beir_dataset_name or cfg.dataset_label
-        if cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv"} and cfg.query_csv:
+        if cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv", "financebench_json"} and cfg.query_csv:
             beir_dataset_name = str(Path(cfg.query_csv).resolve())
         cmd += [
             "--beir-loader",

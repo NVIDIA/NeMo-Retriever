@@ -109,7 +109,7 @@ class InprocessExecutor(AbstractExecutor):
             # Expand globs
             expanded: List[str] = []
             for pattern in data:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             df = self._load_files(expanded)
         else:
@@ -251,7 +251,7 @@ class RayDataExecutor(AbstractExecutor):
             paths = [data] if isinstance(data, str) else list(data)
             expanded: List[str] = []
             for pattern in paths:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             ds = rd.read_binary_files(expanded, include_paths=True)
         nodes = self._linearize(resolved_graph)

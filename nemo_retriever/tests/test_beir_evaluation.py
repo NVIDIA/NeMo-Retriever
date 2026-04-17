@@ -145,6 +145,24 @@ def test_load_beir_dataset_supports_earnings_csv_pdf_page(tmp_path: Path) -> Non
     }
 
 
+def test_load_beir_dataset_supports_financebench_json_pdf_basename(tmp_path: Path) -> None:
+    annotations = tmp_path / "financebench_train.json"
+    annotations.write_text(
+        '[{"id":"q1","question":"What is revenue?","contexts":[{"filename":"AAPL_2023.pdf"}]},'
+        '{"id":"q2","question":" What is margin? ","contexts":[{"filename":"MSFT_2022"}]}]',
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("financebench_json", dataset_name=str(annotations), doc_id_field="pdf_basename")
+
+    assert dataset.query_ids == ["q1", "q2"]
+    assert dataset.queries == ["What is revenue?", " What is margin? "]
+    assert dataset.qrels == {
+        "q1": {"AAPL_2023": 1},
+        "q2": {"MSFT_2022": 1},
+    }
+
+
 def test_load_beir_dataset_preserves_dotted_pdf_basenames_without_extension(tmp_path: Path) -> None:
     annotations = tmp_path / "earnings_consulting_multimodal.csv"
     annotations.write_text(

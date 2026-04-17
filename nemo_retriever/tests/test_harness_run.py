@@ -272,6 +272,32 @@ def test_build_command_supports_earnings_beir_pdf_page_doc_id_field(tmp_path: Pa
     assert effective_query_csv is None
 
 
+def test_build_command_supports_financebench_beir_pdf_basename_doc_id_field(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_json = tmp_path / "financebench_train.json"
+    annotations_json.write_text("[]", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="financebench",
+        preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="financebench_json",
+        beir_doc_id_field="pdf_basename",
+        query_csv=str(annotations_json),
+        recall_required=False,
+    )
+
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert cmd[cmd.index("--beir-loader") + 1] == "financebench_json"
+    assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_json.resolve())
+    assert cmd[cmd.index("--beir-doc-id-field") + 1] == "pdf_basename"
+    assert "--query-csv" not in cmd
+    assert effective_query_csv is None
+
+
 def test_build_command_uses_top_level_detection_file_when_enabled(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
