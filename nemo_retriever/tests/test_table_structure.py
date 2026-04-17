@@ -468,7 +468,6 @@ class TestTableStructureOCRConfig:
 
         cfg = load_table_structure_ocr_config_from_dict({})
         assert cfg.table_structure_invoke_url == ""
-        assert cfg.ocr_invoke_url == ""
         assert cfg.api_key == ""
         assert cfg.request_timeout_s == 60.0
 
@@ -478,13 +477,11 @@ class TestTableStructureOCRConfig:
         cfg = load_table_structure_ocr_config_from_dict(
             {
                 "table_structure_invoke_url": "http://ts:8000",
-                "ocr_invoke_url": "http://ocr:8000",
                 "api_key": "secret",
                 "request_timeout_s": 60.0,
             }
         )
         assert cfg.table_structure_invoke_url == "http://ts:8000"
-        assert cfg.ocr_invoke_url == "http://ocr:8000"
         assert cfg.api_key == "secret"
         assert cfg.request_timeout_s == 60.0
 
