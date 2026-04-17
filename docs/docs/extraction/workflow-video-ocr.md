@@ -1,5 +1,10 @@
 # Workflow: Video processing with OCR
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 For video assets, NeMo Retriever Library can combine audio or speech processing with visual text extraction when OCR applies to frames or derived images.
 
 For the audio and speech path, see [Speech and audio](audio.md) for RIVA ASR and related ingestion paths.

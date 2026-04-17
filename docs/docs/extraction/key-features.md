@@ -1,5 +1,10 @@
 # Key features
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 NeMo Retriever Library is built for **accuracy**, **throughput**, and **flexible deployment** in enterprise retrieval pipelines.
 
 ## Extraction and understanding

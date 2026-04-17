@@ -1,5 +1,10 @@
 # Workflow: Agentic retrieval
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 **Agentic retrieval** describes patterns where a planner or tool-using agent queries retrieval systems in a loop (often combining multiple searches, filters, and rerankers) instead of sending a single static query.
 
 NeMo Retriever Library provides ingestion, embedding, storage, and retrieval building blocks (jobs, chunking, vector stores, hybrid search, reranking) that you orchestrate in application code or frameworks.

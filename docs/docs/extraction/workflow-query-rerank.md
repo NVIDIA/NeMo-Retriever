@@ -1,6 +1,11 @@
 # Workflow: Query and rerank
 
-After documents are [ingested](v2-api-guide.md), [chunked](chunking.md), and [indexed](data-store.md), applications run retrieval (semantic and optionally hybrid search) and optional reranking to improve top-K quality.
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
+After documents are [ingested](workflow-document-ingestion.md), [chunked](chunking.md), and [indexed](data-store.md), applications run retrieval (semantic and optionally hybrid search) and optional reranking to improve top-K quality.
 
 Follow these steps:
 

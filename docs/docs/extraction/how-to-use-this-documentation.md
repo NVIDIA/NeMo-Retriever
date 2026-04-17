@@ -1,5 +1,10 @@
 # How to use this documentation
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 Use the sections below as a reading order that matches how you run NeMo Retriever Library.
 
 ## NeMo Retriever Library (local or embedded)

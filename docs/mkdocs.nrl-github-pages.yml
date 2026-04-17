@@ -79,15 +79,13 @@ nav:
           - When to use NVIDIA-hosted NIMs: extraction/hosted-nims-when-to-use.md
           - When to self-host NIMs: extraction/self-host-nims-when-to-use.md
       - "4. Core workflows":
-          - "Workflow: Document ingestion": extraction/v2-api-guide.md
-          - "Workflow: Build a searchable collection":
-              - "Vector databases and collections": extraction/data-store.md
-              - "Chunking and splitting": extraction/chunking.md
+          - "Workflow: Document ingestion": extraction/workflow-document-ingestion.md
+          - "Workflow: Build a searchable collection": extraction/workflow-build-searchable-collection.md
           - "Workflow: Query and rerank": extraction/workflow-query-rerank.md
           - "Workflow: Agentic retrieval": extraction/workflow-agentic-retrieval.md
           - "Workflow: Audio or video to text": extraction/audio.md
           - "Workflow: Video processing with OCR": extraction/workflow-video-ocr.md
-          - "End-to-end RAG with NVIDIA Blueprints": extraction/resources-links.md
+          - "Workflow: End-to-end RAG with NVIDIA Blueprints": extraction/workflow-e2e-blueprints.md
       - "5. Multimodal extraction":
           - "Supported file types and formats": extraction/supported-file-types.md
           - "Text and layout extraction": extraction/text-layout-extraction.md
@@ -96,7 +94,7 @@ nav:
           - "OCR and scanned documents": extraction/extraction-ocr-scanned.md
           - "Nemotron Parse based parsing": extraction/nemoretriever-parse.md
           - Image captioning: extraction/image-captioning.md
-          - "Metadata and content schema": extraction/content-metadata.md
+          - "Metadata and content schema": extraction/multimodal-metadata-schema.md
           - "Extraction limitations and quality": extraction/throughput-is-dataset-dependent.md
       - "6. Embedding, indexing, and storage":
           - "Embedding NIMs and models": extraction/embedding-nims-models.md
@@ -112,7 +110,6 @@ nav:
           - "Scaling: static and dynamic": extraction/scaling-modes.md
           - "Ray and distributed ingest": extraction/ray-logging.md
           - "Telemetry and observability": extraction/telemetry.md
-          - "Benchmarking and load testing": extraction/benchmarking.md
           - Production checklist: extraction/production-checklist.md
       - "9. Customize and extend":
           - User-defined functions: extraction/user-defined-functions.md
@@ -124,8 +121,7 @@ nav:
           - "Vector database partners": extraction/vector-db-partners.md
           - "Starter kits": extraction/notebooks.md
       - "11. Evaluation and benchmarks":
-          - "Benchmarking methodology": extraction/benchmarking.md
-          - "Recall and evaluation harnesses": extraction/benchmarking.md
+          - "Benchmarking methodology and evaluation harnesses": extraction/benchmarking.md
           - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
           - "Published metrics and comparisons": extraction/published-metrics-comparisons.md
       - "12. Reference":

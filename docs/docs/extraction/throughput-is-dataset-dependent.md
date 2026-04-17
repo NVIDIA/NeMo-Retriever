@@ -1,5 +1,10 @@
 # Why Throughput Is Dataset-Dependent
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 A single headline metric can drastically misrepresent system efficiency. 
 The amount of compute that you need to process a dataset depends far more on its content and how your pipeline operates than on its disk size. 
 This documentation explains why, and offers you better ways to measure and report throughput.

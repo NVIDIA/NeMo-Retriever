@@ -1,5 +1,10 @@
 # Use Custom Metadata to Filter Search Results
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 You can upload custom metadata for documents during ingestion. 
 By uploading custom metadata you can attach additional information to documents, 
 and use it for filtering results during retrieval operations. 

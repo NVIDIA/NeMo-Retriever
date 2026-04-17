@@ -1,5 +1,10 @@
 # Configure Ray Logging
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 [NeMo Retriever Library](overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for logging. 
 You can use environment variables for fine-grained control over [Ray's logging behavior](https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html). 
 In addition, NeMo Retriever Library provides preset configurations that you can use to quickly update Ray logging behavior.

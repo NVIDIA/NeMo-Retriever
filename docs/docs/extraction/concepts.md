@@ -1,5 +1,10 @@
 # Concepts
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 These terms appear throughout NeMo Retriever Library documentation.
 
 ## Job

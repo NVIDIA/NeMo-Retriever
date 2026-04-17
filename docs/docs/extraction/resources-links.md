@@ -1,5 +1,10 @@
 # Resources
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 External pages for product context, catalogs, and solution blueprints.
 
 ## Product and catalog
