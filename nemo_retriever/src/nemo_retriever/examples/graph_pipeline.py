@@ -248,6 +248,9 @@ def main(
     caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
     caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
     caption_gpus_per_actor: Optional[float] = typer.Option(None, "--caption-gpus-per-actor", max=1.0),
+    caption_temperature: float = typer.Option(1.0, "--caption-temperature"),
+    caption_top_p: Optional[float] = typer.Option(None, "--caption-top-p"),
+    caption_max_tokens: int = typer.Option(1024, "--caption-max-tokens"),
     # Text chunking
     store_images_uri: Optional[str] = typer.Option(
         None, "--store-images-uri", help="Store extracted images to this URI."
@@ -516,6 +519,9 @@ def main(
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
+                    temperature=caption_temperature,
+                    top_p=caption_top_p,
+                    max_tokens=caption_max_tokens,
                 )
             )
 

@@ -330,13 +330,57 @@ class ChartParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
-class CaptionParams(_ParamsModel):
+class LLMInferenceParams(_ParamsModel):
+    """Reusable LLM sampling / generation parameters.
+
+    Inherit from this model to add temperature, top_p, and max_tokens
+    to any task that invokes an LLM (captioning, summarization, etc.).
+    """
+
+    temperature: float = 1.0
+    top_p: Optional[float] = None
+    max_tokens: int = 1024
+
+    @field_validator("temperature")
+    @classmethod
+    def _check_temperature(cls, v: float) -> float:
+        if not (0.0 <= v <= 2.0):
+            raise ValueError("temperature must be between 0.0 and 2.0")
+        return v
+
+    @field_validator("top_p")
+    @classmethod
+    def _check_top_p(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("top_p must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("max_tokens")
+    @classmethod
+    def _check_max_tokens(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("max_tokens must be > 0")
+        return v
+
+    def to_sampling_kwargs(self) -> dict[str, Any]:
+        """Build a dict of sampling parameters suitable for LLM inference calls.
+
+        ``top_p`` is only included when explicitly set (not ``None``), because
+        many backends (vLLM, OpenAI, NIM) change behaviour when the key is
+        present vs. absent.
+        """
+        kw: dict[str, Any] = {"temperature": self.temperature, "max_tokens": self.max_tokens}
+        if self.top_p is not None:
+            kw["top_p"] = self.top_p
+        return kw
+
+
+class CaptionParams(LLMInferenceParams):
     endpoint_url: Optional[str] = None
     model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
     api_key: Optional[str] = None
     prompt: str = "Caption the content of this image:"
     system_prompt: Optional[str] = "/no_think"
-    temperature: float = 1.0
     batch_size: int = 8
     device: Optional[str] = None
     hf_cache_dir: Optional[str] = None
