@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Recall Evaluator — Designer component for running recall/BEIR evaluation against LanceDB.
 
 Reuses the existing evaluation logic from ``nemo_retriever.recall.core`` and
@@ -36,34 +39,24 @@ class RecallEvaluatorActor:
 
     def __init__(
         self,
-        evaluation_mode: Annotated[
-            str, Param(label="Evaluation Mode", choices=["recall", "beir"])
-        ] = "recall",
+        evaluation_mode: Annotated[str, Param(label="Evaluation Mode", choices=["recall", "beir"])] = "recall",
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
         query_csv: Annotated[str, Param(label="Query CSV", placeholder="/path/to/query_gt.csv")] = "",
-        embedding_model: Annotated[
-            str, Param(label="Embedding Model")
-        ] = "nvidia/llama-nemotron-embed-1b-v2",
+        embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
         recall_required: Annotated[bool, Param(label="Recall Required")] = True,
-        match_mode: Annotated[
-            str, Param(label="Match Mode", choices=["pdf_page", "pdf_only"])
-        ] = "pdf_page",
+        match_mode: Annotated[str, Param(label="Match Mode", choices=["pdf_page", "pdf_only"])] = "pdf_page",
         recall_adapter: Annotated[
             str, Param(label="Recall Adapter", choices=["none", "page_plus_one", "financebench_json"])
         ] = "none",
         ks: Annotated[str, Param(label="K Values", placeholder="1,3,5,10")] = "1,3,5,10",
         hybrid: Annotated[bool, Param(label="Hybrid Search")] = False,
-        beir_loader: Annotated[
-            str, Param(label="BEIR Loader", choices=["vidore_hf"])
-        ] = "vidore_hf",
+        beir_loader: Annotated[str, Param(label="BEIR Loader", choices=["vidore_hf"])] = "vidore_hf",
         beir_dataset_name: Annotated[
             str, Param(label="BEIR Dataset Name", placeholder="e.g. vidore_v3_computer_science")
         ] = "",
         beir_split: Annotated[str, Param(label="BEIR Split")] = "test",
-        beir_query_language: Annotated[
-            str, Param(label="Query Language", placeholder="Optional (e.g. en, fr)")
-        ] = "",
+        beir_query_language: Annotated[str, Param(label="Query Language", placeholder="Optional (e.g. en, fr)")] = "",
         beir_doc_id_field: Annotated[
             str,
             Param(label="Doc ID Field", choices=["pdf_basename", "pdf_page", "source_id", "path"]),
@@ -84,9 +77,9 @@ class RecallEvaluatorActor:
         self.beir_query_language = beir_query_language or None
         self.beir_doc_id_field = beir_doc_id_field
 
-        self._ks: tuple[int, ...] = tuple(
-            int(k) for k in ks.split(",") if k.strip()
-        ) if isinstance(ks, str) else tuple(ks)
+        self._ks: tuple[int, ...] = (
+            tuple(int(k) for k in ks.split(",") if k.strip()) if isinstance(ks, str) else tuple(ks)
+        )
         if not self._ks:
             self._ks = (1, 3, 5, 10)
 
@@ -146,7 +139,8 @@ class RecallEvaluatorActor:
             )
             eval_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
-                query_csv=query_csv_path, cfg=recall_cfg,
+                query_csv=query_csv_path,
+                cfg=recall_cfg,
             )
             evaluation_total_time = time.perf_counter() - eval_start
             evaluation_query_count = len(_df_query.index)

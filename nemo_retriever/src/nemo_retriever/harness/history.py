@@ -6,12 +6,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = NEMO_RETRIEVER_ROOT / "harness" / "history.db"
@@ -659,8 +662,8 @@ def import_yaml_presets(yaml_presets: dict[str, dict[str, Any]], db_path: str | 
         try:
             create_preset(data, db_path)
             imported += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to import preset '%s': %s", name, exc)
     return imported
 
 
@@ -1065,13 +1068,13 @@ def import_yaml_datasets(yaml_datasets: dict[str, dict[str, Any]], db_path: str 
             "recall_required": cfg.get("recall_required", False),
             "recall_match_mode": cfg.get("recall_match_mode", "pdf_page"),
             "recall_adapter": cfg.get("recall_adapter", "none"),
-            "description": f"Imported from test_configs.yaml",
+            "description": "Imported from test_configs.yaml",
         }
         try:
             create_dataset(data, db_path)
             imported += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to import dataset '%s': %s", name, exc)
     return imported
 
 
@@ -1832,8 +1835,7 @@ def cancel_jobs_by_matrix_run_id(matrix_run_id: str, db_path: str | None = None)
             (now, "Cancelled by user (matrix cancel)", matrix_run_id),
         )
         c2 = conn.execute(
-            "UPDATE jobs SET status = 'cancelling' "
-            "WHERE matrix_run_id = ? AND status = 'running'",
+            "UPDATE jobs SET status = 'cancelling' " "WHERE matrix_run_id = ? AND status = 'running'",
             (matrix_run_id,),
         )
         conn.commit()

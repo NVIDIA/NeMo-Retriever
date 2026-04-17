@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """LanceDB Writer — Designer component that writes Ray Data batches to LanceDB.
 
 Reuses the existing schema and row-building logic from
@@ -40,9 +43,7 @@ class LanceDBWriterActor:
         overwrite: Annotated[bool, Param(label="Overwrite Table")] = True,
         create_index: Annotated[bool, Param(label="Create Index After Write")] = True,
         hybrid: Annotated[bool, Param(label="Hybrid (dense + FTS)")] = False,
-        embedding_column: Annotated[
-            str, Param(label="Embedding Column")
-        ] = "text_embeddings_1b_v2",
+        embedding_column: Annotated[str, Param(label="Embedding Column")] = "text_embeddings_1b_v2",
         embedding_key: Annotated[str, Param(label="Embedding Key")] = "embedding",
         text_column: Annotated[str, Param(label="Text Column")] = "text",
         include_text: Annotated[bool, Param(label="Include Text")] = True,

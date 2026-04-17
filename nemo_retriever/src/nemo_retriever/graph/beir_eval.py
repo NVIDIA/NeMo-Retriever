@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """BEIR Evaluator — Designer component for running BEIR evaluation against LanceDB.
 
 Reuses the existing evaluation logic from ``nemo_retriever.recall.beir`` and
@@ -35,24 +38,16 @@ class BEIREvaluatorActor:
 
     def __init__(
         self,
-        evaluation_mode: Annotated[
-            str, Param(label="Evaluation Mode", choices=["recall", "beir"])
-        ] = "beir",
+        evaluation_mode: Annotated[str, Param(label="Evaluation Mode", choices=["recall", "beir"])] = "beir",
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
-        embedding_model: Annotated[
-            str, Param(label="Embedding Model")
-        ] = "nvidia/llama-nemotron-embed-1b-v2",
-        beir_loader: Annotated[
-            str, Param(label="BEIR Loader", choices=["vidore_hf"])
-        ] = "vidore_hf",
+        embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
+        beir_loader: Annotated[str, Param(label="BEIR Loader", choices=["vidore_hf"])] = "vidore_hf",
         beir_dataset_name: Annotated[
             str, Param(label="BEIR Dataset Name", placeholder="e.g. vidore_v3_computer_science")
         ] = "",
         beir_split: Annotated[str, Param(label="BEIR Split")] = "test",
-        beir_query_language: Annotated[
-            str, Param(label="Query Language", placeholder="Optional (e.g. en, fr)")
-        ] = "",
+        beir_query_language: Annotated[str, Param(label="Query Language", placeholder="Optional (e.g. en, fr)")] = "",
         beir_doc_id_field: Annotated[
             str,
             Param(label="Doc ID Field", choices=["pdf_basename", "pdf_page", "source_id", "path"]),
@@ -71,9 +66,9 @@ class BEIREvaluatorActor:
         self.beir_doc_id_field = beir_doc_id_field
         self.hybrid = hybrid
 
-        self._ks: tuple[int, ...] = tuple(
-            int(k) for k in beir_ks.split(",") if k.strip()
-        ) if isinstance(beir_ks, str) else tuple(beir_ks)
+        self._ks: tuple[int, ...] = (
+            tuple(int(k) for k in beir_ks.split(",") if k.strip()) if isinstance(beir_ks, str) else tuple(beir_ks)
+        )
         if not self._ks:
             self._ks = (1, 3, 5, 10)
 

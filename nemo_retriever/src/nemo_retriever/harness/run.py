@@ -373,7 +373,9 @@ def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
     return str(p)
 
 
-def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
+def _build_command(
+    cfg: HarnessConfig, artifact_dir: Path, run_id: str
+) -> tuple[list[str], Path, Path, Path | None, Path, dict[str, str]]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if cfg.write_detection_file:
@@ -504,8 +506,9 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         cmd += ["--table-structure-invoke-url", cfg.table_structure_invoke_url]
     if cfg.embed_invoke_url:
         cmd += ["--embed-invoke-url", cfg.embed_invoke_url]
+    env_extra: dict[str, str] = {}
     if cfg.api_key:
-        cmd += ["--api-key", cfg.api_key]
+        env_extra["NVIDIA_API_KEY"] = cfg.api_key
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
     if cfg.hybrid:
@@ -518,7 +521,7 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             cmd += ["--store-text"]
         cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
 
-    return cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file
+    return cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra
 
 
 def _evaluate_run_outcome(
@@ -693,7 +696,7 @@ def _run_single(
     tags: list[str] | None = None,
     skip_local_history: bool = False,
 ) -> dict[str, Any]:
-    cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file = _build_command(
+    cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra = _build_command(
         cfg, artifact_dir, run_id
     )
 

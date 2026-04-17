@@ -130,7 +130,10 @@ async def _runner_health_check_loop():
                         "metric_value": 0,
                         "threshold": 0,
                         "operator": "system",
-                        "message": f"Runner '{hostname}' is offline — missed {history.RUNNER_MISSED_HEARTBEATS_THRESHOLD} consecutive heartbeats",
+                        "message": (
+                            f"Runner '{hostname}' is offline — missed "
+                            f"{history.RUNNER_MISSED_HEARTBEATS_THRESHOLD} consecutive heartbeats"
+                        ),
                         "hostname": hostname,
                     }
                 )
@@ -642,7 +645,10 @@ async def get_rerun_info(run_id: int):
         "original_hostname": original_hostname,
         "original_commit": original_commit,
         "original_runner": original_runner,
-        "online_runners": [{"id": r["id"], "name": r["name"], "hostname": r.get("hostname"), "gpu_type": r.get("gpu_type")} for r in online_runners],
+        "online_runners": [
+            {"id": r["id"], "name": r["name"], "hostname": r.get("hostname"), "gpu_type": r.get("gpu_type")}
+            for r in online_runners
+        ],
     }
 
 
@@ -719,17 +725,19 @@ async def rerun_run(run_id: int, req: RerunRequest | None = None):
     rerun_tags = [t for t in original_tags if not t.startswith("rerun:")]
     rerun_tags.append(f"rerun:of_run_{run_id}")
 
-    job = history.create_job({
-        "trigger_source": "rerun",
-        "dataset": row.get("dataset") or test_config.get("dataset_label", "unknown"),
-        "dataset_path": test_config.get("dataset_dir"),
-        "dataset_overrides": overrides if overrides else None,
-        "preset": None,
-        "assigned_runner_id": runner_id,
-        "git_commit": original_commit,
-        "git_ref": original_commit,
-        "tags": rerun_tags,
-    })
+    job = history.create_job(
+        {
+            "trigger_source": "rerun",
+            "dataset": row.get("dataset") or test_config.get("dataset_label", "unknown"),
+            "dataset_path": test_config.get("dataset_dir"),
+            "dataset_overrides": overrides if overrides else None,
+            "preset": None,
+            "assigned_runner_id": runner_id,
+            "git_commit": original_commit,
+            "git_ref": original_commit,
+            "tags": rerun_tags,
+        }
+    )
 
     return {
         "job_id": job["id"],
@@ -797,9 +805,6 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
     if not uri:
         raise HTTPException(status_code=404, detail="LanceDB not available for this run")
     try:
-        import lancedb  # type: ignore
-        import numpy as np  # type: ignore
-
         raw = row.get("raw_json") or {}
         tc = raw.get("test_config") or {}
         embed_model = tc.get("embed_model_name", "nvidia/llama-nemotron-embed-1b-v2")
@@ -886,9 +891,18 @@ class PlaygroundIngestRequest(BaseModel):
     input_type: str = "pdf"
 
 
+_SESSION_ID_RE = re.compile(r"[0-9a-f]{12}")
+
+
+def _validate_session_id(session_id: str) -> None:
+    if not _SESSION_ID_RE.fullmatch(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+
+
 @app.post("/api/playground/ingest")
 async def playground_ingest(req: PlaygroundIngestRequest):
     """Trigger a harness run using uploaded playground documents."""
+    _validate_session_id(req.session_id)
     session_dir = PLAYGROUND_DIR / req.session_id
     if not session_dir.is_dir():
         raise HTTPException(status_code=404, detail="Upload session not found. Please upload files first.")
@@ -952,6 +966,7 @@ async def download_playground_session(session_id: str):
     """Download all files in a playground session as a zip archive."""
     import zipfile
 
+    _validate_session_id(session_id)
     session_dir = PLAYGROUND_DIR / session_id
     if not session_dir.is_dir():
         raise HTTPException(status_code=404, detail="Session not found")
@@ -971,6 +986,7 @@ async def download_playground_session(session_id: str):
 @app.delete("/api/playground/sessions/{session_id}")
 async def delete_playground_session(session_id: str):
     """Delete a playground upload session and its files."""
+    _validate_session_id(session_id)
     session_dir = PLAYGROUND_DIR / session_id
     if not session_dir.is_dir():
         raise HTTPException(status_code=404, detail="Session not found")
@@ -1024,7 +1040,9 @@ _AVAILABLE_MODELS = [
         "name": "Nemotron Page Elements v3",
         "type": "object-detection",
         "category": "Document AI",
-        "description": "Detects document elements: tables, charts, titles, infographics, text regions, headers/footers.",
+        "description": (
+            "Detects document elements: tables, charts, titles, infographics, text regions, headers/footers."
+        ),
         "input_type": "image",
         "output_classes": ["table", "chart", "title", "infographic", "text", "header_footer"],
     },
@@ -1033,7 +1051,9 @@ _AVAILABLE_MODELS = [
         "name": "Nemotron Table Structure v1",
         "type": "object-detection",
         "category": "Document AI",
-        "description": "Detects table structure: cells (including merged), rows, and columns from cropped table images.",
+        "description": (
+            "Detects table structure: cells (including merged), rows, and columns from cropped table images."
+        ),
         "input_type": "image",
         "output_classes": ["cell", "row", "column"],
     },
@@ -2040,9 +2060,15 @@ async def diagnose_job(job_id: str):
     if not runners:
         summary = "No runners are registered with the portal."
     elif eligible_count == 0:
-        summary = f"No eligible runners out of {len(runners)} registered. All runners have blocking conditions — expand each runner below for details."
+        summary = (
+            f"No eligible runners out of {len(runners)} registered."
+            " All runners have blocking conditions — expand each runner below for details."
+        )
     else:
-        summary = f"{eligible_count} of {len(runners)} runner(s) are eligible. The job should be picked up on the next heartbeat cycle."
+        summary = (
+            f"{eligible_count} of {len(runners)} runner(s) are eligible."
+            " The job should be picked up on the next heartbeat cycle."
+        )
 
     return {
         "job_id": job_id,
@@ -2170,8 +2196,12 @@ async def complete_job_endpoint(job_id: str, req: JobCompleteRequest):
     effective_success = req.success and not was_cancelling
     effective_error = req.error or ("Cancelled by user" if was_cancelling else None)
     run_id = _record_run_from_job(
-        job, effective_success, req.result, effective_error,
-        execution_commit=req.execution_commit, num_gpus=req.num_gpus,
+        job,
+        effective_success,
+        req.result,
+        effective_error,
+        execution_commit=req.execution_commit,
+        num_gpus=req.num_gpus,
     )
 
     return {"ok": True, "run_id": run_id}
@@ -2622,11 +2652,15 @@ async def github_webhook(request: Request):
     """Receive GitHub push events and dispatch matching schedules."""
     body = await request.body()
 
-    if GITHUB_WEBHOOK_SECRET:
-        signature = request.headers.get("X-Hub-Signature-256", "")
-        expected = "sha256=" + hmac.new(GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(signature, expected):
-            raise HTTPException(status_code=403, detail="Invalid signature")
+    if not GITHUB_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=403, detail="Webhook secret not configured — set RETRIEVER_HARNESS_GITHUB_SECRET"
+        )
+
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    expected = "sha256=" + hmac.new(GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=403, detail="Invalid signature")
 
     event = request.headers.get("X-GitHub-Event", "")
     if event != "push":
@@ -2774,9 +2808,7 @@ def _resolve_run_code_ref_sha() -> tuple[str | None, str | None]:
         return ref, ref
 
 
-def _resolve_git_override(
-    git_ref: str | None, git_commit: str | None
-) -> tuple[str | None, str | None]:
+def _resolve_git_override(git_ref: str | None, git_commit: str | None) -> tuple[str | None, str | None]:
     """Resolve explicit per-trigger git overrides, falling back to the global setting.
 
     Returns ``(sha, ref)``.
@@ -2937,7 +2969,6 @@ async def deploy_latest(req: DeployRequest):
     The HTTP response is sent *before* the restart so the client receives
     confirmation. A short delay gives the response time to flush.
     """
-    import signal
     import sys
     import threading
 
@@ -3323,9 +3354,7 @@ def _scan_nemo_retriever_package() -> None:
         return
     if not hasattr(_pkg, "__path__"):
         return
-    for _importer, modname, _ispkg in pkgutil.walk_packages(
-        _pkg.__path__, prefix="nemo_retriever."
-    ):
+    for _importer, modname, _ispkg in pkgutil.walk_packages(_pkg.__path__, prefix="nemo_retriever."):
         try:
             importlib.import_module(modname)
         except Exception:
@@ -3337,11 +3366,6 @@ def _extract_param_annotation(resolved_type):
     ``Param`` instance and the unwrapped base type.  Otherwise ``(None, None)``."""
     import typing as _typing
 
-    origin = getattr(resolved_type, "__origin__", None)
-    if origin is not None:
-        type_name = getattr(origin, "__name__", "") or getattr(origin, "_name", "") or ""
-    else:
-        type_name = ""
     args = getattr(resolved_type, "__metadata__", None)
     if args is None:
         args_full = _typing.get_args(resolved_type)
@@ -3432,9 +3456,7 @@ def _discover_operators() -> list[dict[str, Any]]:
                         p_info["pydantic"] = True
                         p_info["pydantic_class"] = effective_type.__name__
                         p_info["pydantic_module"] = effective_type.__module__
-                        p_info["pydantic_import"] = (
-                            f"from {effective_type.__module__} import {effective_type.__name__}"
-                        )
+                        p_info["pydantic_import"] = f"from {effective_type.__module__} import {effective_type.__name__}"
                         p_info["fields"] = pydantic_fields
 
                 if param.default is not _inspect.Parameter.empty:
