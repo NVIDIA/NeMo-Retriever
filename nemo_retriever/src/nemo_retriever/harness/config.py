@@ -94,6 +94,7 @@ class HarnessConfig:
     graphic_elements_invoke_url: str | None = None
     table_structure_invoke_url: str | None = None
     embed_invoke_url: str | None = None
+    caption_invoke_url: str | None = None
     api_key: str | None = None
 
     pdf_extract_workers: int = 8
@@ -307,6 +308,13 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
         "HARNESS_STORE_TEXT": ("store_text", _parse_bool),
         "HARNESS_STRIP_BASE64": ("strip_base64", _parse_bool),
+        "HARNESS_API_KEY": ("api_key", str),
+        "HARNESS_PAGE_ELEMENTS_INVOKE_URL": ("page_elements_invoke_url", str),
+        "HARNESS_OCR_INVOKE_URL": ("ocr_invoke_url", str),
+        "HARNESS_GRAPHIC_ELEMENTS_INVOKE_URL": ("graphic_elements_invoke_url", str),
+        "HARNESS_TABLE_STRUCTURE_INVOKE_URL": ("table_structure_invoke_url", str),
+        "HARNESS_EMBED_INVOKE_URL": ("embed_invoke_url", str),
+        "HARNESS_CAPTION_INVOKE_URL": ("caption_invoke_url", str),
     }
 
     for key in TUNING_FIELDS:

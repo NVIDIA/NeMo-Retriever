@@ -10,6 +10,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.chart.shared import graphic_elements_ocr_page_elements
 
@@ -59,6 +60,13 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
 
             self._ocr_model = NemotronOCRV1()
 
+        if self._graphic_elements_invoke_url or self._ocr_invoke_url:
+            self._nim_client = NIMClient(
+                max_pool_workers=int(remote_max_pool_workers),
+            )
+        else:
+            self._nim_client = None
+
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
@@ -72,6 +80,7 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             inference_batch_size=self._inference_batch_size,
             **kwargs,
         )

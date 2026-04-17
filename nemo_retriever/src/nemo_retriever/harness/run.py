@@ -447,8 +447,6 @@ def _build_command(
         run_id,
         "--detection-summary-file",
         str(detection_summary_file),
-        "--metrics-output-file",
-        str(metrics_output_file),
         "--lancedb-uri",
         _resolve_lancedb_uri(cfg, artifact_dir),
     ]
@@ -487,15 +485,8 @@ def _build_command(
             "--no-recall-details",
         ]
 
-    cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    if cfg.input_type == "audio":
-        cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
-        cmd += ["--audio-split-type", cfg.audio_split_type]
-        cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
-    if cfg.extract_infographics:
-        cmd += ["--extract-infographics"]
-    if cfg.embed_modality:
-        cmd += ["--structured-elements-modality", cfg.embed_modality]
+    if cfg.api_key:
+        cmd += ["--api-key", cfg.api_key]
     if cfg.page_elements_invoke_url:
         cmd += ["--page-elements-invoke-url", cfg.page_elements_invoke_url]
     if cfg.ocr_invoke_url:
@@ -506,6 +497,18 @@ def _build_command(
         cmd += ["--table-structure-invoke-url", cfg.table_structure_invoke_url]
     if cfg.embed_invoke_url:
         cmd += ["--embed-invoke-url", cfg.embed_invoke_url]
+    if cfg.caption_invoke_url:
+        cmd += ["--caption-invoke-url", cfg.caption_invoke_url]
+
+    cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
+    if cfg.input_type == "audio":
+        cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
+        cmd += ["--audio-split-type", cfg.audio_split_type]
+        cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
+    if cfg.extract_infographics:
+        cmd += ["--extract-infographics"]
+    if cfg.embed_modality:
+        cmd += ["--structured-elements-modality", cfg.embed_modality]
     env_extra: dict[str, str] = {}
     if cfg.api_key:
         env_extra["NVIDIA_API_KEY"] = cfg.api_key
@@ -783,6 +786,13 @@ def _run_single(
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
             "use_heuristics": cfg.use_heuristics,
+            "api_key": "(set)" if cfg.api_key else None,
+            "page_elements_invoke_url": cfg.page_elements_invoke_url,
+            "ocr_invoke_url": cfg.ocr_invoke_url,
+            "graphic_elements_invoke_url": cfg.graphic_elements_invoke_url,
+            "table_structure_invoke_url": cfg.table_structure_invoke_url,
+            "embed_invoke_url": cfg.embed_invoke_url,
+            "caption_invoke_url": cfg.caption_invoke_url,
             "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
             "store_text": cfg.store_text,
             "strip_base64": cfg.strip_base64,
