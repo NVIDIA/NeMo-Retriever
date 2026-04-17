@@ -251,7 +251,6 @@ def _join_yolox_table_structure_and_ocr_output(
     df_table = df_assign[df_assign["is_table"]].reset_index(drop=True)
     if len(df_table):
         mat = build_markdown(df_table)
-        mat = _trim_non_table_edge_rows(mat)
         markdown_table = display_markdown(mat, use_header=True)
 
         all_boxes = np.stack(df_table.ocr_box.values)
@@ -361,43 +360,6 @@ def remove_empty_row(mat: list) -> list:
         if max([len(c) for c in row]):
             mat_filter.append(row)
     return mat_filter
-
-
-def _trim_non_table_edge_rows(mat: list) -> list:
-    """Remove leading/trailing rows that look like non-table content.
-
-    Heuristics applied only to edge rows:
-    - All non-empty cells contain identical text (duplicated caption).
-    - Less than half the cells are filled (stray text from surrounding content).
-    """
-    if len(mat) <= 1:
-        return mat
-
-    n_cols = max(len(row) for row in mat) if mat else 0
-    if n_cols < 2:
-        return mat
-
-    def _is_noise_row(row: list) -> bool:
-        non_empty = [c for c in row if c.strip()]
-        if not non_empty:
-            return True
-        # All non-empty cells identical (repeated caption text).
-        if len(non_empty) > 1 and len(set(non_empty)) == 1:
-            return True
-        # Half or fewer cells filled.
-        if len(non_empty) <= n_cols / 2:
-            return True
-        return False
-
-    # Trim leading noise rows.
-    while len(mat) > 1 and _is_noise_row(mat[0]):
-        mat = mat[1:]
-
-    # Trim trailing noise rows.
-    while len(mat) > 1 and _is_noise_row(mat[-1]):
-        mat = mat[:-1]
-
-    return mat
 
 
 def reorder_boxes(
