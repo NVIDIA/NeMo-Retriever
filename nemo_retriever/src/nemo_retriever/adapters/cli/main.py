@@ -17,6 +17,7 @@ from nemo_retriever.utils.image import app as image_app
 from nemo_retriever.local import app as local_app
 from nemo_retriever.online import __main__ as online_main
 from nemo_retriever.pdf import app as pdf_app
+from nemo_retriever.pipeline import __main__ as pipeline_main
 from nemo_retriever.recall import app as recall_app
 from nemo_retriever.txt import __main__ as txt_main
 from nemo_retriever.vector_store import app as vector_store_app
@@ -37,6 +38,7 @@ app.add_typer(recall_app, name="recall")
 app.add_typer(txt_main.app, name="txt")
 app.add_typer(html_main.app, name="html")
 app.add_typer(online_main.app, name="online")
+app.add_typer(pipeline_main.app, name="pipeline")
 
 
 def _version_callback(value: bool) -> None:
