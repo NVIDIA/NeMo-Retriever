@@ -429,7 +429,8 @@ class TestOCRJoinsTableStructure:
         text = entries[0]["text"]
         for cell in ("A", "B", "C", "D"):
             assert cell in text, f"missing cell '{cell}' in joined markdown: {text!r}"
-        assert "|" in text
+        # Structure-aware markdown includes a header separator; pseudo-markdown does not.
+        assert "---" in text, f"expected structure-aware markdown, got: {text!r}"
 
     def test_local_path_falls_back_when_no_structure_match(self) -> None:
         """No matching structure region -> OCR pseudo-markdown fallback; no raise."""
@@ -450,11 +451,52 @@ class TestOCRJoinsTableStructure:
 
         entries = result.iloc[0]["table"]
         assert len(entries) == 1
-        # Pseudo-markdown fallback still produces text with the OCR cell content.
+        # Pseudo-markdown fallback still produces text with the OCR cell content,
+        # but does not include the structure-aware markdown header separator.
         text = entries[0]["text"]
         assert text  # non-empty
         for cell in ("A", "B", "C", "D"):
             assert cell in text
+        assert "---" not in text, f"expected pseudo-markdown fallback, got: {text!r}"
+
+    def test_remote_path_joins_structure_and_ocr(self) -> None:
+        """Remote OCR path should join structure + OCR the same way as the local path."""
+        from nemo_retriever.ocr.shared import ocr_page_elements
+
+        bbox = [0.0, 0.0, 1.0, 1.0]
+        ts_regions = [
+            {
+                "bbox_xyxy_norm": bbox,
+                "label_name": "table",
+                "detections": self._structure_2x2(),
+                "orig_shape_hw": [100, 200],
+                "structure_counts": {"cell": 4, "row": 2, "column": 2},
+            }
+        ]
+        df = _make_page_df_with_ts_regions(ocr_bbox=bbox, ts_regions=ts_regions)
+
+        # The remote path calls invoke_image_inference_batches once per crop;
+        # each response element is passed through _extract_remote_ocr_item,
+        # which returns it as-is when it isn't a dict. So a length-1 list whose
+        # sole element is the list of OCR predictions simulates one table crop.
+        with patch(
+            "nemo_retriever.ocr.shared.invoke_image_inference_batches",
+            return_value=[self._ocr_preds_abcd()],
+        ):
+            result = ocr_page_elements(
+                df,
+                invoke_url="http://fake-ocr",
+                extract_tables=True,
+                use_table_structure=True,
+            )
+
+        entries = result.iloc[0]["table"]
+        assert len(entries) == 1
+        text = entries[0]["text"]
+        for cell in ("A", "B", "C", "D"):
+            assert cell in text, f"missing cell '{cell}' in joined markdown: {text!r}"
+        # Structure-aware markdown includes a header separator; pseudo-markdown does not.
+        assert "---" in text, f"expected structure-aware markdown, got: {text!r}"
 
 
 # ---------------------------------------------------------------------------
