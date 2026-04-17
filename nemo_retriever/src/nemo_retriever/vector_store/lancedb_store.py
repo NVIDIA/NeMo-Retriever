@@ -313,9 +313,9 @@ def handle_lancedb(
     mode: str = "overwrite",
 ) -> Dict[str, Any]:
     """
-        Handle LanceDB writing for a batch pipeline run.
+        Handle LanceDB writing for a pipeline run.
 
-        This is used by `nemo_retriever.examples.batch_pipeline.run(...)` after the embedding stage.
+        This is used by the ingestion pipeline after the embedding stage.
 
         Reads `*.text_embeddings.json` files from `input_dir`, extracts embeddings, and uploads to LanceDB.
     )
