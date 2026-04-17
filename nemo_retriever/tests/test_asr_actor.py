@@ -17,9 +17,10 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from nemo_retriever.audio.asr_actor import ASRActor, ASRCPUActor
+from nemo_retriever.audio.asr_actor import ASRActor, ASRCPUActor, ASRGPUActor
 from nemo_retriever.audio.asr_actor import apply_asr_to_df
 from nemo_retriever.params import ASRParams
+from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
 def test_strip_pad_from_transcript():
@@ -273,3 +274,67 @@ def test_local_asr_apply_asr_to_df():
             sys.modules.pop("nemo_retriever.model.local", None)
         else:
             sys.modules["nemo_retriever.model.local"] = prev_local
+
+
+def test_local_asr_gpu_actor_does_not_call_get_client():
+    """ASRGPUActor should use the local model path and never create a remote client."""
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = ["gpu local transcript"]
+    mock_class = MagicMock(return_value=mock_model)
+    mock_local = MagicMock()
+    mock_local.ParakeetCTC1B1ASR = mock_class
+    prev_local = sys.modules.get("nemo_retriever.model.local")
+    sys.modules["nemo_retriever.model.local"] = mock_local
+    try:
+        with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+            params = ASRParams(audio_endpoints=(None, None))
+            actor = ASRGPUActor(params=params)
+
+            mock_get.assert_not_called()
+            assert actor._client is None
+            assert actor._model is mock_model
+
+            batch = pd.DataFrame(
+                [
+                    {
+                        "path": "/tmp/chunk.wav",
+                        "bytes": b"fake_audio_bytes",
+                        "source_path": "/tmp/source.wav",
+                        "duration": 1.0,
+                        "chunk_index": 0,
+                        "metadata": {},
+                        "page_number": 0,
+                    }
+                ]
+            )
+            out = actor(batch)
+
+            assert len(out) == 1
+            assert out["text"].iloc[0] == "gpu local transcript"
+            mock_model.transcribe.assert_called_once()
+    finally:
+        if prev_local is None:
+            sys.modules.pop("nemo_retriever.model.local", None)
+        else:
+            sys.modules["nemo_retriever.model.local"] = prev_local
+
+
+def test_asr_gpu_actor_rejects_remote_configuration():
+    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        params = ASRParams(audio_endpoints=("localhost:50051", None))
+        try:
+            ASRGPUActor(params=params)
+        except ValueError as exc:
+            assert "does not support remote endpoints" in str(exc)
+        else:
+            raise AssertionError("ASRGPUActor should reject remote endpoint configuration")
+        mock_get.assert_not_called()
+
+
+def test_asr_actor_resolution_prefers_cpu_for_remote_and_gpu_for_local():
+    remote_params = ASRParams(audio_endpoints=("localhost:50051", None))
+    local_params = ASRParams(audio_endpoints=(None, None))
+    gpu_resources = Resources(cpu_count=8, gpu_count=1)
+
+    assert ASRActor.resolve_operator_class(gpu_resources, {"params": remote_params}) is ASRCPUActor
+    assert ASRActor.resolve_operator_class(gpu_resources, {"params": local_params}) is ASRGPUActor
