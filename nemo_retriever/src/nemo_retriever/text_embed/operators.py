@@ -14,6 +14,7 @@ from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
 
 __all__ = ["_BatchEmbedActor", "embed_text_main_text_embed"]
 
+
 @designer_component(
     name="Batch Embedder",
     category="Embeddings & Ranking",

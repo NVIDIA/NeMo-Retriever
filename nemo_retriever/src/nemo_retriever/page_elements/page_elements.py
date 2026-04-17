@@ -14,6 +14,7 @@ __all__ = [
     "detect_page_elements_v3",
 ]
 
+
 @designer_component(
     name="Page Element Detection (CPU)",
     category="Detection & OCR",

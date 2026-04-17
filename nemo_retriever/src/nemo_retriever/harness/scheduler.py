@@ -196,16 +196,28 @@ def _resolve_ref_to_sha(ref: str) -> str | None:
             remote = ref.split("/")[0]
             subprocess.run(
                 ["git", "fetch", remote, "--prune"],
-                capture_output=True, text=True, timeout=120, check=False, env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+                env=env,
             )
         else:
             subprocess.run(
                 ["git", "fetch", "--all", "--prune"],
-                capture_output=True, text=True, timeout=120, check=False, env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+                env=env,
             )
         result = subprocess.run(
             ["git", "rev-parse", ref],
-            capture_output=True, text=True, timeout=30, check=True, env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+            env=env,
         )
         return result.stdout.strip() or None
     except Exception as exc:

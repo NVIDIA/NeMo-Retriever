@@ -14,6 +14,7 @@ __all__ = [
     "table_structure_ocr_page_elements",
 ]
 
+
 @designer_component(
     name="Table Structure Detection (CPU)",
     category="Detection & OCR",
