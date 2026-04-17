@@ -334,38 +334,6 @@ class TestTableStructureActor:
             meta = result.iloc[0]["table_structure_ocr_v1"]
             assert meta["error"] is not None
 
-    def test_ocr_invoke_url_on_gpu_actor_emits_deprecation_warning(self) -> None:
-        """Legacy ``ocr_invoke_url`` kwarg should warn but not fail."""
-        import warnings
-
-        from nemo_retriever.table.gpu_actor import TableStructureActor
-
-        with patch("nemo_retriever.model.local.NemotronTableStructureV1", return_value=MagicMock()):
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                TableStructureActor(
-                    table_structure_invoke_url="http://ts",
-                    ocr_invoke_url="http://legacy-ocr",
-                )
-            dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-            assert dep, "expected DeprecationWarning for ocr_invoke_url"
-            assert "ocr_invoke_url" in str(dep[0].message)
-
-    def test_ocr_invoke_url_on_cpu_actor_emits_deprecation_warning(self) -> None:
-        import warnings
-
-        from nemo_retriever.table.cpu_actor import TableStructureCPUActor
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            TableStructureCPUActor(
-                table_structure_invoke_url="http://ts",
-                ocr_invoke_url="http://legacy-ocr",
-            )
-        dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        assert dep, "expected DeprecationWarning for ocr_invoke_url"
-        assert "ocr_invoke_url" in str(dep[0].message)
-
 
 # ---------------------------------------------------------------------------
 # OCR stage joining against table_structure_v1

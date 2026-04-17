@@ -25,7 +25,6 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         *,
         table_structure_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
-        ocr_invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -34,14 +33,6 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         remote_max_429_retries: int = 5,
     ) -> None:
         super().__init__()
-        if ocr_invoke_url:
-            import warnings
-
-            warnings.warn(
-                "ocr_invoke_url is ignored by TableStructureActor; configure OCR on OCRActor instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self._table_structure_invoke_url = (table_structure_invoke_url or invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
