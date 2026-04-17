@@ -23,6 +23,13 @@ repos:
     hooks:
       - id: black
         args: ["--line-length=120"]
+        exclude: >-
+          (?x)^nemo_retriever/src/nemo_retriever/(
+            harness/scheduler
+            |page_elements/page_elements
+            |table/table_detection
+            |text_embed/operators
+          )\.py$
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.3.0
