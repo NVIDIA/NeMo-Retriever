@@ -644,19 +644,21 @@ def _consume_parseable_output(metrics: StreamMetrics, parse_buffer: str) -> str:
     return parse_buffer
 
 
-def _run_subprocess_with_tty(cmd: list[str]) -> int:
+def _run_subprocess_with_tty(cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
     """
     Run command in a pseudo-terminal so Ray renders rich progress while still
     streaming child process output to the current terminal.
     """
     master_fd, slave_fd = pty.openpty()
     try:
+        env = {**os.environ, **(env_extra or {})} if env_extra else None
         proc = subprocess.Popen(
             cmd,
             stdin=None,
             stdout=slave_fd,
             stderr=slave_fd,
             close_fds=True,
+            env=env,
         )
     finally:
         os.close(slave_fd)
@@ -712,7 +714,7 @@ def _run_single(
     typer.echo(f"\n=== Running {run_id} ===")
     typer.echo(command_text)
 
-    process_rc = _run_subprocess_with_tty(cmd)
+    process_rc = _run_subprocess_with_tty(cmd, env_extra=env_extra)
     run_metadata = _collect_run_metadata()
 
     ray_addr = cfg.ray_address

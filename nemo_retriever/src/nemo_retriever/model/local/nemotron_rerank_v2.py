@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import List, Optional
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
 

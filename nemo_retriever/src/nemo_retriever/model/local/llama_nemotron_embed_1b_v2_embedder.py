@@ -12,7 +12,6 @@ import torch
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
-from nemo_retriever.utils.nvtx import gpu_inference_range
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:

@@ -13,7 +13,6 @@ from PIL import Image
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
-from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
 # Type alias for all supported single-image input formats.

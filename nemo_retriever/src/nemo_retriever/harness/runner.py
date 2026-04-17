@@ -705,7 +705,7 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
     if use_sync:
         env = {**os.environ, "UV_PROJECT_ENVIRONMENT": str(venv_dir)}
         try:
-            print(f"[venv] Running uv sync (respects [tool.uv.sources] for CUDA torch) …")
+            print("[venv] Running uv sync (respects [tool.uv.sources] for CUDA torch) …")
             result = subprocess.run(
                 ["uv", "sync", "--no-dev"],
                 cwd=str(nemo_dir),
@@ -729,11 +729,11 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
                 exc,
                 stderr_text[:1000],
             )
-            print(f"[venv] uv sync failed, falling back to uv pip install …")
+            print("[venv] uv sync failed, falling back to uv pip install …")
 
     venv_python = str(venv_dir / "bin" / "python")
     try:
-        print(f"[venv] Running uv pip install -e ./nemo_retriever …")
+        print("[venv] Running uv pip install -e ./nemo_retriever …")
         result = subprocess.run(
             ["uv", "pip", "install", "-e", "./nemo_retriever", "--python", venv_python],
             cwd=str(repo_root),
