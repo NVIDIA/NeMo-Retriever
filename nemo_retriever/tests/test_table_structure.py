@@ -169,7 +169,9 @@ class TestTableStructureOCRPageElements:
         )
         assert "table" in result.columns
         assert "table_structure_ocr_v1" in result.columns
+        assert "table_structure_v1" in result.columns
         assert result.iloc[0]["table"] == []
+        assert result.iloc[0]["table_structure_v1"]["regions"] == []
         # No model calls should have been made.
         mock_ts_model.invoke.assert_not_called()
 
@@ -228,6 +230,19 @@ class TestTableStructureOCRPageElements:
         assert "|" in table_entries[0]["text"]
         assert table_entries[0]["bbox_xyxy_norm"] == [0.0, 0.0, 1.0, 1.0]
         assert table_entries[0]["structure_counts"] == {"cell": 1, "row": 1, "column": 1}
+
+        # table_structure_v1 page-level column populated with region payload.
+        assert "table_structure_v1" in result.columns
+        ts_payload = result.iloc[0]["table_structure_v1"]
+        assert set(ts_payload.keys()) >= {"regions", "timing", "error"}
+        regions = ts_payload["regions"]
+        assert len(regions) == 1
+        region = regions[0]
+        assert region["label_name"] == "table"
+        assert region["bbox_xyxy_norm"] == [0.0, 0.0, 1.0, 1.0]
+        assert len(region["detections"]) == 3
+        assert len(region["orig_shape_hw"]) == 2
+        assert region["structure_counts"] == {"cell": 1, "row": 1, "column": 1}
 
     def test_with_no_cells_produces_structure_summary(self) -> None:
         """When table-structure returns no cells, it should still produce structure-only output."""
@@ -318,6 +333,160 @@ class TestTableStructureActor:
             assert "table_structure_ocr_v1" in result.columns
             meta = result.iloc[0]["table_structure_ocr_v1"]
             assert meta["error"] is not None
+
+    def test_ocr_invoke_url_on_gpu_actor_emits_deprecation_warning(self) -> None:
+        """Legacy ``ocr_invoke_url`` kwarg should warn but not fail."""
+        import warnings
+
+        from nemo_retriever.table.gpu_actor import TableStructureActor
+
+        with patch("nemo_retriever.model.local.NemotronTableStructureV1", return_value=MagicMock()):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                TableStructureActor(
+                    table_structure_invoke_url="http://ts",
+                    ocr_invoke_url="http://legacy-ocr",
+                )
+            dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+            assert dep, "expected DeprecationWarning for ocr_invoke_url"
+            assert "ocr_invoke_url" in str(dep[0].message)
+
+    def test_ocr_invoke_url_on_cpu_actor_emits_deprecation_warning(self) -> None:
+        import warnings
+
+        from nemo_retriever.table.cpu_actor import TableStructureCPUActor
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            TableStructureCPUActor(
+                table_structure_invoke_url="http://ts",
+                ocr_invoke_url="http://legacy-ocr",
+            )
+        dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        assert dep, "expected DeprecationWarning for ocr_invoke_url"
+        assert "ocr_invoke_url" in str(dep[0].message)
+
+
+# ---------------------------------------------------------------------------
+# OCR stage joining against table_structure_v1
+# ---------------------------------------------------------------------------
+
+
+def _make_page_df_with_ts_regions(
+    *,
+    ocr_bbox: list[float],
+    ts_regions: list[dict],
+    width: int = 200,
+    height: int = 100,
+) -> pd.DataFrame:
+    image_b64 = _make_b64_png(width, height)
+    return pd.DataFrame(
+        [
+            {
+                "page_image": {"image_b64": image_b64},
+                "page_elements_v3": {
+                    "detections": [
+                        {
+                            "label_name": "table",
+                            "bbox_xyxy_norm": ocr_bbox,
+                            "score": 0.95,
+                        }
+                    ]
+                },
+                "page_elements_v3_counts_by_label": {"table": 1},
+                "table_structure_v1": {
+                    "regions": ts_regions,
+                    "timing": {"seconds": 0.0},
+                    "error": None,
+                },
+            }
+        ]
+    )
+
+
+@_needs_pil
+@_needs_requests
+@_needs_torch
+class TestOCRJoinsTableStructure:
+    """When use_table_structure=True, OCR stage should join structure + OCR."""
+
+    def _structure_2x2(self) -> list[dict]:
+        return [
+            {"bbox_xyxy_norm": [0.0, 0.0, 1.0, 0.5], "label_name": "row", "score": 0.9},
+            {"bbox_xyxy_norm": [0.0, 0.5, 1.0, 1.0], "label_name": "row", "score": 0.9},
+            {"bbox_xyxy_norm": [0.0, 0.0, 0.5, 1.0], "label_name": "column", "score": 0.9},
+            {"bbox_xyxy_norm": [0.5, 0.0, 1.0, 1.0], "label_name": "column", "score": 0.9},
+            {"bbox_xyxy_norm": [0.0, 0.0, 0.5, 0.5], "label_name": "cell", "score": 0.9},
+            {"bbox_xyxy_norm": [0.5, 0.0, 1.0, 0.5], "label_name": "cell", "score": 0.9},
+            {"bbox_xyxy_norm": [0.0, 0.5, 0.5, 1.0], "label_name": "cell", "score": 0.9},
+            {"bbox_xyxy_norm": [0.5, 0.5, 1.0, 1.0], "label_name": "cell", "score": 0.9},
+        ]
+
+    def _ocr_preds_abcd(self) -> list[dict]:
+        return [
+            {"left": 0.05, "right": 0.45, "upper": 0.05, "lower": 0.45, "text": "A"},
+            {"left": 0.55, "right": 0.95, "upper": 0.05, "lower": 0.45, "text": "B"},
+            {"left": 0.05, "right": 0.45, "upper": 0.55, "lower": 0.95, "text": "C"},
+            {"left": 0.55, "right": 0.95, "upper": 0.55, "lower": 0.95, "text": "D"},
+        ]
+
+    def test_local_path_joins_structure_and_ocr(self) -> None:
+        """Local OCR path should join structure + OCR into markdown when use_table_structure=True."""
+        from nemo_retriever.ocr.shared import ocr_page_elements
+
+        bbox = [0.0, 0.0, 1.0, 1.0]
+        ts_regions = [
+            {
+                "bbox_xyxy_norm": bbox,
+                "label_name": "table",
+                "detections": self._structure_2x2(),
+                "orig_shape_hw": [100, 200],
+                "structure_counts": {"cell": 4, "row": 2, "column": 2},
+            }
+        ]
+        df = _make_page_df_with_ts_regions(ocr_bbox=bbox, ts_regions=ts_regions)
+
+        ocr_model = MagicMock()
+        ocr_model.invoke.return_value = self._ocr_preds_abcd()
+
+        result = ocr_page_elements(
+            df,
+            model=ocr_model,
+            extract_tables=True,
+            use_table_structure=True,
+        )
+
+        entries = result.iloc[0]["table"]
+        assert len(entries) == 1
+        text = entries[0]["text"]
+        for cell in ("A", "B", "C", "D"):
+            assert cell in text, f"missing cell '{cell}' in joined markdown: {text!r}"
+        assert "|" in text
+
+    def test_local_path_falls_back_when_no_structure_match(self) -> None:
+        """No matching structure region -> OCR pseudo-markdown fallback; no raise."""
+        from nemo_retriever.ocr.shared import ocr_page_elements
+
+        # TS regions is empty so there's no match for the table crop bbox.
+        df = _make_page_df_with_ts_regions(ocr_bbox=[0.0, 0.0, 1.0, 1.0], ts_regions=[])
+
+        ocr_model = MagicMock()
+        ocr_model.invoke.return_value = self._ocr_preds_abcd()
+
+        result = ocr_page_elements(
+            df,
+            model=ocr_model,
+            extract_tables=True,
+            use_table_structure=True,
+        )
+
+        entries = result.iloc[0]["table"]
+        assert len(entries) == 1
+        # Pseudo-markdown fallback still produces text with the OCR cell content.
+        text = entries[0]["text"]
+        assert text  # non-empty
+        for cell in ("A", "B", "C", "D"):
+            assert cell in text
 
 
 # ---------------------------------------------------------------------------

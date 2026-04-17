@@ -68,7 +68,10 @@ def _parse_mode_enabled(extract_params: ExtractParams) -> bool:
 def _ocr_stage_needed(extract_params: ExtractParams) -> bool:
     if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
         return True
-    if extract_params.extract_tables and not extract_params.use_table_structure:
+    if extract_params.extract_tables:
+        # OCR is always needed for table crops: either to produce pseudo-markdown
+        # (when use_table_structure=False) or to join against the
+        # table_structure_v1 detections published by TableStructureActor.
         return True
     if extract_params.extract_charts and not extract_params.use_graphic_elements:
         return True
@@ -304,10 +307,13 @@ class _MultiTypeExtractBase(AbstractOperator):
                 graphic_kwargs["api_key"] = extract_params.api_key
             batch_df = self._instantiate_resolved(GraphicElementsActor, **graphic_kwargs).run(batch_df)
 
-        ocr_kwargs: dict[str, Any] = {"use_graphic_elements": extract_params.use_graphic_elements}
+        ocr_kwargs: dict[str, Any] = {
+            "use_graphic_elements": extract_params.use_graphic_elements,
+            "use_table_structure": extract_params.use_table_structure,
+        }
         if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
             ocr_kwargs["extract_text"] = True
-        if extract_params.extract_tables and not extract_params.use_table_structure:
+        if extract_params.extract_tables:
             ocr_kwargs["extract_tables"] = True
         if extract_params.extract_charts and not extract_params.use_graphic_elements:
             ocr_kwargs["extract_charts"] = True

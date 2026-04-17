@@ -539,13 +539,14 @@ def build_graph(
             ocr_kwargs: dict[str, Any] = {}
             if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
                 ocr_kwargs["extract_text"] = True
-            if extract_params.extract_tables and not extract_params.use_table_structure:
+            if extract_params.extract_tables:
                 ocr_kwargs["extract_tables"] = True
             if extract_params.extract_charts and not extract_params.use_graphic_elements:
                 ocr_kwargs["extract_charts"] = True
             if extract_params.extract_infographics:
                 ocr_kwargs["extract_infographics"] = True
             ocr_kwargs["use_graphic_elements"] = extract_params.use_graphic_elements
+            ocr_kwargs["use_table_structure"] = extract_params.use_table_structure
             if extract_params.ocr_invoke_url:
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:

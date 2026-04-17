@@ -282,7 +282,13 @@ def table_structure_ocr_page_elements(
     Returns
     -------
     pandas.DataFrame
-        Original columns plus ``table`` and ``table_structure_ocr_v1``.
+        Original columns plus:
+
+        - ``table``: list of per-crop dicts with structure-only ``text`` fallback
+          (overwritten by the OCR stage when it runs with ``use_table_structure=True``).
+        - ``table_structure_v1``: page-level ``{regions, timing, error}`` payload
+          consumed by the OCR stage to join OCR text with structure detections.
+        - ``table_structure_ocr_v1``: per-row timing/error metadata.
     """
     from nemo_retriever.nim.nim import invoke_image_inference_batches
     from nemo_retriever.ocr.ocr import _crop_all_from_page, _np_rgb_to_b64_png
@@ -310,12 +316,14 @@ def table_structure_ocr_page_elements(
 
     # Per-row accumulators.
     all_table: List[List[Dict[str, Any]]] = []
+    all_ts_payloads: List[Dict[str, Any]] = []
     all_meta: List[Dict[str, Any]] = []
 
     t0_total = time.perf_counter()
 
     for row in batch_df.itertuples(index=False):
         table_items: List[Dict[str, Any]] = []
+        ts_regions: List[Dict[str, Any]] = []
         row_error: Any = None
 
         try:
@@ -333,6 +341,7 @@ def table_structure_ocr_page_elements(
 
             if not isinstance(page_image_b64, str) or not page_image_b64:
                 all_table.append(table_items)
+                all_ts_payloads.append({"regions": ts_regions, "timing": None, "error": None})
                 all_meta.append({"timing": None, "error": None})
                 continue
 
@@ -341,6 +350,7 @@ def table_structure_ocr_page_elements(
 
             if not crops:
                 all_table.append(table_items)
+                all_ts_payloads.append({"regions": ts_regions, "timing": None, "error": None})
                 all_meta.append({"timing": None, "error": None})
                 continue
 
@@ -386,8 +396,10 @@ def table_structure_ocr_page_elements(
                     structure_results.append([d for d in dets if (d.get("score") or 0.0) >= YOLOX_TABLE_MIN_SCORE])
 
             # --- Pass 3: Build structure-only output per crop ---
-            for crop_i, (_, bbox, _) in enumerate(crops):
+            for crop_i, (_, bbox, crop_array) in enumerate(crops):
                 structure_dets = structure_results[crop_i]
+                crop_hw = (int(crop_array.shape[0]), int(crop_array.shape[1]))
+                counts = _count_structure_labels(structure_dets)
                 table_items.append(
                     {
                         "bbox_xyxy_norm": bbox,
@@ -396,7 +408,16 @@ def table_structure_ocr_page_elements(
                             table_output_format=table_output_format,
                         ),
                         "structure_detections": structure_dets,
-                        "structure_counts": _count_structure_labels(structure_dets),
+                        "structure_counts": counts,
+                    }
+                )
+                ts_regions.append(
+                    {
+                        "bbox_xyxy_norm": [float(x) for x in bbox],
+                        "label_name": "table",
+                        "detections": structure_dets,
+                        "orig_shape_hw": [crop_hw[0], crop_hw[1]],
+                        "structure_counts": counts,
                     }
                 )
 
@@ -410,14 +431,18 @@ def table_structure_ocr_page_elements(
             }
 
         all_table.append(table_items)
+        all_ts_payloads.append({"regions": ts_regions, "timing": None, "error": row_error})
         all_meta.append({"timing": None, "error": row_error})
 
     elapsed = time.perf_counter() - t0_total
     for meta in all_meta:
         meta["timing"] = {"seconds": float(elapsed)}
+    for payload in all_ts_payloads:
+        payload["timing"] = {"seconds": float(elapsed)}
 
     out = batch_df.copy()
     out["table"] = all_table
+    out["table_structure_v1"] = all_ts_payloads
     out["table_structure_ocr_v1"] = all_meta
     return out
 
