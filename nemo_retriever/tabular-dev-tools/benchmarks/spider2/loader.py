@@ -67,8 +67,8 @@ def load_spider2_lite(
 
     Parameters
     ----------
-    engine:
-        A connected ``DuckDB`` instance.
+    db_path:
+        Path to the DuckDB database file to create or update.
     spider2_lite_dir:
         Root of the ``spider2-lite`` directory (e.g. ``~/spider2/spider2-lite``).
     overwrite:

@@ -54,7 +54,7 @@ uv pip install duckdb
 ## 3 — Run the one-time setup script
 
 ```bash
-python nemo_retriever/tabular-dev-tools/setup_spider2.py
+python nemo_retriever/tabular-dev-tools/benchmarks/spider2/setup.py
 ```
 
 This script will:
@@ -65,7 +65,7 @@ This script will:
 ### Custom paths
 
 ```bash
-python nemo_retriever/tabular-dev-tools/setup_spider2.py \
+python nemo_retriever/tabular-dev-tools/benchmarks/spider2/setup.py \
     --spider2-dir ~/projects/spider2 \
     --db ~/data/spider2.duckdb
 ```
@@ -160,7 +160,7 @@ Then query via Python using the `DuckDB` connector as shown in Step 5.
 
 ```bash
 cd ~/spider2 && git pull
-python nemo_retriever/src/nemo_retriever/relational_db/connectors/setup_spider2.py --overwrite
+python nemo_retriever/tabular-dev-tools/benchmarks/spider2/setup.py --overwrite
 ```
 
 ---

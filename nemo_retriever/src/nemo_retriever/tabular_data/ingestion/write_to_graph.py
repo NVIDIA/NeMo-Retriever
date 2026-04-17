@@ -15,6 +15,7 @@ from nemo_retriever.tabular_data.ingestion.dal.db_dal import (
 from nemo_retriever.tabular_data.ingestion.indexes import add_indices
 from concurrent.futures import ThreadPoolExecutor
 from nemo_retriever.tabular_data.ingestion.parsers import schemas_parser
+from nemo_retriever.tabular_data.ingestion.services.queries import populate_queries
 from nemo_retriever.tabular_data.ingestion.dal.schemas_dal import (
     get_schemas_ids_and_names,
     add_fks,
@@ -41,28 +42,23 @@ def populate_tabular_data(data, num_workers, dialect):
         logger.warning("No tables found in source database; skipping graph population.")
         return
 
-    unique_databases = tables_df.database.unique()
-    for database in unique_databases:
-        sub_tables_df = tables_df.loc[tables_df["database"] == database]
-        sub_columns_df = columns_df.loc[columns_df["database"] == database]
-        logger.info(f"Started parsing db {database}.")
-        schemas = populate_db(
-            sub_tables_df,
-            sub_columns_df,
-            num_workers,
-        )
-        all_schemas.update(schemas)
+    database = data["database_name"]
+    logger.info(f"Started parsing db {database}.")
+    all_schemas = populate_db(tables_df, columns_df, database, num_workers)
 
     if "fks" in data:
         populate_fks(fks=data["fks"])
     if "pks" in data:
         populate_pks(pks=data["pks"])
 
+    if "queries" in data:
+        populate_queries(all_schemas, data["queries"], num_workers, dialect)
+
     return []
 
 
-def populate_db(tables_df, columns_df, num_workers):
-    schemas, db_node = schemas_parser.parse_df(tables_df, columns_df)
+def populate_db(tables_df, columns_df, database, num_workers):
+    schemas, db_node = schemas_parser.parse_df(tables_df, columns_df, db_name=database)
     existing_db_id, loaded = db_exists(db_node)
 
     latest_timestamp = datetime.now(timezone.utc).replace(microsecond=0)

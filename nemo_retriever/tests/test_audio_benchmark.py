@@ -33,10 +33,15 @@ def test_audio_benchmark_run_mock_asr(tmp_path: Path):
 
     from nemo_retriever.utils.benchmark.audio_extract_actor import run_benchmark
 
-    run_benchmark(
-        audio_path=wav,
-        rows=2,
-        workers="1",
-        batch_sizes="2",
-        mock_asr=True,
-    )
+    try:
+        run_benchmark(
+            audio_path=wav,
+            rows=2,
+            workers="1",
+            batch_sizes="2",
+            mock_asr=True,
+        )
+    except OSError as exc:
+        if exc.errno == 30 or "Read-only file system" in str(exc):
+            pytest.skip(f"Ray cannot write to filesystem in this environment: {exc}")
+        raise

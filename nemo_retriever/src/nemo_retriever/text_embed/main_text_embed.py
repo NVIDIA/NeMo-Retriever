@@ -15,7 +15,7 @@ Key differences vs the API transform:
 - This module operates on a simple pandas.DataFrame that typically contains:
   - `text`: the text to embed (or other common text columns)
   - `metadata`: optional dict; if present, embeddings are written to `metadata["embedding"]`
-- No imports from other files in this repo. Only stdlib + external deps (pandas/httpx).
+- Uses ``nv_ingest_api`` for shared HTTP embedding URL normalization (with pandas/httpx).
 
 Usage:
 
@@ -49,6 +49,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from urllib.parse import urlparse  # noqa: F401
 
 import pandas as pd
+from nv_ingest_api.util.string_processing import ensure_openai_embeddings_http_url
 
 from nemo_retriever.params.models import IMAGE_MODALITIES
 
@@ -256,19 +257,9 @@ def _multimodal_callable_runner(
 
 def _normalize_embeddings_endpoint(endpoint_url: str) -> str:
     """
-    Normalize endpoint to a concrete embeddings URL.
-
-    Accepts:
-    - "http://host:8000/v1"
-    - "http://host:8000/v1/embeddings"
-    - "http://host:8000/embeddings"
+    Normalize endpoint to a concrete embeddings URL (delegates to shared nv-ingest helper).
     """
-    s = (endpoint_url or "").strip().rstrip("/")
-    if not s:
-        raise ValueError("endpoint_url is empty")
-    if s.endswith("/embeddings"):
-        return s
-    return f"{s}/embeddings"
+    return ensure_openai_embeddings_http_url(endpoint_url)
 
 
 def _http_embed_openai_compat(

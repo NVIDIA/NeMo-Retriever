@@ -2,6 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from nemo_retriever.tabular_data.ingestion.utils import chunks
@@ -12,7 +13,6 @@ from nemo_retriever.tabular_data.ingestion.dal.schemas_dal import (
 )
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 from nemo_retriever.tabular_data.ingestion.model.schema import Schema
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +33,10 @@ def add_schema(
     remaining nodes - the latest_timestamp will be updated.
     missing nodes - the property delete=True will be added to these nodes.
     """
-
     try:
-        # add db->schema edge
         db_schema_edge = schema.get_db_schema_edge()
         add_schemas_edge(db_schema_edge, latest_timestamp)
 
-        # add all table and column nodes
         table_column_nodes_chunks = list(
             chunks(
                 [
@@ -68,17 +65,10 @@ def add_schema(
         for table_column_nodes in table_column_nodes_chunks:
             merge_schema_nodes(table_column_nodes, latest_timestamp)
 
-        # add schema->table edges
-        edges_chunks = list(
-            chunks(
-                schema.get_schema_to_tables_edges(),
-                500,
-            )
-        )
+        edges_chunks = list(chunks(schema.get_schema_to_tables_edges(), 500))
         for edges in edges_chunks:
             merge_schema_edges(edges, Labels.SCHEMA, Labels.TABLE)
 
-        # for each table, add table->column edges
         edges_per_table = schema.get_edges_per_table()
         with ThreadPoolExecutor(num_workers) as executor:
             executor.map(add_table, edges_per_table)
