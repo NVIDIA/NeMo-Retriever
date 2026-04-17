@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_annotations.csv"
 BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.csv"
 EARNINGS_ANNOTATIONS_PATH = REPO_ROOT / "data" / "earnings_consulting_multimodal.csv"
-FINANCEBENCH_ANNOTATIONS_PATH = Path("/datasets/nv-ingest/data/financebench_train.json")
+FINANCEBENCH_ANNOTATIONS_PATH = REPO_ROOT / "data" / "financebench_train.json"
 _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "caption": "image",
     "chart": "chart",

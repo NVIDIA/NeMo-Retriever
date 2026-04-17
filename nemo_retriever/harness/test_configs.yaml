@@ -75,7 +75,7 @@ datasets:
     recall_required: false
 
   bo767:
-    path: /datasets/nv-ingest/data/bo767
+    path: /datasets/nv-ingest/bo767
     query_csv: data/bo767_annotations.csv
     input_type: pdf
     recall_required: false

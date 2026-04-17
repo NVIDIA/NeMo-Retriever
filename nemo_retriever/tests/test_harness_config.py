@@ -596,8 +596,8 @@ def test_load_harness_config_rejects_removed_image_elements_modality_key(tmp_pat
 
 def test_load_harness_config_supports_financebench_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     real_exists = Path.exists
-    expected_dataset_dir = Path("/raid/cjarrett/nv-ingest/data/financebench").resolve()
-    expected_query_csv = Path("/datasets/nv-ingest/data/financebench_train.json").resolve()
+    expected_dataset_dir = Path("/datasets/nv-ingest/financebench").resolve()
+    expected_query_csv = (harness_config.REPO_ROOT / "data" / "financebench_train.json").resolve()
 
     def _fake_exists(path_self: Path) -> bool:
         if path_self == expected_dataset_dir:
@@ -619,7 +619,7 @@ def test_load_harness_config_supports_financebench_beir_defaults(monkeypatch: py
 
 def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     real_exists = Path.exists
-    expected_dataset_dir = Path("/raid/cjarrett/nv-ingest/data/bo767").resolve()
+    expected_dataset_dir = Path("/datasets/nv-ingest/bo767").resolve()
     expected_query_csv = (harness_config.REPO_ROOT / "data" / "bo767_annotations.csv").resolve()
 
     def _fake_exists(path_self: Path) -> bool:
