@@ -42,6 +42,7 @@ presets:
     ocr_batch_size: 16
     embed_workers: 3
     embed_batch_size: 256
+    embed_inference_batch_size: 32
     page_elements_cpus_per_actor: 1.0
     ocr_cpus_per_actor: 1.0
     embed_cpus_per_actor: 1.0
@@ -62,6 +63,7 @@ presets:
     ocr_batch_size: 16
     embed_workers: 3
     embed_batch_size: 256
+    embed_inference_batch_size: 32
     page_elements_cpus_per_actor: 1.0
     ocr_cpus_per_actor: 1.0
     embed_cpus_per_actor: 1.0

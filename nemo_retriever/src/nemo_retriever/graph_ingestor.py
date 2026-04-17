@@ -27,8 +27,8 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 import os
-import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
@@ -46,7 +46,10 @@ from nemo_retriever.params import (
     StoreParams,
     TextChunkParams,
 )
+from nemo_retriever.utils.hf_cache import resolve_hf_cache_dir
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_api_key(params: Any) -> Any:
@@ -73,6 +76,66 @@ def _coerce(params: Any, kwargs: dict[str, Any], *, default_factory: Callable[[]
     if hasattr(params, "model_copy"):
         return params.model_copy(update=kwargs)
     return params
+
+
+def _runtime_env_vars(*, debug: bool) -> dict[str, str]:
+    env_vars = {
+        "NEMO_RETRIEVER_HF_CACHE_DIR": resolve_hf_cache_dir(),
+        "LOG_LEVEL": "DEBUG" if debug else "INFO",
+    }
+    return {key: value for key, value in env_vars.items() if isinstance(value, str)}
+
+
+def _resolve_object_store_memory_bytes() -> int | None:
+    raw_bytes = os.getenv("RAY_OBJECT_STORE_MEMORY_BYTES")
+    if raw_bytes is not None:
+        try:
+            value = int(raw_bytes)
+            if value > 0:
+                return value
+        except ValueError:
+            logger.warning("Invalid RAY_OBJECT_STORE_MEMORY_BYTES=%r; expected positive integer bytes.", raw_bytes)
+
+    raw_proportion = os.getenv("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION")
+    if raw_proportion is None:
+        return None
+
+    try:
+        proportion = float(raw_proportion)
+    except ValueError:
+        logger.warning(
+            "Invalid RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=%r; expected float in (0, 1].",
+            raw_proportion,
+        )
+        return None
+
+    if proportion <= 0.0:
+        return None
+    if proportion > 1.0:
+        logger.warning(
+            "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=%s is > 1.0; clamping to 1.0.",
+            raw_proportion,
+        )
+        proportion = 1.0
+
+    try:
+        total_memory_bytes = int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except (ValueError, OSError, AttributeError):
+        logger.warning("Could not detect system memory; skipping object store override.")
+        return None
+
+    target_bytes = int(total_memory_bytes * proportion)
+
+    try:
+        shm_stats = os.statvfs("/dev/shm")
+        shm_total_bytes = int(shm_stats.f_frsize * shm_stats.f_blocks)
+    except (OSError, AttributeError, ValueError):
+        shm_total_bytes = 0
+
+    if shm_total_bytes > 0:
+        target_bytes = min(target_bytes, int(shm_total_bytes * 0.98))
+
+    return target_bytes if target_bytes > 0 else None
 
 
 class GraphIngestor(ingestor):
@@ -274,16 +337,17 @@ class GraphIngestor(ingestor):
             import ray
 
             if self._ray_address or not ray.is_initialized():
-                runtime_env = {
-                    "env_vars": {
-                        "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
-                    },
+                ray_init_kwargs: dict[str, Any] = {
+                    "address": self._ray_address,
+                    "ignore_reinit_error": True,
+                    "log_to_driver": bool(self._ray_log_to_driver),
+                    "runtime_env": {"env_vars": _runtime_env_vars(debug=bool(self._debug))},
                 }
-                ray.init(
-                    address=self._ray_address,
-                    ignore_reinit_error=True,
-                    runtime_env=runtime_env,
-                )
+                object_store_memory = _resolve_object_store_memory_bytes()
+                if object_store_memory is not None:
+                    ray_init_kwargs["object_store_memory"] = object_store_memory
+                    logger.info("Ray object_store_memory configured to %.1f GiB.", object_store_memory / (1024**3))
+                ray.init(**ray_init_kwargs)
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(

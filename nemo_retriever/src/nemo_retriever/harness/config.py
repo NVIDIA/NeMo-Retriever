@@ -41,6 +41,7 @@ TUNING_FIELDS = {
     "ocr_batch_size",
     "embed_workers",
     "embed_batch_size",
+    "embed_inference_batch_size",
     "page_elements_cpus_per_actor",
     "ocr_cpus_per_actor",
     "embed_cpus_per_actor",
@@ -106,6 +107,7 @@ class HarnessConfig:
     ocr_batch_size: int = 16
     embed_workers: int = 3
     embed_batch_size: int = 256
+    embed_inference_batch_size: int = 32
     page_elements_cpus_per_actor: float = 1.0
     ocr_cpus_per_actor: float = 1.0
     embed_cpus_per_actor: float = 1.0
@@ -183,6 +185,8 @@ class HarnessConfig:
                 min_val = 0 if name in _ZERO_ALLOWED_WORKERS else 1
                 if int(val) < min_val:
                     errors.append(f"{name} must be >= {min_val}")
+            elif name.endswith("_batch_size") and int(val) < 1:
+                errors.append(f"{name} must be >= 1")
 
         return errors
 

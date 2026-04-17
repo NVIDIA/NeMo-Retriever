@@ -7,11 +7,29 @@ Operator-oriented notes for `nemo_retriever` benchmark runs. Implementation deta
 
 ## Scope
 
-- Standalone harness under `nemo_retriever` (not `tools/harness`).
-- Invokes **`nemo_retriever.examples.graph_pipeline`** (`batch` / `inprocess` via `--run-mode`).
-- LanceDB only; recall gating via `recall_required` in config.
+- Harness is standalone under `nemo_retriever` (not based on `tools/harness`).
+- It wraps `nemo_retriever.examples.graph_pipeline`.
+- Primary use case is benchmark orchestration for local/cluster runs without Docker orchestration.
+- Vector DB is LanceDB only.
+- Recall gating is supported and enforced by config (`recall_required`).
 
-## Key files
+## Graph Refactor Integration (Apr 2026)
+
+- Upstream main includes `53f3a8c5` (`Refactor step (#1778)`), which removed mode-specific runtime files:
+  - removed: `nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py`
+  - removed: `nemo_retriever/src/nemo_retriever/examples/inprocess_pipeline.py`
+  - removed: `nemo_retriever/src/nemo_retriever/ingest_modes/`
+  - added: `nemo_retriever/src/nemo_retriever/examples/graph_pipeline.py`
+  - added: `nemo_retriever/src/nemo_retriever/graph_ingestor.py`
+  - added/active seam: `nemo_retriever/src/nemo_retriever/graph/ingestor_runtime.py`
+- Any tuning or stability changes previously implemented in `batch_pipeline.py` or `ingest_modes/*` must now be ported to:
+  - CLI arg wiring: `examples/graph_pipeline.py`
+  - graph node override mapping: `graph/ingestor_runtime.py`
+  - embed operators/runtime: `text_embed/operators.py`, `text_embed/runtime.py`
+  - local model behavior: `model/local/llama_nemotron_embed_1b_v2_embedder.py`
+- For embed OOM stabilization specifically, old `batch/inprocess` diffs should be treated as historical evidence only; the mergeable implementation surface is graph-only.
+
+## Key Files
 
 | Path | Role |
 |------|------|
@@ -72,7 +90,8 @@ Prefer **`summary_metrics`** for dashboards (small set: pages, ingest timing, re
 - Dataset paths under `/datasets/nv-ingest/...` may resolve to `/raid/$USER/...` when the former is missing.
 - Optional **store** options (`store_images_uri`, `store_text`, `strip_base64`) map to graph CLI flags; relative `store_images_uri` is resolved under the run artifact directory. See `config.py` for env overrides (`HARNESS_STORE_*`).
 
-## Backlog (maintainers / agents)
+3. **TTY-backed subprocess retained**
+   - Harness runs graph pipeline through a PTY so Ray progress remains rich/pretty by default.
 
 Ideas not committed to code; pick up or trim as priorities change.
 
