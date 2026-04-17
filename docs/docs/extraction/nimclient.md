@@ -12,7 +12,7 @@ The NimClient architecture consists of two main components:
 1. **NimClient**: The client class that handles communication with NIM endpoints via gRPC or HTTP protocols
 2. **ModelInterface**: An abstract base class that defines how to format input data, parse output responses, and process inference results for specific models
 
-For advanced usage patterns, see the existing model interfaces in `api/src/nv_ingest_api/internal/primitives/nim/model_interface/`.
+For advanced usage patterns, refer to the existing model interfaces in `api/src/nv_ingest_api/internal/primitives/nim/model_interface/`.
 
 
 ## Quick Start
@@ -23,7 +23,7 @@ For advanced usage patterns, see the existing model interfaces in `api/src/nv_in
 from nv_ingest_api.util.nim import create_inference_client
 from nv_ingest_api.internal.primitives.nim import ModelInterface
 
-# Create a custom model interface (see examples below)
+# Create a custom model interface (refer to examples below)
 model_interface = MyCustomModelInterface()
 
 # Define endpoints (gRPC, HTTP)

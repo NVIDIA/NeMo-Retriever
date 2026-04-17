@@ -151,7 +151,7 @@ The DataFrame payload contains the extracted content and metadata for processing
 | `source_type` | `str` | Source type identifier |
 | `source_file` | `str` | Path or identifier of the source file |
 | `id` | `str` | Unique identifier for this content piece |
-| `metadata` | `dict` | Rich metadata structure (see below) |
+| `metadata` | `dict` | Rich metadata structure (refer to below) |
 | `content` | `str` | The actual extracted content |
 
 #### Example DataFrame Access
@@ -264,7 +264,7 @@ def enhance_metadata(control_message: IngestControlMessage) -> IngestControlMess
     return control_message
 ```
 
-> **📖 For detailed metadata schema documentation, see:** [Content metadata reference](content-metadata.md) and [Metadata and content schema](multimodal-metadata-schema.md).
+> **📖 For detailed metadata schema documentation, refer to:** [Content metadata reference](content-metadata.md) and [Metadata and content schema](multimodal-metadata-schema.md).
 
 ### UDF Targeting
 
@@ -304,7 +304,7 @@ UDFs can be executed at different stages of the pipeline by specifying the `targ
 - `broker_response` - Response message handling
 - `otel_tracer` - OpenTelemetry tracing
 
-> **Note:** For the complete and up-to-date list of pipeline stages, see the [`default_pipeline.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/config/default_pipeline.yaml) configuration file in the NeMo Retriever repository.
+> **Note:** For the complete and up-to-date list of pipeline stages, refer to the [`default_pipeline.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/config/default_pipeline.yaml) configuration file in the NeMo Retriever repository.
 
 #### Target Stage Selection Examples
 
@@ -537,7 +537,7 @@ For detailed guidance on creating custom NIM integrations, including:
 - Error handling and debugging
 - Performance best practices
 
-See [**NimClient and custom NIM endpoints**](nimclient.md).
+Refer to [**NimClient and custom NIM endpoints**](nimclient.md).
 
 ### Error Handling
 

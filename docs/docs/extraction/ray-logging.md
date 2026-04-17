@@ -89,7 +89,7 @@ This log level uses the following settings:
 - **Import Warnings** – Enabled
 - **Usage Stats** – Enabled
 - **Storage** – 20GB total (512MB × 40 files)
-- **Deduplication** – Disabled (see all duplicate messages)
+- **Deduplication** – Disabled (refer to all duplicate messages)
 - **Encoding** – JSON with function names and line numbers
 
 

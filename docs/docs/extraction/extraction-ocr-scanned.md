@@ -5,7 +5,7 @@
     NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
-Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, see the [Python API reference](python-api-reference.md).
+Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](python-api-reference.md).
 
 **Related**
 

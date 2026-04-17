@@ -1,10 +1,5 @@
 # Extract Speech with NeMo Retriever Library
 
-!!! note
-
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
-
-
 This documentation describes two methods to run [NeMo Retriever Library](overview.md) 
 with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) 
 (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files.
@@ -16,7 +11,6 @@ Currently, you can extract speech from the following file types:
 
 - `mp3`
 - `wav`
-
 
 
 ## Overview

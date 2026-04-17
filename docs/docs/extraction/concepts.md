@@ -29,4 +29,4 @@ Optionally, the library can compute **embeddings** for extracted content and sto
 - **Helm / Kubernetes** — [Helm-based deployment](helm.md) for cluster operations.
 - **Notebooks** — [Jupyter examples](notebooks.md) for experimentation and RAG demos.
 
-For a concise comparison, see [Choose your path](choose-your-path.md).
+For a concise comparison, refer to [Choose your path](choose-your-path.md).

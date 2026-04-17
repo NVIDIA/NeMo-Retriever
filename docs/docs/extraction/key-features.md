@@ -24,7 +24,7 @@ NeMo Retriever Library is built for **accuracy**, **throughput**, and **flexible
 - **Composable services** — Use modules that fit your environment and security boundaries.
 - **Clear metadata** — Structured JSON results with extraction metadata, annotations, and trace data for observability.
 
-## See also
+## Related topics
 
 - [Concepts](concepts.md) — Core ideas (jobs, pipelines, metadata).
 - [Choose your path](choose-your-path.md) — Pick a deployment and learning path.

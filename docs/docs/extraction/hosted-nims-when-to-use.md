@@ -5,7 +5,7 @@
     NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
-[NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (see [Get your API key](ngc-api-key.md)) without operating GPU nodes yourself.
+[NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](ngc-api-key.md)) without operating GPU nodes yourself.
 
 Consider hosted NIMs when:
 
@@ -13,7 +13,7 @@ Consider hosted NIMs when:
 - Latency to NVIDIA endpoints works for your region and use case.
 - Your compliance and data policies allow document or query content in the hosted service (confirm with your security review).
 
-For more information, see the following pages:
+For more information, refer to the following pages:
 
 - [NVIDIA NIM catalog](https://build.nvidia.com/)
 - [Compare deployment options](choose-your-path.md)

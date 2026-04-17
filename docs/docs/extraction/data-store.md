@@ -62,7 +62,7 @@ vdb.run(results)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
-When using the `Ingestor` with `vdb_upload`, the backend defaults to LanceDB unless you configure Milvus (see [Upload to Milvus](#upload-to-milvus)).
+When using the `Ingestor` with `vdb_upload`, the backend defaults to LanceDB unless you configure Milvus (refer to [Upload to Milvus](#upload-to-milvus)).
 
 ### Test harness configuration
 

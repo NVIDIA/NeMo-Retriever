@@ -53,13 +53,13 @@ e. Make sure that NVIDIA is set as your default container runtime before you run
 
     `sudo nvidia-ctk runtime configure --runtime=docker --set-as-default`
 
-f. Start core services. By default, the pipeline uses **LanceDB** as the vector database (embedded, in-process); no extra Docker profile is required. If you want to use **Milvus** instead, start with the retrieval profile. This example uses the retrieval profile to run Milvus. For more information about other profiles, see [Profile Information](#profile-information).
+f. Start core services. By default, the pipeline uses **LanceDB** as the vector database (embedded, in-process); no extra Docker profile is required. If you want to use **Milvus** instead, start with the retrieval profile. This example uses the retrieval profile to run Milvus. For more information about other profiles, refer to [Profile Information](#profile-information).
 
     `docker compose --profile retrieval up`
 
     !!! tip "LanceDB (default)"
 
-        To use the default LanceDB backend, you can run `docker compose up` without `--profile retrieval`. LanceDB runs in-process and does not require Milvus, etcd, or MinIO. For details, see [Data Upload](data-store.md).
+        To use the default LanceDB backend, you can run `docker compose up` without `--profile retrieval`. LanceDB runs in-process and does not require Milvus, etcd, or MinIO. For details, refer to [Data Upload](data-store.md).
 
     !!! tip
 
@@ -112,7 +112,7 @@ You can submit jobs programmatically in Python or using the [CLI](cli-reference.
 
 !!! important "Python version"
 
-    Install the client and CLI into an environment that uses Python 3.12 or later. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. See [Prerequisites](prerequisites.md) and [Support Matrix](support-matrix.md).
+    Install the client and CLI into an environment that uses Python 3.12 or later. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. Refer to [Prerequisites](prerequisites.md) and [Support Matrix](support-matrix.md).
 
 The following examples demonstrate how to extract text, charts, tables, and images:
 

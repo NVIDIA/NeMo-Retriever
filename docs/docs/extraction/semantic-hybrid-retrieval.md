@@ -16,4 +16,4 @@ In NeMo Retriever Library, use these resources:
 
 **Evaluation**
 
-For harnesses and metrics, see [Benchmarking](benchmarking.md).
+For harnesses and metrics, refer to [Benchmarking](benchmarking.md).
