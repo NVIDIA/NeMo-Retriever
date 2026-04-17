@@ -20,10 +20,10 @@ It does not store the embeddings for images.
 
 !!! tip "Storing Extracted Images"
 
-    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](nv-ingest-python-api.md#store-extracted-images).
+    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](python-api-reference.md#store-extracted-images).
 
-NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](nv-ingest-python-api.md).
-Currently, data upload is not supported through the [CLI](nv-ingest_cli.md).
+NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](python-api-reference.md).
+Currently, data upload is not supported through the [CLI](cli-reference.md).
 
 
 
@@ -62,7 +62,7 @@ vdb.run(results)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
-When using the `Ingestor` with `vdb_upload`, the backend defaults to LanceDB unless you configure Milvus (see [Upload to Milvus](#upload-to-milvus)).
+When using the `Ingestor` with `vdb_upload`, the backend defaults to LanceDB unless you configure Milvus (refer to [Upload to Milvus](#upload-to-milvus)).
 
 ### Test harness configuration
 
@@ -140,7 +140,7 @@ You can delete all collections by deleting that volume, and then restarting the 
 
 !!! tip
 
-    When you use the `vdb_upload` method, the behavior of the upload depends on the `return_failures` parameter of the `ingest` method. For details, refer to [Capture Job Failures](nv-ingest-python-api.md#capture-job-failures).
+    When you use the `vdb_upload` method, the behavior of the upload depends on the `return_failures` parameter of the `ingest` method. For details, refer to [Capture Job Failures](python-api-reference.md#capture-job-failures).
 
 To upload to Milvus, use code similar to the following to define your `Ingestor`.
 
@@ -179,7 +179,7 @@ For more information, refer to [Build a Custom Vector Database Operator](https:/
 
 ## Related Topics
 
-- [Use the NeMo Retriever Library Python API](nv-ingest-python-api.md)
-- [Store Extracted Images](nv-ingest-python-api.md#store-extracted-images)
+- [Use the NeMo Retriever Library Python API](python-api-reference.md)
+- [Store Extracted Images](python-api-reference.md#store-extracted-images)
 - [Environment Variables](environment-config.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)

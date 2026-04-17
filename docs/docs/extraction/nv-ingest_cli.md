@@ -1,5 +1,10 @@
 # Use the NV-Ingest Command Line Interface
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 After you install the Python dependencies, you can use the [NV-Ingest](overview.md) command line interface (CLI). 
 To use the CLI, use the `nv-ingest-cli` command.
 
@@ -119,7 +124,7 @@ nv-ingest-cli \
 
 !!! tip
 
-  The caption service uses a default VLM which you can override by selecting other vision-language models to better match your image captioning needs. For more information, refer to [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images).
+  The caption service uses a default VLM which you can override by selecting other vision-language models to better match your image captioning needs. For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
 
 Alternatively, you can use an environment variable to set the API version:
 

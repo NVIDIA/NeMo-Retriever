@@ -1,5 +1,10 @@
 # NV-Ingest Integration Testing Framework
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 A configurable, dataset-agnostic testing framework for end-to-end validation of nv-ingest pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
 
 ## Dataset Prerequisites
@@ -454,7 +459,7 @@ All datasets use **multimodal-only** evaluation:
 **Other datasets** (finance_bench, earnings, audio):
 - Ground truth files must be obtained separately (not in public repo)
 - Set `ground_truth_dir` to point to your ground truth directory
-- Dataset-specific evaluators are extensible (see `recall_utils.py`)
+- Dataset-specific evaluators are extensible (refer to `recall_utils.py`)
 
 ### Configuration
 
@@ -849,9 +854,9 @@ EXTRACT_IMAGES=true uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 ## Additional Resources
 
-- **Configuration**: See `config.py` for complete field list and validation logic
-- **Test utilities**: See `interact.py` for shared helper functions  
-- **Docker setup**: See project root README for service management commands
-- **API documentation**: See `docs/` for API version differences
+- **Configuration**: Refer to `config.py` for complete field list and validation logic
+- **Test utilities**: Refer to `interact.py` for shared helper functions  
+- **Docker setup**: Refer to project root README for service management commands
+- **API documentation**: Refer to `docs/` for API version differences
 
 The framework prioritizes clarity, type safety, and validation to support reliable testing of nv-ingest pipelines.

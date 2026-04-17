@@ -1,5 +1,10 @@
 # Advanced Visual Parsing with Nemotron Parse
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 For scanned documents, or documents with complex layouts, 
 we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
 Nemotron parse provides higher-accuracy text extraction. 
@@ -10,11 +15,6 @@ to run [NeMo Retriever Library](overview.md) with nemotron-parse.
 - Run the NIM locally by using Docker Compose
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
 - Run the Ray batch pipeline with nemotron-parse ([library mode](quickstart-library-mode.md))
-
-!!! note
-
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
-
 
 ## Limitations
 
@@ -61,7 +61,7 @@ Use the following procedure to run the NIM locally.
 
     !!! tip
 
-        For more Python examples, refer to [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+        For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
 
 ## Using NVCF Endpoints for Cloud-Based Inference
@@ -102,7 +102,7 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
 
     !!! tip
 
-        For more Python examples, refer to [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+        For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
 
 
@@ -110,4 +110,4 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
 
 - [Support Matrix](support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Use the Python API](nv-ingest-python-api.md)
+- [Use the Python API](python-api-reference.md)

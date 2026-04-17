@@ -1,5 +1,10 @@
 # Use Custom Metadata to Filter Search Results
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 You can upload custom metadata for documents during ingestion. 
 By uploading custom metadata you can attach additional information to documents, 
 and use it for filtering results during retrieval operations. 
@@ -56,8 +61,8 @@ meta_df.to_csv(file_path)
 ### Example: Add Custom Metadata During Ingestion
 
 The following example adds custom metadata during ingestion. 
-For more information about the `Ingestor` class, see [Use the Python API](nv-ingest-python-api.md).
-For more information about the `vdb_upload` method, see [Upload Data](data-store.md).
+For more information about the `Ingestor` class, refer to [Use the Python API](python-api-reference.md).
+For more information about the `vdb_upload` method, refer to [Upload Data](data-store.md).
 
 ```python
 from nv_ingest_client.client import Ingestor
@@ -176,5 +181,5 @@ print(f"{q_results}")
 
 ## Related Content
 
-- For a notebook that uses the CLI to add custom metadata and filter query results, see [metadata_and_filtered_search.ipynb
+- For a notebook that uses the CLI to add custom metadata and filter query results, refer to [metadata_and_filtered_search.ipynb
 ](https://github.com/NVIDIA/nv-ingest/blob/main/examples/metadata_and_filtered_search.ipynb).

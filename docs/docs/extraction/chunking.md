@@ -1,5 +1,10 @@
 # Split Documents
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 Splitting, also known as chunking, breaks large documents or text into smaller, manageable sections to improve retrieval efficiency. 
 After chunking, only the most relevant pieces of information are retrieved for a given query. 
 Chunking also prevents text from exceeding the context window of the embedding model.
@@ -106,6 +111,6 @@ If you are building the container yourself and want to pre-download this model, 
 
 ## Related Topics
 
-- [Use the Python API](nv-ingest-python-api.md)
+- [Use the Python API](python-api-reference.md)
 - [NeMo Retriever Library V2 API Guide](v2-api-guide.md)
-- [Environment Variables](environment-variables.md)
+- [Environment variables](environment-config.md)

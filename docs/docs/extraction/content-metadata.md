@@ -108,15 +108,15 @@ The `MetadataSchema` is the primary container for all metadata. It includes the 
 | `content`             | `str`                                 | `""`                   | The actual textual content extracted from the source.                                                      |
 | `content_url`         | `str`                                 | `""`                   | URL pointing to the location of the content, if applicable.                                                |
 | `embedding`           | `Optional[List[float]]`               | `None`                 | Optional numerical vector representation (embedding) of the content.                                       |
-| `source_metadata`     | `Optional[SourceMetadataSchema]`      | `None`                 | Metadata about the original source of the content. See [SourceMetadataSchema](#sourcemetadataschema).       |
-| `content_metadata`    | `Optional[ContentMetadataSchema]`     | `None`                 | General metadata about the extracted content itself. See [ContentMetadataSchema](#contentmetadataschema).    |
-| `audio_metadata`      | `Optional[AudioMetadataSchema]`       | `None`                 | Specific metadata for audio content. Automatically set to `None` if `content_metadata.type` is not `AUDIO`. See [AudioMetadataSchema](#audiometadataschema). |
-| `text_metadata`       | `Optional[TextMetadataSchema]`        | `None`                 | Specific metadata for text content. Automatically set to `None` if `content_metadata.type` is not `TEXT`. See [TextMetadataSchema](#textmetadataschema). |
-| `image_metadata`      | `Optional[ImageMetadataSchema]`       | `None`                 | Specific metadata for image content. Automatically set to `None` if `content_metadata.type` is not `IMAGE`. See [ImageMetadataSchema](#imagemetadataschema). |
-| `table_metadata`      | `Optional[TableMetadataSchema]`       | `None`                 | Specific metadata for tabular content. Automatically set to `None` if `content_metadata.type` is not `STRUCTURED`. See [TableMetadataSchema](#tablemetadataschema). |
-| `chart_metadata`      | `Optional[ChartMetadataSchema]`       | `None`                 | Specific metadata for chart content. See [ChartMetadataSchema](#chartmetadataschema).                      |
-| `error_metadata`      | `Optional[ErrorMetadataSchema]`       | `None`                 | Metadata describing any errors encountered during processing. See [ErrorMetadataSchema](#errormetadataschema). |
-| `info_message_metadata` | `Optional[InfoMessageMetadataSchema]` | `None`                 | Informational messages related to the processing. See [InfoMessageMetadataSchema](#infomessagemetadataschema). |
+| `source_metadata`     | `Optional[SourceMetadataSchema]`      | `None`                 | Metadata about the original source of the content. Refer to [SourceMetadataSchema](#sourcemetadataschema).       |
+| `content_metadata`    | `Optional[ContentMetadataSchema]`     | `None`                 | General metadata about the extracted content itself. Refer to [ContentMetadataSchema](#contentmetadataschema).    |
+| `audio_metadata`      | `Optional[AudioMetadataSchema]`       | `None`                 | Specific metadata for audio content. Automatically set to `None` if `content_metadata.type` is not `AUDIO`. Refer to [AudioMetadataSchema](#audiometadataschema). |
+| `text_metadata`       | `Optional[TextMetadataSchema]`        | `None`                 | Specific metadata for text content. Automatically set to `None` if `content_metadata.type` is not `TEXT`. Refer to [TextMetadataSchema](#textmetadataschema). |
+| `image_metadata`      | `Optional[ImageMetadataSchema]`       | `None`                 | Specific metadata for image content. Automatically set to `None` if `content_metadata.type` is not `IMAGE`. Refer to [ImageMetadataSchema](#imagemetadataschema). |
+| `table_metadata`      | `Optional[TableMetadataSchema]`       | `None`                 | Specific metadata for tabular content. Automatically set to `None` if `content_metadata.type` is not `STRUCTURED`. Refer to [TableMetadataSchema](#tablemetadataschema). |
+| `chart_metadata`      | `Optional[ChartMetadataSchema]`       | `None`                 | Specific metadata for chart content. Refer to [ChartMetadataSchema](#chartmetadataschema).                      |
+| `error_metadata`      | `Optional[ErrorMetadataSchema]`       | `None`                 | Metadata describing any errors encountered during processing. Refer to [ErrorMetadataSchema](#errormetadataschema). |
+| `info_message_metadata` | `Optional[InfoMessageMetadataSchema]` | `None`                 | Informational messages related to the processing. Refer to [InfoMessageMetadataSchema](#infomessagemetadataschema). |
 | `debug_metadata`      | `Optional[Dict[str, Any]]`            | `None`                 | A dictionary for storing any arbitrary debug information.                                                  |
 | `raise_on_failure`    | `bool`                                | `False`                | If `True`, indicates that processing should halt on failure.                                               |
 
@@ -147,7 +147,7 @@ General metadata about the extracted content.
 | `type`          | `ContentTypeEnum`                     | *Required*                        | The type of the extracted content (e.g., `TEXT`, `IMAGE`, `AUDIO`). Uses `ContentTypeEnum`.                |
 | `description`   | `str`                                 | `""`                              | A description of the extracted content.                                                                    |
 | `page_number`   | `int`                                 | `-1`                              | Page number from which the content was extracted, if applicable (e.g., for PDFs).                        |
-| `hierarchy`     | `ContentHierarchySchema`              | `ContentHierarchySchema()`        | Hierarchical information about the content's location within the source. See [ContentHierarchySchema](#contenthierarchyschema). |
+| `hierarchy`     | `ContentHierarchySchema`              | `ContentHierarchySchema()`        | Hierarchical information about the content's location within the source. Refer to [ContentHierarchySchema](#contenthierarchyschema). |
 | `subtype`       | `Union[ContentTypeEnum, str]`         | `""`                              | A more specific subtype for the content (e.g., if `type` is `IMAGE`, `subtype` could be `diagram`).      |
 | `start_time`    | `int`                                 | `-1`                              | Start time in milliseconds for time-based media (e.g., audio, video).                                    |
 | `end_time`      | `int`                                 | `-1`                              | End time in milliseconds for time-based media.                                                           |
@@ -162,18 +162,24 @@ Describes the structural location of content within a document.
 | `block`          | `int`                 | `-1`                       | Identifier for a block of content (e.g., paragraph, section).                                         |
 | `line`           | `int`                 | `-1`                       | Line number within a block, if applicable.                                                              |
 | `span`           | `int`                 | `-1`                       | Span identifier within a line, for finer granularity.                                                   |
-| `nearby_objects` | `NearbyObjectsSchema` | `NearbyObjectsSchema()`    | Information about objects (text, images, structured data) near the current content. See [NearbyObjectsSchema](#nearbyobjectsschema). |
+| `nearby_objects` | `NearbyObjectsSchema` | `NearbyObjectsSchema()`    | Information about objects (text, images, structured data) near the current content. Refer to [NearbyObjectsSchema](#nearbyobjectsschema). |
+
+<a id="nearbyobjectsschema"></a>
 
 ### `NearbyObjectsSchema` (Currently Unused)
+
 Container for different types of nearby objects.
 
 | Field        | Type                   | Default Value                | Description                                                              |
 |--------------|------------------------|------------------------------|--------------------------------------------------------------------------|
-| `text`       | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby textual objects. See [NearbyObjectsSubSchema](#nearbyobjectssubschema). |
+| `text`       | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby textual objects. Refer to [NearbyObjectsSubSchema](#nearbyobjectssubschema). |
 | `images`     | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby image objects.                                                    |
 | `structured` | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby structured data objects (e.g., tables).                           |
 
+<a id="nearbyobjectssubschema"></a>
+
 ### `NearbyObjectsSubSchema`
+
 Describes a list of nearby objects of a specific type.
 
 | Field     | Type          | Default Value        | Description                                                              |
@@ -243,7 +249,10 @@ Specific metadata for audio content.
 | `audio_transcript` | `str` | `""`          | Transcript of the audio content.                |
 | `audio_type`       | `str` | `""`          | Type or format of the audio (e.g., `mp3`, `wav`). |
 
+<a id="errormetadataschema"></a>
+
 ### `ErrorMetadataSchema` (Currently Unused)
+
 Metadata describing errors encountered during processing.
 
 | Field       | Type           | Default Value | Description                                                              |
@@ -253,7 +262,10 @@ Metadata describing errors encountered during processing.
 | `source_id` | `str`          | `""`          | Identifier of the source item that caused the error, if applicable.        |
 | `error_msg` | `str`          | *Required*    | The error message.                                                       |
 
+<a id="infomessagemetadataschema"></a>
+
 ### `InfoMessageMetadataSchema` (Currently Unused)
+
 Informational messages related to processing.
 
 | Field     | Type           | Default Value | Description                                                              |
@@ -374,4 +386,4 @@ For the full file, refer to the [data folder](https://github.com/NVIDIA/nv-inges
 
 ## Related Topics
 
-- [Environment Variables](environment-variables.md)
+- [Environment variables](environment-config.md)

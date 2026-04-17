@@ -1,5 +1,10 @@
 # Configure Ray Logging
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 [NeMo Retriever Library](overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for logging. 
 You can use environment variables for fine-grained control over [Ray's logging behavior](https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html). 
 In addition, NeMo Retriever Library provides preset configurations that you can use to quickly update Ray logging behavior.
@@ -84,7 +89,7 @@ This log level uses the following settings:
 - **Import Warnings** – Enabled
 - **Usage Stats** – Enabled
 - **Storage** – 20GB total (512MB × 40 files)
-- **Deduplication** – Disabled (see all duplicate messages)
+- **Deduplication** – Disabled (refer to all duplicate messages)
 - **Encoding** – JSON with function names and line numbers
 
 

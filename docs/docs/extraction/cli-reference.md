@@ -1,5 +1,10 @@
 # CLI Reference
 
+!!! note
+
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+
+
 After you install the Python dependencies, you can use the [NeMo Retriever Library](overview.md) command line interface (CLI).
 To use the CLI, use the `nemo-retriever` command.
 

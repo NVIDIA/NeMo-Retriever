@@ -28,7 +28,7 @@ This includes the following:
     
     !!! note
     
-        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images).
+        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
 
 - Reranker — Use [llama-3.2-nv-rerankqa-1b-v2](https://build.nvidia.com/nvidia/llama-3.2-nv-rerankqa-1b-v2) for improved retrieval accuracy.
 

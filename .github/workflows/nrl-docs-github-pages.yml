@@ -1,0 +1,102 @@
+# NeMo Retriever Library (NRL) documentation only — GitHub Pages staging / nightly.
+# Does not run the full Docker + Sphinx pipeline (no nv-ingest / nv-ingest-api HTML API dump).
+name: NRL documentation — GitHub Pages (staging)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "nemo_retriever/**"
+      - ".github/workflows/nrl-docs-github-pages.yml"
+  schedule:
+    # Nightly (UTC): pick up doc changes even if no pushes
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-nrl-staging
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build NRL docs (staging)
+    runs-on: ubuntu-latest
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r docs/requirements.txt
+          pip install -e ./nemo_retriever
+
+      - name: Print NRL site navigation (pre-deploy)
+        run: python docs/scripts/print_nrl_mkdocs_nav.py
+
+      - name: Write nav + scan summary for the workflow run
+        run: |
+          {
+            echo "### NRL GitHub Pages — site navigation"
+            echo
+            echo '```'
+            python docs/scripts/print_nrl_mkdocs_nav.py
+            echo '```'
+            echo
+            echo "### Non-NRL / legacy reference scan (excerpt)"
+            echo "Full report is attached as an artifact."
+            echo
+            echo '```'
+            python docs/scripts/scan_non_nrl_doc_references.py | head -n 120
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scan for non-NRL references (full report)
+        run: python docs/scripts/scan_non_nrl_doc_references.py | tee non-nrl-review.txt
+
+      - name: Upload non-NRL scan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: non-nrl-content-review
+          path: non-nrl-review.txt
+
+      - name: Build MkDocs (NRL only)
+        working-directory: docs
+        env:
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: mkdocs build -f mkdocs.nrl-github-pages.yml --strict
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
