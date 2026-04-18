@@ -1,0 +1,55 @@
+# =============================================================================
+# .qaignore — QA Automation Ignore File
+# =============================================================================
+# This file tells the QA automated agent which files, folders, functions,
+# CLI commands, and pull requests to skip during analysis and testing.
+#
+# Full syntax reference: see QAIGNORE_SYNTAX.md
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Section 1: Files & Folders
+# -----------------------------------------------------------------------------
+# Use glob patterns (same rules as .gitignore).
+# Paths are relative to the repository root.
+
+# path: portal/
+# path: src/legacy/**/*.js
+# path: docs/internal/
+
+# -----------------------------------------------------------------------------
+# Section 2: Functions (and their invocation chains)
+# -----------------------------------------------------------------------------
+# Prefix with "fn:" followed by the fully-qualified or bare function name.
+# The QA agent will also ignore any call chain that originates from this function.
+
+# fn: page_elements_testxyz
+# fn: mymodule.helpers._deprecated_util
+
+# -----------------------------------------------------------------------------
+# Section 3: CLI Commands
+# -----------------------------------------------------------------------------
+# Prefix with "cmd:" followed by the command (may include subcommands/args).
+# Shell-glob wildcards (*) are supported for argument positions.
+
+# cmd: retriever xyz
+# cmd: retriever migrate --dry-run
+
+# -----------------------------------------------------------------------------
+# Section 4: Text / Verbs (content-based ignore)
+# -----------------------------------------------------------------------------
+# Prefix with "text:" followed by a keyword or phrase.
+# Any file whose contents contain a wildcard match (*<term>*) will be ignored.
+
+# text: vlm_embedder
+# text: deprecated_pipeline
+# text: EXPERIMENT_FLAG
+
+# -----------------------------------------------------------------------------
+# Section 5: Pull Requests
+# -----------------------------------------------------------------------------
+# Use "#" followed by the PR number (no space).
+# All files and changes introduced by that PR will be ignored.
+
+# #1829
+# #2044
