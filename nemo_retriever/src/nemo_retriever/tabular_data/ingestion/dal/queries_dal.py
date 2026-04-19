@@ -2,6 +2,8 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import pandas as pd
+
 from nemo_retriever.tabular_data.ingestion.utils import chunks
 from nemo_retriever.tabular_data.ingestion.dal.utils_dal import prepare_edge, add_edges
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
@@ -84,3 +86,56 @@ def update_counters_and_timestamps_for_query_and_affected_data(
                 "id": identical_sql_id,
             },
         )
+
+
+def load_sqls_to_tables() -> pd.DataFrame:
+    """Load all Sql nodes with their connected Table and Column IDs from the graph."""
+    query = f"""
+        MATCH (s:{Labels.SQL})
+        WITH s
+        CALL apoc.path.subgraphNodes(s, {{
+            relationshipFilter: "SQL>",
+            labelFilter: "/{Labels.TABLE}|/{Labels.COLUMN}",
+            minLevel: 0}})
+        YIELD node
+        WHERE coalesce(node.deleted, false) = false
+        WITH s,
+             [n IN collect(DISTINCT node) WHERE n:{Labels.TABLE} | n.id] AS tbls,
+             [n IN collect(DISTINCT node) WHERE n:{Labels.COLUMN} | n.id] AS cols
+        RETURN collect({{
+            sql_id: s.id,
+            tbls: tbls,
+            cols: cols,
+            nodes_count: s.nodes_count,
+            sql_full_query: s.sql_full_query
+        }}) AS sqls_tbls
+    """
+    result = get_neo4j_conn().query_read(query=query)
+    if not result or not result[0].get("sqls_tbls"):
+        return pd.DataFrame(columns=["sql_id", "tbls", "cols", "nodes_count", "sql_full_query"])
+    return pd.DataFrame(result[0]["sqls_tbls"])
+
+
+def get_candidate_sql_ids(
+    tbl_ids: list[str],
+    col_ids: list[str],
+    nodes_count: int,
+    sqls_tbls_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Pre-filter graph SQLs by table set, column set (leaves), and AST node count.
+
+    Mirrors the old ``get_sqls_connected_to_tables`` heuristic: same tables,
+    same leaf columns, same structural size.  Only candidates passing all
+    three gates need the expensive sqlglot structural comparison.
+    """
+    if sqls_tbls_df.empty:
+        return sqls_tbls_df.iloc[0:0]
+
+    tbl_set = set(tbl_ids)
+    col_set = set(col_ids)
+    mask = (
+        (sqls_tbls_df["nodes_count"] == nodes_count)
+        & sqls_tbls_df["tbls"].apply(lambda t: set(t) == tbl_set)
+        & sqls_tbls_df["cols"].apply(lambda c: set(c) == col_set)
+    )
+    return sqls_tbls_df.loc[mask]
