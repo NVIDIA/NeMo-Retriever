@@ -852,10 +852,12 @@ try:
 
     venv = os.path.dirname(os.path.dirname(sys.executable))
     venv_bin = os.path.join(venv, "bin")
+    pypath = os.pathsep.join(p for p in sys.path if p)
     runtime_env = {
         "env_vars": {
             "VIRTUAL_ENV": venv,
             "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+            "PYTHONPATH": pypath,
         },
     }
 
