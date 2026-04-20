@@ -7,7 +7,7 @@ This guide consolidates what you need to run NeMo Retriever Library in a secured
     Image repositories and default tags change between releases. Always verify pins against the `release/26.3.0` (or your exact stack) branches of:
 
     - [NeMo Retriever `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/docker-compose.yaml) for self-hosted Compose (check out the **Git tag or branch that matches 26.3.0** in your environment; `main` moves forward)
-    - [`helm/values.yaml`](https://github.com/NVIDIA/nv-ingest/blob/release/26.3.0/helm/values.yaml) and [`helm/README.md`](https://github.com/NVIDIA/nv-ingest/blob/release/26.3.0/helm/README.md) for Kubernetes / Helm
+    - [`helm/values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/values.yaml) and [`helm/README.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/README.md) for Kubernetes / Helm
 
 ## End-to-end workflow
 
