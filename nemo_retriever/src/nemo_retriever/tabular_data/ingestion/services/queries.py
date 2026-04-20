@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import time
@@ -23,8 +27,8 @@ def parse_query_slim(sql_text: str, query_obj: Query, dialect: str, schemas: dic
     """Parse a SQL query using sqlglot extraction.
 
     Identifies referenced tables and columns for all SQL statement types without
-    building a full AST.  Populates ``query_obj.tables_ids`` and
-    ``query_obj.reached_columns_ids``.
+    building a full AST.  Updates ``query_obj.tables_ids`` and appends SQL→table
+    and SQL→column edges to ``query_obj.edges``.
 
     Returns True when at least one recognised table was found, False otherwise.
     """
@@ -169,8 +173,12 @@ def populate_queries(schemas, queries_df, num_workers, dialect):
                 with ThreadPoolExecutor(num_workers) as executor:
                     futures = (executor.submit(add_query, q.get_edges()) for q in parsed_queries.values())
                     for future in as_completed(futures):
-                        future.result()
-                        pbar.update(1)
+                        try:
+                            future.result()
+                        except Exception as exc:
+                            logger.error("Failed to persist query to graph: %s", exc, exc_info=True)
+                        finally:
+                            pbar.update(1)
 
     logger.info(f"Time took to parse and insert queries: {time.time() - before}")
     logger.info("Finished inserting the queries into the graph.")

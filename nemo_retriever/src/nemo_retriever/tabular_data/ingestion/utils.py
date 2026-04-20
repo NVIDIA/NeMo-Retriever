@@ -57,17 +57,10 @@ def remove_redundant_parentheses(text):
     return text
 
 
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]
-
-
 def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize and type a tables DataFrame. Expects a DataFrame only."""
     types = {
-        "database": "category",
-        "schema": "category",
+        "table_schema": "category",
         "table_name": "string",
         "created": "string",
         "description": "string",
@@ -95,8 +88,7 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize and type a columns DataFrame. Expects a DataFrame only."""
     types = {
-        "database": "category",
-        "schema": "category",
+        "table_schema": "category",
         "table_name": "category",
         "column_name": "string",
         "ordinal_position": "Int16",
@@ -122,11 +114,9 @@ def normalize_fks(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize and type a foreign-keys DataFrame. Expects a DataFrame only."""
     types = {
         "created_on": "string",
-        "pk_database_name": "string",
         "pk_schema_name": "string",
         "pk_table_name": "string",
         "pk_column_name": "string",
-        "fk_database_name": "string",
         "fk_schema_name": "string",
         "fk_table_name": "string",
         "fk_column_name": "string",
@@ -152,7 +142,6 @@ def normalize_pks(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize and type a primary-keys DataFrame. Expects a DataFrame only."""
     types = {
         "created_on": "string",
-        "database_name": "string",
         "schema_name": "string",
         "table_name": "string",
         "column_name": "string",

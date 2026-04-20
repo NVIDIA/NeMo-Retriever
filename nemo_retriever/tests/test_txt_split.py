@@ -57,8 +57,9 @@ def test_split_text_by_tokens_max_tokens_positive():
         split_text_by_tokens("hello", tokenizer=tokenizer, max_tokens=0)
 
 
-def test_txt_file_to_chunks_df(tmp_path: Path):
+def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
     pytest.importorskip("transformers")
+    monkeypatch.setattr("nemo_retriever.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer())
     f = tmp_path / "doc.txt"
     f.write_text("First paragraph here. Second paragraph there.", encoding="utf-8")
     df = txt_file_to_chunks_df(

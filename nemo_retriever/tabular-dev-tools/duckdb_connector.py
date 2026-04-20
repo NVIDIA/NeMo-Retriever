@@ -53,11 +53,16 @@ class DuckDB(SQLDatabase):
 
     def __init__(self, connection_string: str, *, read_only: bool = True) -> None:
         self.conn = duckdb.connect(database=connection_string, read_only=read_only)
+        self._database_name: str = self.execute("SELECT current_database()").iloc[0, 0]
         logger.debug("DuckDB connected (database=%r, read_only=%s).", connection_string, read_only)
 
     @property
     def dialect(self) -> str:
         return "duckdb"
+
+    @property
+    def database_name(self) -> str:
+        return self._database_name
 
     # ------------------------------------------------------------------
     # Execution
@@ -89,11 +94,10 @@ class DuckDB(SQLDatabase):
         return self.execute(
             """
             SELECT
-                table_catalog AS "database",
-                table_schema  AS "schema",
-                table_name    AS "table_name"
+                table_schema,
+                table_name
             FROM information_schema.tables
-            ORDER BY table_catalog, table_schema, table_name
+            ORDER BY table_schema, table_name
         """
         )
 
@@ -102,14 +106,14 @@ class DuckDB(SQLDatabase):
         return self.execute(
             """
             SELECT
-                table_catalog    AS "database",
-                table_schema     AS "schema",
-                table_name       AS "table_name",
-                column_name      AS "column_name",
-                data_type        AS "data_type",
-                is_nullable      AS "is_nullable"
+                table_schema,
+                table_name,
+                column_name,
+                data_type,
+                is_nullable,
+                ordinal_position
             FROM information_schema.columns
-            ORDER BY table_catalog, table_schema, table_name, ordinal_position
+            ORDER BY table_schema, table_name, ordinal_position
         """
         )
 
@@ -125,8 +129,7 @@ class DuckDB(SQLDatabase):
         return self.execute(
             """
             SELECT
-                table_catalog   AS database,
-                table_schema    AS schema,
+                table_schema,
                 table_name,
                 view_definition
             FROM information_schema.views
@@ -138,13 +141,12 @@ class DuckDB(SQLDatabase):
     def get_pks(self) -> pd.DataFrame:
         """Return primary key columns from duckdb_constraints() as a DataFrame.
 
-        Columns: database, schema, table_name, column_name, ordinal_position.
+        Columns: table_schema, table_name, column_name, ordinal_position.
         If duckdb_constraints() is unavailable, returns an empty DataFrame with those columns.
         """
         empty = pd.DataFrame(
             columns=[
-                "database",
-                "schema",
+                "table_schema",
                 "table_name",
                 "column_name",
                 "ordinal_position",
@@ -155,8 +157,7 @@ class DuckDB(SQLDatabase):
             df = self.execute(
                 """
                 SELECT
-                    current_database() AS "database",
-                    c.schema_name      AS "schema",
+                    c.schema_name      AS "table_schema",
                     c.table_name       AS "table_name",
                     unnest(c.constraint_column_names) AS "column_name",
                     unnest(range(1, len(c.constraint_column_names) + 1)) AS "ordinal_position"
@@ -173,13 +174,12 @@ class DuckDB(SQLDatabase):
     def get_fks(self) -> pd.DataFrame:
         """Return foreign key columns from duckdb_constraints() as a DataFrame.
 
-        Columns: database, schema, table_name, column_name, and referenced_* if available.
+        Columns: table_schema, table_name, column_name, and referenced_* if available.
         If duckdb_constraints() is unavailable, returns an empty DataFrame with standard columns.
         """
         empty = pd.DataFrame(
             columns=[
-                "database",
-                "schema",
+                "table_schema",
                 "table_name",
                 "column_name",
                 "referenced_schema",
@@ -191,8 +191,7 @@ class DuckDB(SQLDatabase):
             df = self.execute(
                 """
                 SELECT
-                    current_database() AS "database",
-                    c.schema_name      AS "schema",
+                    c.schema_name      AS "table_schema",
                     c.table_name       AS "table_name",
                     unnest(c.constraint_column_names) AS "column_name"
                 FROM duckdb_constraints() c

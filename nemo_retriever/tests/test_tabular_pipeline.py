@@ -22,16 +22,14 @@ from nemo_retriever.tabular_data.ingestion.extract_data import (
 
 _FAKE_TABLES = pd.DataFrame(
     {
-        "database": ["mydb"],
-        "schema": ["public"],
+        "table_schema": ["public"],
         "table_name": ["orders"],
     }
 )
 
 _FAKE_COLUMNS = pd.DataFrame(
     {
-        "database": ["mydb"],
-        "schema": ["public"],
+        "table_schema": ["public"],
         "table_name": ["orders"],
         "column_name": ["id"],
         "ordinal_position": [1],
@@ -42,18 +40,16 @@ _FAKE_COLUMNS = pd.DataFrame(
 
 _FAKE_VIEWS = pd.DataFrame(
     {
-        "database": ["mydb"],
-        "schema": ["public"],
+        "table_schema": ["public"],
         "table_name": ["v_orders"],
         "view_definition": ["SELECT * FROM orders"],
     }
 )
 
-# DuckDB connector returns these column names for PKs (database / schema, not *_name variants)
+# DuckDB connector returns these column names for PKs (database / table_schema, not *_name variants)
 _FAKE_PKS = pd.DataFrame(
     {
-        "database": ["mydb"],
-        "schema": ["public"],
+        "table_schema": ["public"],
         "table_name": ["orders"],
         "column_name": ["id"],
         "ordinal_position": [1],
@@ -63,8 +59,7 @@ _FAKE_PKS = pd.DataFrame(
 # No FKs in this schema — empty DataFrame matching connector column set
 _FAKE_FKS = pd.DataFrame(
     columns=[
-        "database",
-        "schema",
+        "table_schema",
         "table_name",
         "column_name",
         "referenced_schema",
@@ -79,6 +74,14 @@ class _DummyDuckDB(SQLDatabase):
 
     def __init__(self, connection_string: str) -> None:
         pass
+
+    @property
+    def dialect(self) -> str:
+        return "duckdb"
+
+    @property
+    def database_name(self) -> str:
+        return "mydb"
 
     def execute(self, sql: str, parameters=None) -> pd.DataFrame:
         return pd.DataFrame()
@@ -107,7 +110,8 @@ class _DummyDuckDB(SQLDatabase):
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-EXPECTED_DATA_KEYS = {"tables", "columns", "views", "pks", "fks", "queries"}
+EXPECTED_DATA_KEYS = {"database_name", "tables", "columns", "views", "pks", "fks", "queries"}
+EXPECTED_DATAFRAME_KEYS = EXPECTED_DATA_KEYS - {"database_name"}
 
 
 def test_pull_tabular_db_entities():
@@ -118,7 +122,8 @@ def test_pull_tabular_db_entities():
 
     assert isinstance(data, dict)
     assert set(data.keys()) == EXPECTED_DATA_KEYS
-    for key in EXPECTED_DATA_KEYS:
+    assert data["database_name"] == "mydb"
+    for key in EXPECTED_DATAFRAME_KEYS:
         assert isinstance(data[key], pd.DataFrame), f"data['{key}'] must be a DataFrame"
 
     assert data["tables"]["table_name"].iloc[0] == "orders"
@@ -139,16 +144,14 @@ def test_data_for_populate_tabular(monkeypatch):
     """data_for_populate_tabular returns all required keys as DataFrames and applies normalization."""
     raw_tables = pd.DataFrame(
         {
-            "database": ["mydb"],
-            "schema": ["public"],
+            "table_schema": ["public"],
             "table_name": ["orders"],
             "owner": ["dba"],  # normalize_tables should drop this
         }
     )
     raw_columns = pd.DataFrame(
         {
-            "database": ["mydb"],
-            "schema": ["public"],
+            "table_schema": ["public"],
             "table_name": ["orders"],
             "column_name": ["id"],
             "ordinal_position": ["1"],  # string; normalize_columns should coerce to Int16
@@ -157,27 +160,27 @@ def test_data_for_populate_tabular(monkeypatch):
         }
     )
     raw_views = pd.DataFrame(
-        {"database": ["mydb"], "schema": ["public"], "table_name": ["v_orders"], "view_definition": ["SELECT 1"]}
+        {"database": ["mydb"], "table_schema": ["public"], "table_name": ["v_orders"], "view_definition": ["SELECT 1"]}
     )
-    raw_pks = pd.DataFrame(columns=["database", "schema", "table_name", "column_name"])
-    raw_fks = pd.DataFrame(columns=["database", "schema", "table_name", "column_name"])
+    raw_pks = pd.DataFrame(columns=["table_schema", "table_name", "column_name"])
+    raw_fks = pd.DataFrame(columns=["table_schema", "table_name", "column_name"])
     raw_queries = pd.DataFrame(columns=["end_time", "query_text"])
 
     monkeypatch.setattr(
         "nemo_retriever.tabular_data.ingestion.extract_data.create_dataframe",
-        lambda settings: (raw_tables, raw_columns, raw_views, raw_queries, raw_pks, raw_fks),
+        lambda connector: (raw_tables, raw_columns, raw_views, raw_queries, raw_pks, raw_fks),
     )
 
-    data = data_for_populate_tabular({"connection_string": "dummy.duckdb"})
+    data = data_for_populate_tabular(_DummyDuckDB("dummy.duckdb"))
 
-    # required keys, all DataFrames
+    # required keys; database_name is a str, the rest are DataFrames
     assert set(data.keys()) == EXPECTED_DATA_KEYS
-    for key in EXPECTED_DATA_KEYS:
+    assert data["database_name"] == "mydb"
+    for key in EXPECTED_DATAFRAME_KEYS:
         assert isinstance(data[key], pd.DataFrame)
 
     # normalize_tables: owner dropped, dtypes applied
     assert "owner" not in data["tables"].columns
-    assert str(data["tables"]["database"].dtype) == "category"
     assert str(data["tables"]["table_name"].dtype) == "string"
 
     # normalize_columns: string "1" coerced to Int16
@@ -210,7 +213,10 @@ def test_store_relational_db_in_neo4j_delegates_to_populate(monkeypatch):
         lambda data, num_workers, dialect: calls.append({"data": data, "num_workers": num_workers, "dialect": dialect}),
     )
 
-    dummy_data = {k: pd.DataFrame() for k in ("tables", "columns", "views", "pks", "fks", "queries")}
+    dummy_data = {
+        "database_name": "mydb",
+        **{k: pd.DataFrame() for k in ("tables", "columns", "views", "pks", "fks", "queries")},
+    }
     store_relational_db_in_neo4j(data=dummy_data, dialect="duckdb")
 
     assert len(calls) == 1

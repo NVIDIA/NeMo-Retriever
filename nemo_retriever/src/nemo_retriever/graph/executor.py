@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
@@ -17,7 +19,7 @@ from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
     gather_local_resources,
     NEMOTRON_PARSE_BATCH_SIZE,
-    NEMOTRON_PARSE_GPUS_PER_ACTOR,
+    VLLM_GPUS_PER_ACTOR,
     OCR_GPUS_PER_ACTOR,
 )
 
@@ -109,7 +111,7 @@ class InprocessExecutor(AbstractExecutor):
             # Expand globs
             expanded: List[str] = []
             for pattern in data:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             df = self._load_files(expanded)
         else:
@@ -235,7 +237,16 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         if self._ray_address or not ray.is_initialized():
-            ray.init(address=self._ray_address, ignore_reinit_error=True)
+            runtime_env = {
+                "env_vars": {
+                    "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
+                },
+            }
+            ray.init(
+                address=self._ray_address,
+                ignore_reinit_error=True,
+                runtime_env=runtime_env,
+            )
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
@@ -251,7 +262,7 @@ class RayDataExecutor(AbstractExecutor):
             paths = [data] if isinstance(data, str) else list(data)
             expanded: List[str] = []
             for pattern in paths:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             ds = rd.read_binary_files(expanded, include_paths=True)
         nodes = self._linearize(resolved_graph)
@@ -261,13 +272,18 @@ class RayDataExecutor(AbstractExecutor):
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
+            # Ray 2.49+ requires concurrency to be specified for callable classes.
+            # Default to 1 when not explicitly set via node_overrides.
+            if "concurrency" not in overrides:
+                overrides["concurrency"] = 1
 
-            # NemotronParseGPUActor uses vLLM which handles its own batching
-            # efficiently, so feed it more rows per map_batches call.
+            # vLLM-backed actors handle their own batching efficiently
+            # (continuous batching), so feed them more rows per map_batches call.
             from nemo_retriever.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+            from nemo_retriever.caption.caption import CaptionGPUActor
 
             if batch_size == self._default_batch_size and issubclass(
-                node.operator_class, (NemotronParseActor, NemotronParseGPUActor)
+                node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
 
@@ -294,12 +310,13 @@ class RayDataExecutor(AbstractExecutor):
                 elif available_gpus > 0:
                     # Local model, GPUs present: assign the heuristic fraction so
                     # Ray can co-schedule multiple actors per GPU.
-                    # Exception: NemotronParseGPUActor uses vLLM which manages
-                    # its own KV-cache and requires exclusive GPU access.
+                    # Exception: actors backed by vLLM (NemotronParse, Caption)
+                    # manage their own KV-cache and require exclusive GPU access.
                     from nemo_retriever.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+                    from nemo_retriever.caption.caption import CaptionGPUActor
 
-                    if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor)):
-                        num_gpus = max(self._default_num_gpus, NEMOTRON_PARSE_GPUS_PER_ACTOR)
+                    if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)):
+                        num_gpus = max(self._default_num_gpus, VLLM_GPUS_PER_ACTOR)
                     else:
                         num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
                 else:

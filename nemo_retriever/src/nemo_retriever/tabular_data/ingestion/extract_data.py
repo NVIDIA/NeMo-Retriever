@@ -30,6 +30,7 @@ def data_for_populate_tabular(connector: SQLDatabase):
     pks = normalize_pks(pks)
     fks = normalize_fks(fks)
     data = {
+        "database_name": connector.database_name,
         "tables": tables,
         "columns": columns,
         "views": views,

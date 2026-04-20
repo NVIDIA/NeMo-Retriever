@@ -42,9 +42,9 @@ def populate_tabular_data(data, num_workers, dialect):
         logger.warning("No tables found in source database; skipping graph population.")
         return
 
-    database = tables_df["database"].iloc[0]
+    database = data["database_name"]
     logger.info(f"Started parsing db {database}.")
-    all_schemas = populate_db(tables_df, columns_df, num_workers)
+    all_schemas = populate_db(tables_df, columns_df, database, num_workers)
 
     if "fks" in data:
         populate_fks(fks=data["fks"])
@@ -57,8 +57,8 @@ def populate_tabular_data(data, num_workers, dialect):
     return []
 
 
-def populate_db(tables_df, columns_df, num_workers):
-    schemas, db_node = schemas_parser.parse_df(tables_df, columns_df)
+def populate_db(tables_df, columns_df, database, num_workers):
+    schemas, db_node = schemas_parser.parse_df(tables_df, columns_df, db_name=database)
     existing_db_id, loaded = db_exists(db_node)
 
     latest_timestamp = datetime.now(timezone.utc).replace(microsecond=0)
