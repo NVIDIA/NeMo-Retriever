@@ -410,6 +410,8 @@ docker compose \
 
 ## Air-Gapped Deployment (Docker Compose)
 
+For a complete NeMo Retriever Library air-gapped checklist (Compose and Kubernetes, image inventory, digest pinning, Helm charts, and registry configuration), see [Air-Gapped Deployment (End-to-End)](air-gapped-deployment.md).
+
 When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
 
 1. On a machine with network access: Clone the repo, authenticate with NGC (`docker login nvcr.io`), and pull all images used by your chosen profile (for example, `docker compose --profile retrieval pull`).
