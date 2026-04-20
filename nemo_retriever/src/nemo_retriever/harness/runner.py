@@ -459,13 +459,15 @@ try:
     venv = os.path.dirname(os.path.dirname(sys.executable))
     venv_bin = os.path.join(venv, "bin")
     pypath = os.pathsep.join(p for p in sys.path if p)
-    runtime_env = {
-        "env_vars": {
-            "VIRTUAL_ENV": venv,
-            "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
-            "PYTHONPATH": pypath,
-        },
+    ray_env_vars: dict[str, str] = {
+        "VIRTUAL_ENV": venv,
+        "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+        "PYTHONPATH": pypath,
     }
+    for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+        if os.environ.get(_fwd_key):
+            ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+    runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:
         os.environ.pop("RAY_ADDRESS", None)
@@ -1728,7 +1730,9 @@ def runner_start_command(
     typer.echo(f"  Python   : {meta.get('python_version')}")
     typer.echo(f"  Git      : {current_commit[:12] if current_commit else 'unknown'}")
     typer.echo(f"  Ray      : {ray_address or 'local (embedded)'}")
-    typer.echo(f"  Dataset$ : {DATASET_CACHE_DIR}")
+    typer.echo(f"  Dataset  : {DATASET_CACHE_DIR}")
+    _hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    typer.echo(f"  HF_TOKEN : {'set (' + _hf_token[:4] + '...' + _hf_token[-4:] + ')' if _hf_token else 'NOT SET'}")
 
     global _runner_ray_address  # noqa: PLW0603
     _runner_ray_address = _resolve_ray_address(ray_address)

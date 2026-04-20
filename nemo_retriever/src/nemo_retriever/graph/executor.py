@@ -240,13 +240,15 @@ class RayDataExecutor(AbstractExecutor):
             venv = os.path.dirname(os.path.dirname(sys.executable))
             venv_bin = os.path.join(venv, "bin")
             pypath = os.pathsep.join(p for p in sys.path if p)
-            runtime_env = {
-                "env_vars": {
-                    "VIRTUAL_ENV": venv,
-                    "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
-                    "PYTHONPATH": pypath,
-                },
+            ray_env_vars: dict[str, str] = {
+                "VIRTUAL_ENV": venv,
+                "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                "PYTHONPATH": pypath,
             }
+            for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+                if os.environ.get(_fwd_key):
+                    ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+            runtime_env = {"env_vars": ray_env_vars}
             ray.init(
                 address=self._ray_address,
                 ignore_reinit_error=True,
