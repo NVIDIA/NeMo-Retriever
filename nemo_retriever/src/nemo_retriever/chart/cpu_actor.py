@@ -4,14 +4,66 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any, Optional
 
 import pandas as pd
+import requests
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.chart.shared import graphic_elements_ocr_page_elements
+
+logger = logging.getLogger(__name__)
+
+
+def _probe_endpoint(url: str, *, name: str, timeout: float = 5.0) -> None:
+    """Fire a lightweight request to verify the endpoint is reachable."""
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(url)
+    health_url = f"{parsed.scheme}://{parsed.netloc}/v1/health/ready"
+
+    for probe_url, method in [(health_url, "GET"), (url, "HEAD")]:
+        try:
+            t0 = time.perf_counter()
+            resp = requests.request(method, probe_url, timeout=timeout)
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            logger.info(
+                "GraphicElementsCPUActor: %s endpoint %s responded %d in %.0fms",
+                name,
+                probe_url,
+                resp.status_code,
+                elapsed_ms,
+            )
+            return
+        except requests.ConnectionError:
+            logger.warning(
+                "GraphicElementsCPUActor: %s endpoint %s is UNREACHABLE (connection refused). "
+                "Processing will stall until this endpoint becomes available.",
+                name,
+                probe_url,
+            )
+            return
+        except requests.Timeout:
+            logger.warning(
+                "GraphicElementsCPUActor: %s endpoint %s timed out after %.1fs. "
+                "The endpoint may be overloaded or not ready.",
+                name,
+                probe_url,
+                timeout,
+            )
+            return
+        except Exception as exc:
+            logger.debug(
+                "GraphicElementsCPUActor: %s endpoint probe %s failed: %s",
+                name,
+                probe_url,
+                exc,
+            )
 
 
 class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
@@ -52,12 +104,26 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
         self._inference_batch_size = int(inference_batch_size)
         self._graphic_elements_model = None
         self._ocr_model = None
+        self._nim_client = NIMClient(
+            max_pool_workers=int(remote_max_pool_workers),
+        )
+
+        logger.info(
+            "GraphicElementsCPUActor initialized: graphic_elements_url=%s, ocr_url=%s",
+            self._graphic_elements_invoke_url,
+            self._ocr_invoke_url,
+        )
+        _probe_endpoint(self._graphic_elements_invoke_url, name="graphic-elements")
+        _probe_endpoint(self._ocr_invoke_url, name="ocr")
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        return graphic_elements_ocr_page_elements(
+        n_rows = len(data) if hasattr(data, "__len__") else "?"
+        logger.info("GraphicElementsCPUActor.process: received batch of %s rows", n_rows)
+        t0 = time.perf_counter()
+        result = graphic_elements_ocr_page_elements(
             data,
             graphic_elements_model=self._graphic_elements_model,
             ocr_model=self._ocr_model,
@@ -66,9 +132,13 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             inference_batch_size=self._inference_batch_size,
             **kwargs,
         )
+        elapsed = time.perf_counter() - t0
+        logger.info("GraphicElementsCPUActor.process: finished batch of %s rows in %.2fs", n_rows, elapsed)
+        return result
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

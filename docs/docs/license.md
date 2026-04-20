@@ -17,7 +17,7 @@ Reference links to the main license file in the GitHub repository:
 
 The authoritative third-party list for this repository is [THIRD_PARTY_LICENSES.md](https://github.com/NVIDIA/nv-ingest/blob/main/THIRD_PARTY_LICENSES.md). Contents:
 
---8<-- "THIRD_PARTY_LICENSES.md:3"
+--8<-- "../THIRD_PARTY_LICENSES.md:3"
 
 ## NVIDIA NIM container images
 

@@ -38,6 +38,7 @@ from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.txt.ray_data import TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
 
@@ -68,7 +69,10 @@ def _parse_mode_enabled(extract_params: ExtractParams) -> bool:
 def _ocr_stage_needed(extract_params: ExtractParams) -> bool:
     if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
         return True
-    if extract_params.extract_tables and not extract_params.use_table_structure:
+    if extract_params.extract_tables:
+        # OCR is always needed for table crops: either to produce pseudo-markdown
+        # (when use_table_structure=False) or to join against the
+        # table_structure_v1 detections published by TableStructureActor.
         return True
     if extract_params.extract_charts and not extract_params.use_graphic_elements:
         return True
@@ -91,7 +95,7 @@ def _extract_params_need_local_gpu(extraction_mode: str, extract_params: Extract
     if (
         extract_params.use_table_structure
         and extract_params.extract_tables
-        and not _has_endpoint(extract_params.table_structure_invoke_url, extract_params.ocr_invoke_url)
+        and not _has_endpoint(extract_params.table_structure_invoke_url)
     ):
         return True
     if (
@@ -288,8 +292,6 @@ class _MultiTypeExtractBase(AbstractOperator):
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
-            if extract_params.ocr_invoke_url:
-                table_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
@@ -306,10 +308,13 @@ class _MultiTypeExtractBase(AbstractOperator):
                 graphic_kwargs["api_key"] = extract_params.api_key
             batch_df = self._instantiate_resolved(GraphicElementsActor, **graphic_kwargs).run(batch_df)
 
-        ocr_kwargs: dict[str, Any] = {"use_graphic_elements": extract_params.use_graphic_elements}
+        ocr_kwargs: dict[str, Any] = {
+            "use_graphic_elements": extract_params.use_graphic_elements,
+            "use_table_structure": extract_params.use_table_structure,
+        }
         if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
             ocr_kwargs["extract_text"] = True
-        if extract_params.extract_tables and not extract_params.use_table_structure:
+        if extract_params.extract_tables:
             ocr_kwargs["extract_tables"] = True
         if extract_params.extract_charts and not extract_params.use_graphic_elements:
             ocr_kwargs["extract_charts"] = True
@@ -356,6 +361,13 @@ class MultiTypeExtractCPUActor(_MultiTypeExtractBase, CPUOperator):
     pass
 
 
+@designer_component(
+    name="Multi-Type Extractor",
+    category="Document Processing",
+    compute="gpu",
+    description="Extracts content from multiple file types (PDF, image, text, audio)",
+    category_color="#64b4ff",
+)
 class MultiTypeExtractOperator(ArchetypeOperator):
     """Graph-facing multi-type extraction archetype."""
 

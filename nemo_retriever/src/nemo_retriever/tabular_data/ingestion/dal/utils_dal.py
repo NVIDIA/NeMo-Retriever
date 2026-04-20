@@ -6,6 +6,7 @@ import logging
 
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import (
+    Edges,
     Props,
     Labels,
 )
@@ -45,8 +46,8 @@ def prepare_edge(edge):
 
     check_properties_compatibility_with_neo4j(node_from, node_to, edge[2])
 
-    if e_label == Props.JOIN:
-        edge_identity_props = {Props.JOIN: edge_props[Props.JOIN]}
+    if e_label == Edges.JOIN:
+        edge_identity_props = {Edges.JOIN: edge_props[Props.JOIN]}
     elif "child_idx" in edge_props and edge_props["child_idx"] is not None:
         edge_identity_props = {"child_idx": edge_props["child_idx"]}
     else:
@@ -69,13 +70,11 @@ def prepare_edge(edge):
 
 def _get_edge_label(edge):
     if Props.JOIN in edge[2]:
-        return "join"
-    elif Props.SOURCE_SQL_ID in edge[2]:
-        return "source_of"
+        return Edges.JOIN
     elif Props.UNION in edge[2]:
-        return "union"
+        return Edges.UNION
     elif Props.SQL_ID in edge[2]:
-        return "SQL"
+        return Edges.SQL
     else:
         return next(iter(edge[2]))
 

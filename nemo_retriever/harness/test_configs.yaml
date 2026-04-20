@@ -31,7 +31,7 @@ active:
   strip_base64: true
 
 presets:
-  single_gpu:
+  PE_GE_OCR_TE_DENSE:
     pdf_extract_workers: 8
     pdf_extract_num_cpus: 2.0
     pdf_extract_batch_size: 4
@@ -48,17 +48,19 @@ presets:
     gpu_page_elements: 0.1
     gpu_ocr: 0.1
     gpu_embed: 0.25
+    embed_modality: text
+    embed_model_name: nvidia/llama-nemotron-embed-1b-v2
 
-  dgx_8gpu:
-    pdf_extract_workers: 64
+  PE_GE_OCR_TE_HYBRID:
+    pdf_extract_workers: 8
     pdf_extract_num_cpus: 2.0
     pdf_extract_batch_size: 4
     pdf_split_batch_size: 1
-    page_elements_batch_size: 32
-    page_elements_workers: 24
-    ocr_workers: 24
+    page_elements_batch_size: 4
+    page_elements_workers: 3
+    ocr_workers: 3
     ocr_batch_size: 16
-    embed_workers: 24
+    embed_workers: 3
     embed_batch_size: 256
     page_elements_cpus_per_actor: 1.0
     ocr_cpus_per_actor: 1.0
@@ -66,22 +68,152 @@ presets:
     gpu_page_elements: 0.1
     gpu_ocr: 0.1
     gpu_embed: 0.25
+    hybrid: true
+    embed_modality: text
+    embed_model_name: nvidia/llama-nemotron-embed-1b-v2
+
+  PE_GE_OCR_VL_TEXT_ONLY_DENSE:
+    pdf_extract_workers: 8
+    pdf_extract_num_cpus: 2.0
+    pdf_extract_batch_size: 4
+    pdf_split_batch_size: 1
+    page_elements_batch_size: 4
+    page_elements_workers: 3
+    ocr_workers: 3
+    ocr_batch_size: 16
+    embed_workers: 3
+    embed_batch_size: 256
+    page_elements_cpus_per_actor: 1.0
+    ocr_cpus_per_actor: 1.0
+    embed_cpus_per_actor: 1.0
+    gpu_page_elements: 0.1
+    gpu_ocr: 0.1
+    gpu_embed: 0.25
+    hybrid: false
+    embed_modality: text
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+
+  PE_GE_OCR_VL_TEXT_ONLY_HYBRID:
+    pdf_extract_workers: 8
+    pdf_extract_num_cpus: 2.0
+    pdf_extract_batch_size: 4
+    pdf_split_batch_size: 1
+    page_elements_batch_size: 4
+    page_elements_workers: 3
+    ocr_workers: 3
+    ocr_batch_size: 16
+    embed_workers: 3
+    embed_batch_size: 256
+    page_elements_cpus_per_actor: 1.0
+    ocr_cpus_per_actor: 1.0
+    embed_cpus_per_actor: 1.0
+    gpu_page_elements: 0.1
+    gpu_ocr: 0.1
+    gpu_embed: 0.25
+    hybrid: true
+    embed_modality: text
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+
+  PE_GE_OCR_VL_IMAGE_TEXT_DENSE:
+    pdf_extract_workers: 8
+    pdf_extract_num_cpus: 2.0
+    pdf_extract_batch_size: 4
+    pdf_split_batch_size: 1
+    page_elements_batch_size: 4
+    page_elements_workers: 3
+    ocr_workers: 3
+    ocr_batch_size: 16
+    embed_workers: 3
+    embed_batch_size: 256
+    page_elements_cpus_per_actor: 1.0
+    ocr_cpus_per_actor: 1.0
+    embed_cpus_per_actor: 1.0
+    gpu_page_elements: 0.1
+    gpu_ocr: 0.1
+    gpu_embed: 0.25
+    hybrid: false
+    embed_modality: image_text
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+
+  PE_GE_OCR_VL_IMAGE_TEXT_HYBRID:
+    pdf_extract_workers: 8
+    pdf_extract_num_cpus: 2.0
+    pdf_extract_batch_size: 4
+    pdf_split_batch_size: 1
+    page_elements_batch_size: 4
+    page_elements_workers: 3
+    ocr_workers: 3
+    ocr_batch_size: 16
+    embed_workers: 3
+    embed_batch_size: 256
+    page_elements_cpus_per_actor: 1.0
+    ocr_cpus_per_actor: 1.0
+    embed_cpus_per_actor: 1.0
+    gpu_page_elements: 0.1
+    gpu_ocr: 0.1
+    gpu_embed: 0.25
+    hybrid: true
+    embed_modality: image_text
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+
+  PE_GE_OCR_VL_IMAGE_ONLY_DENSE:
+    pdf_extract_workers: 8
+    pdf_extract_num_cpus: 2.0
+    pdf_extract_batch_size: 4
+    pdf_split_batch_size: 1
+    page_elements_batch_size: 4
+    page_elements_workers: 3
+    ocr_workers: 3
+    ocr_batch_size: 16
+    embed_workers: 3
+    embed_batch_size: 256
+    page_elements_cpus_per_actor: 1.0
+    ocr_cpus_per_actor: 1.0
+    embed_cpus_per_actor: 1.0
+    gpu_page_elements: 0.1
+    gpu_ocr: 0.1
+    gpu_embed: 0.25
+    hybrid: false
+    embed_modality: image
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+
+  PE_GE_OCR_VL_IMAGE_ONLY_HYBRID:
+    pdf_extract_workers: 8
+    pdf_extract_num_cpus: 2.0
+    pdf_extract_batch_size: 4
+    pdf_split_batch_size: 1
+    page_elements_batch_size: 4
+    page_elements_workers: 3
+    ocr_workers: 3
+    ocr_batch_size: 16
+    embed_workers: 3
+    embed_batch_size: 256
+    page_elements_cpus_per_actor: 1.0
+    ocr_cpus_per_actor: 1.0
+    embed_cpus_per_actor: 1.0
+    gpu_page_elements: 0.1
+    gpu_ocr: 0.1
+    gpu_embed: 0.25
+    hybrid: true
+    embed_modality: image
+    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
 
 datasets:
   bo20:
-    path: /datasets/nv-ingest/bo20
+    path: /home/jdyer/datasets/bo20
     query_csv: null
     input_type: pdf
     recall_required: false
 
   bo767:
-    path: /raid/cjarrett/nv-ingest/data/bo767
+    path: /datasets/nv-ingest/bo767
     query_csv: data/bo767_annotations.csv
     input_type: pdf
     recall_required: false
     evaluation_mode: beir
     beir_loader: bo767_csv
     beir_doc_id_field: pdf_page
+    table_extraction_method: nemotron_parse
 
   jp20:
     path: /datasets/nv-ingest/jp20
@@ -95,9 +227,10 @@ datasets:
     path: /datasets/nv-ingest/earnings_consulting
     query_csv: data/earnings_consulting_multimodal.csv
     input_type: pdf
-    recall_required: true
-    recall_match_mode: pdf_page
-    recall_adapter: page_plus_one
+    recall_required: false
+    evaluation_mode: beir
+    beir_loader: earnings_csv
+    beir_doc_id_field: pdf_page
 
   bo10k:
     path: /datasets/nv-ingest/bo10k
@@ -108,14 +241,15 @@ datasets:
     beir_loader: bo10k_csv
     beir_doc_id_field: pdf_page
 
-  # FinanceBench is document-level recall using the repository fixture JSON.
+  # FinanceBench uses document-level BEIR matching on PDF basename.
   financebench:
     path: /datasets/nv-ingest/financebench
     query_csv: data/financebench_train.json
     input_type: pdf
-    recall_required: true
-    recall_match_mode: pdf_only
-    recall_adapter: financebench_json
+    recall_required: false
+    evaluation_mode: beir
+    beir_loader: financebench_json
+    beir_doc_id_field: pdf_basename
 
   audio_retrieval:
     path: /datasets/nv-ingest/audio_retrieval_data_mp3

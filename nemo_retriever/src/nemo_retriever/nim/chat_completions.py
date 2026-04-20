@@ -7,14 +7,15 @@
 This module is model-agnostic and can be used with any endpoint that
 implements the ``/v1/chat/completions`` contract (build.nvidia.com,
 self-hosted NIMs, OpenAI, vLLM, etc.).
+
+Prefer :class:`~nemo_retriever.nim.nim.NIMClient` for long-lived actors;
+the free functions below create a temporary ``ThreadPoolExecutor`` on
+every call.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from nemo_retriever.nim.nim import _parse_invoke_urls, _post_with_retries, _mime_from_b64
+from typing import Any, Dict, List, Optional, Sequence
 
 
 def extract_chat_completion_text(response_json: Any) -> str:
@@ -48,6 +49,11 @@ def invoke_chat_completions(
 ) -> List[str]:
     """Invoke an OpenAI-compatible chat completions endpoint concurrently.
 
+    .. note::
+
+       Prefer :meth:`NIMClient.invoke_chat_completions` in long-lived
+       actors to avoid creating a fresh ``ThreadPoolExecutor`` per call.
+
     Parameters
     ----------
     messages_list
@@ -61,46 +67,23 @@ def invoke_chat_completions(
 
     Returns one extracted text string per entry in *messages_list*, in order.
     """
-    if not messages_list:
-        return []
+    from nemo_retriever.nim.nim import NIMClient
 
-    token = (api_key or "").strip()
-    headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    invoke_urls = _parse_invoke_urls(invoke_url)
-    results: List[Optional[str]] = [None] * len(messages_list)
-
-    def _invoke_one(idx: int, messages: List[Dict[str, Any]], endpoint_url: str) -> Tuple[int, str]:
-        payload: Dict[str, Any] = {
-            "messages": messages,
-            "temperature": temperature,
-        }
-        if model:
-            payload["model"] = model
-        if extra_body:
-            payload.update(extra_body)
-        response_json = _post_with_retries(
-            invoke_url=endpoint_url,
-            payload=payload,
-            headers=headers,
-            timeout_s=float(timeout_s),
-            max_retries=int(max_retries),
-            max_429_retries=int(max_429_retries),
+    client = NIMClient(max_pool_workers=max_pool_workers)
+    try:
+        return client.invoke_chat_completions(
+            invoke_url=invoke_url,
+            messages_list=messages_list,
+            model=model,
+            api_key=api_key,
+            timeout_s=timeout_s,
+            temperature=temperature,
+            extra_body=extra_body,
+            max_retries=max_retries,
+            max_429_retries=max_429_retries,
         )
-        return idx, extract_chat_completion_text(response_json)
-
-    with ThreadPoolExecutor(max_workers=max(1, int(max_pool_workers))) as executor:
-        futures = {
-            executor.submit(_invoke_one, i, msgs, invoke_urls[i % len(invoke_urls)]): i
-            for i, msgs in enumerate(messages_list)
-        }
-        for future in as_completed(futures):
-            i, text = future.result()
-            results[i] = text
-
-    return [r if r is not None else "" for r in results]
+    finally:
+        client.shutdown()
 
 
 def invoke_chat_completions_images(
@@ -123,36 +106,22 @@ def invoke_chat_completions_images(
     Builds an OpenAI-format ``image_url`` message for each image and
     delegates to :func:`invoke_chat_completions`.
     """
-    if not image_b64_list:
-        return []
+    from nemo_retriever.nim.nim import NIMClient
 
-    messages_list: List[List[Dict[str, Any]]] = []
-    for b64 in image_b64_list:
-        mime = _mime_from_b64(b64)
-        content: List[Dict[str, Any]] = []
-        if task_prompt:
-            content.append({"type": "text", "text": task_prompt})
-        content.append(
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime};base64,{b64}"},
-            }
+    client = NIMClient(max_pool_workers=max_pool_workers)
+    try:
+        return client.invoke_chat_completions_images(
+            invoke_url=invoke_url,
+            image_b64_list=image_b64_list,
+            model=model,
+            api_key=api_key,
+            timeout_s=timeout_s,
+            task_prompt=task_prompt,
+            temperature=temperature,
+            repetition_penalty=repetition_penalty,
+            extra_body=extra_body,
+            max_retries=max_retries,
+            max_429_retries=max_429_retries,
         )
-        messages_list.append([{"role": "user", "content": content}])
-
-    merged_extra: Dict[str, Any] = {"repetition_penalty": repetition_penalty}
-    if extra_body:
-        merged_extra.update(extra_body)
-
-    return invoke_chat_completions(
-        invoke_url=invoke_url,
-        messages_list=messages_list,
-        model=model,
-        api_key=api_key,
-        timeout_s=timeout_s,
-        temperature=temperature,
-        extra_body=merged_extra,
-        max_pool_workers=max_pool_workers,
-        max_retries=max_retries,
-        max_429_retries=max_429_retries,
-    )
+    finally:
+        client.shutdown()

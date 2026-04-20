@@ -46,7 +46,7 @@ class Schema:
                 self.tables_df["id"] = [str(uuid.uuid4()) for x in range(self.tables_df.shape[0])]
 
             self.tables_df["full_name"] = self.tables_df.apply(
-                lambda x: f"{x.schema}.{x.table_name}",
+                lambda x: f"{x.table_schema}.{x.table_name}",
                 axis=1,
             )
 
@@ -62,7 +62,7 @@ class Schema:
                 self.columns_df["id"] = [str(uuid.uuid4()) for x in range(self.columns_df.shape[0])]
             self.columns_df["data_type"] = self.columns_df["data_type"].str.strip('"')
             self.columns_df["full_name"] = self.columns_df.apply(
-                lambda x: f"{x.schema}.{x.table_name}.{x.column_name}",
+                lambda x: f"{x.table_schema}.{x.table_name}.{x.column_name}",
                 axis=1,
             )
             self.id_to_node.update(self.columns_df.set_index("id")["full_name"].to_dict())
@@ -97,7 +97,7 @@ class Schema:
             lambda x: {
                 "db_name": self.db_node.name,
                 "name": x["table_name"],
-                "schema_name": x["schema"],
+                "schema_name": x["table_schema"],
             },
             axis=1,
         )
@@ -120,7 +120,7 @@ class Schema:
                 "db_name": self.db_node.name,
                 "name": x.column_name,
                 "table_name": x.table_name,
-                "schema_name": x.schema,
+                "schema_name": x.table_schema,
             },
             axis=1,
         )
