@@ -150,8 +150,11 @@ def _ensure_lancedb_table(uri: str, table_name: str) -> None:
     try:
         db.open_table(table_name)
         return
-    except Exception:
-        pass
+    except ValueError as e:
+        # lancedb has no TableNotFoundError; missing tables raise ValueError, same
+        # substring LanceDB uses internally in db.py for this case.
+        if f"Table '{table_name}' was not found" not in str(e):
+            raise
     schema = lancedb_schema()
     empty = pa.table({f.name: [] for f in schema}, schema=schema)
     db.create_table(table_name, data=empty, schema=schema, mode="create")
