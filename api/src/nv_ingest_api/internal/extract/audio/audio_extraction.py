@@ -59,25 +59,24 @@ def _extract_from_audio(row: pd.Series, audio_client: Any, trace_info: Dict, seg
         raise ValueError("Row does not contain 'metadata'.")
 
     base64_audio = metadata.pop("content")
+    source_file_path = None
     try:
-        base64_file_path = base64_audio
-        if not base64_file_path:
+        if not base64_audio:
             return [row.to_list()]
-        base64_file_path = base64.b64decode(base64_file_path).decode("utf-8")
-        if not base64_file_path:
-            return [row.to_list()]
-        if Path(base64_file_path).exists():
-            base64_audio = read_file_as_base64(base64_file_path)
+        decoded_path = base64.b64decode(base64_audio).decode("utf-8")
+        if decoded_path and Path(decoded_path).exists():
+            source_file_path = decoded_path
+            base64_audio = read_file_as_base64(decoded_path)
     except (UnicodeDecodeError, base64.binascii.Error):
         pass
     content_metadata = metadata.get("content_metadata", {})
 
-    # Only extract transcript if content type is audio
     if (content_metadata.get("type") != ContentTypeEnum.AUDIO) or (base64_audio in (None, "")):
         return [row.to_list()]
 
-    logger.debug(f"Removing file {base64_file_path}")
-    Path(base64_file_path).unlink(missing_ok=True)
+    if source_file_path is not None:
+        logger.debug(f"Removing temporary file {source_file_path}")
+        Path(source_file_path).unlink(missing_ok=True)
 
     # Get the result from the inference model
     segments, transcript = audio_client.infer(
