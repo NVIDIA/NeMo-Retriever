@@ -71,7 +71,6 @@ nav:
           - Prerequisites: extraction/prerequisites.md
           - "Hardware and support matrix": extraction/support-matrix.md
           - "Quickstart: NeMo Retriever Library (local)": extraction/quickstart-library-mode.md
-          - "Quickstart: Kubernetes (Helm)": extraction/helm.md
           - "Deploy (Docker Compose)": extraction/quickstart-guide.md
           - "Authentication and API keys": extraction/ngc-api-key.md
       - "3. Choose your deployment":
@@ -160,6 +159,8 @@ plugins:
         extraction/index.md: extraction/overview.md
         extraction/nv-ingest_cli.md: extraction/cli-reference.md
         extraction/nv-ingest-python-api.md: extraction/python-api-reference.md
+        # Helm stub removed; send bookmarks to Docker Compose quickstart (Kubernetes + Helm links on page).
+        extraction/helm.md: extraction/quickstart-guide.md
   - site-urls
 
 markdown_extensions:
