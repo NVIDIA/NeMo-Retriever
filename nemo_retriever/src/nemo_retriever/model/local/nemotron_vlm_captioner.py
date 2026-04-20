@@ -20,6 +20,47 @@ def _b64_to_pil(b64: str) -> Image.Image:
     return Image.open(BytesIO(base64.b64decode(b64))).convert("RGB")
 
 
+# ---------------------------------------------------------------------------
+# vLLM processor bug workaround
+# ---------------------------------------------------------------------------
+# vLLM 0.19's MultiModalBudget runs dummy mm inputs during LLM() init.  The
+# default BaseMultiModalProcessor._apply_hf_processor_mm_only path wraps the
+# processor in partial(call_hf_processor_mm_only, processor), which requires
+# processor._merge_kwargs (a ProcessorMixin method).  vLLM's bundled
+# NanoNemotronVLProcessor does not inherit from ProcessorMixin, so init
+# crashes with AttributeError.  Supplying a subclass-level _call_hf_processor
+# override (even one that just delegates to the base) trips the identity
+# check in _apply_hf_processor_mm_only and routes execution through the
+# working text+mm path instead.
+
+_VLLM_PROCESSOR_PATCHED = False
+
+
+def _patch_vllm_nano_nemotron_vl_processor() -> None:
+    """Force NanoNemotronVLMultiModalProcessor off the broken default path."""
+    global _VLLM_PROCESSOR_PATCHED
+    if _VLLM_PROCESSOR_PATCHED:
+        return
+
+    try:
+        from vllm.model_executor.models.nano_nemotron_vl import (
+            NanoNemotronVLMultiModalProcessor,
+        )
+        from vllm.multimodal.processing.processor import BaseMultiModalProcessor
+    except ImportError:
+        return
+
+    if NanoNemotronVLMultiModalProcessor._call_hf_processor is not BaseMultiModalProcessor._call_hf_processor:
+        _VLLM_PROCESSOR_PATCHED = True
+        return
+
+    def _call_hf_processor(self, prompt, mm_data, mm_kwargs, tok_kwargs):
+        return BaseMultiModalProcessor._call_hf_processor(self, prompt, mm_data, mm_kwargs, tok_kwargs)
+
+    NanoNemotronVLMultiModalProcessor._call_hf_processor = _call_hf_processor
+    _VLLM_PROCESSOR_PATCHED = True
+
+
 # Bidirectional alias maps: short NIM names ↔ full HuggingFace paths.
 _NIM_TO_HF: dict[str, str] = {
     "nvidia/nemotron-nano-12b-v2-vl": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
@@ -128,8 +169,10 @@ class NemotronVLMCaptioner(BaseModel):
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                'Local VLM captioning requires vLLM. Install with: pip install "nemo-retriever[vlm-caption]"'
+                'Local VLM captioning requires vLLM. Install with: pip install "nemo-retriever[local]"'
             ) from e
+
+        _patch_vllm_nano_nemotron_vl_processor()
 
         self._model_path = model_path
         self._max_new_tokens = max_new_tokens
