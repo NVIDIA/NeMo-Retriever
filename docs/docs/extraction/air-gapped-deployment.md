@@ -62,7 +62,7 @@ Again, take the exact repository and tag from your pinned `values.yaml` for 26.3
 
 ## Helm charts and packaging artifacts
 
-From a connected environment, download and version-control the chart archive you install, for example (see [NV-Ingest Helm README](https://github.com/NVIDIA/nv-ingest/blob/release/26.3.0/helm/README.md)):
+From a connected environment, download and version-control the chart archive you install, for example (see [NV-Ingest Helm README](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/README.md)):
 
 - `nv-ingest-26.3.0.tgz` from NGC Helm (`helm pull` with NGC credentials)
 
