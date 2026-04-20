@@ -4,7 +4,7 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure the followi
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 
@@ -60,7 +60,7 @@ For production deployments processing large volumes of documents, consider:
 - Additional CPU cores for improved parallel processing
 - Multiple GPUs for distributed processing workloads
 
-For guidance on choosing between static and dynamic scaling modes, and how to configure them in `docker-compose.yaml`, see [Scaling Modes](scaling-modes.md).
+For guidance on choosing between static and dynamic scaling modes, and how to configure them in `docker-compose.yaml`, refer to [Scaling Modes](scaling-modes.md).
 
 
 
