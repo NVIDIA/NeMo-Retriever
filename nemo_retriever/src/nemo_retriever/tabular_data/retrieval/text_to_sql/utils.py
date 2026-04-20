@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ast
 import json
 import logging
@@ -6,7 +8,10 @@ from itertools import groupby
 import os
 import re
 import time
-from typing import Union
+from typing import TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from nemo_retriever.tabular_data.retrieval.text_to_sql.retrieval_override import TextToSqlRetriever
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 import pandas as pd
@@ -364,6 +369,29 @@ def _t2s_retriever_init_kwargs(
     return kwargs
 
 
+_t2s_retriever_cache: dict[tuple[str, str], TextToSqlRetriever] = {}
+
+
+def _get_t2s_retriever(uri: str, table_name: str, top_k: int) -> TextToSqlRetriever:
+    """Return a cached ``TextToSqlRetriever``, creating one on first call.
+
+    The retriever is keyed by ``(uri, table_name)`` so the expensive embedding
+    model weights are loaded only once.  ``top_k`` is updated on the cached
+    instance before it is returned (cheap attribute assignment).
+    """
+    from nemo_retriever.tabular_data.retrieval.text_to_sql.retrieval_override import TextToSqlRetriever
+
+    key = (uri, table_name)
+    retriever = _t2s_retriever_cache.get(key)
+    if retriever is None:
+        retriever = TextToSqlRetriever(
+            **_t2s_retriever_init_kwargs(uri, table_name, top_k),
+        )
+        _t2s_retriever_cache[key] = retriever
+    retriever.top_k = top_k
+    return retriever
+
+
 def search_lancedb_semantic_index(
     entity: str,
     k: int = 30,
@@ -387,17 +415,12 @@ def search_lancedb_semantic_index(
     ``https://integrate.api.nvidia.com/v1``, and ``NVIDIA_API_KEY`` for the hosted API.
     Optional: ``T2S_EMBEDDER_MODEL`` (default matches ``Retriever.embedder``).
     """
-    from nemo_retriever.tabular_data.retrieval.text_to_sql.retrieval_override import TextToSqlRetriever
-
     uri = os.environ.get("T2S_LANCEDB_URI", "lancedb")
     table_name = os.environ.get("T2S_LANCEDB_TABLE", "nv-ingest-tabular")
     allowed_labels = {str(x) for x in (label_filter or []) if x is not None}
     limit = max(1, int(k))
 
-    retriever = TextToSqlRetriever(
-        **_t2s_retriever_init_kwargs(uri, table_name, limit),
-        # reranker=True,  # enable second-stage reranking
-    )
+    retriever = _get_t2s_retriever(uri, table_name, limit)
 
     hits = retriever.query(
         entity,
@@ -1006,7 +1029,6 @@ def build_custom_analyses_section(items, candidates):
         return ""
 
     return "\n\n**Semantic items used**:\n" + "\n".join(matched_lines)
-
 
 
 def _normalize_table_to_relevant_shape(table: dict) -> dict:
