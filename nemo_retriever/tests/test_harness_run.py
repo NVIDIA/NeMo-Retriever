@@ -171,6 +171,78 @@ def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
     assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
 
 
+def test_build_command_includes_enable_fusion_flag(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        enable_fusion=True,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv, _metrics_file, _env_extra = _build_command(
+        cfg, tmp_path, run_id="r1"
+    )
+
+    assert "--enable-fusion" in cmd
+
+
+def test_build_command_includes_object_store_memory_flag(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        ray_object_store_memory_bytes=900000000000,
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv, _metrics_file, _env_extra = _build_command(
+        cfg, tmp_path, run_id="r1"
+    )
+
+    assert "--ray-object-store-memory-bytes" in cmd
+    assert cmd[cmd.index("--ray-object-store-memory-bytes") + 1] == "900000000000"
+
+
+def test_build_command_includes_extraction_shape_flags(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        extract_text=False,
+        extract_tables=False,
+        extract_charts=False,
+        use_graphic_elements=True,
+        use_table_structure=True,
+        table_output_format="markdown",
+    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv, _metrics_file, _env_extra = _build_command(
+        cfg, tmp_path, run_id="r1"
+    )
+
+    assert "--no-extract-text" in cmd
+    assert "--no-extract-tables" in cmd
+    assert "--no-extract-charts" in cmd
+    assert "--use-graphic-elements" in cmd
+    assert "--use-table-structure" in cmd
+    assert "--table-output-format" in cmd
+    assert cmd[cmd.index("--table-output-format") + 1] == "markdown"
+
+
 def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -273,7 +345,9 @@ def test_build_command_supports_earnings_beir_pdf_page_doc_id_field(tmp_path: Pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
+        cfg, tmp_path, run_id="r1"
+    )
 
     assert cmd[cmd.index("--beir-loader") + 1] == "earnings_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
@@ -299,7 +373,9 @@ def test_build_command_supports_financebench_beir_pdf_basename_doc_id_field(tmp_
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
+        cfg, tmp_path, run_id="r1"
+    )
 
     assert cmd[cmd.index("--beir-loader") + 1] == "financebench_json"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_json.resolve())

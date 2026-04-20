@@ -4,12 +4,15 @@
 
 """Unit tests for Node, Graph, >> chaining (including auto-wrap), and Executors."""
 
+import sys
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pandas as pd
 import pytest
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.fusion import FusedOperator, ProcessOnlyFusionSafe, compile_graph_for_fusion
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
@@ -69,6 +72,94 @@ class AppendOperator(AbstractOperator):
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         return str(data) + self.suffix
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class DataFrameMarkerOperator(AbstractOperator):
+    """Adds a label to a DataFrame trace column and increments ``value``."""
+
+    def __init__(self, label: str, increment: int = 1) -> None:
+        super().__init__()
+        self.label = label
+        self.increment = increment
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        out = data.copy()
+        out["value"] = out["value"] + self.increment
+        if "trace" not in out.columns:
+            out["trace"] = [self.label for _ in range(len(out.index))]
+        else:
+            out["trace"] = out["trace"].astype(str) + f">{self.label}"
+        return out
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class FusionPageElementsOperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "page_elements"
+    fusion_next_stage_ids = ("table_structure", "graphic_elements", "ocr")
+    fusion_can_start_segment = True
+
+
+class FusionTableStructureOperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "table_structure"
+    fusion_next_stage_ids = ("graphic_elements", "ocr")
+    fusion_can_start_segment = False
+
+
+class FusionGraphicElementsOperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "graphic_elements"
+    fusion_next_stage_ids = ("ocr",)
+    fusion_can_start_segment = False
+
+
+class FusionOCROperator(ProcessOnlyFusionSafe, DataFrameMarkerOperator):
+    fusion_stage_id = "ocr"
+    fusion_next_stage_ids = ()
+    fusion_can_start_segment = False
+
+
+class FusionWrappedFailureOperator(ProcessOnlyFusionSafe, AbstractOperator):
+    fusion_stage_id = "page_elements"
+    fusion_next_stage_ids = ("ocr",)
+    fusion_can_start_segment = True
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("wrapped boom")
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def __call__(self, data: Any, **kwargs: Any) -> Any:
+        try:
+            return self.run(data, **kwargs)
+        except RuntimeError as exc:
+            out = data.copy()
+            out["wrapped_error"] = [str(exc) for _ in range(len(out.index))]
+            return out
+
+
+class FusionWrapperObserverOperator(ProcessOnlyFusionSafe, AbstractOperator):
+    fusion_stage_id = "ocr"
+    fusion_next_stage_ids = ()
+    fusion_can_start_segment = False
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        out = data.copy()
+        out["wrapper_seen"] = out["wrapped_error"].fillna("missing")
+        return out
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -887,6 +978,7 @@ class TestRayDataExecutor:
 
         monkeypatch.setitem(sys.modules, "ray", fake_ray)
         monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
         monkeypatch.setattr(
             "nemo_retriever.graph.executor.gather_cluster_resources",
             lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
@@ -899,6 +991,68 @@ class TestRayDataExecutor:
         assert isinstance(result, _FakeDataset)
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
+
+    def test_ingest_fused_operator_preserves_stage_call_wrappers(self, monkeypatch):
+        graph = Graph()
+        graph.add_chain(
+            Node(
+                FusionWrappedFailureOperator(),
+                name="PageElementDetectionActor",
+                operator_class=FusionWrappedFailureOperator,
+                operator_kwargs={},
+            ),
+            Node(
+                FusionWrapperObserverOperator(),
+                name="OCRActor",
+                operator_class=FusionWrapperObserverOperator,
+                operator_kwargs={},
+            ),
+        )
+
+        class _FakeRayDataset:
+            def __init__(self, df: pd.DataFrame) -> None:
+                self.df = df
+                self.map_calls: list[type[AbstractOperator]] = []
+
+            def map_batches(self, operator_class, *, fn_constructor_kwargs=None, **kwargs):
+                del kwargs
+                self.map_calls.append(operator_class)
+                operator = operator_class(**(fn_constructor_kwargs or {}))
+                self.df = operator(self.df)
+                return self
+
+            def materialize(self):
+                return self
+
+        fake_context = SimpleNamespace(enable_rich_progress_bars=None, use_ray_tqdm=None)
+        fake_ray_module = ModuleType("ray")
+        fake_ray_data_module = ModuleType("ray.data")
+
+        class _FakeDataContext:
+            @staticmethod
+            def get_current():
+                return fake_context
+
+        fake_ray_data_module.Dataset = _FakeRayDataset
+        fake_ray_data_module.DataContext = _FakeDataContext
+        fake_ray_module.data = fake_ray_data_module
+        fake_ray_module.is_initialized = lambda: True
+        fake_ray_module.init = lambda **kwargs: None
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray_module)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data_module)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        dataset = _FakeRayDataset(pd.DataFrame({"value": [1]}))
+        result = RayDataExecutor(graph, enable_fusion=True).ingest(dataset)
+
+        assert result.map_calls == [FusedOperator]
+        assert result.df["wrapped_error"].tolist() == ["wrapped boom"]
+        assert result.df["wrapper_seen"].tolist() == ["wrapped boom"]
 
 
 # ---------------------------------------------------------------------------
@@ -1153,3 +1307,201 @@ class TestInprocessExecutor:
 
         assert isinstance(result, pd.DataFrame)
         assert result["val"].iloc[0] == 13
+
+
+def _build_fusable_dataframe_graph() -> Graph:
+    graph = Graph()
+    graph.add_chain(
+        Node(
+            DataFrameMarkerOperator("extract", increment=1),
+            name="PDFExtractionActor",
+            operator_class=DataFrameMarkerOperator,
+            operator_kwargs={"label": "extract", "increment": 1},
+        ),
+        Node(
+            FusionPageElementsOperator("page", increment=2),
+            name="PageElementDetectionActor",
+            operator_class=FusionPageElementsOperator,
+            operator_kwargs={"label": "page", "increment": 2},
+        ),
+        Node(
+            FusionOCROperator("ocr", increment=4),
+            name="OCRActor",
+            operator_class=FusionOCROperator,
+            operator_kwargs={"label": "ocr", "increment": 4},
+        ),
+    )
+    return graph
+
+
+def _build_extended_fusable_dataframe_graph() -> Graph:
+    graph = Graph()
+    graph.add_chain(
+        Node(
+            DataFrameMarkerOperator("extract", increment=1),
+            name="PDFExtractionActor",
+            operator_class=DataFrameMarkerOperator,
+            operator_kwargs={"label": "extract", "increment": 1},
+        ),
+        Node(
+            FusionPageElementsOperator("page", increment=2),
+            name="PageElementDetectionActor",
+            operator_class=FusionPageElementsOperator,
+            operator_kwargs={"label": "page", "increment": 2},
+        ),
+        Node(
+            FusionTableStructureOperator("table", increment=8),
+            name="TableStructureActor",
+            operator_class=FusionTableStructureOperator,
+            operator_kwargs={"label": "table", "increment": 8},
+        ),
+        Node(
+            FusionGraphicElementsOperator("graphic", increment=16),
+            name="GraphicElementsActor",
+            operator_class=FusionGraphicElementsOperator,
+            operator_kwargs={"label": "graphic", "increment": 16},
+        ),
+        Node(
+            FusionOCROperator("ocr", increment=4),
+            name="OCRActor",
+            operator_class=FusionOCROperator,
+            operator_kwargs={"label": "ocr", "increment": 4},
+        ),
+    )
+    return graph
+
+
+class TestFusionCompiler:
+    def test_compile_graph_for_fusion_collapses_eligible_segment(self):
+        graph = _build_fusable_dataframe_graph()
+        overrides = {
+            "PageElementDetectionActor": {
+                "batch_size": 8,
+                "target_num_rows_per_block": 8,
+                "concurrency": 3,
+                "num_cpus": 1.0,
+                "num_gpus": 0.1,
+            },
+            "OCRActor": {
+                "batch_size": 4,
+                "target_num_rows_per_block": 4,
+                "concurrency": 2,
+                "num_cpus": 2.0,
+                "num_gpus": 0.2,
+            },
+        }
+
+        compiled = compile_graph_for_fusion(graph, enable_fusion=True, node_overrides=overrides)
+        nodes = InprocessExecutor._linearize(compiled.graph)
+
+        assert [node.name for node in nodes] == [
+            "PDFExtractionActor",
+            "Fused[PageElementDetectionActor+OCRActor]",
+        ]
+        assert nodes[1].operator_class is FusedOperator
+        assert compiled.fusion_summary["applied"] is True
+        assert compiled.fusion_summary["compiled_stage_count"] == 2
+        assert compiled.fusion_summary["fused_segments"] == [
+            {
+                "name": "Fused[PageElementDetectionActor+OCRActor]",
+                "stage_names": ["PageElementDetectionActor", "OCRActor"],
+                "operator_classes": ["FusionPageElementsOperator", "FusionOCROperator"],
+                "stage_count": 2,
+                "aggregated_overrides": {
+                    "batch_size": 4,
+                    "target_num_rows_per_block": 4,
+                    "concurrency": 2,
+                    "num_cpus": 2.0,
+                    "num_gpus": pytest.approx(0.3),
+                },
+            }
+        ]
+
+    def test_compile_graph_for_fusion_collapses_extended_linear_segment(self):
+        graph = _build_extended_fusable_dataframe_graph()
+        overrides = {
+            "PageElementDetectionActor": {
+                "batch_size": 16,
+                "target_num_rows_per_block": 16,
+                "concurrency": 4,
+                "num_cpus": 1.0,
+                "num_gpus": 0.1,
+            },
+            "TableStructureActor": {
+                "batch_size": 8,
+                "target_num_rows_per_block": 8,
+                "concurrency": 3,
+                "num_cpus": 1.5,
+                "num_gpus": 0.1,
+            },
+            "GraphicElementsActor": {
+                "batch_size": 6,
+                "target_num_rows_per_block": 6,
+                "concurrency": 2,
+                "num_cpus": 1.25,
+                "num_gpus": 0.1,
+            },
+            "OCRActor": {
+                "batch_size": 4,
+                "target_num_rows_per_block": 4,
+                "concurrency": 2,
+                "num_cpus": 2.0,
+                "num_gpus": 0.2,
+            },
+        }
+
+        compiled = compile_graph_for_fusion(graph, enable_fusion=True, node_overrides=overrides)
+        nodes = InprocessExecutor._linearize(compiled.graph)
+
+        assert [node.name for node in nodes] == [
+            "PDFExtractionActor",
+            "Fused[PageElementDetectionActor+TableStructureActor+GraphicElementsActor+OCRActor]",
+        ]
+        assert nodes[1].operator_class is FusedOperator
+        assert compiled.fusion_summary["applied"] is True
+        assert compiled.fusion_summary["compiled_stage_count"] == 2
+        assert compiled.fusion_summary["fused_segments"] == [
+            {
+                "name": "Fused[PageElementDetectionActor+TableStructureActor+GraphicElementsActor+OCRActor]",
+                "stage_names": [
+                    "PageElementDetectionActor",
+                    "TableStructureActor",
+                    "GraphicElementsActor",
+                    "OCRActor",
+                ],
+                "operator_classes": [
+                    "FusionPageElementsOperator",
+                    "FusionTableStructureOperator",
+                    "FusionGraphicElementsOperator",
+                    "FusionOCROperator",
+                ],
+                "stage_count": 4,
+                "aggregated_overrides": {
+                    "batch_size": 4,
+                    "target_num_rows_per_block": 4,
+                    "concurrency": 2,
+                    "num_cpus": 2.0,
+                    "num_gpus": pytest.approx(0.5),
+                },
+            }
+        ]
+
+    def test_inprocess_executor_preserves_dataframe_results_with_extended_fusion(self):
+        data = pd.DataFrame({"value": [10]})
+        graph = _build_extended_fusable_dataframe_graph()
+
+        baseline = InprocessExecutor(graph, enable_fusion=False).ingest(data.copy())
+        fused = InprocessExecutor(graph, enable_fusion=True).ingest(data.copy())
+
+        pd.testing.assert_frame_equal(fused, baseline)
+
+    def test_inprocess_executor_preserves_dataframe_results_with_fusion(self):
+        data = pd.DataFrame({"value": [10]})
+        graph = _build_fusable_dataframe_graph()
+
+        baseline = InprocessExecutor(graph, enable_fusion=False, show_progress=False).ingest(data.copy())
+        fused = InprocessExecutor(graph, enable_fusion=True, show_progress=False).ingest(data.copy())
+
+        assert baseline.to_dict("records") == fused.to_dict("records")
+        assert fused["value"].iloc[0] == 17
+        assert fused["trace"].iloc[0] == "extract>page>ocr"

@@ -158,6 +158,25 @@ def _write_runtime_summary(
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _maybe_attach_fusion_metadata(
+    payload: dict[str, object],
+    *,
+    enable_fusion: bool,
+    fusion_summary: dict[str, object] | None,
+    ray_object_store_memory_bytes: int | None = None,
+) -> dict[str, object]:
+    if not enable_fusion and ray_object_store_memory_bytes is None:
+        return payload
+    enriched = dict(payload)
+    if enable_fusion:
+        enriched["enable_fusion"] = True
+    if enable_fusion and fusion_summary is not None:
+        enriched["fusion_summary"] = fusion_summary
+    if ray_object_store_memory_bytes is not None:
+        enriched["ray_object_store_memory_bytes"] = int(ray_object_store_memory_bytes)
+    return enriched
+
+
 def _count_input_units(result_df) -> int:
     if "source_id" in result_df.columns:
         return int(result_df["source_id"].nunique())
@@ -202,6 +221,11 @@ def main(
         "batch",
         "--run-mode",
         help="Execution mode: 'batch' (Ray Data) or 'inprocess' (pandas, no Ray).",
+    ),
+    enable_fusion: bool = typer.Option(
+        False,
+        "--enable-fusion/--no-enable-fusion",
+        help="Experimentally compile eligible extraction stages into fused segments.",
     ),
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable debug-level logging."),
     dpi: int = typer.Option(300, "--dpi", min=72, help="Render DPI for PDF page images."),
@@ -257,6 +281,12 @@ def main(
     # "not set → use heuristic" from "explicitly 0 → no GPU".  Other tuning
     # defaults use 0/0.0 because those values are never valid explicit choices.
     ray_address: Optional[str] = typer.Option(None, "--ray-address"),
+    ray_object_store_memory_bytes: Optional[int] = typer.Option(
+        None,
+        "--ray-object-store-memory-bytes",
+        min=1,
+        help="Explicit Ray object store memory in bytes for local Ray startup.",
+    ),
     ray_log_to_driver: bool = typer.Option(True, "--ray-log-to-driver/--no-ray-log-to-driver"),
     ocr_actors: Optional[int] = typer.Option(0, "--ocr-actors"),
     ocr_batch_size: Optional[int] = typer.Option(0, "--ocr-batch-size"),
@@ -472,7 +502,13 @@ def main(
         if caption_gpus_per_actor is not None:
             node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
 
-        ingestor = GraphIngestor(run_mode=run_mode, ray_address=ray_address, node_overrides=node_overrides or None)
+        ingestor = GraphIngestor(
+            run_mode=run_mode,
+            ray_address=ray_address,
+            node_overrides=node_overrides or None,
+            ray_object_store_memory_bytes=ray_object_store_memory_bytes,
+            enable_fusion=enable_fusion,
+        )
         ingestor = ingestor.files(file_patterns)
 
         # Extraction stage
@@ -539,6 +575,7 @@ def main(
         #   batch mode     -> materialized ray.data.Dataset
         #   inprocess mode -> pandas.DataFrame
         result = ingestor.ingest()
+        fusion_summary = getattr(ingestor, "last_fusion_summary", None)
 
         ingestion_only_total_time = time.perf_counter() - ingest_start
 
@@ -602,23 +639,28 @@ def main(
             _write_runtime_summary(
                 runtime_metrics_dir,
                 runtime_metrics_prefix,
-                {
-                    "run_mode": run_mode,
-                    "input_path": str(Path(input_path).resolve()),
-                    "input_pages": int(num_rows),
-                    "num_pages": int(num_rows),
-                    "num_rows": int(len(result_df.index)),
-                    "ingestion_only_secs": float(ingestion_only_total_time),
-                    "ray_download_secs": float(ray_download_time),
-                    "lancedb_write_secs": float(lancedb_write_time),
-                    "evaluation_secs": 0.0,
-                    "total_secs": float(time.perf_counter() - ingest_start),
-                    "evaluation_mode": evaluation_mode,
-                    "evaluation_metrics": {},
-                    "recall_details": bool(recall_details),
-                    "lancedb_uri": str(lancedb_uri),
-                    "lancedb_table": str(LANCEDB_TABLE),
-                },
+                _maybe_attach_fusion_metadata(
+                    {
+                        "run_mode": run_mode,
+                        "input_path": str(Path(input_path).resolve()),
+                        "input_pages": int(num_rows),
+                        "num_pages": int(num_rows),
+                        "num_rows": int(len(result_df.index)),
+                        "ingestion_only_secs": float(ingestion_only_total_time),
+                        "ray_download_secs": float(ray_download_time),
+                        "lancedb_write_secs": float(lancedb_write_time),
+                        "evaluation_secs": 0.0,
+                        "total_secs": float(time.perf_counter() - ingest_start),
+                        "evaluation_mode": evaluation_mode,
+                        "evaluation_metrics": {},
+                        "recall_details": bool(recall_details),
+                        "lancedb_uri": str(lancedb_uri),
+                        "lancedb_table": str(LANCEDB_TABLE),
+                    },
+                    enable_fusion=enable_fusion,
+                    fusion_summary=fusion_summary,
+                    ray_object_store_memory_bytes=ray_object_store_memory_bytes,
+                ),
             )
             if run_mode == "batch":
                 ray.shutdown()
@@ -669,24 +711,29 @@ def main(
                 _write_runtime_summary(
                     runtime_metrics_dir,
                     runtime_metrics_prefix,
+                    _maybe_attach_fusion_metadata(
                     {
                         "run_mode": run_mode,
-                        "input_path": str(Path(input_path).resolve()),
-                        "input_pages": int(num_rows),
-                        "num_pages": int(num_rows),
-                        "num_rows": int(len(result_df.index)),
-                        "ingestion_only_secs": float(ingestion_only_total_time),
-                        "ray_download_secs": float(ray_download_time),
-                        "lancedb_write_secs": float(lancedb_write_time),
-                        "evaluation_secs": 0.0,
-                        "total_secs": float(time.perf_counter() - ingest_start),
-                        "evaluation_mode": evaluation_mode,
-                        "evaluation_metrics": {},
-                        "recall_details": bool(recall_details),
+                            "input_path": str(Path(input_path).resolve()),
+                            "input_pages": int(num_rows),
+                            "num_pages": int(num_rows),
+                            "num_rows": int(len(result_df.index)),
+                            "ingestion_only_secs": float(ingestion_only_total_time),
+                            "ray_download_secs": float(ray_download_time),
+                            "lancedb_write_secs": float(lancedb_write_time),
+                            "evaluation_secs": 0.0,
+                            "total_secs": float(time.perf_counter() - ingest_start),
+                            "evaluation_mode": evaluation_mode,
+                            "evaluation_metrics": {},
+                            "recall_details": bool(recall_details),
                         "lancedb_uri": str(lancedb_uri),
                         "lancedb_table": str(LANCEDB_TABLE),
                     },
-                )
+                    enable_fusion=enable_fusion,
+                    fusion_summary=fusion_summary,
+                    ray_object_store_memory_bytes=ray_object_store_memory_bytes,
+                ),
+            )
                 if run_mode == "batch":
                     ray.shutdown()
                 return
@@ -719,24 +766,29 @@ def main(
         _write_runtime_summary(
             runtime_metrics_dir,
             runtime_metrics_prefix,
-            {
-                "run_mode": run_mode,
-                "input_path": str(Path(input_path).resolve()),
-                "input_pages": int(num_rows),
-                "num_pages": int(num_rows),
-                "num_rows": int(len(result_df.index)),
-                "ingestion_only_secs": float(ingestion_only_total_time),
-                "ray_download_secs": float(ray_download_time),
-                "lancedb_write_secs": float(lancedb_write_time),
-                "evaluation_secs": float(evaluation_total_time),
-                "total_secs": float(total_time),
-                "evaluation_mode": evaluation_mode,
-                "evaluation_metrics": dict(evaluation_metrics),
-                "evaluation_count": evaluation_query_count,
-                "recall_details": bool(recall_details),
-                "lancedb_uri": str(lancedb_uri),
-                "lancedb_table": str(LANCEDB_TABLE),
-            },
+            _maybe_attach_fusion_metadata(
+                {
+                    "run_mode": run_mode,
+                    "input_path": str(Path(input_path).resolve()),
+                    "input_pages": int(num_rows),
+                    "num_pages": int(num_rows),
+                    "num_rows": int(len(result_df.index)),
+                    "ingestion_only_secs": float(ingestion_only_total_time),
+                    "ray_download_secs": float(ray_download_time),
+                    "lancedb_write_secs": float(lancedb_write_time),
+                    "evaluation_secs": float(evaluation_total_time),
+                    "total_secs": float(total_time),
+                    "evaluation_mode": evaluation_mode,
+                    "evaluation_metrics": dict(evaluation_metrics),
+                    "evaluation_count": evaluation_query_count,
+                    "recall_details": bool(recall_details),
+                    "lancedb_uri": str(lancedb_uri),
+                    "lancedb_table": str(LANCEDB_TABLE),
+                },
+                enable_fusion=enable_fusion,
+                fusion_summary=fusion_summary,
+                ray_object_store_memory_bytes=ray_object_store_memory_bytes,
+            ),
         )
 
         if run_mode == "batch":

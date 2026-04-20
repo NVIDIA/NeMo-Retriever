@@ -27,6 +27,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -47,6 +48,8 @@ from nemo_retriever.params import (
     TextChunkParams,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_api_key(params: Any) -> Any:
@@ -102,6 +105,9 @@ class GraphIngestor(ingestor):
         ``RayDataExecutor.__init__`` (``num_gpus``, ``batch_size``, etc.).
     show_progress
         Show a tqdm progress bar when running in inprocess mode.
+    enable_fusion
+        Experimentally compile eligible extraction stages into fused segments
+        before executor dispatch.
     """
 
     RUN_MODE = "graph"
@@ -112,6 +118,7 @@ class GraphIngestor(ingestor):
         run_mode: str = "batch",
         documents: Optional[List[str]] = None,
         ray_address: Optional[str] = None,
+        ray_object_store_memory_bytes: Optional[int] = None,
         ray_log_to_driver: bool = True,
         debug: bool = False,
         allow_no_gpu: bool = False,
@@ -120,12 +127,14 @@ class GraphIngestor(ingestor):
         num_gpus: float = 0,
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
         show_progress: bool = True,
+        enable_fusion: bool = False,
     ) -> None:
         super().__init__(documents=documents)
         if run_mode not in {"batch", "inprocess"}:
             raise ValueError(f"run_mode must be 'batch' or 'inprocess', got {run_mode!r}")
         self._run_mode = run_mode
         self._ray_address = ray_address
+        self._ray_object_store_memory_bytes = ray_object_store_memory_bytes
         self._ray_log_to_driver = ray_log_to_driver
         self._debug = debug
         self._allow_no_gpu = allow_no_gpu
@@ -134,7 +143,9 @@ class GraphIngestor(ingestor):
         self._num_gpus = num_gpus
         self._node_overrides: Dict[str, Dict[str, Any]] = node_overrides or {}
         self._show_progress = show_progress
+        self._enable_fusion = enable_fusion
         self._rd_dataset: Any = None
+        self._last_fusion_summary: dict[str, Any] | None = None
 
         # Pipeline configuration accumulated by fluent methods
         self._extraction_mode: str = "pdf"
@@ -274,16 +285,26 @@ class GraphIngestor(ingestor):
             import ray
 
             if self._ray_address or not ray.is_initialized():
-                runtime_env = {
-                    "env_vars": {
-                        "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
+                init_kwargs: Dict[str, Any] = {
+                    "ignore_reinit_error": True,
+                    "runtime_env": {
+                        "env_vars": {
+                            "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
+                        },
                     },
                 }
-                ray.init(
-                    address=self._ray_address,
-                    ignore_reinit_error=True,
-                    runtime_env=runtime_env,
-                )
+                if self._ray_address:
+                    init_kwargs["address"] = self._ray_address
+                if self._ray_object_store_memory_bytes is not None:
+                    if self._ray_address:
+                        logger.warning(
+                            "Ignoring ray_object_store_memory_bytes=%s because ray_address=%r connects to an existing Ray cluster.",
+                            self._ray_object_store_memory_bytes,
+                            self._ray_address,
+                        )
+                    else:
+                        init_kwargs["object_store_memory"] = int(self._ray_object_store_memory_bytes)
+                ray.init(**init_kwargs)
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(
@@ -320,12 +341,15 @@ class GraphIngestor(ingestor):
             executor = RayDataExecutor(
                 graph,
                 ray_address=self._ray_address,
+                ray_object_store_memory_bytes=self._ray_object_store_memory_bytes,
                 batch_size=self._batch_size,
                 num_cpus=self._num_cpus,
                 num_gpus=self._num_gpus,
                 node_overrides=merged_overrides,
+                enable_fusion=self._enable_fusion,
             )
             result = executor.ingest(self._documents)
+            self._last_fusion_summary = executor.last_fusion_summary
             self._rd_dataset = result
             return result
         else:
@@ -343,9 +367,12 @@ class GraphIngestor(ingestor):
                 store_params=self._store_params,
                 stage_order=post_extract_order,
             )
-            executor = InprocessExecutor(graph, show_progress=self._show_progress)
+            executor = InprocessExecutor(graph, show_progress=self._show_progress, enable_fusion=self._enable_fusion)
+            self._last_fusion_summary = None
             self._rd_dataset = None
-            return executor.ingest(self._documents)
+            result = executor.ingest(self._documents)
+            self._last_fusion_summary = executor.last_fusion_summary
+            return result
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -385,6 +412,12 @@ class GraphIngestor(ingestor):
             low = s.lower()
             return any(tok in low for tok in ("error", "exception", "traceback", "failed"))
         return False
+
+    @property
+    def last_fusion_summary(self) -> dict[str, Any] | None:
+        if self._last_fusion_summary is None:
+            return None
+        return dict(self._last_fusion_summary)
 
     @staticmethod
     def extract_error_rows(batch: Any) -> Any:

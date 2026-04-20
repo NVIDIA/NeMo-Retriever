@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from nemo_retriever.audio.media_interface import is_media_available
@@ -242,6 +244,7 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
     class _FakeExecutor:
         def __init__(self, graph, **kwargs):
             self.graph = graph
+            self.last_fusion_summary = None
 
         def ingest(self, data):
             return {"data": data, "graph": self.graph}
@@ -275,6 +278,51 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
     assert captured["allow_no_gpu"] is True
     assert captured["cluster_resources"] == cluster
     assert result["data"] == ["/tmp/input.pdf"]
+
+
+def test_graph_ingestor_warns_when_object_store_memory_is_ignored_for_existing_cluster(
+    monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeExecutor:
+        def __init__(self, graph, **kwargs):
+            self.graph = graph
+            self.last_fusion_summary = None
+
+        def ingest(self, data):
+            captured["data"] = data
+            return {"data": data, "graph": self.graph}
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=16, gpu_count=1),
+        available_resources=Resources(cpu_count=16, gpu_count=1),
+    )
+
+    monkeypatch.setattr("nemo_retriever.graph_ingestor.build_graph", lambda **kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.graph_ingestor.batch_tuning_to_node_overrides", lambda *args, **kwargs: {})
+    monkeypatch.setattr("nemo_retriever.graph_ingestor.gather_cluster_resources", lambda ray: cluster)
+    monkeypatch.setattr("nemo_retriever.graph_ingestor.RayDataExecutor", _FakeExecutor)
+
+    init_kwargs: dict[str, object] = {}
+    monkeypatch.setattr("ray.is_initialized", lambda: False)
+    monkeypatch.setattr("ray.init", lambda **kwargs: init_kwargs.update(kwargs))
+
+    ingestor = GraphIngestor(
+        run_mode="batch",
+        documents=["/tmp/input.pdf"],
+        ray_address="ray://cluster",
+        ray_object_store_memory_bytes=123,
+    )
+    ingestor.extract(ExtractParams(method="ocr"))
+
+    with caplog.at_level(logging.WARNING):
+        result = ingestor.ingest()
+
+    assert init_kwargs == {"ignore_reinit_error": True, "address": "ray://cluster"}
+    assert "Ignoring ray_object_store_memory_bytes=123 because ray_address='ray://cluster'" in caplog.text
+    assert captured["data"] == ["/tmp/input.pdf"]
+    assert result["graph"] is not None
 
 
 @pytest.mark.skipif(torch is None or not torch.cuda.is_available(), reason="CUDA not available")

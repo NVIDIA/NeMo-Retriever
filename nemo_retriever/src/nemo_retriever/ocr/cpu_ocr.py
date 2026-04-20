@@ -10,15 +10,19 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.fusion import ProcessOnlyFusionSafe
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.ocr.shared import _error_payload
 from nemo_retriever.ocr.shared import ocr_page_elements
 
 
-class OCRCPUActor(AbstractOperator, CPUOperator):
+class OCRCPUActor(ProcessOnlyFusionSafe, AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`OCRActor`."""
 
     DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    fusion_stage_id = "ocr"
+    fusion_next_stage_ids = ()
+    fusion_can_start_segment = False
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)

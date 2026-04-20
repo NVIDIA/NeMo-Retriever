@@ -398,6 +398,9 @@ def _build_command(
         cfg.evaluation_mode,
     ]
 
+    if cfg.enable_fusion:
+        cmd.append("--enable-fusion")
+
     if not cfg.use_heuristics:
         cmd += [
             "--pdf-extract-tasks",
@@ -487,6 +490,9 @@ def _build_command(
             "--no-recall-details",
         ]
 
+    cmd += ["--extract-text" if cfg.extract_text else "--no-extract-text"]
+    cmd += ["--extract-tables" if cfg.extract_tables else "--no-extract-tables"]
+    cmd += ["--extract-charts" if cfg.extract_charts else "--no-extract-charts"]
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
     if cfg.input_type == "audio":
         cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
@@ -494,6 +500,12 @@ def _build_command(
         cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
+    if cfg.use_graphic_elements:
+        cmd += ["--use-graphic-elements"]
+    if cfg.use_table_structure:
+        cmd += ["--use-table-structure"]
+    if cfg.table_output_format:
+        cmd += ["--table-output-format", cfg.table_output_format]
     if cfg.embed_modality:
         cmd += ["--structured-elements-modality", cfg.embed_modality]
     if cfg.page_elements_invoke_url:
@@ -511,6 +523,8 @@ def _build_command(
         env_extra["NVIDIA_API_KEY"] = cfg.api_key
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
+    if cfg.ray_object_store_memory_bytes is not None:
+        cmd += ["--ray-object-store-memory-bytes", str(int(cfg.ray_object_store_memory_bytes))]
     if cfg.hybrid:
         cmd += ["--hybrid"]
 
@@ -746,49 +760,55 @@ def _run_single(
     summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary)
     configured_tuning = {field: getattr(cfg, field) for field in sorted(TUNING_FIELDS)}
 
+    test_config = {
+        "dataset_label": cfg.dataset_label,
+        "dataset_dir": cfg.dataset_dir,
+        "preset": cfg.preset,
+        "run_mode": cfg.run_mode,
+        "query_csv": cfg.query_csv,
+        "effective_query_csv": str(effective_query_csv) if effective_query_csv is not None else None,
+        "input_type": cfg.input_type,
+        "recall_required": cfg.recall_required,
+        "recall_match_mode": cfg.recall_match_mode,
+        "recall_adapter": cfg.recall_adapter,
+        "audio_match_tolerance_secs": cfg.audio_match_tolerance_secs,
+        "segment_audio": cfg.segment_audio,
+        "audio_split_type": cfg.audio_split_type,
+        "audio_split_interval": cfg.audio_split_interval,
+        "evaluation_mode": cfg.evaluation_mode,
+        "beir_loader": cfg.beir_loader,
+        "beir_dataset_name": cfg.beir_dataset_name,
+        "beir_split": cfg.beir_split,
+        "beir_query_language": cfg.beir_query_language,
+        "beir_doc_id_field": cfg.beir_doc_id_field,
+        "beir_ks": list(cfg.beir_ks),
+        "ray_address": cfg.ray_address,
+        "hybrid": cfg.hybrid,
+        "embed_model_name": cfg.embed_model_name,
+        "embed_modality": cfg.embed_modality,
+        "embed_granularity": cfg.embed_granularity,
+        "extract_page_as_image": cfg.extract_page_as_image,
+        "extract_infographics": cfg.extract_infographics,
+        "write_detection_file": cfg.write_detection_file,
+        "use_heuristics": cfg.use_heuristics,
+        "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
+        "store_text": cfg.store_text,
+        "strip_base64": cfg.strip_base64,
+        "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
+        "tuning": configured_tuning,
+    }
+    if cfg.enable_fusion:
+        test_config["enable_fusion"] = True
+    if cfg.ray_object_store_memory_bytes is not None:
+        test_config["ray_object_store_memory_bytes"] = int(cfg.ray_object_store_memory_bytes)
+
     result_payload: dict[str, Any] = {
         "timestamp": now_timestr(),
         "latest_commit": last_commit(),
         "success": success,
         "return_code": effective_rc,
         "failure_reason": failure_reason or None,
-        "test_config": {
-            "dataset_label": cfg.dataset_label,
-            "dataset_dir": cfg.dataset_dir,
-            "preset": cfg.preset,
-            "run_mode": cfg.run_mode,
-            "query_csv": cfg.query_csv,
-            "effective_query_csv": str(effective_query_csv) if effective_query_csv is not None else None,
-            "input_type": cfg.input_type,
-            "recall_required": cfg.recall_required,
-            "recall_match_mode": cfg.recall_match_mode,
-            "recall_adapter": cfg.recall_adapter,
-            "audio_match_tolerance_secs": cfg.audio_match_tolerance_secs,
-            "segment_audio": cfg.segment_audio,
-            "audio_split_type": cfg.audio_split_type,
-            "audio_split_interval": cfg.audio_split_interval,
-            "evaluation_mode": cfg.evaluation_mode,
-            "beir_loader": cfg.beir_loader,
-            "beir_dataset_name": cfg.beir_dataset_name,
-            "beir_split": cfg.beir_split,
-            "beir_query_language": cfg.beir_query_language,
-            "beir_doc_id_field": cfg.beir_doc_id_field,
-            "beir_ks": list(cfg.beir_ks),
-            "ray_address": cfg.ray_address,
-            "hybrid": cfg.hybrid,
-            "embed_model_name": cfg.embed_model_name,
-            "embed_modality": cfg.embed_modality,
-            "embed_granularity": cfg.embed_granularity,
-            "extract_page_as_image": cfg.extract_page_as_image,
-            "extract_infographics": cfg.extract_infographics,
-            "write_detection_file": cfg.write_detection_file,
-            "use_heuristics": cfg.use_heuristics,
-            "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
-            "store_text": cfg.store_text,
-            "strip_base64": cfg.strip_base64,
-            "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
-            "tuning": configured_tuning,
-        },
+        "test_config": test_config,
         "metrics": {
             **metrics_payload,
         },

@@ -49,7 +49,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from urllib.parse import urlparse  # noqa: F401
 
 import pandas as pd
-from nv_ingest_api.util.string_processing import ensure_openai_embeddings_http_url
+from nv_ingest_api.util.string_processing import generate_url
 
 from nemo_retriever.params.models import IMAGE_MODALITIES
 
@@ -257,9 +257,16 @@ def _multimodal_callable_runner(
 
 def _normalize_embeddings_endpoint(endpoint_url: str) -> str:
     """
-    Normalize endpoint to a concrete embeddings URL (delegates to shared nv-ingest helper).
+    Normalize endpoint to a concrete OpenAI-compatible embeddings URL.
     """
-    return ensure_openai_embeddings_http_url(endpoint_url)
+    url = generate_url(endpoint_url).rstrip("/")
+    if url.endswith("/v1/embeddings"):
+        return url
+    if url.endswith("/v1"):
+        return f"{url}/embeddings"
+    if url.endswith("/embeddings"):
+        return url
+    return f"{url}/v1/embeddings"
 
 
 def _http_embed_openai_compat(

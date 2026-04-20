@@ -56,6 +56,7 @@ class HarnessConfig:
     dataset_label: str
     preset: str
     run_mode: str = "batch"
+    enable_fusion: bool = False
 
     query_csv: str | None = None
     input_type: str = "pdf"
@@ -76,13 +77,20 @@ class HarnessConfig:
 
     artifacts_dir: str | None = None
     ray_address: str | None = None
+    ray_object_store_memory_bytes: int | None = None
     lancedb_uri: str = "lancedb"
     hybrid: bool = False
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
     embed_granularity: str = "element"
+    extract_text: bool = True
+    extract_tables: bool = True
+    extract_charts: bool = True
     extract_page_as_image: bool = True
     extract_infographics: bool = False
+    use_graphic_elements: bool = False
+    use_table_structure: bool = False
+    table_output_format: str | None = None
     write_detection_file: bool = False
     use_heuristics: bool = False
     store_images_uri: str | None = None
@@ -125,6 +133,8 @@ class HarnessConfig:
 
         if self.run_mode not in VALID_RUN_MODES:
             errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
+        if self.ray_object_store_memory_bytes is not None and int(self.ray_object_store_memory_bytes) < 1:
+            errors.append("ray_object_store_memory_bytes must be >= 1")
 
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
@@ -248,6 +258,10 @@ def _resolve_dataset_dir_path(value: str) -> str:
     if alternate.exists():
         return str(alternate)
 
+    home_datasets = (Path.home() / "datasets" / "nv-ingest" / relative).resolve()
+    if home_datasets.exists():
+        return str(home_datasets)
+
     return str(resolved)
 
 
@@ -278,6 +292,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_DATASET_DIR": ("dataset_dir", str),
         "HARNESS_PRESET": ("preset", str),
         "HARNESS_RUN_MODE": ("run_mode", str),
+        "HARNESS_ENABLE_FUSION": ("enable_fusion", _parse_bool),
         "HARNESS_QUERY_CSV": ("query_csv", str),
         "HARNESS_INPUT_TYPE": ("input_type", str),
         "HARNESS_RECALL_REQUIRED": ("recall_required", _parse_bool),
@@ -295,13 +310,20 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_BEIR_DOC_ID_FIELD": ("beir_doc_id_field", str),
         "HARNESS_ARTIFACTS_DIR": ("artifacts_dir", str),
         "HARNESS_RAY_ADDRESS": ("ray_address", str),
+        "HARNESS_RAY_OBJECT_STORE_MEMORY_BYTES": ("ray_object_store_memory_bytes", _parse_number),
         "HARNESS_LANCEDB_URI": ("lancedb_uri", str),
         "HARNESS_HYBRID": ("hybrid", _parse_bool),
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
+        "HARNESS_EXTRACT_TEXT": ("extract_text", _parse_bool),
+        "HARNESS_EXTRACT_TABLES": ("extract_tables", _parse_bool),
+        "HARNESS_EXTRACT_CHARTS": ("extract_charts", _parse_bool),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
+        "HARNESS_USE_GRAPHIC_ELEMENTS": ("use_graphic_elements", _parse_bool),
+        "HARNESS_USE_TABLE_STRUCTURE": ("use_table_structure", _parse_bool),
+        "HARNESS_TABLE_OUTPUT_FORMAT": ("table_output_format", str),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
         "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),

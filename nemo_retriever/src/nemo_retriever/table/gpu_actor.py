@@ -9,16 +9,21 @@ from typing import Any, Optional
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.fusion import ProcessOnlyFusionSafe
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.table.shared import table_structure_ocr_page_elements
 
 
-class TableStructureActor(AbstractOperator, GPUOperator):
+class TableStructureActor(ProcessOnlyFusionSafe, AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes the table-structure model once
     per actor and runs the structure stage.
     """
+
+    fusion_stage_id = "table_structure"
+    fusion_next_stage_ids = ("graphic_elements", "ocr")
+    fusion_can_start_segment = False
 
     def __init__(
         self,

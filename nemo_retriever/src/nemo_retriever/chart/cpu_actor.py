@@ -10,11 +10,12 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.fusion import ProcessOnlyFusionSafe
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.chart.shared import graphic_elements_ocr_page_elements
 
 
-class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
+class GraphicElementsCPUActor(ProcessOnlyFusionSafe, AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`GraphicElementsActor`.
 
     Defaults to build.nvidia.com endpoints for ``nemotron-graphic-elements-v1``
@@ -23,6 +24,9 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
 
     DEFAULT_GRAPHIC_ELEMENTS_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
     DEFAULT_OCR_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    fusion_stage_id = "graphic_elements"
+    fusion_next_stage_ids = ("ocr",)
+    fusion_can_start_segment = False
 
     def __init__(
         self,

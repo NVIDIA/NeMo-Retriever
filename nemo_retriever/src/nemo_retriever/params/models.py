@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
-RunMode = Literal["inprocess", "batch", "fused", "online"]
+RunMode = Literal["inprocess", "batch", "online"]
 
 # Pass as an api_key value to suppress auto-resolution from environment variables.
 # Example: EmbedParams(api_key=NO_API_KEY)

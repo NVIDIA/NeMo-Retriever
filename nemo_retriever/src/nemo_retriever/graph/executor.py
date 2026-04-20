@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
+from nemo_retriever.graph.fusion import compile_graph_for_fusion
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
@@ -39,10 +40,12 @@ class AbstractExecutor(ABC):
     :meth:`ingest` method that feeds data through the graph.
     """
 
-    def __init__(self, graph: Graph) -> None:
+    def __init__(self, graph: Graph, *, enable_fusion: bool = False) -> None:
         if not isinstance(graph, Graph):
             raise TypeError(f"graph must be a Graph, got {type(graph).__name__}")
         self.graph = graph
+        self._enable_fusion = enable_fusion
+        self.last_fusion_summary: dict[str, Any] | None = None
 
     @abstractmethod
     def ingest(self, data: Any, **kwargs: Any) -> Any:
@@ -60,8 +63,8 @@ class InprocessExecutor(AbstractExecutor):
     Only linear (single-root, no fan-out) graphs are currently supported.
     """
 
-    def __init__(self, graph: Graph, *, show_progress: bool = True) -> None:
-        super().__init__(graph)
+    def __init__(self, graph: Graph, *, show_progress: bool = True, enable_fusion: bool = False) -> None:
+        super().__init__(graph, enable_fusion=enable_fusion)
         self._show_progress = show_progress
 
     @staticmethod
@@ -120,7 +123,11 @@ class InprocessExecutor(AbstractExecutor):
             )
 
         resolved_graph = resolve_graph(self.graph, gather_local_resources())
-        nodes = self._linearize(resolved_graph)
+        compilation = compile_graph_for_fusion(resolved_graph, enable_fusion=self._enable_fusion)
+        self.last_fusion_summary = compilation.fusion_summary
+        if self._enable_fusion:
+            _log_fusion_summary("InprocessExecutor", compilation.fusion_summary)
+        nodes = self._linearize(compilation.graph)
         operators = []
         for node in nodes:
             op = node.operator_class(**node.operator_kwargs)
@@ -179,14 +186,17 @@ class RayDataExecutor(AbstractExecutor):
         graph: Graph,
         *,
         ray_address: Optional[str] = None,
+        ray_object_store_memory_bytes: Optional[int] = None,
         batch_size: int = 1,
         batch_format: str = "pandas",
         num_cpus: float = 1,
         num_gpus: float = 0,
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+        enable_fusion: bool = False,
     ) -> None:
-        super().__init__(graph)
+        super().__init__(graph, enable_fusion=enable_fusion)
         self._ray_address = ray_address
+        self._ray_object_store_memory_bytes = ray_object_store_memory_bytes
         self._default_batch_size = batch_size
         self._default_batch_format = batch_format
         self._default_num_cpus = num_cpus
@@ -211,6 +221,28 @@ class RayDataExecutor(AbstractExecutor):
                 )
             node = node.children[0] if node.children else None
         return ordered
+
+    def _build_ray_init_kwargs(self) -> Dict[str, Any]:
+        init_kwargs: Dict[str, Any] = {
+            "ignore_reinit_error": True,
+            "runtime_env": {
+                "env_vars": {
+                    "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
+                },
+            },
+        }
+        if self._ray_address:
+            init_kwargs["address"] = self._ray_address
+        if self._ray_object_store_memory_bytes is not None:
+            if self._ray_address:
+                logger.warning(
+                    "Ignoring ray_object_store_memory_bytes=%s because ray_address=%r connects to an existing Ray cluster.",
+                    self._ray_object_store_memory_bytes,
+                    self._ray_address,
+                )
+            else:
+                init_kwargs["object_store_memory"] = int(self._ray_object_store_memory_bytes)
+        return init_kwargs
 
     def ingest(self, data: Any, **kwargs: Any) -> Any:
         """Build and execute a Ray Data pipeline from the graph.
@@ -237,16 +269,7 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         if self._ray_address or not ray.is_initialized():
-            runtime_env = {
-                "env_vars": {
-                    "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
-                },
-            }
-            ray.init(
-                address=self._ray_address,
-                ignore_reinit_error=True,
-                runtime_env=runtime_env,
-            )
+            ray.init(**self._build_ray_init_kwargs())
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
@@ -255,6 +278,15 @@ class RayDataExecutor(AbstractExecutor):
         cluster = gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
+        compilation = compile_graph_for_fusion(
+            resolved_graph,
+            enable_fusion=self._enable_fusion,
+            node_overrides=self._node_overrides,
+        )
+        self.last_fusion_summary = compilation.fusion_summary
+        if self._enable_fusion:
+            _log_fusion_summary("RayDataExecutor", compilation.fusion_summary)
+        effective_overrides = compilation.node_overrides
 
         if isinstance(data, rd.Dataset):
             ds = data
@@ -265,9 +297,9 @@ class RayDataExecutor(AbstractExecutor):
                 matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             ds = rd.read_binary_files(expanded, include_paths=True)
-        nodes = self._linearize(resolved_graph)
+        nodes = self._linearize(compilation.graph)
         for node in nodes:
-            overrides = dict(self._node_overrides.get(node.name, {}))
+            overrides = dict(effective_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
@@ -354,3 +386,16 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         return ds.materialize()
+
+
+def _log_fusion_summary(executor_name: str, summary: dict[str, Any]) -> None:
+    logger.info(
+        "%s fusion compile: enabled=%s applied=%s original=%s compiled=%s segments=%s reason=%s",
+        executor_name,
+        summary.get("enabled"),
+        summary.get("applied"),
+        summary.get("original_stage_count"),
+        summary.get("compiled_stage_count"),
+        len(summary.get("fused_segments", [])),
+        summary.get("reason"),
+    )

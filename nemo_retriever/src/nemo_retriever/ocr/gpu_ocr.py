@@ -9,13 +9,18 @@ from typing import Any
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.fusion import ProcessOnlyFusionSafe
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.ocr.shared import Image, _error_payload, ocr_page_elements
 
 
-class OCRActor(AbstractOperator, GPUOperator):
+class OCRActor(ProcessOnlyFusionSafe, AbstractOperator, GPUOperator):
     """Ray-friendly callable that initializes Nemotron OCR v1 once per actor."""
+
+    fusion_stage_id = "ocr"
+    fusion_next_stage_ids = ()
+    fusion_can_start_segment = False
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
