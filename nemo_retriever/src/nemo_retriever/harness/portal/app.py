@@ -18,6 +18,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import threading
 import uuid
 import zipfile
 from contextlib import asynccontextmanager
@@ -1667,6 +1668,10 @@ async def restore_managed_dataset(dataset_id: int):
 # ---------------------------------------------------------------------------
 
 
+_zip_locks: dict[str, threading.Lock] = {}
+_zip_locks_guard = threading.Lock()
+
+
 def _zip_dataset_directory(
     dataset_path: str,
     query_csv: str | None,
@@ -1679,67 +1684,76 @@ def _zip_dataset_directory(
     with the same hash serve the cached file directly.  When the hash changes
     (files or config updated) the stale zip is replaced automatically.
 
+    A per-hash lock prevents concurrent requests from racing on the same
+    temp file.
+
     Returns ``(zip_path, query_csv_bundled)``.
     """
-    import zipfile
+    with _zip_locks_guard:
+        if ds_hash not in _zip_locks:
+            _zip_locks[ds_hash] = threading.Lock()
+        lock = _zip_locks[ds_hash]
 
-    root = Path(dataset_path)
-    cache_dir = root.parent / ".dataset_zip_cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    with lock:
+        root = Path(dataset_path)
+        cache_dir = root.parent / ".dataset_zip_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
-    cached_zip = cache_dir / f"{ds_hash}.zip"
-    meta_file = cache_dir / f"{ds_hash}.meta.json"
+        cached_zip = cache_dir / f"{ds_hash}.zip"
+        meta_file = cache_dir / f"{ds_hash}.meta.json"
 
-    if cached_zip.is_file() and meta_file.is_file():
+        if cached_zip.is_file() and meta_file.is_file():
+            try:
+                meta = json_module.loads(meta_file.read_text())
+                return cached_zip, bool(meta.get("query_csv_bundled", False))
+            except Exception:
+                pass
+
+        for old in cache_dir.glob("*.zip"):
+            if old.name != cached_zip.name:
+                old.unlink(missing_ok=True)
+        for old in cache_dir.glob("*.meta.json"):
+            if old.name != meta_file.name:
+                old.unlink(missing_ok=True)
+
+        query_csv_bundled = False
+        fd, tmp_path_str = tempfile.mkstemp(suffix=".zip", dir=str(cache_dir))
+        tmp_zip = Path(tmp_path_str)
         try:
-            meta = json_module.loads(meta_file.read_text())
-            return cached_zip, bool(meta.get("query_csv_bundled", False))
-        except Exception:
-            pass
+            os.close(fd)
+            with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+                if root.is_dir():
+                    for f in sorted(root.rglob("*")):
+                        if f.is_file():
+                            zf.write(f, f.relative_to(root))
 
-    for old in cache_dir.glob("*.zip"):
-        if old.name != cached_zip.name:
-            old.unlink(missing_ok=True)
-    for old in cache_dir.glob("*.meta.json"):
-        if old.name != meta_file.name:
-            old.unlink(missing_ok=True)
+                if query_csv:
+                    qp = Path(query_csv)
+                    if qp.is_file():
+                        try:
+                            qp.relative_to(root)
+                        except ValueError:
+                            zf.write(qp, Path("_query_csv") / qp.name)
+                            query_csv_bundled = True
 
-    query_csv_bundled = False
-    tmp_zip = cache_dir / f"{ds_hash}.tmp.zip"
-    try:
-        with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-            if root.is_dir():
-                for f in sorted(root.rglob("*")):
-                    if f.is_file():
-                        zf.write(f, f.relative_to(root))
-
-            if query_csv:
-                qp = Path(query_csv)
-                if qp.is_file():
-                    try:
-                        qp.relative_to(root)
-                    except ValueError:
-                        zf.write(qp, Path("_query_csv") / qp.name)
-                        query_csv_bundled = True
-
-        tmp_zip.replace(cached_zip)
-        meta_file.write_text(
-            json_module.dumps(
-                {
-                    "query_csv_bundled": query_csv_bundled,
-                    "hash": ds_hash,
-                }
+            tmp_zip.replace(cached_zip)
+            meta_file.write_text(
+                json_module.dumps(
+                    {
+                        "query_csv_bundled": query_csv_bundled,
+                        "hash": ds_hash,
+                    }
+                )
             )
-        )
-        logger.info(
-            "Cached dataset zip for %s (%.1f MB, hash %s)",
-            dataset_path,
-            cached_zip.stat().st_size / (1024 * 1024),
-            ds_hash[:12],
-        )
-    except Exception:
-        tmp_zip.unlink(missing_ok=True)
-        raise
+            logger.info(
+                "Cached dataset zip for %s (%.1f MB, hash %s)",
+                dataset_path,
+                cached_zip.stat().st_size / (1024 * 1024),
+                ds_hash[:12],
+            )
+        except Exception:
+            tmp_zip.unlink(missing_ok=True)
+            raise
 
     return cached_zip, query_csv_bundled
 
