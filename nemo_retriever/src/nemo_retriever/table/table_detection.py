@@ -8,12 +8,19 @@ from typing import Any
 
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.table.shared import table_structure_ocr_page_elements
+from nemo_retriever.graph.designer import designer_component
 
 __all__ = [
     "table_structure_ocr_page_elements",
 ]
 
 
+@designer_component(
+    name="Table Structure Detection (CPU)",
+    category="Detection & OCR",
+    compute="cpu",
+    description="Detects and extracts table structure using CPU",
+)
 class TableStructureActor(ArchetypeOperator):
     """Graph-facing table-structure archetype."""
 

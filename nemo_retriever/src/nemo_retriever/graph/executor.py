@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
@@ -109,7 +111,7 @@ class InprocessExecutor(AbstractExecutor):
             # Expand globs
             expanded: List[str] = []
             for pattern in data:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             df = self._load_files(expanded)
         else:
@@ -235,7 +237,16 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         if self._ray_address or not ray.is_initialized():
-            ray.init(address=self._ray_address, ignore_reinit_error=True)
+            runtime_env = {
+                "env_vars": {
+                    "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
+                },
+            }
+            ray.init(
+                address=self._ray_address,
+                ignore_reinit_error=True,
+                runtime_env=runtime_env,
+            )
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
@@ -251,7 +262,7 @@ class RayDataExecutor(AbstractExecutor):
             paths = [data] if isinstance(data, str) else list(data)
             expanded: List[str] = []
             for pattern in paths:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             ds = rd.read_binary_files(expanded, include_paths=True)
         nodes = self._linearize(resolved_graph)

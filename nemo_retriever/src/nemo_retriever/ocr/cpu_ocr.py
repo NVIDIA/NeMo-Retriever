@@ -10,6 +10,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.ocr.shared import _error_payload
 from nemo_retriever.ocr.shared import ocr_page_elements
@@ -34,6 +35,7 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
         self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
         self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
         self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
+        self.ocr_kwargs["use_table_structure"] = bool(self.ocr_kwargs.get("use_table_structure", False))
         self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
         self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))
 
@@ -43,6 +45,9 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
             remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
         )
         self._model = None
+        self._nim_client = NIMClient(
+            max_pool_workers=int(self._remote_retry.remote_max_pool_workers),
+        )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -52,6 +57,7 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
             data,
             model=self._model,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             **self.ocr_kwargs,
             **kwargs,
         )

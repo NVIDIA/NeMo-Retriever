@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.ocr import shared as _shared
 from nemo_retriever.ocr.shared import (
@@ -57,6 +58,12 @@ def nemotron_parse_page_elements(*args: Any, **kwargs: Any):
         return _shared.nemotron_parse_page_elements(*args, **kwargs)
 
 
+@designer_component(
+    name="OCR",
+    category="Detection & OCR",
+    compute="gpu",
+    description="Performs optical character recognition on document images",
+)
 class OCRActor(ArchetypeOperator):
     """Graph-facing OCR archetype."""
 

@@ -22,8 +22,11 @@ import traceback
 import numpy as np
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.nim.nim import invoke_image_inference_batches
-from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
+from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
+from nemo_retriever.utils.table_and_chart import (
+    join_graphic_elements_and_ocr_output,
+    join_table_structure_and_ocr_output,
+)
 
 try:
     from PIL import Image
@@ -441,6 +444,46 @@ def _find_ge_detections_for_bbox(
     return None
 
 
+def _find_ts_detections_for_bbox(
+    row: Any,
+    table_bbox: Sequence[float],
+) -> Optional[Tuple[List[Dict[str, Any]], Optional[Tuple[int, int]]]]:
+    """Find table-structure detections + crop size for a table bbox.
+
+    Reads the ``table_structure_v1`` column from *row* and returns the
+    ``(detections, (H, W))`` tuple for the region whose ``bbox_xyxy_norm``
+    matches *table_bbox*. Returns ``None`` if the column is missing, no
+    region matches, or the matching region has no detections.
+    """
+    ts_col = getattr(row, "table_structure_v1", None)
+    if not isinstance(ts_col, dict):
+        return None
+    regions = ts_col.get("regions")
+    if not isinstance(regions, list):
+        return None
+
+    for region in regions:
+        if not isinstance(region, dict):
+            continue
+        region_bbox = region.get("bbox_xyxy_norm")
+        if not isinstance(region_bbox, (list, tuple)) or len(region_bbox) != 4:
+            continue
+        if not _bboxes_close(table_bbox, region_bbox):
+            continue
+        dets = region.get("detections")
+        if not isinstance(dets, list) or not dets:
+            return None
+        hw = region.get("orig_shape_hw")
+        hw_t: Optional[Tuple[int, int]] = None
+        if isinstance(hw, (list, tuple)) and len(hw) == 2:
+            try:
+                hw_t = (int(hw[0]), int(hw[1]))
+            except (TypeError, ValueError):
+                hw_t = None
+        return (dets, hw_t)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Core function
 # ---------------------------------------------------------------------------
@@ -458,8 +501,10 @@ def ocr_page_elements(
     extract_charts: bool = False,
     extract_infographics: bool = False,
     use_graphic_elements: bool = False,
+    use_table_structure: bool = False,
     inference_batch_size: int = 8,
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
@@ -562,16 +607,22 @@ def ocr_page_elements(
                 crop_meta: List[Tuple[str, List[float]]] = [(label, bbox) for label, bbox, _b64 in crops]
 
                 if crop_b64s:
-                    response_items = invoke_image_inference_batches(
+                    _invoke_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=crop_b64s,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
-                        max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
+                    if nim_client is not None:
+                        response_items = nim_client.invoke_image_inference_batches(**_invoke_kw)
+                    else:
+                        response_items = invoke_image_inference_batches(
+                            **_invoke_kw,
+                            max_pool_workers=int(retry.remote_max_pool_workers),
+                        )
                     if len(response_items) != len(crop_meta):
                         raise RuntimeError(f"Expected {len(crop_meta)} OCR responses, got {len(response_items)}")
 
@@ -605,7 +656,16 @@ def ocr_page_elements(
                                     crop_hw_table = (_ch, _cw)
                             except Exception:
                                 pass
-                            text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw_table) or _blocks_to_text(blocks)
+                            text = ""
+                            if use_table_structure:
+                                ts_match = _find_ts_detections_for_bbox(row, bbox)
+                                if ts_match is not None:
+                                    ts_dets, ts_hw = ts_match
+                                    text = join_table_structure_and_ocr_output(ts_dets, preds, ts_hw or crop_hw_table)
+                            if not text:
+                                text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw_table) or _blocks_to_text(
+                                    blocks
+                                )
                         else:
                             text = _blocks_to_text(blocks)
                         entry = {"bbox_xyxy_norm": bbox, "text": text}
@@ -646,7 +706,14 @@ def ocr_page_elements(
                                 return
                     blocks = _parse_ocr_result(preds)
                     if label_name == "table":
-                        text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw)
+                        text = ""
+                        if use_table_structure:
+                            ts_match = _find_ts_detections_for_bbox(row, bbox)
+                            if ts_match is not None:
+                                ts_dets, ts_hw = ts_match
+                                text = join_table_structure_and_ocr_output(ts_dets, preds, ts_hw or crop_hw)
+                        if not text:
+                            text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw)
                         if not text:
                             text = _blocks_to_text(blocks)
                     else:
@@ -783,6 +850,7 @@ def nemotron_parse_page_elements(
     extract_infographics: bool = False,
     task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -857,16 +925,22 @@ def nemotron_parse_page_elements(
                 crop_meta: List[Tuple[str, List[float]]] = [(label, bbox) for label, bbox, _b64 in crops]
 
                 if crop_b64s:
-                    response_items = invoke_image_inference_batches(
+                    _invoke_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=crop_b64s,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
-                        max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
+                    if nim_client is not None:
+                        response_items = nim_client.invoke_image_inference_batches(**_invoke_kw)
+                    else:
+                        response_items = invoke_image_inference_batches(
+                            **_invoke_kw,
+                            max_pool_workers=int(retry.remote_max_pool_workers),
+                        )
                     if len(response_items) != len(crop_meta):
                         raise RuntimeError(f"Expected {len(crop_meta)} Parse responses, got {len(response_items)}")
 
@@ -920,16 +994,22 @@ def nemotron_parse_page_elements(
             if extract_text and needs_ocr:
                 try:
                     if use_remote:
-                        resp = invoke_image_inference_batches(
+                        _text_kw = dict(
                             invoke_url=invoke_url,
                             image_b64_list=[page_image_b64],
                             api_key=api_key,
                             timeout_s=float(request_timeout_s),
                             max_batch_size=1,
-                            max_pool_workers=int(retry.remote_max_pool_workers),
                             max_retries=int(retry.remote_max_retries),
                             max_429_retries=int(retry.remote_max_429_retries),
                         )
+                        if nim_client is not None:
+                            resp = nim_client.invoke_image_inference_batches(**_text_kw)
+                        else:
+                            resp = invoke_image_inference_batches(
+                                **_text_kw,
+                                max_pool_workers=int(retry.remote_max_pool_workers),
+                            )
                         row_text = _extract_parse_text(resp[0]) if resp else ""
                     else:
                         raw = base64.b64decode(page_image_b64)

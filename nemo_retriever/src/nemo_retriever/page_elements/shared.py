@@ -12,7 +12,7 @@ import time
 import traceback
 
 import pandas as pd
-from nemo_retriever.nim.nim import invoke_page_elements_batches
+from nemo_retriever.nim.nim import NIMClient, invoke_page_elements_batches
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.page_elements.local import (
     YOLOX_PAGE_V3_CLASS_LABELS,
@@ -449,6 +449,7 @@ def detect_page_elements_v3(
     num_detections_column: str = "page_elements_v3_num_detections",
     counts_by_label_column: str = "page_elements_v3_counts_by_label",
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
@@ -556,16 +557,22 @@ def detect_page_elements_v3(
 
         t0 = time.perf_counter()
         try:
-            response_items = invoke_page_elements_batches(
+            _invoke_kw = dict(
                 invoke_url=invoke_url,
                 image_b64_list=valid_b64,
                 api_key=api_key,
                 timeout_s=float(request_timeout_s),
                 max_batch_size=int(inference_batch_size),
-                max_pool_workers=int(retry.remote_max_pool_workers),
                 max_retries=int(retry.remote_max_retries),
                 max_429_retries=int(retry.remote_max_429_retries),
             )
+            if nim_client is not None:
+                response_items = nim_client.invoke_page_elements_batches(**_invoke_kw)
+            else:
+                response_items = invoke_page_elements_batches(
+                    **_invoke_kw,
+                    max_pool_workers=int(retry.remote_max_pool_workers),
+                )
             elapsed = time.perf_counter() - t0
 
             if len(response_items) != len(valid_indices):

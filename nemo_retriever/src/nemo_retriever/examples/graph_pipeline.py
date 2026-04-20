@@ -55,6 +55,7 @@ from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.params.models import BatchTuningParams
+from nemo_retriever.utils.input_files import resolve_input_patterns
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
@@ -174,20 +175,11 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     if not input_path.is_dir():
         raise typer.BadParameter(f"Path does not exist: {input_path}")
 
-    ext_map = {
-        "pdf": ["*.pdf"],
-        "doc": ["*.docx", "*.pptx"],
-        "txt": ["*.txt"],
-        "html": ["*.html"],
-        "image": ["*.jpg", "*.jpeg", "*.png", "*.tiff", "*.bmp"],
-        "audio": ["*.mp3", "*.wav", "*.m4a"],
-    }
-    exts = ext_map.get(input_type)
-    if exts is None:
+    if input_type not in {"pdf", "doc", "txt", "html", "image", "audio"}:
         raise typer.BadParameter(f"Unsupported --input-type: {input_type!r}")
 
-    patterns = [str(input_path / ext) for ext in exts]
-    matched = [p for p in patterns if _glob.glob(p)]
+    patterns = resolve_input_patterns(input_path, input_type)
+    matched = [p for p in patterns if _glob.glob(p, recursive=True)]
     if not matched:
         raise typer.BadParameter(f"No files found for input_type={input_type!r} in {input_path}")
     return matched
@@ -248,6 +240,9 @@ def main(
     caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
     caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
     caption_gpus_per_actor: Optional[float] = typer.Option(None, "--caption-gpus-per-actor", max=1.0),
+    caption_temperature: float = typer.Option(1.0, "--caption-temperature"),
+    caption_top_p: Optional[float] = typer.Option(None, "--caption-top-p"),
+    caption_max_tokens: int = typer.Option(1024, "--caption-max-tokens"),
     # Text chunking
     store_images_uri: Optional[str] = typer.Option(
         None, "--store-images-uri", help="Store extracted images to this URI."
@@ -516,6 +511,9 @@ def main(
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
+                    temperature=caption_temperature,
+                    top_p=caption_top_p,
+                    max_tokens=caption_max_tokens,
                 )
             )
 

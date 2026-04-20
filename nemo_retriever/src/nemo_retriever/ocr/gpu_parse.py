@@ -10,6 +10,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.ocr.shared import _error_payload, nemotron_parse_page_elements
 
@@ -45,10 +46,14 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
         )
         if self._invoke_url:
             self._model = None
+            self._nim_client = NIMClient(
+                max_pool_workers=int(remote_max_pool_workers),
+            )
         else:
             from nemo_retriever.model.local import NemotronParseV12
 
             self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            self._nim_client = None
         self._extract_text = bool(extract_text)
         self._extract_tables = bool(extract_tables)
         self._extract_charts = bool(extract_charts)
@@ -70,6 +75,7 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
             extract_charts=self._extract_charts,
             extract_infographics=self._extract_infographics,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             **kwargs,
         )
 

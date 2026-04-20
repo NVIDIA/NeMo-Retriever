@@ -58,6 +58,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.model import is_vl_rerank_model
 from nemo_retriever.graph.gpu_operator import GPUOperator
@@ -310,6 +311,13 @@ def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+@designer_component(
+    name="Nemotron Reranker",
+    category="Embeddings & Ranking",
+    compute="gpu",
+    description="Reranks search results using a Nemotron reranking model",
+    category_color="#e06cff",
+)
 class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
