@@ -299,6 +299,7 @@ _MIGRATIONS = [
     "ALTER TABLE alert_rules ADD COLUMN slack_notify INTEGER DEFAULT 0",
     "ALTER TABLE datasets ADD COLUMN distribute INTEGER DEFAULT 1",
     "ALTER TABLE datasets ADD COLUMN active INTEGER DEFAULT 1",
+    "ALTER TABLE datasets ADD COLUMN config_hash TEXT",
     "ALTER TABLE jobs ADD COLUMN dataset_id INTEGER",
     "ALTER TABLE jobs ADD COLUMN dataset_config_hash TEXT",
     "ALTER TABLE runs ADD COLUMN dataset_id INTEGER",
@@ -905,6 +906,27 @@ def _deserialize_dataset_row(row: sqlite3.Row) -> dict[str, Any]:
     return d
 
 
+def _compute_and_store_config_hash(
+    conn: sqlite3.Connection,
+    dataset_id: int,
+    dataset_path: str,
+    query_csv: str | None,
+    config_fields: dict[str, Any] | None,
+) -> str | None:
+    """Compute the dataset config hash and persist it on the row.
+
+    Runs in the same connection/transaction as the caller so the hash is
+    always consistent with the rest of the dataset metadata.  Returns the
+    hash string, or ``None`` if the dataset path doesn't exist.
+    """
+    ds_path = Path(dataset_path)
+    if not ds_path.is_dir():
+        return None
+    h = compute_dataset_hash(dataset_path, query_csv, config_fields)
+    conn.execute("UPDATE datasets SET config_hash = ? WHERE id = ?", (h, dataset_id))
+    return h
+
+
 def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str, Any]:
     conn = _connect(db_path)
     try:
@@ -947,8 +969,16 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
                 now,
             ),
         )
-        conn.commit()
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        config_fields = {
+            k: data.get(k)
+            for k in ("query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter")
+            if data.get(k) is not None
+        }
+        _compute_and_store_config_hash(conn, row_id, data["path"], data.get("query_csv"), config_fields or None)
+
+        conn.commit()
         return get_dataset_by_id(row_id, db_path)  # type: ignore[return-value]
     finally:
         conn.close()
@@ -976,6 +1006,9 @@ def get_dataset_by_id(dataset_id: int, db_path: str | None = None) -> dict[str, 
         conn.close()
 
 
+_HASH_AFFECTING_FIELDS = {"path", "query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter"}
+
+
 def update_dataset(dataset_id: int, data: dict[str, Any], db_path: str | None = None) -> dict[str, Any] | None:
     _BOOL_DATASET_FIELDS = {"recall_required", "extract_page_as_image", "extract_infographics", "distribute"}
     conn = _connect(db_path)
@@ -1000,6 +1033,19 @@ def update_dataset(dataset_id: int, data: dict[str, Any], db_path: str | None = 
         vals.append(_now_iso())
         vals.append(dataset_id)
         conn.execute(f"UPDATE datasets SET {', '.join(sets)} WHERE id = ?", vals)
+
+        if _HASH_AFFECTING_FIELDS & data.keys():
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
+            if row:
+                ds = dict(row)
+                config_fields = {
+                    k: ds.get(k)
+                    for k in ("query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter")
+                    if ds.get(k) is not None
+                }
+                _compute_and_store_config_hash(conn, dataset_id, ds["path"], ds.get("query_csv"), config_fields or None)
+
         conn.commit()
         return get_dataset_by_id(dataset_id, db_path)
     finally:

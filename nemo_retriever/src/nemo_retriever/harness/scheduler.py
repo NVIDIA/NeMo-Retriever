@@ -109,8 +109,10 @@ def _resolve_dataset_config(
         if managed.get("recall_adapter"):
             overrides["recall_adapter"] = managed["recall_adapter"]
 
-        config_fields = {k: v for k, v in overrides.items() if k != "dataset_dir"}
-        config_hash = history.compute_dataset_hash(managed["path"], managed.get("query_csv"), config_fields)
+        config_hash = managed.get("config_hash")
+        if not config_hash:
+            config_fields = {k: v for k, v in overrides.items() if k != "dataset_dir"}
+            config_hash = history.compute_dataset_hash(managed["path"], managed.get("query_csv"), config_fields)
         dataset_meta = {
             "dataset_id": managed["id"],
             "dataset_config_hash": config_hash,
