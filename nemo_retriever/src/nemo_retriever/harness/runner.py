@@ -1711,6 +1711,12 @@ def runner_start_command(
     ),
 ) -> None:
     """Start a harness runner and optionally register with a portal manager."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     global DATASET_CACHE_DIR  # noqa: PLW0603
     if dataset_cache_dir:
         DATASET_CACHE_DIR = Path(dataset_cache_dir)
