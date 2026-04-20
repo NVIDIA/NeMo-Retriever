@@ -89,11 +89,11 @@ h. Run the command `docker ps`. You should see output similar to the following. 
     1b885f37c991  nvcr.io/nvidia/nemo-microservices/nv-ingest:...  "/usr/bin/tini -- /w…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:7670...  nv-ingest-nv-ingest-ms-runtime-1
     14ef31ed7f49  milvusdb/milvus:v2.5.3-gpu                       "/tini -- bash -c 's…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9091...  milvus-standalone
     dceaf36cc5df  otel/opentelemetry-collector-contrib:...         "/otelcol-contrib --…"  7 minutes ago   Up 7 minutes            0.0.0.0:4317...  nv-ingest-otel-collector-1
-    5bd0b48eb71b  nvcr.io/nim/nvidia/nemoretriever-graphic-ele...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8003...  nv-ingest-graphic-elements-1
-    daf878669036  nvcr.io/nim/nvidia/nemoretriever-ocr-v1:1.2.1    "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8009...  nv-ingest-ocr-1
-    216bdf11c566  nvcr.io/nim/nvidia/nemoretriever-page-elements-v3:1.7.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8000...  nv-ingest-page-elements-1
-    aee9580b0b9a  nvcr.io/nim/nvidia/llama-3.2-nv-embedqa-1b-v2:1.10.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8012...  nv-ingest-embedding-1
-    178a92bf6f7f  nvcr.io/nim/nvidia/nemoretriever-table-struc...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8006...  nv-ingest-table-structure-1
+    5bd0b48eb71b  nvcr.io/nim/nvidia/nemotron-graphic-ele...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8003...  nv-ingest-graphic-elements-1
+    daf878669036  nvcr.io/nim/nvidia/nemotron-ocr-v1:1.2.1    "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8009...  nv-ingest-ocr-1
+    216bdf11c566  nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.7.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8000...  nv-ingest-page-elements-1
+    aee9580b0b9a  nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2:1.13.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8012...  nv-ingest-embedding-1
+    178a92bf6f7f  nvcr.io/nim/nvidia/nemotron-table-structure-v1:.....  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8006...  nv-ingest-table-structure-1
     7ddbf7690036  openzipkin/zipkin                                "start-zipkin"          7 minutes ago   Up 7 minutes (healthy)  9410/tcp...      nv-ingest-zipkin-1
     b73bbe0c202d  minio/minio:RELEASE.2023-03-20T20-16-18Z         "/usr/bin/docker-ent…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9000...  minio
     97fa798dbe4f  prom/prometheus:latest                           "/bin/prometheus --w…"  7 minutes ago   Up 7 minutes            0.0.0.0:9090...  nv-ingest-prometheus-1
