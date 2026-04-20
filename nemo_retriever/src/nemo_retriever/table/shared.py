@@ -4,13 +4,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import time
 import traceback
 
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
+
+if TYPE_CHECKING:
+    from nemo_retriever.nim.nim import NIMClient
 
 try:
     import torch
@@ -257,7 +260,9 @@ def table_structure_ocr_page_elements(
     table_structure_invoke_url: str = "",
     api_key: str = "",
     request_timeout_s: float = 120.0,
+    inference_batch_size: int = 8,
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -312,22 +317,26 @@ def table_structure_ocr_page_elements(
     label_names = _labels_from_model(table_structure_model) if table_structure_model is not None else []
     if not label_names:
         label_names = _DEFAULT_TABLE_STRUCTURE_LABELS
-    inference_batch_size = int(kwargs.get("inference_batch_size", 8))
+    inference_batch_size = int(kwargs.get("inference_batch_size", inference_batch_size))
 
-    # Per-row accumulators.
-    all_table: List[List[Dict[str, Any]]] = []
-    all_ts_payloads: List[Dict[str, Any]] = []
-    all_meta: List[Dict[str, Any]] = []
+    num_rows = len(batch_df)
+    all_table: List[List[Dict[str, Any]]] = [[] for _ in range(num_rows)]
+    all_ts_payloads: List[Dict[str, Any]] = [{"regions": [], "timing": None, "error": None} for _ in range(num_rows)]
+    all_meta: List[Dict[str, Any]] = [{"timing": None, "error": None} for _ in range(num_rows)]
 
     t0_total = time.perf_counter()
 
-    for row in batch_df.itertuples(index=False):
-        table_items: List[Dict[str, Any]] = []
-        ts_regions: List[Dict[str, Any]] = []
-        row_error: Any = None
+    # ---------------------------------------------------------------
+    # Pass 1: Collect all table crops across every row (page) in the
+    # batch.  Track which row each crop belongs to so we can stitch
+    # results back later.
+    # ---------------------------------------------------------------
+    flat_crops: List[Any] = []  # (label_name, bbox, crop_array)
+    flat_crop_b64s: List[str] = []  # parallel list of base64 PNGs (remote only)
+    crop_row_indices: List[int] = []  # row index each crop belongs to
 
+    for row_i, row in enumerate(batch_df.itertuples(index=False)):
         try:
-            # --- get page elements detections ---
             pe = getattr(row, "page_elements_v3", None)
             dets: List[Dict[str, Any]] = []
             if isinstance(pe, dict):
@@ -335,104 +344,133 @@ def table_structure_ocr_page_elements(
             if not isinstance(dets, list):
                 dets = []
 
-            # --- get page image ---
             page_image = getattr(row, "page_image", None) or {}
             page_image_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
 
             if not isinstance(page_image_b64, str) or not page_image_b64:
-                all_table.append(table_items)
-                all_ts_payloads.append({"regions": ts_regions, "timing": None, "error": None})
-                all_meta.append({"timing": None, "error": None})
                 continue
 
-            # --- Pass 1: Collect table crops ---
             crops = _crop_all_from_page(page_image_b64, dets, {"table"})
-
             if not crops:
-                all_table.append(table_items)
-                all_ts_payloads.append({"regions": ts_regions, "timing": None, "error": None})
-                all_meta.append({"timing": None, "error": None})
                 continue
 
-            # Pre-compute base64 encodings once for remote paths.
-            crop_b64s = [_np_rgb_to_b64_png(crop_array) for _, _, crop_array in crops] if use_remote_ts else []
-
-            # --- Pass 2: Run table-structure on all crops ---
-            structure_results: List[List[Dict[str, Any]]] = []
-            if use_remote_ts:
-                response_items = invoke_image_inference_batches(
-                    invoke_url=ts_url,
-                    image_b64_list=crop_b64s,
-                    api_key=api_key or None,
-                    timeout_s=float(request_timeout_s),
-                    max_batch_size=inference_batch_size,
-                    max_pool_workers=int(retry.remote_max_pool_workers),
-                    max_retries=int(retry.remote_max_retries),
-                    max_429_retries=int(retry.remote_max_429_retries),
-                )
-                if len(response_items) != len(crops):
-                    raise RuntimeError(f"Expected {len(crops)} table-structure responses, got {len(response_items)}")
-                for resp in response_items:
-                    # Try NIM bounding_boxes format first, fall back to generic parser.
-                    parsed = _parse_nim_bounding_boxes(resp)
-                    if not parsed:
-                        pred_item = _extract_remote_pred_item(resp)
-                        parsed = _prediction_to_detections(pred_item, label_names=label_names)
-                    structure_results.append([d for d in parsed if (d.get("score") or 0.0) >= YOLOX_TABLE_MIN_SCORE])
-            else:
-                # Local batched inference.
-                for _, _, crop_array in crops:
-                    chw = torch.from_numpy(crop_array).permute(2, 0, 1).contiguous().to(dtype=torch.float32)
-                    h, w = crop_array.shape[:2]
-                    x = chw.unsqueeze(0)  # BCHW
-                    try:
-                        pre = table_structure_model.preprocess(x, (h, w))
-                    except TypeError:
-                        pre = table_structure_model.preprocess(x)
-                    if isinstance(pre, torch.Tensor) and pre.ndim == 3:
-                        pre = pre.unsqueeze(0)
-                    pred = table_structure_model.invoke(pre, (h, w))
-                    dets = _prediction_to_detections(pred, label_names=label_names)
-                    structure_results.append([d for d in dets if (d.get("score") or 0.0) >= YOLOX_TABLE_MIN_SCORE])
-
-            # --- Pass 3: Build structure-only output per crop ---
-            for crop_i, (_, bbox, crop_array) in enumerate(crops):
-                structure_dets = structure_results[crop_i]
-                crop_hw = (int(crop_array.shape[0]), int(crop_array.shape[1]))
-                counts = _count_structure_labels(structure_dets)
-                table_items.append(
-                    {
-                        "bbox_xyxy_norm": bbox,
-                        "text": _render_structure_only_text(
-                            structure_dets,
-                            table_output_format=table_output_format,
-                        ),
-                        "structure_detections": structure_dets,
-                        "structure_counts": counts,
-                    }
-                )
-                ts_regions.append(
-                    {
-                        "bbox_xyxy_norm": [float(x) for x in bbox],
-                        "label_name": "table",
-                        "detections": structure_dets,
-                        "orig_shape_hw": [crop_hw[0], crop_hw[1]],
-                        "structure_counts": counts,
-                    }
-                )
+            for crop in crops:
+                flat_crops.append(crop)
+                crop_row_indices.append(row_i)
+                if use_remote_ts:
+                    flat_crop_b64s.append(_np_rgb_to_b64_png(crop[2]))
 
         except BaseException as e:
-            print(f"Warning: table-structure failed: {type(e).__name__}: {e}")
-            row_error = {
-                "stage": "table_structure_ocr_page_elements",
+            print(f"Warning: table crop collection failed for row {row_i}: {type(e).__name__}: {e}")
+            all_meta[row_i]["error"] = {
+                "stage": "table_structure_ocr_page_elements:crop",
                 "type": e.__class__.__name__,
                 "message": str(e),
                 "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
             }
 
-        all_table.append(table_items)
-        all_ts_payloads.append({"regions": ts_regions, "timing": None, "error": row_error})
-        all_meta.append({"timing": None, "error": row_error})
+    # If there are no crops at all, short-circuit.
+    if not flat_crops:
+        elapsed = time.perf_counter() - t0_total
+        for meta in all_meta:
+            meta["timing"] = {"seconds": float(elapsed)}
+        for payload in all_ts_payloads:
+            payload["timing"] = {"seconds": float(elapsed)}
+        out = batch_df.copy()
+        out["table"] = all_table
+        out["table_structure_v1"] = all_ts_payloads
+        out["table_structure_ocr_v1"] = all_meta
+        return out
+
+    n_crops = len(flat_crops)
+
+    # ---------------------------------------------------------------
+    # Pass 2: Run table-structure inference on all crops.
+    # ---------------------------------------------------------------
+    structure_results: List[List[Dict[str, Any]]] = [[] for _ in range(n_crops)]
+
+    def _run_remote_ts() -> List[Any]:
+        _ts_kw = dict(
+            invoke_url=ts_url,
+            image_b64_list=flat_crop_b64s,
+            api_key=api_key or None,
+            timeout_s=float(request_timeout_s),
+            max_batch_size=inference_batch_size,
+            max_retries=int(retry.remote_max_retries),
+            max_429_retries=int(retry.remote_max_429_retries),
+        )
+        if nim_client is not None:
+            return nim_client.invoke_image_inference_batches(**_ts_kw)
+        return invoke_image_inference_batches(
+            **_ts_kw,
+            max_pool_workers=int(retry.remote_max_pool_workers),
+        )
+
+    try:
+        if use_remote_ts:
+            response_items = _run_remote_ts()
+            if len(response_items) != n_crops:
+                raise RuntimeError(f"Expected {n_crops} table-structure responses, got {len(response_items)}")
+            for ci, resp in enumerate(response_items):
+                parsed = _parse_nim_bounding_boxes(resp)
+                if not parsed:
+                    pred_item = _extract_remote_pred_item(resp)
+                    parsed = _prediction_to_detections(pred_item, label_names=label_names)
+                structure_results[ci] = [d for d in parsed if (d.get("score") or 0.0) >= YOLOX_TABLE_MIN_SCORE]
+        else:
+            for ci, (_, _, crop_array) in enumerate(flat_crops):
+                chw = torch.from_numpy(crop_array).permute(2, 0, 1).contiguous().to(dtype=torch.float32)
+                h, w = crop_array.shape[:2]
+                x = chw.unsqueeze(0)
+                try:
+                    pre = table_structure_model.preprocess(x, (h, w))
+                except TypeError:
+                    pre = table_structure_model.preprocess(x)
+                if isinstance(pre, torch.Tensor) and pre.ndim == 3:
+                    pre = pre.unsqueeze(0)
+                pred = table_structure_model.invoke(pre, (h, w))
+                dets = _prediction_to_detections(pred, label_names=label_names)
+                structure_results[ci] = [d for d in dets if (d.get("score") or 0.0) >= YOLOX_TABLE_MIN_SCORE]
+    except BaseException as e:
+        print(f"Warning: table-structure failed: {type(e).__name__}: {e}")
+        err_payload = {
+            "stage": "table_structure_ocr_page_elements",
+            "type": e.__class__.__name__,
+            "message": str(e),
+            "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+        }
+        for row_i in set(crop_row_indices):
+            all_meta[row_i]["error"] = err_payload
+
+    # ---------------------------------------------------------------
+    # Pass 3: Stitch structure-only results back to the correct rows.
+    # ---------------------------------------------------------------
+    for ci in range(n_crops):
+        row_i = crop_row_indices[ci]
+        _, bbox, crop_array = flat_crops[ci]
+        structure_dets = structure_results[ci]
+        counts = _count_structure_labels(structure_dets)
+        crop_hw = (int(crop_array.shape[0]), int(crop_array.shape[1]))
+        all_table[row_i].append(
+            {
+                "bbox_xyxy_norm": bbox,
+                "text": _render_structure_only_text(
+                    structure_dets,
+                    table_output_format=table_output_format,
+                ),
+                "structure_detections": structure_dets,
+                "structure_counts": counts,
+            }
+        )
+        all_ts_payloads[row_i]["regions"].append(
+            {
+                "bbox_xyxy_norm": [float(x) for x in bbox],
+                "label_name": "table",
+                "detections": structure_dets,
+                "orig_shape_hw": [crop_hw[0], crop_hw[1]],
+                "structure_counts": counts,
+            }
+        )
 
     elapsed = time.perf_counter() - t0_total
     for meta in all_meta:

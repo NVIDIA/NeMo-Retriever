@@ -10,6 +10,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.page_elements.shared import _error_payload, detect_page_elements_v3
 
 
@@ -31,10 +32,14 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
             self.detect_kwargs["invoke_url"] = invoke_url
         if invoke_url:
             self._model = None
+            self._nim_client = NIMClient(
+                max_pool_workers=int(self.detect_kwargs.get("remote_max_pool_workers", 24)),
+            )
         else:
             from nemo_retriever.model.local import NemotronPageElementsV3
 
             self._model = NemotronPageElementsV3()
+            self._nim_client = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -43,6 +48,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
         return detect_page_elements_v3(
             data,
             model=self._model,
+            nim_client=self._nim_client,
             **self.detect_kwargs,
             **kwargs,
         )

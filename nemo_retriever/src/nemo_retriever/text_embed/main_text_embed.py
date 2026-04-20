@@ -86,6 +86,8 @@ class TextEmbeddingConfig:
     output_payload_column: Optional[str] = None
     # Modality: "text" (default), "image", or "text_image"
     embed_modality: str = "text"
+    # Parallel OpenAI-compatible embedding HTTP calls per Ray batch (NIM / vLLM).
+    nim_http_max_concurrent: int = 32
 
 
 # ------------------------------------------------------------------------------
@@ -563,6 +565,11 @@ def create_text_embeddings_for_df(
     if execution_trace_log is None:
         execution_trace_log = {}
 
+    nim_http_raw = task_config.get("nim_http_max_concurrent")
+    if nim_http_raw is None:
+        nim_http_raw = getattr(transform_config, "nim_http_max_concurrent", 32)
+    nim_http_max_concurrent = max(1, int(nim_http_raw))
+
     if df_transform_ledger.empty:
         return df_transform_ledger, {"trace_info": execution_trace_log}
 
@@ -638,7 +645,7 @@ def create_text_embeddings_for_df(
                 False,
                 modalities=None,
                 dimensions=dimensions,
-                max_concurrent=8,
+                max_concurrent=nim_http_max_concurrent,
             )
         else:
             # Text-only path (default)
@@ -659,6 +666,7 @@ def create_text_embeddings_for_df(
                     False,
                     modalities=None,
                     dimensions=dimensions,
+                    max_concurrent=nim_http_max_concurrent,
                 )
             elif callable(embedder):
                 content_embeddings = _callable_runner(

@@ -273,7 +273,9 @@ def test_build_command_supports_earnings_beir_pdf_page_doc_id_field(tmp_path: Pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
+        cfg, tmp_path, run_id="r1"
+    )
 
     assert cmd[cmd.index("--beir-loader") + 1] == "earnings_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
@@ -299,7 +301,9 @@ def test_build_command_supports_financebench_beir_pdf_basename_doc_id_field(tmp_
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
+        cfg, tmp_path, run_id="r1"
+    )
 
     assert cmd[cmd.index("--beir-loader") + 1] == "financebench_json"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_json.resolve())
@@ -827,6 +831,13 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": True,
             "use_heuristics": cfg.use_heuristics,
+            "api_key": None,
+            "page_elements_invoke_url": None,
+            "ocr_invoke_url": None,
+            "graphic_elements_invoke_url": None,
+            "table_structure_invoke_url": None,
+            "embed_invoke_url": None,
+            "caption_invoke_url": None,
             "store_images_uri": None,
             "store_text": False,
             "strip_base64": True,
