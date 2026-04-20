@@ -16,7 +16,7 @@ Use this page to pick documentation and deployment options that match your goal.
 ## I want a Kubernetes / Helm deployment
 
 1. [Prerequisites](prerequisites.md)
-2. [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
+2. [Deploy (Helm Chart)](helm.md)
 3. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
 ## I want examples and notebooks

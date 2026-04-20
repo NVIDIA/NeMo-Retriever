@@ -13,7 +13,7 @@ Start with the [Introduction](overview.md), [Concepts](concepts.md), and [Get st
 
 ## Microservices, Helm, and production clusters
 
-Follow [Choose your deployment](choose-your-path.md), [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md), [Environment variables](environment-config.md), and the [V2 API guide](v2-api-guide.md). For operations topics, refer to [Scaling modes](scaling-modes.md), [Ray logging](ray-logging.md), [Telemetry](telemetry.md), and [Benchmarking](benchmarking.md).
+Follow [Choose your deployment](choose-your-path.md), [Deploy (Helm Chart)](helm.md), [Environment variables](environment-config.md), and the [V2 API guide](v2-api-guide.md). For operations topics, refer to [Scaling modes](scaling-modes.md), [Ray logging](ray-logging.md), [Telemetry](telemetry.md), and [Benchmarking](benchmarking.md).
 
 ## NVIDIA Blueprints and end-to-end RAG
 

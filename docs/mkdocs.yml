@@ -66,6 +66,7 @@ nav:
         - Support Matrix: extraction/support-matrix.md
         - Deploy (Library Mode): extraction/quickstart-library-mode.md
         - Deploy (Self-Hosted): extraction/quickstart-guide.md
+        - Deploy (Helm Chart): extraction/helm.md
       - Developer Guide:
         - Notebooks: extraction/notebooks.md
         - Use the CLI: extraction/cli-reference.md
