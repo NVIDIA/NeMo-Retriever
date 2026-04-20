@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
 from nemotron_table_structure_v1.model import define_model as define_model_table_structure
@@ -71,7 +72,8 @@ class NemotronTableStructureV1(BaseModel):
         if self._model is None:
             raise RuntimeError("Local table_structure_v1 model was not initialized.")
 
-        table_preds = self._model(input_tensor, orig_shape)[0]
+        with gpu_inference_range("TableStructureV1", batch_size=input_tensor.shape[0]):
+            table_preds = self._model(input_tensor, orig_shape)[0]
         return table_preds
 
     @property

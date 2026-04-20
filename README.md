@@ -12,8 +12,7 @@ See the corresponding [NeMo Retriever Library documentation](https://docs.nvidia
 
 # NeMo Retriever Library
 
-NeMo Retriever Library is a scalable, performance-oriented document content and metadata extraction microservice. It uses specialized NVIDIA NIM microservices 
-to find, contextualize, and extract text, tables, charts and infographics that you can use in downstream generative applications.
+NeMo Retriever Library is a scalable, performance-oriented framework for document content and metadata extraction. It supports both NVIDIA NIM microservices and a wide range of models to find, contextualize, and extract text, tables, charts, and infographics for use in downstream generative and retrieval-augmented applications.
 
 > [!Note]
 > NeMo Retriever extraction is also known as NVIDIA Ingest and nv-ingest.

@@ -23,7 +23,10 @@ import numpy as np
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.nim.nim import invoke_image_inference_batches
-from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
+from nemo_retriever.utils.table_and_chart import (
+    join_graphic_elements_and_ocr_output,
+    join_table_structure_and_ocr_output,
+)
 
 try:
     from PIL import Image
@@ -368,8 +371,6 @@ def _blocks_to_pseudo_markdown(
     if not valid:
         return ""
 
-    from sklearn.cluster import DBSCAN
-
     df = pd.DataFrame(valid)
     df = df.sort_values("sort_y")
 
@@ -377,11 +378,9 @@ def _blocks_to_pseudo_markdown(
     crop_h = crop_hw[0] if crop_hw else 0
 
     if crop_h > 0:
-        # Pixel-space clustering (matches nv-ingest eps=10).
         y_pixels = (y_vals * crop_h).astype(int)
         eps = 10
     else:
-        # Fallback: normalise to [0,1] when pixel dims are unknown.
         y_range = y_vals.max() - y_vals.min()
         if y_range > 0:
             y_pixels = (y_vals - y_vals.min()) / y_range
@@ -390,9 +389,15 @@ def _blocks_to_pseudo_markdown(
             y_pixels = y_vals
             eps = 0.1
 
-    dbscan = DBSCAN(eps=eps, min_samples=1)
-    dbscan.fit(y_pixels.reshape(-1, 1))
-    df["cluster"] = dbscan.labels_
+    try:
+        from sklearn.cluster import DBSCAN
+
+        dbscan = DBSCAN(eps=eps, min_samples=1)
+        dbscan.fit(y_pixels.reshape(-1, 1))
+        df["cluster"] = dbscan.labels_
+    except ImportError:
+        # Naive fallback: round y to a coarse grid to simulate row grouping.
+        df["cluster"] = (y_pixels / (eps if eps > 0 else 1)).round().astype(int)
 
     df = df.sort_values(["cluster", "sort_x"])
 
@@ -439,6 +444,46 @@ def _find_ge_detections_for_bbox(
     return None
 
 
+def _find_ts_detections_for_bbox(
+    row: Any,
+    table_bbox: Sequence[float],
+) -> Optional[Tuple[List[Dict[str, Any]], Optional[Tuple[int, int]]]]:
+    """Find table-structure detections + crop size for a table bbox.
+
+    Reads the ``table_structure_v1`` column from *row* and returns the
+    ``(detections, (H, W))`` tuple for the region whose ``bbox_xyxy_norm``
+    matches *table_bbox*. Returns ``None`` if the column is missing, no
+    region matches, or the matching region has no detections.
+    """
+    ts_col = getattr(row, "table_structure_v1", None)
+    if not isinstance(ts_col, dict):
+        return None
+    regions = ts_col.get("regions")
+    if not isinstance(regions, list):
+        return None
+
+    for region in regions:
+        if not isinstance(region, dict):
+            continue
+        region_bbox = region.get("bbox_xyxy_norm")
+        if not isinstance(region_bbox, (list, tuple)) or len(region_bbox) != 4:
+            continue
+        if not _bboxes_close(table_bbox, region_bbox):
+            continue
+        dets = region.get("detections")
+        if not isinstance(dets, list) or not dets:
+            return None
+        hw = region.get("orig_shape_hw")
+        hw_t: Optional[Tuple[int, int]] = None
+        if isinstance(hw, (list, tuple)) and len(hw) == 2:
+            try:
+                hw_t = (int(hw[0]), int(hw[1]))
+            except (TypeError, ValueError):
+                hw_t = None
+        return (dets, hw_t)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Core function
 # ---------------------------------------------------------------------------
@@ -456,6 +501,7 @@ def ocr_page_elements(
     extract_charts: bool = False,
     extract_infographics: bool = False,
     use_graphic_elements: bool = False,
+    use_table_structure: bool = False,
     inference_batch_size: int = 8,
     remote_retry: RemoteRetryParams | None = None,
     **kwargs: Any,
@@ -603,7 +649,16 @@ def ocr_page_elements(
                                     crop_hw_table = (_ch, _cw)
                             except Exception:
                                 pass
-                            text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw_table) or _blocks_to_text(blocks)
+                            text = ""
+                            if use_table_structure:
+                                ts_match = _find_ts_detections_for_bbox(row, bbox)
+                                if ts_match is not None:
+                                    ts_dets, ts_hw = ts_match
+                                    text = join_table_structure_and_ocr_output(ts_dets, preds, ts_hw or crop_hw_table)
+                            if not text:
+                                text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw_table) or _blocks_to_text(
+                                    blocks
+                                )
                         else:
                             text = _blocks_to_text(blocks)
                         entry = {"bbox_xyxy_norm": bbox, "text": text}
@@ -644,7 +699,14 @@ def ocr_page_elements(
                                 return
                     blocks = _parse_ocr_result(preds)
                     if label_name == "table":
-                        text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw)
+                        text = ""
+                        if use_table_structure:
+                            ts_match = _find_ts_detections_for_bbox(row, bbox)
+                            if ts_match is not None:
+                                ts_dets, ts_hw = ts_match
+                                text = join_table_structure_and_ocr_output(ts_dets, preds, ts_hw or crop_hw)
+                        if not text:
+                            text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw)
                         if not text:
                             text = _blocks_to_text(blocks)
                     else:

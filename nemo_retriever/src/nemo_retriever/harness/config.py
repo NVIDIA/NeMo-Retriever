@@ -18,7 +18,7 @@ DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.
 VALID_RUN_MODES = {"batch", "inprocess"}
 VALID_EVALUATION_MODES = {"recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
-VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "vidore_hf"}
+VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
 VALID_EMBED_GRANULARITIES = {"element", "page"}
@@ -88,6 +88,13 @@ class HarnessConfig:
     store_images_uri: str | None = None
     store_text: bool = False
     strip_base64: bool = True
+
+    page_elements_invoke_url: str | None = None
+    ocr_invoke_url: str | None = None
+    graphic_elements_invoke_url: str | None = None
+    table_structure_invoke_url: str | None = None
+    embed_invoke_url: str | None = None
+    api_key: str | None = None
 
     pdf_extract_workers: int = 8
     pdf_extract_num_cpus: float = 2.0
@@ -252,7 +259,9 @@ def _resolve_query_csv_path(value: str | None, *, config_path: Path) -> str | No
     if p.is_absolute():
         return str(p.resolve())
 
-    resolved_candidates = [(base / p).resolve() for base in (config_path.parent, REPO_ROOT)]
+    prefer_repo_root = config_path.resolve() == DEFAULT_TEST_CONFIG_PATH.resolve()
+    bases = (REPO_ROOT, config_path.parent) if prefer_repo_root else (config_path.parent, REPO_ROOT)
+    resolved_candidates = [(base / p).resolve() for base in bases]
     for candidate in resolved_candidates:
         if candidate.exists():
             return str(candidate)

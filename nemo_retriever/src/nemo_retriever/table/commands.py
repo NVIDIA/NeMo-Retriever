@@ -17,7 +17,7 @@ from nemo_retriever.table.config import load_table_extractor_schema_from_dict, l
 from nemo_retriever.table.processor import extract_table_data_from_primitives_df
 from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
 
-app = typer.Typer(help="Table extraction: enrich table primitives with OCR/structure-derived table_content.")
+app = typer.Typer(help="Table extraction: enrich table primitives with structure-aware table content.")
 console = Console()
 
 
@@ -97,11 +97,11 @@ def run_structure_ocr(
         exists=True,
         dir_okay=False,
         file_okay=True,
-        help=("Optional YAML config file for table-structure+OCR stage. Uses section: table_structure_ocr."),
+        help=("Optional YAML config file for the table-structure stage. Uses section: table_structure_ocr."),
     ),
 ) -> None:
     """
-    Load a primitives DataFrame, run table-structure + OCR enrichment, and write the output.
+    Load a primitives DataFrame, run table-structure enrichment, and write the output.
     """
     try:
         df = read_dataframe(input_path)
@@ -112,25 +112,16 @@ def run_structure_ocr(
     stage_cfg = load_table_structure_ocr_config_from_dict(cfg_dict)
 
     ts_url = stage_cfg.table_structure_invoke_url
-    ocr_url = stage_cfg.ocr_invoke_url
-
     ts_model = None
-    ocr_model_inst = None
     if not ts_url:
         from nemo_retriever.model.local import NemotronTableStructureV1
 
         ts_model = NemotronTableStructureV1()
-    if not ocr_url:
-        from nemo_retriever.model.local import NemotronOCRV1
-
-        ocr_model_inst = NemotronOCRV1()
 
     out_df = table_structure_ocr_page_elements(
         df,
         table_structure_model=ts_model,
-        ocr_model=ocr_model_inst,
         table_structure_invoke_url=ts_url,
-        ocr_invoke_url=ocr_url,
         api_key=stage_cfg.api_key,
         request_timeout_s=stage_cfg.request_timeout_s,
     )

@@ -7,26 +7,27 @@ from typing import List
 import pandas as pd
 
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
 
 
 def query_neo4j_tables_for_embedding() -> List[dict]:
     """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
     neo4j_conn = get_neo4j_conn()
-    query = """MATCH (d:Db)-[:CONTAINS]->(s:Schema)-[:CONTAINS]->(t:Table)
-               MATCH (t)-[:CONTAINS]->(c:Column)
+    query = f"""MATCH (d:{Labels.DB})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})-[:{Edges.CONTAINS}]->(t:{Labels.TABLE})
+               MATCH (t)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
                WITH d, s, t, collect(
-                 "{name: " + c.name + ", data_type: " + c.data_type +
+                 "{{name: " + c.name + ", data_type: " + c.data_type +
                  CASE WHEN c.description IS NOT NULL AND trim(c.description) <> ''
                    THEN ", description: " + c.description ELSE "" END +
-                 "}") as columns
-               RETURN collect({
+                 "}}") as columns
+               RETURN collect({{
                  text: "db_name: " + d.name + ", schema_name: " + s.name +
                    ", table_name: " + t.name +
                    CASE WHEN t.description IS NOT NULL AND trim(t.description) <> ''
                      THEN ", table_description: " + t.description ELSE "" END +
                    ", columns: " + apoc.text.join(columns, ' '),
                  name: t.name, label: labels(t)[0], id: t.id
-               }) as docs
+               }}) as docs
             """
     result = neo4j_conn.query_read(query, parameters={})
     if not result:

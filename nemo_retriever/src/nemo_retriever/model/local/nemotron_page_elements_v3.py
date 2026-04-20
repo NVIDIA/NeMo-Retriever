@@ -8,6 +8,7 @@ from torch import nn
 import torch
 import numpy as np
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import HuggingFaceModel, RunMode
 
 from nemotron_page_elements_v3.model import define_model as define_model_page_elements
@@ -104,11 +105,11 @@ class NemotronPageElementsV3(HuggingFaceModel):
         if self._model is None:
             raise RuntimeError("Local page_elements_v3 model was not initialized.")
 
-        # The upstream model returns a container where index [0] is the predictions.
         with torch.inference_mode():
             with torch.autocast(device_type="cuda"):
-                out = self._model(input_data, orig_shape)
-                return out
+                with gpu_inference_range("PageElementsV3", batch_size=input_data.shape[0]):
+                    out = self._model(input_data, orig_shape)
+                    return out
         # preds0: Any
         # if isinstance(out, (list, tuple)) and len(out) > 0:
         #     preds0 = out[0]

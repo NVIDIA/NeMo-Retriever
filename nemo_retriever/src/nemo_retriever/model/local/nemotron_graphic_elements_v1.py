@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
 from nemotron_graphic_elements_v1.model import define_model as define_model_graphic_elements
@@ -73,8 +74,8 @@ class NemotronGraphicElementsV1(BaseModel):
         if self._model is None:
             raise RuntimeError("Local graphic_elements_v1 model was not initialized.")
 
-        # Conditionally check and make sure the input data is on the correct device and shape
-        results = self._model(input_data, orig_shape)
+        with gpu_inference_range("GraphicElementsV1", batch_size=input_data.shape[0]):
+            results = self._model(input_data, orig_shape)
         if len(results) == 1:
             return results[0]
         return results
