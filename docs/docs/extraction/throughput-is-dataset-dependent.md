@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 A single headline metric can drastically misrepresent system efficiency. 

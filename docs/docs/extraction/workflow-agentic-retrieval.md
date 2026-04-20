@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 **Agentic retrieval** describes patterns where a planner or tool-using agent queries retrieval systems in a loop (often combining multiple searches, filters, and rerankers) instead of sending a single static query.
@@ -16,4 +16,4 @@ Use these pages together with your orchestration layer:
 - [Semantic and hybrid retrieval](semantic-hybrid-retrieval.md), [Custom metadata and filtering](custom-metadata.md), and [Reranking](reranking.md)
 - [Agentic retrieval (concept)](agentic-retrieval-concept.md)
 - [Benchmarking](benchmarking.md), which includes retrieval evaluation harnesses
-- [Release notes](releasenotes-nv-ingest.md), which may mention agentic retrieval updates
+- [Release notes](releasenotes.md), which may mention agentic retrieval updates

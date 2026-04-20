@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 Use the sections below as a reading order that matches how you run NeMo Retriever Library.
@@ -24,4 +24,4 @@ For solution-level patterns, read [End-to-end RAG with NVIDIA Blueprints](resour
 The following pages supplement this overview:
 
 - [About getting started](getting-started-about.md), for a step-by-step first deployment
-- [Release notes](releasenotes-nv-ingest.md)
+- [Release notes](releasenotes.md)

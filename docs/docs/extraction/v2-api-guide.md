@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 > **TL;DR:** V2 API automatically splits large PDFs into chunks for faster parallel processing.
@@ -56,7 +56,7 @@ print(f"Processed {results[0]['metadata']['total_pages']} pages")
 ### CLI Usage
 
 ```bash
-nv-ingest-cli \
+nemo-retriever \
   --api_version v2 \
   --pdf_split_page_count 64 \
   --doc large_document.pdf \
@@ -120,7 +120,7 @@ PDF_SPLIT_PAGE_COUNT=64
 ```yaml
 # docker-compose.yaml (already configured)
 services:
-  nv-ingest-ms-runtime:
+  ingestion-ms-runtime:
     environment:
       - PDF_SPLIT_PAGE_COUNT=${PDF_SPLIT_PAGE_COUNT:-32}
 ```

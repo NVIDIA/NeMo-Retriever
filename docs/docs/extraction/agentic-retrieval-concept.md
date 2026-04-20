@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 Agentic retrieval means **iterative, tool-driven** retrieval: an agent plans steps, issues searches, may refine filters, and optionally reranks until it has enough context to answer.

@@ -4,7 +4,7 @@ NIVIDIA NeMo Retriever Library (NRL) is a scalable, performance-oriented framewo
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. 
 From there, NeMo Retriever Library can optionally manage computation of embeddings for the extracted content, 
@@ -12,7 +12,7 @@ and optionally manage storing into a vector database ([LanceDB](https://lancedb.
 
 !!! note
 
-    Cached and Deplot are deprecated. Instead, NeMo Retriever Library now uses the yolox-graphic-elements NIM. With this change, you should now be able to run NeMo Retriever Library on a single 24GB A10G or better GPU. If you want to use the old pipeline, with Cached and Deplot, use the [NeMo Retriever Library 24.12.1 release](https://github.com/NVIDIA/nv-ingest/tree/24.12.1).
+    Cached and Deplot are deprecated. Instead, NeMo Retriever Library now uses the yolox-graphic-elements NIM. With this change, you should now be able to run NeMo Retriever Library on a single 24GB A10G or better GPU. If you want to use the old pipeline, with Cached and Deplot, use the [NeMo Retriever Library 24.12.1 release](https://github.com/NVIDIA/NeMo-Retriever/tree/24.12.1).
 
 
 

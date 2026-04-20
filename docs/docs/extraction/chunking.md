@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 Splitting, also known as chunking, breaks large documents or text into smaller, manageable sections to improve retrieval efficiency. 

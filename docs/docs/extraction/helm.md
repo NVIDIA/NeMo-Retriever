@@ -4,9 +4,9 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
-To deploy [NeMo Retriever Library](overview.md) by using Helm, refer to [NV-Ingest Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md).
+To deploy [NeMo Retriever Library](overview.md) by using Helm, refer to [NeMo Retriever Helm charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md).
 
 !!! note "Air-gapped environments"
    

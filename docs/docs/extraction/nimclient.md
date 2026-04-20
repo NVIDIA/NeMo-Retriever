@@ -5,7 +5,7 @@ This documentation demonstrates how to create custom NIM integrations for use in
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 The NimClient architecture consists of two main components:
 

@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 You can upload custom metadata for documents during ingestion. 
@@ -68,7 +68,7 @@ For more information about the `vdb_upload` method, refer to [Upload Data](data-
 from nv_ingest_client.client import Ingestor
 
 hostname="localhost"
-collection_name = "nv_ingest_collection"
+collection_name = "nemo_retriever_collection"
 sparse = True
 
 ingestor = ( 
@@ -150,7 +150,7 @@ The following example uses a filter expression to narrow results by department.
 from nv_ingest_client.util.milvus import nvingest_retrieval
 
 hostname="localhost"
-collection_name = "nv_ingest_collection"
+collection_name = "nemo_retriever_collection"
 sparse = True
 top_k = 5
 model_name="nvidia/llama-3.2-nv-embedqa-1b-v2"
@@ -182,4 +182,4 @@ print(f"{q_results}")
 ## Related Content
 
 - For a notebook that uses the CLI to add custom metadata and filter query results, refer to [metadata_and_filtered_search.ipynb
-](https://github.com/NVIDIA/nv-ingest/blob/main/examples/metadata_and_filtered_search.ipynb).
+](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb).

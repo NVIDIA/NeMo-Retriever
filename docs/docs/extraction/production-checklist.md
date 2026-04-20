@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 Use this checklist before you run NeMo Retriever Library in production. Pair it with [Troubleshoot](troubleshoot.md) and your internal security review.

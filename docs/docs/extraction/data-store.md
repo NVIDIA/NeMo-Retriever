@@ -4,7 +4,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) handle
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 ## Overview
@@ -50,7 +50,7 @@ from nv_ingest_client.util.vdb.lancedb import LanceDB
 
 vdb = LanceDB(
     uri="lancedb",           # Path to LanceDB database directory
-    table_name="nv-ingest",  # Table name
+    table_name="nemo-retriever",  # Table name
     index_type="IVF_HNSW_SQ",  # Index type (default)
     hybrid=False,            # Enable hybrid search (BM25 FTS + vector)
 )
@@ -79,10 +79,10 @@ Or via environment variables:
 
 ```bash
 # Switch to Milvus
-VDB_BACKEND=milvus uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+VDB_BACKEND=milvus uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 
 # Enable LanceDB hybrid search
-HYBRID=true uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+HYBRID=true uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 ```
 
 
@@ -173,7 +173,7 @@ NeMo Retriever Library does not provide connections to other data sources.
 
     NVIDIA makes no claim about accuracy, performance, or functionality of any vector database except Milvus. If you use a different vector database, it's your responsibility to test and maintain it.
 
-For more information, refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/nv-ingest/blob/main/examples/building_vdb_operator.ipynb).
+For more information, refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
 
 
 

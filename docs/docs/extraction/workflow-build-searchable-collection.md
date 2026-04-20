@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 After [document ingestion](workflow-document-ingestion.md), configure [chunking](chunking.md) and your [vector database](data-store.md) so extracted content is embedded, indexed, and ready for search.

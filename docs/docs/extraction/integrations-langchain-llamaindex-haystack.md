@@ -2,7 +2,7 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 NeMo Retriever Library is commonly used **behind** retrieval-augmented generation (RAG) apps built with popular orchestration frameworks.
@@ -11,14 +11,14 @@ NeMo Retriever Library is commonly used **behind** retrieval-augmented generatio
 
 The repository includes notebooks that demonstrate multimodal RAG patterns:
 
-- [Multimodal RAG with LangChain](https://github.com/NVIDIA/nv-ingest/blob/main/examples/langchain_multimodal_rag.ipynb)
-- [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/nv-ingest/blob/main/examples/llama_index_multimodal_rag.ipynb)
+- [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb)
+- [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb)
 
 These are also linked from [Jupyter Notebooks](notebooks.md) and the [FAQ](faq.md).
 
 ## Haystack
 
-Haystack-related extraction modes may appear in API tables as **deprecated** in favor of current pipeline options. For up-to-date integration patterns, prefer the Python API and CLI docs, and check [Release notes](releasenotes-nv-ingest.md) for migration notes.
+Haystack-related extraction modes may appear in API tables as **deprecated** in favor of current pipeline options. For up-to-date integration patterns, prefer the Python API and CLI docs, and check [Release notes](releasenotes.md) for migration notes.
 
 ## Related
 
