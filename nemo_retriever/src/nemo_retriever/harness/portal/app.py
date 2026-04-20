@@ -1730,11 +1730,8 @@ def _zip_dataset_directory(
                 if query_csv:
                     qp = Path(query_csv)
                     if qp.is_file():
-                        try:
-                            qp.relative_to(root)
-                        except ValueError:
-                            zf.write(qp, Path("_query_csv") / qp.name)
-                            query_csv_bundled = True
+                        zf.write(qp, Path("_query_csv") / qp.name)
+                        query_csv_bundled = True
 
             tmp_zip.replace(cached_zip)
             meta_file.write_text(
