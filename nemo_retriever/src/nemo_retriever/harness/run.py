@@ -850,7 +850,14 @@ try:
 
     ray.shutdown()
 
-    runtime_env = {"env_vars": {"VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable))}}
+    venv = os.path.dirname(os.path.dirname(sys.executable))
+    venv_bin = os.path.join(venv, "bin")
+    runtime_env = {
+        "env_vars": {
+            "VIRTUAL_ENV": venv,
+            "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+        },
+    }
 
     if is_local:
         os.environ.pop("RAY_ADDRESS", None)

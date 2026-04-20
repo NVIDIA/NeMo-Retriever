@@ -237,9 +237,12 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         if self._ray_address or not ray.is_initialized():
+            venv = os.path.dirname(os.path.dirname(sys.executable))
+            venv_bin = os.path.join(venv, "bin")
             runtime_env = {
                 "env_vars": {
-                    "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
+                    "VIRTUAL_ENV": venv,
+                    "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
                 },
             }
             ray.init(
