@@ -1988,33 +1988,25 @@ async def delete_preset_matrix(matrix_id: int):
     return {"ok": True}
 
 
-@app.post("/api/preset-matrices/{matrix_id}/trigger", response_model=MatrixTriggerResponse)
-async def trigger_preset_matrix(matrix_id: int, req: MatrixTriggerRequest | None = None):
+def _trigger_matrix_jobs_sync(
+    matrix: dict[str, Any],
+    dataset_names: list[str],
+    preset_names: list[str],
+    req_ref: str | None,
+    req_commit: str | None,
+    nsys_val: int,
+) -> tuple[list[str], str]:
+    """Heavy synchronous work for matrix triggers — run via asyncio.to_thread.
+
+    Returns ``(job_ids, matrix_run_id)``.
+    """
     from nemo_retriever.harness.scheduler import match_runner
 
-    matrix = history.get_preset_matrix_by_id(matrix_id)
-    if matrix is None:
-        raise HTTPException(status_code=404, detail="Preset matrix not found")
-
-    dataset_names: list[str] = matrix.get("dataset_names") or []
-    preset_names: list[str] = matrix.get("preset_names") or []
-    if not dataset_names or not preset_names:
-        raise HTTPException(status_code=400, detail="Matrix must have at least one dataset and one preset")
-
-    req_ref = req.git_ref if req else None
-    req_commit = req.git_commit if req else None
-    if not req_ref and not req_commit:
-        req_ref = matrix.get("git_ref")
-        req_commit = matrix.get("git_commit")
     pinned_sha, pinned_ref = _resolve_git_override(req_ref, req_commit)
-
     matrix_run_id = str(uuid.uuid4())
     preferred_runner_id = matrix.get("preferred_runner_id")
     gpu_type_filter = matrix.get("gpu_type_filter")
     matrix_tags = matrix.get("tags") or []
-
-    nsys_flag = req.nsys_profile if (req and req.nsys_profile is not None) else bool(matrix.get("nsys_profile"))
-    nsys_val = int(bool(nsys_flag))
 
     job_ids: list[str] = []
     for ds_name in dataset_names:
@@ -2045,6 +2037,38 @@ async def trigger_preset_matrix(matrix_id: int, req: MatrixTriggerRequest | None
                 job_data["dataset_config_hash"] = dataset_meta["dataset_config_hash"]
             job = history.create_job(job_data)
             job_ids.append(job["id"])
+    return job_ids, matrix_run_id
+
+
+@app.post("/api/preset-matrices/{matrix_id}/trigger", response_model=MatrixTriggerResponse)
+async def trigger_preset_matrix(matrix_id: int, req: MatrixTriggerRequest | None = None):
+    matrix = history.get_preset_matrix_by_id(matrix_id)
+    if matrix is None:
+        raise HTTPException(status_code=404, detail="Preset matrix not found")
+
+    dataset_names: list[str] = matrix.get("dataset_names") or []
+    preset_names: list[str] = matrix.get("preset_names") or []
+    if not dataset_names or not preset_names:
+        raise HTTPException(status_code=400, detail="Matrix must have at least one dataset and one preset")
+
+    req_ref = req.git_ref if req else None
+    req_commit = req.git_commit if req else None
+    if not req_ref and not req_commit:
+        req_ref = matrix.get("git_ref")
+        req_commit = matrix.get("git_commit")
+
+    nsys_flag = req.nsys_profile if (req and req.nsys_profile is not None) else bool(matrix.get("nsys_profile"))
+    nsys_val = int(bool(nsys_flag))
+
+    job_ids, matrix_run_id = await asyncio.to_thread(
+        _trigger_matrix_jobs_sync,
+        matrix,
+        dataset_names,
+        preset_names,
+        req_ref,
+        req_commit,
+        nsys_val,
+    )
 
     return MatrixTriggerResponse(
         matrix_id=matrix["id"],
@@ -2147,10 +2171,17 @@ def _resolve_preset_overrides(preset_name: str | None) -> dict[str, Any]:
 
 @app.post("/api/runs/trigger", response_model=TriggerResponse)
 async def trigger_run(req: TriggerRequest):
-    dataset_path, dataset_overrides, dataset_meta = _resolve_dataset_config(req.dataset)
+    dataset_path, dataset_overrides, dataset_meta = await asyncio.to_thread(
+        _resolve_dataset_config,
+        req.dataset,
+    )
     preset_overrides = _resolve_preset_overrides(req.preset)
     merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
-    pinned_sha, pinned_ref = _resolve_git_override(req.git_ref, req.git_commit)
+    pinned_sha, pinned_ref = await asyncio.to_thread(
+        _resolve_git_override,
+        req.git_ref,
+        req.git_commit,
+    )
 
     base_job: dict[str, Any] = {
         "dataset": req.dataset,
@@ -2192,7 +2223,7 @@ async def trigger_run(req: TriggerRequest):
             }
         )
 
-    job = history.create_job(base_job)
+    job = await asyncio.to_thread(history.create_job, base_job)
     return TriggerResponse(job_id=job["id"], status="pending")
 
 
@@ -3250,9 +3281,8 @@ async def get_cursor_config(request: Request):
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/settings/git-info")
-async def get_git_info():
-    """Return information about the current git state of the portal codebase."""
+def _collect_git_info_sync() -> dict[str, Any]:
+    """Gather git repo info — blocking, run via asyncio.to_thread."""
     try:
         repo_root = _git_run("rev-parse", "--show-toplevel")
     except Exception:
@@ -3338,6 +3368,12 @@ async def get_git_info():
         }
     except Exception as exc:
         return {"available": False, "error": str(exc)}
+
+
+@app.get("/api/settings/git-info")
+async def get_git_info():
+    """Return information about the current git state of the portal codebase."""
+    return await asyncio.to_thread(_collect_git_info_sync)
 
 
 class DeployRequest(BaseModel):
@@ -4186,7 +4222,11 @@ async def run_graph_endpoint(graph_id: int, req: GraphRunRequest):
     if not code.strip():
         raise HTTPException(400, "Graph has no generated code. Save the graph first.")
 
-    pinned_sha, pinned_ref = _resolve_git_override(req.git_ref, req.git_commit)
+    pinned_sha, pinned_ref = await asyncio.to_thread(
+        _resolve_git_override,
+        req.git_ref,
+        req.git_commit,
+    )
 
     graph_meta = {
         "ray_address": req.ray_address,
@@ -4208,7 +4248,8 @@ async def run_graph_endpoint(graph_id: int, req: GraphRunRequest):
     except Exception:
         pass
 
-    job = history.create_job(
+    job = await asyncio.to_thread(
+        history.create_job,
         {
             "trigger_source": "graph",
             "dataset": input_path,
@@ -4220,6 +4261,6 @@ async def run_graph_endpoint(graph_id: int, req: GraphRunRequest):
             "graph_id": graph_id,
             "tags": ["graph-run", graph_name],
             "config": json_module.dumps(graph_meta),
-        }
+        },
     )
     return GraphRunResponse(job_id=job["id"], status="pending")
