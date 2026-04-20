@@ -146,23 +146,19 @@ class NemotronRerankVLV2VLLM(BaseModel):
     # ------------------------------------------------------------------
 
     def _truncate_doc_text(
-        self, query: str, doc_text: str, has_image: bool = False,
+        self,
+        query: str,
+        doc_text: str,
+        has_image: bool = False,
     ) -> str:
         """Truncate *doc_text* so the rendered prompt fits within ``max_model_len``.
 
         Reserves token budget for the query, template overhead, and (when
         *has_image*) the worst-case image token expansion.
         """
-        query_token_len = len(
-            self._tokenizer.encode(query, add_special_tokens=False)
-        )
+        query_token_len = len(self._tokenizer.encode(query, add_special_tokens=False))
         image_budget = _MAX_IMAGE_TOKENS if has_image else 0
-        doc_budget = (
-            _DEFAULT_MAX_LENGTH
-            - query_token_len
-            - _TEMPLATE_OVERHEAD
-            - image_budget
-        )
+        doc_budget = _DEFAULT_MAX_LENGTH - query_token_len - _TEMPLATE_OVERHEAD - image_budget
         if doc_budget <= 0:
             return ""
 
@@ -172,7 +168,9 @@ class NemotronRerankVLV2VLLM(BaseModel):
 
         logger.debug(
             "Truncating document from %d to %d tokens (image=%s)",
-            len(doc_tokens), doc_budget, has_image,
+            len(doc_tokens),
+            doc_budget,
+            has_image,
         )
         return self._tokenizer.decode(doc_tokens[:doc_budget])
 
@@ -247,7 +245,9 @@ class NemotronRerankVLV2VLLM(BaseModel):
             doc_inputs.append(self._build_document(doc, img))
 
         outputs = self._llm.score(
-            query, doc_inputs, chat_template=SCORE_TEMPLATE,
+            query,
+            doc_inputs,
+            chat_template=SCORE_TEMPLATE,
         )
         return [out.outputs.score for out in outputs]
 
@@ -290,7 +290,9 @@ class NemotronRerankVLV2VLLM(BaseModel):
             d = self._truncate_doc_text(q, d, has_image=bool(img))
             doc_input = self._build_document(d, img)
             outputs = self._llm.score(
-                q, [doc_input], chat_template=SCORE_TEMPLATE,
+                q,
+                [doc_input],
+                chat_template=SCORE_TEMPLATE,
             )
             all_scores.append(outputs[0].outputs.score)
 
