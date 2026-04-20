@@ -15,11 +15,19 @@ import pandas as pd
 from nemo_retriever.params import HtmlChunkParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 from .convert import html_bytes_to_chunks_df
 
 
+@designer_component(
+    name="HTML Splitter",
+    category="Text & Content",
+    compute="cpu",
+    description="Splits and processes HTML documents",
+    category_color="#42d6a4",
+)
 class HtmlSplitCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of chunks.

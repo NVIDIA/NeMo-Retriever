@@ -28,7 +28,6 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
         *,
         table_structure_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
-        ocr_invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
         request_timeout_s: float = 120.0,

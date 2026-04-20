@@ -22,10 +22,7 @@ New code should invoke the pipeline via one of the following:
 
 from __future__ import annotations
 
-from nemo_retriever.pipeline.__main__ import app, run
-
-__all__ = ["app", "run"]
-
+from nemo_retriever.pipeline.__main__ import app
 
 if __name__ == "__main__":
     app()

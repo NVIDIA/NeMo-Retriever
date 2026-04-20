@@ -23,7 +23,10 @@ import numpy as np
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.nim.nim import invoke_image_inference_batches
-from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
+from nemo_retriever.utils.table_and_chart import (
+    join_graphic_elements_and_ocr_output,
+    join_table_structure_and_ocr_output,
+)
 
 try:
     from PIL import Image
@@ -441,6 +444,46 @@ def _find_ge_detections_for_bbox(
     return None
 
 
+def _find_ts_detections_for_bbox(
+    row: Any,
+    table_bbox: Sequence[float],
+) -> Optional[Tuple[List[Dict[str, Any]], Optional[Tuple[int, int]]]]:
+    """Find table-structure detections + crop size for a table bbox.
+
+    Reads the ``table_structure_v1`` column from *row* and returns the
+    ``(detections, (H, W))`` tuple for the region whose ``bbox_xyxy_norm``
+    matches *table_bbox*. Returns ``None`` if the column is missing, no
+    region matches, or the matching region has no detections.
+    """
+    ts_col = getattr(row, "table_structure_v1", None)
+    if not isinstance(ts_col, dict):
+        return None
+    regions = ts_col.get("regions")
+    if not isinstance(regions, list):
+        return None
+
+    for region in regions:
+        if not isinstance(region, dict):
+            continue
+        region_bbox = region.get("bbox_xyxy_norm")
+        if not isinstance(region_bbox, (list, tuple)) or len(region_bbox) != 4:
+            continue
+        if not _bboxes_close(table_bbox, region_bbox):
+            continue
+        dets = region.get("detections")
+        if not isinstance(dets, list) or not dets:
+            return None
+        hw = region.get("orig_shape_hw")
+        hw_t: Optional[Tuple[int, int]] = None
+        if isinstance(hw, (list, tuple)) and len(hw) == 2:
+            try:
+                hw_t = (int(hw[0]), int(hw[1]))
+            except (TypeError, ValueError):
+                hw_t = None
+        return (dets, hw_t)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Core function
 # ---------------------------------------------------------------------------
@@ -458,6 +501,7 @@ def ocr_page_elements(
     extract_charts: bool = False,
     extract_infographics: bool = False,
     use_graphic_elements: bool = False,
+    use_table_structure: bool = False,
     inference_batch_size: int = 8,
     remote_retry: RemoteRetryParams | None = None,
     **kwargs: Any,
@@ -605,7 +649,16 @@ def ocr_page_elements(
                                     crop_hw_table = (_ch, _cw)
                             except Exception:
                                 pass
-                            text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw_table) or _blocks_to_text(blocks)
+                            text = ""
+                            if use_table_structure:
+                                ts_match = _find_ts_detections_for_bbox(row, bbox)
+                                if ts_match is not None:
+                                    ts_dets, ts_hw = ts_match
+                                    text = join_table_structure_and_ocr_output(ts_dets, preds, ts_hw or crop_hw_table)
+                            if not text:
+                                text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw_table) or _blocks_to_text(
+                                    blocks
+                                )
                         else:
                             text = _blocks_to_text(blocks)
                         entry = {"bbox_xyxy_norm": bbox, "text": text}
@@ -646,7 +699,14 @@ def ocr_page_elements(
                                 return
                     blocks = _parse_ocr_result(preds)
                     if label_name == "table":
-                        text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw)
+                        text = ""
+                        if use_table_structure:
+                            ts_match = _find_ts_detections_for_bbox(row, bbox)
+                            if ts_match is not None:
+                                ts_dets, ts_hw = ts_match
+                                text = join_table_structure_and_ocr_output(ts_dets, preds, ts_hw or crop_hw)
+                        if not text:
+                            text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw)
                         if not text:
                             text = _blocks_to_text(blocks)
                     else:

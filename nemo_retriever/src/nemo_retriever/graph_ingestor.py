@@ -27,6 +27,8 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
+import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
@@ -272,7 +274,16 @@ class GraphIngestor(ingestor):
             import ray
 
             if self._ray_address or not ray.is_initialized():
-                ray.init(address=self._ray_address, ignore_reinit_error=True)
+                runtime_env = {
+                    "env_vars": {
+                        "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
+                    },
+                }
+                ray.init(
+                    address=self._ray_address,
+                    ignore_reinit_error=True,
+                    runtime_env=runtime_env,
+                )
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(

@@ -17,15 +17,20 @@ from nemo_retriever.retriever import Retriever
 logger = logging.getLogger(__name__)
 
 DEFAULT_BEIR_KS: tuple[int, ...] = (1, 3, 5, 10)
-VALID_BEIR_LOADERS: frozenset[str] = frozenset({"bo10k_csv", "bo767_csv", "vidore_hf"})
+VALID_BEIR_LOADERS: frozenset[str] = frozenset(
+    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "vidore_hf"}
+)
 VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
     {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 )
 REPO_ROOT = Path(__file__).resolve().parents[4]
 BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_annotations.csv"
 BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.csv"
+EARNINGS_ANNOTATIONS_PATH = REPO_ROOT / "data" / "earnings_consulting_multimodal.csv"
+FINANCEBENCH_ANNOTATIONS_PATH = REPO_ROOT / "data" / "financebench_train.json"
 _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "caption": "image",
+    "chart": "chart",
     "chart_caption": "chart",
     "figure": "image",
     "image": "image",
@@ -86,7 +91,7 @@ def _normalize_pdf_basename(value: Any) -> str:
         return ""
     path = Path(text)
     basename = path.name if path.name else text
-    return basename[:-4] if basename.lower().endswith(".pdf") else Path(basename).stem
+    return basename[:-4] if basename.lower().endswith(".pdf") else basename
 
 
 def _parse_mapping(value: Any) -> dict[str, Any]:
@@ -156,8 +161,24 @@ def _resolve_annotations_csv_path(dataset_name: str, *, loader_name: str) -> Pat
         return BO767_ANNOTATIONS_PATH
     if loader_name == "bo10k_csv" and dataset_str.lower() == "bo10k":
         return BO10K_ANNOTATIONS_PATH
+    if loader_name == "earnings_csv" and dataset_str.lower() == "earnings":
+        return EARNINGS_ANNOTATIONS_PATH
     raise ValueError(
         f"{loader_name} expects dataset_name='{dataset_str.lower()}' or a path to a CSV file, got {dataset_name!r}"
+    )
+
+
+def _resolve_annotations_json_path(dataset_name: str, *, loader_name: str) -> Path:
+    dataset_str = str(dataset_name).strip()
+    candidate = Path(dataset_str).expanduser()
+    if candidate.suffix.lower() == ".json":
+        if not candidate.is_absolute():
+            candidate = (REPO_ROOT / candidate).resolve()
+        return candidate
+    if loader_name == "financebench_json" and dataset_str.lower() == "financebench":
+        return FINANCEBENCH_ANNOTATIONS_PATH
+    raise ValueError(
+        f"{loader_name} expects dataset_name='financebench' or a path to a JSON file, got {dataset_name!r}"
     )
 
 
@@ -190,18 +211,23 @@ def _load_annotations_csv_dataset(*, dataset_name: str, doc_id_field: str, loade
     with dataset_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         for idx, row in enumerate(reader):
-            query_text = str(row.get("query") or "").strip()
+            query_text = str(row.get("query") or "")
             pdf_basename = _normalize_pdf_basename(row.get("pdf"))
             modality = _normalize_element_type(row.get("modality"))
             raw_page = row.get("page")
 
-            if not query_text or not pdf_basename or modality is None:
+            if not query_text.strip() or not pdf_basename:
                 continue
 
             try:
                 page_number = int(raw_page) + 1
             except (TypeError, ValueError):
                 continue
+
+            if doc_id_field == "pdf_page_modality" and modality is None:
+                continue
+            if modality is None:
+                modality = "text"
 
             query_id = str(row.get("query_id") or idx)
             corpus_id = _build_csv_corpus_id(
@@ -216,7 +242,59 @@ def _load_annotations_csv_dataset(*, dataset_name: str, doc_id_field: str, loade
             qrels[query_id] = {corpus_id: 1}
 
     if not query_ids:
-        raise ValueError(f"No BO767 queries loaded from {dataset_path}")
+        raise ValueError(f"No queries loaded from {dataset_path}")
+
+    return BeirDataset(
+        dataset_name=str(dataset_name),
+        query_ids=query_ids,
+        queries=queries,
+        qrels=qrels,
+    )
+
+
+def _load_financebench_json_dataset(*, dataset_name: str, doc_id_field: str) -> BeirDataset:
+    if doc_id_field != "pdf_basename":
+        raise ValueError(f"financebench_json only supports doc_id_field='pdf_basename', got {doc_id_field!r}")
+
+    dataset_path = _resolve_annotations_json_path(dataset_name, loader_name="financebench_json")
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Annotations JSON not found: {dataset_path}")
+
+    payload = json.loads(dataset_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"financebench_json expects a JSON list in {dataset_path}")
+
+    query_ids: list[str] = []
+    queries: list[str] = []
+    qrels: dict[str, dict[str, int]] = {}
+
+    for idx, item in enumerate(payload):
+        if not isinstance(item, dict):
+            continue
+
+        query_text = item.get("question")
+        if not isinstance(query_text, str) or not query_text.strip():
+            continue
+
+        contexts = item.get("contexts")
+        if not isinstance(contexts, list) or not contexts:
+            continue
+
+        first_context = contexts[0]
+        if not isinstance(first_context, dict):
+            continue
+
+        corpus_id = _normalize_pdf_basename(first_context.get("filename"))
+        if not corpus_id:
+            continue
+
+        query_id = str(item.get("id") or idx)
+        query_ids.append(query_id)
+        queries.append(query_text)
+        qrels[query_id] = {corpus_id: 1}
+
+    if not query_ids:
+        raise ValueError(f"No queries loaded from {dataset_path}")
 
     return BeirDataset(
         dataset_name=str(dataset_name),
@@ -284,11 +362,16 @@ def load_beir_dataset(
 ) -> BeirDataset:
     """Load a BEIR-style dataset for evaluation."""
     loader_name = str(loader).strip().lower()
-    if loader_name in {"bo767_csv", "bo10k_csv"}:
+    if loader_name in {"bo767_csv", "bo10k_csv", "earnings_csv"}:
         return _load_annotations_csv_dataset(
             dataset_name=dataset_name,
             doc_id_field=str(doc_id_field),
             loader_name=loader_name,
+        )
+    if loader_name == "financebench_json":
+        return _load_financebench_json_dataset(
+            dataset_name=dataset_name,
+            doc_id_field=str(doc_id_field),
         )
     if loader_name != "vidore_hf":
         raise ValueError(f"Unsupported BEIR loader: {loader}")

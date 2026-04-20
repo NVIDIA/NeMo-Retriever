@@ -8,12 +8,19 @@ from typing import Any
 
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.page_elements.shared import detect_page_elements_v3
+from nemo_retriever.graph.designer import designer_component
 
 __all__ = [
     "detect_page_elements_v3",
 ]
 
 
+@designer_component(
+    name="Page Element Detection (CPU)",
+    category="Detection & OCR",
+    compute="cpu",
+    description="Detects page elements using CPU inference",
+)
 class PageElementDetectionActor(ArchetypeOperator):
     """Graph-facing page element detection archetype."""
 
