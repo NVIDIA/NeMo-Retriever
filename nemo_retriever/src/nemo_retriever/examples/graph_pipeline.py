@@ -181,8 +181,8 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     if exts is None:
         raise typer.BadParameter(f"Unsupported --input-type: {input_type!r}")
 
-    patterns = [str(input_path / ext) for ext in exts]
-    matched = [p for p in patterns if _glob.glob(p)]
+    patterns = [str(input_path / "**" / ext) for ext in exts]
+    matched = [p for p in patterns if _glob.glob(p, recursive=True)]
     if not matched:
         raise typer.BadParameter(f"No files found for input_type={input_type!r} in {input_path}")
     return matched

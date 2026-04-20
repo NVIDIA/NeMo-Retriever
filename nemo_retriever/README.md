@@ -34,11 +34,14 @@ Before installing NeMo Retriever Library, create an isolated Python environment 
 In your terminal, run the following commands from any location.
 
 ```bash
+uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
 uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
 ```
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
+
+> **Note:** `uv python install 3.12` installs a uv-managed Python that includes development headers (`Python.h`). These headers are required by vLLM, which compiles CUDA kernels at runtime using torch inductor. If you skip this step and use a system Python without headers, vLLM actor initialization will fail with `InductorError: fatal error: Python.h: No such file or directory`.
 
 2. Install CUDA 13 builds of Torch and Torchvision
 
