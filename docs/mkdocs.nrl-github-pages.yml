@@ -71,7 +71,6 @@ nav:
           - Prerequisites: extraction/prerequisites.md
           - "Hardware and support matrix": extraction/support-matrix.md
           - "Quickstart: NeMo Retriever Library (local)": extraction/quickstart-library-mode.md
-          - "Quickstart: Kubernetes (Helm)": extraction/helm.md
           - "Deploy (Docker Compose)": extraction/quickstart-guide.md
           - "Authentication and API keys": extraction/ngc-api-key.md
       - "3. Choose your deployment":
