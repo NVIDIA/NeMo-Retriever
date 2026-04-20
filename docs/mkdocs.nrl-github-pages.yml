@@ -65,7 +65,7 @@ nav:
           - Key features: extraction/key-features.md
           - Key concepts: extraction/concepts.md
           - How to use this documentation: extraction/how-to-use-this-documentation.md
-          - Release notes: extraction/releasenotes-nv-ingest.md
+          - Release notes: extraction/releasenotes.md
       - "2. Get started":
           - About this section: extraction/getting-started-about.md
           - Prerequisites: extraction/prerequisites.md
