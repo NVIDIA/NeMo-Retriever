@@ -352,6 +352,10 @@ def main(
         ):
             logger.warning("Remote endpoint URL(s) were configured without an API key.")
 
+        if reranker_invoke_url and not reranker:
+            logger.info("Enabling --reranker because --reranker-invoke-url was provided.")
+            reranker = True
+
         # Zero out GPU fractions when a remote URL replaces the local model
         if page_elements_invoke_url and float(page_elements_gpus_per_actor or 0.0) != 0.0:
             logger.warning("Forcing page-elements GPUs to 0.0 because --page-elements-invoke-url is set.")
