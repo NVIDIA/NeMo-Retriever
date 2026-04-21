@@ -248,6 +248,8 @@ class RayDataExecutor(AbstractExecutor):
             for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
                 if os.environ.get(_fwd_key):
                     ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+            if "HF_HUB_OFFLINE" not in os.environ:
+                ray_env_vars["HF_HUB_OFFLINE"] = "1"
             runtime_env = {"env_vars": ray_env_vars}
             ray.init(
                 address=self._ray_address,
