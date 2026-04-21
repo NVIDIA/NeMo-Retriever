@@ -122,6 +122,15 @@ benchmarks = [
 llm = [
   "litellm>=1.40.0",
 ]
+
+# ── MCP (Model Context Protocol) server ──────────────────────────────────────
+# Install this if you want to run ``retriever mcp serve``, which exposes
+# ``Retriever.answer`` as an MCP tool over stdio for agent runtimes like
+# Cursor, Claude Desktop, Cline, etc.  The CLI subcommand itself is always
+# present; it only requires this extra at invocation time.
+mcp = [
+  "mcp>=1.0",
+]
 dev = [
   "build>=1.2.2",
   "pytest>=8.0.2",

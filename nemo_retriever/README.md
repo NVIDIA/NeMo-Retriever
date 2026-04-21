@@ -350,6 +350,119 @@ Scoring tiers on `AnswerResult`:
 
 If only `reference` is supplied, Tier 1 + 2 run. If only `judge` is supplied (without `reference`), a `ValueError` is raised. On generation error, scoring and judge are skipped and `AnswerResult.error` is populated.
 
+### Live RAG from the shell (`retriever answer`)
+
+The same `Retriever.answer()` pipeline is exposed as a single Typer command for scripts, CI jobs, and agents that prefer stdin/stdout over Python imports. Same inputs, same semantics, machine-readable output.
+
+**Install extras.** The CLI subcommand itself ships in the core package; the pieces it orchestrates require extras based on how you run inference:
+
+| Scenario | Install |
+| --- | --- |
+| Remote NIMs for embedding, rerank, and generation (recommended) | `uv sync --extra llm` |
+| Local GPU embedder/reranker (e.g. omitting `--embedding-endpoint`) | `uv sync --extra llm --extra local` |
+| `retriever mcp serve` (see below) | add `--extra mcp` |
+
+Passing `--embedder` without `--embedding-endpoint` falls back to a local HuggingFace embedder, which requires the `[local]` extra (pulls in `torch`, `transformers`, etc.). If you see `ModuleNotFoundError: No module named 'torch'`, either install `[local]` or point the CLI at a remote endpoint with `--embedding-endpoint https://integrate.api.nvidia.com/v1 --embedding-api-key $NVIDIA_API_KEY`.
+
+```bash
+retriever answer "What is RAG?" \
+  --lancedb-uri ./lancedb \
+  --embedder nvidia/llama-nemotron-embed-vl-1b-v2 \
+  --embedding-endpoint https://integrate.api.nvidia.com/v1 \
+  --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --api-base https://integrate.api.nvidia.com/v1 \
+  --top-k 5
+```
+
+`--embedding-api-key` and `--api-key` default to the `NVIDIA_API_KEY` environment variable, so `export NVIDIA_API_KEY=nvapi-...` once and both calls pick it up.
+
+One-shot ingest + answer -- useful for ad-hoc questions against a PDF you do not want to persist. Without `--lancedb-uri`, a temporary LanceDB directory is created and cleaned up on exit (pass `--keep-ingest` to preserve it):
+
+```bash
+retriever answer "What is the project's license?" \
+  --ingest README.pdf \
+  --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
+```
+
+With scoring + judge, piping JSON to `jq`:
+
+```bash
+retriever answer "What is RAG?" \
+  --lancedb-uri ./lancedb \
+  --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --reference "RAG combines retrieved context with LLM generation." \
+  --judge-model nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1 \
+  --min-judge-score 4 \
+  --json - --quiet | jq '{answer, judge_score, failure_mode}'
+```
+
+JSON schema (`--json -` or `--json path.json`) is `dataclasses.asdict(AnswerResult)`:
+
+| Field | Type | When populated |
+| --- | --- | --- |
+| `query` | `string` | Always. |
+| `answer` | `string` | Always (empty string on generation error). |
+| `chunks` | `list[string]` | Always. |
+| `metadata` | `list[object]` | Always, aligned with `chunks`. |
+| `model` | `string` | Always. |
+| `latency_s` | `number` | Always. |
+| `error` | `string \| null` | Non-null when generation failed. |
+| `judge_score` | `integer(1-5) \| null` | `--judge-model` + `--reference`. |
+| `judge_reasoning` | `string \| null` | Same as above. |
+| `judge_error` | `string \| null` | When the judge call itself failed. |
+| `token_f1` | `number(0-1) \| null` | `--reference`. |
+| `exact_match` | `boolean \| null` | `--reference`. |
+| `answer_in_context` | `boolean \| null` | `--reference`. |
+| `failure_mode` | `string \| null` | `--reference`; values: `correct`, `partial`, `retrieval_miss`, `generation_miss`, `refused_*`, `thinking_truncated`. |
+
+Exit codes (stable contract for agents and CI):
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success; answer generated and (if `--min-judge-score` was set) threshold met. |
+| `2` | Answered but `judge_score < --min-judge-score`. |
+| `3` | Retrieval returned zero chunks; no answer generated. |
+| `4` | Usage error (missing `--model`, `--judge-model` without `--reference`, etc.). |
+| `5` | Generation failed (`AnswerResult.error` populated). |
+
+### MCP server (`retriever mcp serve`)
+
+Agent runtimes -- Cursor, Claude Desktop, Cline, Aider, etc. -- can call `Retriever.answer` directly over stdio via the Model Context Protocol. Install the optional extra once:
+
+```bash
+uv pip install "nemo-retriever[llm,mcp]"
+```
+
+Then register the server in your runtime's `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "nemo-retriever": {
+      "command": "retriever",
+      "args": [
+        "mcp", "serve",
+        "--lancedb-uri", "/path/to/lancedb",
+        "--model", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+      ],
+      "env": {
+        "NVIDIA_API_KEY": "nvapi-..."
+      }
+    }
+  }
+}
+```
+
+The server exposes a single tool, `answer`, whose input schema is:
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `question` | `string` | yes | Natural-language query. |
+| `top_k` | `integer` | no | Overrides the server's `--top-k` default. |
+| `reference` | `string` | no | Ground-truth for token-F1 / exact-match scoring (judge is not enabled on the MCP path). |
+
+Each tool call returns a single text content block containing the JSON-serialised `AnswerResult` described in the table above; agents should `json.loads` the `text` field to get structured fields back.
+
 ### Ingest other types of content:
 
 For PowerPoint and Docx files, ensure libeoffice is installed by your system's package manager. This is required to make their pages renderable as images for our [page-elements content classifier](https://huggingface.co/nvidia/nemotron-page-elements-v3).

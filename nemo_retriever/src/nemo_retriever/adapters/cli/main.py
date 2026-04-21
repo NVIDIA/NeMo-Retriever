@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import typer
 
+from nemo_retriever.answer_cli import answer_command
 from nemo_retriever.audio import app as audio_app
 from nemo_retriever.utils.benchmark import app as benchmark_app
 from nemo_retriever.chart import app as chart_app
@@ -15,6 +16,7 @@ from nemo_retriever.harness import app as harness_app
 from nemo_retriever.html import __main__ as html_main
 from nemo_retriever.utils.image import app as image_app
 from nemo_retriever.local import app as local_app
+from nemo_retriever.mcp_server import serve_command as mcp_serve_command
 from nemo_retriever.pdf import app as pdf_app
 from nemo_retriever.pipeline import __main__ as pipeline_main
 from nemo_retriever.recall import app as recall_app
@@ -37,6 +39,14 @@ app.add_typer(recall_app, name="recall")
 app.add_typer(txt_main.app, name="txt")
 app.add_typer(html_main.app, name="html")
 app.add_typer(pipeline_main.app, name="pipeline")
+
+# Single-command ``retriever answer`` -- see nemo_retriever.answer_cli.
+app.command(name="answer", help="Single-query live RAG: retrieve, generate, score, judge.")(answer_command)
+
+# Nested ``retriever mcp serve`` -- see nemo_retriever.mcp_server.
+_mcp_app = typer.Typer(help="MCP (Model Context Protocol) server for Retriever.")
+_mcp_app.command(name="serve", help="Serve Retriever.answer() as an MCP tool over stdio.")(mcp_serve_command)
+app.add_typer(_mcp_app, name="mcp")
 
 
 def _version_callback(value: bool) -> None:
