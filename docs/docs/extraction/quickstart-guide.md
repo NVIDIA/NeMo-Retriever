@@ -436,17 +436,7 @@ The default [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/
 
 For RTX Pro 6000 Server Edition and other GPUs with limited VRAM, use the override that best matches your GPU memory (for example, `docker-compose.l40s.yaml` or `docker-compose.a10g.yaml`).
 
-### Example: Using the VLM Profile for Infographic Captioning
-
-Infographics often combine text, charts, and diagrams into complex visuals. Vision-language model (VLM) captioning generates natural language descriptions that capture this complexity, making the content searchable and more accessible for downstream applications.
-
-To use VLM captioning for infographics, start NeMo Retriever Library with both the `retrieval` and `vlm` profiles by running the following code.
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  --profile retrieval \
-  --profile vlm up
-```
+For the VLM profile and infographic captioning, see the example under [Profile Information](#profile-information) (add `-f docker-compose.<override>.yaml` as needed when using an override file).
 
 ### Example with A100 40GB
 
@@ -480,7 +470,7 @@ docker compose \
 
 ## Specify MIG slices for NIM models
 
-When you deploy the pipeline with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/NeMo-Retriever/main/helm/README.md).
+When you deploy the pipeline with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NIM pods to land only on nodes that expose the desired MIG profiles (see the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)).
 
 To target a specific MIG profile—for example, a 3g.20gb slice on an A100, which is a hardware-partitioned virtual GPU instance that gives your workload a fixed mid-sized share of the A100’s compute plus 20 GB of dedicated GPU memory and behaves like a smaller independent GPU—for a given NIM, configure the `resources` and `nodeSelector` under that NIM’s values path in `values.yaml`.
 
