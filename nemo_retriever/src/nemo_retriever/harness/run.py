@@ -375,7 +375,7 @@ def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
 
 def _build_command(
     cfg: HarnessConfig, artifact_dir: Path, run_id: str
-) -> tuple[list[str], Path, Path, Path | None, Path, dict[str, str]]:
+) -> tuple[list[str], Path, Path, Path | None, dict[str, str]]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if cfg.write_detection_file:
