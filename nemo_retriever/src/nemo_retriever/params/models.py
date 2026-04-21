@@ -40,7 +40,7 @@ class _ParamsModel(BaseModel):
 
 
 class RemoteRetryParams(_ParamsModel):
-    remote_max_pool_workers: int = 8
+    remote_max_pool_workers: int = 32
     remote_max_retries: int = 5
     remote_max_429_retries: int = 3
 
@@ -257,6 +257,8 @@ class EmbedParams(_ParamsModel):
     has_embedding_column: str = "text_embeddings_1b_v2_has_embedding"
     embed_output_column: str = "text_embeddings_1b_v2"
     embed_inference_batch_size: int = 16
+    # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
+    nim_http_max_concurrent: int = 32
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
