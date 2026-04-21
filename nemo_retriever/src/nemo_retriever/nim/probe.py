@@ -49,7 +49,11 @@ def probe_endpoint(
         elapsed_ms = (time.perf_counter() - t0) * 1000
         logger.info(
             "%s: %s endpoint %s responded %d in %.0fms",
-            prefix, name, health_url, resp.status_code, elapsed_ms,
+            prefix,
+            name,
+            health_url,
+            resp.status_code,
+            elapsed_ms,
         )
         if resp.ok:
             return
@@ -57,14 +61,18 @@ def probe_endpoint(
         logger.warning(
             "%s: %s endpoint %s is UNREACHABLE (connection refused). "
             "Processing will stall until this endpoint becomes available.",
-            prefix, name, health_url,
+            prefix,
+            name,
+            health_url,
         )
         return
     except requests.Timeout:
         logger.warning(
-            "%s: %s endpoint %s timed out after %.1fs. "
-            "The endpoint may be overloaded or not ready.",
-            prefix, name, health_url, timeout,
+            "%s: %s endpoint %s timed out after %.1fs. " "The endpoint may be overloaded or not ready.",
+            prefix,
+            name,
+            health_url,
+            timeout,
         )
         return
     except Exception as exc:
@@ -92,7 +100,11 @@ def probe_endpoint(
         elapsed_ms = (time.perf_counter() - t0) * 1000
         logger.info(
             "%s: %s endpoint %s responded %d in %.0fms",
-            prefix, name, target, resp.status_code, elapsed_ms,
+            prefix,
+            name,
+            target,
+            resp.status_code,
+            elapsed_ms,
         )
         if resp.status_code in (401, 403):
             raise RuntimeError(
@@ -104,12 +116,17 @@ def probe_endpoint(
     except requests.ConnectionError:
         logger.warning(
             "%s: %s endpoint %s is UNREACHABLE (connection refused).",
-            prefix, name, target,
+            prefix,
+            name,
+            target,
         )
     except requests.Timeout:
         logger.warning(
             "%s: %s endpoint %s timed out after %.1fs.",
-            prefix, name, target, timeout,
+            prefix,
+            name,
+            target,
+            timeout,
         )
     except Exception as exc:
         logger.debug("%s: %s endpoint probe %s failed: %s", prefix, name, target, exc)

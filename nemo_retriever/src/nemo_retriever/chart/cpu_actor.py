@@ -67,7 +67,12 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
             self._graphic_elements_invoke_url,
             self._ocr_invoke_url,
         )
-        probe_endpoint(self._graphic_elements_invoke_url, name="graphic-elements", prefix="GraphicElementsCPUActor", api_key=self._api_key)
+        probe_endpoint(
+            self._graphic_elements_invoke_url,
+            name="graphic-elements",
+            prefix="GraphicElementsCPUActor",
+            api_key=self._api_key,
+        )
         probe_endpoint(self._ocr_invoke_url, name="ocr", prefix="GraphicElementsCPUActor", api_key=self._api_key)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

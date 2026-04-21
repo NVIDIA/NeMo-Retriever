@@ -69,7 +69,12 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
             self._table_structure_invoke_url,
             self._ocr_invoke_url,
         )
-        probe_endpoint(self._table_structure_invoke_url, name="table-structure", prefix="TableStructureCPUActor", api_key=self._api_key)
+        probe_endpoint(
+            self._table_structure_invoke_url,
+            name="table-structure",
+            prefix="TableStructureCPUActor",
+            api_key=self._api_key,
+        )
         probe_endpoint(self._ocr_invoke_url, name="ocr", prefix="TableStructureCPUActor", api_key=self._api_key)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
