@@ -9,25 +9,30 @@ from typing import Any
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.ocr.shared import _error_payload
-from nemo_retriever.ocr.shared import ocr_page_elements
+from nemo_retriever.ocr.shared import Image, _error_payload, ocr_page_elements
 
 
-class OCRCPUActor(AbstractOperator, CPUOperator):
-    """CPU-only variant of :class:`OCRActor`."""
+class OCRV2Actor(AbstractOperator, GPUOperator):
+    """Ray-friendly callable that initializes Nemotron OCR v2 once per actor.
 
-    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    Identical interface to :class:`OCRActor` but loads the v2 model
+    (multilingual, higher throughput).  The v2 model supports English,
+    Chinese (Simplified & Traditional), Japanese, Korean, and Russian.
+    """
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
+        import warnings
+
+        if Image is not None:
+            warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
+
         self.ocr_kwargs = dict(ocr_kwargs)
-        invoke_url = str(
-            self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or self.DEFAULT_INVOKE_URL
-        ).strip()
-        if "invoke_url" not in self.ocr_kwargs:
+        invoke_url = str(self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or "").strip()
+        if invoke_url and "invoke_url" not in self.ocr_kwargs:
             self.ocr_kwargs["invoke_url"] = invoke_url
 
         self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
@@ -44,10 +49,16 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
             remote_max_retries=int(self.ocr_kwargs.get("remote_max_retries", 10)),
             remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
         )
-        self._model = None
-        self._nim_client = NIMClient(
-            max_pool_workers=int(self._remote_retry.remote_max_pool_workers),
-        )
+        if invoke_url:
+            self._model = None
+            self._nim_client = NIMClient(
+                max_pool_workers=int(self._remote_retry.remote_max_pool_workers),
+            )
+        else:
+            from nemo_retriever.model.local import NemotronOCRV2
+
+            self._model = NemotronOCRV2()
+            self._nim_client = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -71,11 +82,11 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
         except BaseException as exc:
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
-                payload = _error_payload(stage="cpu_actor_call", exc=exc)
+                payload = _error_payload(stage="actor_call", exc=exc)
                 n = len(out.index)
                 out["table"] = [[] for _ in range(n)]
                 out["chart"] = [[] for _ in range(n)]
                 out["infographic"] = [[] for _ in range(n)]
                 out["ocr"] = [payload for _ in range(n)]
                 return out
-            return [{"ocr": _error_payload(stage="cpu_actor_call", exc=exc)}]
+            return [{"ocr": _error_payload(stage="actor_call", exc=exc)}]

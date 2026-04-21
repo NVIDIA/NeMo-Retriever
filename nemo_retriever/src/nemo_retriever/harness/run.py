@@ -375,14 +375,13 @@ def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
 
 def _build_command(
     cfg: HarnessConfig, artifact_dir: Path, run_id: str
-) -> tuple[list[str], Path, Path, Path | None, Path, dict[str, str]]:
+) -> tuple[list[str], Path, Path, Path | None, dict[str, str]]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if cfg.write_detection_file:
         detection_summary_file = artifact_dir / "detection_summary.json"
     else:
         detection_summary_file = runtime_dir / ".detection_summary.json"
-    metrics_output_file = runtime_dir / f"{run_id}.metrics.json"
     effective_query_csv: Path | None = None
 
     cmd = [
@@ -524,7 +523,7 @@ def _build_command(
             cmd += ["--store-text"]
         cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
 
-    return cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra
+    return cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra
 
 
 def _evaluate_run_outcome(
@@ -701,9 +700,7 @@ def _run_single(
     tags: list[str] | None = None,
     skip_local_history: bool = False,
 ) -> dict[str, Any]:
-    cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra = _build_command(
-        cfg, artifact_dir, run_id
-    )
+    cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra = _build_command(cfg, artifact_dir, run_id)
 
     lancedb_path = Path(_resolve_lancedb_uri(cfg, artifact_dir))
     if lancedb_path.is_dir():
@@ -865,7 +862,19 @@ try:
 
     ray.shutdown()
 
-    runtime_env = {"env_vars": {"VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable))}}
+    venv = os.path.dirname(os.path.dirname(sys.executable))
+    venv_bin = os.path.join(venv, "bin")
+    pypath = os.pathsep.join(p for p in sys.path if p)
+    ray_env_vars: dict[str, str] = {
+        "VIRTUAL_ENV": venv,
+        "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+        "PYTHONPATH": pypath,
+    }
+    for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+        if os.environ.get(_fwd_key):
+            ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+    ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+    runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:
         os.environ.pop("RAY_ADDRESS", None)

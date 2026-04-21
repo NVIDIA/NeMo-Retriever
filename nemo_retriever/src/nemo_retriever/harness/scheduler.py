@@ -36,7 +36,6 @@ def match_runner(
     min_memory_gb: float | None = None,
     preferred_runner_id: int | None = None,
     preferred_runner_ids: list[int] | None = None,
-    dataset_name: str | None = None,
 ) -> dict[str, Any] | None:
     """Find the best matching online runner for the given resource requirements.
 
@@ -52,12 +51,6 @@ def match_runner(
     runners = history.get_runners()
     online = [r for r in runners if r.get("status") == "online"]
 
-    allowed_runner_ids: set[int] | None = None
-    if dataset_name:
-        ids = history.get_runner_ids_for_dataset_name(dataset_name)
-        if ids is not None:
-            allowed_runner_ids = set(ids)
-
     pref_set: set[int] | None = None
     if preferred_runner_ids:
         pref_set = set(preferred_runner_ids)
@@ -65,13 +58,7 @@ def match_runner(
         pref_set = {preferred_runner_id}
 
     if pref_set:
-        pref_candidates = []
-        for r in online:
-            if r["id"] not in pref_set:
-                continue
-            if allowed_runner_ids is not None and r["id"] not in allowed_runner_ids:
-                continue
-            pref_candidates.append(r)
+        pref_candidates = [r for r in online if r["id"] in pref_set]
         if pref_candidates:
             pref_candidates.sort(key=lambda r: r.get("id", 0))
             chosen = pref_candidates[_round_robin_index % len(pref_candidates)]
@@ -80,8 +67,6 @@ def match_runner(
 
     candidates = []
     for r in online:
-        if allowed_runner_ids is not None and r["id"] not in allowed_runner_ids:
-            continue
         if min_gpu_count and (r.get("gpu_count") or 0) < min_gpu_count:
             continue
         if gpu_type_pattern and gpu_type_pattern.lower() not in (r.get("gpu_type") or "").lower():
@@ -101,8 +86,15 @@ def match_runner(
     return chosen
 
 
-def _resolve_dataset_config(dataset_name: str) -> tuple[str | None, dict[str, Any] | None]:
-    """Look up the filesystem path and full config overrides for a dataset."""
+def _resolve_dataset_config(
+    dataset_name: str,
+) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """Look up the filesystem path, config overrides, and dataset meta for a dataset.
+
+    Returns ``(dataset_path, overrides, dataset_meta)`` where *dataset_meta*
+    is ``{"dataset_id": id, "dataset_config_hash": hash}`` for managed
+    datasets, or ``None`` otherwise.
+    """
     managed = history.get_dataset_by_name(dataset_name)
     if managed and managed.get("path"):
         overrides: dict[str, Any] = {"dataset_dir": managed["path"]}
@@ -116,9 +108,18 @@ def _resolve_dataset_config(dataset_name: str) -> tuple[str | None, dict[str, An
             overrides["recall_match_mode"] = managed["recall_match_mode"]
         if managed.get("recall_adapter"):
             overrides["recall_adapter"] = managed["recall_adapter"]
-        return managed["path"], overrides
 
-    return None, None
+        config_hash = managed.get("config_hash")
+        if not config_hash:
+            config_fields = {k: v for k, v in overrides.items() if k != "dataset_dir"}
+            config_hash = history.compute_dataset_hash(managed["path"], managed.get("query_csv"), config_fields)
+        dataset_meta = {
+            "dataset_id": managed["id"],
+            "dataset_config_hash": config_hash,
+        }
+        return managed["path"], overrides, dataset_meta
+
+    return None, None, None
 
 
 def _resolve_preset_overrides(preset_name: str | None) -> dict[str, Any]:
@@ -277,10 +278,9 @@ def _dispatch_schedule(
         min_memory_gb=schedule.get("min_memory_gb"),
         preferred_runner_id=schedule.get("preferred_runner_id"),
         preferred_runner_ids=schedule.get("preferred_runner_ids"),
-        dataset_name=schedule.get("dataset"),
     )
 
-    dataset_path, dataset_overrides = _resolve_dataset_config(schedule.get("dataset", ""))
+    dataset_path, dataset_overrides, dataset_meta = _resolve_dataset_config(schedule.get("dataset", ""))
     preset_overrides = _resolve_preset_overrides(schedule.get("preset"))
     merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
 
@@ -297,6 +297,9 @@ def _dispatch_schedule(
         "git_ref": git_ref,
         "tags": schedule.get("tags") or [],
     }
+    if dataset_meta:
+        job_data["dataset_id"] = dataset_meta["dataset_id"]
+        job_data["dataset_config_hash"] = dataset_meta["dataset_config_hash"]
 
     job = history.create_job(job_data)
     history.mark_schedule_triggered(schedule["id"])
@@ -362,7 +365,7 @@ def _dispatch_schedule_matrix(
     effective_gpu_type = matrix.get("gpu_type_filter") or schedule.get("gpu_type_pattern")
 
     for ds_name in dataset_names:
-        dataset_path, dataset_overrides = _resolve_dataset_config(ds_name)
+        dataset_path, dataset_overrides, dataset_meta = _resolve_dataset_config(ds_name)
 
         for pr_name in preset_names:
             runner = match_runner(
@@ -372,28 +375,30 @@ def _dispatch_schedule_matrix(
                 min_memory_gb=schedule.get("min_memory_gb"),
                 preferred_runner_id=effective_preferred_runner,
                 preferred_runner_ids=effective_preferred_runners or None,
-                dataset_name=ds_name,
             )
             preset_overrides = _resolve_preset_overrides(pr_name)
             merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
 
-            job = history.create_job(
-                {
-                    "schedule_id": schedule["id"],
-                    "trigger_source": trigger_source,
-                    "dataset": ds_name,
-                    "dataset_path": dataset_path,
-                    "dataset_overrides": merged_overrides if merged_overrides else None,
-                    "preset": pr_name,
-                    "config": schedule.get("config"),
-                    "assigned_runner_id": runner["id"] if runner else None,
-                    "git_commit": git_commit,
-                    "git_ref": git_ref,
-                    "tags": merged_tags,
-                    "matrix_run_id": matrix_run_id,
-                    "matrix_name": matrix_name,
-                }
-            )
+            sched_job_data: dict[str, Any] = {
+                "schedule_id": schedule["id"],
+                "trigger_source": trigger_source,
+                "dataset": ds_name,
+                "dataset_path": dataset_path,
+                "dataset_overrides": merged_overrides if merged_overrides else None,
+                "preset": pr_name,
+                "config": schedule.get("config"),
+                "assigned_runner_id": runner["id"] if runner else None,
+                "git_commit": git_commit,
+                "git_ref": git_ref,
+                "tags": merged_tags,
+                "matrix_run_id": matrix_run_id,
+                "matrix_name": matrix_name,
+            }
+            if dataset_meta:
+                sched_job_data["dataset_id"] = dataset_meta["dataset_id"]
+                sched_job_data["dataset_config_hash"] = dataset_meta["dataset_config_hash"]
+
+            job = history.create_job(sched_job_data)
             if first_job is None:
                 first_job = job
             logger.info(

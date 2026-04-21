@@ -308,6 +308,7 @@ def main(
         min=1,
         help="Batch size for local HF query embedding during retrieval/reranking.",
     ),
+    reranker_invoke_url: Optional[str] = typer.Option(None, "--reranker-invoke-url"),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -342,6 +343,7 @@ def main(
         extract_remote_api_key = remote_api_key
         embed_remote_api_key = remote_api_key
         caption_remote_api_key = remote_api_key
+        reranker_remote_api_key = remote_api_key
 
         # Warn if remote URLs configured without an API key
         if (
@@ -352,11 +354,16 @@ def main(
                     graphic_elements_invoke_url,
                     table_structure_invoke_url,
                     embed_invoke_url,
+                    reranker_invoke_url,
                 )
             )
             and remote_api_key is None
         ):
             logger.warning("Remote endpoint URL(s) were configured without an API key.")
+
+        if reranker_invoke_url and not reranker:
+            logger.info("Enabling --reranker because --reranker-invoke-url was provided.")
+            reranker = True
 
         # Zero out GPU fractions when a remote URL replaces the local model
         if page_elements_invoke_url and float(page_elements_gpus_per_actor or 0.0) != 0.0:
@@ -666,6 +673,8 @@ def main(
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
                 reranker_backend=reranker_backend,
+                reranker_endpoint=reranker_invoke_url,
+                reranker_api_key=reranker_remote_api_key or "",
                 local_hf_batch_size=int(local_hf_batch_size),
             )
             evaluation_start = time.perf_counter()
@@ -717,6 +726,8 @@ def main(
                 audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
                 reranker_backend=reranker_backend,
+                reranker_endpoint=reranker_invoke_url,
+                reranker_api_key=reranker_remote_api_key or "",
                 embed_modality=embed_modality,
                 local_hf_batch_size=int(local_hf_batch_size),
             )

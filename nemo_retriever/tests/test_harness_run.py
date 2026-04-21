@@ -121,9 +121,7 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
         query_csv=str(query_csv),
         write_detection_file=False,
     )
-    cmd, runtime_dir, detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, runtime_dir, detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
     assert "--run-mode" in cmd
     assert cmd[cmd.index("--run-mode") + 1] == "batch"
     assert "--detection-summary-file" in cmd
@@ -164,9 +162,7 @@ def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
         query_csv=str(query_csv),
         write_detection_file=False,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
     assert "--run-mode" in cmd
     assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
 
@@ -186,9 +182,7 @@ def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
     assert "--evaluation-mode" in cmd
     assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
     assert "--beir-loader" in cmd
@@ -217,9 +211,7 @@ def test_build_command_supports_bo767_beir_pdf_page_modality_doc_id_field(tmp_pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "bo767_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
@@ -245,9 +237,7 @@ def test_build_command_supports_bo10k_beir_pdf_page_modality_doc_id_field(tmp_pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "bo10k_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
@@ -273,9 +263,7 @@ def test_build_command_supports_earnings_beir_pdf_page_doc_id_field(tmp_path: Pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "earnings_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
@@ -301,9 +289,7 @@ def test_build_command_supports_financebench_beir_pdf_basename_doc_id_field(tmp_
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "financebench_json"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_json.resolve())
@@ -325,9 +311,7 @@ def test_build_command_uses_top_level_detection_file_when_enabled(tmp_path: Path
         query_csv=str(query_csv),
         write_detection_file=True,
     )
-    cmd, runtime_dir, detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, runtime_dir, detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
     assert "--detection-summary-file" in cmd
     assert detection_file.parent == tmp_path
     assert detection_file.name == "detection_summary.json"
@@ -350,9 +334,7 @@ def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: 
         extract_page_as_image=False,
         extract_infographics=True,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert "--no-extract-page-as-image" in cmd
     assert "--extract-page-as-image" not in cmd
@@ -378,9 +360,7 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
         query_csv=str(query_csv),
         recall_adapter="page_plus_one",
     )
-    cmd, runtime_dir, _detection_file, effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert effective_query_csv.parent == runtime_dir
     assert effective_query_csv.name == "query_adapter.page_plus_one.csv"
@@ -416,9 +396,7 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
         recall_match_mode="audio_segment",
         audio_match_tolerance_secs=3.25,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert "--input-type" in cmd
     assert cmd[cmd.index("--input-type") + 1] == "audio"
@@ -447,9 +425,7 @@ def test_build_command_omits_tuning_flags_when_use_heuristics(tmp_path: Path) ->
         query_csv=str(query_csv),
         use_heuristics=True,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
 
     assert "--pdf-extract-tasks" not in cmd
     assert "--pdf-extract-cpus-per-task" not in cmd
@@ -512,7 +488,6 @@ def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> 
             runtime_dir,
             runtime_dir / ".detection_summary.json",
             query_csv,
-            runtime_dir / "r1.metrics.json",
             {},
         ),
     )
@@ -767,7 +742,6 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             runtime_dir,
             detection_file,
             query_csv,
-            runtime_dir / "jp20_single.metrics.json",
             {},
         ),
     )
@@ -919,7 +893,6 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
             runtime_dir,
             detection_file,
             query_csv,
-            runtime_dir / "jp20_single.metrics.json",
             {},
         ),
     )
@@ -1029,9 +1002,7 @@ def test_build_command_includes_store_flags(tmp_path: Path) -> None:
         store_text=True,
         strip_base64=True,
     )
-    cmd, _runtime_dir, _detection_file, _query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, _query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
     assert "--store-images-uri" in cmd
     resolved = cmd[cmd.index("--store-images-uri") + 1]
     assert resolved == str((tmp_path / "stored_images").resolve())
@@ -1053,9 +1024,7 @@ def test_build_command_omits_store_when_uri_is_none(tmp_path: Path) -> None:
         query_csv=str(query_csv),
         store_images_uri=None,
     )
-    cmd, _runtime_dir, _detection_file, _query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, _query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
     assert "--store-images-uri" not in cmd
     assert "--store-text" not in cmd
     assert "--strip-base64" not in cmd
@@ -1077,9 +1046,7 @@ def test_build_command_store_no_strip_base64(tmp_path: Path) -> None:
         store_text=False,
         strip_base64=False,
     )
-    cmd, _runtime_dir, _detection_file, _query_csv, _metrics_file, _env_extra = _build_command(
-        cfg, tmp_path, run_id="r1"
-    )
+    cmd, _runtime_dir, _detection_file, _query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
     assert "--store-images-uri" in cmd
     assert cmd[cmd.index("--store-images-uri") + 1] == "/absolute/path/store"
     assert "--store-text" not in cmd

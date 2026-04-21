@@ -69,7 +69,7 @@ jobs:
           python -m nemo_retriever.examples.graph_pipeline ./data \
             --run-mode inprocess \
             --input-type pdf \
-            --api-key "${{ secrets.NVCF_API_KEY }}" \
+            --api-key "${{ secrets.NVIDIA_BUILD_API_KEY }}" \
             --page-elements-invoke-url "$PAGE_ELEMENTS_INVOKE_URL" \
             --ocr-invoke-url "$OCR_INVOKE_URL" \
             --use-graphic-elements \

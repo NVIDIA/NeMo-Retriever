@@ -534,7 +534,7 @@ def ocr_page_elements(
     -------
     pandas.DataFrame
         Original columns plus ``table``, ``chart``,
-        ``infographic``, and ``ocr_v1``.
+        ``infographic``, and ``ocr``.
     """
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("ocr_page_elements currently only supports pandas.DataFrame input.")
@@ -799,7 +799,7 @@ def ocr_page_elements(
                 out.iat[i, out.columns.get_loc("text")] = ocr_text
     elif extract_text:
         out["text"] = [t if t is not None else "" for t in all_text]
-    out["ocr_v1"] = all_ocr_meta
+    out["ocr"] = all_ocr_meta
     return out
 
 

@@ -50,4 +50,4 @@ Highlights for the 26.03 release include:
 - [Prerequisites](prerequisites.md)
 - [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
 - [Deploy With Docker Compose (Self-Hosted)](quickstart-guide.md)
-- [Deploy With Helm](helm.md)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)

@@ -17,7 +17,7 @@ NeMo Retriever Library is built for **accuracy**, **throughput**, and **flexible
 
 - **High throughput** — Parallel extraction, embedding, and indexing designed for large document corpora.
 - **Configurable pipelines** — Jobs are described as JSON; you choose tasks per payload rather than a single fixed pipeline.
-- **Deployment options** — [Library mode](quickstart-library-mode.md), [Helm](helm.md), and [notebooks](notebooks.md) for different environments.
+- **Deployment options** — [Library mode](quickstart-library-mode.md), [Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md), and [notebooks](notebooks.md) for different environments.
 
 ## Enterprise-oriented behavior
 
