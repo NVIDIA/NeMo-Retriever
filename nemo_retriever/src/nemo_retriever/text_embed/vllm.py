@@ -47,7 +47,7 @@ def create_vllm_llm(
     try:
         from vllm import LLM
     except ImportError as e:
-        raise RuntimeError("vLLM is not installed. Install with: uv pip install -e '.' or pip install -e '.'") from e
+        raise RuntimeError("vLLM is not installed. Install with: uv pip install -e '.[local]'") from e
 
     pooler_config = None
     try:
