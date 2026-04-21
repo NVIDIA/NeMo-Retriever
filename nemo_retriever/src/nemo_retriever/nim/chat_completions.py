@@ -103,10 +103,6 @@ def invoke_chat_completion_step(
 ) -> Dict[str, Any]:
     """Single synchronous tool-aware chat completion call.
 
-    Unlike :func:`invoke_chat_completions`, this function issues one request
-    and returns the **raw response JSON dict**.  The caller is responsible for
-    inspecting ``choices[0]["message"]``, ``tool_calls``, and ``finish_reason``.
-
     Parameters
     ----------
     invoke_url

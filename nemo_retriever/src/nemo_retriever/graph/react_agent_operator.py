@@ -393,6 +393,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         num_concurrent: int = 8,
         api_key: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        parallel_tool_calls: bool = True,
     ) -> None:
         super().__init__()
         self._invoke_url = invoke_url or self._NVIDIA_BUILD_ENDPOINT
@@ -407,6 +408,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._num_concurrent = num_concurrent
         self._api_key = api_key
         self._max_tokens = max_tokens
+        self._parallel_tool_calls = parallel_tool_calls
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -506,6 +508,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
         # ------ main ReAct loop ------
         for _step in range(self._max_steps):
+            logger.debug("query=%r loop_step=%d seen_docs=%d", query_id, _step, len(seen_doc_ids))
             try:
                 response = invoke_chat_completion_step(
                     invoke_url=self._invoke_url,
@@ -515,6 +518,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     tools=tools,
                     tool_choice="auto",
                     max_tokens=self._max_tokens,
+                    extra_body={"parallel_tool_calls": False} if not self._parallel_tool_calls else None,
                 )
             except Exception as exc:
                 logger.warning("ReActAgentOperator: LLM call failed on step %d for query %r: %s", _step, query_id, exc)
@@ -553,13 +557,16 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     continue
 
                 if fn_name == "think":
+                    logger.debug("query=%r step=%d [think] %s", query_id, _step, str(fn_args.get("thought", ""))[:120])
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Your thought has been logged."}
                     )
 
                 elif fn_name == "retrieve":
                     subquery = str(fn_args.get("query", query_text))
+                    logger.debug("query=%r step=%d [retrieve] subquery=%r", query_id, _step, subquery)
                     retrieved = self._call_retriever(subquery, seen_doc_ids, api_key)
+                    logger.debug("query=%r step=%d [retrieve] got %d new docs", query_id, _step, len(retrieved))
                     retrieval_log.append(retrieved)
                     step_counter += 1
                     for d in retrieved:
@@ -572,6 +579,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
                 elif fn_name == "final_results":
                     raw_ids: List[str] = fn_args.get("doc_ids", [])
+                    logger.debug("query=%r step=%d [final_results] doc_ids=%s", query_id, _step, raw_ids)
                     if isinstance(raw_ids, list) and raw_ids:
                         final_doc_ids = [str(d) for d in raw_ids]
                     tool_messages.append(

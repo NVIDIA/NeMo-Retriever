@@ -181,6 +181,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         extended_relevance: bool = False,
         system_prompt_override: Optional[str] = None,
         text_truncation: int = 2000,
+        parallel_tool_calls: bool = True,
         base_url: Optional[str] = None,
     ) -> None:
         super().__init__()
@@ -192,6 +193,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         self._extended_relevance = extended_relevance
         self._system_prompt_override = system_prompt_override
         self._text_truncation = text_truncation
+        self._parallel_tool_calls = parallel_tool_calls
 
         if invoke_url is not None:
             self._invoke_url = invoke_url
@@ -362,6 +364,10 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             self._build_user_message(query_text, docs),
         ]
 
+        extra_body: Dict[str, Any] = {}
+        if not self._parallel_tool_calls:
+            extra_body["parallel_tool_calls"] = False
+
         for _step in range(self._max_steps):
             response = invoke_chat_completion_step(
                 invoke_url=self._invoke_url,
@@ -371,6 +377,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 tools=tools,
                 tool_choice="auto",
                 max_tokens=self._max_tokens,
+                extra_body=extra_body or None,
             )
 
             choice = response["choices"][0]
@@ -416,7 +423,12 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     )
 
                 elif fn.get("name") == "log_selected_documents":
-                    doc_ids: List[str] = fn_args.get("doc_ids", [])
+                    doc_ids = fn_args.get("doc_ids", [])
+                    if isinstance(doc_ids, str):
+                        try:
+                            doc_ids = json.loads(doc_ids)
+                        except json.JSONDecodeError:
+                            doc_ids = []
                     doc_ids = [d for d in doc_ids if d in valid_id_set][:feasible_k]
                     end_kwargs = {"doc_ids": doc_ids, "message": fn_args.get("message", "")}
                     should_end = True
