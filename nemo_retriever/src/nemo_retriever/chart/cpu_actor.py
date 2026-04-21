@@ -9,61 +9,15 @@ import time
 from typing import Any, Optional
 
 import pandas as pd
-import requests
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.nim.nim import NIMClient
+from nemo_retriever.nim.probe import probe_endpoint
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.chart.shared import graphic_elements_ocr_page_elements
 
 logger = logging.getLogger(__name__)
-
-
-def _probe_endpoint(url: str, *, name: str, timeout: float = 5.0) -> None:
-    """Fire a lightweight request to verify the endpoint is reachable."""
-    import urllib.parse
-
-    parsed = urllib.parse.urlparse(url)
-    health_url = f"{parsed.scheme}://{parsed.netloc}/v1/health/ready"
-
-    for probe_url, method in [(health_url, "GET"), (url, "HEAD")]:
-        try:
-            t0 = time.perf_counter()
-            resp = requests.request(method, probe_url, timeout=timeout)
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            logger.info(
-                "GraphicElementsCPUActor: %s endpoint %s responded %d in %.0fms",
-                name,
-                probe_url,
-                resp.status_code,
-                elapsed_ms,
-            )
-            return
-        except requests.ConnectionError:
-            logger.warning(
-                "GraphicElementsCPUActor: %s endpoint %s is UNREACHABLE (connection refused). "
-                "Processing will stall until this endpoint becomes available.",
-                name,
-                probe_url,
-            )
-            return
-        except requests.Timeout:
-            logger.warning(
-                "GraphicElementsCPUActor: %s endpoint %s timed out after %.1fs. "
-                "The endpoint may be overloaded or not ready.",
-                name,
-                probe_url,
-                timeout,
-            )
-            return
-        except Exception as exc:
-            logger.debug(
-                "GraphicElementsCPUActor: %s endpoint probe %s failed: %s",
-                name,
-                probe_url,
-                exc,
-            )
 
 
 class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
@@ -113,8 +67,8 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
             self._graphic_elements_invoke_url,
             self._ocr_invoke_url,
         )
-        _probe_endpoint(self._graphic_elements_invoke_url, name="graphic-elements")
-        _probe_endpoint(self._ocr_invoke_url, name="ocr")
+        probe_endpoint(self._graphic_elements_invoke_url, name="graphic-elements", prefix="GraphicElementsCPUActor", api_key=self._api_key)
+        probe_endpoint(self._ocr_invoke_url, name="ocr", prefix="GraphicElementsCPUActor", api_key=self._api_key)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
