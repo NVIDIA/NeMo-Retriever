@@ -39,6 +39,8 @@ dependencies = [
   "fastapi>=0.114.0",
   "uvicorn[standard]>=0.30.0",
   "python-multipart>=0.0.9",
+  # MCP server for AI agent integration
+  "fastmcp>=2.0.0",
   # HTTP clients
   "httpx>=0.27.0",
   "requests>=2.32.5",

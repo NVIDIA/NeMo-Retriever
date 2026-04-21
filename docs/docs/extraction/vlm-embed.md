@@ -10,7 +10,7 @@ The model supports images that contain text, tables, charts, and infographics.
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 ## Configure and Run the Multimodal NIM
@@ -122,5 +122,5 @@ results = ingestor.ingest()
 
 - [Support Matrix](support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Use the Python API](nv-ingest-python-api.md)
-- [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images)
+- [Use the Python API](python-api-reference.md)
+- [Extract Captions from Images](python-api-reference.md#extract-captions-from-images)
