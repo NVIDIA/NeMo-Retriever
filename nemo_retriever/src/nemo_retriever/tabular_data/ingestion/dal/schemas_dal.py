@@ -38,16 +38,21 @@ def load_schema_from_graph(
     return schema
 
 
-def get_schemas_ids_and_names(db_id: str = None):
-    db_filter = " {id:$db_id}" if db_id else ""
+def get_schemas_ids_and_names(db_id: str = None, db_name: str = None):
+    if db_id:
+        db_filter = " {id:$db_id}"
+        params = {"db_id": db_id}
+    elif db_name:
+        db_filter = " {name:$db_name}"
+        params = {"db_name": db_name}
+    else:
+        db_filter = ""
+        params = {}
     query = f"""MATCH(db:{Labels.DB}{db_filter})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})
                 RETURN s.name as schema_name, s.id as schema_id
             """
     result = pd.DataFrame(
-        get_neo4j_conn().query_read(
-            query=query,
-            parameters={"db_id": db_id},
-        )
+        get_neo4j_conn().query_read(query=query, parameters=params)
     )
     return result.to_dict(orient="records")
 

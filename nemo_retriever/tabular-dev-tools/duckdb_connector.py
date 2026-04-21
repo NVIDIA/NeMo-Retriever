@@ -54,6 +54,7 @@ class DuckDB(SQLDatabase):
     def __init__(self, connection_string: str, *, read_only: bool = True) -> None:
         self.dialect = "duckdb"
         self.conn = duckdb.connect(database=connection_string, read_only=read_only)
+        self._connection_string = connection_string
         self._database_name: str = self.execute("SELECT current_database()").iloc[0, 0]
         logger.debug("DuckDB connected (database=%r, read_only=%s).", connection_string, read_only)
 
@@ -119,8 +120,14 @@ class DuckDB(SQLDatabase):
         )
 
     def get_queries(self) -> pd.DataFrame:
-        """DuckDB has no built-in query history — loads sample spider2-lite queries from CSV."""
-        csv_path = Path(__file__).parent / "sample_spider2_queries.csv"
+        """DuckDB has no built-in query history — loads sample queries from a CSV
+        whose name is derived from the database file (e.g. ``spider2.duckdb``
+        → ``sample_spider2_queries.csv``)."""
+        db_stem = Path(self._connection_string).stem
+        csv_path = Path(__file__).parent / f"sample_{db_stem}_queries.csv"
+        if not csv_path.exists():
+            logger.warning("No sample queries CSV found at %s; returning empty DataFrame.", csv_path)
+            return pd.DataFrame(columns=["query_text", "end_time"])
         df = pd.read_csv(csv_path)
         df["end_time"] = datetime.today()
         return df
