@@ -17,6 +17,7 @@ from .models import InfographicParams
 from .models import IngestExecuteParams
 from .models import IngestorCreateParams
 from .models import LanceDbParams
+from .models import LLMInferenceParams
 from .models import ModelRuntimeParams
 from .models import OcrParams
 from .models import PageElementsParams
@@ -46,6 +47,7 @@ __all__ = [
     "IngestExecuteParams",
     "IngestorCreateParams",
     "LanceDbParams",
+    "LLMInferenceParams",
     "ModelRuntimeParams",
     "OcrParams",
     "PageElementsParams",

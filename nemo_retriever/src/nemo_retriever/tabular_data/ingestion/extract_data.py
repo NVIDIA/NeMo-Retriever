@@ -30,11 +30,13 @@ def data_for_populate_tabular(connector: SQLDatabase):
     pks = normalize_pks(pks)
     fks = normalize_fks(fks)
     data = {
+        "database_name": connector.database_name,
         "tables": tables,
         "columns": columns,
         "views": views,
         "pks": pks,
         "fks": fks,
+        "queries": queries,
     }
     # queries is not used by populate_tabular_data(); include if needed elsewhere
     return data
@@ -49,18 +51,19 @@ def extract_tabular_db_data(params=None):
                 ``params.connector`` is ``None``, an empty data dict is returned.
 
     Returns:
-        data dict with keys: tables, columns, views, pks, fks.
+        data dict with keys: tables, columns, views, pks, fks, queries.
     """
     if params is None or params.connector is None:
         return {}
     return data_for_populate_tabular(params.connector)
 
 
-def store_relational_db_in_neo4j(data, num_workers: int = 4, dialect: str = "duckdb"):
+def store_relational_db_in_neo4j(data, dialect: str, num_workers: int = 4):
     """Step 2 — Write the extracted data dict as graph nodes into Neo4j.
 
     Args:
         data:       Data dict returned by extract_tabular_db_data().
+        dialect:    SQL dialect used by the connector (e.g. "sqlite", "duckdb", "snowflake").
         neo4j_conn: Active Neo4jConnectionManager instance (unused directly here;
                     populate_tabular_data uses its own DAL connection, but
                     accepted for API consistency with the other ingest steps).

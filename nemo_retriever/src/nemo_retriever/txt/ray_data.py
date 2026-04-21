@@ -15,11 +15,19 @@ import pandas as pd
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 from .split import txt_bytes_to_chunks_df
 
 
+@designer_component(
+    name="Text Chunker",
+    category="Text & Content",
+    compute="cpu",
+    description="Chunks text documents into smaller segments",
+    category_color="#42d6a4",
+)
 class TextChunkCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: re-chunk existing ``text`` column by token count.
@@ -53,6 +61,13 @@ class TextChunkCPUActor(AbstractOperator, CPUOperator):
         return self.run(batch_df)
 
 
+@designer_component(
+    name="Text Splitter",
+    category="Text & Content",
+    compute="cpu",
+    description="Splits raw text files for processing",
+    category_color="#42d6a4",
+)
 class TxtSplitCPUActor(AbstractOperator, CPUOperator):
     """
     Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of chunks.
