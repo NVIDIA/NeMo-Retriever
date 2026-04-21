@@ -16,7 +16,7 @@ name = "nemo-retriever"
 dynamic = ["version"]
 description = "A modern RAG ingestion pipeline from Nvidia"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 authors = [
   { name = "Jeremy Dyer", email = "jdyer@nvidia.com" },
 ]
