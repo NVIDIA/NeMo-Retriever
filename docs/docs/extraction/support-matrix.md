@@ -2,10 +2,6 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), ensure that you have the hardware for your use case.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 
 ## Core and Advanced Pipeline Features
 

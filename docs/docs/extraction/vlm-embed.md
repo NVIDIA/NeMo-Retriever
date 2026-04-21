@@ -8,10 +8,6 @@ The model can embed documents in the form of an image, text, or a combination of
 Documents can then be retrieved given a user query in text form. 
 The model supports images that contain text, tables, charts, and infographics.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 
 ## Configure and Run the Multimodal NIM
 

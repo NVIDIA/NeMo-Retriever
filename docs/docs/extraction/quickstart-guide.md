@@ -1,10 +1,5 @@
 # Deploy With Docker Compose (Self-Hosted) for NeMo Retriever Library
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 This guide helps you get started using [NeMo Retriever Library](overview.md) in self-hosted mode.
 
 

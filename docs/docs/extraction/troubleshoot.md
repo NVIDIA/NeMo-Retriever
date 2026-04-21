@@ -2,10 +2,6 @@
 
 Use this documentation to troubleshoot issues that arise when you use [NeMo Retriever Library](overview.md).
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 
 ## Can't process long, non-language text strings
 

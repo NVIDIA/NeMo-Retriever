@@ -2,10 +2,6 @@
 
 Use this documentation to learn how [NeMo Retriever Library](overview.md) handles and uploads data.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 
 ## Overview
 

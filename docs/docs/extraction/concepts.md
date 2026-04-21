@@ -1,10 +1,5 @@
 # Concepts
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 These terms appear throughout NeMo Retriever Library documentation.
 
 ## Job

@@ -1,10 +1,5 @@
 # Split Documents
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 Splitting, also known as chunking, breaks large documents or text into smaller, manageable sections to improve retrieval efficiency. 
 After chunking, only the most relevant pieces of information are retrieved for a given query. 
 Chunking also prevents text from exceeding the context window of the embedding model.

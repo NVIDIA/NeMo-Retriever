@@ -3,10 +3,6 @@
 The following are the environment variables that you can use to configure [NeMo Retriever Library](overview.md).
 You can specify these in your .env file or directly in your environment.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 
 ## General Environment Variables
 

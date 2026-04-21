@@ -1,10 +1,5 @@
 # About getting started
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 This section walks you from **access and prerequisites** through **first deployment** and **hands-on notebooks**.
 
 Typical order:

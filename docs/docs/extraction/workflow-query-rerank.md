@@ -1,10 +1,5 @@
 # Workflow: Query and rerank
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 After documents are [ingested](workflow-document-ingestion.md), [chunked](chunking.md), and [indexed](data-store.md), applications run retrieval (semantic and optionally hybrid search) and optional reranking to improve top-K quality.
 
 Follow these steps:
