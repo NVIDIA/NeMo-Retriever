@@ -190,6 +190,59 @@ def register_resources() -> None:
         return json.dumps(safe)
 
 
+class _MCPGuardMiddleware:
+    """ASGI middleware that enforces ``mcp_allowed_origins`` and ``mcp_rate_limit``."""
+
+    def __init__(self, app):
+        self._app = app
+        self._request_timestamps: list[float] = []
+
+    def _allowed_origins(self) -> set[str] | None:
+        raw = history.get_portal_setting("mcp_allowed_origins")
+        if not raw or raw.strip() == "*":
+            return None
+        return {o.strip().rstrip("/") for o in raw.split(",") if o.strip()}
+
+    def _rate_limit(self) -> int:
+        raw = history.get_portal_setting("mcp_rate_limit")
+        if raw:
+            try:
+                val = int(raw)
+                if val > 0:
+                    return val
+            except (ValueError, TypeError):
+                pass
+        return 0
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            return await self._app(scope, receive, send)
+
+        origins = self._allowed_origins()
+        if origins is not None:
+            headers = dict(scope.get("headers") or [])
+            origin = headers.get(b"origin", b"").decode()
+            if origin.rstrip("/") not in origins:
+                return await _reject(send, 403, "Origin not allowed")
+
+        rpm = self._rate_limit()
+        if rpm:
+            now = time.monotonic()
+            cutoff = now - 60.0
+            self._request_timestamps = [t for t in self._request_timestamps if t > cutoff]
+            if len(self._request_timestamps) >= rpm:
+                return await _reject(send, 429, "Rate limit exceeded")
+            self._request_timestamps.append(now)
+
+        return await self._app(scope, receive, send)
+
+
+async def _reject(send, status: int, detail: str):
+    body = json.dumps({"detail": detail}).encode()
+    await send({"type": "http.response.start", "status": status, "headers": [[b"content-type", b"application/json"]]})
+    await send({"type": "http.response.body", "body": body})
+
+
 def build_mcp_app():
     """Create the ASGI app from the MCP server, suitable for mounting."""
-    return mcp.http_app(path="/")
+    return _MCPGuardMiddleware(mcp.http_app(path="/"))

@@ -432,11 +432,13 @@ def load_beir_dataset(
     ds_repo = f"vidore/{dataset_name}"
     try:
         queries_rows = load_dataset(ds_repo, "queries", split=split)
-    except Exception:
+    except Exception as exc:
+        logger.debug("load_dataset config='queries' failed (%s); retrying with data_dir", exc)
         queries_rows = load_dataset(ds_repo, data_dir="queries", split=split)
     try:
         qrels_rows = load_dataset(ds_repo, "qrels", split=split)
-    except Exception:
+    except Exception as exc:
+        logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
         qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
 
     logger.info(

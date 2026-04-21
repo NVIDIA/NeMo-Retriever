@@ -1695,6 +1695,8 @@ def _zip_dataset_directory(
         lock = _zip_locks[ds_hash]
 
     with lock:
+        with _zip_locks_guard:
+            _zip_locks.pop(ds_hash, None)
         root = Path(dataset_path)
         cache_dir = root.parent / ".dataset_zip_cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -3676,7 +3678,10 @@ async def create_database_backup(req: DatabaseBackupRequest):
     stats = history._collect_db_stats()
 
     if req.storage_type == "local":
-        dest_dir = Path(req.destination)
+        allowed_root = Path(src).resolve().parent
+        dest_dir = Path(req.destination).resolve()
+        if not str(dest_dir).startswith(str(allowed_root)):
+            raise HTTPException(status_code=400, detail="Backup destination must be within the portal data directory")
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = dest_dir / filename
         conn = sqlite3.connect(src, timeout=30.0)
