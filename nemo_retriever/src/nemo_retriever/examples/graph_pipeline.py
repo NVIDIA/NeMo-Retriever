@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Optional, TextIO
@@ -598,6 +599,12 @@ def main(
         table = db.open_table(LANCEDB_TABLE)
 
         if int(table.count_rows()) == 0:
+            if embed_invoke_url:
+                logger.error(
+                    "LanceDB table is empty after remote embedding — "
+                    "verify the API key is valid and the embed endpoint is reachable."
+                )
+                sys.exit(1)
             logger.warning("LanceDB table is empty; skipping %s evaluation.", evaluation_mode)
             _write_runtime_summary(
                 runtime_metrics_dir,
