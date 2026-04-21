@@ -5,7 +5,7 @@
 """``retriever eval`` Typer subcommands.
 
 All heavy imports (litellm, evaluation modules) are deferred to inside
-command bodies so that ``pip install nemo-retriever`` (without ``[eval]``)
+command bodies so that ``pip install nemo-retriever`` (without ``[llm]``)
 does not break the CLI at import time.
 """
 

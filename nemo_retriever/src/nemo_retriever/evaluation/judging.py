@@ -11,8 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, ClassVar, Optional
 
 from nemo_retriever.evaluation.eval_operator import EvalOperator
-from nemo_retriever.evaluation.judges import LLMJudge
-from nemo_retriever.evaluation.types import JudgeResult
+from nemo_retriever.llm.clients import LLMJudge
+from nemo_retriever.llm.types import JudgeResult
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class JudgingOperator(EvalOperator):
             timeout=timeout,
             max_workers=max_workers,
         )
-        self._judge = LLMJudge(
+        self._judge = LLMJudge.from_kwargs(
             model=model,
             api_base=api_base,
             api_key=api_key,

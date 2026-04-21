@@ -23,7 +23,7 @@ import re
 import threading
 import unicodedata
 
-from nemo_retriever.evaluation.types import RetrievalResult
+from nemo_retriever.llm.types import RetrievalResult
 
 logger = logging.getLogger(__name__)
 

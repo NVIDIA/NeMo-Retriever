@@ -36,7 +36,7 @@ from nemo_retriever.evaluation.scoring import (
     classify_failure,
     token_f1,
 )
-from nemo_retriever.evaluation.types import (
+from nemo_retriever.llm.types import (
     AnswerJudge,
     GenerationResult,
     JudgeResult,

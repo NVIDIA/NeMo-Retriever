@@ -170,7 +170,7 @@ def load_eval_config(path: str) -> dict:
     """Load eval config from YAML (``.yaml``/``.yml``) or JSON (``.json``) file.
 
     Supports ``${VAR}`` env var expansion in string values (recursive).
-    YAML requires ``pyyaml`` (in ``[eval]`` extras). JSON uses stdlib.
+    YAML requires ``pyyaml`` (core dependency of nemo-retriever). JSON uses stdlib.
 
     Parameters
     ----------
@@ -199,7 +199,9 @@ def load_eval_config(path: str) -> dict:
             import yaml
         except ImportError as exc:
             raise ImportError(
-                "pyyaml is required for YAML config files. " "Install it: pip install nemo-retriever[eval]"
+                "pyyaml is required for YAML config files. "
+                "It is a core dependency of nemo-retriever; reinstall with: "
+                "pip install nemo-retriever"
             ) from exc
         with open(config_path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
@@ -334,8 +336,7 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
         A fully configured pipeline ready for ``.evaluate(qa_pairs)``
         or ``.process(df)``.
     """
-    from nemo_retriever.evaluation.generators import LiteLLMClient
-    from nemo_retriever.evaluation.judges import LLMJudge
+    from nemo_retriever.llm.clients import LLMJudge, LiteLLMClient
     from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
     from nemo_retriever.evaluation.retrievers import FileRetriever
 
@@ -363,18 +364,19 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
     llm_clients: dict[str, LiteLLMClient] = {}
     for gen_cfg in generators:
         name = gen_cfg.get("name", gen_cfg["model"])
-        llm_clients[name] = LiteLLMClient(
+        llm_clients[name] = LiteLLMClient.from_kwargs(
             model=gen_cfg["model"],
             api_base=gen_cfg.get("api_base"),
             api_key=gen_cfg.get("api_key"),
             temperature=gen_cfg.get("temperature", 0.0),
+            top_p=gen_cfg.get("top_p"),
             max_tokens=gen_cfg.get("max_tokens", 4096),
             extra_params=gen_cfg.get("extra_params"),
             num_retries=gen_cfg.get("num_retries", 3),
             timeout=gen_cfg.get("timeout", default_timeout),
         )
 
-    judge = LLMJudge(
+    judge = LLMJudge.from_kwargs(
         model=judge_cfg["model"],
         api_base=judge_cfg.get("api_base"),
         api_key=judge_cfg.get("api_key"),

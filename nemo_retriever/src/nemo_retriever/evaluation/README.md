@@ -1,6 +1,6 @@
 # QA Evaluation Pipeline
 
-The evaluation framework lives in **`nemo_retriever.evaluation`** (install `nemo-retriever[eval]` from PyPI, or **`uv pip install -e "./nemo_retriever[eval]"` from this repo root** so `graph_pipeline` and local changes resolve).
+The evaluation framework lives in **`nemo_retriever.evaluation`** (install `nemo-retriever[llm]` from PyPI, or **`uv pip install -e "./nemo_retriever[llm]"` from this repo root** so `graph_pipeline` and local changes resolve).
 
 Measures LLM answer quality over a RAG pipeline: retrieve context from a VDB, generate answers with one or more LLMs, and score each answer against ground-truth references using multi-tier scoring and an LLM-as-judge.
 
@@ -90,9 +90,9 @@ Exact commands to reproduce the full-page markdown QA evaluation from scratch.
 uv venv qa-retriever --python 3.12
 source qa-retriever/bin/activate
 
-# 2. Install nemo_retriever with eval extras (from repo root)
+# 2. Install nemo_retriever with LLM extras (from repo root)
 cd /path/to/nv-ingest
-uv pip install -e "./nemo_retriever[eval]"
+uv pip install -e "./nemo_retriever[llm]"
 
 # 3. Set your API key (used by generation + judging)
 export NVIDIA_API_KEY="nvapi-..."
@@ -236,12 +236,12 @@ Steps 1-3 (ingest, build index, export) require the **`nemo_retriever`** library
 uv venv qa-retriever --python 3.12
 source qa-retriever/bin/activate
 cd /path/to/nv-ingest   # repo root
-uv pip install -e "./nemo_retriever[eval]"
+uv pip install -e "./nemo_retriever[llm]"
 ```
 
-The `[eval]` extra installs `litellm` for LLM generation and judging. If you are not using this tree, you can instead `uv pip install "nemo-retriever[eval]"` from PyPI (package name uses a hyphen).
+The `[llm]` extra installs `litellm` for LLM generation and judging (and powers both the batch-eval framework and the live-RAG SDK). If you are not using this tree, you can instead `uv pip install "nemo-retriever[llm]"` from PyPI (package name uses a hyphen).
 
-**Eval-only path:** if you already have a retrieval JSON and only need to run `retriever eval run`, an environment with `nemo_retriever[eval]` installed is sufficient.
+**Eval-only path:** if you already have a retrieval JSON and only need to run `retriever eval run`, an environment with `nemo_retriever[llm]` installed is sufficient.
 
 ### Prerequisites (data and keys)
 
@@ -613,7 +613,7 @@ or manually via `QAEvalPipeline(retriever=..., llm_clients=..., judge=...)`.
 ### Protocol interfaces
 
 All three pluggable interfaces are Python `Protocol` classes defined in
-`nemo_retriever.evaluation.types`. Any object that implements the right method
+`nemo_retriever.llm.types`. Any object that implements the right method
 signature works -- no inheritance or registration required.
 
 | Protocol | Method | Default implementation |
@@ -858,6 +858,54 @@ automatic in-memory build.
 | `EMBEDDER` | `retriever eval run --from-env` (lancedb mode) | Embedding model name |
 | `RETRIEVAL_SAVE_PATH` | `retriever eval run --from-env` (lancedb mode) | Optional path to persist the retrieval JSON |
 
+### Mixing providers per component
+
+Every component (`Retriever`, `LiteLLMClient`, `LLMJudge`) takes its own `(model, api_base, api_key)` triple, so you can point different stages at different endpoints without any extra wiring. Unset `api_key` fields auto-resolve from `NVIDIA_API_KEY` / `NGC_API_KEY`, so the common single-provider path stays a one-liner; only reach for explicit `api_key=...` when a stage needs a distinct credential.
+
+```python
+import os
+from nemo_retriever.retriever import Retriever
+from nemo_retriever.llm import LiteLLMClient, LLMJudge
+
+retriever = Retriever(
+    lancedb_uri="lancedb",
+    lancedb_table="nv-ingest",
+    embedder="nvidia/llama-nemotron-embed-1b-v2",
+    embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
+    top_k=5,
+)
+
+llm = LiteLLMClient.from_kwargs(
+    model="openai/gpt-4o-mini",
+    api_base="https://api.openai.com/v1",
+    api_key=os.environ["OPENAI_API_KEY"],
+    temperature=0.2,
+)
+
+judge = LLMJudge.from_kwargs(
+    model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+)
+```
+
+Transport params redact the bearer token in their `__repr__` / `__str__` (`api_key=***`), so logging a client or letting a Pydantic validation error echo a params object back will not leak credentials.
+
+### Batch generation failure rate
+
+When the fluent builder ran `.generate(...)`, the returned `DataFrame` exposes the aggregate generation failure rate on `df.attrs` so batch-eval reports can surface it alongside `token_f1` / `judge_score`:
+
+```python
+df = retriever.pipeline().generate(llm).run(queries=questions)
+print(f"generation_failure_rate = {df.attrs['generation_failure_rate']:.2%}")
+```
+
+`generation_failure_rate` is the fraction of rows whose `gen_error` column is non-null; it is only attached when the `.generate()` step ran.
+
+### Stable public surface
+
+`nemo_retriever.llm.__all__` is the supported integration point for the client + types layer. Import the Protocols, result dataclasses, `LiteLLMClient`, `LLMJudge`, and the `LLMInferenceParams` / `LLMRemoteClientParams` models from `nemo_retriever.llm`; deeper submodule paths (`llm.clients.litellm`, `llm.text_utils`, ...) are implementation details and may be reorganised without notice.
+
+The previously-provided `nemo-retriever[eval]` install extra was removed in favor of `nemo-retriever[llm]`; pin the new extra in any requirements files that still reference `[eval]`.
+
 ## Scoring System (Three-Tier Hierarchy)
 
 Each (query, model) pair is scored by three independent tiers. Each tier tests a different layer of the RAG pipeline:
@@ -1017,7 +1065,7 @@ The same pattern works for custom failure classifiers, alternative judge prompts
 ### Custom Retriever
 
 ```python
-from nemo_retriever.evaluation.types import RetrieverStrategy, RetrievalResult
+from nemo_retriever.llm.types import RetrieverStrategy, RetrievalResult
 
 class MyRetriever:
     def retrieve(self, query: str, top_k: int) -> RetrievalResult:
@@ -1028,7 +1076,7 @@ class MyRetriever:
 ### Custom LLM Client
 
 ```python
-from nemo_retriever.evaluation.types import LLMClient, GenerationResult
+from nemo_retriever.llm.types import LLMClient, GenerationResult
 
 class MyClient:
     def generate(self, query: str, chunks: list[str]) -> GenerationResult:
@@ -1039,7 +1087,7 @@ class MyClient:
 ### Custom Judge
 
 ```python
-from nemo_retriever.evaluation.types import AnswerJudge, JudgeResult
+from nemo_retriever.llm.types import AnswerJudge, JudgeResult
 
 class MyJudge:
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:

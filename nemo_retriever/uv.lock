@@ -2823,10 +2823,8 @@ dev = [
     { name = "build" },
     { name = "pytest" },
 ]
-eval = [
+llm = [
     { name = "litellm" },
-    { name = "pyyaml" },
-    { name = "tenacity" },
 ]
 local = [
     { name = "accelerate" },
@@ -2883,7 +2881,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lancedb" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=0.3.0" },
-    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.40.0" },
+    { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40.0" },
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "local", "multimedia", "stores"], marker = "extra == 'all'" },
     { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
@@ -2905,7 +2903,6 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.2" },
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "pyyaml", marker = "extra == 'eval'", specifier = ">=6.0" },
     { name = "ray", extras = ["data", "serve"], specifier = ">=2.49.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "rich", specifier = ">=13.7.0" },
@@ -2913,7 +2910,6 @@ requires-dist = [
     { name = "scipy", marker = "extra == 'multimedia'", specifier = ">=1.11.0" },
     { name = "soundfile", marker = "extra == 'multimedia'", specifier = ">=0.12.0" },
     { name = "sqlglot", specifier = ">=30.0.0" },
-    { name = "tenacity", marker = "extra == 'eval'", specifier = ">=8.0.0" },
     { name = "timm", marker = "extra == 'local'", specifier = "==1.0.22" },
     { name = "tokenizers", marker = "extra == 'local'", specifier = ">=0.20.3" },
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = "~=2.9.1", index = "https://download.pytorch.org/whl/cu130" },
@@ -2930,7 +2926,7 @@ requires-dist = [
     { name = "vllm", marker = "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'local'", specifier = "==0.16.0" },
     { name = "vllm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local'", url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl" },
 ]
-provides-extras = ["local", "multimedia", "stores", "benchmarks", "eval", "dev", "all"]
+provides-extras = ["local", "multimedia", "stores", "benchmarks", "llm", "dev", "all"]
 
 [[package]]
 name = "nemotron-graphic-elements-v1"

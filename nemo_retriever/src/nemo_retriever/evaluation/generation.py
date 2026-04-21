@@ -11,8 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, ClassVar, Optional
 
 from nemo_retriever.evaluation.eval_operator import EvalOperator
-from nemo_retriever.evaluation.generators import LiteLLMClient
-from nemo_retriever.evaluation.types import GenerationResult
+from nemo_retriever.llm.clients import LiteLLMClient
+from nemo_retriever.llm.types import GenerationResult
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class QAGenerationOperator(EvalOperator):
             timeout=timeout,
             max_workers=max_workers,
         )
-        self._client = LiteLLMClient(
+        self._client = LiteLLMClient.from_kwargs(
             model=model,
             api_base=api_base,
             api_key=api_key,
