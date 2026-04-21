@@ -59,7 +59,7 @@ This creates a dedicated Python environment and installs the `nemo-retriever` Py
 The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Linux. Reinstall from the CUDA 13.0 wheel index to match the CUDA runtime required by the Nemotron model packages:
 
 ```bash
-uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.10.0 torchvision -i https://download.pytorch.org/whl/cu130
 ```
 
 Skip this step if you are using remote NIM inference only.
