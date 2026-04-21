@@ -66,7 +66,6 @@ nav:
         - Support Matrix: extraction/support-matrix.md
         - Deploy (Library Mode): extraction/quickstart-library-mode.md
         - Deploy (Self-Hosted): extraction/quickstart-guide.md
-        - Deploy (Helm Chart): extraction/helm.md
       - Developer Guide:
         - Notebooks: extraction/notebooks.md
         - Use the CLI: extraction/cli-reference.md
@@ -132,6 +131,7 @@ plugins:
         'extraction/index.md': 'extraction/overview.md'
         'extraction/nv-ingest_cli.md': 'extraction/cli-reference.md'
         'extraction/nv-ingest-python-api.md': 'extraction/python-api-reference.md'
+        'extraction/helm.md': 'extraction/quickstart-guide.md'
   - site-urls
 
 markdown_extensions:

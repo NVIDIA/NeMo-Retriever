@@ -4,9 +4,8 @@
 #   retriever harness sweep --runs-config nemo_retriever/harness/jp20_vl_sweep.yaml
 #
 # Mirrors vllm_bo767_sweep.yaml but uses JP20 (20 PDFs) for quick turnaround.
-# All VL configs use embed_local_ingest_backend: hf and embed_local_query_backend: hf —
-# vLLM 0.16 loads the VL model as LlamaBidirectionalModel (text-only, no vision tower),
-# producing embeddings misaligned from HF's VL loading. vLLM VL support requires 0.17+.
+# All VL configs use embed_local_ingest_backend: hf and embed_local_query_backend: hf
+# for image/text+image modalities — vLLM supports text-only embedding for the VL model.
 #
 # Experiment design:
 #   1  jp20_text_hf              — HF text embedder, ingest+query both HF   (pre-#1494 baseline)
@@ -33,7 +32,7 @@ runs:
   - name: jp20_text_vllm_hf
     dataset: jp20_text_vllm_hf
 
-  # --- VL embedder experiments (HF ingest+query; vLLM VL unsupported until 0.17) ---
+  # --- VL embedder experiments (HF ingest+query; vLLM supports text-only for VL model) ---
   - name: jp20_vl_text
     dataset: jp20_vl_text
 

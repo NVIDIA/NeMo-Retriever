@@ -157,6 +157,246 @@ def _mime_from_b64(b64: str) -> str:
     return "image/png"
 
 
+# ---------------------------------------------------------------------------
+# Stateful NIM HTTP client
+# ---------------------------------------------------------------------------
+
+
+class NIMClient:
+    """Persistent NIM HTTP client that reuses a single :class:`ThreadPoolExecutor`.
+
+    Create one instance per Ray actor so the thread pool lives for the
+    actor's entire lifetime instead of being torn down after every batch.
+    """
+
+    def __init__(self, *, max_pool_workers: int = 24) -> None:
+        self._max_pool_workers = max(1, int(max_pool_workers))
+        self._executor = ThreadPoolExecutor(max_workers=self._max_pool_workers)
+
+    # -- image inference --------------------------------------------------
+
+    def invoke_image_inference_batches(
+        self,
+        *,
+        invoke_url: str,
+        image_b64_list: Sequence[str],
+        merge_levels: Optional[Sequence[str]] = None,
+        api_key: Optional[str] = None,
+        timeout_s: float = 60.0,
+        max_batch_size: int = 8,
+        max_retries: int = 5,
+        max_429_retries: int = 3,
+    ) -> List[Any]:
+        """Batched concurrent image inference using the persistent thread pool."""
+        invoke_urls = _parse_invoke_urls(invoke_url)
+
+        token = (api_key or "").strip()
+        headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        n = len(image_b64_list)
+        if n == 0:
+            return []
+
+        if merge_levels is not None and len(merge_levels) != n:
+            raise ValueError(f"merge_levels length ({len(merge_levels)}) must match image_b64_list length ({n})")
+
+        ranges = _chunk_ranges(n, int(max_batch_size))
+        flattened: List[Optional[Any]] = [None] * n
+
+        def _invoke_one_batch(start: int, end: int, endpoint_url: str) -> Tuple[int, int, List[Any]]:
+            inputs = [
+                {
+                    "type": "image_url",
+                    "url": f"data:{_mime_from_b64(b64)};base64,{b64}",
+                }
+                for b64 in image_b64_list[start:end]
+            ]
+            payload: Dict[str, Any] = {"input": inputs}
+            if merge_levels is not None:
+                payload["merge_levels"] = list(merge_levels[start:end])
+            response_json = _post_with_retries(
+                invoke_url=endpoint_url,
+                payload=payload,
+                headers=headers,
+                timeout_s=float(timeout_s),
+                max_retries=int(max_retries),
+                max_429_retries=int(max_429_retries),
+            )
+            per_image = _normalize_batch_response(response_json, end - start)
+            return start, end, per_image
+
+        futures = {
+            self._executor.submit(
+                _invoke_one_batch,
+                start,
+                end,
+                invoke_urls[idx % len(invoke_urls)],
+            ): (start, end)
+            for idx, (start, end) in enumerate(ranges)
+        }
+        for future in as_completed(futures):
+            start, end = futures[future]
+            _s, _e, per_image = future.result()
+            if _s != start or _e != end:
+                raise RuntimeError("Internal batch ordering mismatch.")
+            for i, item in enumerate(per_image):
+                flattened[start + i] = item
+
+        out: List[Any] = []
+        for idx, item in enumerate(flattened):
+            if item is None:
+                raise RuntimeError(f"Missing response for item index {idx}")
+            out.append(item)
+        return out
+
+    def invoke_page_elements_batches(
+        self,
+        *,
+        invoke_url: str,
+        image_b64_list: Sequence[str],
+        api_key: Optional[str] = None,
+        timeout_s: float = 60.0,
+        max_batch_size: int = 8,
+        max_retries: int = 5,
+        max_429_retries: int = 3,
+    ) -> List[Any]:
+        """Backward-compatible page-elements wrapper."""
+        return self.invoke_image_inference_batches(
+            invoke_url=invoke_url,
+            image_b64_list=image_b64_list,
+            api_key=api_key,
+            timeout_s=timeout_s,
+            max_batch_size=max_batch_size,
+            max_retries=max_retries,
+            max_429_retries=max_429_retries,
+        )
+
+    # -- chat completions -------------------------------------------------
+
+    def invoke_chat_completions(
+        self,
+        *,
+        invoke_url: str,
+        messages_list: Sequence[List[Dict[str, Any]]],
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        timeout_s: float = 120.0,
+        temperature: float = 0.0,
+        extra_body: Optional[Dict[str, Any]] = None,
+        max_retries: int = 10,
+        max_429_retries: int = 5,
+    ) -> List[str]:
+        """Concurrent chat completions using the persistent thread pool."""
+        from nemo_retriever.nim.chat_completions import extract_chat_completion_text
+
+        if not messages_list:
+            return []
+
+        token = (api_key or "").strip()
+        headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        invoke_urls = _parse_invoke_urls(invoke_url)
+        results: List[Optional[str]] = [None] * len(messages_list)
+
+        def _invoke_one(idx: int, messages: List[Dict[str, Any]], endpoint_url: str) -> Tuple[int, str]:
+            payload: Dict[str, Any] = {
+                "messages": messages,
+                "temperature": temperature,
+            }
+            if model:
+                payload["model"] = model
+            if extra_body:
+                payload.update(extra_body)
+            response_json = _post_with_retries(
+                invoke_url=endpoint_url,
+                payload=payload,
+                headers=headers,
+                timeout_s=float(timeout_s),
+                max_retries=int(max_retries),
+                max_429_retries=int(max_429_retries),
+            )
+            return idx, extract_chat_completion_text(response_json)
+
+        futures = {
+            self._executor.submit(_invoke_one, i, msgs, invoke_urls[i % len(invoke_urls)]): i
+            for i, msgs in enumerate(messages_list)
+        }
+        for future in as_completed(futures):
+            i, text = future.result()
+            results[i] = text
+
+        return [r if r is not None else "" for r in results]
+
+    def invoke_chat_completions_images(
+        self,
+        *,
+        invoke_url: str,
+        image_b64_list: Sequence[str],
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        timeout_s: float = 120.0,
+        task_prompt: Optional[str] = None,
+        temperature: float = 0.0,
+        repetition_penalty: float = 1.1,
+        extra_body: Optional[Dict[str, Any]] = None,
+        max_retries: int = 10,
+        max_429_retries: int = 5,
+    ) -> List[str]:
+        """Chat completions wrapper: one request per base64 image."""
+        if not image_b64_list:
+            return []
+
+        messages_list: List[List[Dict[str, Any]]] = []
+        for b64 in image_b64_list:
+            mime = _mime_from_b64(b64)
+            content: List[Dict[str, Any]] = []
+            if task_prompt:
+                content.append({"type": "text", "text": task_prompt})
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                }
+            )
+            messages_list.append([{"role": "user", "content": content}])
+
+        merged_extra: Dict[str, Any] = {"repetition_penalty": repetition_penalty}
+        if extra_body:
+            merged_extra.update(extra_body)
+
+        return self.invoke_chat_completions(
+            invoke_url=invoke_url,
+            messages_list=messages_list,
+            model=model,
+            api_key=api_key,
+            timeout_s=timeout_s,
+            temperature=temperature,
+            extra_body=merged_extra,
+            max_retries=max_retries,
+            max_429_retries=max_429_retries,
+        )
+
+    # -- lifecycle --------------------------------------------------------
+
+    def shutdown(self) -> None:
+        self._executor.shutdown(wait=False)
+
+    def __del__(self) -> None:
+        try:
+            self._executor.shutdown(wait=False)
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible free functions (create a temporary pool per call)
+# ---------------------------------------------------------------------------
+
+
 def invoke_image_inference_batches(
     *,
     invoke_url: str,
@@ -165,7 +405,7 @@ def invoke_image_inference_batches(
     api_key: Optional[str] = None,
     timeout_s: float = 60.0,
     max_batch_size: int = 8,
-    max_pool_workers: int = 8,
+    max_pool_workers: int = 24,
     max_retries: int = 5,
     max_429_retries: int = 3,
 ) -> List[Any]:
@@ -184,70 +424,26 @@ def invoke_image_inference_batches(
         so the NIM can apply per-crop merging behaviour.
 
     Returns one response item per input image, in the same order.
+
+    .. note::
+
+       Prefer :class:`NIMClient` in long-lived actors to avoid creating a
+       fresh ``ThreadPoolExecutor`` on every call.
     """
-    invoke_urls = _parse_invoke_urls(invoke_url)
-
-    token = (api_key or "").strip()
-    headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    n = len(image_b64_list)
-    if n == 0:
-        return []
-
-    if merge_levels is not None and len(merge_levels) != n:
-        raise ValueError(f"merge_levels length ({len(merge_levels)}) must match image_b64_list length ({n})")
-
-    ranges = _chunk_ranges(n, int(max_batch_size))
-    flattened: List[Optional[Any]] = [None] * n
-
-    def _invoke_one_batch(start: int, end: int, endpoint_url: str) -> Tuple[int, int, List[Any]]:
-        inputs = [
-            {
-                "type": "image_url",
-                "url": f"data:{_mime_from_b64(b64)};base64,{b64}",
-            }
-            for b64 in image_b64_list[start:end]
-        ]
-        payload: Dict[str, Any] = {"input": inputs}
-        if merge_levels is not None:
-            payload["merge_levels"] = list(merge_levels[start:end])
-        response_json = _post_with_retries(
-            invoke_url=endpoint_url,
-            payload=payload,
-            headers=headers,
-            timeout_s=float(timeout_s),
-            max_retries=int(max_retries),
-            max_429_retries=int(max_429_retries),
+    client = NIMClient(max_pool_workers=max_pool_workers)
+    try:
+        return client.invoke_image_inference_batches(
+            invoke_url=invoke_url,
+            image_b64_list=image_b64_list,
+            merge_levels=merge_levels,
+            api_key=api_key,
+            timeout_s=timeout_s,
+            max_batch_size=max_batch_size,
+            max_retries=max_retries,
+            max_429_retries=max_429_retries,
         )
-        per_image = _normalize_batch_response(response_json, end - start)
-        return start, end, per_image
-
-    with ThreadPoolExecutor(max_workers=max(1, int(max_pool_workers))) as executor:
-        futures = {
-            executor.submit(
-                _invoke_one_batch,
-                start,
-                end,
-                invoke_urls[idx % len(invoke_urls)],
-            ): (start, end)
-            for idx, (start, end) in enumerate(ranges)
-        }
-        for future in as_completed(futures):
-            start, end = futures[future]
-            _s, _e, per_image = future.result()
-            if _s != start or _e != end:
-                raise RuntimeError("Internal batch ordering mismatch.")
-            for i, item in enumerate(per_image):
-                flattened[start + i] = item
-
-    out: List[Any] = []
-    for idx, item in enumerate(flattened):
-        if item is None:
-            raise RuntimeError(f"Missing response for item index {idx}")
-        out.append(item)
-    return out
+    finally:
+        client.shutdown()
 
 
 def invoke_page_elements_batches(
@@ -257,7 +453,7 @@ def invoke_page_elements_batches(
     api_key: Optional[str] = None,
     timeout_s: float = 60.0,
     max_batch_size: int = 8,
-    max_pool_workers: int = 8,
+    max_pool_workers: int = 24,
     max_retries: int = 5,
     max_429_retries: int = 3,
 ) -> List[Any]:

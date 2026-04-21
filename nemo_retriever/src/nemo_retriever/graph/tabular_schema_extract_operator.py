@@ -50,7 +50,7 @@ class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
         )
 
         schema_data = extract_tabular_db_data(params=data)
-        store_relational_db_in_neo4j(data=schema_data)
+        store_relational_db_in_neo4j(data=schema_data, dialect=data.connector.dialect)
         return pd.DataFrame()
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

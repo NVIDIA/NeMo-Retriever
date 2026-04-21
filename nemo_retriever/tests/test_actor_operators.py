@@ -221,10 +221,7 @@ class TestTableStructureActor:
     def _make(self):
         from nemo_retriever.table.table_detection import TableStructureActor
 
-        return TableStructureActor(
-            table_structure_invoke_url="http://fake",
-            ocr_invoke_url="http://fake",
-        )
+        return TableStructureActor(table_structure_invoke_url="http://fake")
 
     def test_inherits(self):
         from nemo_retriever.table.table_detection import TableStructureActor
@@ -275,7 +272,7 @@ class TestOCRActor:
 
     @patch("nemo_retriever.ocr.cpu_ocr.ocr_page_elements")
     def test_process(self, mock_fn):
-        expected = pd.DataFrame({"ocr_v1": ["res"]})
+        expected = pd.DataFrame({"ocr": ["res"]})
         mock_fn.return_value = expected
         actor = self._make()
         result = actor.process(pd.DataFrame({"page_image": ["x"]}))
@@ -288,7 +285,7 @@ class TestOCRActor:
         df = pd.DataFrame({"page_image": ["x"]})
         result = actor(df)
         assert isinstance(result, pd.DataFrame)
-        assert "ocr_v1" in result.columns
+        assert "ocr" in result.columns
 
 
 # ---------------------------------------------------------------------------
