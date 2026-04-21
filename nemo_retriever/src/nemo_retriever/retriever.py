@@ -311,11 +311,8 @@ class Retriever:
 
         Args:
             query: The natural-language query.
-            top_k: Per-call override of ``self.top_k``.  When ``None`` the
-                instance attribute is used.  The override is passed as a
-                local value through the search / rerank stack; it never
-                mutates ``self.top_k``, which keeps concurrent callers on
-                the same :class:`Retriever` instance thread-safe.
+            top_k: Per-call override of ``self.top_k``; passed as a local
+                value so the instance attribute is never mutated.
             embedder: Per-call embedder override.
             lancedb_uri: Per-call LanceDB URI override.
             lancedb_table: Per-call LanceDB table override.
@@ -344,11 +341,8 @@ class Retriever:
         (or the configured endpoint) and returned sorted by cross-encoder
         score.  Each hit gains a ``"_rerank_score"`` key.
 
-        The ``top_k`` argument is resolved into a local ``effective_top_k``
-        that is threaded through the search + rerank stack.  ``self.top_k``
-        is read once (when ``top_k`` is ``None``) and never written, so
-        concurrent callers sharing a :class:`Retriever` instance cannot
-        race on the instance attribute.
+        The ``top_k`` kwarg is threaded through the search + rerank stack
+        as a local value so concurrent callers never race on ``self.top_k``.
         """
         query_texts = [str(q) for q in queries]
         if not query_texts:
@@ -409,10 +403,8 @@ class Retriever:
 
         Args:
             query: The natural-language query.
-            top_k: Per-call override of ``self.top_k``.  Passed through as
-                a local value to :meth:`query`; ``self.top_k`` is never
-                mutated, so concurrent callers sharing a :class:`Retriever`
-                instance remain thread-safe.
+            top_k: Per-call override of ``self.top_k``; passed as a local
+                value so the instance attribute is never mutated.
             embedder: Override ``self.embedder`` for this call.
             lancedb_uri: Override ``self.lancedb_uri`` for this call.
             lancedb_table: Override ``self.lancedb_table`` for this call.
@@ -455,22 +447,14 @@ class Retriever:
     ) -> list["RetrievalResult"]:
         """Run retrieval for a batch of queries in a single embedder call.
 
-        This is the batched analogue of :meth:`retrieve`.  It funnels the
-        whole query list through :meth:`queries`, which already dispatches
-        exactly one call to ``_embed_queries_nim`` (or the local HF
-        embedder) regardless of ``len(queries)``.  Callers that previously
-        looped over :meth:`retrieve` per row pay ``N`` sequential round
-        trips to the embed service; routing through ``retrieve_batch``
-        collapses that to a single request and a single LanceDB search
-        sweep.
+        Funnels the whole query list through :meth:`queries`, which issues
+        exactly one embed request regardless of ``len(queries)``.
 
         Args:
             queries: Iterable of natural-language query strings.  Order
                 is preserved in the returned list.
-            top_k: Per-call override of ``self.top_k``.  Passed through
-                to :meth:`queries` as a local value, so ``self.top_k`` is
-                never written.  Concurrent callers sharing a single
-                :class:`Retriever` instance therefore remain thread-safe.
+            top_k: Per-call override of ``self.top_k``; passed as a local
+                value so the instance attribute is never mutated.
             embedder: Per-call embedder override.
             lancedb_uri: Per-call LanceDB URI override.
             lancedb_table: Per-call LanceDB table override.
@@ -888,17 +872,13 @@ class RetrieverPipelineBuilder:
             graph = retrieval_op
             for step in self._steps:
                 graph = graph >> step
-            # ``Graph.execute`` returns one entry per leaf node; a linear
-            # live-RAG pipeline has exactly one leaf.
+            # Linear live-RAG pipelines have exactly one leaf.
             leaves = graph.execute(df)
             if len(leaves) != 1:
                 raise RuntimeError(f"Unexpected pipeline fan-out: got {len(leaves)} leaf outputs")
             out = leaves[0]
 
-        # Surface generation failure rate when the pipeline ran generation.
-        # ``QAGenerationOperator`` writes ``gen_error`` per row (non-null on
-        # failure); downstream aggregators read ``df.attrs`` without having
-        # to scan rows or guard on column presence themselves.
+        # Expose the generation failure rate on ``df.attrs`` for downstream aggregators.
         if "gen_error" in out.columns and len(out) > 0:
             out.attrs["generation_failure_rate"] = float(out["gen_error"].notna().mean())
 

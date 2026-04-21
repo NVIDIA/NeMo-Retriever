@@ -101,13 +101,21 @@ class TestLiteLLMClientConstruction:
         assert client.sampling is sampling
         assert client.model == "openai/gpt-4o-mini"
 
-    def test_default_sampling_is_llminferenceparams_defaults(self):
+    def test_default_sampling_matches_from_kwargs_for_rag_determinism(self):
+        """``LiteLLMClient`` is a RAG-eval client and must default to
+        deterministic sampling regardless of which constructor path the
+        caller picks.  The structured constructor therefore overrides
+        ``LLMInferenceParams``'s general-purpose ``temperature=1.0`` with
+        ``0.0`` so it agrees with :meth:`LiteLLMClient.from_kwargs`.
+        ``top_p`` / ``max_tokens`` still come from ``LLMInferenceParams``
+        (they already match what ``from_kwargs`` builds).
+        """
         from nemo_retriever.llm.clients import LiteLLMClient
         from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
 
         client = LiteLLMClient(transport=LLMRemoteClientParams(model="m"))
         assert isinstance(client.sampling, LLMInferenceParams)
-        assert client.sampling.temperature == 1.0
+        assert client.sampling.temperature == 0.0
         assert client.sampling.top_p is None
         assert client.sampling.max_tokens == 1024
 
@@ -393,3 +401,43 @@ class TestLiteLLMDefaultModel:
 
         assert isinstance(LiteLLMClient._DEFAULT_MODEL, str)
         assert LiteLLMClient._DEFAULT_MODEL
+
+
+class TestLiteLLMDefaultSamplingAlignment:
+    """Both constructor paths must default to the same deterministic sampling.
+
+    Regression test for the Greptile P1 finding that
+    ``LiteLLMClient(transport=...)`` with ``sampling=None`` silently
+    fell through to ``LLMInferenceParams()`` (``temperature=1.0``) while
+    ``LiteLLMClient.from_kwargs(...)`` explicitly defaulted to
+    ``temperature=0.0``.  For RAG-eval reproducibility the two paths
+    must converge on the same default.
+    """
+
+    def test_structured_constructor_defaults_to_zero_temperature(self):
+        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.params import LLMRemoteClientParams
+
+        client = LiteLLMClient(transport=LLMRemoteClientParams(model="m"))
+        assert client.sampling.temperature == 0.0
+
+    def test_structured_and_flat_paths_agree_on_defaults(self):
+        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.params import LLMRemoteClientParams
+
+        structured = LiteLLMClient(transport=LLMRemoteClientParams(model="m"))
+        flat = LiteLLMClient.from_kwargs(model="m")
+        assert structured.sampling.temperature == flat.sampling.temperature
+        assert structured.sampling.max_tokens == flat.sampling.max_tokens
+        assert structured.sampling.top_p == flat.sampling.top_p
+
+    def test_explicit_sampling_is_not_overridden(self):
+        """Passing an explicit ``LLMInferenceParams`` must win over the default."""
+        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.params import LLMInferenceParams, LLMRemoteClientParams
+
+        client = LiteLLMClient(
+            transport=LLMRemoteClientParams(model="m"),
+            sampling=LLMInferenceParams(temperature=0.7),
+        )
+        assert client.sampling.temperature == 0.7

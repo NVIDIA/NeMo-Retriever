@@ -660,6 +660,8 @@ def main(
         evaluation_total_time = 0.0
         evaluation_metrics: dict[str, float] = {}
         evaluation_query_count: Optional[int] = None
+        # Tracks whether the QA sweep had any non-PASS results so CI gets a non-zero exit after cleanup.
+        qa_failed = False
 
         if evaluation_mode == "beir":
             if not beir_loader:
@@ -759,10 +761,17 @@ def main(
 
             passed = sum(1 for r in sweep_results if r["status"] == "PASS")
             logger.info("QA sweep complete: %d/%d passed", passed, len(sweep_results))
+            qa_failed = passed < len(sweep_results)
             for r in sweep_results:
                 if r["status"] == "PASS":
                     out = Path(r["output_path"]).resolve()
                     logger.info("Results: %s", out)
+                else:
+                    logger.error(
+                        "QA run FAILED: %s: %s",
+                        r.get("label", "<unlabeled>"),
+                        r.get("error", ""),
+                    )
                 er = r.get("eval_results", {})
                 judge_scores = er.get("tier3_llm_judge", {})
                 for gen_name, stats in judge_scores.items():
@@ -862,6 +871,11 @@ def main(
             evaluation_label=evaluation_label,
             evaluation_count=evaluation_query_count,
         )
+
+        # Raise the non-zero exit after summary + Ray shutdown so CI still collects
+        # diagnostic artifacts, and the outer ``finally`` still restores stdout/stderr.
+        if qa_failed:
+            raise typer.Exit(code=1)
     finally:
         os.sys.stdout = original_stdout
         os.sys.stderr = original_stderr

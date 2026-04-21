@@ -78,7 +78,9 @@ class LiteLLMClient:
         sampling: Optional[LLMInferenceParams] = None,
     ):
         self.transport = transport
-        self.sampling = sampling if sampling is not None else LLMInferenceParams()
+        # Default to ``temperature=0.0`` so the structured constructor matches ``from_kwargs``
+        # and keeps RAG-eval runs deterministic.
+        self.sampling = sampling if sampling is not None else LLMInferenceParams(temperature=0.0)
 
     @property
     def model(self) -> str:
