@@ -302,6 +302,12 @@ def main(
     reranker_backend: str = typer.Option(
         "vllm", "--reranker-backend", help="Reranker backend: 'vllm' or 'transformers'."
     ),
+    local_hf_batch_size: int = typer.Option(
+        32,
+        "--local-hf-batch-size",
+        min=1,
+        help="Batch size for local HF query embedding during retrieval/reranking.",
+    ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -660,6 +666,7 @@ def main(
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
                 reranker_backend=reranker_backend,
+                local_hf_batch_size=int(local_hf_batch_size),
             )
             evaluation_start = time.perf_counter()
             beir_dataset, _raw_hits, _run, evaluation_metrics = evaluate_lancedb_beir(cfg)
@@ -711,6 +718,7 @@ def main(
                 reranker=reranker_model_name if reranker else None,
                 reranker_backend=reranker_backend,
                 embed_modality=embed_modality,
+                local_hf_batch_size=int(local_hf_batch_size),
             )
             evaluation_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(

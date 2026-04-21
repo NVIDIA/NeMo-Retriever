@@ -69,7 +69,7 @@ class Retriever:
     hybrid: bool = False
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[Path] = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
     # Reranking -----------------------------------------------------------
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""

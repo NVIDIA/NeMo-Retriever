@@ -47,7 +47,7 @@ class RecallConfig:
     # Local HF knobs (only used when endpoints are missing).
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys

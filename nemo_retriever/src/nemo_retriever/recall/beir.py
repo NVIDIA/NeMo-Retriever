@@ -71,7 +71,7 @@ class BeirConfig:
     refine_factor: int = 10
     local_hf_device: str | None = None
     local_hf_cache_dir: str | None = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
     reranker: bool = False
     reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
     reranker_endpoint: str | None = None
