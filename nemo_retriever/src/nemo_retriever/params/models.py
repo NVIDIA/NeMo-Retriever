@@ -260,6 +260,9 @@ class EmbedParams(_ParamsModel):
     has_embedding_column: str = "text_embeddings_1b_v2_has_embedding"
     embed_output_column: str = "text_embeddings_1b_v2"
     embed_inference_batch_size: int = 16
+
+    local_ingest_backend: str = "vllm"  # "vllm" or "hf" — selects ingest-time text embedder for non-VL models
+
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
 
