@@ -35,6 +35,7 @@ def create_vllm_llm(
     gpu_memory_utilization: float = 0.45,
     enforce_eager: bool = False,
     hf_overrides: Optional[dict] = None,
+    limit_mm_per_prompt: Optional[dict] = None,
 ) -> Any:
     """
     Create and return a vLLM LLM instance for embedding (pooling runner).
@@ -80,6 +81,8 @@ def create_vllm_llm(
         kwargs["hf_overrides"] = hf_overrides
     if pooler_config is not None:
         kwargs["pooler_config"] = pooler_config
+    if limit_mm_per_prompt is not None:
+        kwargs["limit_mm_per_prompt"] = limit_mm_per_prompt
 
     return LLM(**kwargs)
 
@@ -118,4 +121,41 @@ def embed_with_vllm_llm(
     return all_embeddings
 
 
-__all__ = ["create_vllm_llm", "embed_with_vllm_llm"]
+def embed_multimodal_with_vllm_llm(
+    prompt_dicts: List[dict],
+    llm: Any,
+    *,
+    batch_size: int = 64,
+) -> List[List[float]]:
+    """
+    Compute embeddings for multimodal prompts using an existing vLLM LLM instance.
+
+    Each element of ``prompt_dicts`` must be a dict with:
+      - ``"prompt"``: text string including the ``<image>`` placeholder
+      - ``"multi_modal_data"``: ``{"image": PIL.Image.Image}``
+
+    The LLM must have been created with ``limit_mm_per_prompt={"image": 1}``.
+    Returns one embedding vector (list of floats) per input; ``[]`` for failures.
+    """
+    if not prompt_dicts:
+        return []
+
+    all_embeddings: List[List[float]] = []
+    for i in range(0, len(prompt_dicts), max(1, batch_size)):
+        batch = prompt_dicts[i : i + max(1, batch_size)]
+        outputs = llm.embed(batch)
+        for out in outputs:
+            emb = getattr(getattr(out, "outputs", None), "embedding", None)
+            if emb is not None:
+                if hasattr(emb, "tolist"):
+                    all_embeddings.append(emb.tolist())
+                elif isinstance(emb, list):
+                    all_embeddings.append([float(x) for x in emb])
+                else:
+                    all_embeddings.append(list(emb))
+            else:
+                all_embeddings.append([])
+    return all_embeddings
+
+
+__all__ = ["create_vllm_llm", "embed_with_vllm_llm", "embed_multimodal_with_vllm_llm"]
