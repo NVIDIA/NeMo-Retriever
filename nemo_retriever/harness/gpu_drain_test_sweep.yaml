@@ -1,0 +1,16 @@
+# GPU drain test: jp20_baseline (vLLM ingest+query) followed immediately by
+# jp20_text_vllm_hf (vLLM ingest, HF query).  Previously the baseline's vLLM
+# CUDA context poisoned the second run, dropping recall@10 from 0.93 to 0.89.
+# This sweep verifies the _shutdown_ray_and_drain_gpu fix eliminates that drop.
+
+preset: single_gpu
+
+overrides:
+  embed_workers: 1
+
+runs:
+  - name: jp20_baseline
+    dataset: jp20_baseline
+
+  - name: jp20_text_vllm_hf
+    dataset: jp20_text_vllm_hf

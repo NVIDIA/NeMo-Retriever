@@ -88,6 +88,11 @@ class HarnessConfig:
     store_images_uri: str | None = None
     store_text: bool = False
     strip_base64: bool = True
+    reranker: bool = False
+    reranker_model_name: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+    rerank_modality: str | None = None  # None = inherit embed_modality at build time
+    embed_local_ingest_backend: str = "vllm"  # "vllm" or "hf" — ingest-time text embedder for non-VL models
+    embed_local_query_backend: str = "auto"  # "auto" (vLLM for text, HF for VL), "hf", or "vllm"
 
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
@@ -168,6 +173,15 @@ class HarnessConfig:
                     except (TypeError, ValueError):
                         errors.append("beir_ks values must be integers")
                         break
+
+        if self.reranker and not self.reranker_model_name:
+            errors.append("reranker_model_name must be non-empty when reranker=true")
+        if self.rerank_modality is not None and self.rerank_modality not in VALID_EMBED_MODALITIES:
+            errors.append(f"rerank_modality must be one of {sorted(VALID_EMBED_MODALITIES)} or null")
+        if self.embed_local_ingest_backend not in ("vllm", "hf"):
+            errors.append("embed_local_ingest_backend must be one of vllm, hf")
+        if self.embed_local_query_backend not in ("auto", "hf", "vllm"):
+            errors.append("embed_local_query_backend must be one of auto, hf, vllm")
 
         if self.embed_modality not in VALID_EMBED_MODALITIES:
             errors.append(f"embed_modality must be one of {sorted(VALID_EMBED_MODALITIES)}")
@@ -308,6 +322,11 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
         "HARNESS_STORE_TEXT": ("store_text", _parse_bool),
         "HARNESS_STRIP_BASE64": ("strip_base64", _parse_bool),
+        "HARNESS_RERANKER": ("reranker", _parse_bool),
+        "HARNESS_RERANKER_MODEL_NAME": ("reranker_model_name", str),
+        "HARNESS_RERANK_MODALITY": ("rerank_modality", str),
+        "HARNESS_EMBED_LOCAL_INGEST_BACKEND": ("embed_local_ingest_backend", str),
+        "HARNESS_EMBED_LOCAL_QUERY_BACKEND": ("embed_local_query_backend", str),
         "HARNESS_API_KEY": ("api_key", str),
         "HARNESS_PAGE_ELEMENTS_INVOKE_URL": ("page_elements_invoke_url", str),
         "HARNESS_OCR_INVOKE_URL": ("ocr_invoke_url", str),
@@ -389,6 +408,11 @@ def load_harness_config(
     merged: dict[str, Any] = dict(active)
     merged["preset"] = preset_ref
 
+    # Apply preset before dataset so dataset fields override preset defaults.
+    # Priority (low→high): active < preset < dataset < sweep_overrides < CLI < env.
+    preset_values = dict(presets.get(str(preset_ref), {}))
+    merged.update(preset_values)
+
     dataset_label: str | None = None
     if dataset_ref:
         if dataset_ref in datasets:
@@ -401,9 +425,6 @@ def load_harness_config(
         else:
             dataset_label = Path(str(dataset_ref)).name
             merged["dataset_dir"] = str(dataset_ref)
-
-    preset_values = dict(presets.get(str(preset_ref), {}))
-    merged.update(preset_values)
     merged.update({k: v for k, v in sweep_data.items() if k not in {"dataset", "preset"}})
     merged.update(cli_override_map)
     if cli_recall_required is not None:
@@ -499,6 +520,7 @@ def load_nightly_config(config_file: str | None = None) -> dict[str, Any]:
         "preset": preset,
         "runs": _load_nightly_runs_from_mapping(yaml_cfg, config_path),
         "slack": _normalize_nightly_slack_config(yaml_cfg.get("slack", {}), config_path),
+        "overrides": yaml_cfg.get("overrides") or {},
     }
 
 

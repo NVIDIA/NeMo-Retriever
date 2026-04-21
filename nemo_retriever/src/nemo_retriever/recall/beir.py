@@ -77,6 +77,7 @@ class BeirConfig:
     reranker_endpoint: str | None = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
+    rerank_modality: str = "text"
     #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
     local_query_embed_backend: str = "auto"
 
@@ -687,6 +688,7 @@ def evaluate_lancedb_beir(
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=(cfg.reranker_api_key or "").strip(),
         reranker_batch_size=int(cfg.reranker_batch_size),
+        rerank_modality=cfg.rerank_modality,
         local_query_embed_backend=str(cfg.local_query_embed_backend),
     )
     raw_hits = retriever.queries(dataset.queries)

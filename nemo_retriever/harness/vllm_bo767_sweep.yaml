@@ -1,0 +1,121 @@
+# Bo767 full embedder × reranker sweep (PR #1494 validation).
+#
+# Run with:
+#   retriever harness sweep --runs-config nemo_retriever/harness/vllm_bo767_sweep.yaml
+#
+# 18 runs across 3 groups:
+#
+#   Text model (nvidia/llama-nemotron-embed-1b-v2, text modality, element granularity)
+#   ┌────┬───────────────────────┬────────┬───────┬──────────┐
+#   │  1 │ text_hf               │ HF     │ HF    │ No       │
+#   │  2 │ text_hf_reranked      │ HF     │ HF    │ Yes      │
+#   │  3 │ text_vllm_hf          │ vLLM   │ HF    │ No       │
+#   │  4 │ text_vllm_hf_reranked │ vLLM   │ HF    │ Yes      │
+#   │  5 │ text_vllm             │ vLLM   │ vLLM  │ No       │
+#   │  6 │ text_vllm_reranked    │ vLLM   │ vLLM  │ Yes      │
+#   └────┴───────────────────────┴────────┴───────┴──────────┘
+#
+#   VL model, text modality (nvidia/llama-nemotron-embed-vl-1b-v2, text, page granularity)
+#   ┌─────┬──────────────────────────┬────────┬───────┬──────────┐
+#   │  7  │ vl_text_hf               │ HF     │ HF    │ No       │
+#   │  8  │ vl_text_hf_reranked      │ HF     │ HF    │ Yes      │
+#   │  9  │ vl_text_vllm_hf          │ vLLM   │ HF    │ No       │
+#   │  10 │ vl_text_vllm_hf_reranked │ vLLM   │ HF    │ Yes      │
+#   │  11 │ vl_text_vllm             │ vLLM   │ vLLM  │ No       │
+#   │  12 │ vl_text_vllm_reranked    │ vLLM   │ vLLM  │ Yes      │
+#   └─────┴──────────────────────────┴────────┴───────┴──────────┘
+#
+#   VL model, text+image modality (nvidia/llama-nemotron-embed-vl-1b-v2, text_image, page granularity)
+#   ┌─────┬────────────────────────────────┬────────┬───────┬──────────┐
+#   │  13 │ vl_text_image_hf               │ HF     │ HF    │ No       │
+#   │  14 │ vl_text_image_hf_reranked      │ HF     │ HF    │ Yes      │
+#   │  15 │ vl_text_image_vllm_hf          │ vLLM   │ HF    │ No       │
+#   │  16 │ vl_text_image_vllm_hf_reranked │ vLLM   │ HF    │ Yes      │
+#   │  17 │ vl_text_image_vllm             │ vLLM   │ vLLM  │ No       │
+#   │  18 │ vl_text_image_vllm_reranked    │ vLLM   │ vLLM  │ Yes      │
+#   └─────┴────────────────────────────────┴────────┴───────┴──────────┘
+#
+# Notes:
+#   - HF-only runs (1-2, 7-8, 13-14) are the pre-#1494 baseline.
+#   - vLLM ingest+query runs (5-6, 11-12, 17-18) require retriever-vllm-for-embeddings-1 (PR #1494).
+#   - vLLM VL ingest (9-12, 15-18) requires vLLM ≥ 0.17 with VL model support.
+#   - HF/vLLM runs are interleaved; GPU drain runs between each to prevent CUDA context poisoning.
+
+preset: single_gpu
+
+overrides:
+  embed_workers: 1  # vLLM reserves gpu_memory_utilization per actor; VL model ~51 GiB — keep at 1
+
+runs:
+  # --- Text model ---
+  - name: bo767_text_hf
+    dataset: bo767_text_hf
+    overrides:
+      embed_batch_size: 32  # HF materialises full (batch × seq) activations; 256 OOMs at seq_len=8192
+
+  - name: bo767_text_hf_reranked
+    dataset: bo767_text_hf_reranked
+    overrides:
+      embed_batch_size: 32
+
+  - name: bo767_text_vllm_hf
+    dataset: bo767_text_vllm_hf
+
+  - name: bo767_text_vllm_hf_reranked
+    dataset: bo767_text_vllm_hf_reranked
+
+  - name: bo767_text_vllm
+    dataset: bo767_text_vllm
+
+  - name: bo767_text_vllm_reranked
+    dataset: bo767_text_vllm_reranked
+
+  # --- VL model, text modality ---
+  - name: bo767_vl_text_hf
+    dataset: bo767_vl_text_hf
+
+  - name: bo767_vl_text_hf_reranked
+    dataset: bo767_vl_text_hf_reranked
+
+  - name: bo767_vl_text_vllm_hf
+    dataset: bo767_vl_text_vllm_hf
+
+  - name: bo767_vl_text_vllm_hf_reranked
+    dataset: bo767_vl_text_vllm_hf_reranked
+
+  - name: bo767_vl_text_vllm
+    dataset: bo767_vl_text_vllm
+
+  - name: bo767_vl_text_vllm_reranked
+    dataset: bo767_vl_text_vllm_reranked
+
+  # --- VL model, text+image modality ---
+  - name: bo767_vl_text_image_hf
+    dataset: bo767_vl_text_image_hf
+
+  - name: bo767_vl_text_image_hf_reranked
+    dataset: bo767_vl_text_image_hf_reranked
+
+  - name: bo767_vl_text_image_vllm_hf
+    dataset: bo767_vl_text_image_vllm_hf
+
+  - name: bo767_vl_text_image_vllm_hf_reranked
+    dataset: bo767_vl_text_image_vllm_hf_reranked
+
+  - name: bo767_vl_text_image_vllm
+    dataset: bo767_vl_text_image_vllm
+
+  - name: bo767_vl_text_image_vllm_reranked
+    dataset: bo767_vl_text_image_vllm_reranked
+
+slack:
+  enabled: false
+  title: Bo767 Embedder × Reranker Sweep
+  post_artifact_paths: true
+  metric_keys:
+    - pages
+    - ingest_secs
+    - pages_per_sec_ingest
+    - ndcg_10
+    - recall_5
+    - recall_10

@@ -516,6 +516,16 @@ def _build_command(
     if cfg.hybrid:
         cmd += ["--hybrid"]
 
+    if cfg.reranker:
+        cmd += ["--reranker", "--reranker-model-name", cfg.reranker_model_name]
+        effective_rerank_modality = cfg.rerank_modality if cfg.rerank_modality is not None else cfg.embed_modality
+        cmd += ["--rerank-modality", effective_rerank_modality]
+    else:
+        cmd += ["--no-reranker"]
+
+    cmd += ["--embed-local-ingest-backend", cfg.embed_local_ingest_backend]
+    cmd += ["--recall-local-query-embed-backend", cfg.embed_local_query_backend]
+
     resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
     if resolved_store_uri is not None:
         cmd += ["--store-images-uri", resolved_store_uri]
@@ -779,6 +789,11 @@ def _run_single(
             "embed_model_name": cfg.embed_model_name,
             "embed_modality": cfg.embed_modality,
             "embed_granularity": cfg.embed_granularity,
+            "reranker": cfg.reranker,
+            "reranker_model_name": cfg.reranker_model_name,
+            "rerank_modality": cfg.rerank_modality,
+            "embed_local_ingest_backend": cfg.embed_local_ingest_backend,
+            "embed_local_query_backend": cfg.embed_local_query_backend,
             "extract_page_as_image": cfg.extract_page_as_image,
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
@@ -1186,6 +1201,35 @@ def _run_entry(
     return result
 
 
+def _wait_for_gpu_clear(timeout: int = 60, poll_interval: float = 2.0) -> None:
+    """Block until all GPUs report 0 MiB used, or timeout elapses.
+
+    Belt-and-suspenders guard between sweep runs: graph_pipeline already calls
+    _shutdown_ray_and_drain_gpu(), but that runs inside the subprocess.  If any
+    Ray/vLLM worker process outlives the subprocess exit (e.g. late SIGTERM
+    handling), this poll catches it before the next ingest run begins.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode == 0:
+            used = [int(x.strip()) for x in r.stdout.strip().splitlines() if x.strip().isdigit()]
+            if used and all(u == 0 for u in used):
+                return
+        time.sleep(poll_interval)
+    typer.echo(
+        f"WARNING: GPUs did not reach 0 MiB within {timeout}s between runs; proceeding anyway.",
+        err=True,
+    )
+
+
 def execute_runs(
     *,
     runs: list[dict[str, Any]],
@@ -1194,23 +1238,32 @@ def execute_runs(
     preset_override: str | None,
     base_artifacts_dir: str | None = None,
     tags: list[str] | None = None,
+    global_overrides: dict[str, Any] | None = None,
 ) -> tuple[Path, list[dict[str, Any]]]:
     session_dir = create_session_dir(session_prefix, base_dir=base_artifacts_dir)
     run_results: list[dict[str, Any]] = []
 
+    # Drain before the first run: residual GPU state from prior sessions would
+    # otherwise poison the first ingest just as much as any mid-sweep run.
+    _wait_for_gpu_clear()
+
     for idx, run in enumerate(runs):
         run_name = str(run.get("name") or f"run_{idx + 1:03d}")
+        per_run = run.get("overrides") if isinstance(run.get("overrides"), dict) else run
+        merged_overrides = {**(global_overrides or {}), **per_run}
         run_result = _run_entry(
             run_name=run_name,
             config_file=config_file,
             session_dir=session_dir,
             dataset=run.get("dataset"),
             preset=run.get("preset") if preset_override is None else preset_override,
-            sweep_overrides=run.get("overrides") if isinstance(run.get("overrides"), dict) else run,
+            sweep_overrides=merged_overrides,
             recall_required=run.get("recall_required"),
             tags=tags,
         )
         run_results.append(run_result)
+        if idx < len(runs) - 1:
+            _wait_for_gpu_clear()
 
     return session_dir, run_results
 
@@ -1274,6 +1327,7 @@ def sweep_command(
         session_prefix=session_prefix,
         preset_override=resolved_preset,
         tags=normalized_tags,
+        global_overrides=sweep_cfg.get("overrides") or {},
     )
     summary_path = write_session_summary(
         session_dir,
