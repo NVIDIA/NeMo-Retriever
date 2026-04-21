@@ -172,6 +172,7 @@ class Retriever:
         lancedb_table: str,
         query_vectors: list[list[float]],
         query_texts: list[str],
+        top_k: int,
     ) -> list[list[dict[str, Any]]]:
         import lancedb  # type: ignore
         import numpy as np
@@ -202,7 +203,7 @@ class Retriever:
         for i, vector in enumerate(query_vectors):
             q = np.asarray(vector, dtype="float32")
             # doubling top_k for both hybrid and dense search in order to have more to rerank
-            top_k = self.top_k if not self.reranker else self.top_k * self.reranker_refine_factor
+            fanout_top_k = top_k if not self.reranker else top_k * self.reranker_refine_factor
             if self.hybrid:
                 from lancedb.rerankers import RRFReranker  # type: ignore
 
@@ -212,7 +213,7 @@ class Retriever:
                     .text(query_texts[i])
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
-                    .limit(int(top_k))
+                    .limit(int(fanout_top_k))
                     .rerank(RRFReranker())
                     .to_list()
                 )
@@ -239,7 +240,7 @@ class Retriever:
                     .nprobes(effective_nprobes)
                     .refine_factor(int(self.refine_factor))
                     .select(select_cols)
-                    .limit(int(top_k))
+                    .limit(int(fanout_top_k))
                     .to_list()
                 )
             results.append([{k: v for k, v in h.items() if k in _KEEP_KEYS} for h in hits])
@@ -266,6 +267,8 @@ class Retriever:
         self,
         query_texts: list[str],
         results: list[list[dict[str, Any]]],
+        *,
+        top_k: int,
     ) -> list[list[dict[str, Any]]]:
         """Rerank each per-query result list using the configured reranker."""
         from nemo_retriever.rerank import rerank_hits
@@ -285,7 +288,7 @@ class Retriever:
                     api_key=(self.reranker_api_key or "").strip(),
                     max_length=int(self.reranker_max_length),
                     batch_size=int(self.reranker_batch_size),
-                    top_n=int(self.top_k),
+                    top_n=int(top_k),
                     modality=self.rerank_modality,
                 )
             )
@@ -299,13 +302,27 @@ class Retriever:
         self,
         query: str,
         *,
+        top_k: Optional[int] = None,
         embedder: Optional[str] = None,
         lancedb_uri: Optional[str] = None,
         lancedb_table: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """Run retrieval for a single query string."""
+        """Run retrieval for a single query string.
+
+        Args:
+            query: The natural-language query.
+            top_k: Per-call override of ``self.top_k``.  When ``None`` the
+                instance attribute is used.  The override is passed as a
+                local value through the search / rerank stack; it never
+                mutates ``self.top_k``, which keeps concurrent callers on
+                the same :class:`Retriever` instance thread-safe.
+            embedder: Per-call embedder override.
+            lancedb_uri: Per-call LanceDB URI override.
+            lancedb_table: Per-call LanceDB table override.
+        """
         return self.queries(
             [query],
+            top_k=top_k,
             embedder=embedder,
             lancedb_uri=lancedb_uri,
             lancedb_table=lancedb_table,
@@ -315,6 +332,7 @@ class Retriever:
         self,
         queries: Sequence[str],
         *,
+        top_k: Optional[int] = None,
         embedder: Optional[str] = None,
         lancedb_uri: Optional[str] = None,
         lancedb_table: Optional[str] = None,
@@ -325,10 +343,18 @@ class Retriever:
         results are re-scored with ``nvidia/llama-nemotron-rerank-1b-v2``
         (or the configured endpoint) and returned sorted by cross-encoder
         score.  Each hit gains a ``"_rerank_score"`` key.
+
+        The ``top_k`` argument is resolved into a local ``effective_top_k``
+        that is threaded through the search + rerank stack.  ``self.top_k``
+        is read once (when ``top_k`` is ``None``) and never written, so
+        concurrent callers sharing a :class:`Retriever` instance cannot
+        race on the instance attribute.
         """
         query_texts = [str(q) for q in queries]
         if not query_texts:
             return []
+
+        effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
 
         resolved_embedder = str(embedder or self.embedder)
         resolved_lancedb_uri = str(lancedb_uri or self.lancedb_uri)
@@ -352,10 +378,11 @@ class Retriever:
             lancedb_table=resolved_lancedb_table,
             query_vectors=vectors,
             query_texts=query_texts,
+            top_k=effective_top_k,
         )
 
         if self.reranker:
-            results = self._rerank_results(query_texts, results)
+            results = self._rerank_results(query_texts, results, top_k=effective_top_k)
 
         return results
 
@@ -382,8 +409,10 @@ class Retriever:
 
         Args:
             query: The natural-language query.
-            top_k: Override ``self.top_k`` for this call.  When ``None`` the
-                instance attribute is used.
+            top_k: Per-call override of ``self.top_k``.  Passed through as
+                a local value to :meth:`query`; ``self.top_k`` is never
+                mutated, so concurrent callers sharing a :class:`Retriever`
+                instance remain thread-safe.
             embedder: Override ``self.embedder`` for this call.
             lancedb_uri: Override ``self.lancedb_uri`` for this call.
             lancedb_table: Override ``self.lancedb_table`` for this call.
@@ -400,18 +429,13 @@ class Retriever:
         """
         from nemo_retriever.llm.types import RetrievalResult
 
-        previous_top_k = self.top_k
-        if top_k is not None:
-            self.top_k = int(top_k)
-        try:
-            hits = self.query(
-                query,
-                embedder=embedder,
-                lancedb_uri=lancedb_uri,
-                lancedb_table=lancedb_table,
-            )
-        finally:
-            self.top_k = previous_top_k
+        hits = self.query(
+            query,
+            top_k=top_k,
+            embedder=embedder,
+            lancedb_uri=lancedb_uri,
+            lancedb_table=lancedb_table,
+        )
 
         chunks: list[str] = []
         metadata: list[dict[str, Any]] = []
@@ -443,9 +467,10 @@ class Retriever:
         Args:
             queries: Iterable of natural-language query strings.  Order
                 is preserved in the returned list.
-            top_k: Per-call override of ``self.top_k`` (scoped via
-                ``try/finally`` so the instance attribute is restored on
-                return, mirroring :meth:`retrieve`).
+            top_k: Per-call override of ``self.top_k``.  Passed through
+                to :meth:`queries` as a local value, so ``self.top_k`` is
+                never written.  Concurrent callers sharing a single
+                :class:`Retriever` instance therefore remain thread-safe.
             embedder: Per-call embedder override.
             lancedb_uri: Per-call LanceDB URI override.
             lancedb_table: Per-call LanceDB table override.
@@ -462,18 +487,13 @@ class Retriever:
         if not query_texts:
             return []
 
-        previous_top_k = self.top_k
-        if top_k is not None:
-            self.top_k = int(top_k)
-        try:
-            hits_per_query = self.queries(
-                query_texts,
-                embedder=embedder,
-                lancedb_uri=lancedb_uri,
-                lancedb_table=lancedb_table,
-            )
-        finally:
-            self.top_k = previous_top_k
+        hits_per_query = self.queries(
+            query_texts,
+            top_k=top_k,
+            embedder=embedder,
+            lancedb_uri=lancedb_uri,
+            lancedb_table=lancedb_table,
+        )
 
         results: list[RetrievalResult] = []
         for hits in hits_per_query:
@@ -752,6 +772,7 @@ class RetrieverPipelineBuilder:
                 api_base=transport.api_base,
                 api_key=transport.api_key,
                 temperature=sampling.temperature,
+                top_p=sampling.top_p,
                 max_tokens=sampling.max_tokens,
                 extra_params=dict(transport.extra_params) if transport.extra_params else None,
                 num_retries=transport.num_retries,

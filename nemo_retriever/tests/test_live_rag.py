@@ -359,6 +359,56 @@ class TestRetrieveBatch:
             r.retrieve_batch(["q"], top_k=42)
         assert r.top_k == original_top_k
 
+    def test_retrieve_batch_forwards_top_k_to_queries(self):
+        """The per-call ``top_k`` must be forwarded as a kwarg, not via
+        attribute mutation. This is the regression test for the
+        Greptile P1 "thread-unsafe self.top_k mutation" finding: under
+        the old try/finally pattern the value was visible to ``queries``
+        only through ``self.top_k``, which was racy under concurrent use.
+        """
+
+        r = _make_retriever()
+        original_top_k = r.top_k
+        with patch.object(r, "queries", return_value=[[]]) as mock_queries:
+            r.retrieve_batch(["q"], top_k=7)
+        mock_queries.assert_called_once()
+        call_kwargs = mock_queries.call_args.kwargs
+        assert call_kwargs.get("top_k") == 7
+        assert r.top_k == original_top_k
+
+    def test_retrieve_batch_concurrent_distinct_top_k(self):
+        """Concurrent ``retrieve_batch`` calls with different ``top_k``
+        values must not clobber each other.
+
+        Under the old ``previous_top_k = self.top_k; self.top_k = ...; try:
+        self.queries(...); finally: self.top_k = previous_top_k`` dance
+        two threads would race on ``self.top_k``: thread A could set
+        ``top_k=3``, thread B could overwrite with ``top_k=10`` before
+        thread A's ``queries()`` call read it, and thread A would run
+        with the wrong k. The new implementation passes ``top_k``
+        through as a local kwarg, so each call sees its own value.
+        """
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        r = _make_retriever()
+
+        observed: list[int] = []
+        lock = __import__("threading").Lock()
+
+        def fake_queries(query_texts, *, top_k, **_kwargs):
+            with lock:
+                observed.append(int(top_k))
+            return [[] for _ in query_texts]
+
+        with patch.object(r, "queries", side_effect=fake_queries):
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = [pool.submit(r.retrieve_batch, ["q"], top_k=k) for k in (1, 3, 7, 15, 42)]
+                for f in futures:
+                    f.result()
+
+        assert sorted(observed) == [1, 3, 7, 15, 42]
+
     def test_retrieve_batch_empty_input(self):
         """Empty input returns an empty list and does not call ``queries``."""
 
@@ -446,6 +496,43 @@ class TestPipelineBuilder:
         mock_score_cls.assert_not_called()
         mock_judge_cls.assert_not_called()
 
+    def test_builder_forwards_top_p_from_llm_client(self):
+        """``.generate(llm)`` must forward ``llm.sampling.top_p`` to the
+        operator.
+
+        Regression test for the Greptile P1 finding that ``top_p`` was
+        silently dropped when a caller passed a pre-built ``LiteLLMClient``
+        with a non-default ``top_p``.
+        """
+
+        r = _make_retriever()
+
+        with patch("nemo_retriever.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
+            mock_gen_cls.return_value = _build_mock_operator("QAGenerationOperator", lambda df, **_: df)
+            llm = _build_fake_llm_client(top_p=0.7)
+            r.pipeline().generate(llm)
+
+        mock_gen_cls.assert_called_once()
+        kwargs = mock_gen_cls.call_args.kwargs
+        assert kwargs.get("top_p") == 0.7
+        assert kwargs.get("temperature") == 0.0
+        assert kwargs.get("max_tokens") == 512
+
+    def test_builder_forwards_none_top_p_when_unset(self):
+        """Default path (``top_p=None``) must forward ``None`` -- not raise
+        and not silently substitute a non-default."""
+
+        r = _make_retriever()
+
+        with patch("nemo_retriever.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
+            mock_gen_cls.return_value = _build_mock_operator("QAGenerationOperator", lambda df, **_: df)
+            llm = _build_fake_llm_client()
+            r.pipeline().generate(llm)
+
+        mock_gen_cls.assert_called_once()
+        kwargs = mock_gen_cls.call_args.kwargs
+        assert kwargs.get("top_p") is None
+
     def test_builder_generate_requires_llm_or_model(self):
         r = _make_retriever()
         with pytest.raises(ValueError, match="requires either llm= or model="):
@@ -530,7 +617,7 @@ def _build_mock_operator(class_name: str, process_fn):
     return op
 
 
-def _build_fake_llm_client():
+def _build_fake_llm_client(*, top_p: float | None = None):
     """Build a fake LiteLLMClient-shaped object for the builder."""
     transport = SimpleNamespace(
         model="fake-llm/test",
@@ -540,7 +627,7 @@ def _build_fake_llm_client():
         num_retries=3,
         timeout=120.0,
     )
-    sampling = SimpleNamespace(temperature=0.0, max_tokens=512)
+    sampling = SimpleNamespace(temperature=0.0, top_p=top_p, max_tokens=512)
     return SimpleNamespace(transport=transport, sampling=sampling)
 
 
