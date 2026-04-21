@@ -8,6 +8,7 @@ from typing import Any
 
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.chart.shared import _prediction_to_detections, graphic_elements_ocr_page_elements
+from nemo_retriever.graph.designer import designer_component
 
 __all__ = [
     "graphic_elements_ocr_page_elements",
@@ -15,6 +16,12 @@ __all__ = [
 ]
 
 
+@designer_component(
+    name="Graphic Elements Detection (CPU)",
+    category="Detection & OCR",
+    compute="cpu",
+    description="Detects charts and graphic elements using CPU",
+)
 class GraphicElementsActor(ArchetypeOperator):
     """Graph-facing graphic-elements archetype."""
 

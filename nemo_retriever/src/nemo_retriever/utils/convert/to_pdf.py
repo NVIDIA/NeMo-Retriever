@@ -17,6 +17,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".pptx"})
@@ -152,6 +153,13 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     return pd.DataFrame(out_rows)
 
 
+@designer_component(
+    name="Doc-to-PDF Converter",
+    category="Document Processing",
+    compute="cpu",
+    description="Converts document formats (DOCX, PPTX, etc.) to PDF",
+    category_color="#64b4ff",
+)
 class DocToPdfConversionCPUActor(AbstractOperator, CPUOperator):
     """Ray Data actor that converts DOCX/PPTX batches to PDF.
 

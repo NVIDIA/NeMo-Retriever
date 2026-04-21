@@ -4,11 +4,11 @@ The [NeMo Retriever Library](overview.md) Python API provides a simple and flexi
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 !!! tip
 
-    There is a Jupyter notebook available to help you get started with the Python API. For more information, refer to [Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+    There is a Jupyter notebook available to help you get started with the Python API. For more information, refer to [Python Client Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
 
 ## Summary of Key Methods
@@ -478,11 +478,11 @@ The `store` task uses [fsspec](https://filesystem-spec.readthedocs.io/) for stor
 | Amazon S3 | `s3://` | `s3://my-bucket/extracted-images` |
 | Google Cloud Storage | `gs://` | `gs://my-bucket/images` |
 | Azure Blob Storage | `abfs://` | `abfs://container@account.dfs.core.windows.net/images` |
-| MinIO (S3-compatible) | `s3://` | `s3://nv-ingest/artifacts/store/images` (default) |
+| MinIO (S3-compatible) | `s3://` | `s3://nemo-retriever/artifacts/store/images` (default) |
 
 !!! tip
 
-    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nv-ingest/...`). If you change that variable—for example to a host-mounted `file://` path—restart the runtime so the container picks up the new value.
+    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nemo-retriever/...`). If you change that variable—for example to a host-mounted `file://` path—restart the runtime so the container picks up the new value.
 
 When `public_base_url` is provided, the metadata returned from `ingest()` surfaces that HTTP(S) link while still recording the underlying storage URI. Leave it unset when the storage endpoint itself is already publicly reachable.
 
@@ -520,18 +520,18 @@ ingestor = ingestor.store(
 
 ```bash
 # Set DATASET_ROOT before starting services
-export DATASET_ROOT=/raid/my-project/nv-ingest-data
+export DATASET_ROOT=/raid/my-project/nemo-retriever-data
 docker compose up -d
 ```
 
 ```python
-# Now /workspace/data maps to /raid/my-project/nv-ingest-data
+# Now /workspace/data maps to /raid/my-project/nemo-retriever-data
 ingestor = ingestor.store(
     structured=True,
     images=True,
     storage_uri="file:///workspace/data/extracted-images"
 )
-# Files save to /raid/my-project/nv-ingest-data/extracted-images on host
+# Files save to /raid/my-project/nemo-retriever-data/extracted-images on host
 ```
 
 For more information on environment variables, refer to [Environment Variables](environment-config.md).

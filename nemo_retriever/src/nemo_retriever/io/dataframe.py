@@ -15,10 +15,53 @@ def validate_primitives_dataframe(df: pd.DataFrame) -> None:
         raise KeyError("Primitives DataFrame must include a 'metadata' column.")
 
 
+def _arrow_table_to_pandas_via_pylist(table: object) -> pd.DataFrame:
+    """Materialize an Arrow table without ``to_pandas`` (avoids nested/chunked bugs)."""
+    if table.num_rows == 0:
+        return pd.DataFrame()
+    return pd.DataFrame({name: table.column(name).to_pylist() for name in table.column_names})
+
+
+def read_extraction_parquet(path: Path | str) -> pd.DataFrame:
+    """Load pipeline extraction Parquet (nested list/struct columns).
+
+    PyArrow's dataset-based ``read_table`` / default ``pd.read_parquet`` can raise
+    ``ArrowNotImplementedError: Nested data conversions not implemented for chunked
+    array outputs``. Read with :class:`pyarrow.parquet.ParquetFile`, prefer
+    ``to_pandas``, then fall back to column-wise ``to_pylist()`` (always works for
+    nested types), then fastparquet / dataset reader.
+    """
+    path = Path(path)
+    import pyarrow.parquet as pq
+
+    try:
+        table = pq.ParquetFile(path).read()
+        try:
+            table = table.combine_chunks()
+        except Exception:
+            pass
+        try:
+            return table.to_pandas(split_blocks=False)
+        except Exception:
+            return _arrow_table_to_pandas_via_pylist(table)
+    except Exception:
+        pass
+    try:
+        return pd.read_parquet(path, engine="fastparquet")
+    except Exception:
+        pass
+    try:
+        table = pq.ParquetFile(path).read()
+        return _arrow_table_to_pandas_via_pylist(table)
+    except Exception:
+        pass
+    return pd.read_parquet(path)
+
+
 def read_dataframe(path: Path) -> pd.DataFrame:
     suffix = path.suffix.lower()
     if suffix == ".parquet":
-        return pd.read_parquet(path)
+        return read_extraction_parquet(path)
     if suffix in {".jsonl", ".json"}:
         text = path.read_text(encoding="utf-8")
         if suffix == ".jsonl":

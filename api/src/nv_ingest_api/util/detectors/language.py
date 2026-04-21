@@ -3,8 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-import langdetect
-
 from nv_ingest_api.internal.enums.common import LanguageEnum
 from nv_ingest_api.util.exception_handlers.detectors import langdetect_exception_handler
 
@@ -24,6 +22,10 @@ def detect_language(text):
     LanguageEnum
         A value from `LanguageEnum` detected language code.
     """
+    try:
+        import langdetect
+    except ImportError:
+        return LanguageEnum.UNKNOWN
 
     try:
         language = langdetect.detect(text)

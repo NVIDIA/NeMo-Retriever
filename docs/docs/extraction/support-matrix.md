@@ -4,7 +4,7 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 ## Core and Advanced Pipeline Features
@@ -28,7 +28,7 @@ This includes the following:
     
     !!! note
     
-        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images).
+        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
 
 - Reranker — Use [llama-3.2-nv-rerankqa-1b-v2](https://build.nvidia.com/nvidia/llama-3.2-nv-rerankqa-1b-v2) for improved retrieval accuracy.
 
@@ -77,6 +77,6 @@ and run only the embedder, reranker, and your vector database.
 ## Related Topics
 
 - [Prerequisites](prerequisites.md)
-- [Release Notes](releasenotes-nv-ingest.md)
+- [Release Notes](releasenotes.md)
 - [NVIDIA NIM for Vision Language Models Support Matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html)
 - [NVIDIA Speech NIM Microservices](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html)

@@ -4,6 +4,7 @@
 
 import logging
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,25 @@ def remove_url_endpoints(url) -> str:
         url = url.split("/v1")[0]
 
     return url
+
+
+def ensure_openai_embeddings_http_url(endpoint_url: str) -> str:
+    """
+    Return a concrete OpenAI-style embeddings POST URL (path ending in ``/embeddings``).
+
+    Idempotent: if the path already ends with ``/embeddings`` (case-insensitive), the URL is
+    returned unchanged aside from stripping a trailing slash on the path. This avoids
+    ``.../embeddings`` + ``/embeddings`` doubling when callers pass a full integrate/NIM URL.
+    """
+    raw = (endpoint_url or "").strip()
+    if not raw:
+        raise ValueError("endpoint_url is empty")
+    parts = urlsplit(raw)
+    path = (parts.path or "").rstrip("/")
+    if path.lower().endswith("/embeddings"):
+        return raw.rstrip("/")
+    new_path = f"{path}/embeddings" if path else "/embeddings"
+    return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
 
 
 def generate_url(url) -> str:

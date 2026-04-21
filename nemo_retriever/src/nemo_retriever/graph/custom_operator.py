@@ -7,8 +7,16 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.designer import designer_component
 
 
+@designer_component(
+    name="UDF Operator",
+    category="Graph Utilities",
+    compute="undefined",
+    description="Wraps a user-defined function as a pipeline operator",
+    category_color="#a0a0a0",
+)
 class UDFOperator(AbstractOperator):
     """A small operator wrapper for user-defined Python functions."""
 

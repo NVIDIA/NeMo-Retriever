@@ -120,6 +120,83 @@ def test_load_beir_dataset_supports_bo10k_csv_pdf_page_modality(tmp_path: Path) 
     }
 
 
+def test_load_beir_dataset_supports_earnings_csv_pdf_page(tmp_path: Path) -> None:
+    annotations = tmp_path / "earnings_consulting_multimodal.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is doc a?,Answer A,1001,0",
+                "table,What is doc b?,Answer B,1002.pdf,4",
+                "chart,What is doc c?,Answer C,1003.pdf,2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("earnings_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.query_ids == ["0", "1", "2"]
+    assert dataset.queries == ["What is doc a?", "What is doc b?", "What is doc c?"]
+    assert dataset.qrels == {
+        "0": {"1001_1": 1},
+        "1": {"1002_5": 1},
+        "2": {"1003_3": 1},
+    }
+
+
+def test_load_beir_dataset_supports_financebench_json_pdf_basename(tmp_path: Path) -> None:
+    annotations = tmp_path / "financebench_train.json"
+    annotations.write_text(
+        '[{"id":"q1","question":"What is revenue?","contexts":[{"filename":"AAPL_2023.pdf"}]},'
+        '{"id":"q2","question":" What is margin? ","contexts":[{"filename":"MSFT_2022"}]}]',
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("financebench_json", dataset_name=str(annotations), doc_id_field="pdf_basename")
+
+    assert dataset.query_ids == ["q1", "q2"]
+    assert dataset.queries == ["What is revenue?", " What is margin? "]
+    assert dataset.qrels == {
+        "q1": {"AAPL_2023": 1},
+        "q2": {"MSFT_2022": 1},
+    }
+
+
+def test_load_beir_dataset_preserves_dotted_pdf_basenames_without_extension(tmp_path: Path) -> None:
+    annotations = tmp_path / "earnings_consulting_multimodal.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is fair value?,Answer A,3.-Facebook-Reports-Third-Quarter-2016-Results,0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("earnings_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.qrels == {"0": {"3.-Facebook-Reports-Third-Quarter-2016-Results_1": 1}}
+
+
+def test_load_beir_dataset_preserves_query_whitespace_for_retrieval_parity(tmp_path: Path) -> None:
+    annotations = tmp_path / "earnings_consulting_multimodal.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is the Apple arcade? ,Answer A,1001,0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("earnings_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.queries == ["What is the Apple arcade? "]
+
+
 def test_build_beir_run_from_hits_synthesizes_pdf_page_modality() -> None:
     raw_hits = [
         [

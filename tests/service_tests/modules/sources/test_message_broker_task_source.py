@@ -22,9 +22,9 @@ from nv_ingest.framework.orchestration.ray.stages.sources.message_broker_task_so
 # Initialize Ray once at the module level
 @pytest.fixture(scope="module", autouse=True)
 def ray_fixture():
-    """Initialize Ray for the entire test module."""
+    """Initialize Ray for the entire test module (local cluster; Ray 2.x removed local_mode)."""
     if not ray.is_initialized():
-        ray.init(local_mode=True, ignore_reinit_error=True)
+        ray.init(ignore_reinit_error=True)
     yield
     if ray.is_initialized():
         ray.shutdown()
@@ -391,54 +391,3 @@ class TestMessageBrokerTaskSourceStage:
 
         # Cleanup
         ray.kill(stage_ref)
-
-    @ray.method(num_returns=1)
-    def set_output_queue(self, queue_handle: any) -> bool:
-        self.output_queue = queue_handle
-        self._logger.info("Output queue set: %s", queue_handle)
-        return True
-
-    @ray.method(num_returns=1)
-    def pause(self) -> bool:
-        """
-        Pause the stage. This clears the pause event, causing the processing loop
-        to block before writing to the output queue.
-
-        Returns
-        -------
-        bool
-            True after the stage is paused.
-        """
-        self._pause_event.clear()
-        self._logger.info("Stage paused.")
-
-        return True
-
-    @ray.method(num_returns=1)
-    def resume(self) -> bool:
-        """
-        Resume the stage. This sets the pause event, allowing the processing loop
-        to proceed with writing to the output queue.
-
-        Returns
-        -------
-        bool
-            True after the stage is resumed.
-        """
-        self._pause_event.set()
-        self._logger.info("Stage resumed.")
-        return True
-
-    @ray.method(num_returns=1)
-    def swap_queues(self, new_queue: any) -> bool:
-        """
-        Swap in a new output queue for this stage.
-        This method pauses the stage, waits for any current processing to finish,
-        replaces the output queue, and then resumes the stage.
-        """
-        self._logger.info("Swapping output queue: pausing stage first.")
-        self.pause()
-        self.set_output_queue(new_queue)
-        self._logger.info("Output queue swapped. Resuming stage.")
-        self.resume()
-        return True

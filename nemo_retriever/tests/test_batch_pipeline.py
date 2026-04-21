@@ -100,6 +100,17 @@ def test_resolve_input_file_patterns_recurses_for_directory_inputs(tmp_path) -> 
     assert doc_patterns == [str(dataset_dir / "**" / "*.docx"), str(dataset_dir / "**" / "*.pptx")]
 
 
+def test_graph_pipeline_resolves_nested_pdf_directories(tmp_path) -> None:
+    dataset_dir = tmp_path / "earnings_consulting"
+    nested_dir = dataset_dir / "amazon_earnings_call"
+    nested_dir.mkdir(parents=True)
+    (nested_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    patterns = batch_pipeline._resolve_file_patterns(dataset_dir, "pdf")
+
+    assert patterns == [str(dataset_dir / "**" / "*.pdf")]
+
+
 def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

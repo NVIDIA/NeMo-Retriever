@@ -295,6 +295,8 @@ DATASET_DIR=/custom/path uv run nv-ingest-harness-run --case=e2e
 | `table_structure` | nemotron-table-structure-v1 model benchmarking (PyPi) | None | ✅ Available |
 | `ocr` | nemotron-ocr model benchmarking (PyPi) | None | ✅ Available |
 
+**QA Evaluation (multi-tier scoring):** For LLM-as-judge QA evaluation (retrieval quality, token F1, semantic scoring), see the **[QA Evaluation Pipeline](../../nemo_retriever/src/nemo_retriever/evaluation/README.md)** in `nemo_retriever`. Run with `retriever eval run --config nemo_retriever/examples/eval_sweep.yaml` from the repo root.
+
 **Note**: Legacy test cases (`dc20_e2e`, `dc20_v2_e2e`) have been moved to `scripts/private_local`.
 
 ### Configuration Synergy

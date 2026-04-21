@@ -218,19 +218,13 @@ class TestTableStructureCPUActor:
 
         actor = TableStructureCPUActor()
         assert actor._table_structure_model is None
-        assert actor._ocr_model is None
         assert "nemotron-table-structure-v1" in actor._table_structure_invoke_url
-        assert "nemotron-ocr-v1" in actor._ocr_invoke_url
 
     def test_creates_with_custom_urls(self):
         from nemo_retriever.table.cpu_actor import TableStructureCPUActor
 
-        actor = TableStructureCPUActor(
-            table_structure_invoke_url="http://custom1",
-            ocr_invoke_url="http://custom2",
-        )
+        actor = TableStructureCPUActor(table_structure_invoke_url="http://custom1")
         assert actor._table_structure_invoke_url == "http://custom1"
-        assert actor._ocr_invoke_url == "http://custom2"
 
     @patch("nemo_retriever.table.cpu_actor.table_structure_ocr_page_elements")
     def test_process(self, mock_fn):
@@ -269,7 +263,7 @@ class TestOCRCPUActor:
     def test_process(self, mock_fn):
         from nemo_retriever.ocr.cpu_ocr import OCRCPUActor
 
-        expected = pd.DataFrame({"ocr_v1": ["res"]})
+        expected = pd.DataFrame({"ocr": ["res"]})
         mock_fn.return_value = expected
         actor = OCRCPUActor(ocr_invoke_url="http://fake")
         result = actor.process(pd.DataFrame({"page_image": ["x"]}))

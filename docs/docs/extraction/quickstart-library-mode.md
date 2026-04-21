@@ -2,9 +2,9 @@
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
-Use the [Quick Start for NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/nemo_retriever/README.md) to set up and run the NeMo Retriever Library locally, so you can build a GPU‑accelerated, multimodal RAG ingestion pipeline that parses PDFs, HTML, text, audio, and video into LanceDB vector embeddings, integrates with Nemotron RAG models (locally or via NIM endpoints), which includes Ray‑based scaling with built‑in recall evaluation. Python 3.12 or later is required (see [Prerequisites](prerequisites.md)).
+Use the [Quick Start for NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/nemo_retriever/README.md) to set up and run the NeMo Retriever Library locally, so you can build a GPU‑accelerated, multimodal RAG ingestion pipeline that parses PDFs, HTML, text, audio, and video into LanceDB vector embeddings, integrates with Nemotron RAG models (locally or via NIM endpoints), which includes Ray‑based scaling with built‑in recall evaluation. Python 3.12 or later is required (refer to [Prerequisites](prerequisites.md)).
 
 ## `run_pipeline`
 
@@ -21,7 +21,7 @@ The following table matches the function signature in source (defaults and optio
 | Parameter | Required | Type (default) | Description |
 |-----------|----------|----------------|-------------|
 | `pipeline_config` | No | `Optional[PipelineConfigSchema]` (`None`) | Validated pipeline configuration. If `None` and `libmode=True`, the default library-mode pipeline is loaded automatically. If `None` and `libmode=False`, a `ValueError` is raised—you must pass a configuration. |
-| `block` | No | `bool` (`True`) | If `True`, the call blocks until the pipeline finishes. If `False`, returns immediately with a handle object (see [Return type](#return-type)). |
+| `block` | No | `bool` (`True`) | If `True`, the call blocks until the pipeline finishes. If `False`, returns immediately with a handle object (refer to [Return type](#return-type)). |
 | `disable_dynamic_scaling` | No | `Optional[bool]` (`None`) | If set, overrides the same field from the pipeline configuration. |
 | `dynamic_memory_threshold` | No | `Optional[float]` (`None`) | If set, overrides the same field from the pipeline configuration. |
 | `run_in_subprocess` | No | `bool` (`False`) | If `True`, runs the pipeline in a separate Python subprocess (`multiprocessing.Process`). If `False`, runs in the current process. |

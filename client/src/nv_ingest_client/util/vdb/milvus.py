@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ast
 import copy
 import datetime
@@ -16,29 +18,51 @@ from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 import requests
-from minio import Minio
 from nv_ingest_client.util.process_json_files import ingest_json_results_to_blob
 from nv_ingest_client.util.transport import infer_microservice
 from nv_ingest_client.util.util import ClientConfigSchema
 from nv_ingest_client.util.vdb.adt_vdb import VDB
-from pymilvus import AnnSearchRequest
-from pymilvus import BulkInsertState
-from pymilvus import Collection
-from pymilvus import CollectionSchema
-from pymilvus import DataType
-from pymilvus import Function
-from pymilvus import FunctionType
-from pymilvus import MilvusClient
-from pymilvus import RRFRanker
-from pymilvus import connections
-from pymilvus import utility
-from pymilvus.bulk_writer import BulkFileType
-from pymilvus.bulk_writer import RemoteBulkWriter
-from pymilvus.milvus_client.index import IndexParams
-from pymilvus.model.sparse import BM25EmbeddingFunction
-from pymilvus.model.sparse.bm25.tokenizers import build_default_analyzer
-from pymilvus.orm.types import CONSISTENCY_BOUNDED
-from scipy.sparse import csr_array
+
+try:
+    from minio import Minio
+    from pymilvus import AnnSearchRequest
+    from pymilvus import BulkInsertState
+    from pymilvus import Collection
+    from pymilvus import CollectionSchema
+    from pymilvus import DataType
+    from pymilvus import Function
+    from pymilvus import FunctionType
+    from pymilvus import MilvusClient
+    from pymilvus import RRFRanker
+    from pymilvus import connections
+    from pymilvus import utility
+    from pymilvus.bulk_writer import BulkFileType
+    from pymilvus.bulk_writer import RemoteBulkWriter
+    from pymilvus.milvus_client.index import IndexParams
+    from pymilvus.model.sparse import BM25EmbeddingFunction
+    from pymilvus.model.sparse.bm25.tokenizers import build_default_analyzer
+    from pymilvus.orm.types import CONSISTENCY_BOUNDED
+    from scipy.sparse import csr_array
+except ImportError:
+    Minio = None
+    AnnSearchRequest = None
+    BulkInsertState = None
+    Collection = None
+    CollectionSchema = None
+    DataType = None
+    Function = None
+    FunctionType = None
+    MilvusClient = None
+    RRFRanker = None
+    connections = None
+    utility = None
+    BulkFileType = None
+    RemoteBulkWriter = None
+    IndexParams = None
+    BM25EmbeddingFunction = None
+    build_default_analyzer = None
+    CONSISTENCY_BOUNDED = None
+    csr_array = None
 
 
 logger = logging.getLogger(__name__)

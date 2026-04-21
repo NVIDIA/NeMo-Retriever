@@ -10,6 +10,7 @@ from typing import Any
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.nim.probe import probe_endpoint
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
 from nemo_retriever.text_embed.shared import build_embed_kwargs
@@ -31,6 +32,21 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
         if not endpoint:
             self._kwargs["embedding_endpoint"] = self.DEFAULT_EMBED_INVOKE_URL
         self._model = None
+
+        api_key = self._kwargs.get("api_key")
+        if endpoint and api_key:
+            # Probe the /embeddings path with a model-name-only body — auth is
+            # checked before body validation so a bad key returns 401 without
+            # triggering inference. A valid key with an empty input returns 400.
+            model_name = self._kwargs.get("model_name", "")
+            probe_endpoint(
+                endpoint,
+                name="embed",
+                prefix="_BatchEmbedCPUActor",
+                api_key=api_key,
+                post_url=endpoint.rstrip("/") + "/embeddings",
+                post_body={"input": [], "model": model_name},
+            )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

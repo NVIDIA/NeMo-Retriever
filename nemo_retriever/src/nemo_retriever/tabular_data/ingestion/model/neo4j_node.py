@@ -35,9 +35,6 @@ class Neo4jNode:
 
         self.override_existing_props = override_existing_props if override_existing_props else None
 
-    def change_label(self, new_label):
-        self.label = new_label
-
     def get_name(self):
         return self.name
 
@@ -61,11 +58,6 @@ class Neo4jNode:
 
     def add_properties(self, properties: dict):
         self.props.update(properties)
-
-    def get_props_str(self):
-        if self.props is None:
-            return "{}"
-        return str(self.props)
 
     def get_id(self):
         return self.id

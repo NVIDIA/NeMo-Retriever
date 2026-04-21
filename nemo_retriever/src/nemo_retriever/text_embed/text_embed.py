@@ -22,6 +22,7 @@ import traceback
 
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
@@ -177,6 +178,13 @@ def embed_text_1b_v2(
     return out
 
 
+@designer_component(
+    name="Text Embedder",
+    category="Embeddings & Ranking",
+    compute="gpu",
+    description="Generates text embeddings using a language model",
+    category_color="#e06cff",
+)
 class TextEmbedGPUActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes `LlamaNemotronEmbed1BV2Embedder` once.

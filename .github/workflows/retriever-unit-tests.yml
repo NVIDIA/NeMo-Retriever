@@ -1,9 +1,11 @@
 name: Retriever Unit Tests
 
 on:
+  # push: only default branch — feature-branch pushes also fire pull_request when a
+  # PR exists, so a broad push trigger duplicates every PR synchronize.
   push:
     branches:
-      - "**"
+      - main
   pull_request:
 
 jobs:
@@ -26,8 +28,7 @@ jobs:
 
       - name: Install unit test dependencies
         run: |
-          uv pip install --system -e src/ -e api/ -e client/
-          uv pip install --system -e nemo_retriever
+          uv pip install --system -e nemo_retriever[all,dev]
 
       - name: Run retriever unit tests
         env:

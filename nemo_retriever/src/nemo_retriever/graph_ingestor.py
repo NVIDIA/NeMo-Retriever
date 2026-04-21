@@ -27,6 +27,8 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
+import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
@@ -272,7 +274,23 @@ class GraphIngestor(ingestor):
             import ray
 
             if self._ray_address or not ray.is_initialized():
-                ray.init(address=self._ray_address, ignore_reinit_error=True)
+                venv = os.path.dirname(os.path.dirname(sys.executable))
+                venv_bin = os.path.join(venv, "bin")
+                pypath = os.pathsep.join(p for p in sys.path if p)
+                ray_env_vars: dict[str, str] = {
+                    "VIRTUAL_ENV": venv,
+                    "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                    "PYTHONPATH": pypath,
+                }
+                for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+                    if os.environ.get(_fwd_key):
+                        ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+                runtime_env = {"env_vars": ray_env_vars}
+                ray.init(
+                    address=self._ray_address,
+                    ignore_reinit_error=True,
+                    runtime_env=runtime_env,
+                )
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(
@@ -298,6 +316,7 @@ class GraphIngestor(ingestor):
                 self._embed_params,
                 cluster_resources=cluster_resources,
                 allow_no_gpu=effective_allow_no_gpu,
+                caption_params=self._caption_params,
             )
             merged_overrides: Dict[str, Dict[str, Any]] = {}
             for node_name in set(derived_overrides) | set(self._node_overrides):

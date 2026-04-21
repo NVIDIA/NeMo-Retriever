@@ -12,6 +12,7 @@ from pathlib import Path  # noqa: F401
 import numpy as np
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
 from PIL import Image
@@ -183,24 +184,23 @@ class NemotronOCRV1(BaseModel):
                 out: List[Any] = []
                 for i in range(int(input_data.shape[0])):
                     b64 = self._tensor_to_png_b64(input_data[i])
-                    out.extend(self._model(b64.encode("utf-8"), merge_level=merge_level))
+                    with gpu_inference_range("NemotronOCRv1", batch_size=1):
+                        out.extend(self._model(b64.encode("utf-8"), merge_level=merge_level))
                 return out
             if input_data.ndim == 3:
                 b64 = self._tensor_to_png_b64(input_data)
-                return self._model(b64.encode("utf-8"), merge_level=merge_level)
+                with gpu_inference_range("NemotronOCRv1", batch_size=1):
+                    return self._model(b64.encode("utf-8"), merge_level=merge_level)
             raise ValueError(f"Unsupported torch tensor shape for OCR: {tuple(input_data.shape)}")
 
         # Disambiguate str: existing file path vs base64 string.
         if isinstance(input_data, str):
-            # s = input_data.strip()
-            # breakpoint()
-            # if s and Path(s).is_file():
-            #     return self._model(s, merge_level=merge_level)
-            # Treat as base64 string (nemotron_ocr expects bytes for base64).
-            return self._model(input_data.encode("utf-8"), merge_level=merge_level)
+            with gpu_inference_range("NemotronOCRv1", batch_size=1):
+                return self._model(input_data.encode("utf-8"), merge_level=merge_level)
 
         # bytes / ndarray / BytesIO are supported directly by nemotron_ocr.
-        return self._model(input_data, merge_level=merge_level)
+        with gpu_inference_range("NemotronOCRv1", batch_size=1):
+            return self._model(input_data, merge_level=merge_level)
 
     @property
     def model_name(self) -> str:

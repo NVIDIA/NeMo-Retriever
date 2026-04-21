@@ -31,7 +31,7 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.nim.chat_completions import invoke_chat_completions_images
-from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
 
 try:
@@ -246,6 +246,7 @@ def nemotron_parse_pages(
     nemotron_parse_model: Optional[str] = None,
     task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     """Run Nemotron Parse v1.2 on full page images.
@@ -312,10 +313,8 @@ def nemotron_parse_pages(
         try:
             if use_remote:
                 if "/v1/chat/completions" in invoke_url:
-                    # Hosted API (v1.0/v1.1): image only, no task_prompt.
-                    # Response arrives as tool_calls JSON.
                     used_v1_api = True
-                    raw_texts = invoke_chat_completions_images(
+                    _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
                         model=nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
@@ -325,21 +324,33 @@ def nemotron_parse_pages(
                             "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
                             "max_tokens": 8192,
                         },
-                        max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
+                    if nim_client is not None:
+                        raw_texts = nim_client.invoke_chat_completions_images(**_chat_kw)
+                    else:
+                        raw_texts = invoke_chat_completions_images(
+                            **_chat_kw,
+                            max_pool_workers=int(retry.remote_max_pool_workers),
+                        )
                 else:
-                    response_items = invoke_image_inference_batches(
+                    _img_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
-                        max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
+                    if nim_client is not None:
+                        response_items = nim_client.invoke_image_inference_batches(**_img_kw)
+                    else:
+                        response_items = invoke_image_inference_batches(
+                            **_img_kw,
+                            max_pool_workers=int(retry.remote_max_pool_workers),
+                        )
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
                 # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
@@ -447,6 +458,10 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             remote_max_429_retries=int(remote_max_429_retries),
         )
         self._model = None
+        if self._invoke_url:
+            self._nim_client = NIMClient(max_pool_workers=int(remote_max_pool_workers))
+        else:
+            self._nim_client = None
         self._extract_text = bool(extract_text)
         self._extract_tables = bool(extract_tables)
         self._extract_charts = bool(extract_charts)
@@ -477,6 +492,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             extract_charts=self._extract_charts,
             extract_infographics=self._extract_infographics,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             **kwargs,
         )
 
@@ -541,6 +557,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             remote_max_429_retries=int(remote_max_429_retries),
         )
         self._model = None
+        self._nim_client = NIMClient(max_pool_workers=int(remote_max_pool_workers))
         self._extract_text = bool(extract_text)
         self._extract_tables = bool(extract_tables)
         self._extract_charts = bool(extract_charts)
@@ -563,6 +580,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             extract_charts=self._extract_charts,
             extract_infographics=self._extract_infographics,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             **kwargs,
         )
 

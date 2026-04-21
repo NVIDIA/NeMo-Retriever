@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.ocr.shared import nemotron_parse_page_elements
 
@@ -44,6 +45,9 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             remote_max_429_retries=int(remote_max_429_retries),
         )
         self._model = None
+        self._nim_client = NIMClient(
+            max_pool_workers=int(remote_max_pool_workers),
+        )
         self._extract_text = bool(extract_text)
         self._extract_tables = bool(extract_tables)
         self._extract_charts = bool(extract_charts)
@@ -65,6 +69,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             extract_charts=self._extract_charts,
             extract_infographics=self._extract_infographics,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             **kwargs,
         )
 

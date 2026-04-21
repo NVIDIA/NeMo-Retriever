@@ -8,22 +8,26 @@ from typing import Any
 
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.table.shared import table_structure_ocr_page_elements
+from nemo_retriever.graph.designer import designer_component
 
 __all__ = [
     "table_structure_ocr_page_elements",
 ]
 
 
+@designer_component(
+    name="Table Structure Detection (CPU)",
+    category="Detection & OCR",
+    compute="cpu",
+    description="Detects and extracts table structure using CPU",
+)
 class TableStructureActor(ArchetypeOperator):
     """Graph-facing table-structure archetype."""
 
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(
-            str(kwargs.get("table_structure_invoke_url") or "").strip()
-            or str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip()
-        )
+        return bool(str(kwargs.get("table_structure_invoke_url") or kwargs.get("invoke_url") or "").strip())
 
     @classmethod
     def cpu_variant_class(cls):

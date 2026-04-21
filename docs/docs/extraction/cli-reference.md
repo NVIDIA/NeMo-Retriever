@@ -1,10 +1,15 @@
 # CLI Reference
 
+!!! note
+
+    This documentation describes NeMo Retriever Library.
+
+
 After you install the Python dependencies, you can use the [NeMo Retriever Library](overview.md) command line interface (CLI).
 To use the CLI, use the `nemo-retriever` command.
 
 !!! note "Command name"
-    Depending on your installation (NeMo Retriever Library vs. nv-ingest-client), you invoke the CLI by using `nemo-retriever` or `nv-ingest-cli`. Both expose the same options and behavior. The following sections use `nemo-retriever` for consistency with the examples.
+    Install the NeMo Retriever Library client package, then invoke the CLI with `nemo-retriever`. The examples in this page use that command name.
 
 To check the version of the CLI that you have installed, run the following command.
 
@@ -51,7 +56,7 @@ The following table lists all CLI options.
 | `--collect_profiling_traces` | — | flag | false | No | After the run, fetch Zipkin traces for submitted jobs and write them under `output_directory`. |
 | `--zipkin_host` | — | string | `localhost` | No | Host for Zipkin API (used when `--collect_profiling_traces` is set). |
 | `--zipkin_port` | — | int | `9411` | No | Port for Zipkin API. |
-| `--version` | — | flag | — | No | Print nv-ingest and nv-ingest-cli versions and exit. |
+| `--version` | — | flag | — | No | Print NeMo Retriever Library client and CLI version information and exit. |
 
 
 
@@ -108,7 +113,7 @@ Running with `--fail_on_error` causes the process to exit on the first job failu
 
 ## Complete --help Output
 
-The following is the standard help output for the CLI (equivalent to `nemo-retriever --help` or `nv-ingest-cli --help`). Use it as a quick reference when you cannot run the command locally.
+The following is the standard help output for the CLI (equivalent to `nemo-retriever --help`). Use it as a quick reference when you cannot run the command locally.
 
 ```text
 Usage: nemo-retriever [OPTIONS]

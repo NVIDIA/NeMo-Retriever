@@ -246,7 +246,9 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
         def ingest(self, data):
             return {"data": data, "graph": self.graph}
 
-    def _fake_batch_tuning_to_node_overrides(extract_params, embed_params, cluster_resources=None, allow_no_gpu=None):
+    def _fake_batch_tuning_to_node_overrides(
+        extract_params, embed_params, cluster_resources=None, allow_no_gpu=None, **kwargs
+    ):
         captured["allow_no_gpu"] = allow_no_gpu
         captured["cluster_resources"] = cluster_resources
         return {}

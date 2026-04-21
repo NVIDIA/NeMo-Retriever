@@ -8,7 +8,10 @@ from typing import Any
 from typing import Callable
 from typing import Dict
 
-from langdetect.lang_detect_exception import LangDetectException
+try:
+    from langdetect.lang_detect_exception import LangDetectException as _LangDetectException
+except ImportError:
+    _LangDetectException = None
 
 from nv_ingest_api.internal.enums.common import LanguageEnum
 
@@ -66,9 +69,10 @@ def langdetect_exception_handler(func: Callable, **kwargs: Dict[str, Any]) -> Ca
     def inner_function(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except LangDetectException as e:
-            log_error_message = f"LangDetectException: {e}"
-            logger.warning(log_error_message)
-            return LanguageEnum.UNKNOWN
+        except Exception as e:
+            if _LangDetectException is not None and isinstance(e, _LangDetectException):
+                logger.warning(f"LangDetectException: {e}")
+                return LanguageEnum.UNKNOWN
+            raise
 
     return inner_function

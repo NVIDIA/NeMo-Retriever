@@ -228,18 +228,33 @@ def print_run_summary(
     ingest_only_total_time: float,
     ray_dataset_download_total_time: float,
     lancedb_write_total_time: float,
-    evaluation_total_time: float,
-    evaluation_metrics: Dict[str, float],
-    *,
+    evaluation_total_time: float = 0.0,
+    evaluation_metrics: Optional[Dict[str, float]] = None,
+    recall_total_time: float = 0.0,
+    recall_metrics: Optional[Dict[str, float]] = None,
+    processed_files: Optional[int] = None,
     evaluation_label: str = "Recall",
     evaluation_count: Optional[int] = None,
-) -> None:
-    ingest_only_pps = processed_pages / ingest_only_total_time
-    ingest_and_lancedb_write_pps = processed_pages / (ingest_only_total_time + lancedb_write_total_time)
-    total_pps = processed_pages / total_time
-    utc_now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+) -> Dict[str, Any]:
+    """Print a human-readable run summary and return all metrics as a dict.
 
-    print(f"===== Run Summary - {utc_now} UTC =====")
+    The returned dict is the authoritative structured representation of every
+    metric collected during the run.  Callers should persist it to a JSON file
+    so that the harness can read it directly instead of parsing stdout.
+    """
+    if recall_metrics is None:
+        recall_metrics = {}
+    if evaluation_metrics is None:
+        evaluation_metrics = {}
+    pages = processed_pages if processed_pages is not None else 0
+
+    ingest_only_pps = pages / ingest_only_total_time if ingest_only_total_time > 0 else 0
+    ingest_write_denom = ingest_only_total_time + lancedb_write_total_time
+    ingest_and_lancedb_write_pps = pages / ingest_write_denom if ingest_write_denom > 0 else 0
+    recall_qps = pages / recall_total_time if recall_total_time > 0 else 0
+    total_pps = pages / total_time if total_time > 0 else 0
+
+    print(f"===== Run Summary - {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC =====")
 
     print("Run Configuration:")
     print(f"\tInput path: {input_path}")
@@ -248,22 +263,49 @@ def print_run_summary(
     print(f"\tLancedb Table: {lancedb_table_name}")
 
     print("Runtimes:")
-    print(f"\tTotal pages processed: {processed_pages} from {input_path}")
+    if processed_files is not None:
+        print(f"\tTotal files processed: {processed_files}")
+    print(f"\tTotal pages processed: {pages} from {input_path}")
     print(f"\tIngestion only time: {_fmt_time(ingest_only_total_time)}")
     print(f"\tRay dataset download time: {_fmt_time(ray_dataset_download_total_time)}")
     print(f"\tLanceDB Write Time: {_fmt_time(lancedb_write_total_time)}")
-    print(f"\t{evaluation_label} time: {_fmt_time(evaluation_total_time)}")
+    if recall_total_time > 0:
+        print(f"\tRecall time: {_fmt_time(recall_total_time)}")
+    if evaluation_total_time > 0:
+        print(f"\t{evaluation_label} time: {_fmt_time(evaluation_total_time)}")
 
     print("PPS:")
     print(f"\tIngestion only PPS: {ingest_only_pps:.2f}")
     print(f"\tIngestion + LanceDB Write PPS: {ingest_and_lancedb_write_pps:.2f}")
-    if evaluation_total_time > 0:
-        eval_count = evaluation_count if evaluation_count is not None else processed_pages
-        if eval_count is not None:
-            evaluation_qps = eval_count / evaluation_total_time
-            print(f"\t{evaluation_label} QPS: {evaluation_qps:.2f}")
-    print(f"\tTotal - Processed: {processed_pages} pages in {_fmt_time(total_time)} @ {total_pps:.2f} PPS")
+    if recall_total_time > 0:
+        print(f"\tRecall QPS: {recall_qps:.2f}")
+    print(f"\tTotal - Processed: {pages} pages in {_fmt_time(total_time)} @ {total_pps:.2f} PPS")
 
-    print(f"{evaluation_label} metrics:")
-    for k, v in sorted(evaluation_metrics.items(), key=_evaluation_metric_sort_key):
-        print(f"  {k}: {v:.4f}")
+    if recall_metrics:
+        print("Recall metrics:")
+        for k, v in sorted(recall_metrics.items(), key=_evaluation_metric_sort_key):
+            print(f"  {k}: {v:.4f}")
+    else:
+        print("Recall metrics: skipped (no query CSV configured)")
+
+    if evaluation_metrics:
+        print(f"{evaluation_label} metrics:")
+        for k, v in sorted(evaluation_metrics.items(), key=_evaluation_metric_sort_key):
+            print(f"  {k}: {v:.4f}")
+
+    return {
+        "pages": pages,
+        "files": processed_files,
+        "ingest_secs": round(ingest_only_total_time, 4),
+        "pages_per_sec_ingest": round(ingest_only_pps, 4),
+        "total_time_secs": round(total_time, 4),
+        "total_pps": round(total_pps, 4),
+        "ray_dataset_download_secs": round(ray_dataset_download_total_time, 4),
+        "lancedb_write_secs": round(lancedb_write_total_time, 4),
+        "recall_time_secs": round(recall_total_time, 4),
+        "evaluation_time_secs": round(evaluation_total_time, 4),
+        "evaluation_label": evaluation_label,
+        "evaluation_count": evaluation_count,
+        "recall_metrics": recall_metrics,
+        "evaluation_metrics": evaluation_metrics,
+    }

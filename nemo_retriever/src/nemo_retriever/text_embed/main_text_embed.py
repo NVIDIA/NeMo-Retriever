@@ -15,7 +15,7 @@ Key differences vs the API transform:
 - This module operates on a simple pandas.DataFrame that typically contains:
   - `text`: the text to embed (or other common text columns)
   - `metadata`: optional dict; if present, embeddings are written to `metadata["embedding"]`
-- No imports from other files in this repo. Only stdlib + external deps (pandas/httpx).
+- Uses ``nv_ingest_api`` for shared HTTP embedding URL normalization (with pandas/httpx).
 
 Usage:
 
@@ -49,6 +49,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from urllib.parse import urlparse  # noqa: F401
 
 import pandas as pd
+from nv_ingest_api.util.string_processing import ensure_openai_embeddings_http_url
 
 from nemo_retriever.params.models import IMAGE_MODALITIES
 
@@ -85,6 +86,8 @@ class TextEmbeddingConfig:
     output_payload_column: Optional[str] = None
     # Modality: "text" (default), "image", or "text_image"
     embed_modality: str = "text"
+    # Parallel OpenAI-compatible embedding HTTP calls per Ray batch (NIM / vLLM).
+    nim_http_max_concurrent: int = 32
 
 
 # ------------------------------------------------------------------------------
@@ -256,19 +259,9 @@ def _multimodal_callable_runner(
 
 def _normalize_embeddings_endpoint(endpoint_url: str) -> str:
     """
-    Normalize endpoint to a concrete embeddings URL.
-
-    Accepts:
-    - "http://host:8000/v1"
-    - "http://host:8000/v1/embeddings"
-    - "http://host:8000/embeddings"
+    Normalize endpoint to a concrete embeddings URL (delegates to shared nv-ingest helper).
     """
-    s = (endpoint_url or "").strip().rstrip("/")
-    if not s:
-        raise ValueError("endpoint_url is empty")
-    if s.endswith("/embeddings"):
-        return s
-    return f"{s}/embeddings"
+    return ensure_openai_embeddings_http_url(endpoint_url)
 
 
 def _http_embed_openai_compat(
@@ -572,6 +565,11 @@ def create_text_embeddings_for_df(
     if execution_trace_log is None:
         execution_trace_log = {}
 
+    nim_http_raw = task_config.get("nim_http_max_concurrent")
+    if nim_http_raw is None:
+        nim_http_raw = getattr(transform_config, "nim_http_max_concurrent", 32)
+    nim_http_max_concurrent = max(1, int(nim_http_raw))
+
     if df_transform_ledger.empty:
         return df_transform_ledger, {"trace_info": execution_trace_log}
 
@@ -647,7 +645,7 @@ def create_text_embeddings_for_df(
                 False,
                 modalities=None,
                 dimensions=dimensions,
-                max_concurrent=8,
+                max_concurrent=nim_http_max_concurrent,
             )
         else:
             # Text-only path (default)
@@ -668,6 +666,7 @@ def create_text_embeddings_for_df(
                     False,
                     modalities=None,
                     dimensions=dimensions,
+                    max_concurrent=nim_http_max_concurrent,
                 )
             elif callable(embedder):
                 content_embeddings = _callable_runner(

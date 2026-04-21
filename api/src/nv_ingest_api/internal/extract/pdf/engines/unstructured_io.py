@@ -25,11 +25,19 @@ from typing import Dict, Any, Optional, List
 
 import pandas as pd
 import pypdfium2 as pdfium
-from unstructured_client import UnstructuredClient
-from unstructured_client.models import operations
-from unstructured_client.models import shared
-from unstructured_client.utils import BackoffStrategy
-from unstructured_client.utils import RetryConfig
+
+try:
+    from unstructured_client import UnstructuredClient
+    from unstructured_client.models import operations
+    from unstructured_client.models import shared
+    from unstructured_client.utils import BackoffStrategy
+    from unstructured_client.utils import RetryConfig
+except ImportError:
+    UnstructuredClient = None
+    operations = None
+    shared = None
+    BackoffStrategy = None
+    RetryConfig = None
 
 from nv_ingest_api.internal.enums.common import AccessLevelEnum, DocumentTypeEnum
 from nv_ingest_api.internal.enums.common import ContentTypeEnum

@@ -103,20 +103,6 @@ def accumulate_added_column_props(added_column, edges_to_add, new_schema):
     )
 
 
-def accumulate_updated_table(table_in_intersection, items_to_update_in_graph, new_schema):
-    # verify that the node with the correct id is in hand: replace new table id with existing table id
-    # new_schema.replace_id(table_in_intersection.props_y["id"], table_in_intersection.props_x["id"])
-    new_table_node_props = table_in_intersection.props_files
-    new_table_node_props["id"] = table_in_intersection.props_graph["id"]
-    items_to_update_in_graph.append(
-        {
-            "id": table_in_intersection.props_graph["id"],
-            "label": Labels.TABLE,
-            "props": new_table_node_props,
-        }
-    )
-
-
 def accumulate_updated_column(column_in_intersection, items_to_update_in_graph, new_schema):
     # verify that the node with the correct id is in hand
     # new_schema.replace_id(column_in_intersection.props_y["id"], column_in_intersection.props_x["id"])

@@ -5,7 +5,7 @@ This guide covers how to write, validate, and submit UDFs using both the CLI and
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library. 
+    This documentation describes NeMo Retriever Library. 
 
 
 ## Quickstart
@@ -40,7 +40,7 @@ The CLI supports all UDF function specification formats. Here are examples of ea
 #### Inline Function String
 ```bash
 # Submit inline UDF function
-nv-ingest-cli \
+nemo-retriever \
     --doc /path/to/document.pdf \
     --output-directory ./output \
     --task 'udf:{"udf_function": "def my_processor(control_message): print(\"Processing...\"); return control_message", "udf_function_name": "my_processor", "target_stage": "text_embedder", "run_before": true}'
@@ -49,7 +49,7 @@ nv-ingest-cli \
 #### Module Path with Colon (Recommended)
 ```bash
 # Submit UDF from importable module (preserves all imports and context)
-nv-ingest-cli \
+nemo-retriever \
     --doc /path/to/document.pdf \
     --output-directory ./output \
     --task 'udf:{"udf_function": "my_package.processors:enhance_metadata", "target_stage": "text_embedder", "run_after": true}'
@@ -58,7 +58,7 @@ nv-ingest-cli \
 #### File Path
 ```bash
 # Submit UDF from file path
-nv-ingest-cli \
+nemo-retriever \
     --doc /path/to/document.pdf \
     --output-directory ./output \
     --task 'udf:{"udf_function": "my_file.py:my_custom_processor", "target_stage": "text_embedder", "run_before": true}'
@@ -67,7 +67,7 @@ nv-ingest-cli \
 #### Legacy Import Path (Limited)
 ```bash
 # Submit UDF using legacy dot notation (function only, no imports)
-nv-ingest-cli \
+nemo-retriever \
     --doc /path/to/document.pdf \
     --output-directory ./output \
     --task 'udf:{"udf_function": "my_package.processors.basic_processor", "target_stage": "text_embedder", "run_after": true}'
@@ -151,7 +151,7 @@ The DataFrame payload contains the extracted content and metadata for processing
 | `source_type` | `str` | Source type identifier |
 | `source_file` | `str` | Path or identifier of the source file |
 | `id` | `str` | Unique identifier for this content piece |
-| `metadata` | `dict` | Rich metadata structure (see below) |
+| `metadata` | `dict` | Rich metadata structure (refer to below) |
 | `content` | `str` | The actual extracted content |
 
 #### Example DataFrame Access
@@ -264,7 +264,7 @@ def enhance_metadata(control_message: IngestControlMessage) -> IngestControlMess
     return control_message
 ```
 
-> **📖 For detailed metadata schema documentation, see:** [metadata_documentation.md](metadata_documentation.md)
+> **📖 For detailed metadata schema documentation, refer to:** [Content metadata reference](content-metadata.md) and [Metadata and content schema](multimodal-metadata-schema.md).
 
 ### UDF Targeting
 
@@ -304,15 +304,15 @@ UDFs can be executed at different stages of the pipeline by specifying the `targ
 - `broker_response` - Response message handling
 - `otel_tracer` - OpenTelemetry tracing
 
-> **Note:** For the complete and up-to-date list of pipeline stages, see the [default_pipeline.yaml](../../../config/default_pipeline.yaml) configuration file.
+> **Note:** For the complete and up-to-date list of pipeline stages, refer to the [`default_pipeline.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/config/default_pipeline.yaml) configuration file in the NeMo Retriever repository.
 
 #### Target Stage Selection Examples
 
 ```bash
 # CLI examples for different target stages
-nv-ingest-cli --doc file.pdf --task 'udf:{"udf_function": "processor.py:validate_input", "target_stage": "pdf_extractor", "run_before": true}'
-nv-ingest-cli --doc file.pdf --task 'udf:{"udf_function": "processor.py:extract_custom", "target_stage": "text_embedder", "run_after": true}'
-nv-ingest-cli --doc file.pdf --task 'udf:{"udf_function": "processor.py:enhance_output", "target_stage": "embedding_storage", "run_before": true}'
+nemo-retriever --doc file.pdf --task 'udf:{"udf_function": "processor.py:validate_input", "target_stage": "pdf_extractor", "run_before": true}'
+nemo-retriever --doc file.pdf --task 'udf:{"udf_function": "processor.py:extract_custom", "target_stage": "text_embedder", "run_after": true}'
+nemo-retriever --doc file.pdf --task 'udf:{"udf_function": "processor.py:enhance_output", "target_stage": "embedding_storage", "run_before": true}'
 ```
 
 ```python
@@ -537,7 +537,7 @@ For detailed guidance on creating custom NIM integrations, including:
 - Error handling and debugging
 - Performance best practices
 
-See the comprehensive [**NimClient Usage Guide**](nimclient_usage.md).
+Refer to [**NimClient and custom NIM endpoints**](nimclient.md).
 
 ### Error Handling
 
@@ -940,6 +940,6 @@ def debug_udf(control_message: IngestControlMessage) -> IngestControlMessage:
 
 ## Related Topics
 
-- [NV-Ingest UDF Examples](https://github.com/NVIDIA/nv-ingest/blob/release/26.1.2/examples/udfs/README.md)
+- [NeMo Retriever UDF examples](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.1.2/examples/udfs/README.md)
 - [User-Defined Stages for NeMo Retriever Library](user-defined-stages.md)
 - [NimClient Usage](nimclient.md)

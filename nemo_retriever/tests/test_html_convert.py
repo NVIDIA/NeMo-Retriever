@@ -19,6 +19,18 @@ from nemo_retriever.html.convert import (
 )
 
 
+class _MockTokenizer:
+    """Minimal tokenizer: encode = split on spaces, decode = join."""
+
+    def encode(self, text: str, add_special_tokens: bool = False):
+        return text.split()
+
+    def decode(self, ids, skip_special_tokens: bool = True):
+        if isinstance(ids, (list, range)):
+            return " ".join(str(i) for i in ids)
+        return str(ids)
+
+
 def test_html_to_markdown_str():
     pytest.importorskip("markitdown")
     html = "<html><body><p>Hello world</p></body></html>"
@@ -44,9 +56,12 @@ def test_html_to_markdown_path(tmp_path: Path):
     assert "From" in md or "file" in md
 
 
-def test_html_file_to_chunks_df(tmp_path: Path):
+def test_html_file_to_chunks_df(tmp_path: Path, monkeypatch):
     pytest.importorskip("markitdown")
     pytest.importorskip("transformers")
+    monkeypatch.setattr(
+        "nemo_retriever.html.convert._get_txt_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
     f = tmp_path / "doc.html"
     f.write_text(
         "<html><body><h1>Heading</h1><p>First paragraph.</p><p>Second paragraph.</p></body></html>",
@@ -77,9 +92,12 @@ def test_html_file_to_chunks_df_empty_content(tmp_path: Path):
     assert len(df) == 0
 
 
-def test_html_bytes_to_chunks_df(tmp_path: Path):
+def test_html_bytes_to_chunks_df(tmp_path: Path, monkeypatch):
     pytest.importorskip("markitdown")
     pytest.importorskip("transformers")
+    monkeypatch.setattr(
+        "nemo_retriever.html.convert._get_txt_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
     html_bytes = b"<html><body><p>Chunk content from bytes.</p></body></html>"
     path = str(tmp_path / "virtual.html")
     df = html_bytes_to_chunks_df(html_bytes, path, params=HtmlChunkParams(max_tokens=512, overlap_tokens=0))

@@ -8,7 +8,6 @@ import re
 
 import numpy as np
 import pandas as pd
-from sklearn.cluster import DBSCAN
 
 
 logger = logging.getLogger(__name__)
@@ -173,10 +172,14 @@ def convert_ocr_response_to_psuedo_markdown(bboxes, texts):
     )
     preds_df = preds_df.sort_values("y0")
 
-    dbscan = DBSCAN(eps=10, min_samples=1)
-    dbscan.fit(preds_df["y0"].values[:, None])
+    try:
+        from sklearn.cluster import DBSCAN
 
-    preds_df["cluster"] = dbscan.labels_
+        dbscan = DBSCAN(eps=10, min_samples=1)
+        dbscan.fit(preds_df["y0"].values[:, None])
+        preds_df["cluster"] = dbscan.labels_
+    except ImportError:
+        preds_df["cluster"] = (preds_df["y0"] / 10).round().astype(int)
     preds_df = preds_df.sort_values(["cluster", "x0"])
 
     results = ""
@@ -483,12 +486,14 @@ def reorder_boxes(boxes, texts, confs, mode="top_left", dbscan_eps=10):
     if dbscan_eps:
         do_naive_sorting = False
         try:
+            from sklearn.cluster import DBSCAN
+
             dbscan = DBSCAN(eps=dbscan_eps, min_samples=1)
             dbscan.fit(df["y"].values[:, None])
             df["cluster"] = dbscan.labels_
             df["cluster_centers"] = df.groupby("cluster")["y"].transform("mean").astype(int)
             df = df.sort_values(["cluster_centers", "x"], ascending=[True, True], ignore_index=True)
-        except ValueError:
+        except (ImportError, ValueError):
             do_naive_sorting = True
     else:
         do_naive_sorting = True
