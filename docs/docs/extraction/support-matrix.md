@@ -6,14 +6,14 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
 ## Core and Advanced Pipeline Features
 
 The Nemo Retriever Library extraction core pipeline features run on a single A10G or better GPU. 
-The core pipeline models include the following:
+The core pipeline models (for document type inputs) include the following:
 
 - [llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) — Embedding model for converting text chunks into vectors.
 - [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) — Detects and classifies images on a page as a table, chart or infographic.
 - [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. 
 - [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) — Image OCR model to detect and extract text from images.
 
-Advanced features require additional GPU support and disk space. 
+Advanced features (for example, for audio/video) require additional GPU support and disk space. 
 This includes the following:
 
 - [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) for transcript extraction from [audio and video](audio.md).
@@ -28,7 +28,7 @@ This includes the following:
 
 ## Hardware Requirements
 
-NeMo Retriever Library supports the following GPU hardware:
+NeMo Retriever Library supports the following GPU hardware given system constraints in the table:
 
 |Feature         | GPU Option                | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/)  | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/)          | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/)      | [H100](https://www.nvidia.com/en-us/data-center/h100/)        | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/)   | A100 40GB     | [A10G](https://aws.amazon.com/ec2/instance-types/g5/)          | L40S   | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |----------------|---------------------------|---------------|---------------|---------------|-------------|-------------|---------------|---------------|--------|------------------------|
@@ -46,7 +46,7 @@ NeMo Retriever Library supports the following GPU hardware:
 
 ¹ Audio runs but requires runtime engine build — no pre-defined model profile.
 
-² Nemotron Parse fails to start on 32GB, pending engineering investigation.
+² Nemotron Parse fails to start on 32GB.
 
 ³ VLM fails to load on 32GB, 32GB is below the minimum threshold.
 
