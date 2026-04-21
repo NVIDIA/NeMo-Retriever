@@ -211,7 +211,17 @@ function AlertsView({ alertRules, alertEvents, alertRulesLoading, alertEventsLoa
                         </label>
                       </td>
                       <td>
-                        <div style={{color:'#fff',fontWeight:500}}>{r.name}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                          <span style={{color:'#fff',fontWeight:500}}>{r.name}</span>
+                          {r.slack_notify && (
+                            <span title="Slack notifications enabled" style={{
+                              padding:'1px 6px',borderRadius:'4px',fontSize:'9px',fontWeight:700,
+                              textTransform:'uppercase',letterSpacing:'0.05em',
+                              background:'rgba(74,21,75,0.2)',color:'#e0a0e0',
+                              border:'1px solid rgba(74,21,75,0.3)',
+                            }}>Slack</span>
+                          )}
+                        </div>
                         {r.description && <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px'}}>{r.description}</div>}
                       </td>
                       <td>
@@ -271,6 +281,7 @@ function AlertRuleFormModal({ rule, onClose, onSaved }) {
     dataset_filter: rule?.dataset_filter || "",
     preset_filter: rule?.preset_filter || "",
     enabled: rule?.enabled ?? true,
+    slack_notify: rule?.slack_notify ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -302,6 +313,7 @@ function AlertRuleFormModal({ rule, onClose, onSaved }) {
       dataset_filter: form.dataset_filter || null,
       preset_filter: form.preset_filter || null,
       enabled: form.enabled,
+      slack_notify: form.slack_notify,
     };
     try {
       const url = isEdit ? `/api/alert-rules/${rule.id}` : "/api/alert-rules";
@@ -375,13 +387,25 @@ function AlertRuleFormModal({ rule, onClose, onSaved }) {
               </div>
             </div>
 
-            {/* Enabled */}
-            <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
-              <label className="toggle">
-                <input type="checkbox" checked={form.enabled} onChange={e=>set('enabled',e.target.checked)} />
-                <span className="toggle-slider"></span>
-              </label>
-              <span style={{fontSize:'14px',color:'var(--nv-text)'}}>Rule is {form.enabled?'enabled':'disabled'}</span>
+            {/* Enabled & Notifications */}
+            <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+                <label className="toggle">
+                  <input type="checkbox" checked={form.enabled} onChange={e=>set('enabled',e.target.checked)} />
+                  <span className="toggle-slider"></span>
+                </label>
+                <span style={{fontSize:'14px',color:'var(--nv-text)'}}>Rule is {form.enabled?'enabled':'disabled'}</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+                <label className="toggle">
+                  <input type="checkbox" checked={form.slack_notify} onChange={e=>set('slack_notify',e.target.checked)} />
+                  <span className="toggle-slider"></span>
+                </label>
+                <div>
+                  <span style={{fontSize:'14px',color:'var(--nv-text)'}}>Send Slack notification when this rule fires</span>
+                  <div style={{fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'2px'}}>Configure the webhook URL in Settings &gt; Slack Integration</div>
+                </div>
+              </div>
             </div>
           </div>
           <div className="modal-foot">

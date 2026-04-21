@@ -166,12 +166,6 @@ function JobDiagnoseModal({ jobId, onClose }) {
               ))}
             </div>
 
-            {data.allowed_runner_ids && (
-              <div style={{fontSize:'12px',color:'var(--nv-text-muted)',marginBottom:'12px',padding:'8px 12px',background:'rgba(255,200,50,0.06)',border:'1px solid rgba(255,200,50,0.12)',borderRadius:'6px'}}>
-                Dataset <strong>{data.dataset}</strong> restricts runners to IDs: <span className="mono" style={{color:'#fcd34d'}}>[{data.allowed_runner_ids.join(', ')}]</span>
-              </div>
-            )}
-
             {data.rejected_runners && data.rejected_runners.length > 0 && (
               <div style={{fontSize:'12px',color:'var(--nv-text-muted)',marginBottom:'12px',padding:'8px 12px',background:'rgba(255,80,80,0.06)',border:'1px solid rgba(255,80,80,0.12)',borderRadius:'6px'}}>
                 Previously rejected by runners: <span className="mono" style={{color:'#ff5050'}}>[{data.rejected_runners.join(', ')}]</span>
