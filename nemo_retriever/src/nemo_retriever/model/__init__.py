@@ -58,6 +58,7 @@ def is_vl_rerank_model(model_name: str | None) -> bool:
 def create_local_embedder(
     model_name: str | None = None,
     *,
+    backend: str = "auto",
     device: str | None = None,
     hf_cache_dir: str | None = None,
     gpu_memory_utilization: float = 0.45,
@@ -68,29 +69,46 @@ def create_local_embedder(
 ) -> Any:
     """Create the appropriate local embedding model (VL or non-VL).
 
-    VL models always use HuggingFace (supports image + text+image modalities).
-    Non-VL models use vLLM via ``LlamaNemotronEmbed1BV2Embedder`` in
-    ``nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder``.
+    For VL models:
 
-    ``device`` applies only to the VL (HuggingFace) path. For non-VL text models,
-    ``device`` is forwarded for compatibility but deprecated and ignored (vLLM
+    - ``backend="auto"`` or ``"vllm"``: vLLM via ``LlamaNemotronEmbedVL1BV2VLLMEmbedder``
+      (requires vLLM >= 0.17).
+    - ``backend="hf"``: HuggingFace via ``LlamaNemotronEmbedVL1BV2Embedder``.
+
+    Non-VL models always use vLLM via ``LlamaNemotronEmbed1BV2Embedder``; *backend* is
+    ignored for them.
+
+    ``device`` applies only to the HuggingFace VL path. For vLLM paths (both VL and
+    non-VL), ``device`` is forwarded for compatibility but deprecated and ignored (vLLM
     placement is process-level); passing it emits ``DeprecationWarning``.
 
     Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
-    ``normalize``, and ``max_length`` apply to the non-VL (vLLM) path only;
-    VL models ignore them.
+    ``normalize``, and ``max_length`` apply to vLLM paths only; the HF VL path ignores them.
     """
     model_id = resolve_embed_model(model_name)
 
     if is_vl_embed_model(model_name):
+        b = (backend or "auto").strip().lower()
+        if b == "hf":
+            from nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder import (
+                LlamaNemotronEmbedVL1BV2Embedder,
+            )
+
+            return LlamaNemotronEmbedVL1BV2Embedder(
+                device=device,
+                hf_cache_dir=hf_cache_dir,
+                model_id=model_id,
+            )
+
         from nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder import (
-            LlamaNemotronEmbedVL1BV2Embedder,
+            LlamaNemotronEmbedVL1BV2VLLMEmbedder,
         )
 
-        return LlamaNemotronEmbedVL1BV2Embedder(
-            device=device,
-            hf_cache_dir=hf_cache_dir,
+        return LlamaNemotronEmbedVL1BV2VLLMEmbedder(
             model_id=model_id,
+            hf_cache_dir=hf_cache_dir,
+            gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
         )
 
     from nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder import (
@@ -126,15 +144,10 @@ def create_local_query_embedder(
 ) -> Any:
     """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
 
-    For non-VL text models:
-
-    - ``backend="auto"`` or ``"vllm"``: same as :func:`create_local_embedder` (vLLM on this branch).
-    - ``backend="hf"``: HuggingFace mean pooling with ``query:`` / ``passage:`` prefixes
-      (``LlamaNemotronEmbed1BV2HFEmbedder``), for recall when LanceDB was built with vLLM
-      document vectors but you want cheaper or better-aligned query embeddings.
-
-    VL models always use the HuggingFace VL embedder (same as :func:`create_local_embedder`);
-    *backend* does not change that path.
+    - ``backend="auto"`` or ``"vllm"``: vLLM for both VL and non-VL models.
+    - ``backend="hf"``: HuggingFace for both. For non-VL this uses mean pooling with
+      ``query:`` prefixes (``LlamaNemotronEmbed1BV2HFEmbedder``); for VL this uses
+      ``LlamaNemotronEmbedVL1BV2Embedder``.
     """
     b = (backend or "auto").strip().lower()
     if b not in _LOCAL_QUERY_BACKENDS:
@@ -144,6 +157,7 @@ def create_local_query_embedder(
     if is_vl_embed_model(model_name):
         return create_local_embedder(
             model_name,
+            backend=b,
             device=device,
             hf_cache_dir=hf_cache_dir,
             gpu_memory_utilization=gpu_memory_utilization,

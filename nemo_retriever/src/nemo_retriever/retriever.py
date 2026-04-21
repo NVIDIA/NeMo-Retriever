@@ -139,9 +139,7 @@ class Retriever:
     def _get_local_embedder(self, model_name: str) -> Any:
         """Lazily load and cache the local embedder for *model_name*."""
         from nemo_retriever.model import (
-            create_local_embedder,
             create_local_query_embedder,
-            is_vl_embed_model,
             resolve_embed_model,
         )
 
@@ -151,32 +149,17 @@ class Retriever:
             raise ValueError(
                 "local_query_embed_backend must be 'auto', 'hf', or 'vllm', " f"got {self.local_query_embed_backend!r}"
             )
-        if is_vl_embed_model(model_name):
-            cache_key: tuple[str, str] = (resolved, "vl")
-        else:
-            cache_key = (resolved, "hf" if backend_raw == "hf" else "vllm")
+        cache_key: tuple[str, str] = (resolved, backend_raw)
 
         if cache_key not in self._embedder_cache:
             cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
             dev = str(self.local_hf_device) if self.local_hf_device else None
-            if is_vl_embed_model(model_name):
-                self._embedder_cache[cache_key] = create_local_embedder(
-                    resolved,
-                    device=dev,
-                    hf_cache_dir=cache_dir,
-                )
-            elif backend_raw == "hf":
-                self._embedder_cache[cache_key] = create_local_query_embedder(
-                    resolved,
-                    backend="hf",
-                    device=dev,
-                    hf_cache_dir=cache_dir,
-                )
-            else:
-                self._embedder_cache[cache_key] = create_local_embedder(
-                    resolved,
-                    hf_cache_dir=cache_dir,
-                )
+            self._embedder_cache[cache_key] = create_local_query_embedder(
+                resolved,
+                backend=backend_raw,
+                device=dev,
+                hf_cache_dir=cache_dir,
+            )
         return self._embedder_cache[cache_key]
 
     def _embed_queries_local(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
