@@ -165,9 +165,7 @@ class TestVLLMEmbedderImages:
 
     def test_calls_multimodal_helper(self):
         b64 = _make_minimal_b64()
-        with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm"
-        ) as mock_mm:
+        with patch("nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm") as mock_mm:
             mock_mm.return_value = [[0.6, 0.8]]
             self.embedder.embed_images([b64])
         mock_mm.assert_called_once()

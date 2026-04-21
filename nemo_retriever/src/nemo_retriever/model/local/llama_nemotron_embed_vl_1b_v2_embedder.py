@@ -258,12 +258,9 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             return torch.empty((0, 2048), dtype=torch.float32)
 
         prompt_dicts = [
-            {"prompt": "passage: <image> ", "multi_modal_data": {"image": _b64_to_pil(b64)}}
-            for b64 in valid_b64
+            {"prompt": "passage: <image> ", "multi_modal_data": {"image": _b64_to_pil(b64)}} for b64 in valid_b64
         ]
-        vectors = embed_multimodal_with_vllm_llm(
-            prompt_dicts, self._llm, batch_size=max(1, int(batch_size))
-        )
+        vectors = embed_multimodal_with_vllm_llm(prompt_dicts, self._llm, batch_size=max(1, int(batch_size)))
         valid = [v for v in vectors if v]
         if not valid:
             return torch.empty((0, 2048), dtype=torch.float32)
@@ -291,9 +288,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             {"prompt": f"passage: <image> {text}", "multi_modal_data": {"image": _b64_to_pil(b64)}}
             for text, b64 in zip(paired_texts, paired_b64)
         ]
-        vectors = embed_multimodal_with_vllm_llm(
-            prompt_dicts, self._llm, batch_size=max(1, int(batch_size))
-        )
+        vectors = embed_multimodal_with_vllm_llm(prompt_dicts, self._llm, batch_size=max(1, int(batch_size)))
         valid = [v for v in vectors if v]
         if not valid:
             return torch.empty((0, 2048), dtype=torch.float32)
