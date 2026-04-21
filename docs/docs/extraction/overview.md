@@ -1,20 +1,13 @@
 # What is NeMo Retriever Library?
 
-NVIDIA NeMo Retriever Library (NRL) is a scalable, performance-oriented framework for document content and metadata extraction. It supports both NVIDIA NIM microservices and a wide range of models to find, contextualize, and extract text, tables, charts, and infographics for use in downstream generative and retrieval-augmented applications.
+NVIDIA NeMo Retriever Library (NRL) is a high retrieval accuracy, performant, and scalable framework for content and metadata extraction from various media types (PDFs, HTML, Word docs, Powerpoint, audio, video, and image files). It supports both NVIDIA NIM microservices and a range of models to find, contextualize, and extract text, tables, charts, infographics, and transcripts for use in downstream generative and retrieval-augmented applications.
 
 !!! note
 
     This documentation describes NeMo Retriever Library.
 
-NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. 
-From there, NeMo Retriever Library can optionally manage computation of embeddings for the extracted content, 
-and optionally manage storing into a vector database ([LanceDB](https://lancedb.com/) by default, or [Milvus](https://milvus.io/)).
-
-!!! note
-
-    Cached and Deplot are deprecated. Instead, NeMo Retriever Library now uses the yolox-graphic-elements NIM. With this change, you should now be able to run NeMo Retriever Library on a single 24GB A10G or better GPU. If you want to use the old pipeline, with Cached and Deplot, use the [NeMo Retriever Library 24.12.1 release](https://github.com/NVIDIA/NeMo-Retriever/tree/24.12.1).
-
-
+NeMo Retriever Library enables parallelization of splitting documents into pages where sub-page content is classified (such as text paragraphs, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a standard schema. From there, NeMo Retriever Library manages computation of embeddings for the extracted content, 
+and stores into a vector database ([LanceDB by default](https://lancedb.com/).
 
 ## What NeMo Retriever Library Is ✔️
 
