@@ -1,82 +1,14 @@
 # Deploy Without Containers (Library Mode) for NeMo Retriever Library
 
-[NeMo Retriever Library](overview.md) is typically deployed as a cluster of containers for robust, scalable production use. 
-
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
-In addition, you can use library mode, which is intended for the following cases:
+Use the [Quick Start for NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/nemo_retriever/README.md) to set up and run the NeMo Retriever Library locally, so you can build a GPU‑accelerated, multimodal RAG ingestion pipeline that parses PDFs, HTML, text, audio, and video into LanceDB vector embeddings, integrates with Nemotron RAG models (locally or via NIM endpoints), which includes Ray‑based scaling with built‑in recall evaluation. Python 3.12 or later is required (see [Prerequisites](prerequisites.md)).
 
-- Local development
-- Experimentation and testing
-- Small-scale workloads, such as workloads of fewer than 100 documents
+## `run_pipeline`
 
-
-By default, library mode depends on NIMs that are hosted on build.nvidia.com. 
-In library mode you launch the main pipeline service directly within a Python process, 
-while all other services (such as embedding and storage) are hosted remotely in the cloud.
-
-To get started using library mode, you need the following:
-
-- Linux operating systems (Ubuntu 22.04 or later recommended) or MacOS
-- Python 3.12
-- We strongly advise using an isolated Python virtual env with [uv](https://docs.astral.sh/uv/getting-started/installation/).
-
-
-
-## Step 1: Prepare Your Environment
-
-Use the following procedure to prepare your environment.
-
-1. Run the following code to create your Python environment.
-
-    ```
-       uv venv --python 3.12 nvingest && \
-         source nvingest/bin/activate && \
-         uv pip install nemo-retriever==26.3.0-RC4 milvus-lite==2.4.12
-    ```
-
-    !!! tip
-
-        To confirm that you have activated your virtual environment, run `which python` and confirm that you see your virtual environment path in the result. You can do this before any python command that you run.
-
-2. Set or create a .env file that contains your NVIDIA Build API key and other environment variables.
-
-    !!! note
-
-        If you have an NGC API key, you can use it here. For more information, refer to [Generate Your NGC Keys](ngc-api-key.md) and [Environment Configuration Variables](environment-config.md).
-
-    - To set your variables, use the following code.
-
-        ```
-        export NVIDIA_API_KEY=nvapi-<your key>
-        ```
-    - To add your variables to a .env file, include the following.
-
-        ```
-        NVIDIA_API_KEY=nvapi-<your key>
-        ```
-
-
-## Step 2: Ingest Documents
-
-You can submit jobs programmatically by using Python.
-
-!!! tip
-
-    For more Python examples, refer to [NeMo Retriever Library: Python Client Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
-
-
-If you have a very high number of CPUs, and see the process hang without progress, 
-we recommend that you use `taskset` to limit the number of CPUs visible to the process. 
-Use the following code.
-
-```
-taskset -c 0-3 python your_ingestion_script.py
-```
-
-On a 4 CPU core low end laptop, the following code should take about 10 seconds.
+The primary Python entry point for launching the Ray-based ingestion pipeline in library mode is `run_pipeline` in `nv_ingest.framework.orchestration.ray.util.pipeline.pipeline_runners`.
 
 ```python
 import time
@@ -467,18 +399,29 @@ The `run_pipeline` function returns the following values, depending on the param
 - **run_in_subprocess=True  and block=False** — The function returns a `RayPipelineSubprocessInterface` object.
 
 
-The `run_pipeline` throws the following errors:
+The following table matches the function signature in source (defaults and optionality). **None of these parameters are required** in the sense of having no default; omit them to use the defaults shown.
 
-- **RuntimeError** — A subprocess failed to start, or exited with error.
-- **Exception** — Any other failure during pipeline setup or execution.
+| Parameter | Required | Type (default) | Description |
+|-----------|----------|----------------|-------------|
+| `pipeline_config` | No | `Optional[PipelineConfigSchema]` (`None`) | Validated pipeline configuration. If `None` and `libmode=True`, the default library-mode pipeline is loaded automatically. If `None` and `libmode=False`, a `ValueError` is raised—you must pass a configuration. |
+| `block` | No | `bool` (`True`) | If `True`, the call blocks until the pipeline finishes. If `False`, returns immediately with a handle object (see [Return type](#return-type)). |
+| `disable_dynamic_scaling` | No | `Optional[bool]` (`None`) | If set, overrides the same field from the pipeline configuration. |
+| `dynamic_memory_threshold` | No | `Optional[float]` (`None`) | If set, overrides the same field from the pipeline configuration. |
+| `run_in_subprocess` | No | `bool` (`False`) | If `True`, runs the pipeline in a separate Python subprocess (`multiprocessing.Process`). If `False`, runs in the current process. |
+| `stdout` | No | `Optional[TextIO]` (`None`) | When using a subprocess, optional stream for child stdout; if `None`, stdout is discarded. |
+| `stderr` | No | `Optional[TextIO]` (`None`) | When using a subprocess, optional stream for child stderr; if `None`, stderr is discarded. |
+| `libmode` | No | `bool` (`True`) | If `True` and `pipeline_config` is `None`, loads the default library-mode pipeline. If `False`, `pipeline_config` must be provided. |
+| `quiet` | No | `Optional[bool]` (`None`) | If `True`, reduces logging noise for library use. If `None`, defaults to `True` when `libmode=True`. |
 
+### Return type
 
+`run_pipeline` returns a **union** of three possible types, depending on `block` and `run_in_subprocess`:
 
-## Related Topics
+| Mode | Return type | Notes |
+|------|-------------|--------|
+| In-process, `block=True` | `float` | Elapsed time in seconds. |
+| In-process, `block=False` | `RayPipelineInterface` | Handle to control the in-process pipeline (defined in `nv_ingest.framework.orchestration.ray.primitives.ray_pipeline`). |
+| Subprocess, `block=False` | `RayPipelineSubprocessInterface` | Handle to control the subprocess-based pipeline (same module). **This is not** `RayPipelineInterface`; the two classes are separate implementations of `PipelineInterface`. Use `isinstance(..., RayPipelineSubprocessInterface)` when you launch with `run_in_subprocess=True` and `block=False`. |
+| Subprocess, `block=True` | `float` | Returns `0.0` when blocking in subprocess mode. |
 
-- [Prerequisites](prerequisites.md)
-- [Support Matrix](support-matrix.md)
-- [Deploy With Docker Compose (Self-Hosted)](quickstart-guide.md)
-- [Deploy With Helm](helm.md)
-- [Notebooks](notebooks.md)
-- [Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
+For the authoritative contract (including raised exceptions), refer to the docstring on `run_pipeline` in `src/nv_ingest/framework/orchestration/ray/util/pipeline/pipeline_runners.py`.

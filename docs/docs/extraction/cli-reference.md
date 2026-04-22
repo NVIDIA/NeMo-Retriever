@@ -1,21 +1,21 @@
 # CLI Reference
 
 After you install the Python dependencies, you can use the [NeMo Retriever Library](overview.md) command line interface (CLI).
-To use the CLI, use the `nemo-retriever` command.
+To use the CLI, use the `retriever` command.
 
 !!! note "Command name"
-    Depending on your installation (NeMo Retriever Library vs. nv-ingest-client), you invoke the CLI by using `nemo-retriever` or `nv-ingest-cli`. Both expose the same options and behavior. The following sections use `nemo-retriever` for consistency with the examples.
+    Depending on your installation (NeMo Retriever Library vs. nv-ingest-client), you invoke the CLI by using `retriever` or `nv-ingest-cli`. Both expose the same options and behavior. The following sections use `retriever` for consistency with the examples.
 
 To check the version of the CLI that you have installed, run the following command.
 
 ```bash
-nemo-retriever --version
+retriever --version
 ```
 
 To get a list of the current CLI commands and their options, run the following command.
 
 ```bash
-nemo-retriever --help
+retriever --help
 ```
 
 !!! tip
@@ -108,10 +108,10 @@ Running with `--fail_on_error` causes the process to exit on the first job failu
 
 ## Complete --help Output
 
-The following is the standard help output for the CLI (equivalent to `nemo-retriever --help` or `nv-ingest-cli --help`). Use it as a quick reference when you cannot run the command locally.
+The following is the standard help output for the CLI (equivalent to `retriever --help` or `nv-ingest-cli --help`). Use it as a quick reference when you cannot run the command locally.
 
 ```text
-Usage: nemo-retriever [OPTIONS]
+Usage: retriever [OPTIONS]
 
 Options:
   --batch_size INTEGER          Batch size (must be >= 1).  [default: 10]
@@ -164,8 +164,8 @@ Use the following code examples to submit a document to the `nemo-retriever-ms-r
 
 Each of the following commands can be run from the host machine, or from within the `nemo-retriever-ms-runtime` container.
 
-- Host: `nemo-retriever ...`
-- Container: `nemo-retriever ...`
+- Host: `retriever ...`
+- Container: `retriever ...`
 
 
 ### Example: Text File With No Splitting
@@ -177,7 +177,7 @@ To submit a text file with no splitting, run the following code.
     You receive a response that contains a single document, which is the entire text file. The data that is returned is wrapped in the appropriate [metadata structure](content-metadata.md).
 
 ```bash
-nemo-retriever \
+retriever \
   --doc ./data/test.pdf \
   --client_host=localhost \
   --client_port=7670
@@ -189,7 +189,7 @@ nemo-retriever \
 To submit a .pdf file with only a splitting task, run the following code.
 
 ```bash
-nemo-retriever \
+retriever \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='split' \
@@ -203,10 +203,10 @@ nemo-retriever \
 To submit a .pdf file with both a splitting task and an extraction task, run the following code.
 
 !!! note
-    Currently, `split` only works for pdfium, nemotron-parse, and Unstructured.io.
+    Currently, `split` only works for pdfium and nemotron-parse.
 
 ```bash
-nemo-retriever \
+retriever \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium"}' \
@@ -229,7 +229,7 @@ This allows you to control how many pages are included in each PDF chunk during 
     Smaller chunks provide more parallelism but increase overhead, while larger chunks reduce overhead but limit concurrency.
 
 ```bash
-nemo-retriever \
+retriever \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_text": "true"}' \
@@ -244,7 +244,7 @@ nemo-retriever \
 To invoke image captioning and control reasoning:
 
 ```bash
-nemo-retriever \
+retriever \
   --doc ./data/test.pdf \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_images": "true"}' \
   --task='caption:{"prompt": "Caption the content of this image:", "reasoning": true}' \
@@ -264,7 +264,7 @@ Alternatively, you can use an environment variable to set the API version:
 ```bash
 export NEMO_RETRIEVER_API_VERSION=v2
 
-nemo-retriever \
+retriever \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_text": "true"}' \
@@ -280,7 +280,7 @@ To submit a dataset for processing, run the following code.
 To create a dataset, refer to [Command Line Dataset Creation with Enumeration and Sampling](#command-line-dataset-creation-with-enumeration-and-sampling).
 
 ```shell
-nemo-retriever \
+retriever \
   --dataset dataset.json \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium"}' \
@@ -292,7 +292,7 @@ nemo-retriever \
 Submit a PDF file with extraction tasks and upload extracted images to MinIO.
 
 ```bash
-nemo-retriever \
+retriever \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium"}' \

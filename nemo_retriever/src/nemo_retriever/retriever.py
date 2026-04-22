@@ -288,9 +288,6 @@ class Retriever:
         )
 
         if self.reranker:
-            assert self.top_k * self.reranker_refine_factor == len(
-                results[0]
-            ), "top_k must be at least 1/4 of the number of retrieved hits for reranking to work properly."
             results = self._rerank_results(query_texts, results)
 
         return results

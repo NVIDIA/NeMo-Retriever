@@ -4,7 +4,7 @@ You can view telemetry data for [NeMo Retriever Library](overview.md).
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
 ## OpenTelemetry
