@@ -238,12 +238,12 @@ class TestCreateLocalRerankerBackend:
             MockVLLM.assert_called_once()
             assert result is MockVLLM.return_value
 
-    def test_transformers_backend(self):
+    def test_hf_backend(self):
         with patch("nemo_retriever.model.local.nemotron_rerank_vl_v2.NemotronRerankVLV2") as MockTF:
             MockTF.return_value = MagicMock()
             from nemo_retriever.model import create_local_reranker
 
-            result = create_local_reranker("nvidia/llama-nemotron-rerank-vl-1b-v2", backend="transformers")
+            result = create_local_reranker("nvidia/llama-nemotron-rerank-vl-1b-v2", backend="hf")
             MockTF.assert_called_once()
             assert result is MockTF.return_value
 
