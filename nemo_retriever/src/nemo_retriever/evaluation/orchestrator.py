@@ -265,7 +265,7 @@ class QAEvalPipeline(EvalOperator):
 
         def _retrieve(idx: int, pair: dict) -> tuple[int, dict]:
             query = pair["query"]
-            reference = pair.get("reference_answer") or pair["answer"]
+            reference = pair.get("reference_answer") or pair.get("answer", "")
             retrieval = self.retriever.retrieve(query, self.top_k)
             return idx, {
                 "query": query,

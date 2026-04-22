@@ -368,13 +368,10 @@ def build_page_index(
         raise ValueError("Provide exactly one of parquet_dir or dataframe.")
 
     if dataframe is not None:
-        # Mirror the column pruning that _read_parquet_for_markdown applies on
-        # the parquet_dir= path.  Caller-supplied DataFrames often still carry
-        # huge columns (page_image base64 blobs, embedding vectors) that
-        # row.to_dict() would otherwise materialise for every record, causing
-        # the same multi-GB memory spikes _read_parquet_for_markdown was built
-        # to avoid.  df[relevant] returns a column-subset view, not a copy --
-        # the caller's DataFrame is never mutated.
+        # Prune to the same allow-list the parquet_dir= path uses so wide
+        # columns like page_image base64 blobs or embedding vectors never
+        # reach row.to_dict(). df[relevant] is a column-subset view, not
+        # a copy -- the caller's DataFrame is not mutated.
         relevant = [c for c in _MARKDOWN_PARQUET_COLUMNS if c in dataframe.columns]
         if relevant and len(relevant) < len(dataframe.columns):
             df = dataframe[relevant]
