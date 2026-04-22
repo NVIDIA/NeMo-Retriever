@@ -12,7 +12,6 @@ Currently, you can extract speech from the following file types:
 - `mp3`
 - `wav`
 
-
 ## Overview
 
 [NeMo Retriever Library](overview.md) supports extracting speech from audio files for Retrieval Augmented Generation (RAG) applications. 
