@@ -1,7 +1,7 @@
 # Environment Variables for NeMo Retriever Library
 
 The following are the environment variables that you can use to configure [NeMo Retriever Library](overview.md).
-You can specify these in a .env file in your workding directory or directly as shell environment variables.
+You can specify these in a .env file in your working directory or directly as shell environment variables.
 
 
 ## General Environment Variables
