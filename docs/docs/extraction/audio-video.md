@@ -40,7 +40,7 @@ Use the following procedure to run the NIM locally.
 
     The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Edit docker-compose.yaml to set the device_id to a dedicated GPU: device_ids: ["1"] or higher.
 
-1. To access the required container images, log in to the NVIDIA Container Registry (nvcr.io). Use [your NGC key](ngc-api-key.md) as the password. Run the following command in your terminal.
+1. To access the required container images, log in to the NVIDIA Container Registry (nvcr.io). Use [your NGC key](api-keys.md) as the password. Run the following command in your terminal.
 
     - Replace `<your-ngc-key>` with your actual NGC API key.
     - The username is always `$oauthtoken`.
