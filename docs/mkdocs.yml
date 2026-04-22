@@ -74,7 +74,7 @@ nav:
         - Vector Databases: extraction/data-store.md
         - Audio/Video: extraction/audio-video.md
         - Custom Metadata: https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb
-        - Nemotron-Parse: extraction/nemoretriever-parse.md
+        - Nemotron-Parse: extraction/nemotron-parse.md
         - Notebooks: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
         - Configure Ray Logging: extraction/ray-logging.md
       - Customize Your Pipeline:
