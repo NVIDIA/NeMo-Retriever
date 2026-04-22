@@ -1,6 +1,7 @@
-# NeMo Retriever Library (NRL) documentation only — GitHub Pages staging / nightly.
+# NeMo Retriever Library (NRL) documentation — sole publisher to GitHub Pages for this repo.
 # Does not run the full Docker + Sphinx pipeline (no nv-ingest / nv-ingest-api HTML API dump).
-name: NRL documentation — GitHub Pages (staging)
+# Full-pipeline doc builds run in docs-deploy.yml (CI only, no deploy).
+name: NRL documentation — GitHub Pages
 
 on:
   push:
@@ -21,12 +22,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages-nrl-staging
+  group: pages
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build NRL docs (staging)
+    name: Build NRL docs
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
