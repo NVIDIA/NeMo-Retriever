@@ -24,7 +24,7 @@ from typing import Optional
 
 import pandas as pd
 
-from nemo_retriever.evaluation.text_utils import strip_think_tags
+from nemo_retriever.llm.text_utils import strip_think_tags
 
 _STOP_WORDS = frozenset(
     {

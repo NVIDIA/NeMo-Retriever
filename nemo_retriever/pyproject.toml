@@ -114,10 +114,12 @@ benchmarks = [
   "open-clip-torch==3.2.0",
 ]
 
-eval = [
+# ── LLM client (generation + judge) ──────────────────────────────────────────
+# Install this if you want to call ``Retriever.answer()``, ``Retriever.pipeline()``,
+# or construct an ``LLMJudge`` / ``LiteLLMClient`` directly.  Powers both the
+# live-RAG SDK and the batch evaluation framework.
+llm = [
   "litellm>=1.40.0",
-  "pyyaml>=6.0",
-  "tenacity>=8.0.0",
 ]
 dev = [
   "build>=1.2.2",
@@ -126,7 +128,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[local,multimedia,stores,benchmarks]",
+  "nemo_retriever[local,multimedia,stores,benchmarks,llm]",
 ]
 
 [project.scripts]
