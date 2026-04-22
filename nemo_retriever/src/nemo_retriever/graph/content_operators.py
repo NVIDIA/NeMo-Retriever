@@ -11,8 +11,16 @@ from typing import Any
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.content_transforms import explode_content_to_rows
+from nemo_retriever.graph.designer import designer_component
 
 
+@designer_component(
+    name="Explode Content",
+    category="Text & Content",
+    compute="cpu",
+    description="Explodes page-level content into element-level rows by modality",
+    category_color="#42d6a4",
+)
 class ExplodeContentActor(AbstractOperator, CPUOperator):
     """Expand page-level rows into per-element rows for finer-grained embedding."""
 

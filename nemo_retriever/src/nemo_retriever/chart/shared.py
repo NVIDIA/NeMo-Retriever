@@ -12,7 +12,7 @@ import time
 import traceback
 
 import pandas as pd
-from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.params import RemoteRetryParams
 
 try:
@@ -341,6 +341,7 @@ def graphic_elements_ocr_page_elements(
     api_key: str = "",
     request_timeout_s: float = 120.0,
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -391,18 +392,23 @@ def graphic_elements_ocr_page_elements(
     label_names = _labels_from_model(graphic_elements_model) if graphic_elements_model is not None else []
     inference_batch_size = int(kwargs.get("inference_batch_size", 8))
 
-    # Per-row accumulators.
-    all_chart: List[List[Dict[str, Any]]] = []
-    all_meta: List[Dict[str, Any]] = []
+    num_rows = len(batch_df)
+    all_chart: List[List[Dict[str, Any]]] = [[] for _ in range(num_rows)]
+    all_meta: List[Dict[str, Any]] = [{"timing": None, "error": None} for _ in range(num_rows)]
 
     t0_total = time.perf_counter()
 
-    for row in batch_df.itertuples(index=False):
-        chart_items: List[Dict[str, Any]] = []
-        row_error: Any = None
+    # ---------------------------------------------------------------
+    # Pass 1: Collect all chart crops across every row (page) in the
+    # batch.  Track which row each crop belongs to so we can stitch
+    # results back later.
+    # ---------------------------------------------------------------
+    flat_crops: List[Any] = []
+    flat_crop_b64s: List[str] = []
+    crop_row_indices: List[int] = []
 
+    for row_i, row in enumerate(batch_df.itertuples(index=False)):
         try:
-            # --- get page elements detections ---
             pe = getattr(row, "page_elements_v3", None)
             dets: List[Dict[str, Any]] = []
             if isinstance(pe, dict):
@@ -410,117 +416,155 @@ def graphic_elements_ocr_page_elements(
             if not isinstance(dets, list):
                 dets = []
 
-            # --- get page image ---
             page_image = getattr(row, "page_image", None) or {}
             page_image_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
 
             if not isinstance(page_image_b64, str) or not page_image_b64:
-                all_chart.append(chart_items)
-                all_meta.append({"timing": None, "error": None})
                 continue
 
-            # --- Crop all chart detections ---
             crops = _crop_all_from_page(page_image_b64, dets, {"chart"})
-
             if not crops:
-                all_chart.append(chart_items)
-                all_meta.append({"timing": None, "error": None})
                 continue
 
-            # Pre-compute base64 encodings once for remote paths.
-            crop_b64s = (
-                [_np_rgb_to_b64_png(crop_array) for _, _, crop_array in crops]
-                if (use_remote_ge or use_remote_ocr)
-                else []
-            )
-
-            # --- Run graphic-elements on all crops ---
-            ge_results: List[List[Dict[str, Any]]] = []
-            if use_remote_ge:
-                response_items = invoke_image_inference_batches(
-                    invoke_url=ge_url,
-                    image_b64_list=crop_b64s,
-                    api_key=api_key or None,
-                    timeout_s=float(request_timeout_s),
-                    max_batch_size=inference_batch_size,
-                    max_pool_workers=int(retry.remote_max_pool_workers),
-                    max_retries=int(retry.remote_max_retries),
-                    max_429_retries=int(retry.remote_max_429_retries),
-                )
-                if len(response_items) != len(crops):
-                    raise RuntimeError(f"Expected {len(crops)} GE responses, got {len(response_items)}")
-                for resp in response_items:
-                    ge_results.append(
-                        [
-                            d
-                            for d in _remote_response_to_ge_detections(resp)
-                            if (d.get("score") or 0.0) >= YOLOX_GRAPHIC_MIN_SCORE
-                        ]
-                    )
-            else:
-                # Local batched inference.
-                for _, _, crop_array in crops:
-                    chw = torch.from_numpy(crop_array).permute(2, 0, 1).contiguous().to(dtype=torch.float32)
-                    h, w = crop_array.shape[:2]
-                    x = chw.unsqueeze(0)  # BCHW
-                    try:
-                        pre = graphic_elements_model.preprocess(x)
-                    except Exception:
-                        pre = x
-                    if isinstance(pre, torch.Tensor) and pre.ndim == 3:
-                        pre = pre.unsqueeze(0)
-                    pred = graphic_elements_model.invoke(pre, (h, w))
-                    ge_dets = _prediction_to_detections(pred, label_names=label_names)
-                    ge_results.append([d for d in ge_dets if (d.get("score") or 0.0) >= YOLOX_GRAPHIC_MIN_SCORE])
-
-            # --- Run OCR on all crops ---
-            ocr_results: List[Any] = []
-            if use_remote_ocr:
-                ocr_response_items = invoke_image_inference_batches(
-                    invoke_url=ocr_url,
-                    image_b64_list=crop_b64s,
-                    api_key=api_key or None,
-                    timeout_s=float(request_timeout_s),
-                    max_batch_size=inference_batch_size,
-                    max_pool_workers=int(retry.remote_max_pool_workers),
-                    max_retries=int(retry.remote_max_retries),
-                    max_429_retries=int(retry.remote_max_429_retries),
-                )
-                if len(ocr_response_items) != len(crops):
-                    raise RuntimeError(f"Expected {len(crops)} OCR responses, got {len(ocr_response_items)}")
-                for resp in ocr_response_items:
-                    ocr_results.append(_extract_remote_ocr_item(resp))
-            else:
-                for _, _, crop_array in crops:
-                    ocr_results.append(ocr_model.invoke(crop_array, merge_level="word"))
-
-            # --- Join and build text per crop ---
-            for crop_i, (label_name, bbox, crop_array) in enumerate(crops):
-                crop_hw = (int(crop_array.shape[0]), int(crop_array.shape[1]))
-                ge_dets = ge_results[crop_i]
-                ocr_preds = ocr_results[crop_i]
-
-                # Try structure-aware join first.
-                text = join_graphic_elements_and_ocr_output(ge_dets, ocr_preds, crop_hw)
-
-                # Fallback: if no GE detections matched, use OCR-only text.
-                if not text:
-                    blocks = _parse_ocr_result(ocr_preds)
-                    text = _blocks_to_text(blocks)
-
-                chart_items.append({"bbox_xyxy_norm": bbox, "text": text})
+            for crop in crops:
+                flat_crops.append(crop)
+                crop_row_indices.append(row_i)
+                if use_remote_ge or use_remote_ocr:
+                    flat_crop_b64s.append(_np_rgb_to_b64_png(crop[2]))
 
         except BaseException as e:
-            print(f"Warning: graphic-elements+OCR failed: {type(e).__name__}: {e}")
-            row_error = {
-                "stage": "graphic_elements_ocr_page_elements",
+            print(f"Warning: chart crop collection failed for row {row_i}: {type(e).__name__}: {e}")
+            all_meta[row_i]["error"] = {
+                "stage": "graphic_elements_ocr_page_elements:crop",
                 "type": e.__class__.__name__,
                 "message": str(e),
                 "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
             }
 
-        all_chart.append(chart_items)
-        all_meta.append({"timing": None, "error": row_error})
+    if not flat_crops:
+        elapsed = time.perf_counter() - t0_total
+        for meta in all_meta:
+            meta["timing"] = {"seconds": float(elapsed)}
+        out = batch_df.copy()
+        out["chart"] = all_chart
+        out["graphic_elements_ocr_v1"] = all_meta
+        return out
+
+    n_crops = len(flat_crops)
+
+    # ---------------------------------------------------------------
+    # Pass 2: Run graphic-elements on ALL crops in one batched call.
+    # ---------------------------------------------------------------
+    ge_results: List[List[Dict[str, Any]]] = [[] for _ in range(n_crops)]
+    try:
+        if use_remote_ge:
+            _ge_kw = dict(
+                invoke_url=ge_url,
+                image_b64_list=flat_crop_b64s,
+                api_key=api_key or None,
+                timeout_s=float(request_timeout_s),
+                max_batch_size=inference_batch_size,
+                max_retries=int(retry.remote_max_retries),
+                max_429_retries=int(retry.remote_max_429_retries),
+            )
+            if nim_client is not None:
+                response_items = nim_client.invoke_image_inference_batches(**_ge_kw)
+            else:
+                response_items = invoke_image_inference_batches(
+                    **_ge_kw,
+                    max_pool_workers=int(retry.remote_max_pool_workers),
+                )
+            if len(response_items) != n_crops:
+                raise RuntimeError(f"Expected {n_crops} GE responses, got {len(response_items)}")
+            for ci, resp in enumerate(response_items):
+                ge_results[ci] = [
+                    d
+                    for d in _remote_response_to_ge_detections(resp)
+                    if (d.get("score") or 0.0) >= YOLOX_GRAPHIC_MIN_SCORE
+                ]
+        else:
+            for ci, (_, _, crop_array) in enumerate(flat_crops):
+                chw = torch.from_numpy(crop_array).permute(2, 0, 1).contiguous().to(dtype=torch.float32)
+                h, w = crop_array.shape[:2]
+                x = chw.unsqueeze(0)
+                try:
+                    pre = graphic_elements_model.preprocess(x)
+                except Exception:
+                    pre = x
+                if isinstance(pre, torch.Tensor) and pre.ndim == 3:
+                    pre = pre.unsqueeze(0)
+                pred = graphic_elements_model.invoke(pre, (h, w))
+                ge_dets = _prediction_to_detections(pred, label_names=label_names)
+                ge_results[ci] = [d for d in ge_dets if (d.get("score") or 0.0) >= YOLOX_GRAPHIC_MIN_SCORE]
+    except BaseException as e:
+        print(f"Warning: graphic-elements batch inference failed: {type(e).__name__}: {e}")
+        err_payload = {
+            "stage": "graphic_elements_ocr_page_elements:graphic_elements",
+            "type": e.__class__.__name__,
+            "message": str(e),
+            "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+        }
+        for row_i in set(crop_row_indices):
+            all_meta[row_i]["error"] = err_payload
+
+    # ---------------------------------------------------------------
+    # Pass 3: Run OCR on ALL crops in one batched call.
+    # ---------------------------------------------------------------
+    ocr_results: List[Any] = [None] * n_crops
+    try:
+        if use_remote_ocr:
+            _ocr_kw = dict(
+                invoke_url=ocr_url,
+                image_b64_list=flat_crop_b64s,
+                api_key=api_key or None,
+                timeout_s=float(request_timeout_s),
+                max_batch_size=inference_batch_size,
+                max_retries=int(retry.remote_max_retries),
+                max_429_retries=int(retry.remote_max_429_retries),
+            )
+            if nim_client is not None:
+                ocr_response_items = nim_client.invoke_image_inference_batches(**_ocr_kw)
+            else:
+                ocr_response_items = invoke_image_inference_batches(
+                    **_ocr_kw,
+                    max_pool_workers=int(retry.remote_max_pool_workers),
+                )
+            if len(ocr_response_items) != n_crops:
+                raise RuntimeError(f"Expected {n_crops} OCR responses, got {len(ocr_response_items)}")
+            for ci, resp in enumerate(ocr_response_items):
+                ocr_results[ci] = _extract_remote_ocr_item(resp)
+        else:
+            for ci, (_, _, crop_array) in enumerate(flat_crops):
+                ocr_results[ci] = ocr_model.invoke(crop_array, merge_level="word")
+    except BaseException as e:
+        print(f"Warning: chart OCR batch inference failed: {type(e).__name__}: {e}")
+        err_payload = {
+            "stage": "graphic_elements_ocr_page_elements:ocr",
+            "type": e.__class__.__name__,
+            "message": str(e),
+            "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+        }
+        for row_i in set(crop_row_indices):
+            if all_meta[row_i]["error"] is None:
+                all_meta[row_i]["error"] = err_payload
+
+    # ---------------------------------------------------------------
+    # Pass 4: Stitch results back to the correct rows.
+    # ---------------------------------------------------------------
+    for ci in range(n_crops):
+        row_i = crop_row_indices[ci]
+        label_name, bbox, crop_array = flat_crops[ci]
+        crop_hw = (int(crop_array.shape[0]), int(crop_array.shape[1]))
+        ge_dets = ge_results[ci]
+        ocr_preds = ocr_results[ci]
+
+        text = join_graphic_elements_and_ocr_output(ge_dets, ocr_preds, crop_hw)
+
+        if not text:
+            blocks = _parse_ocr_result(ocr_preds)
+            text = _blocks_to_text(blocks)
+
+        all_chart[row_i].append({"bbox_xyxy_norm": bbox, "text": text})
 
     elapsed = time.perf_counter() - t0_total
     for meta in all_meta:

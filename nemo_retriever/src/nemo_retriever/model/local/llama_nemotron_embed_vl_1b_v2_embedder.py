@@ -12,6 +12,7 @@ import torch
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
+from nemo_retriever.utils.nvtx import gpu_inference_range
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -41,7 +42,9 @@ class LlamaNemotronEmbedVL1BV2Embedder:
     def __post_init__(self) -> None:
         from transformers import AutoModel
 
-        model_id = self.model_id or "nvidia/llama-nemotron-embed-vl-1b-v2"
+        from nemo_retriever.model import VL_EMBED_MODEL
+
+        model_id = self.model_id or VL_EMBED_MODEL
         dev = torch.device(self.device or ("cuda" if torch.cuda.is_available() else "cpu"))
         hf_cache_dir = configure_global_hf_cache_base(self.hf_cache_dir)
 
@@ -91,7 +94,8 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
             self._set_p_max_length("text")
-            out = self._model.encode_documents(texts=texts_list)
+            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(texts_list), mode="doc_text"):
+                out = self._model.encode_documents(texts=texts_list)
         if isinstance(out, torch.Tensor):
             return _l2_normalize(out.detach().cpu())
         return _l2_normalize(torch.as_tensor(out, dtype=torch.float32).cpu())
@@ -103,7 +107,8 @@ class LlamaNemotronEmbedVL1BV2Embedder:
             return torch.empty((0, 2048), dtype=torch.float32)
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
-            out = self._model.encode_queries(texts_list)
+            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(texts_list), mode="query"):
+                out = self._model.encode_queries(texts_list)
         if isinstance(out, torch.Tensor):
             return _l2_normalize(out.detach().cpu())
         return _l2_normalize(torch.as_tensor(out, dtype=torch.float32).cpu())
@@ -120,7 +125,8 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
             self._set_p_max_length("image")
-            out = self._model.encode_documents(images=image_dicts)
+            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(image_dicts), mode="doc_image"):
+                out = self._model.encode_documents(images=image_dicts)
         if isinstance(out, torch.Tensor):
             return _l2_normalize(out.detach().cpu())
         return _l2_normalize(torch.as_tensor(out, dtype=torch.float32).cpu())
@@ -145,7 +151,8 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
             self._set_p_max_length("text_image")
-            out = self._model.encode_documents(texts=paired_texts, images=paired_images)
+            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(paired_images), mode="doc_text_image"):
+                out = self._model.encode_documents(texts=paired_texts, images=paired_images)
         if isinstance(out, torch.Tensor):
             return _l2_normalize(out.detach().cpu())
         return _l2_normalize(torch.as_tensor(out, dtype=torch.float32).cpu())

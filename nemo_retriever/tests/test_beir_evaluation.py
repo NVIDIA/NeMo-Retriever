@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from nemo_retriever.recall.beir import (
     BeirConfig,
     BeirDataset,
@@ -6,6 +8,7 @@ from nemo_retriever.recall.beir import (
     build_queries_by_id,
     compute_beir_metrics,
     evaluate_lancedb_beir,
+    load_beir_dataset,
 )
 
 
@@ -46,6 +49,179 @@ def test_build_beir_run_from_hits_uses_pdf_basename_and_dedupes() -> None:
 
     assert list(run["q1"].keys()) == ["doc_a", "doc_b"]
     assert run["q1"]["doc_a"] > run["q1"]["doc_b"]
+
+
+def test_load_beir_dataset_supports_bo767_csv_pdf_page_modality(tmp_path: Path) -> None:
+    annotations = tmp_path / "bo767_annotations.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is doc a?,Answer A,1001,0",
+                "table,What is doc b?,Answer B,1002.pdf,4",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("bo767_csv", dataset_name=str(annotations), doc_id_field="pdf_page_modality")
+
+    assert dataset.query_ids == ["0", "1"]
+    assert dataset.queries == ["What is doc a?", "What is doc b?"]
+    assert dataset.qrels == {
+        "0": {"1001_1_text": 1},
+        "1": {"1002_5_table": 1},
+    }
+
+
+def test_load_beir_dataset_supports_bo767_csv_pdf_page(tmp_path: Path) -> None:
+    annotations = tmp_path / "bo767_annotations.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is doc a?,Answer A,1001,0",
+                "table,What is doc b?,Answer B,1002.pdf,4",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("bo767_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.query_ids == ["0", "1"]
+    assert dataset.queries == ["What is doc a?", "What is doc b?"]
+    assert dataset.qrels == {
+        "0": {"1001_1": 1},
+        "1": {"1002_5": 1},
+    }
+
+
+def test_load_beir_dataset_supports_bo10k_csv_pdf_page_modality(tmp_path: Path) -> None:
+    annotations = tmp_path / "digital_corpora_10k_annotations.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is doc a?,Answer A,1001,0",
+                "table,What is doc b?,Answer B,1002.pdf,4",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("bo10k_csv", dataset_name=str(annotations), doc_id_field="pdf_page_modality")
+
+    assert dataset.query_ids == ["0", "1"]
+    assert dataset.queries == ["What is doc a?", "What is doc b?"]
+    assert dataset.qrels == {
+        "0": {"1001_1_text": 1},
+        "1": {"1002_5_table": 1},
+    }
+
+
+def test_load_beir_dataset_supports_earnings_csv_pdf_page(tmp_path: Path) -> None:
+    annotations = tmp_path / "earnings_consulting_multimodal.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is doc a?,Answer A,1001,0",
+                "table,What is doc b?,Answer B,1002.pdf,4",
+                "chart,What is doc c?,Answer C,1003.pdf,2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("earnings_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.query_ids == ["0", "1", "2"]
+    assert dataset.queries == ["What is doc a?", "What is doc b?", "What is doc c?"]
+    assert dataset.qrels == {
+        "0": {"1001_1": 1},
+        "1": {"1002_5": 1},
+        "2": {"1003_3": 1},
+    }
+
+
+def test_load_beir_dataset_supports_financebench_json_pdf_basename(tmp_path: Path) -> None:
+    annotations = tmp_path / "financebench_train.json"
+    annotations.write_text(
+        '[{"id":"q1","question":"What is revenue?","contexts":[{"filename":"AAPL_2023.pdf"}]},'
+        '{"id":"q2","question":" What is margin? ","contexts":[{"filename":"MSFT_2022"}]}]',
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("financebench_json", dataset_name=str(annotations), doc_id_field="pdf_basename")
+
+    assert dataset.query_ids == ["q1", "q2"]
+    assert dataset.queries == ["What is revenue?", " What is margin? "]
+    assert dataset.qrels == {
+        "q1": {"AAPL_2023": 1},
+        "q2": {"MSFT_2022": 1},
+    }
+
+
+def test_load_beir_dataset_preserves_dotted_pdf_basenames_without_extension(tmp_path: Path) -> None:
+    annotations = tmp_path / "earnings_consulting_multimodal.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is fair value?,Answer A,3.-Facebook-Reports-Third-Quarter-2016-Results,0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("earnings_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.qrels == {"0": {"3.-Facebook-Reports-Third-Quarter-2016-Results_1": 1}}
+
+
+def test_load_beir_dataset_preserves_query_whitespace_for_retrieval_parity(tmp_path: Path) -> None:
+    annotations = tmp_path / "earnings_consulting_multimodal.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "modality,query,answer,pdf,page",
+                "text,What is the Apple arcade? ,Answer A,1001,0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("earnings_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.queries == ["What is the Apple arcade? "]
+
+
+def test_build_beir_run_from_hits_synthesizes_pdf_page_modality() -> None:
+    raw_hits = [
+        [
+            {
+                "source": '{"source_id": "/tmp/doc_a.pdf"}',
+                "page_number": 7,
+                "metadata": "{'_content_type': 'table_caption'}",
+            },
+            {
+                "source_id": "/tmp/doc_a.pdf",
+                "page_number": 7,
+                "metadata": '{"content_metadata": {"type": "table"}}',
+            },
+            {
+                "source_id": "/tmp/doc_b.pdf",
+                "page_number": 3,
+                "metadata": "{'content_metadata': {'type': 'text'}}",
+            },
+        ]
+    ]
+
+    run = build_beir_run_from_hits(["q1"], raw_hits, doc_id_field="pdf_page_modality")
+
+    assert list(run["q1"].keys()) == ["doc_a_7_table", "doc_b_3_text"]
+    assert run["q1"]["doc_a_7_table"] > run["q1"]["doc_b_3_text"]
 
 
 def test_compute_beir_metrics_returns_expected_cutoffs() -> None:

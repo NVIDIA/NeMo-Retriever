@@ -13,8 +13,16 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.designer import designer_component
 
 
+@designer_component(
+    name="File List Loader",
+    category="Document Processing",
+    compute="cpu",
+    description="Loads files from a list of file paths",
+    category_color="#64b4ff",
+)
 class FileListLoaderOperator(AbstractOperator, CPUOperator):
     """Load a list of files into a DataFrame with ``path`` and ``bytes`` columns."""
 

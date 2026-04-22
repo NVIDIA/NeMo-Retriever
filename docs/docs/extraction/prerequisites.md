@@ -4,26 +4,21 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure the followi
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 
 ## Software Requirements
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)
-- [Docker](https://docs.docker.com/engine/install/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
-- [Docker Buildx](https://docs.docker.com/build/concepts/overview/#buildx) `>= 0.17` (Compose 2.40+ enforces this)
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-- [Python](https://www.python.org/downloads/) `>= 3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
+- [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
 
 
 !!! note
 
-    When you use UV, create the environment with Python 3.12 or later — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
-
+    When you use UV, create the environment with Python 3.12 — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
 
 
 ## Hardware Requirements
@@ -50,7 +45,8 @@ For additional hardware details, refer to [Support Matrix](support-matrix.md).
 - The pipeline performs runtime allocation of parallel resources based on system configuration
 - Memory usage can reach up to the full system capacity for large document processing
 - CPU utilization scales with the number of concurrent processing tasks
-- GPU is required for image processing NIMs, embeddings, and other GPU-accelerated tasks
+- GPU is required for inference using HuggingFace models or NIMs
+- GPU is NOT required for build.nvidia.com hosted inference
 
 
 ### Scaling Considerations
@@ -59,9 +55,6 @@ For production deployments processing large volumes of documents, consider:
 - Higher memory configurations for processing large PDF files or image collections
 - Additional CPU cores for improved parallel processing
 - Multiple GPUs for distributed processing workloads
-
-For guidance on choosing between static and dynamic scaling modes, and how to configure them in `docker-compose.yaml`, see [Scaling Modes](scaling-modes.md).
-
 
 
 ### Environment Requirements
@@ -74,6 +67,5 @@ Ensure your deployment environment meets these specifications before running the
 
 - [Support Matrix](support-matrix.md)
 - [Troubleshooting](troubleshoot.md)
-- [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
-- [Deploy With Docker Compose (Self-Hosted)](quickstart-guide.md)
-- [Deploy With Helm](helm.md)
+- [Deploy As a Python Library](quickstart-library-mode.md)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)

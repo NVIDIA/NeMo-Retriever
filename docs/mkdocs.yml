@@ -64,33 +64,28 @@ nav:
       - Get Started:
         - Prerequisites: extraction/prerequisites.md
         - Support Matrix: extraction/support-matrix.md
-        - Deploy (Library Mode): extraction/quickstart-library-mode.md
-        - Deploy (Self-Hosted): extraction/quickstart-guide.md
-        - Deploy (Helm Chart): extraction/helm.md
+        - Library Quickstart: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
+        - Helm Quickstart: https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md
       - Developer Guide:
-        - Notebooks: extraction/notebooks.md
-        - Use the CLI: extraction/cli-reference.md
-        - Use the API: extraction/python-api-reference.md
-        - NeMo Retriever API Reference: extraction/nemo-retriever-api-reference.md
-        - Use the API (V2): extraction/v2-api-guide.md
-        - Split Documents: extraction/chunking.md
-        - Upload Data: extraction/data-store.md
-        - Filter Search Results: extraction/custom-metadata.md
-        - Advanced Visual Parsing: extraction/nemoretriever-parse.md
-        - Extract Speech: extraction/audio.md
-        - Use Multimodal Embedding: extraction/vlm-embed.md
+        - Using the Python API: extraction/python-api-reference.md
+        - Using the CLI: extraction/cli-reference.md
+        - Splitting/Chunking: extraction/chunking.md
+        - Embedding Options: extraction/embedding.md
+        - Vector Databases: extraction/vdbs.md
+        - Audio/Video: extraction/audio-video.md
+        - Custom Metadata: https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb
+        - Nemotron-Parse: extraction/nemotron-parse.md
+        - Notebooks: https://github.com/NVIDIA/NeMo-Retriever/tree/main/examples/
         - Configure Ray Logging: extraction/ray-logging.md
       - Customize Your Pipeline:
-        - Add User-defined Functions: extraction/user-defined-functions.md
-        - Add User-defined Stages: extraction/user-defined-stages.md
-        - NimClient Usage: extraction/nimclient.md
-        - Resource Scaling Modes: extraction/scaling-modes.md
+        - Add Custom Stages: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
+        - Add User-defined Functions: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#using-udfoperator
       - Performance:
         - Benchmarking: extraction/benchmarking.md
         - Telemetry: extraction/telemetry.md
         - Throughput Is Dataset-Dependent: extraction/throughput-is-dataset-dependent.md
       - Reference:
-        - Generate Your NGC Keys: extraction/ngc-api-key.md
+        - API Keys: extraction/api-keys.md
         - Environment Variables: extraction/environment-config.md
         - Metadata Reference: extraction/content-metadata.md
       - Troubleshoot: extraction/troubleshoot.md
@@ -130,7 +125,6 @@ plugins:
   - redirects:
       redirect_maps:
         'extraction/index.md': 'extraction/overview.md'
-        'extraction/nv-ingest_cli.md': 'extraction/cli-reference.md'
         'extraction/nv-ingest-python-api.md': 'extraction/python-api-reference.md'
   - site-urls
 
