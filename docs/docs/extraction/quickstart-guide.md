@@ -101,6 +101,38 @@ h. Run the command `docker ps`. You should see output similar to the following. 
     3403c5a0e7be  redis/redis-stack                                "/entrypoint.sh"        7 minutes ago   Up 7 minutes            0.0.0.0:6379...  nv-ingest-redis-1
     ```
 
+i. To run the NeMo Retriever Library Python client from your host machine, Python 3.12 or later is required. Create a virtual environment and install the client packages:
+
+    ```shell
+    uv venv --python 3.12 nv-ingest-dev
+    source nv-ingest-dev/bin/activate
+    uv pip install nv-ingest==26.1.2 nv-ingest-api==26.1.2 nv-ingest-client==26.1.2
+    ```
+
+    !!! tip
+
+        To confirm that you have activated your virtual environment, run `which pip` and `which python`, and confirm that you see `nv-ingest-dev` in the result. You can do this before any pip or python command that you run.
+
+    !!! note
+
+        Interaction from the host requires the appropriate port to be exposed from the `nv-ingest` runtime container, as defined in the `docker-compose.yaml` file. If you prefer, you can disable this port and interact directly from within the container.
+
+j. To work inside the container, run the following code.
+
+    ```bash
+    docker exec -it nv-ingest-nv-ingest-ms-runtime-1 bash
+    ```
+
+    This command opens a shell in the `/workspace` directory, where the `DATASET_ROOT` from your `.env` file is mounted at `./data`. The `nv-ingest` image uses Python 3.12 in a virtual environment at `/opt/nv_ingest_runtime` (created with `uv`), which includes the necessary Python client libraries. You should see a prompt similar to the following.
+
+    ```bash
+    root@your-computer-name:/workspace#
+    ```
+
+    From this prompt, you can run the `nv-ingest-cli` and Python examples.
+
+    Because many service URIs default to localhost, running inside the `nv-ingest` container also requires that you specify URIs manually so that services can communicate across containers on the internal Docker network. See the Python example in the next section for how to set the `milvus_uri`.
+
 ## Step 2: Ingest Documents
 
 You can submit jobs programmatically in Python or using the [CLI](nv-ingest_cli.md).
