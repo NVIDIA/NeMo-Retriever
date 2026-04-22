@@ -10,9 +10,9 @@ dependencies = [
     "pyyaml>=6.0",
     "requests>=2.32.5",
     "pynvml>=11.5.0",
-    "nv-ingest==26.03.0rc2",
-    "nv-ingest-api==26.03.0rc2",
-    "nv-ingest-client==26.03.0rc2",
+    "nv-ingest==26.3.0",
+    "nv-ingest-api==26.3.0",
+    "nv-ingest-client==26.3.0",
     "milvus-lite==2.4.12",
     "pypdfium2>=4.30.0,<5.0.0",
     "nemotron-page-elements-v3==3.0.1",
@@ -33,9 +33,9 @@ nv-ingest-harness-stats = "nv_ingest_harness.cli.stats:main"
 package = true
 
 [tool.uv.sources]
-nv-ingest = { path = "../../src", editable = true }
-nv-ingest-api = { path = "../../api/", editable = true }
-nv-ingest-client = { path = "../../client/", editable = true }
+#nv-ingest = { path = "../../src", editable = true }
+#nv-ingest-api = { path = "../../api/", editable = true }
+#nv-ingest-client = { path = "../../client/", editable = true }
 nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }

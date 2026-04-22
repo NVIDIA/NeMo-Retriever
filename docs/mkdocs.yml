@@ -1,8 +1,8 @@
 site_name: NeMo Retriever Documentation
 site_url: https://docs.nvidia.com/nemo/retriever/
 
-repo_name: NVIDIA/nv-ingest
-repo_url: https://github.com/NVIDIA/nv-ingest/
+repo_name: NVIDIA/NeMo-Retriever
+repo_url: https://github.com/NVIDIA/NeMo-Retriever/
 
 theme:
   name: material
@@ -58,7 +58,7 @@ nav:
   - NeMo Retriever: 
     - Overview: 
       - Overview: index.md
-    - NeMo Retriever Library:
+    - NeMo Retriever Extraction:
       - Overview: extraction/overview.md
       - Release Notes: extraction/releasenotes-nv-ingest.md
       - Get Started:
@@ -67,10 +67,11 @@ nav:
         - Deploy (Library Mode): extraction/quickstart-library-mode.md
         - Deploy (Self-Hosted): extraction/quickstart-guide.md
         - Deploy (Helm Chart): extraction/helm.md
+        - Air-Gapped Deployment: extraction/air-gapped-deployment.md
       - Developer Guide:
         - Notebooks: extraction/notebooks.md
-        - Use the CLI: extraction/nv-ingest_cli.md
-        - Use the API: extraction/nv-ingest-python-api.md
+        - Use the CLI: extraction/cli-reference.md
+        - Use the API: extraction/python-api-reference.md
         - Use the API (V2): extraction/v2-api-guide.md
         - Split Documents: extraction/chunking.md
         - Upload Data: extraction/data-store.md
@@ -96,6 +97,7 @@ nav:
       - Troubleshoot: extraction/troubleshoot.md
       - FAQ: extraction/faq.md
       - Contribute: extraction/contributing.md
+      - License: license.md
 
 
 plugins:
@@ -138,7 +140,9 @@ markdown_extensions:
   - pymdownx.snippets:
       check_paths: true
       restrict_base_path: False
-      base_path: "."
+      base_path:
+        - .
+        - ..
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
@@ -156,10 +160,10 @@ extra:
      alias: true
    social:
      - icon: fontawesome/brands/github
-       link: https://github.com/NVIDIA/nv-ingest/
+       link: https://github.com/NVIDIA/NeMo-Retriever/
 #   docker_url: nvcr.io/nvidia/clara/bionemo-framework
 #   docker_tag: main--nightly
-#   github_url: https://github.com/NVIDIA/nv-ingest/
+#   github_url: https://github.com/NVIDIA/NeMo-Retriever/
 
 copyright: |
   &copy; Copyright 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.

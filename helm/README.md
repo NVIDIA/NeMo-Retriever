@@ -12,6 +12,10 @@ Before you install the Helm charts, be sure you meet the hardware and software p
 The [Nvidia nim-operator](https://docs.nvidia.com/nim-operator/latest/install.html) must also be installed and configured in your cluster to ensure that
 the Nvidia NIMs are properly deployed.
 
+## Air-Gapped Deployment (Kubernetes)
+
+For deploying in an air-gapped environment (no internet or NGC registry access), refer to the [NVIDIA NIM Operator documentation on Air-Gapped Environments](https://docs.nvidia.com/nim-operator/latest/air-gap.html), which explains how to deploy NIMs in such environments.
+
 ## Initial Environment Setup
 
 1. Create your namespace by running the following code.
@@ -45,7 +49,7 @@ To install or upgrade the Helm chart, run the following code.
 helm upgrade \
     --install \
     nv-ingest \
-    https://helm.ngc.nvidia.com/nvidia/nemo-microservices/charts/nv-ingest-26.03.0-RC2.tgz \
+    https://helm.ngc.nvidia.com/nvidia/nemo-microservices/charts/nv-ingest-26.3.0.tgz \
     -n ${NAMESPACE} \
     --username '$oauthtoken' \
     --password "${NGC_API_KEY}" \
@@ -54,7 +58,7 @@ helm upgrade \
     --set ngcApiSecret.create=true \
     --set ngcApiSecret.password="${NGC_API_KEY}" \
     --set image.repository="nvcr.io/nvidia/nemo-microservices/nv-ingest" \
-    --set image.tag="26.03.0-RC2"
+    --set image.tag="26.3.0"
 ```
 
 Optionally you can create your own versions of the `Secrets` if you do not want to use the creation via the helm chart.
@@ -105,7 +109,7 @@ For more information, refer to [NV-Ingest-Client](https://github.com/NVIDIA/nv-i
 # Just to be cautious we remove any existing installation
 pip uninstall nv-ingest-client
 
-pip install nv-ingest-client==26.03.0-RC2
+pip install nv-ingest-client==26.3.0
 ```
 
 #### Rest Endpoint Ingress
@@ -130,11 +134,11 @@ nv-ingest-etcd-0
 nv-ingest-milvus-standalone-7f8ffbdfbc-jpmlj
 nv-ingest-minio-7cbd4f5b9d-99hl4
 nv-ingest-opentelemetry-collector-7bb59d57fc-4h59q
-nv-ingest-ocr-0
+nemoretriever-ocr-v1-557dd99578-s8428
+nemotron-page-elements-v3-59dfbf5997-vgxtz
 nv-ingest-redis-master-0
 nv-ingest-redis-replicas-0
-nv-ingest-yolox-0
-nv-ingest-zipkin-77b5fc459f-ptsj6
+nv-ingest-zipkin-66d5b4444d-b68k8
 ```
 
 ```bash
@@ -193,7 +197,7 @@ kubectl get nodes -o json | jq -r '.items[] | select(.metadata.name | test("-wor
 #### Enable NVIDIA GPU MIG
 
 [NVIDIA MIG](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html) is a technology that enables a specific GPU to be sliced into individual virtual GPUs.
-This approach is considered better for production environments than time-slicing, because it isolates it process to a pre-allocated amount of compute and memory.
+This approach is considered better for production environments than time-slicing, because it isolates its process to a pre-allocated amount of compute and memory.
 
 Use this section to learn how to enable NVIDIA GPU MIG.
 
@@ -254,7 +258,7 @@ Validate that the configuration was applied by running the following code.
 kubectl logs -n gpu-operator -l app=nvidia-mig-manager -c nvidia-mig-manager
 ```
 
-You can adjust Kubernetes request and limit resources for MIG by using a Helm values file. To use a MIG values file in conjunction with other values files, append `-f mig/nv-ingest-mig-values.yaml` to your Helm command. For an example Helm values file for MIG settings, refer to [mig/nv-ingest-mig-config.yaml](mig/nv-ingest-mig-config.yaml). This file is only an example, and you should adjust the values for your environment and specific needs.
+You can adjust Kubernetes request and limit resources for MIG by using a Helm values file. To use a MIG values file in conjunction with other values files, append `-f mig/nv-ingest-mig-values.yaml` to your Helm command. For an example Helm values file for MIG settings, refer to [mig/nv-ingest-mig-values.yaml](mig/nv-ingest-mig-values.yaml). This file is only an example, and you should adjust the values for your environment and specific needs.
 
 #### Running Jobs
 
@@ -347,7 +351,7 @@ You can also use NV-Ingest's Python client API to interact with the service runn
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"nvcr.io/nvidia/nemo-microservices/nv-ingest"` |  |
-| image.tag | string | `"26.03.0-RC2"` |  |
+| image.tag | string | `"26.3.0"` |  |
 | imagePullSecrets[0].name | string | `"ngc-api"` |  |
 | imagePullSecrets[1].name | string | `"ngc-secret"` |  |
 | ingress.annotations | object | `{}` |  |

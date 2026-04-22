@@ -4,7 +4,7 @@ Use this documentation to troubleshoot issues that arise when you use [NeMo Retr
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed to the NeMo Retriever Library.
+    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
 ## Can't process long, non-language text strings
@@ -40,7 +40,7 @@ Before you change the `-u` setting, consider the following:
 - For `-u` we recommend 10,000 as a baseline, but you might need to raise or lower it based on your actual usage and system configuration.
 
 ```bash
-ulimit -u 10,000
+ulimit -u 10000
 ```
 
 
@@ -52,7 +52,7 @@ This happens because, by default, NeMo Retriever Library stores the results from
 If the total size of the results exceeds the available memory, the process fails.
 
 To resolve this issue, use the `save_to_disk` method. 
-For details, refer to [Working with Large Datasets: Saving to Disk](python-api-reference.md#work-with-large-datasets-save-to-disk).
+For details, refer to [Working with Large Datasets: Saving to Disk](nv-ingest-python-api.md#work-with-large-datasets-save-to-disk).
 
 
 
@@ -89,7 +89,7 @@ Before you change the `-n` setting, consider the following:
 - For `-n` we recommend 10,000 as a baseline, but you might need to raise or lower it based on your actual usage and system configuration.
 
 ```bash
-ulimit -n 10,000
+ulimit -n 10000
 ```
 
 

@@ -215,7 +215,7 @@ class Retriever:
                     hits,
                     model=model,
                     invoke_url=reranker_endpoint,
-                    model_name=str(self.reranker),
+                    model_name=str(self.reranker_model_name),
                     api_key=(self.reranker_api_key or "").strip(),
                     max_length=int(self.reranker_max_length),
                     batch_size=int(self.reranker_batch_size),
@@ -288,9 +288,6 @@ class Retriever:
         )
 
         if self.reranker:
-            assert self.top_k * self.reranker_refine_factor == len(
-                results[0]
-            ), "top_k must be at least 1/4 of the number of retrieved hits for reranking to work properly."
             results = self._rerank_results(query_texts, results)
 
         return results

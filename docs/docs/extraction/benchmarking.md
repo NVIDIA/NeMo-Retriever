@@ -1,11 +1,11 @@
-# NeMo Retriever Library Integration Testing Framework
+# NV-Ingest Integration Testing Framework
 
-A configurable, dataset-agnostic testing framework for end-to-end validation of NeMo Retriever Library pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
+A configurable, dataset-agnostic testing framework for end-to-end validation of nv-ingest pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
 
 ## Dataset Prerequisites
 
     
-Before you run any benchmarking or evaluation tests, you must first download the benchmark datasets. The three primary datasets used in NeMo Retriever Library benchmarking and evaluations are the following:
+Before you run any benchmarking or evaluation tests, you must first download the benchmark datasets. The three primary datasets used in nv-ingest benchmarking and evaluations include:
     
 - **Bo20** - 20 PDFs for quick testing
 - **Bo767** - 767 PDFs for comprehensive benchmarking
@@ -13,7 +13,7 @@ Before you run any benchmarking or evaluation tests, you must first download the
     
 ### How to Download the Datasets
     
-Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/digital_corpora_download.ipynb) to download these datasets from the public Digital Corpora source. This notebook provides automated download functions that do the following:
+Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/nv-ingest/blob/main/evaluation/digital_corpora_download.ipynb) to download these datasets from the public Digital Corpora source. This notebook provides automated download functions that enable the following:
     
 - Download PDFs directly from Digital Corpora's public repository.
 - Support all three dataset sizes (Bo20, Bo767, Bo10k).
@@ -29,7 +29,7 @@ Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/NeMo-Retri
 Before you use this documentation, you need the following:
 
 - Docker and Docker Compose are running
-- A Python environment with nemo-retriever installed
+- A Python environment with nv-ingest-client installed
 - The [benchmark datasets are downloaded](#dataset-prerequisites)
 
 ### Run Your First Test
@@ -59,6 +59,8 @@ The framework uses a structured YAML file for all test configuration. Configurat
 
 #### Active Configuration
 
+`api_version` `v2` is the default configuration. Use `v1` only when it is necessary to explicitly override this default value.
+
 The `active` section contains your current test settings. Edit these values directly for your test runs:
 
 ```yaml
@@ -68,16 +70,19 @@ active:
   test_name: null  # Auto-generated if null
   
   # API Configuration
-  api_version: v1  # v1 or v2
+  api_version: v2  # v1 or v2
   pdf_split_page_count: null  # V2 only: pages per chunk (null = default 32)
   
   # Infrastructure
   hostname: localhost
   readiness_timeout: 600
-  profiles: [retrieval]
+  compose:
+    profiles:
+      - retrieval
+      - reranker  # Required for recall evaluation
   
   # Runtime
-  sparse: true
+  sparse: false
   gpu_search: false
   embedding_model: auto
   
@@ -123,7 +128,7 @@ datasets:
     extract_tables: true
     extract_charts: true
     extract_images: true
-    extract_infographics: false
+    extract_infographics: true
     recall_dataset: null  # bo20 does not have recall
   
   earnings:
@@ -159,7 +164,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=/custom/path
 |---------|------|--------|--------|--------|--------------|--------|
 | `bo767` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
 | `earnings` | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| `bo20` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `bo20` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `financebench` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `single` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
@@ -173,7 +178,7 @@ Settings are applied in order of priority:
 
 Example:
 ```bash
-# YAML active section has api_version: v1
+# YAML active section has api_version: v2
 # Dataset bo767 has extract_images: false
 # Override via environment variable (highest priority)
 EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
@@ -211,7 +216,7 @@ EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dat
 #### Infrastructure Options
 - `hostname` (string): Service hostname
 - `readiness_timeout` (integer): Docker startup timeout in seconds
-- `profiles` (list): Docker compose profiles
+- `compose.profiles` (list): Docker Compose profiles, nested under `compose` in YAML (loaded as top-level `profiles`)
 
 #### Runtime Options
 - `sparse` (boolean): Use sparse embeddings
@@ -655,21 +660,21 @@ This provides:
 - `test_configs.yaml` - Structured configuration file
   - Active test configuration (edit directly)
   - Dataset shortcuts for quick access
-- `src/nemo_retriever_harness/config.py` - Configuration management
+- `src/nv_ingest_harness/config.py` - Configuration management
   - YAML loading and parsing
   - Type-safe config dataclass
   - Validation logic with helpful errors
   - Environment variable override support
 
 **2. Test Runner**
-- `src/nemo_retriever_harness/cli/run.py` - Main orchestration
+- `src/nv_ingest_harness/cli/run.py` - Main orchestration
   - Configuration loading with precedence chain
   - Docker service management (managed mode)
   - Test case execution with config injection
   - Artifact collection and consolidation
 
 **3. Test Cases**
-- `src/nemo_retriever_harness/cases/e2e.py` - Primary E2E test (✅ YAML-based)
+- `src/nv_ingest_harness/cases/e2e.py` - Primary E2E test (✅ YAML-based)
   - Accepts config object directly
   - Type-safe parameter access
   - Full pipeline validation (extract → embed → VDB → retrieval)
@@ -677,19 +682,19 @@ This provides:
 - `cases/e2e_with_llm_summary.py` - E2E with LLM (✅ YAML-based)
   - Adds UDF-based LLM summarization
   - Same config-based architecture as e2e.py
-- `src/nemo_retriever_harness/cases/recall.py` - Recall evaluation (✅ YAML-based)
+- `src/nv_ingest_harness/cases/recall.py` - Recall evaluation (✅ YAML-based)
   - Evaluates retrieval accuracy against existing collections
   - Requires `recall_dataset` in config (from dataset config or env var)
   - Supports reranker comparison modes (none, with, both)
   - Multimodal-only evaluation against `{test_name}_multimodal` collection
-- `src/nemo_retriever_harness/cases/e2e_recall.py` - E2E + Recall (✅ YAML-based)
+- `src/nv_ingest_harness/cases/e2e_recall.py` - E2E + Recall (✅ YAML-based)
   - Combines ingestion (via e2e.py) with recall evaluation (via recall.py)
   - Automatically creates collection during ingestion
   - Requires `recall_dataset` in config (from dataset config or env var)
   - Merges ingestion and recall metrics in results
 
 **4. Shared Utilities**
-- `src/nemo_retriever_harness/utils/interact.py` - Common testing utilities
+- `src/nv_ingest_harness/utils/interact.py` - Common testing utilities
   - `embed_info()` - Embedding model detection
   - `milvus_chunks()` - Vector database statistics
   - `segment_results()` - Result categorization by type
@@ -849,4 +854,4 @@ EXTRACT_IMAGES=true uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 - **Docker setup**: See project root README for service management commands
 - **API documentation**: See `docs/` for API version differences
 
-The framework prioritizes clarity, type safety, and validation to support reliable testing of NeMo Retriever pipelines.
+The framework prioritizes clarity, type safety, and validation to support reliable testing of nv-ingest pipelines.

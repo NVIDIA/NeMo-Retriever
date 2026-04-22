@@ -5,8 +5,9 @@ External contributions will be welcome soon, and they are greatly appreciated! E
 ## Table of Contents
 
 1. [Filing Issues](#filing-issues)
-2. [Cloning the Repository](#cloning-the-repository)
-3. [Code Contributions](#code-contributions)
+2. [Developer Certificate of Origin (DCO)](#developer-certificate-of-origin-dco)
+3. [Cloning the Repository](#cloning-the-repository)
+4. [Code Contributions](#code-contributions)
    - [Your First Issue](#your-first-issue)
    - [Seasoned Developers](#seasoned-developers)
    - [Workflow](#workflow)
@@ -21,7 +22,7 @@ External contributions will be welcome soon, and they are greatly appreciated! E
    - [Submodules, Third Party Libraries, and Models](#submodules-third-party-libraries-and-models)
      - [Submodules](#submodules)
      - [Models](#models)
-4. [Architectural Guidelines](#architectural-guidelines)
+5. [Architectural Guidelines](#architectural-guidelines)
    - [Single Responsibility Principle (SRP)](#1-single-responsibility-principle-srp)
    - [Interface Segregation Principle (ISP)](#2-interface-segregation-principle-isp)
    - [Dependency Inversion Principle (DIP)](#3-dependency-inversion-principle-dip)
@@ -37,9 +38,9 @@ External contributions will be welcome soon, and they are greatly appreciated! E
    - [Principle of Least Knowledge (Law of Demeter)](#11-principle-of-least-knowledge-law-of-demeter)
    - [Document Assumptions and Decisions](#12-document-assumptions-and-decisions)
    - [Continuous Integration and Testing](#13-continuous-integration-and-testing)
-5. [Writing Good and Thorough Documentation](#writing-good-and-thorough-documentation)
-6. [Licensing](#licensing)
-7. [Attribution](#attribution)
+6. [Writing Good and Thorough Documentation](#writing-good-and-thorough-documentation)
+7. [Licensing](#licensing)
+8. [Attribution](#attribution)
 
 ## Filing Issues
 
@@ -48,6 +49,52 @@ External contributions will be welcome soon, and they are greatly appreciated! E
    description of
    the problem, feature request, or documentation issue. The NV-Ingest team will review and triage these issues,
    and if appropriate, schedule them for a future release.
+
+## Developer Certificate of Origin (DCO)
+
+We require that all contributors "sign-off" on their commits. This certifies that the contribution is your original
+work, or you have rights to submit it under the same license, or a compatible license.
+
+Any contribution which contains commits that are not signed off are not accepted.
+
+To sign off on a commit, use the `--signoff` (or `-s`) option when you commit your changes:
+
+```bash
+git commit --signoff --message "Add cool feature."
+```
+
+This appends the following text to your commit message:
+
+```text
+Signed-off-by: Your Name <your@email.com>
+```
+
+### Full text of the Developer Certificate of Origin
+
+```text
+Developer Certificate of Origin
+Version 1.1
+
+Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+1 Letterman Drive
+Suite D4700
+San Francisco, CA, 94129
+
+Everyone is permitted to copy and distribute verbatim copies of this license document, but changing it is not allowed.
+
+
+Developer's Certificate of Origin 1.1
+
+By making a contribution to this project, I certify that:
+
+(a) The contribution was created in whole or in part by me and I have the right to submit it under the open source license indicated in the file; or
+
+(b) The contribution is based upon previous work that, to the best of my knowledge, is covered under an appropriate open source license and I have the right under that license to submit that work with modifications, whether created in whole or in part by me, under the same open source license (unless I am permitted to submit under a different license), as indicated in the file; or
+
+(c) The contribution was provided directly to me by some other person who certified (a), (b) or (c) and I have not modified it.
+
+(d) I understand and agree that this project and the contribution are public and that a record of the contribution (including all personal information I submit with it, including my sign-off) is maintained indefinitely and may be redistributed consistent with this project or the open source license(s) involved.
+```
 
 ## Cloning the repository
 
