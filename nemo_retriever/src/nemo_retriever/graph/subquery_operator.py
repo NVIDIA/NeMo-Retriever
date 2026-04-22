@@ -300,16 +300,23 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
         if self._max_tokens is not None:
             extra_body["max_tokens"] = self._max_tokens
 
+        api_key = self._resolve_api_key()  # raises ValueError immediately on config error
+
         try:
             results = invoke_chat_completions(
                 invoke_url=self._invoke_url,
                 messages_list=[messages],
                 model=self._llm_model,
-                api_key=self._resolve_api_key(),
+                api_key=api_key,
                 extra_body=extra_body or None,
             )
         except Exception as exc:
-            logger.warning("SubQueryGeneratorOperator: LLM call failed for query %r: %s", query, exc)
+            logger.warning(
+                "SubQueryGeneratorOperator: LLM call failed for query %r: %s",
+                query,
+                exc,
+                exc_info=True,
+            )
             return [query]
         raw = results[0].strip()
         return _parse_json_list(raw, fallback=query)
