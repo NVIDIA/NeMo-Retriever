@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -388,7 +391,11 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 )
             except Exception as exc:
                 logger.warning(
-                    "SelectionAgentOperator: LLM call failed on step %d for query %r: %s", _step, query_text, exc
+                    "SelectionAgentOperator: LLM call failed on step %d for query %r: %s",
+                    _step,
+                    query_text,
+                    exc,
+                    exc_info=True,
                 )
                 break
 

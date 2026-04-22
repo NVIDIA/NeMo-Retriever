@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
 
+from nemo_retriever.nim.nim import _parse_invoke_urls, _post_with_retries
+
 
 def extract_chat_completion_text(response_json: Any) -> str:
     """Extract generated text from an OpenAI-compatible chat completions response."""
