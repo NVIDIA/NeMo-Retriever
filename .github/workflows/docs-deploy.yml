@@ -1,4 +1,9 @@
-name: Documentation Deploy
+# Full documentation pipeline in Docker (Sphinx + OpenAPI + default MkDocs).
+# Validates that `make docs` still succeeds on main. Does NOT publish to GitHub Pages.
+#
+# Public documentation at https://nvidia.github.io/NeMo-Retriever/ is deployed only by
+# nrl-docs-github-pages.yml (NeMo Retriever Library MkDocs: mkdocs.nrl-github-pages.yml).
+name: Documentation build (full pipeline, CI only)
 
 on:
   push:
@@ -8,28 +13,23 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages"
+  group: docs-full-docker-ci
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build Documentation
+    name: Build documentation (Docker)
     runs-on: linux-large-disk
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx
 
-      - name: Build Documentation Docker Image
+      - name: Build documentation Docker image
         run: |
           docker build \
             --target docs \
@@ -37,33 +37,22 @@ jobs:
             -t nv-ingest-docs:latest \
             .
 
-      - name: Run Documentation Build Container
+      - name: Run documentation build container
         run: |
           CONTAINER_ID=$(docker run -d nv-ingest-docs:latest)
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
       - name: Wait for documentation generation
-        run: docker wait $CONTAINER_ID
+        run: |
+          EXIT_CODE=$(docker wait $CONTAINER_ID)
+          docker logs $CONTAINER_ID
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Error: docs build failed with exit code $EXIT_CODE"
+            exit 1
+          fi
 
       - name: Copy generated docs from container
         run: docker cp $CONTAINER_ID:/workspace/docs/site ./generated-site
 
       - name: Clean up container
         run: docker rm $CONTAINER_ID
-
-      - name: Upload Site Artifacts
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./generated-site
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
