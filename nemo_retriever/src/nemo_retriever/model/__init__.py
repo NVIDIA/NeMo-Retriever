@@ -113,16 +113,19 @@ def create_local_reranker(
     Parameters
     ----------
     backend:
-        ``"vllm"`` (default) uses vLLM's pooling runner for the VL
-        reranker.  ``"transformers"`` uses HuggingFace
+        ``"auto"`` / ``"vllm"`` (default) uses vLLM's pooling runner for
+        the VL reranker.  ``"hf"`` uses HuggingFace
         ``AutoModelForSequenceClassification``.  Only affects VL reranker
-        dispatch; the text-only reranker always uses transformers.
+        dispatch; the text-only reranker always uses HuggingFace.
     gpu_memory_utilization:
         Fraction of GPU memory for the vLLM engine (only used when
-        *backend* is ``"vllm"``).
+        *backend* resolves to ``"vllm"``).
     """
+    b = (backend or "auto").strip().lower()
+    if b not in ("auto", "vllm", "hf"):
+        raise ValueError(f"backend must be 'auto', 'vllm', or 'hf'; got {backend!r}")
     if is_vl_rerank_model(model_name):
-        if backend == "vllm":
+        if b in ("auto", "vllm"):
             from nemo_retriever.model.local.nemotron_rerank_vl_v2_vllm import NemotronRerankVLV2VLLM
 
             return NemotronRerankVLV2VLLM(

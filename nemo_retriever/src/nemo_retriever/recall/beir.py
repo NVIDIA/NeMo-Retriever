@@ -77,7 +77,7 @@ class BeirConfig:
     reranker_endpoint: str | None = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
-    reranker_backend: str = "vllm"
+    local_reranker_backend: str = "vllm"
 
 
 def _row_get(row: Any, key: str, default: Any = None) -> Any:
@@ -686,7 +686,7 @@ def evaluate_lancedb_beir(
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=(cfg.reranker_api_key or "").strip(),
         reranker_batch_size=int(cfg.reranker_batch_size),
-        reranker_backend=str(cfg.reranker_backend),
+        local_reranker_backend=str(cfg.local_reranker_backend),
     )
     raw_hits = retriever.queries(dataset.queries)
     run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)

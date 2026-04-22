@@ -299,8 +299,10 @@ def main(
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
     reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name"),
-    reranker_backend: str = typer.Option(
-        "vllm", "--reranker-backend", help="Reranker backend: 'vllm' or 'transformers'."
+    local_reranker_backend: str = typer.Option(
+        "vllm",
+        "--local-reranker-backend",
+        help="Local reranker backend: 'auto' / 'vllm' (default) or 'hf'.",
     ),
     local_hf_batch_size: int = typer.Option(
         32,
@@ -672,7 +674,7 @@ def main(
                 hybrid=hybrid,
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
-                reranker_backend=reranker_backend,
+                local_reranker_backend=local_reranker_backend,
                 reranker_endpoint=reranker_invoke_url,
                 reranker_api_key=reranker_remote_api_key or "",
                 local_hf_batch_size=int(local_hf_batch_size),
@@ -725,7 +727,7 @@ def main(
                 match_mode=recall_match_mode,
                 audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
-                reranker_backend=reranker_backend,
+                local_reranker_backend=local_reranker_backend,
                 reranker_endpoint=reranker_invoke_url,
                 reranker_api_key=reranker_remote_api_key or "",
                 embed_modality=embed_modality,
