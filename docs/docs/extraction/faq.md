@@ -87,7 +87,6 @@ Ingestor(client=client)
         extract_tables=True,
         extract_charts=True,
         extract_images=True,
-        paddle_output_format="markdown",
         extract_infographics=True,
         text_depth="page"
     )

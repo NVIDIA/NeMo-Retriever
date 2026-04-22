@@ -372,7 +372,7 @@ You can use this to generate descriptions of unstructured images, infographics, 
 
 !!! note
 
-    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/llama-3.1-nemotron-nano-vl-8b-v1`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
+    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
 
 ### Basic Usage
 
@@ -389,7 +389,7 @@ To specify a different API endpoint, pass additional parameters to `caption`.
 ```python
 ingestor = ingestor.caption(
     endpoint_url="https://integrate.api.nvidia.com/v1/chat/completions",
-    model_name="nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+    model_name="nvidia/nemotron-nano-12b-v2-vl",
     api_key="nvapi-"
 )
 ```
@@ -549,11 +549,13 @@ ingestor = Ingestor().files("audio_file.mp3")
 
 ingestor = ingestor.extract(
         document_type="mp3",
+        extract_method="audio",
         extract_text=True,
         extract_tables=False,
         extract_charts=False,
         extract_images=False,
         extract_infographics=False,
+        extract_audio_params={"segment_audio": True},
     ).split(
         tokenizer="meta-llama/Llama-3.2-1B",
         chunk_size=150,
@@ -563,13 +565,12 @@ ingestor = ingestor.extract(
 
 results = ingestor.ingest()
 ```
-
-
+Set extract_audio_params={"segment_audio": True} to output sentence-like audio segments as distinct extracted elements. This setting applies only when audio extraction runs through a hosted Parakeet endpoint—such as the Parakeet ASR NIM or NVCF—and has no effect when using the local Hugging Face Parakeet model.
 
 ## Related Topics
 
 - [Split Documents](chunking.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
 - [Advanced Visual Parsing](nemoretriever-parse.md)
-- [Use NeMo Retriever Library with Riva for Audio Processing](audio.md)
+- [Use NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio.md)
 - [Use Multimodal Embedding](vlm-embed.md)

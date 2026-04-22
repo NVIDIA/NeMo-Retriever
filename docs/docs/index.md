@@ -43,6 +43,7 @@ The following are some applications that use NVIDIA Nemo Retriever:
 
 ## Related Topics
 
+- [License](license.md)
 - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
 - [NeMo Retriever Text Reranking NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html)
 - [NVIDIA NIM for Object Detection](https://docs.nvidia.com/nim/ingestion/object-detection/latest/overview.html)

@@ -1,8 +1,8 @@
 # Extract Speech with NeMo Retriever Library
 
 This documentation describes two methods to run [NeMo Retriever Library](overview.md) 
-with the [RIVA ASR NIM microservice](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/index.html) 
-to extract speech from audio files.
+with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) 
+(`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files.
 
 - Run the NIM locally by using Docker Compose
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
@@ -22,12 +22,12 @@ Currently, you can extract speech from the following file types:
 
 [NeMo Retriever Library](overview.md) supports extracting speech from audio files for Retrieval Augmented Generation (RAG) applications. 
 Similar to how the multimodal document extraction pipeline leverages object detection and image OCR microservices, 
-NeMo Retriever leverages the [RIVA ASR NIM microservice](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/index.html) 
+NeMo Retriever leverages the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) 
 to transcribe speech to text, which is then embedded by using the NeMo Retriever embedding NIM. 
 
 !!! important
 
-    Due to limitations in available VRAM controls in the current release, the RIVA ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). For the full list of requirements, refer to [Support Matrix](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/support-matrix.html).
+    Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). For the full list of requirements, refer to [Support Matrix](support-matrix.md).
 
 This pipeline enables users to retrieve speech files at the segment level.
 
@@ -43,7 +43,7 @@ Use the following procedure to run the NIM locally.
 
 !!! important
 
-    The RIVA ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Edit docker-compose.yaml to set the device_id to a dedicated GPU: device_ids: ["1"] or higher.
+    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Edit docker-compose.yaml to set the device_id to a dedicated GPU: device_ids: ["1"] or higher.
 
 1. To access the required container images, log in to the NVIDIA Container Registry (nvcr.io). Use [your NGC key](ngc-api-key.md) as the password. Run the following command in your terminal.
 
@@ -82,10 +82,13 @@ Use the following procedure to run the NIM locally.
         .extract(
             document_type="wav",  # Ingestor should detect type automatically in most cases
             extract_method="audio",
+            extract_audio_params={
+                "segment_audio": True,
+            },
         )
     )
     ```
-
+To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either locally through Docker or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
 
     !!! tip
 
@@ -117,6 +120,7 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
                 "auth_token": "<API key>",
                 "function_id": "<function ID>",
                 "use_ssl": True,
+                "segment_audio": True,
             },
         )
     )

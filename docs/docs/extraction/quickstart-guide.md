@@ -89,11 +89,11 @@ h. Run the command `docker ps`. You should see output similar to the following. 
     1b885f37c991  nvcr.io/nvidia/nemo-microservices/nv-ingest:...  "/usr/bin/tini -- /w…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:7670...  nv-ingest-nv-ingest-ms-runtime-1
     14ef31ed7f49  milvusdb/milvus:v2.5.3-gpu                       "/tini -- bash -c 's…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9091...  milvus-standalone
     dceaf36cc5df  otel/opentelemetry-collector-contrib:...         "/otelcol-contrib --…"  7 minutes ago   Up 7 minutes            0.0.0.0:4317...  nv-ingest-otel-collector-1
-    5bd0b48eb71b  nvcr.io/nim/nvidia/nemoretriever-graphic-ele...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8003...  nv-ingest-graphic-elements-1
-    daf878669036  nvcr.io/nim/nvidia/nemoretriever-ocr-v1:1.2.1    "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8009...  nv-ingest-ocr-1
-    216bdf11c566  nvcr.io/nim/nvidia/nemoretriever-page-elements-v3:1.7.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8000...  nv-ingest-page-elements-1
-    aee9580b0b9a  nvcr.io/nim/nvidia/llama-3.2-nv-embedqa-1b-v2:1.10.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8012...  nv-ingest-embedding-1
-    178a92bf6f7f  nvcr.io/nim/nvidia/nemoretriever-table-struc...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8006...  nv-ingest-table-structure-1
+    5bd0b48eb71b  nvcr.io/nim/nvidia/nemotron-graphic-ele...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8003...  nv-ingest-graphic-elements-1
+    daf878669036  nvcr.io/nim/nvidia/nemotron-ocr-v1:1.2.1    "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8009...  nv-ingest-ocr-1
+    216bdf11c566  nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.7.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8000...  nv-ingest-page-elements-1
+    aee9580b0b9a  nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2:1.13.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8012...  nv-ingest-embedding-1
+    178a92bf6f7f  nvcr.io/nim/nvidia/nemotron-table-structure-v1:.....  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8006...  nv-ingest-table-structure-1
     7ddbf7690036  openzipkin/zipkin                                "start-zipkin"          7 minutes ago   Up 7 minutes (healthy)  9410/tcp...      nv-ingest-zipkin-1
     b73bbe0c202d  minio/minio:RELEASE.2023-03-20T20-16-18Z         "/usr/bin/docker-ent…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9000...  minio
     97fa798dbe4f  prom/prometheus:latest                           "/bin/prometheus --w…"  7 minutes ago   Up 7 minutes            0.0.0.0:9090...  nv-ingest-prometheus-1
@@ -311,7 +311,7 @@ You should see output that indicates the document processing status followed by 
 ```
 None of PyTorch, TensorFlow >= 2.0, or Flax have been found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
 [nltk_data] Downloading package punkt_tab to
-[nltk_data]     /path/to/your/nv-ingest-dev/lib/python3.12/site-
+[nltk_data]     /path/to/your/venv/lib/python3.12/site-
 [nltk_data]     packages/llama_index/core/_static/nltk_cache...
 [nltk_data]   Package punkt_tab is already up-to-date!
 INFO:nv_ingest_client.nv_ingest_cli:Processing 1 documents.
@@ -424,9 +424,9 @@ You can specify multiple `--profile` options.
 | Profile               | Type     | Description                                                       | 
 |-----------------------|----------|-------------------------------------------------------------------| 
 | `retrieval`           | Core     | Enables the embedding NIM and (optional) GPU-accelerated Milvus. Omit this profile to use the default LanceDB backend.           | 
-| `audio`               | Advanced | Use [Riva](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/index.html) for processing audio files. For more information, refer to [Audio Processing](audio.md). | 
+| `audio`               | Advanced | Use the [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) ASR NIM (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) for processing audio files. For more information, refer to [Audio Processing](audio.md). | 
 | `nemotron-parse`      | Advanced | Use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), which adds state-of-the-art text and table extraction. For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md). | 
-| `vlm`                 | Advanced | Use [llama 3.1 Nemotron 8B Vision](https://build.nvidia.com/nvidia/llama-3.1-nemotron-nano-vl-8b-v1/modelcard) for image captioning of unstructured images and infographics. This profile enables the `caption` method in the Python API to generate text descriptions of visual content. For more information, refer to [Use Multimodal Embedding](vlm-embed.md) and [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images). | 
+| `vlm`                 | Advanced | Use [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning of unstructured images and infographics. This profile enables the `caption` method in the Python API to generate text descriptions of visual content. For more information, refer to [Use Multimodal Embedding](vlm-embed.md) and [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images). | 
 
 ### Example: Using the VLM Profile for Infographic Captioning
 
@@ -441,6 +441,8 @@ docker compose \
 ```
 
 ## Air-Gapped Deployment (Docker Compose)
+
+For a complete NeMo Retriever Library air-gapped checklist (Compose and Kubernetes, image inventory, digest pinning, Helm charts, and registry configuration), see [Air-Gapped Deployment (End-to-End)](air-gapped-deployment.md).
 
 When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
 
@@ -507,17 +509,17 @@ docker compose \
 
 ## Specify MIG slices for NIM models
 
-When you deploy the pipeline with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/nv-ingest/main/helm/README.md%E2%80%8B).​
+When you deploy the pipeline with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/nv-ingest/main/helm/README.md).
 
 To target a specific MIG profile—for example, a 3g.20gb slice on an A100, which is a hardware-partitioned virtual GPU instance that gives your workload a fixed mid-sized share of the A100’s compute plus 20 GB of dedicated GPU memory and behaves like a smaller independent GPU—for a given NIM, configure the `resources` and `nodeSelector` under that NIM’s values path in `values.yaml`.
 
-The following example shows the pattern. Paths vary by NIM, such as `nvingest.nvidiaNim.nemoretrieverPageElements` instead of the generic `nvingest.nim` placeholder. For details refer to [catalog.ngc.nvidia](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/helm-charts/nv-ingest)​.
+The following example shows the pattern. Paths vary by NIM, such as `nvingest.nvidiaNim.nemoretrieverPageElements` instead of the generic `nvingest.nim` placeholder. For details refer to [catalog.ngc.nvidia](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/helm-charts/nv-ingest).
 Set `resources.requests` and `resources.limits` to the name of the MIG resource that you want (for example, `nvidia.com/mig-3g.20gb`).
 ```shell
 nvingest:
   nvidiaNim:
     nemoretrieverPageElements:
-      modelName: "meta/llama3-8b-instruct"        # Example NIM model
+      modelName: "nvidia/nemotron-page-elements-v3"  # Page-elements NIM (not a text LLM)       # Example NIM model
       resources:
         limits:
           nvidia.com/mig-3g.20gb: 1               # MIG profile resource

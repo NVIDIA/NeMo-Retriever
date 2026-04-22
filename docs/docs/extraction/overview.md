@@ -1,8 +1,6 @@
 # What is NeMo Retriever Library?
 
-NeMo Retriever Library is a scalable, performance-oriented document content and metadata extraction microservice. 
-NeMo Retriever Library uses specialized NVIDIA NIM microservices 
-to find, contextualize, and extract text, tables, charts and infographics that you can use in downstream generative applications.
+NVIDIA NeMo Retriever Library is a scalable, performance-oriented framework for document content and metadata extraction. It supports both NVIDIA NIM microservices and a wide range of models to find, contextualize, and extract text, tables, charts, and infographics for use in downstream generative and retrieval-augmented applications.
 
 !!! note
 
@@ -28,7 +26,7 @@ NeMo Retriever Library is a microservice service that does the following:
 
 - Accept a JSON job description, containing a document payload, and a set of ingestion tasks to perform on that payload.
 - Allow the results of a job to be retrieved. The result is a JSON dictionary that contains a list of metadata describing objects extracted from the base document, and processing annotations and timing/trace data.
-- Support multiple methods of extraction for each document type to balance trade-offs between throughput and accuracy. For example, for .pdf documents, extraction is performed by using pdfium, [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), Unstructured.io, and Adobe Content Extraction Services.
+- Support multiple methods of extraction for each document type to balance trade-offs between throughput and accuracy. For example, for .pdf documents, extraction is performed by using pdfium and [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse).
 - Support various types of pre- and post- processing operations, including text splitting and chunking, transform and filtering, embedding generation, and image offloading to storage.
 
 NeMo Retriever Library supports the following file types:
@@ -48,6 +46,7 @@ NeMo Retriever Library supports the following file types:
 - `png`
 - `pptx`
 - `sh` (treated as text)
+- `svg` (NeMo Retriever Library only, requires `cairosvg`)
 - `tiff`
 - `txt`
 - `wav`

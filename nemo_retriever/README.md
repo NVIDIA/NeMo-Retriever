@@ -155,7 +155,7 @@ The above retrieval results are often feedable directly to an LLM for answer gen
 
 To do so, first install the openai client and set your [build.nvidia.com](https://build.nvidia.com/) API key:
 ```bash
-uv pip install -y openai
+uv pip install openai
 export NVIDIA_API_KEY=nvapi-...
 ```
 
@@ -198,6 +198,13 @@ For PowerPoint and Docx files, ensure libeoffice is installed by your system's p
 For example, with apt-get on Ubuntu:
 ```bash
 sudo apt install -y libreoffice
+```
+
+For SVG files, install the optional `cairosvg` dependency with `pip install cairosvg`. SVG support is available in the NeMo Retriever Library, but not in the container deployment. `cairosvg` requires network access to install, so it will not work in air-gapped environments.
+```bash
+uv pip install "nemo-retriever[svg]"
+# or equivalently:
+uv pip install "cairosvg>=2.7.0"
 ```
 
 Example usage:

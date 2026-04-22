@@ -464,7 +464,7 @@ You can use this to generate descriptions of unstructured images, infographics, 
 
 !!! note
 
-    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/llama-3.1-nemotron-nano-vl-8b-v1`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
+    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
 
 ### Basic Usage
 
@@ -481,7 +481,7 @@ To specify a different API endpoint, pass additional parameters to `caption`.
 ```python
 ingestor = ingestor.caption(
     endpoint_url="https://integrate.api.nvidia.com/v1/chat/completions",
-    model_name="nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+    model_name="nvidia/nemotron-nano-12b-v2-vl",
     api_key="nvapi-"
 )
 ```
@@ -570,11 +570,11 @@ The `store` task uses [fsspec](https://filesystem-spec.readthedocs.io/) for stor
 | Amazon S3 | `s3://` | `s3://my-bucket/extracted-images` |
 | Google Cloud Storage | `gs://` | `gs://my-bucket/images` |
 | Azure Blob Storage | `abfs://` | `abfs://container@account.dfs.core.windows.net/images` |
-| MinIO (S3-compatible) | `s3://` | `s3://nemo-retriever/artifacts/store/images` (default) |
+| MinIO (S3-compatible) | `s3://` | `s3://nv-ingest/artifacts/store/images` (default) |
 
 !!! tip
 
-    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nemo-retriever/...`). If you change that variable—for example to a host-mounted `file://` path—restart the NeMo Retriever Library runtime so the container picks up the new value.
+    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nv-ingest/...`). If you change that variable—for example to a host-mounted `file://` path—restart the NeMo Retriever Library runtime so the container picks up the new value.
 
 When `public_base_url` is provided, the metadata returned from `ingest()` surfaces that HTTP(S) link while still recording the underlying storage URI. Leave it unset when the storage endpoint itself is already publicly reachable.
 
@@ -641,11 +641,13 @@ ingestor = Ingestor().files("audio_file.mp3")
 
 ingestor = ingestor.extract(
         document_type="mp3",
+        extract_method="audio",
         extract_text=True,
         extract_tables=False,
         extract_charts=False,
         extract_images=False,
         extract_infographics=False,
+        extract_audio_params={"segment_audio": True},
     ).split(
         tokenizer="meta-llama/Llama-3.2-1B",
         chunk_size=150,
@@ -656,6 +658,12 @@ ingestor = ingestor.extract(
 results = ingestor.ingest()
 ```
 
+Set `extract_audio_params={"segment_audio": True}` to emit sentence-like
+audio segments as separate extracted elements. This option only takes effect
+when audio extraction is performed through a hosted Parakeet endpoint--such as the
+Parakeet ASR NIM or NVCF--and does not affect behavior when using the local Hugging
+Face Parakeet model.
+
 
 
 ## Related Topics
@@ -663,5 +671,5 @@ results = ingestor.ingest()
 - [Split Documents](chunking.md)
 - [Troubleshoot NeMo Retriever Library](troubleshoot.md)
 - [Advanced Visual Parsing](nemoretriever-parse.md)
-- [Use the NeMo Retriever Library with Riva for Audio Processing](audio.md)
+- [Use the NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio.md)
 - [Use Multimodal Embedding](vlm-embed.md)
