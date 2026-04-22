@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+
+import requests
 from typing import Any, List, Literal, Optional
 
 import pandas as pd
@@ -310,12 +312,20 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
                 api_key=api_key,
                 extra_body=extra_body or None,
             )
-        except Exception as exc:
+        except TimeoutError as exc:
+            logger.warning("SubQueryGeneratorOperator: LLM call timed out for query %r: %s", query, exc, exc_info=True)
+            return [query]
+        except RuntimeError as exc:
             logger.warning(
-                "SubQueryGeneratorOperator: LLM call failed for query %r: %s",
-                query,
-                exc,
-                exc_info=True,
+                "SubQueryGeneratorOperator: LLM retries exhausted for query %r: %s", query, exc, exc_info=True
+            )
+            return [query]
+        except requests.RequestException as exc:
+            logger.warning("SubQueryGeneratorOperator: LLM HTTP error for query %r: %s", query, exc, exc_info=True)
+            return [query]
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "SubQueryGeneratorOperator: LLM returned invalid JSON for query %r: %s", query, exc, exc_info=True
             )
             return [query]
         raw = results[0].strip()

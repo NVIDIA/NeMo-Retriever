@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Literal, Optional
 
@@ -444,7 +446,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 for future in as_completed(futures):
                     try:
                         rows.extend(future.result())
-                    except Exception as exc:
+                    except Exception as exc:  # re-raises any worker exception;
+                        # no single type to narrow to at this thread boundary.
                         qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r failed: %s", qid, exc, exc_info=True)
 
@@ -520,9 +523,36 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     max_tokens=self._max_tokens,
                     extra_body={"parallel_tool_calls": False} if not self._parallel_tool_calls else None,
                 )
-            except Exception as exc:
+            except TimeoutError as exc:
                 logger.warning(
-                    "ReActAgentOperator: LLM call failed on step %d for query %r: %s",
+                    "ReActAgentOperator: LLM call timed out on step %d for query %r: %s",
+                    _step,
+                    query_id,
+                    exc,
+                    exc_info=True,
+                )
+                break
+            except RuntimeError as exc:
+                logger.warning(
+                    "ReActAgentOperator: LLM retries exhausted on step %d for query %r: %s",
+                    _step,
+                    query_id,
+                    exc,
+                    exc_info=True,
+                )
+                break
+            except requests.RequestException as exc:
+                logger.warning(
+                    "ReActAgentOperator: LLM HTTP error on step %d for query %r: %s",
+                    _step,
+                    query_id,
+                    exc,
+                    exc_info=True,
+                )
+                break
+            except json.JSONDecodeError as exc:
+                logger.warning(
+                    "ReActAgentOperator: LLM returned invalid JSON on step %d for query %r: %s",
                     _step,
                     query_id,
                     exc,
@@ -623,7 +653,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         fetch_k = self._retriever_top_k + len(seen_doc_ids)
         try:
             raw = self._retriever_fn(query_text, fetch_k)
-        except Exception as exc:
+        except Exception as exc:  # retriever_fn is user-supplied with no exception contract.
             logger.warning("ReActAgentOperator: retriever_fn failed for query %r: %s", query_text, exc, exc_info=True)
             return []
 

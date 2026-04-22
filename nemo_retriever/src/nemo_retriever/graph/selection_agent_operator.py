@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+
+import requests
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -388,9 +390,36 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     max_tokens=self._max_tokens,
                     extra_body=extra_body or None,
                 )
-            except Exception as exc:
+            except TimeoutError as exc:
                 logger.warning(
-                    "SelectionAgentOperator: LLM call failed on step %d for query %r: %s",
+                    "SelectionAgentOperator: LLM call timed out on step %d for query %r: %s",
+                    _step,
+                    query_text,
+                    exc,
+                    exc_info=True,
+                )
+                break
+            except RuntimeError as exc:
+                logger.warning(
+                    "SelectionAgentOperator: LLM retries exhausted on step %d for query %r: %s",
+                    _step,
+                    query_text,
+                    exc,
+                    exc_info=True,
+                )
+                break
+            except requests.RequestException as exc:
+                logger.warning(
+                    "SelectionAgentOperator: LLM HTTP error on step %d for query %r: %s",
+                    _step,
+                    query_text,
+                    exc,
+                    exc_info=True,
+                )
+                break
+            except json.JSONDecodeError as exc:
+                logger.warning(
+                    "SelectionAgentOperator: LLM returned invalid JSON on step %d for query %r: %s",
                     _step,
                     query_text,
                     exc,
