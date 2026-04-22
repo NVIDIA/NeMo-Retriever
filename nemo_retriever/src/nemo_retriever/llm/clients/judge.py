@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-LLM-as-judge scoring for the QA evaluation pipeline.
+LLM-as-judge scoring.
 
 LLMJudge uses a strong LLM to score generated answers on a 1-5 scale
 against a ground-truth reference answer.
@@ -15,8 +15,9 @@ import json
 import re
 from typing import Any, Optional
 
-from nemo_retriever.evaluation.generators import LiteLLMClient
-from nemo_retriever.evaluation.types import JudgeResult
+from nemo_retriever.llm.clients.litellm import LiteLLMClient
+from nemo_retriever.llm.types import JudgeResult
+from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
 
 _JUDGE_SYSTEM_PROMPT = """\
 You are an expert evaluator for factual question answering.
@@ -59,27 +60,62 @@ Candidate answer: {candidate}"""
 
 
 class LLMJudge:
-    """LLM-as-judge that scores candidate answers on a 1-5 scale."""
+    """LLM-as-judge that scores candidate answers on a 1-5 scale.
+
+    Configuration is split into two Pydantic objects:
+
+    * ``transport``: :class:`~nemo_retriever.params.LLMRemoteClientParams`
+      owns the endpoint, api_key, retries, and timeout for the judge model.
+    * ``sampling``: :class:`~nemo_retriever.params.LLMInferenceParams`
+      owns ``temperature`` / ``top_p`` / ``max_tokens``. Defaults to
+      ``temperature=0.0, max_tokens=256`` for deterministic scoring.
+
+    Use :meth:`from_kwargs` for a flat, backwards-compatible constructor.
+    """
+
+    _DEFAULT_MODEL: str = "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+    _DEFAULT_SAMPLING: LLMInferenceParams = LLMInferenceParams(temperature=0.0, max_tokens=256)
 
     def __init__(
         self,
-        model: str = "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+        transport: LLMRemoteClientParams,
+        sampling: Optional[LLMInferenceParams] = None,
+    ):
+        self._client = LiteLLMClient(
+            transport=transport,
+            sampling=sampling if sampling is not None else self._DEFAULT_SAMPLING,
+        )
+
+    @property
+    def model(self) -> str:
+        """Return the judge model identifier from the transport params."""
+        return self._client.transport.model
+
+    @classmethod
+    def from_kwargs(
+        cls,
+        *,
+        model: str = _DEFAULT_MODEL,
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         extra_params: Optional[dict[str, Any]] = None,
+        num_retries: int = 3,
         timeout: float = 120.0,
-    ):
-        self._client = LiteLLMClient(
+    ) -> "LLMJudge":
+        """Flat-kwarg constructor for zero-churn migration from the old signature.
+
+        Sampling is left at the class default (deterministic 0.0 temperature,
+        256 max tokens). Use the two-arg constructor to override sampling.
+        """
+        transport = LLMRemoteClientParams(
             model=model,
             api_base=api_base,
             api_key=api_key,
-            temperature=0.0,
-            max_tokens=256,
-            extra_params=extra_params or {},
-            num_retries=3,
+            num_retries=num_retries,
             timeout=timeout,
+            extra_params=extra_params or {},
         )
-        self.model = model
+        return cls(transport=transport)
 
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:
         """Score a candidate answer against the reference answer."""

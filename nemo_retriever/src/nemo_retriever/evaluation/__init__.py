@@ -14,14 +14,14 @@ executor compatibility for all evaluation operators.
 Types, scoring, and ``EvalOperator`` are always available.
 Modules that depend on ``litellm`` (generators, judges, generation,
 judging, orchestrator, config) are lazy-loaded so that lightweight
-consumers can use scoring without installing the ``[eval]`` extra::
+consumers can use scoring without installing the ``[llm]`` extra::
 
-    pip install nemo-retriever[eval]
+    pip install nemo-retriever[llm]     # SDK + batch eval
 """
 
 from nemo_retriever.evaluation.eval_operator import EvalOperator
 from nemo_retriever.evaluation.scoring import score_dataframe
-from nemo_retriever.evaluation.types import (
+from nemo_retriever.llm.types import (
     AnswerJudge,
     GenerationResult,
     JudgeResult,
@@ -35,8 +35,8 @@ _LAZY_IMPORTS = {
     "JudgingOperator": "nemo_retriever.evaluation.judging",
     "ScoringOperator": "nemo_retriever.evaluation.scoring_operator",
     "RetrievalLoaderOperator": "nemo_retriever.evaluation.retrieval_loader",
-    "LiteLLMClient": "nemo_retriever.evaluation.generators",
-    "LLMJudge": "nemo_retriever.evaluation.judges",
+    "LiteLLMClient": "nemo_retriever.llm.clients",
+    "LLMJudge": "nemo_retriever.llm.clients",
     "QAEvalPipeline": "nemo_retriever.evaluation.orchestrator",
     "load_eval_config": "nemo_retriever.evaluation.config",
     "build_eval_chain": "nemo_retriever.evaluation.config",
