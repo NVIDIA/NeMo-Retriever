@@ -1,10 +1,5 @@
 # Generate Your NGC Keys
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 NGC contains many public images, models, and datasets that can be pulled immediately without authentication. 
 To push and pull custom images, you must generate a key and authenticate with NGC.
 

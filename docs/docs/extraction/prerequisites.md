@@ -2,12 +2,6 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), ensure the following software and hardware prerequisites are met.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
-
 ## Software Requirements
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)

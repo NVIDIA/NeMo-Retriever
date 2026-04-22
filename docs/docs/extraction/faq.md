@@ -2,12 +2,6 @@
 
 This documentation contains the Frequently Asked Questions (FAQ) for [NeMo Retriever Library](overview.md).
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
-
 ## What if I already have a retrieval pipeline? Can I just use NeMo Retriever Library? 
 
 You can use the CLI or Python APIs to perform extraction only, and then consume the results.

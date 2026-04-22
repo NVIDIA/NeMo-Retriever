@@ -2,11 +2,6 @@
 
 Use this documentation to learn how [NeMo Retriever Library](overview.md) handles and uploads data.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 ## Overview
 
 NeMo Retriever Library supports extracting text representations of various forms of content,

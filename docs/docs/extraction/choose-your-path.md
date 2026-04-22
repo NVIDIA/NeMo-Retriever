@@ -1,10 +1,5 @@
 # Choose your path
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 Use this page to pick documentation and deployment options that match your goal.
 
 ## I want to run locally or embed the library

@@ -1,10 +1,5 @@
 # Embedding NIMs and models
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 Embeddings turn extracted text and multimodal content into vectors for semantic search. NeMo Retriever Library integrates with NVIDIA NIM microservices for embedding. Model names and compatibility vary by release; refer to the [Support matrix](support-matrix.md) and the [NVIDIA NIM catalog](https://build.nvidia.com/).
 
 For multimodal or VLM embeddings, refer to [Multimodal embeddings (VLM)](vlm-embed.md).

@@ -2,10 +2,6 @@
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.   
-
 ## 26.03 Release Notes (26.3.0)
 
 NVIDIA® NeMo Retriever Library version 26.03 adds broader hardware and software support along with many pipeline, evaluation, and deployment enhancements.
