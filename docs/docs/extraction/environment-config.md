@@ -1,50 +1,18 @@
 # Environment Variables for NeMo Retriever Library
 
 The following are the environment variables that you can use to configure [NeMo Retriever Library](overview.md).
-You can specify these in your .env file or directly in your environment.
-
-!!! note
-
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+You can specify these in a .env file in your working directory or directly as shell environment variables.
 
 
 ## General Environment Variables
 
 | Name                             | Example                        | Description                                                           |
 |----------------------------------|--------------------------------|-----------------------------------------------------------------------|
-| `DOWNLOAD_LLAMA_TOKENIZER`       | -                                                        | The Llama tokenizer is now pre-downloaded at build time. For details, refer to [Token-Based Splitting](chunking.md#token-based-splitting). |
 | `HF_ACCESS_TOKEN`                | -                                                         | A token to access HuggingFace models. For details, refer to [Token-Based Splitting](chunking.md#token-based-splitting). |
 | `INGEST_LOG_LEVEL`               | - `DEBUG` <br/> - `INFO` <br/> - `WARNING` <br/> - `ERROR` <br/> - `CRITICAL` <br/> | The log level for the ingest service, which controls the verbosity of the logging output. |
-| `MESSAGE_CLIENT_HOST`            | - `redis` <br/> - `localhost` <br/> - `192.168.1.10` <br/> | Specifies the hostname or IP address of the message broker used for communication between services. |
-| `MESSAGE_CLIENT_PORT`            | - `7670` <br/> - `6379` <br/>                              | Specifies the port number on which the message broker is listening. |
-| `MINIO_BUCKET`                   | `nv-ingest` <br/>                                        | Name of MinIO bucket, used to store image, table, and chart extractions. |
-| `NGC_API_KEY`                    | `nvapi-*************` <br/>                              | An authorized NGC API key, used to interact with hosted NIMs. To create an NGC key, go to [https://org.ngc.nvidia.com/setup/api-keys](https://org.ngc.nvidia.com/setup/api-keys). |
-| `NIM_NGC_API_KEY`                | —                                                          | The key that NIM microservices inside docker containers use to access NGC resources. This is necessary only in some cases when it is different from `NGC_API_KEY`. If this is not specified, `NGC_API_KEY` is used to access NGC resources. |
+| `NVIDIA_API_KEY`                    | `nvapi-*************` <br/>                              | An authorized build.nvidia.com API key, used to interact with nvidia hosted NIMs. Create via build.nvidia.com or via [NGC](https://org.ngc.nvidia.com/setup/api-keys). |
+| `NGC_API_KEY`                | —                                                          | The key that NIM microservices inside docker containers use to access NGC resources. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`    | `http://otel-collector:4317` <br/>                       | The endpoint for the OpenTelemetry exporter, used for sending telemetry data. |
-| `REDIS_INGEST_TASK_QUEUE`        | `ingest_task_queue` <br/>                              | The name of the task queue in Redis where tasks are stored and processed. |
-| `REDIS_POOL_SIZE`                | - `50` (default) <br/> - `100` <br/> - `200` <br/>     | Maximum Redis connection pool size. Increase for high-concurrency workloads processing many documents in parallel. Default of 50 works well for most deployments. |
-| `IMAGE_STORAGE_URI`              | `s3://nv-ingest/artifacts/store/images` <br/>          | Default fsspec-compatible URI for the `store` task. Supports `s3://`, `file://`, `gs://`, etc. See [Store Extracted Images](nv-ingest-python-api.md#store-extracted-images). |
-| `IMAGE_STORAGE_PUBLIC_BASE_URL`  | `https://assets.example.com/images` <br/>              | Optional HTTP(S) base URL for serving stored images. |
-
-
-## Vector Database (Retrieval) Environment Variables
-
-These variables apply when using the test harness or when configuring the vector database backend.
-
-| Name                             | Example                        | Description                                                           |
-|----------------------------------|--------------------------------|-----------------------------------------------------------------------|
-| `VDB_BACKEND`                    | `lancedb` (default) <br/> `milvus` <br/> | Vector database backend. Use `lancedb` for embedded, in-process storage (default), or `milvus` for client-server. |
-| `HYBRID`                         | `true` <br/> `false` (default) <br/> | LanceDB only: enable hybrid retrieval (BM25 FTS + vector, RRF). |
-
-
-## Library Mode Environment Variables
-
-These environment variables apply specifically when running the library in library mode.
-
-| Name                              | Example                                                 | Description |
-|-----------------------------------|---------------------------------------------------------|-------------|
-| `NVIDIA_API_KEY`                  | `nvapi-*************` <br/>                             | API key for NVIDIA-hosted NIM services. |
-
 
 
 ## Related Topics

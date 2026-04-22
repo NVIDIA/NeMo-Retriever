@@ -25,6 +25,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
 try:
@@ -392,6 +393,13 @@ def pdf_extraction(
         raise NotImplementedError("pdf_extraction currently only supports pandas.DataFrame input.")
 
 
+@designer_component(
+    name="PDF Extractor",
+    category="Document Processing",
+    compute="gpu",
+    description="Extracts text, tables, and images from PDF pages",
+    category_color="#64b4ff",
+)
 class PDFExtractionCPUActor(AbstractOperator, CPUOperator):
     """
     Skeleton PDF extraction callable.

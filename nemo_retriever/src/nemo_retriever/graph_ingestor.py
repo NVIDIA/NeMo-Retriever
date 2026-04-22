@@ -27,6 +27,8 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
+import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
@@ -43,6 +45,7 @@ from nemo_retriever.params import (
     HtmlChunkParams,
     StoreParams,
     TextChunkParams,
+    WebhookParams,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
@@ -146,6 +149,7 @@ class GraphIngestor(ingestor):
         self._caption_params: Any = None
         self._dedup_params: Any = None
         self._store_params: Any = None
+        self._webhook_params: Any = None
         # Ordered list of stage names; "extract" is tracked but excluded from
         # the post-extraction stage_order passed to graph builders.
         self._stage_order: List[str] = []
@@ -239,6 +243,16 @@ class GraphIngestor(ingestor):
         self._record_stage("embed")
         return self
 
+    def webhook(self, params: Optional[WebhookParams] = None, **kwargs: Any) -> "GraphIngestor":
+        """Record a webhook notification stage (always runs last).
+
+        When ``endpoint_url`` is set, processed results are HTTP-POSTed to
+        that URL.  If ``endpoint_url`` is ``None`` the stage is a no-op.
+        """
+        self._webhook_params = _coerce(params, kwargs, default_factory=WebhookParams)
+        self._record_stage("webhook")
+        return self
+
     # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
@@ -272,7 +286,23 @@ class GraphIngestor(ingestor):
             import ray
 
             if self._ray_address or not ray.is_initialized():
-                ray.init(address=self._ray_address, ignore_reinit_error=True)
+                venv = os.path.dirname(os.path.dirname(sys.executable))
+                venv_bin = os.path.join(venv, "bin")
+                pypath = os.pathsep.join(p for p in sys.path if p)
+                ray_env_vars: dict[str, str] = {
+                    "VIRTUAL_ENV": venv,
+                    "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                    "PYTHONPATH": pypath,
+                }
+                for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+                    if os.environ.get(_fwd_key):
+                        ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+                runtime_env = {"env_vars": ray_env_vars}
+                ray.init(
+                    address=self._ray_address,
+                    ignore_reinit_error=True,
+                    runtime_env=runtime_env,
+                )
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(
@@ -287,6 +317,7 @@ class GraphIngestor(ingestor):
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
             # Derive per-node Ray scheduling config from BatchTuningParams plus
@@ -330,6 +361,7 @@ class GraphIngestor(ingestor):
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)

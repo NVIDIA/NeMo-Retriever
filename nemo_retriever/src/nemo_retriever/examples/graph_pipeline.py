@@ -26,6 +26,11 @@ Examples::
     python -m nemo_retriever.examples.graph_pipeline /data/pdfs \\
         --run-mode inprocess \\
         --ocr-invoke-url http://localhost:9000/v1
+
+    # Save extraction Parquet for full-page markdown (e.g. page index + export)
+    python -m nemo_retriever.examples.graph_pipeline /data/pdfs \\
+        --lancedb-uri lancedb \\
+        --save-intermediate /path/to/extracted_parquet_dir
 """
 
 from __future__ import annotations
@@ -50,6 +55,7 @@ from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.params.models import BatchTuningParams
+from nemo_retriever.utils.input_files import resolve_input_patterns
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
@@ -61,7 +67,7 @@ LANCEDB_TABLE = "nv-ingest"
 
 
 # ---------------------------------------------------------------------------
-# Logging helpers (shared with batch_pipeline.py style)
+# Logging helpers
 # ---------------------------------------------------------------------------
 
 
@@ -169,20 +175,11 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     if not input_path.is_dir():
         raise typer.BadParameter(f"Path does not exist: {input_path}")
 
-    ext_map = {
-        "pdf": ["*.pdf"],
-        "doc": ["*.docx", "*.pptx"],
-        "txt": ["*.txt"],
-        "html": ["*.html"],
-        "image": ["*.jpg", "*.jpeg", "*.png", "*.tiff", "*.bmp"],
-        "audio": ["*.mp3", "*.wav", "*.m4a"],
-    }
-    exts = ext_map.get(input_type)
-    if exts is None:
+    if input_type not in {"pdf", "doc", "txt", "html", "image", "audio"}:
         raise typer.BadParameter(f"Unsupported --input-type: {input_type!r}")
 
-    patterns = [str(input_path / ext) for ext in exts]
-    matched = [p for p in patterns if _glob.glob(p)]
+    patterns = resolve_input_patterns(input_path, input_type)
+    matched = [p for p in patterns if _glob.glob(p, recursive=True)]
     if not matched:
         raise typer.BadParameter(f"No files found for input_type={input_type!r} in {input_path}")
     return matched
@@ -243,6 +240,9 @@ def main(
     caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
     caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
     caption_gpus_per_actor: Optional[float] = typer.Option(None, "--caption-gpus-per-actor", max=1.0),
+    caption_temperature: float = typer.Option(1.0, "--caption-temperature"),
+    caption_top_p: Optional[float] = typer.Option(None, "--caption-top-p"),
+    caption_max_tokens: int = typer.Option(1024, "--caption-max-tokens"),
     # Text chunking
     store_images_uri: Optional[str] = typer.Option(
         None, "--store-images-uri", help="Store extracted images to this URI."
@@ -281,6 +281,14 @@ def main(
     nemotron_parse_batch_size: Optional[int] = typer.Option(0, "--nemotron-parse-batch-size"),
     # LanceDB / evaluation
     lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri"),
+    save_intermediate: Optional[Path] = typer.Option(
+        None,
+        "--save-intermediate",
+        help="Directory to write extraction results as Parquet (for full-page markdown / page index).",
+        path_type=Path,
+        file_okay=False,
+        dir_okay=True,
+    ),
     hybrid: bool = typer.Option(False, "--hybrid/--no-hybrid"),
     query_csv: Path = typer.Option("./data/bo767_query_gt.csv", "--query-csv", path_type=Path),
     recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode"),
@@ -291,6 +299,7 @@ def main(
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
     reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name"),
+    reranker_invoke_url: Optional[str] = typer.Option(None, "--reranker-invoke-url"),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -325,6 +334,7 @@ def main(
         extract_remote_api_key = remote_api_key
         embed_remote_api_key = remote_api_key
         caption_remote_api_key = remote_api_key
+        reranker_remote_api_key = remote_api_key
 
         # Warn if remote URLs configured without an API key
         if (
@@ -335,11 +345,16 @@ def main(
                     graphic_elements_invoke_url,
                     table_structure_invoke_url,
                     embed_invoke_url,
+                    reranker_invoke_url,
                 )
             )
             and remote_api_key is None
         ):
             logger.warning("Remote endpoint URL(s) were configured without an API key.")
+
+        if reranker_invoke_url and not reranker:
+            logger.info("Enabling --reranker because --reranker-invoke-url was provided.")
+            reranker = True
 
         # Zero out GPU fractions when a remote URL replaces the local model
         if page_elements_invoke_url and float(page_elements_gpus_per_actor or 0.0) != 0.0:
@@ -503,6 +518,9 @@ def main(
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
+                    temperature=caption_temperature,
+                    top_p=caption_top_p,
+                    max_tokens=caption_max_tokens,
                 )
             )
 
@@ -552,6 +570,13 @@ def main(
             ingest_local_results = result_df.to_dict("records")
             ray_download_time = 0.0
             num_rows = _count_input_units(result_df)
+
+        if save_intermediate is not None:
+            out_dir = Path(save_intermediate).expanduser().resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / "extraction.parquet"
+            result_df.to_parquet(out_path, index=False)
+            logger.info("Wrote extraction Parquet for intermediate use: %s", out_path)
 
         if detection_summary_file is not None:
             from nemo_retriever.utils.detection_summary import (
@@ -638,6 +663,8 @@ def main(
                 hybrid=hybrid,
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
+                reranker_endpoint=reranker_invoke_url,
+                reranker_api_key=reranker_remote_api_key or "",
             )
             evaluation_start = time.perf_counter()
             beir_dataset, _raw_hits, _run, evaluation_metrics = evaluate_lancedb_beir(cfg)
@@ -687,6 +714,8 @@ def main(
                 match_mode=recall_match_mode,
                 audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
+                reranker_endpoint=reranker_invoke_url,
+                reranker_api_key=reranker_remote_api_key or "",
                 embed_modality=embed_modality,
             )
             evaluation_start = time.perf_counter()
