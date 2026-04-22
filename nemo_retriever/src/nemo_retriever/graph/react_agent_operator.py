@@ -446,7 +446,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                         rows.extend(future.result())
                     except Exception as exc:
                         qid, qtxt = futures[future]
-                        logger.warning("ReActAgentOperator: query %r failed: %s", qid, exc)
+                        logger.warning("ReActAgentOperator: query %r failed: %s", qid, exc, exc_info=True)
 
         if not rows:
             return pd.DataFrame(columns=["query_id", "query_text", "step_idx", "doc_id", "text", "rank"])
@@ -521,9 +521,12 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     extra_body={"parallel_tool_calls": False} if not self._parallel_tool_calls else None,
                 )
             except Exception as exc:
-                logger.warning("ReActAgentOperator: LLM call failed on step %d for query %r: %s", _step, query_id, exc)
+                logger.warning("ReActAgentOperator: LLM call failed on step %d for query %r: %s", _step, query_id, exc, exc_info=True)
                 break
 
+            if not response.get("choices"):
+                logger.warning("ReActAgentOperator: empty choices in API response on step %d for query %r", _step, query_id)
+                break
             choice = response["choices"][0]
             msg = choice["message"]
             finish_reason = choice.get("finish_reason")
@@ -613,7 +616,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         try:
             raw = self._retriever_fn(query_text, fetch_k)
         except Exception as exc:
-            logger.warning("ReActAgentOperator: retriever_fn failed for query %r: %s", query_text, exc)
+            logger.warning("ReActAgentOperator: retriever_fn failed for query %r: %s", query_text, exc, exc_info=True)
             return []
 
         # Filter already-seen and normalise keys
@@ -633,7 +636,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         api_key = self._api_key
         if api_key is not None and api_key.strip().startswith("os.environ/"):
             var = api_key.strip().removeprefix("os.environ/")
-            return os.environ[var]
+            value = os.environ.get(var)
+            if value is None:
+                raise ValueError(
+                    f"Environment variable '{var}' is not set. "
+                    f"Set it with: export {var}=<your-api-key>"
+                )
+            return value
         return api_key
 
 

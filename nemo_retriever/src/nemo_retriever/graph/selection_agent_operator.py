@@ -260,7 +260,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         api_key = self._api_key
         if api_key is not None and api_key.strip().startswith("os.environ/"):
             var = api_key.strip().removeprefix("os.environ/")
-            return os.environ[var]
+            value = os.environ.get(var)
+            if value is None:
+                raise ValueError(
+                    f"Environment variable '{var}' is not set. "
+                    f"Set it with: export {var}=<your-api-key>"
+                )
+            return value
         return api_key
 
     def _build_system_prompt(self, top_k: int) -> str:
@@ -369,17 +375,26 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             extra_body["parallel_tool_calls"] = False
 
         for _step in range(self._max_steps):
-            response = invoke_chat_completion_step(
-                invoke_url=self._invoke_url,
-                messages=messages,
-                model=self._llm_model,
-                api_key=api_key,
-                tools=tools,
-                tool_choice="auto",
-                max_tokens=self._max_tokens,
-                extra_body=extra_body or None,
-            )
+            try:
+                response = invoke_chat_completion_step(
+                    invoke_url=self._invoke_url,
+                    messages=messages,
+                    model=self._llm_model,
+                    api_key=api_key,
+                    tools=tools,
+                    tool_choice="auto",
+                    max_tokens=self._max_tokens,
+                    extra_body=extra_body or None,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "SelectionAgentOperator: LLM call failed on step %d for query %r: %s", _step, query_text, exc
+                )
+                break
 
+            if not response.get("choices"):
+                logger.warning("SelectionAgentOperator: empty choices in API response on step %d", _step)
+                break
             choice = response["choices"][0]
             msg = choice["message"]
             finish_reason = choice.get("finish_reason")
@@ -423,13 +438,22 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     )
 
                 elif fn.get("name") == "log_selected_documents":
-                    doc_ids = fn_args.get("doc_ids", [])
-                    if isinstance(doc_ids, str):
+                    raw_doc_ids = fn_args.get("doc_ids", [])
+                    if isinstance(raw_doc_ids, str):
                         try:
-                            doc_ids = json.loads(doc_ids)
+                            raw_doc_ids = json.loads(raw_doc_ids)
                         except json.JSONDecodeError:
-                            doc_ids = []
-                    doc_ids = [d for d in doc_ids if d in valid_id_set][:feasible_k]
+                            raw_doc_ids = []
+                    doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
+                    if not doc_ids and raw_doc_ids:
+                        logger.warning(
+                            "SelectionAgentOperator: LLM returned %d doc_id(s) for query %r "
+                            "but none matched the candidate set — possible hallucination. "
+                            "Returned IDs: %s",
+                            len(raw_doc_ids),
+                            query_text,
+                            raw_doc_ids[:10],
+                        )
                     end_kwargs = {"doc_ids": doc_ids, "message": fn_args.get("message", "")}
                     should_end = True
 

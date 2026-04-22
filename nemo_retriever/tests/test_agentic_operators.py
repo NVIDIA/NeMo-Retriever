@@ -378,3 +378,219 @@ class TestReActAgentOperator:
         assert list(result.columns) == ["query_id", "doc_id", "rank", "message"]
         assert result["query_id"].tolist() == ["q1"]
         assert result["rank"].tolist() == [1]
+
+
+# ---------------------------------------------------------------------------
+# _parse_json_list — pure Python, no mocking needed
+# ---------------------------------------------------------------------------
+
+
+class TestParseJsonList:
+    def _parse(self, raw, fallback="orig"):
+        from nemo_retriever.graph.subquery_operator import _parse_json_list
+
+        return _parse_json_list(raw, fallback=fallback)
+
+    def test_plain_json_array(self):
+        assert self._parse('["a", "b", "c"]') == ["a", "b", "c"]
+
+    def test_json_fence(self):
+        assert self._parse("```json\n[\"x\", \"y\"]\n```") == ["x", "y"]
+
+    def test_plain_fence(self):
+        assert self._parse("```\n[\"x\"]\n```") == ["x"]
+
+    def test_trailing_fence_without_leading_not_stripped(self):
+        # A JSON string that happens to end with ``` but has no leading fence.
+        # It should still parse because the trailing strip must NOT fire.
+        raw = '["valid"]```'
+        result = self._parse(raw)
+        assert result == ["orig"]  # malformed JSON → fallback
+
+    def test_malformed_json_returns_fallback(self):
+        assert self._parse("not json at all", fallback="q") == ["q"]
+
+    def test_empty_list_returns_fallback(self):
+        assert self._parse("[]", fallback="q") == ["q"]
+
+    def test_non_string_items_returns_fallback(self):
+        assert self._parse("[1, 2, 3]", fallback="q") == ["q"]
+
+    def test_mixed_types_returns_fallback(self):
+        assert self._parse('["a", 1]', fallback="q") == ["q"]
+
+
+# ---------------------------------------------------------------------------
+# SubQueryGeneratorOperator.preprocess — no LLM calls needed
+# ---------------------------------------------------------------------------
+
+
+class TestSubQueryPreprocess:
+    def _op(self):
+        from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
+
+        return SubQueryGeneratorOperator(llm_model="test-model")
+
+    def test_dataframe_accepted(self):
+        op = self._op()
+        df = pd.DataFrame({"query_id": ["q1"], "query_text": ["hello"]})
+        result = op.preprocess(df)
+        assert list(result["query_id"]) == ["q1"]
+
+    def test_dataframe_missing_query_id_raises(self):
+        op = self._op()
+        bad = pd.DataFrame({"query_text": ["hello"]})
+        with pytest.raises(ValueError, match="query_id"):
+            op.preprocess(bad)
+
+    def test_dataframe_missing_query_text_raises(self):
+        op = self._op()
+        bad = pd.DataFrame({"query_id": ["q1"]})
+        with pytest.raises(ValueError, match="query_text"):
+            op.preprocess(bad)
+
+    def test_list_of_strings_auto_ids(self):
+        op = self._op()
+        result = op.preprocess(["alpha", "beta"])
+        assert result["query_id"].tolist() == ["q0", "q1"]
+        assert result["query_text"].tolist() == ["alpha", "beta"]
+
+    def test_list_of_tuples(self):
+        op = self._op()
+        result = op.preprocess([("id1", "alpha"), ("id2", "beta")])
+        assert result["query_id"].tolist() == ["id1", "id2"]
+
+    def test_unsupported_type_raises(self):
+        op = self._op()
+        with pytest.raises(TypeError):
+            op.preprocess({"query_id": "q1", "query_text": "hello"})
+
+
+class TestSubQueryGeneratorOperator:
+    """Tests for _build_system_prompt and _generate_one."""
+
+    def _op(self, **kwargs):
+        from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
+
+        return SubQueryGeneratorOperator(llm_model="test-model", **kwargs)
+
+    # -- _build_system_prompt -------------------------------------------------
+
+    def test_decompose_prompt_contains_max_subqueries(self):
+        op = self._op(strategy="decompose", max_subqueries=6)
+        prompt = op._build_system_prompt()
+        assert "6" in prompt
+        assert "decompos" in prompt.lower()
+
+    def test_hyde_prompt_contains_max_subqueries(self):
+        op = self._op(strategy="hyde", max_subqueries=3)
+        prompt = op._build_system_prompt()
+        assert "3" in prompt
+        assert "hypothetical" in prompt.lower()
+
+    def test_multi_perspective_prompt_contains_max_subqueries(self):
+        op = self._op(strategy="multi_perspective", max_subqueries=5)
+        prompt = op._build_system_prompt()
+        assert "5" in prompt
+        assert "perspective" in prompt.lower()
+
+    def test_system_prompt_override_used_instead_of_strategy(self):
+        op = self._op(system_prompt_override="Custom prompt max={max_subqueries}", max_subqueries=2)
+        assert op._build_system_prompt() == "Custom prompt max=2"
+
+    # -- _generate_one --------------------------------------------------------
+
+    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    def test_generate_one_happy_path(self, mock_invoke):
+        mock_invoke.return_value = ['["sub1", "sub2", "sub3"]']
+        op = self._op(max_subqueries=4)
+        result = op._generate_one("What causes inflation?", "system prompt")
+        assert result == ["sub1", "sub2", "sub3"]
+        mock_invoke.assert_called_once()
+
+    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    def test_generate_one_fenced_json(self, mock_invoke):
+        mock_invoke.return_value = ['```json\n["a", "b"]\n```']
+        op = self._op()
+        assert op._generate_one("q", "sys") == ["a", "b"]
+
+    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    def test_generate_one_malformed_json_falls_back(self, mock_invoke):
+        mock_invoke.return_value = ["not valid json"]
+        op = self._op()
+        assert op._generate_one("original query", "sys") == ["original query"]
+
+    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    def test_generate_one_llm_error_falls_back(self, mock_invoke):
+        mock_invoke.side_effect = RuntimeError("connection timeout")
+        op = self._op()
+        assert op._generate_one("original query", "sys") == ["original query"]
+
+
+# ---------------------------------------------------------------------------
+# SelectionAgentOperator.preprocess — no LLM calls needed
+# ---------------------------------------------------------------------------
+
+
+class TestSelectionAgentPreprocess:
+    def _op(self):
+        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+
+        return SelectionAgentOperator(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
+
+    def test_valid_dataframe_accepted(self):
+        op = self._op()
+        df = pd.DataFrame({"query_id": ["q1"], "query_text": ["q"], "doc_id": ["d1"], "text": ["t"]})
+        result = op.preprocess(df)
+        assert len(result) == 1
+
+    def test_missing_doc_id_raises(self):
+        op = self._op()
+        bad = pd.DataFrame({"query_id": ["q1"], "query_text": ["q"], "text": ["t"]})
+        with pytest.raises(ValueError, match="doc_id"):
+            op.preprocess(bad)
+
+    def test_missing_text_raises(self):
+        op = self._op()
+        bad = pd.DataFrame({"query_id": ["q1"], "query_text": ["q"], "doc_id": ["d1"]})
+        with pytest.raises(ValueError, match="text"):
+            op.preprocess(bad)
+
+    def test_non_dataframe_raises(self):
+        op = self._op()
+        with pytest.raises(TypeError):
+            op.preprocess([{"query_id": "q1"}])
+
+
+# ---------------------------------------------------------------------------
+# SelectionAgentOperator — max_steps exhausted fallback
+# ---------------------------------------------------------------------------
+
+
+class TestSelectionAgentMaxSteps:
+    @patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
+    def test_max_steps_exhausted_returns_empty(self, mock_step):
+        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+
+        # LLM only ever calls think — never log_selected_documents
+        mock_step.return_value = _make_tool_call_response("think", {"thought": "still thinking..."})
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+            max_steps=3,
+        )
+        df = pd.DataFrame(
+            {
+                "query_id": ["q1", "q1"],
+                "query_text": ["What causes inflation?"] * 2,
+                "doc_id": ["d1", "d2"],
+                "text": ["doc one", "doc two"],
+            }
+        )
+        result = op.run(df)
+
+        assert len(result) == 0
+        assert list(result.columns) == ["query_id", "doc_id", "rank", "message"]
+        assert mock_step.call_count == 3

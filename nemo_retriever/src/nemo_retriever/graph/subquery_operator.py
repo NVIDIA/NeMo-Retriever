@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any, List, Literal, Optional
 
@@ -15,6 +16,8 @@ import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.nim.chat_completions import invoke_chat_completions
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Built-in strategy prompts
@@ -275,7 +278,13 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
         api_key = self._api_key
         if api_key is not None and api_key.strip().startswith("os.environ/"):
             var = api_key.strip().removeprefix("os.environ/")
-            return os.environ[var]
+            value = os.environ.get(var)
+            if value is None:
+                raise ValueError(
+                    f"Environment variable '{var}' is not set. "
+                    f"Set it with: export {var}=<your-api-key>"
+                )
+            return value
         return api_key
 
     def _build_system_prompt(self) -> str:
@@ -292,13 +301,17 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
         if self._max_tokens is not None:
             extra_body["max_tokens"] = self._max_tokens
 
-        results = invoke_chat_completions(
-            invoke_url=self._invoke_url,
-            messages_list=[messages],
-            model=self._llm_model,
-            api_key=self._resolve_api_key(),
-            extra_body=extra_body or None,
-        )
+        try:
+            results = invoke_chat_completions(
+                invoke_url=self._invoke_url,
+                messages_list=[messages],
+                model=self._llm_model,
+                api_key=self._resolve_api_key(),
+                extra_body=extra_body or None,
+            )
+        except Exception as exc:
+            logger.warning("SubQueryGeneratorOperator: LLM call failed for query %r: %s", query, exc)
+            return [query]
         raw = results[0].strip()
         return _parse_json_list(raw, fallback=query)
 
@@ -315,11 +328,13 @@ def _parse_json_list(raw: str, *, fallback: str) -> List[str]:
     receive at least one sub-query row.
     """
     text = raw
+    found_fence = False
     for fence in ("```json", "```"):
         if text.startswith(fence):
-            text = text[len(fence) :]
+            text = text[len(fence):]
+            found_fence = True
             break
-    if text.endswith("```"):
+    if found_fence and text.endswith("```"):
         text = text[:-3]
     text = text.strip()
 
