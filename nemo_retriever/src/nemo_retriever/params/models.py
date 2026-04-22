@@ -4,30 +4,51 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional, Sequence, Tuple
+from typing import Any, Literal, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 import warnings
 
 
+from upath import UPath
+
+from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+
 RunMode = Literal["inprocess", "batch", "fused", "online"]
+
+# Pass as an api_key value to suppress auto-resolution from environment variables.
+# Example: EmbedParams(api_key=NO_API_KEY)
+NO_API_KEY = ""
 
 
 class _ParamsModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="after")
+    def _resolve_api_keys(self) -> "_ParamsModel":
+        for field_name in type(self).model_fields:
+            if field_name == "api_key" or field_name.endswith("_api_key"):
+                value = getattr(self, field_name, None)
+                if value is None:
+                    setattr(self, field_name, resolve_remote_api_key())
+                elif value == NO_API_KEY:
+                    setattr(self, field_name, None)
+        return self
+
 
 class RemoteRetryParams(_ParamsModel):
-    remote_max_pool_workers: int = 16
-    remote_max_retries: int = 10
-    remote_max_429_retries: int = 5
+    remote_max_pool_workers: int = 32
+    remote_max_retries: int = 5
+    remote_max_429_retries: int = 3
 
 
 class RemoteInvokeParams(_ParamsModel):
     invoke_url: Optional[str] = None
     api_key: Optional[str] = None
-    request_timeout_s: float = 120.0
+    request_timeout_s: float = 60.0
 
 
 class ModelRuntimeParams(_ParamsModel):
@@ -128,14 +149,14 @@ class BatchTuningParams(_ParamsModel):
     page_elements_cpus_per_actor: float = 1
     ocr_cpus_per_actor: float = 1
     embed_workers: Optional[int] = None
-    embed_batch_size: int = 256
+    embed_batch_size: int = 32
     embed_cpus_per_actor: float = 1
     gpu_page_elements: Optional[float] = None
     gpu_ocr: Optional[float] = None
     gpu_embed: Optional[float] = None
-    nemotron_parse_workers: float = 0.0
-    gpu_nemotron_parse: float = 0.0
-    nemotron_parse_batch_size: float = 0.0
+    nemotron_parse_workers: Optional[int] = None
+    gpu_nemotron_parse: Optional[float] = None
+    nemotron_parse_batch_size: Optional[int] = None
     inference_batch_size: int = 8
 
 
@@ -175,7 +196,7 @@ class ExtractParams(_ParamsModel):
     # Service endpoints
     invoke_url: Optional[str] = None
     api_key: Optional[str] = None
-    request_timeout_s: float = 120.0
+    request_timeout_s: float = 60.0
     page_elements_invoke_url: Optional[str] = None
     page_elements_api_key: Optional[str] = None
     page_elements_request_timeout_s: Optional[float] = None
@@ -184,6 +205,8 @@ class ExtractParams(_ParamsModel):
     ocr_request_timeout_s: Optional[float] = None
     graphic_elements_invoke_url: Optional[str] = None
     table_structure_invoke_url: Optional[str] = None
+    nemotron_parse_invoke_url: Optional[str] = None
+    nemotron_parse_model: Optional[str] = None
 
     # Output columns
     output_column: str = "page_elements_v3"
@@ -234,6 +257,8 @@ class EmbedParams(_ParamsModel):
     has_embedding_column: str = "text_embeddings_1b_v2_has_embedding"
     embed_output_column: str = "text_embeddings_1b_v2"
     embed_inference_batch_size: int = 16
+    # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
+    nim_http_max_concurrent: int = 32
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
@@ -270,6 +295,27 @@ class VdbUploadParams(_ParamsModel):
     lancedb: LanceDbParams = Field(default_factory=LanceDbParams)
 
 
+class StoreParams(_ParamsModel):
+    storage_uri: str = "stored_images"
+    storage_options: dict[str, Any] = Field(default_factory=dict)
+    public_base_url: Optional[str] = None
+    store_page_images: bool = True
+    store_tables: bool = True
+    store_charts: bool = True
+    store_infographics: bool = True
+    store_images: bool = True
+    store_text: bool = False
+    image_format: str = "png"
+    strip_base64: bool = True
+
+    @model_validator(mode="after")
+    def _resolve_local_storage_uri(self) -> "StoreParams":
+        """Resolve relative local paths to absolute so they survive Ray serialization."""
+        if not urlparse(self.storage_uri).scheme:
+            self.storage_uri = str(UPath(self.storage_uri).resolve())
+        return self
+
+
 class PageElementsParams(_ParamsModel):
     remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
@@ -303,19 +349,79 @@ class ChartParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
-class CaptionParams(_ParamsModel):
+class LLMInferenceParams(_ParamsModel):
+    """Reusable LLM sampling / generation parameters.
+
+    Inherit from this model to add temperature, top_p, and max_tokens
+    to any task that invokes an LLM (captioning, summarization, etc.).
+    """
+
+    temperature: float = 1.0
+    top_p: Optional[float] = None
+    max_tokens: int = 1024
+
+    @field_validator("temperature")
+    @classmethod
+    def _check_temperature(cls, v: float) -> float:
+        if not (0.0 <= v <= 2.0):
+            raise ValueError("temperature must be between 0.0 and 2.0")
+        return v
+
+    @field_validator("top_p")
+    @classmethod
+    def _check_top_p(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("top_p must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("max_tokens")
+    @classmethod
+    def _check_max_tokens(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("max_tokens must be > 0")
+        return v
+
+    def to_sampling_kwargs(self) -> dict[str, Any]:
+        """Build a dict of sampling parameters suitable for LLM inference calls.
+
+        ``top_p`` is only included when explicitly set (not ``None``), because
+        many backends (vLLM, OpenAI, NIM) change behaviour when the key is
+        present vs. absent.
+        """
+        kw: dict[str, Any] = {"temperature": self.temperature, "max_tokens": self.max_tokens}
+        if self.top_p is not None:
+            kw["top_p"] = self.top_p
+        return kw
+
+
+class CaptionParams(LLMInferenceParams):
     endpoint_url: Optional[str] = None
     model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
     api_key: Optional[str] = None
     prompt: str = "Caption the content of this image:"
     system_prompt: Optional[str] = "/no_think"
-    temperature: float = 1.0
     batch_size: int = 8
     device: Optional[str] = None
     hf_cache_dir: Optional[str] = None
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
+    caption_infographics: bool = False
+
+
+class WebhookParams(_ParamsModel):
+    """Configuration for the webhook notification stage.
+
+    When ``endpoint_url`` is set, selected columns from the processed batch
+    are serialised to JSON and HTTP-POSTed to that URL.  If ``endpoint_url``
+    is ``None`` the stage is a no-op.
+    """
+
+    endpoint_url: Optional[str] = None
+    columns: list[str] = Field(default_factory=list)
+    headers: dict[str, str] = Field(default_factory=dict)
+    timeout_s: float = 30.0
+    max_retries: int = 3
 
 
 class DedupParams(_ParamsModel):
@@ -332,3 +438,23 @@ class InfographicParams(_ParamsModel):
     output_column: str = "infographic_elements_v1"
     num_detections_column: str = "infographic_elements_v1_num_detections"
     counts_by_label_column: str = "infographic_elements_v1_counts_by_label"
+
+
+# ---------------------------------------------------------------------------
+# Structured (database) ingestion params
+# ---------------------------------------------------------------------------
+
+
+class TabularExtractParams(_ParamsModel):
+    """Params for step 1: extract schema metadata and write to Neo4j.
+
+    Covers SQLAlchemy reflection of a live database and/or parsing of
+    pre-existing SQL DDL/query files.  Produces Database, Schema, Table,
+    Column, View and Query nodes together with their relationships.
+    The Neo4j connection is provided by get_neo4j_conn() (see
+    tabular_data.neo4j) and is not configured here.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    connector: Optional[SQLDatabase] = None

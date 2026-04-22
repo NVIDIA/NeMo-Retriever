@@ -12,8 +12,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple  # noqa:
 from datetime import timedelta
 
 from nv_ingest_client.util.vdb.lancedb import LanceDB
-from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
+from nemo_retriever.vector_store.lancedb_utils import lancedb_schema, update_metadata_with_content_type
 import pandas as pd
+
 import lancedb
 
 logger = logging.getLogger(__name__)
@@ -138,6 +139,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         meta = row.get("metadata")
         if not isinstance(meta, dict):
             continue
+        meta = meta.copy()
 
         embedding = meta.get("embedding")
         if embedding is None:
@@ -150,6 +152,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
             except Exception:
                 continue
         meta.pop("embedding", None)  # Remove embedding from metadata to save space in LanceDB.
+        update_metadata_with_content_type(meta, content_type=row.get("_content_type"))
         # path, source_id = _extract_source_path_and_id(meta)
         path = row.get("path", "")
         source_id = meta.get("source_path", path)
@@ -163,6 +166,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         if page_number == -1:
             logger.debug("Unable to determine page number for %s", path)
 
+        stored_uri = row.get("_stored_image_uri") or ""
         out.append(
             {
                 "vector": embedding,
@@ -175,6 +179,9 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 "path": path,
                 "text": row.get("text", ""),
                 "metadata": str(meta),
+                "stored_image_uri": str(stored_uri) if stored_uri else "",
+                "content_type": str(row.get("_content_type") or ""),
+                "bbox_xyxy_norm": json.dumps(row.get("_bbox_xyxy_norm")) if row.get("_bbox_xyxy_norm") else "",
             }
         )
 
@@ -224,14 +231,6 @@ def _write_rows_to_lancedb(rows: Sequence[Dict[str, Any]], *, cfg: LanceDBConfig
     dim = _infer_vector_dim(rows)
     if dim <= 0:
         raise ValueError("Failed to infer embedding dimension from rows.")
-
-    try:
-        import lancedb  # type: ignore
-    except Exception as e:
-        raise RuntimeError(
-            "LanceDB write requested but dependencies are missing. "
-            "Install `lancedb` and `pyarrow` in this environment."
-        ) from e
 
     db = lancedb.connect(uri=cfg.uri)
 
@@ -314,9 +313,9 @@ def handle_lancedb(
     mode: str = "overwrite",
 ) -> Dict[str, Any]:
     """
-        Handle LanceDB writing for a batch pipeline run.
+        Handle LanceDB writing for a pipeline run.
 
-        This is used by `nemo_retriever.examples.batch_pipeline.run(...)` after the embedding stage.
+        This is used by the ingestion pipeline after the embedding stage.
 
         Reads `*.text_embeddings.json` files from `input_dir`, extracts embeddings, and uploads to LanceDB.
     )
@@ -326,6 +325,9 @@ def handle_lancedb(
     )  # Use the same LanceDB config for writing and recall.
     db = lancedb.connect(uri=lancedb_config.uri)
     cleaned_rows = _build_lancedb_rows_from_df(rows)
+    if not cleaned_rows:
+        logger.warning("No embedding rows to write; skipping LanceDB index creation.")
+        return {}
     _write_rows_to_lancedb(cleaned_rows, cfg=lancedb_config)
     table = db.open_table(lancedb_config.table_name)  # Ensure table is open and metadata is updated before proceeding.
     create_lancedb_index(table, cfg=lancedb_config)

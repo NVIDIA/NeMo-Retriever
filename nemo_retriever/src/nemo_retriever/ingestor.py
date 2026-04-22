@@ -23,11 +23,13 @@ from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import IngestExecuteParams
 from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import RunMode
+from nemo_retriever.params import StoreParams
+from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VdbUploadParams
+from nemo_retriever.params import WebhookParams
 
 
 def _merge_params[T](params: T | None, kwargs: dict[str, Any]) -> T:
@@ -154,8 +156,9 @@ class ingestor:
         _ = _merge_params(params, kwargs)
         self._not_implemented("split")
 
-    def store(self) -> "ingestor":
+    def store(self, params: StoreParams | None = None, **kwargs: Any) -> "ingestor":
         """Record a store task configuration."""
+        _ = _merge_params(params, kwargs)
         self._not_implemented("store")
 
     def store_embed(self) -> "ingestor":
@@ -196,6 +199,11 @@ class ingestor:
         """Record a caption task configuration."""
         _ = _merge_params(params, kwargs)
         self._not_implemented("caption")
+
+    def webhook(self, params: "WebhookParams | None" = None, **kwargs: Any) -> "ingestor":
+        """Record a webhook notification configuration."""
+        _ = _merge_params(params, kwargs)
+        self._not_implemented("webhook")
 
     def pdf_split_config(self, pages_per_chunk: int = 32) -> "ingestor":
         """Record PDF split configuration (execution TBD)."""

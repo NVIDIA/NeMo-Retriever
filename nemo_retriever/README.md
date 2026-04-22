@@ -33,30 +33,41 @@ Before installing NeMo Retriever Library, create an isolated Python environment 
 
 In your terminal, run the following commands from any location.
 
+For **local GPU inference** (Nemotron models running on your GPU), install with the `[local]` extra, which includes the model packages, transformers, and GPU tooling:
+
+```bash
+uv venv retriever --python 3.12
+source retriever/bin/activate
+uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
+```
+
+For **remote NIM inference only** (no local GPU required), the base package is sufficient:
+
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
 uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
 ```
+
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
 
-2. Install CUDA 13 builds of Torch and Torchvision
+2. Override Torch and Torchvision with CUDA 13 builds (local GPU only)
 
-To ensure NeMo Retriever Library’s OCR and GPU‑accelerated components run correctly on your system, you need PyTorch and TorchVision builds that are compiled for CUDA 13. In this step, you uninstall any existing Torch/TorchVision packages and reinstall them from a dedicated CUDA 13.0 wheel index so they link against the same CUDA runtime as the rest of your pipeline.
-
-Use the CUDA 13.0 wheels from the dedicated index by running the following command.
+The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Linux. Reinstall from the CUDA 13.0 wheel index to match the CUDA runtime required by the Nemotron model packages:
 
 ```bash
-uv pip uninstall torch torchvision
-uv pip install torch==2.9.1 torchvision -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.10.0 torchvision -i https://download.pytorch.org/whl/cu130
 ```
-This ensures the OCR and GPU‑accelerated components in NeMo Retriever Library run against the right CUDA runtime.
+
+Skip this step if you are using remote NIM inference only.
 
 ## Run the pipeline
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
 > **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
+
+The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, see [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
 ### Ingest a test pdf
 ```python
@@ -155,7 +166,7 @@ The above retrieval results are often feedable directly to an LLM for answer gen
 
 To do so, first install the openai client and set your [build.nvidia.com](https://build.nvidia.com/) API key:
 ```bash
-uv pip install -y openai
+uv pip install openai
 export NVIDIA_API_KEY=nvapi-...
 ```
 
@@ -198,6 +209,13 @@ For PowerPoint and Docx files, ensure libeoffice is installed by your system's p
 For example, with apt-get on Ubuntu:
 ```bash
 sudo apt install -y libreoffice
+```
+
+For SVG files, install the optional `cairosvg` dependency. SVG support is available in the NeMo Retriever Library, but not in the container deployment. `cairosvg` requires network access to install, so it will not work in air-gapped environments.
+```bash
+uv pip install "nemo-retriever[multimedia]"
+# or to install only the SVG dependency:
+uv pip install "cairosvg>=2.7.0"
 ```
 
 Example usage:
@@ -250,6 +268,25 @@ sudo apt install -y ffmpeg
 ```python
 ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
+```
+
+### Store extracted images and text
+
+Use `.store()` to persist extracted images, tables, charts, and text to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame so downstream stages (embed, VDB upload) can reference them. By default, base64 payloads are stripped after writing to reduce memory pressure.
+
+```python
+ingestor = (
+  ingestor.files(documents)
+  .extract()
+  .store(
+    storage_uri="s3://my-bucket/citation-assets",  # or a local path
+    storage_options={"key": "...", "secret": "..."},  # fsspec auth for S3/MinIO
+    store_text=True,       # also write .txt files for page text and structured content
+    strip_base64=True,     # free image payloads after writing (default)
+  )
+  .embed()
+  .vdb_upload()
+)
 ```
 
 ### Explore Different Pipeline Options:
@@ -405,3 +442,14 @@ retriever-harness sweep --runs-config harness/vidore_sweep.yaml
 ```
 
 The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
+
+### Harness with image/text storage
+
+The harness can persist extracted images and text alongside other run artifacts. Set `store_images_uri` in `test_configs.yaml` (per-dataset or in `active:`) or via `--override`:
+
+```bash
+retriever harness run --dataset bo20 --preset single_gpu \
+  --override store_images_uri=stored_images --override store_text=true
+```
+
+When `store_images_uri` is a relative path (like `stored_images`), it resolves to `artifact_dir/stored_images/` so each run is isolated. Absolute paths and fsspec URIs (e.g. `s3://bucket/prefix`) are passed through as-is.

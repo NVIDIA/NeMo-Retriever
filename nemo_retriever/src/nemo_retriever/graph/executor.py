@@ -6,14 +6,20 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.graph.operator_resolution import resolve_graph
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
+    gather_local_resources,
+    NEMOTRON_PARSE_BATCH_SIZE,
+    VLLM_GPUS_PER_ACTOR,
     OCR_GPUS_PER_ACTOR,
 )
 
@@ -105,7 +111,7 @@ class InprocessExecutor(AbstractExecutor):
             # Expand globs
             expanded: List[str] = []
             for pattern in data:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             df = self._load_files(expanded)
         else:
@@ -113,7 +119,8 @@ class InprocessExecutor(AbstractExecutor):
                 f"data must be a pandas.DataFrame, file path, or list of paths, " f"got {type(data).__name__}"
             )
 
-        nodes = self._linearize(self.graph)
+        resolved_graph = resolve_graph(self.graph, gather_local_resources())
+        nodes = self._linearize(resolved_graph)
         operators = []
         for node in nodes:
             op = node.operator_class(**node.operator_kwargs)
@@ -224,11 +231,38 @@ class RayDataExecutor(AbstractExecutor):
         import ray
         import ray.data as rd
 
+        if not isinstance(data, (rd.Dataset, str, list)):
+            raise TypeError(
+                f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
+            )
+
         if self._ray_address or not ray.is_initialized():
-            ray.init(address=self._ray_address, ignore_reinit_error=True)
+            venv = os.path.dirname(os.path.dirname(sys.executable))
+            venv_bin = os.path.join(venv, "bin")
+            pypath = os.pathsep.join(p for p in sys.path if p)
+            ray_env_vars: dict[str, str] = {
+                "VIRTUAL_ENV": venv,
+                "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                "PYTHONPATH": pypath,
+            }
+            for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+                if os.environ.get(_fwd_key):
+                    ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+            ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+            runtime_env = {"env_vars": ray_env_vars}
+            ray.init(
+                address=self._ray_address,
+                ignore_reinit_error=True,
+                runtime_env=runtime_env,
+            )
+
+        ctx = rd.DataContext.get_current()
+        ctx.enable_rich_progress_bars = True
+        ctx.use_ray_tqdm = False
 
         cluster = gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
+        resolved_graph = resolve_graph(self.graph, cluster)
 
         if isinstance(data, rd.Dataset):
             ds = data
@@ -236,21 +270,30 @@ class RayDataExecutor(AbstractExecutor):
             paths = [data] if isinstance(data, str) else list(data)
             expanded: List[str] = []
             for pattern in paths:
-                matches = _glob.glob(pattern)
+                matches = _glob.glob(pattern, recursive=True)
                 expanded.extend(sorted(matches) if matches else [pattern])
             ds = rd.read_binary_files(expanded, include_paths=True)
-        else:
-            raise TypeError(
-                f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
-            )
-
-        nodes = self._linearize(self.graph)
+        nodes = self._linearize(resolved_graph)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
+            # Ray 2.49+ requires concurrency to be specified for callable classes.
+            # Default to 1 when not explicitly set via node_overrides.
+            if "concurrency" not in overrides:
+                overrides["concurrency"] = 1
+
+            # vLLM-backed actors handle their own batching efficiently
+            # (continuous batching), so feed them more rows per map_batches call.
+            from nemo_retriever.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+            from nemo_retriever.caption.caption import CaptionGPUActor
+
+            if batch_size == self._default_batch_size and issubclass(
+                node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)
+            ):
+                batch_size = NEMOTRON_PARSE_BATCH_SIZE
 
             # When no explicit num_gpus override is given, auto-detect from the
             # GPUOperator mixin using actual cluster GPU availability.
@@ -258,13 +301,32 @@ class RayDataExecutor(AbstractExecutor):
                 num_gpus = overrides.pop("num_gpus")
             elif issubclass(node.operator_class, GPUOperator):
                 has_remote_endpoint = any("invoke_url" in k and bool(v) for k, v in node.operator_kwargs.items())
+                # For composite operators (e.g. MultiTypeExtractOperator) the
+                # invoke URLs live inside a nested ExtractParams object rather
+                # than as top-level kwargs.  Check those too.
+                if not has_remote_endpoint:
+                    for v in node.operator_kwargs.values():
+                        if hasattr(v, "model_dump"):
+                            has_remote_endpoint = any(
+                                "invoke_url" in k and bool(val) for k, val in v.model_dump(exclude_none=True).items()
+                            )
+                            if has_remote_endpoint:
+                                break
                 if has_remote_endpoint:
                     # Remote endpoint handles the model — no local GPU needed.
                     num_gpus = self._default_num_gpus
                 elif available_gpus > 0:
                     # Local model, GPUs present: assign the heuristic fraction so
                     # Ray can co-schedule multiple actors per GPU.
-                    num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
+                    # Exception: actors backed by vLLM (NemotronParse, Caption)
+                    # manage their own KV-cache and require exclusive GPU access.
+                    from nemo_retriever.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+                    from nemo_retriever.caption.caption import CaptionGPUActor
+
+                    if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)):
+                        num_gpus = max(self._default_num_gpus, VLLM_GPUS_PER_ACTOR)
+                    else:
+                        num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
                 else:
                     # No GPUs in the cluster — operator will likely fail to load
                     # its CUDA model.  Warn loudly rather than silently requesting

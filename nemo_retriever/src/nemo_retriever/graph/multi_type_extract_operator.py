@@ -14,24 +14,32 @@ import pandas as pd
 
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
+from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.html.ray_data import HtmlSplitActor
 from nemo_retriever.image.ray_data import ImageLoadActor
 from nemo_retriever.image.load import SUPPORTED_IMAGE_EXTENSIONS
-from nemo_retriever.ocr.ocr import NemotronParseActor, OCRActor
+from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.graph.operator_resolution import resolve_operator_class
+from nemo_retriever.ocr.ocr import OCRActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import HtmlChunkParams
 from nemo_retriever.params import PdfSplitParams
 from nemo_retriever.params import TextChunkParams
+from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
-from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.txt.ray_data import TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
+from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
 
 # Define file type mappings
@@ -43,8 +51,66 @@ IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
 VIDEO_EXTENSIONS = {".mp4"}
 
 
-class MultiTypeExtractOperator(AbstractOperator):
-    """Extract mixed or single-type Ray batches without recursing into the ingestor API."""
+def _has_endpoint(*values: Any) -> bool:
+    return any(bool(str(value or "").strip()) for value in values)
+
+
+def _parse_mode_enabled(extract_params: ExtractParams) -> bool:
+    tuning = getattr(extract_params, "batch_tuning", None)
+    return extract_params.method == "nemotron_parse" or (
+        tuning is not None
+        and all(
+            getattr(tuning, name, None)
+            for name in ("nemotron_parse_workers", "gpu_nemotron_parse", "nemotron_parse_batch_size")
+        )
+    )
+
+
+def _ocr_stage_needed(extract_params: ExtractParams) -> bool:
+    if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
+        return True
+    if extract_params.extract_tables:
+        # OCR is always needed for table crops: either to produce pseudo-markdown
+        # (when use_table_structure=False) or to join against the
+        # table_structure_v1 detections published by TableStructureActor.
+        return True
+    if extract_params.extract_charts and not extract_params.use_graphic_elements:
+        return True
+    if extract_params.extract_infographics:
+        return True
+    return False
+
+
+def _extract_params_need_local_gpu(extraction_mode: str, extract_params: ExtractParams | None) -> bool:
+    if extract_params is None:
+        return False
+    if extraction_mode not in {"pdf", "image", "auto"}:
+        return False
+
+    if _parse_mode_enabled(extract_params):
+        return not _has_endpoint(extract_params.nemotron_parse_invoke_url, extract_params.invoke_url)
+
+    if not _has_endpoint(extract_params.page_elements_invoke_url):
+        return True
+    if (
+        extract_params.use_table_structure
+        and extract_params.extract_tables
+        and not _has_endpoint(extract_params.table_structure_invoke_url)
+    ):
+        return True
+    if (
+        extract_params.use_graphic_elements
+        and extract_params.extract_charts
+        and not _has_endpoint(extract_params.graphic_elements_invoke_url, extract_params.ocr_invoke_url)
+    ):
+        return True
+    if _ocr_stage_needed(extract_params) and not _has_endpoint(extract_params.ocr_invoke_url):
+        return True
+    return False
+
+
+class _MultiTypeExtractBase(AbstractOperator):
+    """Shared implementation for GPU and CPU multi-type extract actors."""
 
     def __init__(
         self,
@@ -54,23 +120,18 @@ class MultiTypeExtractOperator(AbstractOperator):
         html_params: HtmlChunkParams | None = None,
         audio_chunk_params: AudioChunkParams | None = None,
         asr_params: ASRParams | None = None,
+        caption_params: CaptionParams | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(
-            extraction_mode=extraction_mode,
-            extract_params=extract_params,
-            text_params=text_params,
-            html_params=html_params,
-            audio_chunk_params=audio_chunk_params,
-            asr_params=asr_params,
-            **kwargs,
-        )
+        super().__init__()
         self.extraction_mode = extraction_mode
         self.extract_params = extract_params or ExtractParams()
         self.text_params = text_params or TextChunkParams()
         self.html_params = html_params or HtmlChunkParams()
         self.audio_chunk_params = audio_chunk_params or AudioChunkParams()
         self.asr_params = asr_params or ASRParams()
+        self.caption_params = caption_params
+        self._resolved_resources = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame | dict[str, list[str]]:
         if isinstance(data, pd.DataFrame):
@@ -167,21 +228,14 @@ class MultiTypeExtractOperator(AbstractOperator):
         extract_params = self.extract_params
         split_actor = PDFSplitActor(
             split_params=PdfSplitParams(
-                start_page=extract_params.start_page,
-                end_page=extract_params.end_page,
+                start_page=getattr(extract_params, "start_page", None),
+                end_page=getattr(extract_params, "end_page", None),
             )
         )
         batch_df = DocToPdfConversionActor().run(batch_df)
         batch_df = split_actor.run(batch_df)
 
-        tuning = getattr(extract_params, "batch_tuning", None)
-        parse_mode = extract_params.method == "nemotron_parse" or (
-            tuning is not None
-            and all(
-                getattr(tuning, name, None)
-                for name in ("nemotron_parse_workers", "gpu_nemotron_parse", "nemotron_parse_batch_size")
-            )
-        )
+        parse_mode = _parse_mode_enabled(extract_params)
 
         if parse_mode:
             parse_kwargs: dict[str, Any] = {
@@ -190,14 +244,21 @@ class MultiTypeExtractOperator(AbstractOperator):
                 "extract_charts": extract_params.extract_charts,
                 "extract_infographics": extract_params.extract_infographics,
             }
+            if extract_params.nemotron_parse_invoke_url:
+                parse_kwargs["nemotron_parse_invoke_url"] = extract_params.nemotron_parse_invoke_url
+            elif extract_params.invoke_url:
+                parse_kwargs["invoke_url"] = extract_params.invoke_url
+            if extract_params.nemotron_parse_model:
+                parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
-            return NemotronParseActor(**parse_kwargs).run(batch_df)
+            return self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
 
         extract_kwargs: dict[str, Any] = {
             "method": extract_params.method,
             "dpi": int(extract_params.dpi),
             "extract_text": extract_params.extract_text,
+            "extract_images": extract_params.extract_images,
             "extract_tables": extract_params.extract_tables,
             "extract_charts": extract_params.extract_charts,
             "extract_infographics": extract_params.extract_infographics,
@@ -225,19 +286,17 @@ class MultiTypeExtractOperator(AbstractOperator):
         )
         if inference_batch_size:
             detect_kwargs["inference_batch_size"] = int(inference_batch_size)
-        batch_df = PageElementDetectionActor(**detect_kwargs).run(batch_df)
+        batch_df = self._instantiate_resolved(PageElementDetectionActor, **detect_kwargs).run(batch_df)
 
         if extract_params.use_table_structure and extract_params.extract_tables:
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
-            if extract_params.ocr_invoke_url:
-                table_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
                 table_kwargs["table_output_format"] = extract_params.table_output_format
-            batch_df = TableStructureActor(**table_kwargs).run(batch_df)
+            batch_df = self._instantiate_resolved(TableStructureActor, **table_kwargs).run(batch_df)
 
         if extract_params.use_graphic_elements and extract_params.extract_charts:
             graphic_kwargs: dict[str, Any] = {}
@@ -247,12 +306,15 @@ class MultiTypeExtractOperator(AbstractOperator):
                 graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 graphic_kwargs["api_key"] = extract_params.api_key
-            batch_df = GraphicElementsActor(**graphic_kwargs).run(batch_df)
+            batch_df = self._instantiate_resolved(GraphicElementsActor, **graphic_kwargs).run(batch_df)
 
-        ocr_kwargs: dict[str, Any] = {"use_graphic_elements": extract_params.use_graphic_elements}
+        ocr_kwargs: dict[str, Any] = {
+            "use_graphic_elements": extract_params.use_graphic_elements,
+            "use_table_structure": extract_params.use_table_structure,
+        }
         if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
             ocr_kwargs["extract_text"] = True
-        if extract_params.extract_tables and not extract_params.use_table_structure:
+        if extract_params.extract_tables:
             ocr_kwargs["extract_tables"] = True
         if extract_params.extract_charts and not extract_params.use_graphic_elements:
             ocr_kwargs["extract_charts"] = True
@@ -268,9 +330,83 @@ class MultiTypeExtractOperator(AbstractOperator):
         if any(
             ocr_kwargs.get(key) for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
         ):
-            batch_df = OCRActor(**ocr_kwargs).run(batch_df)
+            batch_df = self._instantiate_resolved(OCRActor, **ocr_kwargs).run(batch_df)
 
         return batch_df
 
+    def _local_resources(self):
+        if self._resolved_resources is None:
+            self._resolved_resources = gather_local_resources()
+        return self._resolved_resources
+
+    def _instantiate_resolved(self, operator_class: type[AbstractOperator], **operator_kwargs: Any) -> AbstractOperator:
+        resolved_class = resolve_operator_class(
+            operator_class, self._local_resources(), operator_kwargs=operator_kwargs
+        )
+        return resolved_class(**operator_kwargs)
+
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+
+class MultiTypeExtractGPUActor(_MultiTypeExtractBase, GPUOperator):
+    """GPU variant – used when local models are available."""
+
+    pass
+
+
+class MultiTypeExtractCPUActor(_MultiTypeExtractBase, CPUOperator):
+    """CPU variant – used when all inference is remote."""
+
+    pass
+
+
+@designer_component(
+    name="Multi-Type Extractor",
+    category="Document Processing",
+    compute="gpu",
+    description="Extracts content from multiple file types (PDF, image, text, audio)",
+    category_color="#64b4ff",
+)
+class MultiTypeExtractOperator(ArchetypeOperator):
+    """Graph-facing multi-type extraction archetype."""
+
+    _cpu_variant_class = MultiTypeExtractCPUActor
+    _gpu_variant_class = MultiTypeExtractGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        kwargs = operator_kwargs or {}
+        return not _extract_params_need_local_gpu(
+            str(kwargs.get("extraction_mode") or "auto"),
+            kwargs.get("extract_params"),
+        )
+
+    def __init__(
+        self,
+        extraction_mode: str = "auto",
+        extract_params: ExtractParams | None = None,
+        text_params: TextChunkParams | None = None,
+        html_params: HtmlChunkParams | None = None,
+        audio_chunk_params: AudioChunkParams | None = None,
+        asr_params: ASRParams | None = None,
+        caption_params: CaptionParams | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            extraction_mode=extraction_mode,
+            extract_params=extract_params,
+            text_params=text_params,
+            html_params=html_params,
+            audio_chunk_params=audio_chunk_params,
+            asr_params=asr_params,
+            caption_params=caption_params,
+            **kwargs,
+        )
+        self.extraction_mode = extraction_mode
+        self.extract_params = extract_params
+        self.text_params = text_params
+        self.html_params = html_params
+        self.audio_chunk_params = audio_chunk_params
+        self.asr_params = asr_params
+        self.caption_params = caption_params

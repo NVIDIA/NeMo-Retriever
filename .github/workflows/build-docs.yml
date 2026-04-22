@@ -26,8 +26,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -47,7 +45,13 @@ jobs:
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
       - name: Wait for the docs generation to complete in the container
-        run: docker wait $CONTAINER_ID
+        run: |
+          EXIT_CODE=$(docker wait $CONTAINER_ID)
+          docker logs $CONTAINER_ID
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Error: docs build failed with exit code $EXIT_CODE"
+            exit 1
+          fi
 
       - name: Copy generated docs site from the container
         run: docker cp $CONTAINER_ID:/workspace/docs/site ./generated-site

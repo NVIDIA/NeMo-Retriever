@@ -11,12 +11,45 @@ from typing import Any, List, Optional
 from PIL import Image
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
 
 def _b64_to_pil(b64: str) -> Image.Image:
     """Decode a base64-encoded image string to a PIL Image."""
     return Image.open(BytesIO(base64.b64decode(b64))).convert("RGB")
+
+
+# Bidirectional alias maps: short NIM names ↔ full HuggingFace paths.
+_NIM_TO_HF: dict[str, str] = {
+    "nvidia/nemotron-nano-12b-v2-vl": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+    "nvidia/nemotron-nano-12b-v2-vl-bf16": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+    "nvidia/nemotron-nano-12b-v2-vl-fp8": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8",
+    "nvidia/nemotron-nano-12b-v2-vl-nvfp4-qad": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD",
+}
+_HF_TO_NIM: dict[str, str] = {
+    "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16": "nvidia/nemotron-nano-12b-v2-vl",
+    "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8": "nvidia/nemotron-nano-12b-v2-vl-fp8",
+    "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD": "nvidia/nemotron-nano-12b-v2-vl-nvfp4-qad",
+}
+
+
+def resolve_caption_model_name(name: str, *, target: str = "local") -> str:
+    """Normalize a caption model name for the given target.
+
+    Parameters
+    ----------
+    name : str
+        Model name (NIM short form or full HuggingFace path).
+    target : str
+        ``"local"`` returns the full HF path, ``"remote"`` returns the
+        short NIM endpoint name.
+    """
+    lower = name.lower()
+    if target == "local":
+        return _NIM_TO_HF.get(lower, name)
+    # remote
+    return _HF_TO_NIM.get(name, _HF_TO_NIM.get(_NIM_TO_HF.get(lower, name), name))
 
 
 class NemotronVLMCaptioner(BaseModel):
@@ -46,6 +79,8 @@ class NemotronVLMCaptioner(BaseModel):
         "FP8": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8",
         "NVFP4-QAD": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD",
     }
+
+    MODEL_ALIASES: dict[str, str] = _NIM_TO_HF
 
     # Pinned HF revision (commit SHA) per model to ensure reproducibility.
     _MODEL_REVISIONS: dict[str, str] = {
@@ -78,6 +113,9 @@ class NemotronVLMCaptioner(BaseModel):
         gpu_memory_utilization: float = 0.5,
     ) -> None:
         super().__init__()
+
+        # Resolve short aliases to full model paths.
+        model_path = self.MODEL_ALIASES.get(model_path.lower(), model_path)
 
         valid_models = list(self.SUPPORTED_MODELS.values())
         if model_path not in valid_models:
@@ -154,11 +192,18 @@ class NemotronVLMCaptioner(BaseModel):
         prompt: str = "Caption the content of this image:",
         system_prompt: Optional[str] = "/no_think",
         temperature: float = 1.0,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate a caption for a single base64-encoded image."""
-        return self.caption_batch([base64_image], prompt=prompt, system_prompt=system_prompt, temperature=temperature)[
-            0
-        ]
+        return self.caption_batch(
+            [base64_image],
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+        )[0]
 
     def caption_batch(
         self,
@@ -167,6 +212,8 @@ class NemotronVLMCaptioner(BaseModel):
         prompt: str = "Caption the content of this image:",
         system_prompt: Optional[str] = "/no_think",
         temperature: float = 1.0,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> List[str]:
         """Generate captions for a list of base64-encoded images.
 
@@ -175,8 +222,15 @@ class NemotronVLMCaptioner(BaseModel):
         from vllm import SamplingParams
 
         conversations = [self._build_messages(b64, prompt=prompt, system_prompt=system_prompt) for b64 in base64_images]
-        sampling_params = SamplingParams(temperature=temperature, max_tokens=self._max_new_tokens)
-        outputs = self._llm.chat(conversations, sampling_params=sampling_params)
+        sp_kwargs: dict = {
+            "temperature": temperature,
+            "max_tokens": max_tokens if max_tokens is not None else self._max_new_tokens,
+        }
+        if top_p is not None:
+            sp_kwargs["top_p"] = top_p
+        sampling_params = SamplingParams(**sp_kwargs)
+        with gpu_inference_range("NemotronVLMCaptioner", batch_size=len(conversations)):
+            outputs = self._llm.chat(conversations, sampling_params=sampling_params)
         return [out.outputs[0].text.strip() for out in outputs]
 
     # ---- BaseModel abstract interface ----

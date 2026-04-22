@@ -1,7 +1,7 @@
 name: Pull Request Validation
 
 on:
-  pull_request_target:
+  pull_request:
     types:
       - opened
       - synchronize
@@ -20,10 +20,10 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: actions/setup-python@v3
+
+      - uses: astral-sh/setup-uv@v6
 
       - uses: pre-commit/action@v3.0.1
 
@@ -41,8 +41,6 @@ jobs:
       pytest-markers: 'not integration'
       coverage: true
       runner: 'linux-large-disk'
-    secrets:
-      HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
 
   # Summary job
   pr-validation-complete:

@@ -26,6 +26,11 @@ Examples::
     python -m nemo_retriever.examples.graph_pipeline /data/pdfs \\
         --run-mode inprocess \\
         --ocr-invoke-url http://localhost:9000/v1
+
+    # Save extraction Parquet for full-page markdown (e.g. page index + export)
+    python -m nemo_retriever.examples.graph_pipeline /data/pdfs \\
+        --lancedb-uri lancedb \\
+        --save-intermediate /path/to/extracted_parquet_dir
 """
 
 from __future__ import annotations
@@ -39,13 +44,18 @@ from typing import Optional, TextIO
 
 import typer
 
+from nemo_retriever.audio import asr_params_from_env
 from nemo_retriever.graph_ingestor import GraphIngestor
+from nemo_retriever.params import AudioChunkParams
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.params.models import BatchTuningParams
+from nemo_retriever.utils.input_files import resolve_input_patterns
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
@@ -57,7 +67,7 @@ LANCEDB_TABLE = "nv-ingest"
 
 
 # ---------------------------------------------------------------------------
-# Logging helpers (shared with batch_pipeline.py style)
+# Logging helpers
 # ---------------------------------------------------------------------------
 
 
@@ -148,6 +158,14 @@ def _write_runtime_summary(
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _count_input_units(result_df) -> int:
+    if "source_id" in result_df.columns:
+        return int(result_df["source_id"].nunique())
+    if "source_path" in result_df.columns:
+        return int(result_df["source_path"].nunique())
+    return int(len(result_df.index))
+
+
 def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     import glob as _glob
 
@@ -157,19 +175,11 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     if not input_path.is_dir():
         raise typer.BadParameter(f"Path does not exist: {input_path}")
 
-    ext_map = {
-        "pdf": ["*.pdf"],
-        "doc": ["*.docx", "*.pptx"],
-        "txt": ["*.txt"],
-        "html": ["*.html"],
-        "image": ["*.jpg", "*.jpeg", "*.png", "*.tiff", "*.bmp"],
-    }
-    exts = ext_map.get(input_type)
-    if exts is None:
+    if input_type not in {"pdf", "doc", "txt", "html", "image", "audio"}:
         raise typer.BadParameter(f"Unsupported --input-type: {input_type!r}")
 
-    patterns = [str(input_path / ext) for ext in exts]
-    matched = [p for p in patterns if _glob.glob(p)]
+    patterns = resolve_input_patterns(input_path, input_type)
+    matched = [p for p in patterns if _glob.glob(p, recursive=True)]
     if not matched:
         raise typer.BadParameter(f"No files found for input_type={input_type!r} in {input_path}")
     return matched
@@ -195,7 +205,9 @@ def main(
     ),
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable debug-level logging."),
     dpi: int = typer.Option(300, "--dpi", min=72, help="Render DPI for PDF page images."),
-    input_type: str = typer.Option("pdf", "--input-type", help="Input type: 'pdf', 'doc', 'txt', 'html', or 'image'."),
+    input_type: str = typer.Option(
+        "pdf", "--input-type", help="Input type: 'pdf', 'doc', 'txt', 'html', 'image', or 'audio'."
+    ),
     method: str = typer.Option("pdfium", "--method", help="PDF text extraction method."),
     extract_text: bool = typer.Option(True, "--extract-text/--no-extract-text"),
     extract_tables: bool = typer.Option(True, "--extract-tables/--no-extract-tables"),
@@ -213,7 +225,7 @@ def main(
     table_structure_invoke_url: Optional[str] = typer.Option(None, "--table-structure-invoke-url"),
     embed_invoke_url: Optional[str] = typer.Option(None, "--embed-invoke-url"),
     # Embedding
-    embed_model_name: str = typer.Option("nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name"),
+    embed_model_name: str = typer.Option(VL_EMBED_MODEL, "--embed-model-name"),
     embed_modality: str = typer.Option("text", "--embed-modality"),
     embed_granularity: str = typer.Option("element", "--embed-granularity"),
     text_elements_modality: Optional[str] = typer.Option(None, "--text-elements-modality"),
@@ -227,42 +239,67 @@ def main(
     caption_device: Optional[str] = typer.Option(None, "--caption-device"),
     caption_context_text_max_chars: int = typer.Option(0, "--caption-context-text-max-chars"),
     caption_gpu_memory_utilization: float = typer.Option(0.5, "--caption-gpu-memory-utilization"),
+    caption_gpus_per_actor: Optional[float] = typer.Option(None, "--caption-gpus-per-actor", max=1.0),
+    caption_temperature: float = typer.Option(1.0, "--caption-temperature"),
+    caption_top_p: Optional[float] = typer.Option(None, "--caption-top-p"),
+    caption_max_tokens: int = typer.Option(1024, "--caption-max-tokens"),
     # Text chunking
+    store_images_uri: Optional[str] = typer.Option(
+        None, "--store-images-uri", help="Store extracted images to this URI."
+    ),
+    store_text: bool = typer.Option(False, "--store-text/--no-store-text", help="Also store extracted text."),
+    strip_base64: bool = typer.Option(True, "--strip-base64/--no-strip-base64", help="Strip base64 after storing."),
     text_chunk: bool = typer.Option(False, "--text-chunk"),
     text_chunk_max_tokens: Optional[int] = typer.Option(None, "--text-chunk-max-tokens"),
     text_chunk_overlap_tokens: Optional[int] = typer.Option(None, "--text-chunk-overlap-tokens"),
     # Ray / batch tuning
+    # NOTE: *_gpus_per_actor defaults are None (not 0.0) so we can distinguish
+    # "not set → use heuristic" from "explicitly 0 → no GPU".  Other tuning
+    # defaults use 0/0.0 because those values are never valid explicit choices.
     ray_address: Optional[str] = typer.Option(None, "--ray-address"),
     ray_log_to_driver: bool = typer.Option(True, "--ray-log-to-driver/--no-ray-log-to-driver"),
     ocr_actors: Optional[int] = typer.Option(0, "--ocr-actors"),
     ocr_batch_size: Optional[int] = typer.Option(0, "--ocr-batch-size"),
     ocr_cpus_per_actor: Optional[float] = typer.Option(0.0, "--ocr-cpus-per-actor"),
-    ocr_gpus_per_actor: Optional[float] = typer.Option(0.0, "--ocr-gpus-per-actor", max=1.0),
+    ocr_gpus_per_actor: Optional[float] = typer.Option(None, "--ocr-gpus-per-actor", max=1.0),
     page_elements_actors: Optional[int] = typer.Option(0, "--page-elements-actors"),
     page_elements_batch_size: Optional[int] = typer.Option(0, "--page-elements-batch-size"),
     page_elements_cpus_per_actor: Optional[float] = typer.Option(0.0, "--page-elements-cpus-per-actor"),
-    page_elements_gpus_per_actor: Optional[float] = typer.Option(0.0, "--page-elements-gpus-per-actor", max=1.0),
+    page_elements_gpus_per_actor: Optional[float] = typer.Option(None, "--page-elements-gpus-per-actor", max=1.0),
     embed_actors: Optional[int] = typer.Option(0, "--embed-actors"),
     embed_batch_size: Optional[int] = typer.Option(0, "--embed-batch-size"),
     embed_cpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-cpus-per-actor"),
-    embed_gpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-gpus-per-actor", max=1.0),
+    embed_gpus_per_actor: Optional[float] = typer.Option(None, "--embed-gpus-per-actor", max=1.0),
     pdf_split_batch_size: int = typer.Option(1, "--pdf-split-batch-size", min=1),
     pdf_extract_batch_size: Optional[int] = typer.Option(0, "--pdf-extract-batch-size"),
     pdf_extract_tasks: Optional[int] = typer.Option(0, "--pdf-extract-tasks"),
     pdf_extract_cpus_per_task: Optional[float] = typer.Option(0.0, "--pdf-extract-cpus-per-task"),
     nemotron_parse_actors: Optional[int] = typer.Option(0, "--nemotron-parse-actors"),
     nemotron_parse_gpus_per_actor: Optional[float] = typer.Option(
-        0.0, "--nemotron-parse-gpus-per-actor", min=0.0, max=1.0
+        None, "--nemotron-parse-gpus-per-actor", min=0.0, max=1.0
     ),
     nemotron_parse_batch_size: Optional[int] = typer.Option(0, "--nemotron-parse-batch-size"),
     # LanceDB / evaluation
     lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri"),
+    save_intermediate: Optional[Path] = typer.Option(
+        None,
+        "--save-intermediate",
+        help="Directory to write extraction results as Parquet (for full-page markdown / page index).",
+        path_type=Path,
+        file_okay=False,
+        dir_okay=True,
+    ),
     hybrid: bool = typer.Option(False, "--hybrid/--no-hybrid"),
     query_csv: Path = typer.Option("./data/bo767_query_gt.csv", "--query-csv", path_type=Path),
     recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode"),
+    audio_match_tolerance_secs: float = typer.Option(2.0, "--audio-match-tolerance-secs", min=0.0),
+    segment_audio: bool = typer.Option(False, "--segment-audio/--no-segment-audio"),
+    audio_split_type: str = typer.Option("size", "--audio-split-type"),
+    audio_split_interval: int = typer.Option(500000, "--audio-split-interval", min=1),
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
-    reranker_model_name: str = typer.Option("nvidia/llama-nemotron-rerank-1b-v2", "--reranker-model-name"),
+    reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name"),
+    reranker_invoke_url: Optional[str] = typer.Option(None, "--reranker-invoke-url"),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader"),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name"),
     beir_split: str = typer.Option("test", "--beir-split"),
@@ -280,8 +317,10 @@ def main(
     try:
         if run_mode not in {"batch", "inprocess"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
-        if recall_match_mode not in {"pdf_page", "pdf_only"}:
+        if recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
             raise ValueError(f"Unsupported --recall-match-mode: {recall_match_mode!r}")
+        if audio_split_type not in {"size", "time", "frame"}:
+            raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"recall", "beir"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
 
@@ -292,12 +331,10 @@ def main(
         _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
 
         remote_api_key = resolve_remote_api_key(api_key)
-        extract_remote_api_key = (
-            remote_api_key
-            if any((page_elements_invoke_url, ocr_invoke_url, graphic_elements_invoke_url, table_structure_invoke_url))
-            else None
-        )
-        embed_remote_api_key = remote_api_key if embed_invoke_url else None
+        extract_remote_api_key = remote_api_key
+        embed_remote_api_key = remote_api_key
+        caption_remote_api_key = remote_api_key
+        reranker_remote_api_key = remote_api_key
 
         # Warn if remote URLs configured without an API key
         if (
@@ -308,11 +345,16 @@ def main(
                     graphic_elements_invoke_url,
                     table_structure_invoke_url,
                     embed_invoke_url,
+                    reranker_invoke_url,
                 )
             )
             and remote_api_key is None
         ):
             logger.warning("Remote endpoint URL(s) were configured without an API key.")
+
+        if reranker_invoke_url and not reranker:
+            logger.info("Enabling --reranker because --reranker-invoke-url was provided.")
+            reranker = True
 
         # Zero out GPU fractions when a remote URL replaces the local model
         if page_elements_invoke_url and float(page_elements_gpus_per_actor or 0.0) != 0.0:
@@ -344,15 +386,19 @@ def main(
                     "gpu_page_elements": (
                         0.0
                         if page_elements_invoke_url
-                        else (page_elements_gpus_per_actor if page_elements_gpus_per_actor else None)
+                        else (page_elements_gpus_per_actor if page_elements_gpus_per_actor is not None else None)
                     ),
                     "ocr_inference_batch_size": ocr_batch_size or None,
                     "ocr_workers": ocr_actors or None,
                     "ocr_cpus_per_actor": ocr_cpus_per_actor or None,
-                    "gpu_ocr": (0.0 if ocr_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor else None)),
+                    "gpu_ocr": (
+                        0.0 if ocr_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor is not None else None)
+                    ),
                     "nemotron_parse_batch_size": nemotron_parse_batch_size or None,
                     "nemotron_parse_workers": nemotron_parse_actors or None,
-                    "gpu_nemotron_parse": (nemotron_parse_gpus_per_actor if nemotron_parse_gpus_per_actor else None),
+                    "gpu_nemotron_parse": (
+                        nemotron_parse_gpus_per_actor if nemotron_parse_gpus_per_actor is not None else None
+                    ),
                 }.items()
                 if v is not None
             }
@@ -394,7 +440,9 @@ def main(
                     "embed_workers": embed_actors or None,
                     "embed_cpus_per_actor": embed_cpus_per_actor or None,
                     "gpu_embed": (
-                        0.0 if embed_invoke_url else (embed_gpus_per_actor if embed_gpus_per_actor else None)
+                        0.0
+                        if embed_invoke_url
+                        else (embed_gpus_per_actor if embed_gpus_per_actor is not None else None)
                     ),
                 }.items()
                 if v is not None
@@ -427,7 +475,11 @@ def main(
         # ------------------------------------------------------------------
         logger.info("Building graph pipeline (run_mode=%s) for %s ...", run_mode, input_path)
 
-        ingestor = GraphIngestor(run_mode=run_mode, ray_address=ray_address)
+        node_overrides = {}
+        if caption_gpus_per_actor is not None:
+            node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
+
+        ingestor = GraphIngestor(run_mode=run_mode, ray_address=ray_address, node_overrides=node_overrides or None)
         ingestor = ingestor.files(file_patterns)
 
         # Extraction stage
@@ -437,6 +489,12 @@ def main(
             ingestor = ingestor.extract_html(text_chunk_params)
         elif input_type == "image":
             ingestor = ingestor.extract_image_files(extract_params)
+        elif input_type == "audio":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_audio(
+                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+                asr_params=asr_params,
+            )
         else:
             # "pdf" or "doc"
             ingestor = ingestor.extract(extract_params)
@@ -455,10 +513,23 @@ def main(
             ingestor = ingestor.caption(
                 CaptionParams(
                     endpoint_url=caption_invoke_url,
+                    api_key=caption_remote_api_key,
                     model_name=caption_model_name,
                     device=caption_device,
                     context_text_max_chars=caption_context_text_max_chars,
                     gpu_memory_utilization=caption_gpu_memory_utilization,
+                    temperature=caption_temperature,
+                    top_p=caption_top_p,
+                    max_tokens=caption_max_tokens,
+                )
+            )
+
+        if store_images_uri is not None:
+            ingestor = ingestor.store(
+                StoreParams(
+                    storage_uri=store_images_uri,
+                    store_text=store_text,
+                    strip_base64=strip_base64,
                 )
             )
 
@@ -491,14 +562,21 @@ def main(
             import pandas as pd
 
             result_df = pd.DataFrame(ingest_local_results)
-            num_rows = result.groupby("source_id").count().count()
+            num_rows = _count_input_units(result_df)
         else:
             import pandas as pd
 
             result_df = result
             ingest_local_results = result_df.to_dict("records")
             ray_download_time = 0.0
-            num_rows = result_df["source_id"].nunique() if "source_id" in result_df.columns else len(result_df)
+            num_rows = _count_input_units(result_df)
+
+        if save_intermediate is not None:
+            out_dir = Path(save_intermediate).expanduser().resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / "extraction.parquet"
+            result_df.to_parquet(out_path, index=False)
+            logger.info("Wrote extraction Parquet for intermediate use: %s", out_path)
 
         if detection_summary_file is not None:
             from nemo_retriever.utils.detection_summary import (
@@ -585,6 +663,8 @@ def main(
                 hybrid=hybrid,
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
+                reranker_endpoint=reranker_invoke_url,
+                reranker_api_key=reranker_remote_api_key or "",
             )
             evaluation_start = time.perf_counter()
             beir_dataset, _raw_hits, _run, evaluation_metrics = evaluate_lancedb_beir(cfg)
@@ -632,7 +712,11 @@ def main(
                 ks=(1, 5, 10),
                 hybrid=hybrid,
                 match_mode=recall_match_mode,
+                audio_match_tolerance_secs=float(audio_match_tolerance_secs),
                 reranker=reranker_model_name if reranker else None,
+                reranker_endpoint=reranker_invoke_url,
+                reranker_api_key=reranker_remote_api_key or "",
+                embed_modality=embed_modality,
             )
             evaluation_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(

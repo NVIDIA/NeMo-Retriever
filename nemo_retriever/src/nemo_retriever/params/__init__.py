@@ -17,6 +17,7 @@ from .models import InfographicParams
 from .models import IngestExecuteParams
 from .models import IngestorCreateParams
 from .models import LanceDbParams
+from .models import LLMInferenceParams
 from .models import ModelRuntimeParams
 from .models import OcrParams
 from .models import PageElementsParams
@@ -24,9 +25,12 @@ from .models import PdfSplitParams
 from .models import RemoteInvokeParams
 from .models import RemoteRetryParams
 from .models import RunMode
+from .models import StoreParams
+from .models import TabularExtractParams
 from .models import TableParams
 from .models import TextChunkParams
 from .models import VdbUploadParams
+from .models import WebhookParams
 
 __all__ = [
     "ASRParams",
@@ -44,6 +48,7 @@ __all__ = [
     "IngestExecuteParams",
     "IngestorCreateParams",
     "LanceDbParams",
+    "LLMInferenceParams",
     "ModelRuntimeParams",
     "OcrParams",
     "PageElementsParams",
@@ -51,7 +56,10 @@ __all__ = [
     "RemoteInvokeParams",
     "RemoteRetryParams",
     "RunMode",
+    "StoreParams",
+    "TabularExtractParams",
     "TableParams",
     "TextChunkParams",
     "VdbUploadParams",
+    "WebhookParams",
 ]

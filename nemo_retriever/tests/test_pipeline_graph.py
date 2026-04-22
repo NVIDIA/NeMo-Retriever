@@ -6,12 +6,18 @@
 
 from typing import Any
 
+import pandas as pd
 import pytest
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
+from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.params import ExtractParams
+from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +89,45 @@ class ParamsHolderOperator(AbstractOperator):
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
+
+
+class CPUAdaptiveAddOperator(AbstractOperator, CPUOperator):
+    def __init__(self, value: int = 1) -> None:
+        super().__init__()
+        self.value = value
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return data + self.value
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class GPUAdaptiveAddOperator(AbstractOperator, GPUOperator):
+    def __init__(self, value: int = 1) -> None:
+        super().__init__()
+        self.value = value
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        return data + self.value
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
+class AdaptiveAddOperator(ArchetypeOperator):
+    _cpu_variant_class = CPUAdaptiveAddOperator
+    _gpu_variant_class = GPUAdaptiveAddOperator
+
+    def __init__(self, value: int = 1) -> None:
+        super().__init__(value=value)
+        self.value = value
 
 
 # =====================================================================
@@ -407,6 +452,24 @@ class TestGraph:
 # Graph.execute tests
 # =====================================================================
 class TestGraphExecute:
+    def test_resolve_returns_clone_with_concrete_operator_class(self):
+        g = Graph() >> AdaptiveAddOperator(5)
+
+        resolved = g.resolve(Resources(cpu_count=8, gpu_count=0))
+
+        assert resolved is not g
+        assert resolved.roots[0].operator_class is CPUAdaptiveAddOperator
+        assert g.roots[0].operator_class is AdaptiveAddOperator
+
+    def test_execute_resolves_archetypes_locally(self, monkeypatch):
+        resources = Resources(cpu_count=8, gpu_count=0)
+        monkeypatch.setattr("nemo_retriever.graph.operator_resolution.gather_local_resources", lambda: resources)
+        monkeypatch.setattr("nemo_retriever.graph.operator_archetype.gather_local_resources", lambda: resources)
+
+        g = Graph() >> AdaptiveAddOperator(5)
+
+        assert g.execute(7) == [12]
+
     def test_single_node(self):
         g = Graph()
         g.add_root(Node(AddOperator(10)))
@@ -581,6 +644,97 @@ class TestMultiTypeExtractOperator:
         result = op.process(grouped)
         assert result == []
 
+    def test_detection_pipeline_resolves_suboperators_through_archetype_resolution(self, monkeypatch):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.utils.ray_resource_hueristics import Resources
+
+        calls = []
+
+        class _IdentityStage:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def run(self, data):
+                return data
+
+        def _fake_resolve(operator_class, resources, operator_kwargs=None):
+            calls.append((operator_class.__name__, resources))
+            return _IdentityStage
+
+        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.gather_local_resources",
+            lambda: Resources(cpu_count=8, gpu_count=1),
+        )
+
+        op = MultiTypeExtractCPUActor(
+            extraction_mode="image",
+            extract_params=ExtractParams(
+                method="ocr",
+                extract_text=True,
+                extract_tables=True,
+                use_table_structure=True,
+                extract_charts=True,
+                use_graphic_elements=True,
+                extract_infographics=True,
+            ),
+        )
+
+        batch_df = pd.DataFrame({"page_image": ["x"]})
+        result = op._run_detection_pipeline(batch_df)
+
+        pd.testing.assert_frame_equal(result, batch_df)
+        assert [name for name, _resources in calls] == [
+            "PageElementDetectionActor",
+            "TableStructureActor",
+            "GraphicElementsActor",
+            "OCRActor",
+        ]
+        assert len({id(resources) for _name, resources in calls}) == 1
+
+    def test_parse_pipeline_resolves_nemotron_parse_through_archetype_resolution(self, monkeypatch):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.utils.ray_resource_hueristics import Resources
+
+        calls = []
+
+        class _IdentityStage:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def run(self, data):
+                return data
+
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.DocToPdfConversionActor.run",
+            lambda self, data: data,
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.PDFSplitActor.run",
+            lambda self, data: data,
+        )
+
+        def _fake_resolve(operator_class, resources, operator_kwargs=None):
+            calls.append((operator_class.__name__, resources))
+            return _IdentityStage
+
+        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.gather_local_resources",
+            lambda: Resources(cpu_count=8, gpu_count=1),
+        )
+
+        op = MultiTypeExtractCPUActor(
+            extraction_mode="pdf",
+            extract_params=ExtractParams(method="nemotron_parse"),
+        )
+
+        batch_df = pd.DataFrame({"path": ["/tmp/test.pdf"]})
+        result = op._run_pdf_pipeline(batch_df)
+
+        pd.testing.assert_frame_equal(result, batch_df)
+        assert [name for name, _resources in calls] == ["NemotronParseActor"]
+
 
 class TestFileListLoaderOperator:
     def test_loads_files_into_path_and_bytes_dataframe(self, tmp_path) -> None:
@@ -695,6 +849,56 @@ class TestRayDataExecutor:
         executor = RayDataExecutor(g)
         with pytest.raises(TypeError, match="data must be"):
             executor.ingest(12345)
+
+    def test_ingest_expands_recursive_glob_patterns(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+        pdf_path = nested_dir / "sample.pdf"
+        pdf_path.write_bytes(b"pdf")
+
+        class _FakeDataset:
+            def materialize(self):
+                return self
+
+        captured: dict[str, object] = {}
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            captured["paths"] = list(paths)
+            captured["include_paths"] = include_paths
+            return _FakeDataset()
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        executor = RayDataExecutor(Graph())
+        result = executor.ingest([str(tmp_path / "**" / "*.pdf")])
+
+        assert isinstance(result, _FakeDataset)
+        assert captured["paths"] == [str(pdf_path)]
+        assert captured["include_paths"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -867,6 +1071,39 @@ class TestInprocessExecutor:
 
         executor = InprocessExecutor(g)
         result = executor.ingest([str(tmp_path / "*.txt")])
+
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 2
+
+    def test_ingest_recursive_glob_pattern(self, tmp_path):
+        import pandas as pd
+
+        class IdentityOperator(AbstractOperator):
+            def preprocess(self, data, **kw):
+                return data
+
+            def process(self, data, **kw):
+                return data
+
+            def postprocess(self, data, **kw):
+                return data
+
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+        (nested_dir / "a.txt").write_text("aaa")
+        (nested_dir / "b.txt").write_text("bbb")
+
+        g = Graph()
+        n = Node(
+            IdentityOperator(),
+            name="Identity",
+            operator_class=IdentityOperator,
+            operator_kwargs={},
+        )
+        g.add_root(n)
+
+        executor = InprocessExecutor(g)
+        result = executor.ingest([str(tmp_path / "**" / "*.txt")])
 
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 2
