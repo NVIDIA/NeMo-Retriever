@@ -124,7 +124,7 @@ class TestResolveFilePatterns:
         result = _resolve_file_patterns(tmp_path, input_type)
 
         # Every returned pattern should match at least one expected suffix.
-        assert result == [str(tmp_path / p) for p in expected_patterns]
+        assert result == [str(tmp_path / "**" / p) for p in expected_patterns]
 
     def test_doc_input_type_matches_both_docx_and_pptx(self, tmp_path: Path) -> None:
         (tmp_path / "a.docx").write_bytes(b"x")
@@ -132,7 +132,7 @@ class TestResolveFilePatterns:
 
         result = _resolve_file_patterns(tmp_path, "doc")
 
-        assert result == [str(tmp_path / "*.docx"), str(tmp_path / "*.pptx")]
+        assert result == [str(tmp_path / "**" / "*.docx"), str(tmp_path / "**" / "*.pptx")]
 
     def test_doc_input_type_only_one_family_present(self, tmp_path: Path) -> None:
         """When only docx files are present, we still only get the docx glob back."""
@@ -141,7 +141,7 @@ class TestResolveFilePatterns:
         result = _resolve_file_patterns(tmp_path, "doc")
 
         # Only the matching glob survives the non-empty filter.
-        assert result == [str(tmp_path / "*.docx")]
+        assert result == [str(tmp_path / "**" / "*.docx")]
 
     def test_image_input_type_multiple_extensions_filtered(self, tmp_path: Path) -> None:
         """Only extensions that actually match get returned; empty globs are filtered out."""
@@ -150,7 +150,7 @@ class TestResolveFilePatterns:
 
         result = _resolve_file_patterns(tmp_path, "image")
 
-        assert set(result) == {str(tmp_path / "*.jpg"), str(tmp_path / "*.png")}
+        assert set(result) == {str(tmp_path / "**" / "*.jpg"), str(tmp_path / "**" / "*.png")}
         # No unmatched patterns slip through.
         assert not any(p.endswith("*.tiff") for p in result)
         assert not any(p.endswith("*.bmp") for p in result)
@@ -179,7 +179,7 @@ class TestResolveFilePatterns:
         # Upstream callers sometimes pass a ``str``; the helper coerces to Path.
         result = _resolve_file_patterns(str(tmp_path), "txt")  # type: ignore[arg-type]
 
-        assert result == [str(Path(tmp_path) / "*.txt")]
+        assert result == [str(Path(tmp_path) / "**" / "*.txt")]
 
 
 # =============================================================================
@@ -410,12 +410,12 @@ class TestBuildEmbedParams:
 
     def test_zero_batch_size_dropped_to_pydantic_default(self):
         params = _build_embed_params(**_EMBED_BASE)
-        # ``embed_batch_size or None`` drops 0; pydantic default (256) wins.
-        assert params.batch_tuning.embed_batch_size == 256
+        # ``embed_batch_size or None`` drops 0; :class:`BatchTuningParams` default (32) wins.
+        assert params.batch_tuning.embed_batch_size == 32
         # Same for embed_workers (Optional, default None).
         assert params.batch_tuning.embed_workers is None
         # inference_batch_size comes from the same ``or None`` pattern;
-        # pydantic default is 32.
+        # :class:`EmbedParams` default is 32.
         assert params.inference_batch_size == 32
 
     def test_explicit_batch_params_flow_through(self):
