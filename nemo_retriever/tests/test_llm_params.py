@@ -102,13 +102,13 @@ class TestLiteLLMClientConstruction:
         assert client.model == "openai/gpt-4o-mini"
 
     def test_default_sampling_matches_from_kwargs_for_rag_determinism(self):
-        """``LiteLLMClient`` is a RAG-eval client and must default to
-        deterministic sampling regardless of which constructor path the
-        caller picks.  The structured constructor therefore overrides
-        ``LLMInferenceParams``'s general-purpose ``temperature=1.0`` with
-        ``0.0`` so it agrees with :meth:`LiteLLMClient.from_kwargs`.
-        ``top_p`` / ``max_tokens`` still come from ``LLMInferenceParams``
-        (they already match what ``from_kwargs`` builds).
+        """``LiteLLMClient`` is a RAG-eval client and must default to the
+        same deterministic sampling regardless of which constructor path
+        the caller picks.  The structured constructor therefore overrides
+        ``LLMInferenceParams``'s general-purpose defaults
+        (``temperature=1.0``, ``max_tokens=1024``) with the RAG-tuned
+        ``temperature=0.0`` / ``max_tokens=4096`` so it agrees with
+        :meth:`LiteLLMClient.from_kwargs`.
         """
         from nemo_retriever.llm.clients import LiteLLMClient
         from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
@@ -117,7 +117,7 @@ class TestLiteLLMClientConstruction:
         assert isinstance(client.sampling, LLMInferenceParams)
         assert client.sampling.temperature == 0.0
         assert client.sampling.top_p is None
-        assert client.sampling.max_tokens == 1024
+        assert client.sampling.max_tokens == 4096
 
     def test_from_kwargs_matches_explicit(self):
         from nemo_retriever.llm.clients import LiteLLMClient

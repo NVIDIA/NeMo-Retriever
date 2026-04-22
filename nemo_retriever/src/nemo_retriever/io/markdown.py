@@ -293,6 +293,13 @@ _MARKDOWN_PARQUET_COLUMNS = frozenset(
         "source_id",
         "page_number",
         "text",
+        # Top-level ``content`` is a fallback text source used by
+        # _collect_page_record / _collect_primitive_record when neither
+        # ``text`` nor ``metadata.content`` is populated.  It must be
+        # kept so both the Parquet path (_read_parquet_for_markdown)
+        # and the in-memory ``dataframe=`` path in build_page_index
+        # render the same output as the renderer unit tests expect.
+        "content",
         "document_type",
         "_content_type",
         "metadata",
@@ -361,7 +368,18 @@ def build_page_index(
         raise ValueError("Provide exactly one of parquet_dir or dataframe.")
 
     if dataframe is not None:
-        df = dataframe
+        # Mirror the column pruning that _read_parquet_for_markdown applies on
+        # the parquet_dir= path.  Caller-supplied DataFrames often still carry
+        # huge columns (page_image base64 blobs, embedding vectors) that
+        # row.to_dict() would otherwise materialise for every record, causing
+        # the same multi-GB memory spikes _read_parquet_for_markdown was built
+        # to avoid.  df[relevant] returns a column-subset view, not a copy --
+        # the caller's DataFrame is never mutated.
+        relevant = [c for c in _MARKDOWN_PARQUET_COLUMNS if c in dataframe.columns]
+        if relevant and len(relevant) < len(dataframe.columns):
+            df = dataframe[relevant]
+        else:
+            df = dataframe
     else:
         parquet_path = Path(parquet_dir)
         if not parquet_path.is_dir():

@@ -118,6 +118,16 @@ def _normalize_config(config: dict) -> dict:
 
     The ``evaluations`` list is always present after normalisation
     (synthesised from ``generators`` + ``judge`` when using legacy format).
+
+    Raises
+    ------
+    ValueError
+        If ``evaluations`` specifies multiple distinct judges.
+        :func:`build_eval_chain` and :func:`build_eval_pipeline` support
+        only a single judge per invocation; use
+        :func:`~nemo_retriever.evaluation.runner.run_eval_sweep` for
+        heterogeneous sweeps -- it iterates ``evaluations`` and selects
+        the correct judge per combo.
     """
     if "models" in config and "evaluations" in config:
         models = config["models"]
@@ -140,13 +150,13 @@ def _normalize_config(config: dict) -> dict:
         first_judge_key = evals[0]["judge"]
         distinct_judges = {e["judge"] for e in evals}
         if len(distinct_judges) > 1:
-            logger.warning(
-                "Config has %d distinct judges %s; legacy 'judge' key uses "
-                "only the first (%r). Use --config sweep or build per-eval "
-                "clients for heterogeneous judges.",
-                len(distinct_judges),
-                sorted(distinct_judges),
-                first_judge_key,
+            raise ValueError(
+                f"Config has {len(distinct_judges)} distinct judges "
+                f"{sorted(distinct_judges)}. "
+                "build_eval_chain() and build_eval_pipeline() support only a "
+                "single judge per invocation. Use run_eval_sweep() for "
+                "heterogeneous judges -- it iterates the evaluations list "
+                "and uses the correct judge per-combo."
             )
         config.setdefault("judge", models[first_judge_key])
 

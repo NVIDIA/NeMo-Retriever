@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -190,6 +189,7 @@ class TestQuerySingleConvenience:
 
         mock_queries.assert_called_once_with(
             ["find something"],
+            top_k=None,
             embedder=None,
             lancedb_uri=None,
             lancedb_table=None,
@@ -201,7 +201,7 @@ class TestQuerySingleConvenience:
         with patch.object(r, "queries", return_value=[[]]) as mock_queries:
             r.query("q", embedder="e", lancedb_uri="u", lancedb_table="t")
 
-        mock_queries.assert_called_once_with(["q"], embedder="e", lancedb_uri="u", lancedb_table="t")
+        mock_queries.assert_called_once_with(["q"], top_k=None, embedder="e", lancedb_uri="u", lancedb_table="t")
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +234,7 @@ class TestQueriesWithEndpointReranking:
         ):
             r.queries(["q"])
 
-        mock_rerank.assert_called_once_with(["q"], fake_results)
+        mock_rerank.assert_called_once_with(["q"], fake_results, top_k=r.top_k)
 
     def test_rerank_not_called_when_reranker_is_none(self):
         r = _make_retriever(reranker=None)
@@ -275,7 +275,7 @@ class TestQueriesWithEndpointReranking:
         }
 
         with patch("requests.post", return_value=mock_resp) as mock_post:
-            out = r._rerank_results(["q"], [fake_hits])
+            out = r._rerank_results(["q"], [fake_hits], top_k=r.top_k)
 
         mock_post.assert_called()
         # Results should be sorted descending
@@ -297,7 +297,7 @@ class TestQueriesWithLocalReranking:
         fake_model.score.return_value = [0.1, 0.9, 0.5, 0.3]
 
         with patch.object(r, "_get_reranker_model", return_value=fake_model):
-            out = r._rerank_results(["q"], [hits])
+            out = r._rerank_results(["q"], [hits], top_k=r.top_k)
 
         scores = [h["_rerank_score"] for h in out[0]]
         assert scores == sorted(scores, reverse=True)
@@ -310,7 +310,7 @@ class TestQueriesWithLocalReranking:
         fake_model.score.return_value = [0.1, 0.9, 0.5, 0.3]
 
         with patch.object(r, "_get_reranker_model", return_value=fake_model):
-            out = r._rerank_results(["q"], [hits])
+            out = r._rerank_results(["q"], [hits], top_k=r.top_k)
 
         assert len(out[0]) == 2
 
@@ -322,7 +322,7 @@ class TestQueriesWithLocalReranking:
         fake_model.score.side_effect = [[0.2, 0.8], [0.6, 0.4]]
 
         with patch.object(r, "_get_reranker_model", return_value=fake_model):
-            out = r._rerank_results(["q1", "q2"], [hits_a, hits_b])
+            out = r._rerank_results(["q1", "q2"], [hits_a, hits_b], top_k=r.top_k)
 
         assert len(out) == 2
         # Each per-query list should be sorted descending
@@ -424,6 +424,7 @@ class TestSearchLancedbKeepKeys:
                 lancedb_table="t",
                 query_vectors=[_DUMMY_VECTOR],
                 query_texts=["q"],
+                top_k=r.top_k,
             )
 
         hit = results[0][0]
@@ -471,6 +472,7 @@ class TestSearchLancedbKeepKeys:
                 lancedb_table="t",
                 query_vectors=[_DUMMY_VECTOR],
                 query_texts=["q"],
+                top_k=r.top_k,
             )
 
         hit = results[0][0]

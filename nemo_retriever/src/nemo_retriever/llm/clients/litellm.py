@@ -78,9 +78,12 @@ class LiteLLMClient:
         sampling: Optional[LLMInferenceParams] = None,
     ):
         self.transport = transport
-        # Default to ``temperature=0.0`` so the structured constructor matches ``from_kwargs``
-        # and keeps RAG-eval runs deterministic.
-        self.sampling = sampling if sampling is not None else LLMInferenceParams(temperature=0.0)
+        # Default to ``temperature=0.0, max_tokens=4096`` so the structured
+        # constructor matches ``from_kwargs`` and keeps RAG-eval runs
+        # deterministic.  ``LLMInferenceParams`` itself defaults to
+        # ``max_tokens=1024`` for captioning/summarization workloads; RAG
+        # answers routinely exceed that, so the client overrides it.
+        self.sampling = sampling if sampling is not None else LLMInferenceParams(temperature=0.0, max_tokens=4096)
 
     @property
     def model(self) -> str:

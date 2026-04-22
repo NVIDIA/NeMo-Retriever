@@ -60,8 +60,6 @@ class FileRetriever:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"FileRetriever: retrieval results file not found: {file_path}")
 
-        self.file_path = file_path
-
         with open(file_path) as f:
             data = json.load(f)
 
@@ -79,15 +77,39 @@ class FileRetriever:
                 'Expected: {"queries": {"query": {"chunks": ["..."]}}}'
             )
 
+        self._initialize_index(raw_index, source=file_path)
+
+    def _initialize_index(self, raw_index: dict[str, dict], *, source: str) -> None:
+        """Populate instance state from an already-validated queries mapping.
+
+        Single source of truth for all :class:`FileRetriever` instance
+        fields used by :meth:`retrieve` and :meth:`check_coverage`.
+        Called by both :meth:`__init__` (file-based) and
+        :meth:`_from_dict` (in-memory, used by :meth:`from_lancedb`) so
+        that new instance fields only need to be added in one place and
+        can never diverge between the two construction paths.
+
+        Parameters
+        ----------
+        raw_index : dict[str, dict]
+            ``{query_text: {"chunks": [...], "metadata": [...]}}`` --
+            the same shape both entry points produce.  Must already be
+            non-empty and contain a ``chunks`` list; validation is the
+            caller's responsibility so error messages can reference the
+            originating source (file path vs. in-memory dict).
+        source : str
+            Human-readable origin label stored on ``self.file_path``
+            (e.g. a filesystem path or ``"<in-memory>"``).
+        """
+        self.file_path = source
         self._norm_index: dict[str, dict] = {}
         self._raw_keys: dict[str, str] = {}
+        self._miss_count = 0
+        self._miss_lock = threading.Lock()
         for raw_key, value in raw_index.items():
             norm = _normalize_query(raw_key)
             self._norm_index[norm] = value
             self._raw_keys[norm] = raw_key
-
-        self._miss_count = 0
-        self._miss_lock = threading.Lock()
 
     @classmethod
     def _from_dict(cls, queries: dict[str, dict]) -> "FileRetriever":
@@ -113,15 +135,7 @@ class FileRetriever:
             )
 
         instance = object.__new__(cls)
-        instance.file_path = "<in-memory>"
-        instance._norm_index = {}
-        instance._raw_keys = {}
-        instance._miss_count = 0
-        instance._miss_lock = threading.Lock()
-        for raw_key, value in queries.items():
-            norm = _normalize_query(raw_key)
-            instance._norm_index[norm] = value
-            instance._raw_keys[norm] = raw_key
+        instance._initialize_index(queries, source="<in-memory>")
         return instance
 
     @classmethod
