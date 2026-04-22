@@ -317,6 +317,64 @@ class TestBackCompatCallSites:
         assert op._judge.model == "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
         assert op._judge._client.sampling.temperature == 0.0
 
+    def test_judging_operator_plumbs_num_retries_to_inner_judge(self):
+        """JudgingOperator(num_retries=...) must flow down to the LLMJudge it
+        instantiates internally.
+
+        Before this fix, ``JudgingOperator.__init__`` had no ``num_retries``
+        parameter, so the pre-built ``LLMJudge.transport.num_retries`` set by
+        a pipeline caller was silently dropped at the operator boundary and
+        the operator always ran with ``LLMJudge``'s default (3)."""
+        from nemo_retriever.evaluation.judging import JudgingOperator
+
+        op = JudgingOperator(
+            model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+            num_retries=7,
+        )
+        assert op._judge._client.transport.num_retries == 7
+
+    def test_pipeline_builder_judge_forwards_transport_num_retries(self):
+        """RetrieverPipelineBuilder.judge(judge) unpacks transport.* onto the
+        operator. num_retries must be in that unpack, symmetric with the
+        identical .generate() branch at retriever.py:762."""
+        from unittest.mock import MagicMock
+
+        from nemo_retriever.evaluation.judging import JudgingOperator
+        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.retriever import RetrieverPipelineBuilder
+
+        retriever = MagicMock()
+        retriever.top_k = 5
+        builder = RetrieverPipelineBuilder(retriever, top_k=5)
+
+        judge = LLMJudge.from_kwargs(
+            model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+            num_retries=7,
+        )
+        builder.judge(judge)
+
+        judging_ops = [s for s in builder._steps if isinstance(s, JudgingOperator)]
+        assert len(judging_ops) == 1
+        assert judging_ops[0]._judge._client.transport.num_retries == 7
+
+    def test_pipeline_builder_judge_defaults_num_retries_when_flat_kwargs(self):
+        """The flat ``model=...`` branch of .judge() must still default
+        num_retries to 3, preserving the current default behaviour."""
+        from unittest.mock import MagicMock
+
+        from nemo_retriever.evaluation.judging import JudgingOperator
+        from nemo_retriever.retriever import RetrieverPipelineBuilder
+
+        retriever = MagicMock()
+        retriever.top_k = 5
+        builder = RetrieverPipelineBuilder(retriever, top_k=5)
+
+        builder.judge(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
+
+        judging_ops = [s for s in builder._steps if isinstance(s, JudgingOperator)]
+        assert len(judging_ops) == 1
+        assert judging_ops[0]._judge._client.transport.num_retries == 3
+
 
 class TestApiKeyRedaction:
     """Guard the repr/str of every transport params object against key leakage.

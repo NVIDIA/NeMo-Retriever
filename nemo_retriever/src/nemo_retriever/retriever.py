@@ -805,6 +805,7 @@ class RetrieverPipelineBuilder:
                 api_base=transport.api_base,
                 api_key=transport.api_key,
                 extra_params=dict(transport.extra_params) if transport.extra_params else None,
+                num_retries=transport.num_retries,
                 timeout=transport.timeout,
             )
         else:

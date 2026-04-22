@@ -321,6 +321,7 @@ def build_eval_chain(
         api_base=judge_cfg.get("api_base"),
         api_key=judge_cfg.get("api_key"),
         extra_params=judge_cfg.get("extra_params"),
+        num_retries=judge_cfg.get("num_retries", 3),
         timeout=judge_cfg.get("timeout", default_timeout),
         max_workers=execution.get("max_workers", 8),
     )
@@ -391,6 +392,7 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
         api_base=judge_cfg.get("api_base"),
         api_key=judge_cfg.get("api_key"),
         extra_params=judge_cfg.get("extra_params"),
+        num_retries=judge_cfg.get("num_retries", 3),
         timeout=judge_cfg.get("timeout", default_timeout),
     )
 

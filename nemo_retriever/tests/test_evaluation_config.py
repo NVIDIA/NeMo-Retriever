@@ -6,14 +6,18 @@
 
 Focus: the fail-fast contract in :func:`_normalize_config` that guards
 ``build_eval_chain`` / ``build_eval_pipeline`` from silently collapsing
-heterogeneous-judge configs to a single judge.
+heterogeneous-judge configs to a single judge, plus the ``num_retries``
+plumbing contract from the judge config block down to the constructed
+operator / ``LLMJudge``.
 """
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
-from nemo_retriever.evaluation.config import _normalize_config
+from nemo_retriever.evaluation.config import _normalize_config, build_eval_chain, build_eval_pipeline
 
 
 def _make_multi_judge_config() -> dict:
@@ -107,3 +111,84 @@ def test_normalize_config_legacy_schema_passes() -> None:
 
     eval_judges = {e["judge"] for e in normalized["evaluations"]}
     assert eval_judges == {"judge-x"}
+
+
+def _make_minimal_legacy_config_with_judge_retries(num_retries: int) -> dict:
+    """Minimal legacy-schema config carrying an explicit judge.num_retries."""
+    return {
+        "generators": [
+            {"name": "gen-a", "model": "provider/gen-a", "api_key": "k"},
+        ],
+        "judge": {
+            "name": "judge-x",
+            "model": "provider/judge-x",
+            "api_key": "k",
+            "num_retries": num_retries,
+        },
+        "retrieval": {"type": "file", "file_path": "dummy.json"},
+        "dataset": {"source": "dummy.csv"},
+        "execution": {"top_k": 5, "max_workers": 2},
+    }
+
+
+def test_build_eval_chain_forwards_judge_num_retries() -> None:
+    """``judge.num_retries`` from YAML must reach ``JudgingOperator``.
+
+    Before this fix the ``JudgingOperator`` constructor did not accept
+    ``num_retries`` at all, so any value a user put in the judge block was
+    silently dropped and the operator always ran with the default ``3``.
+    """
+    config = _make_minimal_legacy_config_with_judge_retries(num_retries=9)
+
+    with (
+        patch("nemo_retriever.evaluation.retrieval_loader.RetrievalLoaderOperator"),
+        patch("nemo_retriever.evaluation.generation.QAGenerationOperator"),
+        patch("nemo_retriever.evaluation.scoring_operator.ScoringOperator"),
+        patch("nemo_retriever.evaluation.judging.JudgingOperator") as mock_judge_op,
+    ):
+        mock_judge_op.return_value = MagicMock()
+
+        build_eval_chain(config)
+
+        mock_judge_op.assert_called_once()
+        assert mock_judge_op.call_args.kwargs["num_retries"] == 9
+
+
+def test_build_eval_chain_defaults_judge_num_retries_when_absent() -> None:
+    """When ``judge.num_retries`` is omitted, the default ``3`` must be passed."""
+    config = _make_minimal_legacy_config_with_judge_retries(num_retries=3)
+    config["judge"].pop("num_retries")
+
+    with (
+        patch("nemo_retriever.evaluation.retrieval_loader.RetrievalLoaderOperator"),
+        patch("nemo_retriever.evaluation.generation.QAGenerationOperator"),
+        patch("nemo_retriever.evaluation.scoring_operator.ScoringOperator"),
+        patch("nemo_retriever.evaluation.judging.JudgingOperator") as mock_judge_op,
+    ):
+        mock_judge_op.return_value = MagicMock()
+
+        build_eval_chain(config)
+
+        assert mock_judge_op.call_args.kwargs["num_retries"] == 3
+
+
+def test_build_eval_pipeline_forwards_judge_num_retries() -> None:
+    """``judge.num_retries`` from YAML must reach ``LLMJudge.from_kwargs``.
+
+    This is the sibling path to :func:`build_eval_chain` -- same bug
+    shape, different construction surface.
+    """
+    config = _make_minimal_legacy_config_with_judge_retries(num_retries=11)
+
+    with (
+        patch("nemo_retriever.evaluation.retrievers.FileRetriever"),
+        patch("nemo_retriever.llm.clients.LiteLLMClient"),
+        patch("nemo_retriever.evaluation.orchestrator.QAEvalPipeline"),
+        patch("nemo_retriever.llm.clients.LLMJudge.from_kwargs") as mock_from_kwargs,
+    ):
+        mock_from_kwargs.return_value = MagicMock()
+
+        build_eval_pipeline(config)
+
+        mock_from_kwargs.assert_called_once()
+        assert mock_from_kwargs.call_args.kwargs["num_retries"] == 11

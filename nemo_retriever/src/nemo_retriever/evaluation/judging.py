@@ -34,6 +34,7 @@ class JudgingOperator(EvalOperator):
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         extra_params: Optional[dict[str, Any]] = None,
+        num_retries: int = 3,
         timeout: float = 120.0,
         max_workers: int = 8,
     ) -> None:
@@ -42,6 +43,7 @@ class JudgingOperator(EvalOperator):
             api_base=api_base,
             api_key=api_key,
             extra_params=extra_params,
+            num_retries=num_retries,
             timeout=timeout,
             max_workers=max_workers,
         )
@@ -50,6 +52,7 @@ class JudgingOperator(EvalOperator):
             api_base=api_base,
             api_key=api_key,
             extra_params=extra_params,
+            num_retries=num_retries,
             timeout=timeout,
         )
         self._max_workers = max_workers
