@@ -82,7 +82,7 @@ For more information, refer to [Extract Specific Elements from PDFs](nv-ingest-p
 ```python
 Ingestor(client=client)
     .files("data/multimodal_test.pdf")
-    .extract(              
+    .extract(
         extract_text=True,
         extract_tables=True,
         extract_charts=True,

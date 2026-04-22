@@ -35,7 +35,7 @@ Before you use this documentation, you need the following:
 ### Run Your First Test
 
 ```bash
-# 1. Navigate to the nv-ingest-harness directory
+# 1. Navigate to the harness directory
 cd tools/harness
 
 # 2. Install dependencies
@@ -181,8 +181,8 @@ Example:
 # YAML active section has api_version: v2
 # Dataset bo767 has extract_images: false
 # Override via environment variable (highest priority)
-EXTRACT_IMAGES=true API_VERSION=v1 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
-# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v1 (env override)
+EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+# Result: Uses bo767 path, but extract_images=true (env override) and api_version=v2 (env override)
 ```
 
 **Precedence Details:**
@@ -636,7 +636,7 @@ tools/harness/artifacts/<test_name>_<timestamp>_UTC/
 Enable per-document element breakdown:
 
 ```bash
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --doc-analysis
+uv run nv-ingest-harness-run --case=e2e --doc-analysis
 ```
 
 **Sample Output:**

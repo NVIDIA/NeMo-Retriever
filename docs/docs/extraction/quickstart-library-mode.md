@@ -13,10 +13,11 @@ The primary Python entry point for launching the Ray-based ingestion pipeline in
 ```python
 import time
 
-from nemo_retriever.framework.orchestration.ray.util.pipeline.pipeline_runners import run_pipeline
-from nemo_retriever.client import Ingestor, NemoRetrieverClient
-from nemo_retriever.util.message_brokers.simple_message_broker import SimpleClient
-from nemo_retriever.util.process_json_files import ingest_json_results_to_blob
+from nv_ingest.framework.orchestration.ray.util.pipeline.pipeline_runners import run_pipeline
+from nv_ingest_client.client.interface import Ingestor
+from nv_ingest_client.client import NvIngestClient
+from nv_ingest_api.util.message_brokers.simple_message_broker import SimpleClient
+from nv_ingest_client.util.process_json_files import ingest_json_results_to_blob
 
 def main():
     # Start the pipeline subprocess for library mode
@@ -122,7 +123,7 @@ To query for relevant snippets of the ingested content, and use them with an LLM
 ```python
 import os
 from openai import OpenAI
-from nemo_retriever.util.milvus import query
+from nv_ingest_client.util.vdb.milvus import nvingest_retrieval
 
 milvus_uri = "milvus.db"
 collection_name = "test"
@@ -130,16 +131,16 @@ sparse=False
 
 queries = ["Which animal is responsible for the typos?"]
 
-retrieved_docs = query(
+retrieved_docs = nvingest_retrieval(
     queries,
-    collection_name,
+    collection_name=collection_name,
     milvus_uri=milvus_uri,
     hybrid=sparse,
     top_k=1,
 )
 
 # simple generation example
-extract = retrieved_docs[0][0]["entity"]["text"]
+extract = retrieved_docs[0][0].get("entity", retrieved_docs[0][0]).get("text", "")
 client = OpenAI(
   base_url = "https://integrate.api.nvidia.com/v1",
   api_key = os.environ["NVIDIA_API_KEY"]
@@ -239,8 +240,8 @@ It listens for ingestion requests on port `7671` from an external client.
 import logging
 import os
 
-from nemo_retriever.framework.orchestration.ray.util.pipeline.pipeline_runners import run_pipeline
-from nemo_retriever.util.logging.configuration import configure_logging as configure_local_logging
+from nv_ingest.framework.orchestration.ray.util.pipeline.pipeline_runners import run_pipeline
+from nv_ingest_api.util.logging.configuration import configure_logging as configure_local_logging
 
 # Configure the logger
 logger = logging.getLogger(__name__)
@@ -285,11 +286,11 @@ import logging
 import os
 import time
 
-from nemo_retriever.framework.orchestration.ray.util.pipeline.pipeline_runners import run_pipeline
-from nemo_retriever.util.logging.configuration import configure_logging as configure_local_logging
-from nemo_retriever.util.message_brokers.simple_message_broker import SimpleClient
-from nemo_retriever.client import Ingestor
-from nemo_retriever.client import NemoRetrieverClient
+from nv_ingest.framework.orchestration.ray.util.pipeline.pipeline_runners import run_pipeline
+from nv_ingest_api.util.logging.configuration import configure_logging as configure_local_logging
+from nv_ingest_api.util.message_brokers.simple_message_broker import SimpleClient
+from nv_ingest_client.client.interface import Ingestor
+from nv_ingest_client.client import NvIngestClient
 
 # Configure the logger
 logger = logging.getLogger(__name__)

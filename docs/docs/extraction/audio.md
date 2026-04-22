@@ -27,7 +27,7 @@ to transcribe speech to text, which is then embedded by using the NeMo Retriever
 
 !!! important
 
-    Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). For the full list of requirements, refer to [Support Matrix](support-matrix.md).
+    Due to limitations in available VRAM controls in the current release, the RIVA ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). For the full list of requirements, refer to [Support Matrix](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/support-matrix/support-matrix.html).
 
 This pipeline enables users to retrieve speech files at the segment level.
 

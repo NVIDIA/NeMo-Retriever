@@ -7,6 +7,11 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
     NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
 
 
+## Software Requirements
+
+- **Python**: 3.12 or later. The NeMo Retriever Library core and harness require Python 3.12+; the client supports Python 3.11+. Using Python 3.10 or earlier will cause dependency resolution failures. For details, see [Prerequisites](prerequisites.md).
+
+
 ## Core and Advanced Pipeline Features
 
 The Nemo Retriever Library extraction core pipeline features run on a single A10G or better GPU. 
@@ -39,6 +44,7 @@ This includes the following:
 NeMo Retriever Library supports the following GPU hardware.
 
 - [RTX Pro 6000 Blackwell Server Edition](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/)
+- [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/)
 - [DGX B200](https://www.nvidia.com/en-us/data-center/dgx-b200/)
 - [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/)
 - [H100 Tensor Core GPU](https://www.nvidia.com/en-us/data-center/h100/)

@@ -60,7 +60,7 @@ For more information about the `Ingestor` class, see [Use the Python API](nv-ing
 For more information about the `vdb_upload` method, see [Upload Data](data-store.md).
 
 ```python
-from nv_ingest_client.client import Ingestor
+from nv_ingest_client.client.interface import Ingestor
 
 hostname="localhost"
 collection_name = "nv_ingest_collection"
@@ -142,7 +142,7 @@ you can use the `content_metadata` field to filter search results.
 The following example uses a filter expression to narrow results by department.
 
 ```python
-from nv_ingest_client.util.milvus import nvingest_retrieval
+from nv_ingest_client.util.vdb.milvus import nvingest_retrieval
 
 hostname="localhost"
 collection_name = "nv_ingest_collection"
@@ -157,14 +157,14 @@ q_results = []
 for que in queries:
     q_results.append(
         nvingest_retrieval(
-            [que], 
-            collection_name, 
-            milvus_uri=f"http://{hostname}:19530", 
-            embedding_endpoint=f"http://{hostname}:8012/v1",  
-            hybrid=sparse, 
-            top_k=top_k, 
-            model_name=model_name, 
-            gpu_search=False, 
+            [que],
+            collection_name=collection_name,
+            milvus_uri=f"http://{hostname}:19530",
+            embedding_endpoint=f"http://{hostname}:8012/v1",
+            hybrid=sparse,
+            top_k=top_k,
+            model_name=model_name,
+            gpu_search=False,
             _filter=filter_expr
         )
     )

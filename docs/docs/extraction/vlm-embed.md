@@ -1,7 +1,6 @@
 # Use Multimodal Embedding with NeMo Retriever Library
 
-This documentation describes how to use [NeMo Retriever Library](overview.md) 
-with the multimodal embedding model [Llama 3.2 NeMo Retriever Multimodal Embedding 1B](https://build.nvidia.com/nvidia/llama-3_2-nemoretriever-1b-vlm-embed-v1).
+This guide explains how to use the [NeMo Retriever Library](overview.md) with the multimodal embedding model [Llama Nemotron Embed VL 1B v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2).
 
 The `Llama 3.2 NeMo Retriever Multimodal Embedding 1B` model is optimized for multimodal question-answering retrieval. 
 The model can embed documents in the form of an image, text, or a combination of image and text. 
