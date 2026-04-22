@@ -125,9 +125,7 @@ plugins:
   - redirects:
       redirect_maps:
         'extraction/index.md': 'extraction/overview.md'
-        'extraction/nv-ingest_cli.md': 'extraction/cli-reference.md'
         'extraction/nv-ingest-python-api.md': 'extraction/python-api-reference.md'
-        'extraction/helm.md': 'extraction/quickstart-guide.md'
   - site-urls
 
 markdown_extensions:
