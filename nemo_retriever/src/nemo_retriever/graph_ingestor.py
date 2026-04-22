@@ -45,6 +45,7 @@ from nemo_retriever.params import (
     HtmlChunkParams,
     StoreParams,
     TextChunkParams,
+    WebhookParams,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
@@ -148,6 +149,7 @@ class GraphIngestor(ingestor):
         self._caption_params: Any = None
         self._dedup_params: Any = None
         self._store_params: Any = None
+        self._webhook_params: Any = None
         # Ordered list of stage names; "extract" is tracked but excluded from
         # the post-extraction stage_order passed to graph builders.
         self._stage_order: List[str] = []
@@ -241,6 +243,16 @@ class GraphIngestor(ingestor):
         self._record_stage("embed")
         return self
 
+    def webhook(self, params: Optional[WebhookParams] = None, **kwargs: Any) -> "GraphIngestor":
+        """Record a webhook notification stage (always runs last).
+
+        When ``endpoint_url`` is set, processed results are HTTP-POSTed to
+        that URL.  If ``endpoint_url`` is ``None`` the stage is a no-op.
+        """
+        self._webhook_params = _coerce(params, kwargs, default_factory=WebhookParams)
+        self._record_stage("webhook")
+        return self
+
     # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
@@ -305,6 +317,7 @@ class GraphIngestor(ingestor):
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
             # Derive per-node Ray scheduling config from BatchTuningParams plus
@@ -348,6 +361,7 @@ class GraphIngestor(ingestor):
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)

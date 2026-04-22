@@ -30,6 +30,7 @@ from .models import TabularExtractParams
 from .models import TableParams
 from .models import TextChunkParams
 from .models import VdbUploadParams
+from .models import WebhookParams
 
 __all__ = [
     "ASRParams",
@@ -60,4 +61,5 @@ __all__ = [
     "TableParams",
     "TextChunkParams",
     "VdbUploadParams",
+    "WebhookParams",
 ]
