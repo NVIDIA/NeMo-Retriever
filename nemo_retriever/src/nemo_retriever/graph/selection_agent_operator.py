@@ -11,13 +11,13 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
-
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.nim.chat_completions import invoke_chat_completion_step
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Prompt rendering  (verbatim content of 01_v0.j2, rendered via Python)
