@@ -85,6 +85,22 @@ g. When core services have fully started, `nvidia-smi` should show processes lik
 h. Run the command `docker ps`. You should see output similar to the following. Confirm that the status of the containers is `Up`.
 
     ```
+    CONTAINER ID  IMAGE                                            COMMAND                 CREATED         STATUS                  PORTS                    NAMES
+    a1b2c3d4e5f6  nvcr.io/.../page-elements:latest                  "..."                   10 minutes ago  Up 10 minutes            0.0.0.0:8002->8002/tcp   nemo-retriever-page-elements-1
+    b2c3d4e5f6a1  nvcr.io/.../ocr:latest                            "..."                   10 minutes ago  Up 10 minutes            0.0.0.0:8001->8001/tcp   nemo-retriever-ocr-1
+    c3d4e5f6a1b2  nvcr.io/.../nv-ingest-ms-runtime:latest           "..."                   10 minutes ago  Up 10 minutes            0.0.0.0:5000->5000/tcp   nemo-retriever-ms-runtime-1
+    d4e5f6a1b2c3  nvcr.io/.../milvus:latest                         "..."                   12 minutes ago  Up 12 minutes            0.0.0.0:19530->19530/tcp nemo-retriever-milvus-1
+    ```
+
+## Step 2: Install the Client
+
+Install the NeMo Retriever Library client on your host so you can send requests to the services you started in Step 1. Using a virtual environment is recommended:
+
+```bash
+uv venv --python 3.12 nv-ingest-dev
+source nv-ingest-dev/bin/activate
+uv pip install nv-ingest==26.3.0-RC4 nv-ingest-api==26.3.0-RC4 nv-ingest-client==26.3.0-RC4
+```
     CONTAINER ID  IMAGE                                            COMMAND                 CREATED         STATUS                  PORTS            NAMES
     1b885f37c991  nvcr.io/nvidia/nemo-microservices/nv-ingest:...  "/usr/bin/tini -- /w…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:7670...  nv-ingest-nv-ingest-ms-runtime-1
     14ef31ed7f49  milvusdb/milvus:v2.5.3-gpu                       "/tini -- bash -c 's…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9091...  milvus-standalone
@@ -103,6 +119,7 @@ h. Run the command `docker ps`. You should see output similar to the following. 
 
 i. To run the NeMo Retriever Library Python client from your host machine, Python 3.12 or later is required. Create a virtual environment and install the client packages:
 
+    To confirm that you have activated your virtual environment, run `which pip` and `which python`, and confirm that you see `nv-ingest-dev` in the result. You can do this before any pip or python command that you run.
     ```shell
     uv venv --python 3.12 nv-ingest-dev
     source nv-ingest-dev/bin/activate
@@ -117,6 +134,15 @@ i. To run the NeMo Retriever Library Python client from your host machine, Pytho
 
         Interaction from the host requires the appropriate port to be exposed from the `nv-ingest` runtime container, as defined in the `docker-compose.yaml` file. If you prefer, you can disable this port and interact directly from within the container.
 
+```bash
+docker exec -it nemo-retriever-ms-runtime-1 bash
+```
+This command opens a shell in the `/workspace` directory, where the `DATASET_ROOT` from your `.env` file is mounted at `./data`. The pre-configured Python environment in the container includes all necessary Python client libraries. You should see a prompt similar to the following.
+
+```bash
+root@your-computer-name:/workspace#
+```
+From this prompt, you can run the `nemo-retriever` CLI and Python examples.
 j. To work inside the container, run the following code.
 
     ```bash
