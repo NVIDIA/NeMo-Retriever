@@ -307,6 +307,11 @@ def main(
     beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field"),
     beir_k: list[int] = typer.Option([], "--beir-k"),
     recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details"),
+    embed_local_ingest_backend: str = typer.Option(
+        "vllm",
+        "--embed-local-ingest-backend",
+        help="Local ingest-time text embedder when --embed-invoke-url is unset: vllm or hf.",
+    ),
     recall_local_query_embed_backend: str = typer.Option(
         "auto",
         "--recall-local-query-embed-backend",
@@ -329,6 +334,13 @@ def main(
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"recall", "beir"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+
+        _elib = (embed_local_ingest_backend or "vllm").strip().lower()
+        if _elib not in ("vllm", "hf"):
+            raise ValueError(
+                "--embed-local-ingest-backend must be one of vllm, hf; "
+                f"got {embed_local_ingest_backend!r}"
+            )
 
         _rqeb = (recall_local_query_embed_backend or "auto").strip().lower()
         if _rqeb not in ("auto", "hf", "vllm"):
@@ -472,6 +484,7 @@ def main(
                     "text_elements_modality": text_elements_modality,
                     "structured_elements_modality": structured_elements_modality,
                     "embed_granularity": embed_granularity,
+                    "local_ingest_backend": _elib,
                     "batch_tuning": embed_batch_tuning,
                     "inference_batch_size": embed_batch_size or None,
                 }.items()
