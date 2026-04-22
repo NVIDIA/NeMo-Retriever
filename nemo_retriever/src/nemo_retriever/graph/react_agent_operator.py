@@ -446,8 +446,19 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 for future in as_completed(futures):
                     try:
                         rows.extend(future.result())
-                    except Exception as exc:  # re-raises any worker exception;
-                        # no single type to narrow to at this thread boundary.
+                    except TimeoutError as exc:
+                        qid, qtxt = futures[future]
+                        logger.warning("ReActAgentOperator: query %r timed out: %s", qid, exc, exc_info=True)
+                    except RuntimeError as exc:
+                        qid, qtxt = futures[future]
+                        logger.warning("ReActAgentOperator: query %r retries exhausted: %s", qid, exc, exc_info=True)
+                    except requests.RequestException as exc:
+                        qid, qtxt = futures[future]
+                        logger.warning("ReActAgentOperator: query %r HTTP error: %s", qid, exc, exc_info=True)
+                    except (json.JSONDecodeError, ValueError) as exc:
+                        qid, qtxt = futures[future]
+                        logger.warning("ReActAgentOperator: query %r data error: %s", qid, exc, exc_info=True)
+                    except Exception as exc:  # catches unexpected worker errors not covered above
                         qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r failed: %s", qid, exc, exc_info=True)
 
@@ -653,7 +664,17 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         fetch_k = self._retriever_top_k + len(seen_doc_ids)
         try:
             raw = self._retriever_fn(query_text, fetch_k)
-        except Exception as exc:  # retriever_fn is user-supplied with no exception contract.
+        except TimeoutError as exc:
+            logger.warning(
+                "ReActAgentOperator: retriever_fn timed out for query %r: %s", query_text, exc, exc_info=True
+            )
+            return []
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "ReActAgentOperator: retriever_fn bad call/return for query %r: %s", query_text, exc, exc_info=True
+            )
+            return []
+        except Exception as exc:  # retriever_fn is user-supplied; catches remaining unexpected errors.
             logger.warning("ReActAgentOperator: retriever_fn failed for query %r: %s", query_text, exc, exc_info=True)
             return []
 
