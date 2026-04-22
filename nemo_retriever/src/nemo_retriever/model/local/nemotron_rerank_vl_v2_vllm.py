@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, List, Optional, Sequence
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
@@ -76,7 +75,7 @@ class NemotronRerankVLV2VLLM(BaseModel):
         super().__init__()
 
         try:
-            from vllm import LLM  # noqa: F401
+            from vllm import LLM
         except ImportError as e:
             raise ImportError("vLLM reranker backend requires vllm. " 'Install with: pip install "vllm>=0.17"') from e
 
@@ -85,8 +84,11 @@ class NemotronRerankVLV2VLLM(BaseModel):
         configure_global_hf_cache_base(hf_cache_dir)
 
         if device is not None:
-            dev_id = device.split(":")[-1] if ":" in device else device
-            os.environ["CUDA_VISIBLE_DEVICES"] = dev_id
+            logger.warning(
+                "vLLM reranker ignores device=%r; set CUDA_VISIBLE_DEVICES "
+                "before the process starts, or let Ray scope it per actor.",
+                device,
+            )
 
         revision = get_hf_revision(model_name, strict=False)
 
@@ -110,8 +112,16 @@ class NemotronRerankVLV2VLLM(BaseModel):
         import torch
 
         del self._llm
+        self._llm = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    def _require_loaded(self) -> None:
+        if self._llm is None:
+            raise RuntimeError(
+                "NemotronRerankVLV2VLLM has been unloaded; construct a new "
+                "instance before calling score()/score_pairs()."
+            )
 
     # ------------------------------------------------------------------
     # BaseModel abstract properties
@@ -233,6 +243,7 @@ class NemotronRerankVLV2VLLM(BaseModel):
         List[float]
             Raw logit scores aligned with *documents* (higher = more relevant).
         """
+        self._require_loaded()
         if not documents:
             return []
 
@@ -279,6 +290,7 @@ class NemotronRerankVLV2VLLM(BaseModel):
         List[float]
             Raw logit scores (higher = more relevant).
         """
+        self._require_loaded()
         if not pairs:
             return []
 
