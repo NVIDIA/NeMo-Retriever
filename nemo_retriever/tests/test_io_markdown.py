@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.io import to_markdown, to_markdown_by_page
+from nemo_retriever.io import build_page_index, to_markdown, to_markdown_by_page
 
 
 class _LazyRows:
@@ -130,3 +130,103 @@ def test_to_markdown_rejects_multi_document_results() -> None:
 
     with pytest.raises(ValueError, match="single document result"):
         to_markdown([doc_a, doc_b])
+
+
+def test_build_page_index_prunes_irrelevant_columns_on_dataframe_path() -> None:
+    """Regression test: ``build_page_index(dataframe=)`` must not materialise
+    huge columns that the markdown renderer never reads.
+
+    Before the fix, the ``dataframe=`` branch passed the user's DataFrame
+    straight through to ``df.iterrows()`` + ``row.to_dict()``, which
+    materialised every column -- including ``page_image`` base64 blobs and
+    embedding vectors -- for every record.  That produced the same multi-GB
+    memory spikes ``_read_parquet_for_markdown`` was explicitly built to
+    avoid on the Parquet path.  The fix mirrors the Parquet-path column
+    pruning via ``_MARKDOWN_PARQUET_COLUMNS``.
+
+    This test verifies three guarantees:
+        1. Rendering still produces the same markdown output.
+        2. A huge extraneous column does not propagate into the rendered
+           records (catches the bug by construction).
+        3. The caller's DataFrame is not mutated in place.
+    """
+    large_blob = "x" * 100_000
+    df = pd.DataFrame(
+        [
+            {
+                "path": "/tmp/doc.pdf",
+                "page_number": 1,
+                "text": "First page text",
+                "page_image": large_blob,
+                "embedding": [0.0] * 1024,
+            },
+            {
+                "path": "/tmp/doc.pdf",
+                "page_number": 2,
+                "text": "Second page text",
+                "page_image": large_blob,
+                "embedding": [0.0] * 1024,
+            },
+        ]
+    )
+    original_columns = set(df.columns)
+
+    index, failures = build_page_index(dataframe=df)
+
+    assert not failures
+    assert "/tmp/doc.pdf" in index
+    rendered = index["/tmp/doc.pdf"]
+    assert "1" in rendered and "2" in rendered
+    assert "First page text" in rendered["1"]
+    assert "Second page text" in rendered["2"]
+
+    for page_md in rendered.values():
+        assert large_blob not in page_md, "huge column leaked into rendered markdown"
+
+    assert set(df.columns) == original_columns, "caller's DataFrame must not be mutated"
+    assert "page_image" in df.columns
+    assert "embedding" in df.columns
+
+
+def test_build_page_index_no_op_when_all_columns_are_allow_listed() -> None:
+    """When the caller already supplies a pruned DataFrame, the filter is
+    a no-op: ``df`` is identical (same object, same columns)."""
+    df = pd.DataFrame(
+        [
+            {
+                "path": "/tmp/doc.pdf",
+                "page_number": 1,
+                "text": "Only essentials",
+            }
+        ]
+    )
+
+    index, failures = build_page_index(dataframe=df)
+
+    assert not failures
+    assert "/tmp/doc.pdf" in index
+    assert "Only essentials" in index["/tmp/doc.pdf"]["1"]
+
+
+def test_build_page_index_preserves_content_fallback_column() -> None:
+    """Guards against regressing the ``content`` fallback path.
+
+    ``_collect_page_record`` reads ``record.get("content")`` as a tertiary
+    fallback when ``record.get("text")`` is absent.  The allow-list must
+    include ``content`` so rows that carry only that column still render.
+    """
+    df = pd.DataFrame(
+        [
+            {
+                "path": "/tmp/content_only.pdf",
+                "page_number": 1,
+                "content": "Fallback body text",
+                "page_image": "x" * 100_000,
+            }
+        ]
+    )
+
+    index, failures = build_page_index(dataframe=df)
+
+    assert not failures
+    assert "Fallback body text" in index["/tmp/content_only.pdf"]["1"]

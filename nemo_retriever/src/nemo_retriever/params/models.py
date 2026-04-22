@@ -24,19 +24,54 @@ RunMode = Literal["inprocess", "batch", "fused", "online"]
 NO_API_KEY = ""
 
 
+_REDACTED = "***"
+
+
+def _is_api_key_field(field_name: str) -> bool:
+    """Return True when ``field_name`` should be masked in ``repr`` / logs."""
+    return field_name == "api_key" or field_name.endswith("_api_key")
+
+
 class _ParamsModel(BaseModel):
+    """Shared base for all remote-transport Pydantic params models.
+
+    Two cross-cutting behaviours live here:
+
+    * :meth:`_resolve_api_keys` auto-fills unset ``*api_key`` fields from
+      ``NVIDIA_API_KEY`` / ``NGC_API_KEY`` (see
+      :func:`nemo_retriever.utils.remote_auth.resolve_remote_api_key`).
+    * :meth:`__repr__` redacts every field whose name matches
+      :func:`_is_api_key_field` so that logging a transport object (or
+      letting Pydantic's default error formatter echo one back) never
+      prints a bearer token.  The underlying field still serialises as
+      a plain ``str`` via ``.model_dump()`` / ``getattr(self, field)``
+      so no downstream consumer needs changes.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def _resolve_api_keys(self) -> "_ParamsModel":
         for field_name in type(self).model_fields:
-            if field_name == "api_key" or field_name.endswith("_api_key"):
+            if _is_api_key_field(field_name):
                 value = getattr(self, field_name, None)
                 if value is None:
                     setattr(self, field_name, resolve_remote_api_key())
                 elif value == NO_API_KEY:
                     setattr(self, field_name, None)
         return self
+
+    def __repr__(self) -> str:
+        parts: list[str] = []
+        for field_name in type(self).model_fields:
+            value = getattr(self, field_name, None)
+            if _is_api_key_field(field_name) and value:
+                parts.append(f"{field_name}={_REDACTED}")
+            else:
+                parts.append(f"{field_name}={value!r}")
+        return f"{type(self).__name__}({', '.join(parts)})"
+
+    __str__ = __repr__
 
 
 class RemoteRetryParams(_ParamsModel):
@@ -392,6 +427,36 @@ class LLMInferenceParams(_ParamsModel):
         if self.top_p is not None:
             kw["top_p"] = self.top_p
         return kw
+
+
+class LLMRemoteClientParams(_ParamsModel):
+    """Transport / connection parameters for any remote LLM client.
+
+    Pairs with :class:`LLMInferenceParams` (sampling) to fully specify a
+    call.  ``api_key`` is auto-resolved from the environment by
+    :class:`_ParamsModel` when left as ``None``.
+    """
+
+    model: str
+    api_base: Optional[str] = None
+    api_key: Optional[str] = None
+    num_retries: int = 3
+    timeout: float = 120.0
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("num_retries")
+    @classmethod
+    def _check_retries(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("num_retries must be >= 0")
+        return v
+
+    @field_validator("timeout")
+    @classmethod
+    def _check_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("timeout must be > 0")
+        return v
 
 
 class CaptionParams(LLMInferenceParams):

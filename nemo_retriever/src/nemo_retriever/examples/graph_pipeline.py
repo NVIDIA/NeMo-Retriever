@@ -297,6 +297,27 @@ def main(
     audio_split_type: str = typer.Option("size", "--audio-split-type"),
     audio_split_interval: int = typer.Option(500000, "--audio-split-interval", min=1),
     evaluation_mode: str = typer.Option("recall", "--evaluation-mode"),
+    eval_config: Optional[Path] = typer.Option(
+        None,
+        "--eval-config",
+        help="Path to QA eval sweep YAML/JSON config (required for --evaluation-mode=qa).",
+        path_type=Path,
+        dir_okay=False,
+    ),
+    retrieval_save_path: Optional[Path] = typer.Option(
+        None,
+        "--retrieval-save-path",
+        help="Save the LanceDB retrieval JSON here for later re-runs (--evaluation-mode=qa).",
+        path_type=Path,
+        dir_okay=False,
+    ),
+    page_index: Optional[Path] = typer.Option(
+        None,
+        "--page-index",
+        help="Page markdown index JSON for full-page chunk expansion (--evaluation-mode=qa).",
+        path_type=Path,
+        dir_okay=False,
+    ),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker"),
     reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name"),
     reranker_invoke_url: Optional[str] = typer.Option(None, "--reranker-invoke-url"),
@@ -321,8 +342,15 @@ def main(
             raise ValueError(f"Unsupported --recall-match-mode: {recall_match_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode not in {"recall", "beir"}:
+        if evaluation_mode not in {"recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+        if evaluation_mode == "qa" and not eval_config:
+            raise ValueError("--eval-config is required when --evaluation-mode=qa")
+        if evaluation_mode == "qa":
+            if not Path(str(eval_config)).exists():
+                raise FileNotFoundError(f"--eval-config file not found: {eval_config}")
+            if not Path(str(query_csv)).exists():
+                raise FileNotFoundError(f"--query-csv file not found: {query_csv}")
 
         if run_mode == "batch":
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
@@ -639,6 +667,8 @@ def main(
         evaluation_total_time = 0.0
         evaluation_metrics: dict[str, float] = {}
         evaluation_query_count: Optional[int] = None
+        # Tracks whether the QA sweep had any non-PASS results so CI gets a non-zero exit after cleanup.
+        qa_failed = False
 
         if evaluation_mode == "beir":
             if not beir_loader:
@@ -671,6 +701,90 @@ def main(
             evaluation_total_time = time.perf_counter() - evaluation_start
             evaluation_label = "BEIR"
             evaluation_query_count = len(beir_dataset.query_ids)
+        elif evaluation_mode == "qa":
+            import csv as csv_mod
+
+            from nemo_retriever.evaluation.config import load_eval_config
+            from nemo_retriever.evaluation.retrievers import FileRetriever
+            from nemo_retriever.evaluation.runner import run_eval_sweep
+
+            qa_csv_path = Path(query_csv)
+            if not qa_csv_path.exists():
+                raise FileNotFoundError(f"Query CSV not found: {qa_csv_path}")
+
+            qa_pairs: list[dict] = []
+            with open(qa_csv_path, newline="", encoding="utf-8") as f:
+                for row in csv_mod.DictReader(f):
+                    q = row.get("query", "").strip()
+                    if q:
+                        qa_pairs.append(row)
+            logger.info("Loaded %d Q&A pairs from %s", len(qa_pairs), qa_csv_path)
+
+            page_idx = None
+            if page_index is not None:
+                with open(page_index, encoding="utf-8") as f:
+                    page_idx = json.load(f)
+                logger.info("Loaded page index from file: %d documents", len(page_idx))
+            else:
+                from nemo_retriever.io.markdown import build_page_index
+
+                logger.info("Building page index from ingestion results (%d rows)...", len(result_df))
+                page_idx, page_failures = build_page_index(dataframe=result_df)
+                if page_failures:
+                    logger.warning("Page index: %d documents failed rendering", len(page_failures))
+                if not page_idx:
+                    logger.warning(
+                        "Page index is empty -- all documents failed rendering. "
+                        "Retrieval will fall back to sub-page chunks."
+                    )
+                else:
+                    logger.info("Built page index: %d documents", len(page_idx))
+
+            qa_cfg = load_eval_config(str(eval_config))
+            execution_cfg = qa_cfg.get("execution", {})
+            qa_top_k = execution_cfg.get("top_k", 5)
+            min_coverage = float(execution_cfg.get("min_coverage", 0.0))
+            results_dir = qa_cfg.get("output", {}).get("results_dir", "data/qa_results")
+
+            evaluation_start = time.perf_counter()
+            retriever = FileRetriever.from_lancedb(
+                qa_pairs=qa_pairs,
+                lancedb_uri=str(lancedb_uri),
+                lancedb_table=str(LANCEDB_TABLE),
+                embedder=_recall_model,
+                top_k=qa_top_k,
+                page_index=page_idx,
+                save_path=str(retrieval_save_path) if retrieval_save_path else None,
+            )
+            coverage = retriever.check_coverage(qa_pairs)
+            logger.info("Retrieval coverage: %.1f%%", coverage * 100)
+            if coverage < min_coverage:
+                raise ValueError(
+                    f"Retrieval covers only {coverage:.1%} of queries " f"(min_coverage={min_coverage:.0%}). Aborting."
+                )
+            sweep_results = run_eval_sweep(qa_cfg, qa_pairs, results_dir, retriever=retriever)
+
+            evaluation_total_time = time.perf_counter() - evaluation_start
+            evaluation_label = "QA"
+            evaluation_query_count = len(qa_pairs)
+
+            passed = sum(1 for r in sweep_results if r["status"] == "PASS")
+            logger.info("QA sweep complete: %d/%d passed", passed, len(sweep_results))
+            qa_failed = passed < len(sweep_results)
+            for r in sweep_results:
+                if r["status"] == "PASS":
+                    out = Path(r["output_path"]).resolve()
+                    logger.info("Results: %s", out)
+                else:
+                    logger.error(
+                        "QA run FAILED: %s: %s",
+                        r.get("label", "<unlabeled>"),
+                        r.get("error", ""),
+                    )
+                er = r.get("eval_results", {})
+                judge_scores = er.get("tier3_llm_judge", {})
+                for gen_name, stats in judge_scores.items():
+                    evaluation_metrics[f"{gen_name} ({r['label']})"] = float(stats.get("mean_score", 0.0))
         else:
             query_csv_path = Path(query_csv)
             if not query_csv_path.exists():
@@ -768,6 +882,11 @@ def main(
             evaluation_label=evaluation_label,
             evaluation_count=evaluation_query_count,
         )
+
+        # Raise the non-zero exit after summary + Ray shutdown so CI still collects
+        # diagnostic artifacts, and the outer ``finally`` still restores stdout/stderr.
+        if qa_failed:
+            raise typer.Exit(code=1)
     finally:
         os.sys.stdout = original_stdout
         os.sys.stderr = original_stderr
