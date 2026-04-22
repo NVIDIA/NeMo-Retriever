@@ -4,7 +4,7 @@ Use this documentation to troubleshoot issues that arise when you use [NeMo Retr
 
 !!! note
 
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
+    This documentation describes NeMo Retriever Library.
 
 
 ## Can't process long, non-language text strings
@@ -52,7 +52,7 @@ This happens because, by default, NeMo Retriever Library stores the results from
 If the total size of the results exceeds the available memory, the process fails.
 
 To resolve this issue, use the `save_to_disk` method. 
-For details, refer to [Working with Large Datasets: Saving to Disk](nv-ingest-python-api.md#work-with-large-datasets-save-to-disk).
+For details, refer to [Working with Large Datasets: Saving to Disk](python-api-reference.md#work-with-large-datasets-save-to-disk).
 
 
 
@@ -133,4 +133,4 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Prerequisites](prerequisites.md)
 - [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
 - [Deploy With Docker Compose (Self-Hosted)](quickstart-guide.md)
-- [Deploy With Helm](helm.md)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)

@@ -2,55 +2,50 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), ensure that you have the hardware for your use case.
 
-!!! note
-
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
-
 
 ## Core and Advanced Pipeline Features
 
-The Nemo Retriever Library extraction core pipeline features run on a single A10G or better GPU. 
-The core pipeline features include the following:
+The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU. 
+The core pipeline models (for document type inputs) include the following:
 
-- llama-nemotron-embed-1b-v2 — Embedding model for converting text chunks into vectors.
-- nemotron-page-elements-v3 — Detects and classifies images on a page as a table, chart or infographic.
-- nemotron-table-structure-v1 — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. 
-- nemotron-graphic-elements-v1 — Detects graphic elements within chart images such as titles, legends, axes, and numerical values. 
-- nemotron-ocr-v1 — Image OCR model to detect and extract text from images.
-- retrieval — Enables embedding and indexing into Milvus.
+- [llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) — Embedding model for converting text chunks into vectors. NVIDIA NIM: [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html).
+- [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) — Detects and classifies images on a page as a table, chart or infographic. NVIDIA NIM: [NVIDIA NIM for Object Detection — NeMo Retriever Page Elements v3](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#nemo-retriever-page-elements-v3).
+- [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. NVIDIA NIM: [NVIDIA NIM for Object Detection — NeMo Retriever Table Structure v1](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#nemo-retriever-table-structure-v1).
+- [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) — Image OCR model to detect and extract text from images. NVIDIA NIM: [NVIDIA NIM for Image OCR (NeMo Retriever OCR)](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/overview.html) (see the [Image OCR support matrix](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html) for the currently published NIM model IDs).
 
-Advanced features require additional GPU support and disk space. 
+Advanced features (for example, for audio/video) require additional GPU support and disk space. 
 This includes the following:
 
-- Audio extraction - parakeet-1-1b-ctc-en-us — Use the [Parakeet CTC English (en-US) ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) for processing audio files. For more information, refer to [Audio Processing](audio.md).
-- Advanced visual parsing — Use [nemotron-parse](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/overview.html), which adds state-of-the-art text and table extraction. For more information, refer to [Advanced Visual Parsing ](nemoretriever-parse.md).
-- VLM — Use [nemotron-nano-12b-v2-vl](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for experimental image captioning of unstructured images. 
+- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) for transcript extraction from [audio and video](audio.md). NVIDIA NIM: [Parakeet CTC (en-US) ASR](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html).
+- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) - for [maximally accurate table extraction](nemoretriever-parse.md). NVIDIA NIM: [Query the Nemotron-Parse-v1.2 API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/api.html).
+- [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) for image captioning of unstructured (not charts, tables, infographics) images. NVIDIA NIM: [Query the Nemotron Nano 12B v2 VL API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-nano-12b-v2-vl/api.html).
     
     !!! note
     
-        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images).
+        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
 
-- Reranker — Use [llama-3.2-nv-rerankqa-1b-v2](https://build.nvidia.com/nvidia/llama-3.2-nv-rerankqa-1b-v2) for improved retrieval accuracy.
+- [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) for improved retrieval accuracy. NVIDIA NIM: [NeMo Retriever Text Reranking NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html).
 
+## HuggingFace Model Storage Requirements:
 
+Approximate **Hugging Face checkpoint / weight footprint** (files such as `model*.safetensors`, `weights.pth`, or other published weight bundles in the model repository). Values are rounded from the current public file listing and can change when the repository is updated.
 
-## Hardware Requirements
+| Model (as linked above) | Hugging Face repo | Approximate weights on disk |
+|-------------------------|-------------------|----------------------------|
+| llama-nemotron-embed-1b-v2 (VL) | [`nvidia/llama-nemotron-embed-vl-1b-v2`](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) | ~3.1 GiB |
+| nemotron-page-elements-v3 | [`nvidia/nemotron-page-elements-v3`](https://huggingface.co/nvidia/nemotron-page-elements-v3) | ~0.41 GiB |
+| nemotron-table-structure-v1 | [`nvidia/nemotron-table-structure-v1`](https://huggingface.co/nvidia/nemotron-table-structure-v1) | ~0.81 GiB |
+| nemotron-ocr-v2 | [`nvidia/nemotron-ocr-v2`](https://huggingface.co/nvidia/nemotron-ocr-v2) | ~0.51 GiB |
+| parakeet-1-1b-ctc-en-us | [`nvidia/parakeet-ctc-1.1b`](https://huggingface.co/nvidia/parakeet-ctc-1.1b) | ~4.0 GiB (`model.safetensors`; the repo also ships a separate `parakeet-ctc-1.1b.nemo` export of similar size—use one format if you want to avoid roughly doubling disk use) |
+| nemotron-parse | [`nvidia/NVIDIA-Nemotron-Parse-v1.2`](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) | ~3.5 GiB |
+| nemotron-nano-12b-v2-vl | [`nvidia/NVIDIA-Nemotron-Nano-12B-v2`](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) | ~22.9 GiB |
+| llama-nemotron-rerank-vl-1b-v2 | [`nvidia/llama-nemotron-rerank-vl-1b-v2`](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) | ~3.1 GiB |
 
-NeMo Retriever Library supports the following GPU hardware.
+## NIM Hardware Requirements:
 
-- [RTX Pro 6000 Blackwell Server Edition](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/)
-- [DGX B200](https://www.nvidia.com/en-us/data-center/dgx-b200/)
-- [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/)
-- [H100 Tensor Core GPU](https://www.nvidia.com/en-us/data-center/h100/)
-- [A100 Tensor Core GPU](https://www.nvidia.com/en-us/data-center/a100/)
-- [A10G Tensor Core GPU](https://aws.amazon.com/ec2/instance-types/g5/)
-- [L40S](https://www.nvidia.com/en-us/data-center/l40s/)
-- [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/)
+NeMo Retriever Library supports the following GPU hardware given system constraints in the table:
 
-
-The following are the hardware requirements to run NeMo Retriever Library.
-
-|Feature         | GPU Option                | RTX Pro 6000  | B200          | H200 NVL      | H100        | A100 80GB   | A100 40GB     | A10G          | L40S   | RTX PRO 4500 Blackwell |
+|Feature         | GPU Option                | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/)  | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/)          | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/)      | [H100](https://www.nvidia.com/en-us/data-center/h100/)        | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/)   | A100 40GB     | [A10G](https://aws.amazon.com/ec2/instance-types/g5/)          | L40S   | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |----------------|---------------------------|---------------|---------------|---------------|-------------|-------------|---------------|---------------|--------|------------------------|
 | GPU            | Memory                    | 96GB          | 180GB         | 141GB         | 80GB        | 80GB        | 40GB          | 24GB          | 48GB   | 32GB GDDR7 (GB203)     |
 | Core Features  | Total GPUs                | 1             | 1             | 1             | 1           | 1           | 1             | 1             | 1      | 1                      |
@@ -66,7 +61,7 @@ The following are the hardware requirements to run NeMo Retriever Library.
 
 ¹ Audio runs but requires runtime engine build — no pre-defined model profile.
 
-² Nemotron Parse fails to start on 32GB, pending engineering investigation.
+² Nemotron Parse fails to start on 32GB.
 
 ³ VLM fails to load on 32GB, 32GB is below the minimum threshold.
 
@@ -77,6 +72,6 @@ and run only the embedder, reranker, and your vector database.
 ## Related Topics
 
 - [Prerequisites](prerequisites.md)
-- [Release Notes](releasenotes-nv-ingest.md)
+- [Release Notes](releasenotes.md)
 - [NVIDIA NIM for Vision Language Models Support Matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html)
 - [NVIDIA Speech NIM Microservices](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html)

@@ -375,14 +375,13 @@ def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
 
 def _build_command(
     cfg: HarnessConfig, artifact_dir: Path, run_id: str
-) -> tuple[list[str], Path, Path, Path | None, Path, dict[str, str]]:
+) -> tuple[list[str], Path, Path, Path | None, dict[str, str]]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if cfg.write_detection_file:
         detection_summary_file = artifact_dir / "detection_summary.json"
     else:
         detection_summary_file = runtime_dir / ".detection_summary.json"
-    metrics_output_file = runtime_dir / f"{run_id}.metrics.json"
     effective_query_csv: Path | None = None
 
     cmd = [
@@ -447,8 +446,6 @@ def _build_command(
         run_id,
         "--detection-summary-file",
         str(detection_summary_file),
-        "--metrics-output-file",
-        str(metrics_output_file),
         "--lancedb-uri",
         _resolve_lancedb_uri(cfg, artifact_dir),
     ]
@@ -487,15 +484,8 @@ def _build_command(
             "--no-recall-details",
         ]
 
-    cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    if cfg.input_type == "audio":
-        cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
-        cmd += ["--audio-split-type", cfg.audio_split_type]
-        cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
-    if cfg.extract_infographics:
-        cmd += ["--extract-infographics"]
-    if cfg.embed_modality:
-        cmd += ["--structured-elements-modality", cfg.embed_modality]
+    if cfg.api_key:
+        cmd += ["--api-key", cfg.api_key]
     if cfg.page_elements_invoke_url:
         cmd += ["--page-elements-invoke-url", cfg.page_elements_invoke_url]
     if cfg.ocr_invoke_url:
@@ -506,6 +496,18 @@ def _build_command(
         cmd += ["--table-structure-invoke-url", cfg.table_structure_invoke_url]
     if cfg.embed_invoke_url:
         cmd += ["--embed-invoke-url", cfg.embed_invoke_url]
+    if cfg.caption_invoke_url:
+        cmd += ["--caption-invoke-url", cfg.caption_invoke_url]
+
+    cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
+    if cfg.input_type == "audio":
+        cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
+        cmd += ["--audio-split-type", cfg.audio_split_type]
+        cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
+    if cfg.extract_infographics:
+        cmd += ["--extract-infographics"]
+    if cfg.embed_modality:
+        cmd += ["--structured-elements-modality", cfg.embed_modality]
     env_extra: dict[str, str] = {}
     if cfg.api_key:
         env_extra["NVIDIA_API_KEY"] = cfg.api_key
@@ -521,7 +523,7 @@ def _build_command(
             cmd += ["--store-text"]
         cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
 
-    return cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra
+    return cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra
 
 
 def _evaluate_run_outcome(
@@ -698,9 +700,7 @@ def _run_single(
     tags: list[str] | None = None,
     skip_local_history: bool = False,
 ) -> dict[str, Any]:
-    cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra = _build_command(
-        cfg, artifact_dir, run_id
-    )
+    cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra = _build_command(cfg, artifact_dir, run_id)
 
     lancedb_path = Path(_resolve_lancedb_uri(cfg, artifact_dir))
     if lancedb_path.is_dir():
@@ -783,6 +783,13 @@ def _run_single(
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
             "use_heuristics": cfg.use_heuristics,
+            "api_key": "(set)" if cfg.api_key else None,
+            "page_elements_invoke_url": cfg.page_elements_invoke_url,
+            "ocr_invoke_url": cfg.ocr_invoke_url,
+            "graphic_elements_invoke_url": cfg.graphic_elements_invoke_url,
+            "table_structure_invoke_url": cfg.table_structure_invoke_url,
+            "embed_invoke_url": cfg.embed_invoke_url,
+            "caption_invoke_url": cfg.caption_invoke_url,
             "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
             "store_text": cfg.store_text,
             "strip_base64": cfg.strip_base64,
@@ -855,7 +862,19 @@ try:
 
     ray.shutdown()
 
-    runtime_env = {"env_vars": {"VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable))}}
+    venv = os.path.dirname(os.path.dirname(sys.executable))
+    venv_bin = os.path.join(venv, "bin")
+    pypath = os.pathsep.join(p for p in sys.path if p)
+    ray_env_vars: dict[str, str] = {
+        "VIRTUAL_ENV": venv,
+        "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+        "PYTHONPATH": pypath,
+    }
+    for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+        if os.environ.get(_fwd_key):
+            ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+    ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+    runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:
         os.environ.pop("RAY_ADDRESS", None)

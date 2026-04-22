@@ -25,7 +25,7 @@ from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
 
 try:
     import numpy as np
@@ -271,6 +271,7 @@ def detect_infographic_elements_v1(
     num_detections_column: str = "infographic_elements_v1_num_detections",
     counts_by_label_column: str = "infographic_elements_v1_counts_by_label",
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
@@ -333,16 +334,22 @@ def detect_infographic_elements_v1(
         valid_b64 = [image_b64_list[i] for i in valid if image_b64_list[i]]
         t0 = time.perf_counter()
         try:
-            response_items = invoke_image_inference_batches(
+            _invoke_kw = dict(
                 invoke_url=invoke_url,
                 image_b64_list=cast(List[str], valid_b64),
                 api_key=api_key,
                 timeout_s=float(request_timeout_s),
                 max_batch_size=int(inference_batch_size),
-                max_pool_workers=int(retry.remote_max_pool_workers),
                 max_retries=int(retry.remote_max_retries),
                 max_429_retries=int(retry.remote_max_429_retries),
             )
+            if nim_client is not None:
+                response_items = nim_client.invoke_image_inference_batches(**_invoke_kw)
+            else:
+                response_items = invoke_image_inference_batches(
+                    **_invoke_kw,
+                    max_pool_workers=int(retry.remote_max_pool_workers),
+                )
             elapsed = time.perf_counter() - t0
             if len(response_items) != len(valid):
                 raise RuntimeError(f"Expected {len(valid)} remote predictions, got {len(response_items)}")
@@ -451,6 +458,7 @@ def detect_infographic_elements_v1_from_page_elements_v3(
     num_detections_column: str = "infographic_elements_v1_num_detections",
     counts_by_label_column: str = "infographic_elements_v1_counts_by_label",
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
@@ -576,16 +584,22 @@ def detect_infographic_elements_v1_from_page_elements_v3(
         if use_remote:
             t0 = time.perf_counter()
             try:
-                response_items = invoke_image_inference_batches(
+                _invoke_kw = dict(
                     invoke_url=invoke_url,
                     image_b64_list=crop_b64s,
                     api_key=api_key,
                     timeout_s=float(request_timeout_s),
                     max_batch_size=int(inference_batch_size),
-                    max_pool_workers=int(retry.remote_max_pool_workers),
                     max_retries=int(retry.remote_max_retries),
                     max_429_retries=int(retry.remote_max_429_retries),
                 )
+                if nim_client is not None:
+                    response_items = nim_client.invoke_image_inference_batches(**_invoke_kw)
+                else:
+                    response_items = invoke_image_inference_batches(
+                        **_invoke_kw,
+                        max_pool_workers=int(retry.remote_max_pool_workers),
+                    )
                 elapsed = time.perf_counter() - t0
                 if len(response_items) != len(crop_b64s):
                     raise RuntimeError(f"Expected {len(crop_b64s)} remote predictions, got {len(response_items)}")
@@ -812,6 +826,9 @@ class InfographicDetectionCPUActor(AbstractOperator, CPUOperator):
         if "invoke_url" not in self.detect_kwargs:
             self.detect_kwargs["invoke_url"] = invoke_url
         self._model = None
+        self._nim_client = NIMClient(
+            max_pool_workers=int(self.detect_kwargs.get("remote_max_pool_workers", 24)),
+        )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -823,10 +840,13 @@ class InfographicDetectionCPUActor(AbstractOperator, CPUOperator):
             return detect_infographic_elements_v1_from_page_elements_v3(
                 batch_df,
                 model=self._model,
+                nim_client=self._nim_client,
                 **self.detect_kwargs,
                 **override_kwargs,
             )
-        return detect_infographic_elements_v1(batch_df, model=self._model, **self.detect_kwargs, **override_kwargs)
+        return detect_infographic_elements_v1(
+            batch_df, model=self._model, nim_client=self._nim_client, **self.detect_kwargs, **override_kwargs
+        )
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

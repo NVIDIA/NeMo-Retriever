@@ -38,3 +38,10 @@ repos:
         language: system
         files: (docker-compose\.yaml|helm/values\.yaml)
         pass_filenames: false
+
+      - id: uv-lock
+        name: uv lock (regenerate and verify)
+        entry: ci/scripts/check_uv_lock.sh
+        language: system
+        files: (pyproject\.toml|uv\.lock)
+        pass_filenames: false

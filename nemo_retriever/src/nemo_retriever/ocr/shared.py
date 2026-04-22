@@ -22,7 +22,7 @@ import traceback
 import numpy as np
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.utils.table_and_chart import (
     join_graphic_elements_and_ocr_output,
     join_table_structure_and_ocr_output,
@@ -504,6 +504,7 @@ def ocr_page_elements(
     use_table_structure: bool = False,
     inference_batch_size: int = 8,
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
@@ -533,7 +534,7 @@ def ocr_page_elements(
     -------
     pandas.DataFrame
         Original columns plus ``table``, ``chart``,
-        ``infographic``, and ``ocr_v1``.
+        ``infographic``, and ``ocr``.
     """
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("ocr_page_elements currently only supports pandas.DataFrame input.")
@@ -606,16 +607,22 @@ def ocr_page_elements(
                 crop_meta: List[Tuple[str, List[float]]] = [(label, bbox) for label, bbox, _b64 in crops]
 
                 if crop_b64s:
-                    response_items = invoke_image_inference_batches(
+                    _invoke_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=crop_b64s,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
-                        max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
+                    if nim_client is not None:
+                        response_items = nim_client.invoke_image_inference_batches(**_invoke_kw)
+                    else:
+                        response_items = invoke_image_inference_batches(
+                            **_invoke_kw,
+                            max_pool_workers=int(retry.remote_max_pool_workers),
+                        )
                     if len(response_items) != len(crop_meta):
                         raise RuntimeError(f"Expected {len(crop_meta)} OCR responses, got {len(response_items)}")
 
@@ -792,7 +799,7 @@ def ocr_page_elements(
                 out.iat[i, out.columns.get_loc("text")] = ocr_text
     elif extract_text:
         out["text"] = [t if t is not None else "" for t in all_text]
-    out["ocr_v1"] = all_ocr_meta
+    out["ocr"] = all_ocr_meta
     return out
 
 
@@ -843,6 +850,7 @@ def nemotron_parse_page_elements(
     extract_infographics: bool = False,
     task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
     remote_retry: RemoteRetryParams | None = None,
+    nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -917,16 +925,22 @@ def nemotron_parse_page_elements(
                 crop_meta: List[Tuple[str, List[float]]] = [(label, bbox) for label, bbox, _b64 in crops]
 
                 if crop_b64s:
-                    response_items = invoke_image_inference_batches(
+                    _invoke_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=crop_b64s,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
-                        max_pool_workers=int(retry.remote_max_pool_workers),
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
+                    if nim_client is not None:
+                        response_items = nim_client.invoke_image_inference_batches(**_invoke_kw)
+                    else:
+                        response_items = invoke_image_inference_batches(
+                            **_invoke_kw,
+                            max_pool_workers=int(retry.remote_max_pool_workers),
+                        )
                     if len(response_items) != len(crop_meta):
                         raise RuntimeError(f"Expected {len(crop_meta)} Parse responses, got {len(response_items)}")
 
@@ -980,16 +994,22 @@ def nemotron_parse_page_elements(
             if extract_text and needs_ocr:
                 try:
                     if use_remote:
-                        resp = invoke_image_inference_batches(
+                        _text_kw = dict(
                             invoke_url=invoke_url,
                             image_b64_list=[page_image_b64],
                             api_key=api_key,
                             timeout_s=float(request_timeout_s),
                             max_batch_size=1,
-                            max_pool_workers=int(retry.remote_max_pool_workers),
                             max_retries=int(retry.remote_max_retries),
                             max_429_retries=int(retry.remote_max_429_retries),
                         )
+                        if nim_client is not None:
+                            resp = nim_client.invoke_image_inference_batches(**_text_kw)
+                        else:
+                            resp = invoke_image_inference_batches(
+                                **_text_kw,
+                                max_pool_workers=int(retry.remote_max_pool_workers),
+                            )
                         row_text = _extract_parse_text(resp[0]) if resp else ""
                     else:
                         raw = base64.b64decode(page_image_b64)

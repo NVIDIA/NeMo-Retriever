@@ -10,6 +10,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.ocr.shared import _error_payload
 from nemo_retriever.ocr.shared import ocr_page_elements
@@ -44,6 +45,9 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
             remote_max_429_retries=int(self.ocr_kwargs.get("remote_max_429_retries", 5)),
         )
         self._model = None
+        self._nim_client = NIMClient(
+            max_pool_workers=int(self._remote_retry.remote_max_pool_workers),
+        )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -53,6 +57,7 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
             data,
             model=self._model,
             remote_retry=self._remote_retry,
+            nim_client=self._nim_client,
             **self.ocr_kwargs,
             **kwargs,
         )
@@ -71,6 +76,6 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
                 out["table"] = [[] for _ in range(n)]
                 out["chart"] = [[] for _ in range(n)]
                 out["infographic"] = [[] for _ in range(n)]
-                out["ocr_v1"] = [payload for _ in range(n)]
+                out["ocr"] = [payload for _ in range(n)]
                 return out
-            return [{"ocr_v1": _error_payload(stage="cpu_actor_call", exc=exc)}]
+            return [{"ocr": _error_payload(stage="cpu_actor_call", exc=exc)}]

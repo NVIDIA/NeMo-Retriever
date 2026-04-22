@@ -15,7 +15,7 @@ from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.dedup.dedup import dedup_images
-from nemo_retriever.graph import Graph, StoreOperator, UDFOperator
+from nemo_retriever.graph import Graph, StoreOperator, UDFOperator, WebhookNotifyOperator
 from nemo_retriever.graph.content_transforms import (
     _CONTENT_COLUMNS,
     collapse_content_to_page_rows,
@@ -44,6 +44,18 @@ def _batch_tuning(params: Any) -> Any:
 
 def _positive(value: Any) -> Any:
     return value if value not in (None, 0, 0.0, "", False) else None
+
+
+def _nim_remote_http_kwargs(extract_params: Any) -> dict[str, int]:
+    """Forward ExtractParams.remote_retry into stage kwargs for higher HTTP parallelism."""
+    rr = getattr(extract_params, "remote_retry", None)
+    if rr is None:
+        return {}
+    return {
+        "remote_max_pool_workers": int(rr.remote_max_pool_workers),
+        "remote_max_retries": int(rr.remote_max_retries),
+        "remote_max_429_retries": int(rr.remote_max_429_retries),
+    }
 
 
 def batch_tuning_to_node_overrides(
@@ -212,6 +224,50 @@ def batch_tuning_to_node_overrides(
                 plan.page_elements_gpus_per_actor if plan else None,
             )
 
+        # --- Table Structure ---
+        table_structure_invoke_url = _positive(getattr(extract_params, "table_structure_invoke_url", None))
+        ts_bs = plan.table_structure_batch_size if plan else None
+        _set(TableStructureActor.__name__, "batch_size", ts_bs)
+        if ts_bs:
+            overrides.setdefault(TableStructureActor.__name__, {})["target_num_rows_per_block"] = ts_bs
+        ts_concurrency: int = 0
+        if table_structure_invoke_url:
+            ts_concurrency = (plan.table_structure_initial_actors if plan else None) or 2
+        else:
+            ts_concurrency = (plan.table_structure_initial_actors if plan else None) or 0
+        _set(TableStructureActor.__name__, "concurrency", ts_concurrency or None)
+        _set(TableStructureActor.__name__, "num_cpus", 1)
+        if effective_allow_no_gpu:
+            _force_cpu_only(TableStructureActor.__name__)
+        elif not table_structure_invoke_url:
+            _set(
+                TableStructureActor.__name__,
+                "num_gpus",
+                plan.table_structure_gpus_per_actor if plan else None,
+            )
+
+        # --- Graphic Elements ---
+        graphic_elements_invoke_url = _positive(getattr(extract_params, "graphic_elements_invoke_url", None))
+        ge_bs = plan.graphic_elements_batch_size if plan else None
+        _set(GraphicElementsActor.__name__, "batch_size", ge_bs)
+        if ge_bs:
+            overrides.setdefault(GraphicElementsActor.__name__, {})["target_num_rows_per_block"] = ge_bs
+        ge_concurrency: int = 0
+        if graphic_elements_invoke_url:
+            ge_concurrency = (plan.graphic_elements_initial_actors if plan else None) or 2
+        else:
+            ge_concurrency = (plan.graphic_elements_initial_actors if plan else None) or 0
+        _set(GraphicElementsActor.__name__, "concurrency", ge_concurrency or None)
+        _set(GraphicElementsActor.__name__, "num_cpus", 1)
+        if effective_allow_no_gpu:
+            _force_cpu_only(GraphicElementsActor.__name__)
+        elif not graphic_elements_invoke_url:
+            _set(
+                GraphicElementsActor.__name__,
+                "num_gpus",
+                plan.graphic_elements_gpus_per_actor if plan else None,
+            )
+
         np_bs = _positive(
             getattr(extract_tuning, "nemotron_parse_batch_size", None) if extract_tuning is not None else None
         ) or (plan.nemotron_parse_batch_size if plan else None)
@@ -259,6 +315,8 @@ def batch_tuning_to_node_overrides(
                 + page_elements_concurrency * page_elements_cpus
                 + ocr_concurrency * ocr_cpus
                 + embed_concurrency * embed_cpus
+                + ts_concurrency * 1
+                + ge_concurrency * 1
             )
             pdf_extract_tasks = min(
                 pdf_extract_tasks,
@@ -286,9 +344,11 @@ def _resolve_execution_inputs(
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
+    webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
 ) -> tuple[
     str,
+    Any | None,
     Any | None,
     Any | None,
     Any | None,
@@ -316,6 +376,7 @@ def _resolve_execution_inputs(
             caption_params,
             store_params,
             embed_params,
+            webhook_params,
             stage_order,
         )
 
@@ -332,6 +393,7 @@ def _resolve_execution_inputs(
         stage_map.get("caption"),
         stage_map.get("store"),
         stage_map.get("embed"),
+        stage_map.get("webhook"),
         tuple(stage.name for stage in execution_plan.stages),
     )
 
@@ -358,6 +420,7 @@ def _append_ordered_transform_stages(
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
+    webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
     reshape_for_modal_content: bool,
@@ -418,6 +481,9 @@ def _append_ordered_transform_stages(
                     )
             graph = graph >> _BatchEmbedActor(params=embed_params)
 
+    if webhook_params is not None and getattr(webhook_params, "endpoint_url", None):
+        graph = graph >> WebhookNotifyOperator(params=webhook_params)
+
     return graph
 
 
@@ -435,6 +501,7 @@ def build_graph(
     split_params: Any | None = None,
     caption_params: Any | None = None,
     store_params: Any | None = None,
+    webhook_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
 ) -> Graph:
     """Build a batch graph from explicit params or a shared execution plan."""
@@ -451,6 +518,7 @@ def build_graph(
         caption_params,
         store_params,
         embed_params,
+        webhook_params,
         stage_order,
     ) = _resolve_execution_inputs(
         execution_plan=execution_plan,
@@ -465,6 +533,7 @@ def build_graph(
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,
+        webhook_params=webhook_params,
         stage_order=stage_order,
     )
 
@@ -526,6 +595,7 @@ def build_graph(
                 parse_kwargs["api_key"] = extract_params.api_key
             if extract_params.nemotron_parse_model:
                 parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
+            parse_kwargs.update(_nim_remote_http_kwargs(extract_params))
             graph = graph >> NemotronParseActor(**parse_kwargs)
         else:
             detect_kwargs: dict[str, Any] = {}
@@ -573,6 +643,12 @@ def build_graph(
             if extract_params.api_key:
                 graphic_kwargs["api_key"] = extract_params.api_key
 
+            _rr = _nim_remote_http_kwargs(extract_params)
+            detect_kwargs.update(_rr)
+            ocr_kwargs.update(_rr)
+            table_kwargs.update(_rr)
+            graphic_kwargs.update(_rr)
+
             graph = graph >> PDFExtractionActor(**extract_kwargs) >> PageElementDetectionActor(**detect_kwargs)
             if extract_params.use_table_structure and extract_params.extract_tables:
                 graph = graph >> TableStructureActor(**table_kwargs)
@@ -594,6 +670,7 @@ def build_graph(
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,
+        webhook_params=webhook_params,
         stage_order=stage_order,
         supports_dedup=True,
         reshape_for_modal_content=True,

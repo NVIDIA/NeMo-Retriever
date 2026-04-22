@@ -456,7 +456,19 @@ try:
 
     ray.shutdown()
 
-    runtime_env = {"env_vars": {"VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable))}}
+    venv = os.path.dirname(os.path.dirname(sys.executable))
+    venv_bin = os.path.join(venv, "bin")
+    pypath = os.pathsep.join(p for p in sys.path if p)
+    ray_env_vars: dict[str, str] = {
+        "VIRTUAL_ENV": venv,
+        "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+        "PYTHONPATH": pypath,
+    }
+    for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
+        if os.environ.get(_fwd_key):
+            ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+    ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+    runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:
         os.environ.pop("RAY_ADDRESS", None)
@@ -705,9 +717,9 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
     if use_sync:
         env = {**os.environ, "UV_PROJECT_ENVIRONMENT": str(venv_dir)}
         try:
-            print("[venv] Running uv sync (respects [tool.uv.sources] for CUDA torch) …")
+            print("[venv] Running uv sync --all-extras (respects [tool.uv.sources] for CUDA torch) …")
             result = subprocess.run(
-                ["uv", "sync", "--no-dev"],
+                ["uv", "sync", "--no-dev", "--all-extras"],
                 cwd=str(nemo_dir),
                 capture_output=True,
                 text=True,
@@ -733,9 +745,9 @@ def _create_job_venv(job_id: str, repo_root: Path) -> Path | None:
 
     venv_python = str(venv_dir / "bin" / "python")
     try:
-        print("[venv] Running uv pip install -e ./nemo_retriever …")
+        print("[venv] Running uv pip install -e './nemo_retriever[all]' …")
         result = subprocess.run(
-            ["uv", "pip", "install", "-e", "./nemo_retriever", "--python", venv_python],
+            ["uv", "pip", "install", "-e", "./nemo_retriever[all]", "--python", venv_python],
             cwd=str(repo_root),
             capture_output=True,
             text=True,
@@ -845,6 +857,10 @@ _job_tracker = _JobTracker()
 _runner_ray_address: str | None = None
 _runner_run_code_ref: str | None = None
 _runner_num_gpus: int | None = None
+
+DATASET_CACHE_DIR: Path = Path(
+    os.environ.get("HARNESS_DATASET_CACHE_DIR", str(Path.home() / ".cache" / "harness" / "datasets"))
+)
 
 
 class _TeeWriter:
@@ -960,6 +976,175 @@ def _download_playground_files(base_url: str, job: dict[str, Any]) -> str | None
         return None
 
 
+def _build_cache_rewrites(cache_dir: Path, query_csv_bundled: bool) -> dict[str, Any]:
+    """Build dataset_overrides pointing to a local cache directory."""
+    rewrites: dict[str, Any] = {"dataset_dir": str(cache_dir)}
+    if query_csv_bundled:
+        bundled_dir = cache_dir / "_query_csv"
+        if bundled_dir.is_dir():
+            csv_files = list(bundled_dir.iterdir())
+            if csv_files:
+                rewrites["query_csv"] = str(csv_files[0])
+    return rewrites
+
+
+def _ensure_dataset_cached(base_url: str, job: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """Download a distributable dataset from the portal if not already cached.
+
+    Uses ``dataset_config_hash`` from the job payload for exact cache
+    invalidation (covers file changes *and* config changes).  Falls back
+    to the portal ``/hash`` endpoint for legacy jobs without the field.
+
+    Returns ``(local_dir, override_rewrites)`` on success, or ``None`` if the
+    dataset is not distributable (so the caller can fall through to the
+    existing path-must-exist behaviour).
+    """
+    if _is_playground_job(job):
+        return None
+
+    dataset_name = job.get("dataset")
+    if not dataset_name:
+        return None
+
+    cache_dir = DATASET_CACHE_DIR / dataset_name
+    meta_file = cache_dir / ".dataset_meta.json"
+
+    job_hash = job.get("dataset_config_hash")
+
+    if cache_dir.is_dir() and meta_file.is_file():
+        try:
+            local_meta = json_module.loads(meta_file.read_text())
+            cached_hash = local_meta.get("hash")
+            if cached_hash:
+                if job_hash:
+                    if cached_hash == job_hash:
+                        logger.info(
+                            "Dataset %s cache hit (config hash match %s)",
+                            dataset_name,
+                            cached_hash[:12],
+                        )
+                        return str(cache_dir), _build_cache_rewrites(
+                            cache_dir, local_meta.get("query_csv_bundled", False)
+                        )
+                    logger.info(
+                        "Dataset %s cache stale (local %s != job %s) — re-downloading",
+                        dataset_name,
+                        cached_hash[:12],
+                        job_hash[:12],
+                    )
+                else:
+                    logger.info(
+                        "Dataset %s cache hit at %s (hash %s, no job hash to compare)",
+                        dataset_name,
+                        cache_dir,
+                        cached_hash[:12],
+                    )
+                    return str(cache_dir), _build_cache_rewrites(cache_dir, local_meta.get("query_csv_bundled", False))
+        except Exception:
+            pass
+
+    if not job_hash:
+        hash_url = f"{base_url}/api/managed-datasets/by-name/{urllib.request.quote(dataset_name, safe='')}/hash"
+        try:
+            hash_resp = _get_json(hash_url, timeout=15)
+        except Exception:
+            return None
+        if not hash_resp or not isinstance(hash_resp, dict) or "hash" not in hash_resp:
+            return None
+        job_hash = hash_resp["hash"]
+
+    dl_url = f"{base_url}/api/managed-datasets/by-name/{urllib.request.quote(dataset_name, safe='')}/download"
+    logger.info("Downloading dataset %s from %s", dataset_name, dl_url)
+    try:
+        req = urllib.request.Request(dl_url)
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            resp_hash = resp.headers.get("X-Dataset-Hash", job_hash)
+            query_csv_bundled = resp.headers.get("X-Query-Csv-Bundled", "false") == "true"
+            content_length = resp.headers.get("Content-Length")
+            total_size = int(content_length) if content_length else None
+
+            chunks: list[bytes] = []
+            downloaded = 0
+            chunk_size = 256 * 1024  # 256 KB
+            last_pct = -1
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                downloaded += len(chunk)
+                if total_size and total_size > 0:
+                    pct = int(downloaded * 100 / total_size)
+                    if pct >= last_pct + 5:
+                        mb_done = downloaded / (1024 * 1024)
+                        mb_total = total_size / (1024 * 1024)
+                        bar_len = 30
+                        filled = int(bar_len * downloaded / total_size)
+                        bar = "█" * filled + "░" * (bar_len - filled)
+                        logger.info(
+                            "  %s  %3d%%  %.1f / %.1f MB  [%s]",
+                            dataset_name,
+                            pct,
+                            mb_done,
+                            mb_total,
+                            bar,
+                        )
+                        last_pct = pct
+                else:
+                    mb_done = downloaded / (1024 * 1024)
+                    if downloaded == len(chunks[-1]) or downloaded % (5 * 1024 * 1024) < chunk_size:
+                        logger.info("  %s  %.1f MB downloaded ...", dataset_name, mb_done)
+
+            zip_bytes = b"".join(chunks)
+            if total_size:
+                logger.info(
+                    "Download complete: %s (%.1f MB)",
+                    dataset_name,
+                    len(zip_bytes) / (1024 * 1024),
+                )
+    except Exception as exc:
+        logger.error("Failed to download dataset %s: %s", dataset_name, exc)
+        return None
+
+    import io
+    import zipfile
+
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir, ignore_errors=True)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            zf.extractall(cache_dir)
+    except Exception as exc:
+        logger.error("Failed to extract dataset zip for %s: %s", dataset_name, exc)
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        return None
+
+    from datetime import datetime, timezone
+
+    effective_hash = job.get("dataset_config_hash") or resp_hash
+    meta = {
+        "dataset_name": dataset_name,
+        "hash": effective_hash,
+        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+        "portal_url": base_url,
+        "query_csv_bundled": query_csv_bundled,
+    }
+    meta_file.write_text(json_module.dumps(meta, indent=2))
+
+    file_count = sum(1 for _ in cache_dir.rglob("*") if _.is_file())
+    logger.info(
+        "Cached dataset %s at %s (%d files, hash %s)",
+        dataset_name,
+        cache_dir,
+        file_count,
+        effective_hash[:12],
+    )
+
+    return str(cache_dir), _build_cache_rewrites(cache_dir, query_csv_bundled)
+
+
 def _validate_dataset_path(job: dict[str, Any]) -> str | None:
     """Check if the dataset directory exists locally.
 
@@ -1037,6 +1222,27 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
     print(f"\n===== RAW JOB PAYLOAD (job {job_id}) =====")
     print(_payload_dump)
     print("===== END RAW JOB PAYLOAD =====\n", flush=True)
+
+    # Try to download a distributable dataset before validating paths.
+    # If the dataset is cached/downloaded, rewrite the job's paths so
+    # _validate_dataset_path sees the local cache dir instead of the
+    # portal's path (which doesn't exist on this runner).
+    _dist_cached = None
+    if not _is_playground_job(job):
+        _dist_cached = _ensure_dataset_cached(base_url, job)
+        if _dist_cached is not None:
+            cached_path, cached_rewrites = _dist_cached
+            job = dict(job)
+            job["dataset_path"] = cached_path
+            job_overrides = job.get("dataset_overrides") or {}
+            if isinstance(job_overrides, str):
+                try:
+                    job_overrides = json_module.loads(job_overrides)
+                except (json_module.JSONDecodeError, TypeError):
+                    job_overrides = {}
+            job_overrides.update(cached_rewrites)
+            job["dataset_overrides"] = job_overrides
+            logger.info("Job %s: dataset %s cached at %s", job_id, job.get("dataset"), cached_path)
 
     dataset_error = _validate_dataset_path(job)
     if dataset_error:
@@ -1498,8 +1704,24 @@ def runner_start_command(
         "--num-gpus",
         help="Number of GPUs to report for this runner. Overrides auto-detected count.",
     ),
+    dataset_cache_dir: str | None = typer.Option(
+        None,
+        "--dataset-cache-dir",
+        envvar="HARNESS_DATASET_CACHE_DIR",
+        help="Directory for caching downloaded datasets. Defaults to ~/.cache/harness/datasets.",
+    ),
 ) -> None:
     """Start a harness runner and optionally register with a portal manager."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    global DATASET_CACHE_DIR  # noqa: PLW0603
+    if dataset_cache_dir:
+        DATASET_CACHE_DIR = Path(dataset_cache_dir)
+
     from nemo_retriever.harness.run import _collect_run_metadata
 
     meta = _collect_run_metadata()
@@ -1515,6 +1737,9 @@ def runner_start_command(
     typer.echo(f"  Python   : {meta.get('python_version')}")
     typer.echo(f"  Git      : {current_commit[:12] if current_commit else 'unknown'}")
     typer.echo(f"  Ray      : {ray_address or 'local (embedded)'}")
+    typer.echo(f"  Dataset  : {DATASET_CACHE_DIR}")
+    _hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    typer.echo(f"  HF_TOKEN : {'set (' + _hf_token[:4] + '...' + _hf_token[-4:] + ')' if _hf_token else 'NOT SET'}")
 
     global _runner_ray_address  # noqa: PLW0603
     _runner_ray_address = _resolve_ray_address(ray_address)
