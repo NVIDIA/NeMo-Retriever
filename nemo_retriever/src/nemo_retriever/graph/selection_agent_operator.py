@@ -266,8 +266,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             value = os.environ.get(var)
             if value is None:
                 raise ValueError(
-                    f"Environment variable '{var}' is not set. "
-                    f"Set it with: export {var}=<your-api-key>"
+                    f"Environment variable '{var}' is not set. " f"Set it with: export {var}=<your-api-key>"
                 )
             return value
         return api_key

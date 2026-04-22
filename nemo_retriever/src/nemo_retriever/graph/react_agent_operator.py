@@ -521,11 +521,19 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     extra_body={"parallel_tool_calls": False} if not self._parallel_tool_calls else None,
                 )
             except Exception as exc:
-                logger.warning("ReActAgentOperator: LLM call failed on step %d for query %r: %s", _step, query_id, exc, exc_info=True)
+                logger.warning(
+                    "ReActAgentOperator: LLM call failed on step %d for query %r: %s",
+                    _step,
+                    query_id,
+                    exc,
+                    exc_info=True,
+                )
                 break
 
             if not response.get("choices"):
-                logger.warning("ReActAgentOperator: empty choices in API response on step %d for query %r", _step, query_id)
+                logger.warning(
+                    "ReActAgentOperator: empty choices in API response on step %d for query %r", _step, query_id
+                )
                 break
             choice = response["choices"][0]
             msg = choice["message"]
@@ -639,8 +647,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             value = os.environ.get(var)
             if value is None:
                 raise ValueError(
-                    f"Environment variable '{var}' is not set. "
-                    f"Set it with: export {var}=<your-api-key>"
+                    f"Environment variable '{var}' is not set. " f"Set it with: export {var}=<your-api-key>"
                 )
             return value
         return api_key

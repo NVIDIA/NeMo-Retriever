@@ -395,10 +395,10 @@ class TestParseJsonList:
         assert self._parse('["a", "b", "c"]') == ["a", "b", "c"]
 
     def test_json_fence(self):
-        assert self._parse("```json\n[\"x\", \"y\"]\n```") == ["x", "y"]
+        assert self._parse('```json\n["x", "y"]\n```') == ["x", "y"]
 
     def test_plain_fence(self):
-        assert self._parse("```\n[\"x\"]\n```") == ["x"]
+        assert self._parse('```\n["x"]\n```') == ["x"]
 
     def test_trailing_fence_without_leading_not_stripped(self):
         # A JSON string that happens to end with ``` but has no leading fence.

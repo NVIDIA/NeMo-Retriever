@@ -281,8 +281,7 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
             value = os.environ.get(var)
             if value is None:
                 raise ValueError(
-                    f"Environment variable '{var}' is not set. "
-                    f"Set it with: export {var}=<your-api-key>"
+                    f"Environment variable '{var}' is not set. " f"Set it with: export {var}=<your-api-key>"
                 )
             return value
         return api_key
@@ -331,7 +330,7 @@ def _parse_json_list(raw: str, *, fallback: str) -> List[str]:
     found_fence = False
     for fence in ("```json", "```"):
         if text.startswith(fence):
-            text = text[len(fence):]
+            text = text[len(fence) :]
             found_fence = True
             break
     if found_fence and text.endswith("```"):
