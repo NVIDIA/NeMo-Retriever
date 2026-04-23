@@ -12,6 +12,7 @@ from nemo_retriever.utils.benchmark import app as benchmark_app
 from nemo_retriever.chart import app as chart_app
 from nemo_retriever.utils.compare import app as compare_app
 from nemo_retriever.evaluation.cli import app as eval_app
+from nemo_retriever.generation.cli import eval_batch_command, retrieve_command
 from nemo_retriever.harness import app as harness_app
 from nemo_retriever.html import __main__ as html_main
 from nemo_retriever.utils.image import app as image_app
@@ -43,9 +44,27 @@ app.add_typer(pipeline_main.app, name="pipeline")
 # Single-command ``retriever answer`` -- see nemo_retriever.answer_cli.
 app.command(name="answer", help="Single-query live RAG: retrieve, generate, score, judge.")(answer_command)
 
+# Single-command ``retriever retrieve`` -- see nemo_retriever.generation.cli.
+app.command(
+    name="retrieve",
+    help="Batch retrieval: emit one JSONL row per query with (query, chunks, metadata).",
+)(retrieve_command)
+
+# ``retriever eval batch`` -- see nemo_retriever.generation.cli.  Registered
+# on the existing ``eval_app`` group as a peer of ``run`` / ``export`` /
+# ``build-page-index`` so both YAML-driven and batch-JSONL evaluation
+# surfaces live under the same subcommand namespace.
+eval_app.command(
+    name="batch",
+    help="Batch evaluation: retrieve -> answer -> score -> judge, one JSONL row per query.",
+)(eval_batch_command)
+
 # Nested ``retriever mcp serve`` -- see nemo_retriever.mcp_server.
 _mcp_app = typer.Typer(help="MCP (Model Context Protocol) server for Retriever.")
-_mcp_app.command(name="serve", help="Serve Retriever.answer() as an MCP tool over stdio.")(mcp_serve_command)
+_mcp_app.command(
+    name="serve",
+    help="Serve nemo_retriever.generation.answer() as an MCP tool over stdio.",
+)(mcp_serve_command)
 app.add_typer(_mcp_app, name="mcp")
 
 

@@ -22,8 +22,10 @@ import os
 import re
 import threading
 import unicodedata
+from typing import TYPE_CHECKING
 
-from nemo_retriever.llm.types import RetrievalResult
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -223,8 +225,20 @@ class FileRetriever:
 
         return coverage
 
-    def retrieve(self, query: str, top_k: int) -> RetrievalResult:
-        """Look up pre-computed chunks for a query string."""
+    def retrieve(self, query: str, top_k: int) -> "pd.DataFrame":
+        """Look up pre-computed chunks for a query string.
+
+        Returns a single-row :class:`pandas.DataFrame` with columns
+        ``[query, chunks, metadata]`` -- the same shape produced by
+        :func:`nemo_retriever.generation.retrieve` -- so that the QA eval
+        harness can consume both live and cached retrieval through the
+        same DataFrame contract.  Missing queries are represented as a
+        row with empty ``chunks`` / ``metadata`` lists rather than a
+        raised exception, mirroring the previous "graceful miss"
+        behaviour that counted misses on ``_miss_count``.
+        """
+        import pandas as pd
+
         norm = _normalize_query(query)
         entry = self._norm_index.get(norm)
 
@@ -236,8 +250,8 @@ class FileRetriever:
                 logger.warning("FileRetriever: query not found in retrieval file: %r", query)
             elif count == 21:
                 logger.warning("FileRetriever: suppressing further miss warnings (>20)")
-            return RetrievalResult(chunks=[], metadata=[])
+            return pd.DataFrame([{"query": query, "chunks": [], "metadata": []}])
 
         chunks = entry.get("chunks", [])[:top_k]
         metadata = entry.get("metadata", [])[:top_k]
-        return RetrievalResult(chunks=chunks, metadata=metadata)
+        return pd.DataFrame([{"query": query, "chunks": chunks, "metadata": metadata}])

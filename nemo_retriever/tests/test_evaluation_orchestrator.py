@@ -38,22 +38,28 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+import pandas as pd
 import pytest
 
 from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
-from nemo_retriever.llm.types import RetrievalResult
+
+
+def _empty_retrieval_df() -> pd.DataFrame:
+    """Return a single-row DataFrame matching the RetrieverStrategy contract."""
+    return pd.DataFrame([{"query": "", "chunks": [], "metadata": []}])
 
 
 def _make_pipeline(*, retrieve_side_effect: Any = None) -> QAEvalPipeline:
     """Build a QAEvalPipeline with mocked retriever/llm/judge.
 
-    The retriever returns a stable empty RetrievalResult unless a custom
-    ``retrieve_side_effect`` is provided (e.g. to simulate a real retrieval
-    failure for the exception-path test).
+    The retriever returns a stable empty single-row DataFrame (matching
+    the :class:`~nemo_retriever.llm.types.RetrieverStrategy` contract)
+    unless a custom ``retrieve_side_effect`` is provided (e.g. to simulate
+    a real retrieval failure for the exception-path test).
     """
     retriever = MagicMock()
     if retrieve_side_effect is None:
-        retriever.retrieve.return_value = RetrievalResult(chunks=[], metadata=[])
+        retriever.retrieve.return_value = _empty_retrieval_df()
     else:
         retriever.retrieve.side_effect = retrieve_side_effect
 

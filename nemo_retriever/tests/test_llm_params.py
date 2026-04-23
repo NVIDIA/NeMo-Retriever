@@ -333,47 +333,46 @@ class TestBackCompatCallSites:
         )
         assert op._judge._client.transport.num_retries == 7
 
-    def test_pipeline_builder_judge_forwards_transport_num_retries(self):
-        """RetrieverPipelineBuilder.judge(judge) unpacks transport.* onto the
-        operator. num_retries must be in that unpack, symmetric with the
-        identical .generate() branch at retriever.py:762."""
-        from unittest.mock import MagicMock
+    def test_generation_judge_forwards_transport_num_retries(self):
+        """:func:`nemo_retriever.generation.judge` unpacks ``transport.*`` onto
+        the :class:`JudgingOperator` it constructs.  ``num_retries`` must be
+        included in that unpack (historically the most-silently-dropped
+        field at the builder boundary).
+        """
+        from unittest.mock import patch
+
+        import pandas as pd
 
         from nemo_retriever.evaluation.judging import JudgingOperator
+        from nemo_retriever.generation import judge as judge_fn
         from nemo_retriever.llm.clients import LLMJudge
-        from nemo_retriever.retriever import RetrieverPipelineBuilder
-
-        retriever = MagicMock()
-        retriever.top_k = 5
-        builder = RetrieverPipelineBuilder(retriever, top_k=5)
 
         judge = LLMJudge.from_kwargs(
             model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
             num_retries=7,
         )
-        builder.judge(judge)
 
-        judging_ops = [s for s in builder._steps if isinstance(s, JudgingOperator)]
-        assert len(judging_ops) == 1
-        assert judging_ops[0]._judge._client.transport.num_retries == 7
+        df = pd.DataFrame(
+            {
+                "query": ["q"],
+                "reference_answer": ["r"],
+                "answer": ["a"],
+            }
+        )
 
-    def test_pipeline_builder_judge_defaults_num_retries_when_flat_kwargs(self):
-        """The flat ``model=...`` branch of .judge() must still default
-        num_retries to 3, preserving the current default behaviour."""
-        from unittest.mock import MagicMock
+        captured: dict[str, object] = {}
+        real_init = JudgingOperator.__init__
 
-        from nemo_retriever.evaluation.judging import JudgingOperator
-        from nemo_retriever.retriever import RetrieverPipelineBuilder
+        def _spy_init(self, *args, **kwargs):
+            captured.update(kwargs)
+            real_init(self, *args, **kwargs)
 
-        retriever = MagicMock()
-        retriever.top_k = 5
-        builder = RetrieverPipelineBuilder(retriever, top_k=5)
+        with patch.object(JudgingOperator, "__init__", _spy_init), patch.object(
+            JudgingOperator, "run", lambda self, data, **_: data
+        ):
+            judge_fn(df, judge=judge)
 
-        builder.judge(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
-
-        judging_ops = [s for s in builder._steps if isinstance(s, JudgingOperator)]
-        assert len(judging_ops) == 1
-        assert judging_ops[0]._judge._client.transport.num_retries == 3
+        assert captured["num_retries"] == 7
 
 
 class TestApiKeyRedaction:

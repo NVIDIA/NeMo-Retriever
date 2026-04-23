@@ -5,8 +5,8 @@
 """Shared text-processing utilities for LLM output hygiene.
 
 Pure-stdlib module.  Lives under ``nemo_retriever.llm`` so that the
-lightweight SDK surface (``LiteLLMClient``, ``Retriever.answer``) does
-not pull in ``pandas`` or any evaluation dependencies just to clean
+lightweight SDK surface (``LiteLLMClient``, ``nemo_retriever.generation.answer``)
+does not pull in ``pandas`` or any evaluation dependencies just to clean
 ``<think>`` tags out of a model response.
 """
 

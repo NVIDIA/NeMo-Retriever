@@ -22,11 +22,10 @@ class LiveRetrievalOperator(EvalOperator):
 
     Parallels :class:`~nemo_retriever.evaluation.retrieval_loader.RetrievalLoaderOperator`
     but pulls chunks from LanceDB on the fly via
-    :meth:`Retriever.retrieve <nemo_retriever.retriever.Retriever.retrieve>`
-    rather than loading them from a pre-computed retrieval JSON.  Used by
-    :meth:`Retriever.pipeline <nemo_retriever.retriever.Retriever.pipeline>`
-    to prepend retrieval to a DataFrame-in/out generation / scoring /
-    judging graph.
+    :meth:`Retriever.queries <nemo_retriever.retriever.Retriever.queries>`
+    rather than loading them from a pre-computed retrieval JSON.  Used
+    by :func:`nemo_retriever.generation.eval` to prepend retrieval to a
+    DataFrame-in/out generation / scoring / judging graph.
 
     Input DataFrame must have a ``query`` column.  Adds ``context``
     (``list[str]`` of chunk texts per row) and ``context_metadata``
@@ -76,17 +75,20 @@ class LiveRetrievalOperator(EvalOperator):
         # One batched call instead of per-row iteration.  The Retriever
         # embeds all queries in a single NIM round trip and issues a
         # single LanceDB sweep, so an N-row DataFrame pays O(1) network
-        # cost end-to-end rather than O(N).  Order is preserved by
-        # ``retrieve_batch`` so ``results[i]`` aligns with row ``i``.
-        results = self._retriever.retrieve_batch(query_texts, top_k=self._top_k)
+        # cost end-to-end rather than O(N).  ``Retriever.queries``
+        # preserves input order so ``hits_per_query[i]`` aligns with
+        # row ``i``.
+        hits_per_query = self._retriever.queries(query_texts, top_k=self._top_k)
 
-        if len(results) != len(query_texts):
+        if len(hits_per_query) != len(query_texts):
             raise RuntimeError(
-                "retrieve_batch returned "
-                f"{len(results)} results for {len(query_texts)} queries; "
+                "Retriever.queries returned "
+                f"{len(hits_per_query)} results for {len(query_texts)} queries; "
                 "this violates the contract and points at a Retriever bug."
             )
 
-        out["context"] = [list(r.chunks) for r in results]
-        out["context_metadata"] = [list(r.metadata) for r in results]
+        out["context"] = [[str(hit.get("text", "")) for hit in hits] for hits in hits_per_query]
+        out["context_metadata"] = [
+            [{k: v for k, v in hit.items() if k != "text"} for hit in hits] for hits in hits_per_query
+        ]
         return out

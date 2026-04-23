@@ -90,12 +90,17 @@ class RetrievalLoaderOperator(EvalOperator):
             reference = pair.get(self._answer_column, "")
             if not query:
                 continue
-            result = retriever.retrieve(query, self._top_k)
+            hit_df = retriever.retrieve(query, self._top_k)
+            # FileRetriever.retrieve now returns a single-row DataFrame
+            # with [query, chunks, metadata]; guarded empty-frame access
+            # so missing queries (graceful-miss path) produce an empty
+            # context list rather than an IndexError.
+            chunks = hit_df.iloc[0]["chunks"] if len(hit_df) else []
             rows.append(
                 {
                     "query": query,
                     "reference_answer": reference,
-                    "context": result.chunks,
+                    "context": chunks,
                 }
             )
 

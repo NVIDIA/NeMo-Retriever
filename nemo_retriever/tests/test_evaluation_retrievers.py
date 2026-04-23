@@ -17,10 +17,10 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
 from nemo_retriever.evaluation.retrievers import FileRetriever
-from nemo_retriever.llm.types import RetrievalResult
 
 _SAMPLE_QUERIES: dict[str, dict] = {
     "What is the range of the 767?": {
@@ -41,15 +41,24 @@ def _write_retrieval_json(tmp_path: Path, queries: dict[str, dict]) -> Path:
 
 
 def test_init_roundtrip(tmp_path: Path) -> None:
-    """Loading from JSON -> retrieve() returns the stored chunks/metadata."""
+    """Loading from JSON -> retrieve() returns the stored chunks/metadata.
+
+    Under the :class:`~nemo_retriever.llm.types.RetrieverStrategy`
+    DataFrame contract the call yields a single-row DataFrame with the
+    columns ``[query, chunks, metadata]``.
+    """
     path = _write_retrieval_json(tmp_path, _SAMPLE_QUERIES)
 
     retriever = FileRetriever(file_path=str(path))
     result = retriever.retrieve("What is the range of the 767?", top_k=2)
 
-    assert isinstance(result, RetrievalResult)
-    assert result.chunks == _SAMPLE_QUERIES["What is the range of the 767?"]["chunks"]
-    assert result.metadata == _SAMPLE_QUERIES["What is the range of the 767?"]["metadata"]
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.columns) == ["query", "chunks", "metadata"]
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["query"] == "What is the range of the 767?"
+    assert row["chunks"] == _SAMPLE_QUERIES["What is the range of the 767?"]["chunks"]
+    assert row["metadata"] == _SAMPLE_QUERIES["What is the range of the 767?"]["metadata"]
     assert retriever.file_path == str(path)
 
 
@@ -84,7 +93,9 @@ def test_from_dict_roundtrip() -> None:
     retriever = FileRetriever._from_dict(_SAMPLE_QUERIES)
     result = retriever.retrieve("How many seats does the 747 have?", top_k=5)
 
-    assert result.chunks == _SAMPLE_QUERIES["How many seats does the 747 have?"]["chunks"]
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 1
+    assert result.iloc[0]["chunks"] == _SAMPLE_QUERIES["How many seats does the 747 have?"]["chunks"]
     assert retriever.file_path == "<in-memory>"
 
 
@@ -103,7 +114,8 @@ def test_from_dict_normalizes_keys() -> None:
     ]
     for variant in variants:
         result = retriever.retrieve(variant, top_k=2)
-        assert result.chunks, f"normalized lookup failed for variant {variant!r}"
+        assert len(result) == 1, f"normalized lookup returned no row for variant {variant!r}"
+        assert result.iloc[0]["chunks"], f"normalized lookup returned empty chunks for variant {variant!r}"
 
 
 def test_from_dict_empty_raises() -> None:

@@ -5,9 +5,11 @@
 """``retriever answer`` Typer subcommand.
 
 Single-query live RAG entrypoint: retrieve from LanceDB, generate with an
-LLM, and optionally score against a reference answer.  The command wraps
-:meth:`nemo_retriever.retriever.Retriever.answer` and exposes the full
-retrieval / reranking / embedding / generation / judging surface as flags.
+LLM, and optionally score against a reference answer.  The command now
+delegates to :func:`nemo_retriever.generation.answer` (and, when a
+``--reference`` is supplied, :func:`nemo_retriever.generation.eval`) and
+projects the resulting single DataFrame row back onto the historical
+``AnswerResult``-shaped JSON payload.
 
 Design notes
 ------------
@@ -18,7 +20,9 @@ are deferred to inside the command body so that ``retriever --help`` and
 
 The command supports a machine-readable JSON mode (``--json -`` or
 ``--json <path>``) intended for agent / shell / CI consumption; the JSON
-schema is stable and mirrors :class:`nemo_retriever.llm.types.AnswerResult`.
+schema is stable and mirrors the historical
+:class:`nemo_retriever.llm.types.AnswerResult` (with ``gen_error``
+renamed to ``error`` for backward compatibility with prior tooling).
 
 Exit-code contract (schema'd for agents and CI)::
 
@@ -33,7 +37,6 @@ Exit-code contract (schema'd for agents and CI)::
 from __future__ import annotations
 
 import atexit
-import dataclasses
 import json
 import logging
 import shutil
@@ -52,6 +55,61 @@ EXIT_BELOW_JUDGE_THRESHOLD = 2
 EXIT_EMPTY_RETRIEVAL = 3
 EXIT_USAGE = 4
 EXIT_GENERATION_FAILED = 5
+
+
+# Columns in the generation DataFrame that we project onto the
+# historical AnswerResult JSON schema, in the historical key order.
+# ``(out_key, src_col)`` pairs.  ``gen_error`` in the DataFrame maps to
+# the historical ``error`` field.
+ANSWER_DICT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("query", "query"),
+    ("answer", "answer"),
+    ("chunks", "chunks"),
+    ("metadata", "metadata"),
+    ("model", "model"),
+    ("latency_s", "latency_s"),
+    ("error", "gen_error"),
+    ("judge_score", "judge_score"),
+    ("judge_reasoning", "judge_reasoning"),
+    ("judge_error", "judge_error"),
+    ("token_f1", "token_f1"),
+    ("exact_match", "exact_match"),
+    ("answer_in_context", "answer_in_context"),
+    ("failure_mode", "failure_mode"),
+)
+
+
+def row_to_answer_dict(row: Any) -> dict[str, Any]:
+    """Project a single DataFrame row onto the AnswerResult-shaped dict.
+
+    Columns that were never produced (no reference -> no score columns;
+    no judge -> no judge columns) default to ``None`` so the JSON schema
+    stays stable regardless of which scoring tiers were exercised.
+
+    Numpy scalars (``np.int64``, ``np.float64``, ``np.bool_``) that
+    pandas returns for ``pd.Series.get`` are unboxed to native Python
+    types so ``json.dumps`` produces ``5`` / ``0.8`` / ``false`` rather
+    than their string fallbacks via ``default=str``.
+    """
+    import numpy as np
+    import pandas as pd
+
+    def _unbox(value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, (list, dict)):
+            return value
+        if isinstance(value, np.generic):
+            return value.item()
+        if pd.isna(value):
+            return None
+        return value
+
+    def _get(column: str) -> Any:
+        value = row.get(column, None) if hasattr(row, "get") else None
+        return _unbox(value)
+
+    return {out_key: _get(src_col) for out_key, src_col in ANSWER_DICT_COLUMNS}
 
 
 def _emit_json(result_dict: dict[str, Any], json_out: Optional[Path]) -> None:
@@ -146,7 +204,7 @@ def _ingest_files(
         .embed(EmbedParams(**embed_kwargs))
     )
     result_df = ingestor.ingest()
-    handle_lancedb(result_df, lancedb_uri, lancedb_table, hybrid=hybrid, mode="overwrite")
+    handle_lancedb(result_df, lancedb_uri, lancedb_table, mode="overwrite", hybrid=hybrid)
     logger.info("Ingestion complete.")
 
 
@@ -278,10 +336,13 @@ def answer_command(
 ) -> None:
     """Answer a single question using live RAG.
 
-    The command performs ``retrieve -> generate`` and, when a ``--reference``
-    is supplied with optional ``--judge-model``, adds token-F1 / exact-match /
-    LLM-as-judge scoring.  Pipes cleanly into agents and CI via schema'd
-    ``--json`` output and the exit-code contract documented on this module.
+    The command performs ``retrieve -> generate`` via
+    :func:`nemo_retriever.generation.answer` and, when a ``--reference``
+    is supplied (optionally with ``--judge-model``), routes through
+    :func:`nemo_retriever.generation.eval` to add token-F1 / exact-match /
+    answer-in-context / LLM-as-judge scoring.  Pipes cleanly into agents
+    and CI via schema'd ``--json`` output and the exit-code contract
+    documented on this module.
     """
     if model is None:
         typer.echo("Error: --model is required.", err=True)
@@ -314,6 +375,8 @@ def answer_command(
         )
         raise typer.Exit(code=EXIT_USAGE)
 
+    from nemo_retriever.generation import answer as answer_fn
+    from nemo_retriever.generation import eval as eval_fn
     from nemo_retriever.llm.clients import LiteLLMClient, LLMJudge
     from nemo_retriever.model import VL_EMBED_MODEL
     from nemo_retriever.retriever import Retriever
@@ -365,15 +428,26 @@ def answer_command(
             api_key=judge_api_key or api_key,
         )
 
-    result = retriever.answer(
-        question,
-        llm=llm,
-        judge=judge,
-        reference=reference,
-        top_k=top_k,
-    )
+    if reference is not None:
+        df = eval_fn(
+            retriever,
+            [question],
+            llm=llm,
+            reference=reference,
+            judge=judge,
+            top_k=top_k,
+        )
+    else:
+        df = answer_fn(
+            retriever,
+            [question],
+            llm=llm,
+            top_k=top_k,
+        )
 
-    result_dict = dataclasses.asdict(result)
+    row = df.iloc[0]
+    result_dict = row_to_answer_dict(row)
+
     # --json - routes JSON to stdout and the summary to stderr so the two
     # streams can be piped independently (e.g. agents capture stdout, humans
     # watch stderr).  Any other --json target keeps the summary on stdout.
@@ -382,11 +456,15 @@ def answer_command(
     if not quiet:
         _emit_human_summary(result_dict, to_stderr=json_to_stdout)
 
-    if result.error is not None:
+    gen_error = result_dict.get("error")
+    chunks = result_dict.get("chunks") or []
+    judge_score = result_dict.get("judge_score")
+
+    if gen_error is not None:
         raise typer.Exit(code=EXIT_GENERATION_FAILED)
-    if not result.chunks:
+    if not chunks:
         raise typer.Exit(code=EXIT_EMPTY_RETRIEVAL)
-    if min_judge_score is not None and (result.judge_score is None or result.judge_score < min_judge_score):
+    if min_judge_score is not None and (judge_score is None or judge_score < min_judge_score):
         raise typer.Exit(code=EXIT_BELOW_JUDGE_THRESHOLD)
 
     raise typer.Exit(code=EXIT_OK)

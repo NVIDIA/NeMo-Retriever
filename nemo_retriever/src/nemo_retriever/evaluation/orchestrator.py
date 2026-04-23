@@ -266,12 +266,23 @@ class QAEvalPipeline(EvalOperator):
         def _retrieve(idx: int, pair: dict) -> tuple[int, dict]:
             query = pair["query"]
             reference = pair.get("reference_answer") or pair.get("answer", "")
-            retrieval = self.retriever.retrieve(query, self.top_k)
+            hit_df = self.retriever.retrieve(query, self.top_k)
+            # `RetrieverStrategy.retrieve` now returns a single-row
+            # DataFrame with [query, chunks, metadata]; empty-frame is
+            # the "graceful miss" signal FileRetriever emits when the
+            # query is absent from the retrieval JSON.
+            if len(hit_df):
+                row = hit_df.iloc[0]
+                chunks = row["chunks"]
+                metadata = row["metadata"]
+            else:
+                chunks = []
+                metadata = []
             return idx, {
                 "query": query,
                 "reference_answer": reference,
-                "context": retrieval.chunks,
-                "_retrieval_metadata": retrieval.metadata,
+                "context": chunks,
+                "_retrieval_metadata": metadata,
             }
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:

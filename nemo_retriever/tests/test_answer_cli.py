@@ -16,6 +16,7 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import typer
 from typer.testing import CliRunner
 
@@ -27,22 +28,27 @@ from nemo_retriever.answer_cli import (
     EXIT_OK,
     EXIT_USAGE,
 )
-from nemo_retriever.llm.types import AnswerResult
 from nemo_retriever.mcp_server import ANSWER_TOOL_INPUT_SCHEMA, ANSWER_TOOL_NAME
 
 RUNNER = CliRunner()
 
 
-def _make_answer_result(**overrides: Any) -> AnswerResult:
-    """Build an :class:`AnswerResult` with sensible defaults for tests."""
-    defaults: dict[str, Any] = {
+def _make_answer_df(**overrides: Any) -> pd.DataFrame:
+    """Build a one-row DataFrame in the generation schema with sensible defaults.
+
+    Mirrors the column union produced by
+    :func:`nemo_retriever.generation.eval` so the CLI's projection back
+    onto the AnswerResult-shaped JSON payload is exercised end-to-end.
+    The ``gen_error`` column maps to the historical ``error`` field.
+    """
+    row: dict[str, Any] = {
         "query": "q",
         "answer": "a",
         "chunks": ["chunk-1"],
         "metadata": [{"source": "doc"}],
         "model": "mock/llm",
         "latency_s": 0.01,
-        "error": None,
+        "gen_error": None,
         "judge_score": None,
         "judge_reasoning": None,
         "judge_error": None,
@@ -51,8 +57,10 @@ def _make_answer_result(**overrides: Any) -> AnswerResult:
         "answer_in_context": None,
         "failure_mode": None,
     }
-    defaults.update(overrides)
-    return AnswerResult(**defaults)
+    row.update(overrides)
+    # Wrap every value in a single-element outer list so pandas treats
+    # list-valued cells (chunks, metadata) as object-dtype per-row lists.
+    return pd.DataFrame({k: [v] for k, v in row.items()})
 
 
 # ---------------------------------------------------------------------------
@@ -109,25 +117,30 @@ def test_retriever_answer_missing_lancedb_uri_exits_usage() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _invoke_answer_with_patched_retriever(result: AnswerResult, *args: str) -> tuple[int, str, str]:
-    """Invoke the CLI with Retriever.answer() monkey-patched to return ``result``.
+def _invoke_answer_with_patched_generation(result_df: pd.DataFrame, *args: str) -> tuple[int, str, str]:
+    """Invoke the CLI with ``generation.answer`` / ``generation.eval`` patched.
 
-    The command imports ``Retriever``, ``LiteLLMClient``, and ``LLMJudge``
-    lazily inside the function body (see ``answer_cli._ingest_files`` and
-    ``answer_command``), so the patches must target the source modules --
-    not the ``answer_cli`` namespace where they would look like unbound
-    attributes.
+    The command imports ``Retriever``, ``LiteLLMClient``, ``LLMJudge``,
+    and the two ``generation.*`` entry points lazily inside the function
+    body, so the patches must target the source modules -- not the
+    ``answer_cli`` namespace where they would look like unbound
+    attributes.  Both :func:`~nemo_retriever.generation.answer` and
+    :func:`~nemo_retriever.generation.eval` are patched because the CLI
+    dispatches to one or the other based on whether ``--reference`` is
+    supplied.
     """
     with (
         patch("nemo_retriever.retriever.Retriever") as mock_retriever_cls,
         patch("nemo_retriever.llm.clients.LiteLLMClient") as mock_llm_cls,
         patch("nemo_retriever.llm.clients.LLMJudge") as mock_judge_cls,
+        patch("nemo_retriever.generation.answer") as mock_answer_fn,
+        patch("nemo_retriever.generation.eval") as mock_eval_fn,
     ):
-        mock_retriever = MagicMock()
-        mock_retriever.answer.return_value = result
-        mock_retriever_cls.return_value = mock_retriever
+        mock_retriever_cls.return_value = MagicMock()
         mock_llm_cls.from_kwargs.return_value = MagicMock()
         mock_judge_cls.from_kwargs.return_value = MagicMock()
+        mock_answer_fn.return_value = result_df
+        mock_eval_fn.return_value = result_df
 
         cli_result = RUNNER.invoke(app, ["answer", *args])
     return cli_result.exit_code, cli_result.stdout, cli_result.stderr
@@ -135,8 +148,8 @@ def _invoke_answer_with_patched_retriever(result: AnswerResult, *args: str) -> t
 
 def test_retriever_answer_success_exit_zero(tmp_path: Any) -> None:
     """Happy path -- answer generated, chunks non-empty -> exit 0."""
-    result = _make_answer_result()
-    exit_code, _out, _err = _invoke_answer_with_patched_retriever(
+    result = _make_answer_df()
+    exit_code, _out, _err = _invoke_answer_with_patched_generation(
         result,
         "hello",
         "--model",
@@ -150,8 +163,8 @@ def test_retriever_answer_success_exit_zero(tmp_path: Any) -> None:
 
 def test_retriever_answer_empty_retrieval_exits_three(tmp_path: Any) -> None:
     """Zero retrieved chunks -> exit 3."""
-    result = _make_answer_result(chunks=[], metadata=[])
-    exit_code, _out, _err = _invoke_answer_with_patched_retriever(
+    result = _make_answer_df(chunks=[], metadata=[])
+    exit_code, _out, _err = _invoke_answer_with_patched_generation(
         result,
         "hello",
         "--model",
@@ -165,8 +178,8 @@ def test_retriever_answer_empty_retrieval_exits_three(tmp_path: Any) -> None:
 
 def test_retriever_answer_generation_error_exits_five(tmp_path: Any) -> None:
     """Generation failure -> exit 5, checked before empty-retrieval."""
-    result = _make_answer_result(error="boom")
-    exit_code, _out, _err = _invoke_answer_with_patched_retriever(
+    result = _make_answer_df(gen_error="boom")
+    exit_code, _out, _err = _invoke_answer_with_patched_generation(
         result,
         "hello",
         "--model",
@@ -180,8 +193,8 @@ def test_retriever_answer_generation_error_exits_five(tmp_path: Any) -> None:
 
 def test_retriever_answer_below_threshold_exits_two(tmp_path: Any) -> None:
     """Judge score below ``--min-judge-score`` -> exit 2."""
-    result = _make_answer_result(judge_score=2)
-    exit_code, _out, _err = _invoke_answer_with_patched_retriever(
+    result = _make_answer_df(judge_score=2)
+    exit_code, _out, _err = _invoke_answer_with_patched_generation(
         result,
         "hello",
         "--model",
@@ -200,15 +213,15 @@ def test_retriever_answer_below_threshold_exits_two(tmp_path: Any) -> None:
 
 
 def test_retriever_answer_json_stdout_emits_valid_payload(tmp_path: Any) -> None:
-    """`--json -` sends a valid JSON AnswerResult payload to stdout."""
-    result = _make_answer_result(
+    """``--json -`` sends a valid JSON AnswerResult payload to stdout."""
+    result = _make_answer_df(
         judge_score=5,
         token_f1=0.8,
         exact_match=False,
         answer_in_context=True,
         failure_mode="correct",
     )
-    exit_code, out, _err = _invoke_answer_with_patched_retriever(
+    exit_code, out, _err = _invoke_answer_with_patched_generation(
         result,
         "hello",
         "--model",

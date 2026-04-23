@@ -263,29 +263,24 @@ Answer:
 Cat is the animal whose activity (jumping onto a laptop) matches the location of the typos, so the cat is responsible for the typos in the documents.
 ```
 
-### Live RAG SDK (retrieve + answer in one call)
+### Live RAG SDK (`nemo_retriever.generation`)
 
-The pattern above -- retrieve hits, build a prompt, call an LLM -- is baked into the SDK as `Retriever.answer()` so live applications can skip the boilerplate. The same `Retriever` instance powers three entry points:
+`nemo_retriever.generation` is the composable RAG layer. `Retriever` stays narrow (query -> LanceDB hits); `generation.*` adds everything downstream. Every function takes a `Retriever` or a DataFrame and returns a `pandas.DataFrame` with additive columns, so the output of one step is always valid input to the next.
 
-| Method | Input | Output | Use case |
-| --- | --- | --- | --- |
-| `Retriever.retrieve(query, top_k=...)` | one query | `RetrievalResult` (`chunks`, `metadata`) | Structured retrieval without an LLM. |
-| `Retriever.answer(query, llm=..., judge=None, reference=None, ...)` | one query | `AnswerResult` (answer + chunks + optional scores) | One-shot RAG -- production/live. |
-| `Retriever.pipeline().generate(...).score().judge(...).run(queries)` | many queries | `pandas.DataFrame` | Batch RAG over the operator graph, each step optional. |
+| Function | Signature | Columns added |
+| --- | --- | --- |
+| `generation.retrieve` | `(retriever, queries, *, top_k=None)` | `query`, `chunks`, `metadata` |
+| `generation.answer` | `(retriever, queries, *, llm, reference=None)` | `answer`, `model`, `latency_s`, `gen_error` |
+| `generation.score` | `(df, *, reference_column="reference_answer")` | `answer_in_context`, `token_f1`, `exact_match`, `failure_mode` |
+| `generation.judge` | `(df, *, judge)` | `judge_score`, `judge_reasoning`, `judge_error` |
+| `generation.eval` | `(retriever, queries, *, llm, reference, judge=None)` | union of all of the above |
 
-Install the LLM client extra:
-```bash
-uv pip install "nemo-retriever[llm]"
-export NVIDIA_API_KEY=nvapi-...
-```
-
-Single-query live RAG. Point `lancedb_uri` at any table built above; the
-`embedder` must match the one used during ingestion so query vectors land in
-the same embedding space as the stored chunks.
+Install the LLM extra once (`uv pip install "nemo-retriever[llm]"`, then `export NVIDIA_API_KEY=nvapi-...`). The full pipeline, end-to-end:
 
 ```python
+from nemo_retriever import generation
 from nemo_retriever.retriever import Retriever
-from nemo_retriever.llm import LiteLLMClient
+from nemo_retriever.llm import LiteLLMClient, LLMJudge
 
 retriever = Retriever(
     lancedb_uri="lancedb",
@@ -294,146 +289,70 @@ retriever = Retriever(
     embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
     top_k=5,
 )
-llm = LiteLLMClient.from_kwargs(
-    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
-    temperature=0.0,
-    max_tokens=512,
-)
-
-result = retriever.answer("What is RAG?", llm=llm)
-print(result.answer)
-# 'Retrieval-augmented generation combines external context with an LLM...'
-print(len(result.chunks), "chunks from", {m.get("source") for m in result.metadata})
-print(f"{result.latency_s:.2f}s on {result.model}")
-```
-
-Local-GPU shortcut: if you ingested with default `graph_pipeline` flags
-(`--embed` omitted, `[local]` extra installed), drop `embedder=` and
-`embedding_endpoint=` to reuse the bundled `VL_EMBED_MODEL`.
-
-Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
-```python
-from nemo_retriever.llm import LLMJudge
-
+llm = LiteLLMClient.from_kwargs(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
 judge = LLMJudge.from_kwargs(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
-result = retriever.answer(
-    "What is RAG?",
-    llm=llm,
-    judge=judge,
-    reference="RAG combines retrieved context with LLM generation.",
-)
-print(result.token_f1, result.judge_score, result.failure_mode)
-# 0.62 4 'correct'
-```
 
-Batch RAG over the operator graph -- each builder step is optional:
-```python
-df = (
-    retriever.pipeline()
-    .generate(llm)
-    .score()
-    .judge(judge)
-    .run(
-        queries=["What is RAG?", "What is reranking?"],
-        reference=["RAG combines retrieval with generation.", "Reranking re-scores retrieved passages."],
-    )
+df = generation.eval(
+    retriever,
+    ["What is RAG?", "What is reranking?"],
+    llm=llm,
+    reference=["RAG combines retrieval with generation.", "Reranking re-scores retrieved passages."],
+    judge=judge,
 )
 print(df[["query", "answer", "token_f1", "judge_score", "failure_mode"]])
 ```
 
-Scoring tiers on `AnswerResult`:
+Drop `judge` for Tier-1 + Tier-2 scoring only; swap `generation.eval` for `generation.answer` to skip scoring entirely. To persist intermediates, call `retrieve` / `answer` / `score` / `judge` individually and pass the DataFrame forward. Scoring-tier semantics and column definitions live in [`src/nemo_retriever/evaluation/README.md`](src/nemo_retriever/evaluation/README.md).
 
-- **Tier 1** (`answer_in_context`) -- whether retrieval surfaced the evidence; requires `reference`.
-- **Tier 2** (`token_f1`, `exact_match`) -- token-level overlap; requires `reference`.
-- **Tier 3** (`judge_score`, `judge_reasoning`) -- LLM-as-judge 1-5 score; requires `reference` and `judge`.
-- `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `refused_*`, `thinking_truncated`).
+### CLI
 
-If only `reference` is supplied, Tier 1 + 2 run. If only `judge` is supplied (without `reference`), a `ValueError` is raised. On generation error, scoring and judge are skipped and `AnswerResult.error` is populated.
+Three Typer subcommands expose the same `generation.*` entry points for shells, CI jobs, and agents:
 
-### Live RAG from the shell (`retriever answer`)
+| Subcommand | Backing function | Output |
+| --- | --- | --- |
+| `retriever retrieve` | `generation.retrieve` | JSONL, one row per query |
+| `retriever answer` | `generation.answer` / `generation.eval` | Single JSON object (schema below) |
+| `retriever eval batch` | `generation.eval` | JSONL, one row per query |
 
-The same `Retriever.answer()` pipeline is exposed as a single Typer command for scripts, CI jobs, and agents that prefer stdin/stdout over Python imports. Same inputs, same semantics, machine-readable output.
-
-**Install extras.** The CLI subcommand itself ships in the core package; the pieces it orchestrates require extras based on how you run inference:
-
-| Scenario | Install |
-| --- | --- |
-| Remote NIMs for embedding, rerank, and generation (recommended) | `uv sync --extra llm` |
-| Local GPU embedder/reranker (e.g. omitting `--embedding-endpoint`) | `uv sync --extra llm --extra local` |
-| `retriever mcp serve` (see below) | add `--extra mcp` |
-
-Passing `--embedder` without `--embedding-endpoint` falls back to a local HuggingFace embedder, which requires the `[local]` extra (pulls in `torch`, `transformers`, etc.). If you see `ModuleNotFoundError: No module named 'torch'`, either install `[local]` or point the CLI at a remote endpoint with `--embedding-endpoint https://integrate.api.nvidia.com/v1 --embedding-api-key $NVIDIA_API_KEY`.
+Install extras based on deployment: `uv sync --extra llm` for remote NIMs, add `--extra local` for a local embedder (omits `--embedding-endpoint`), add `--extra mcp` for the MCP server. `--embedding-api-key` / `--api-key` default to `$NVIDIA_API_KEY`.
 
 ```bash
-retriever answer "What is RAG?" \
-  --lancedb-uri ./lancedb \
-  --embedder nvidia/llama-nemotron-embed-vl-1b-v2 \
-  --embedding-endpoint https://integrate.api.nvidia.com/v1 \
-  --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --api-base https://integrate.api.nvidia.com/v1 \
-  --top-k 5
-```
-
-`--embedding-api-key` and `--api-key` default to the `NVIDIA_API_KEY` environment variable, so `export NVIDIA_API_KEY=nvapi-...` once and both calls pick it up.
-
-One-shot ingest + answer -- useful for ad-hoc questions against a PDF you do not want to persist. Without `--lancedb-uri`, a temporary LanceDB directory is created and cleaned up on exit (pass `--keep-ingest` to preserve it):
-
-```bash
-retriever answer "What is the project's license?" \
-  --ingest README.pdf \
-  --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
-```
-
-With scoring + judge, piping JSON to `jq`:
-
-```bash
+# Single-query live RAG (optionally score against --reference + --judge-model).
 retriever answer "What is RAG?" \
   --lancedb-uri ./lancedb \
   --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --reference "RAG combines retrieved context with LLM generation." \
   --judge-model nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1 \
-  --min-judge-score 4 \
   --json - --quiet | jq '{answer, judge_score, failure_mode}'
+
+# One-shot ingest + answer (temporary LanceDB, cleaned up on exit).
+retriever answer "What is the project's license?" \
+  --ingest README.pdf \
+  --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
+
+# Batch retrieval only -- accepts --query "..." or --queries file.jsonl ({"query": "..."} per line).
+retriever retrieve \
+  --lancedb-uri ./lancedb \
+  --queries queries.jsonl \
+  --top-k 5 \
+  --output hits.jsonl
+
+# Batch evaluation -- requires --reference (or a JSONL file with "reference_answer" per row).
+retriever eval batch \
+  --lancedb-uri ./lancedb \
+  --model nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --judge-model nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1 \
+  --queries queries.jsonl \
+  --output results.jsonl
 ```
 
-JSON schema (`--json -` or `--json path.json`) is `dataclasses.asdict(AnswerResult)`:
+The `retriever answer` JSON schema (`--json -` or `--json path.json`) is one row of the `generation.eval` DataFrame projected onto the historical `AnswerResult` keys: `query`, `answer`, `chunks`, `metadata`, `model`, `latency_s`, `error`, `judge_score`, `judge_reasoning`, `judge_error`, `token_f1`, `exact_match`, `answer_in_context`, `failure_mode`. Score columns are `null` unless `--reference` is supplied; judge columns additionally require `--judge-model`.
 
-| Field | Type | When populated |
-| --- | --- | --- |
-| `query` | `string` | Always. |
-| `answer` | `string` | Always (empty string on generation error). |
-| `chunks` | `list[string]` | Always. |
-| `metadata` | `list[object]` | Always, aligned with `chunks`. |
-| `model` | `string` | Always. |
-| `latency_s` | `number` | Always. |
-| `error` | `string \| null` | Non-null when generation failed. |
-| `judge_score` | `integer(1-5) \| null` | `--judge-model` + `--reference`. |
-| `judge_reasoning` | `string \| null` | Same as above. |
-| `judge_error` | `string \| null` | When the judge call itself failed. |
-| `token_f1` | `number(0-1) \| null` | `--reference`. |
-| `exact_match` | `boolean \| null` | `--reference`. |
-| `answer_in_context` | `boolean \| null` | `--reference`. |
-| `failure_mode` | `string \| null` | `--reference`; values: `correct`, `partial`, `retrieval_miss`, `generation_miss`, `refused_*`, `thinking_truncated`. |
-
-Exit codes (stable contract for agents and CI):
-
-| Code | Meaning |
-| --- | --- |
-| `0` | Success; answer generated and (if `--min-judge-score` was set) threshold met. |
-| `2` | Answered but `judge_score < --min-judge-score`. |
-| `3` | Retrieval returned zero chunks; no answer generated. |
-| `4` | Usage error (missing `--model`, `--judge-model` without `--reference`, etc.). |
-| `5` | Generation failed (`AnswerResult.error` populated). |
+Exit codes (stable contract): `0` success; `2` `judge_score < --min-judge-score`; `3` zero chunks retrieved; `4` usage error; `5` generation failed. `retriever retrieve` and `retriever eval batch` use `0` / `4` only.
 
 ### MCP server (`retriever mcp serve`)
 
-Agent runtimes -- Cursor, Claude Desktop, Cline, Aider, etc. -- can call `Retriever.answer` directly over stdio via the Model Context Protocol. Install the optional extra once:
-
-```bash
-uv pip install "nemo-retriever[llm,mcp]"
-```
-
-Then register the server in your runtime's `mcp.json`:
+Agent runtimes (Cursor, Claude Desktop, Cline, Aider, ...) call `generation.answer` over stdio via the Model Context Protocol. Install `uv pip install "nemo-retriever[llm,mcp]"` and register the server in the runtime's `mcp.json`:
 
 ```json
 {
@@ -445,23 +364,13 @@ Then register the server in your runtime's `mcp.json`:
         "--lancedb-uri", "/path/to/lancedb",
         "--model", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
       ],
-      "env": {
-        "NVIDIA_API_KEY": "nvapi-..."
-      }
+      "env": {"NVIDIA_API_KEY": "nvapi-..."}
     }
   }
 }
 ```
 
-The server exposes a single tool, `answer`, whose input schema is:
-
-| Field | Type | Required | Notes |
-| --- | --- | --- | --- |
-| `question` | `string` | yes | Natural-language query. |
-| `top_k` | `integer` | no | Overrides the server's `--top-k` default. |
-| `reference` | `string` | no | Ground-truth for token-F1 / exact-match scoring (judge is not enabled on the MCP path). |
-
-Each tool call returns a single text content block containing the JSON-serialised `AnswerResult` described in the table above; agents should `json.loads` the `text` field to get structured fields back.
+The server exposes one tool, `answer`, with inputs `question: string` (required), `top_k: integer`, and `reference: string`. Each call returns a single text content block containing the JSON payload described in the CLI schema above (the judge tier is not enabled on the MCP path).
 
 ### Ingest other types of content:
 

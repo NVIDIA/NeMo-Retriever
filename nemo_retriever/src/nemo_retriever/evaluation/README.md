@@ -618,7 +618,7 @@ signature works -- no inheritance or registration required.
 
 | Protocol | Method | Default implementation |
 |----------|--------|----------------------|
-| `RetrieverStrategy` | `retrieve(query, top_k) -> RetrievalResult` | `FileRetriever` (cached JSON) |
+| `RetrieverStrategy` | `retrieve(query, top_k) -> pandas.DataFrame` (one row, columns `[query, chunks, metadata]`) | `FileRetriever` (cached JSON), `Retriever` via `generation.retrieve` |
 | `LLMClient` | `generate(query, chunks) -> GenerationResult` | `LiteLLMClient` (NIM, OpenAI, vLLM) |
 | `AnswerJudge` | `judge(query, reference, candidate) -> JudgeResult` | `LLMJudge` (1-5 rubric) |
 
@@ -628,7 +628,7 @@ The evaluation framework lives in `nemo_retriever/src/nemo_retriever/evaluation/
 
 | Module | Purpose |
 |--------|---------|
-| `types.py` | Protocol definitions (`RetrieverStrategy`, `LLMClient`, `AnswerJudge`) and dataclasses (`RetrievalResult`, `GenerationResult`, `JudgeResult`) |
+| `types.py` | Protocol definitions (`RetrieverStrategy`, `LLMClient`, `AnswerJudge`) and dataclasses (`GenerationResult`, `JudgeResult`, `AnswerResult`). `RetrievalResult` is retained as a legacy shape; the `RetrieverStrategy.retrieve` contract now returns a `pandas.DataFrame` directly. |
 | `eval_operator.py` | `EvalOperator` base class for all QA operators -- extends `AbstractOperator` + `CPUOperator`, adds `required_columns` / `output_columns` validation |
 | `retrieval_loader.py` | `RetrievalLoaderOperator` -- entry point for graph chains; loads ground truth + retrieval JSON into a DataFrame |
 | `generation.py` | `QAGenerationOperator` -- wraps `LiteLLMClient` for concurrent batch generation (ThreadPoolExecutor) |
@@ -891,14 +891,16 @@ Transport params redact the bearer token in their `__repr__` / `__str__` (`api_k
 
 ### Batch generation failure rate
 
-When the fluent builder ran `.generate(...)`, the returned `DataFrame` exposes the aggregate generation failure rate on `df.attrs` so batch-eval reports can surface it alongside `token_f1` / `judge_score`:
+`QAGenerationOperator` attaches the aggregate generation failure rate to `df.attrs` so batch-eval reports can surface it alongside `token_f1` / `judge_score`. `generation.answer` and `generation.eval` both run that operator, so the attribute is present on their returned DataFrames as well:
 
 ```python
-df = retriever.pipeline().generate(llm).run(queries=questions)
+from nemo_retriever import generation
+
+df = generation.answer(retriever, questions, llm=llm)
 print(f"generation_failure_rate = {df.attrs['generation_failure_rate']:.2%}")
 ```
 
-`generation_failure_rate` is the fraction of rows whose `gen_error` column is non-null; it is only attached when the `.generate()` step ran.
+`generation_failure_rate` is the fraction of rows whose `gen_error` column is non-null; it is only attached when a generation step actually ran.
 
 ### Stable public surface
 
@@ -1065,13 +1067,23 @@ The same pattern works for custom failure classifiers, alternative judge prompts
 ### Custom Retriever
 
 ```python
-from nemo_retriever.llm.types import RetrieverStrategy, RetrievalResult
+import pandas as pd
+
+from nemo_retriever.llm.types import RetrieverStrategy
 
 class MyRetriever:
-    def retrieve(self, query: str, top_k: int) -> RetrievalResult:
+    def retrieve(self, query: str, top_k: int) -> pd.DataFrame:
         chunks = my_search(query, top_k)
-        return RetrievalResult(chunks=chunks, metadata=[])
+        return pd.DataFrame(
+            {
+                "query": [query],
+                "chunks": [list(chunks)],
+                "metadata": [[{} for _ in chunks]],
+            }
+        )
 ```
+
+Any object that returns a single-row DataFrame with exactly those three columns satisfies `RetrieverStrategy` and composes with `generation.answer` / `generation.score` / `generation.judge` / `generation.eval` out of the box.
 
 ### Custom LLM Client
 

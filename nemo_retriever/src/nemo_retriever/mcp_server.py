@@ -2,12 +2,12 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""``retriever mcp serve`` -- stdio MCP server over :meth:`Retriever.answer`.
+"""``retriever mcp serve`` -- stdio MCP server over ``generation.answer``.
 
 This module exposes a single ``answer`` MCP tool over stdio so that an
-agent runtime (Cursor, Claude Desktop, Cline, etc.) can call into
-``nemo_retriever.retriever.Retriever.answer`` without spawning a new
-process per query.
+agent runtime (Cursor, Claude Desktop, Cline, etc.) can call into the
+:mod:`nemo_retriever.generation` library without spawning a new process
+per query.
 
 Why a separate module
 ---------------------
@@ -39,13 +39,14 @@ The server exposes exactly one tool, ``answer``, whose input schema is::
     }
 
 The tool returns a single ``TextContent`` block whose ``text`` field is a
-JSON-serialised :class:`~nemo_retriever.llm.types.AnswerResult`.  Agents
-are expected to ``json.loads`` that text to recover structured fields.
+JSON object mirroring the historical
+:class:`~nemo_retriever.llm.types.AnswerResult` schema (see
+:func:`nemo_retriever.answer_cli.row_to_answer_dict`).  Agents are
+expected to ``json.loads`` that text to recover structured fields.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
 from pathlib import Path
@@ -115,14 +116,13 @@ def _build_retriever_and_llm(
     api_key: Optional[str],
     temperature: float,
     max_tokens: int,
-) -> tuple[Any, Any, Optional[Any]]:
+) -> tuple[Any, Any]:
     """Construct the shared ``Retriever`` + ``LiteLLMClient`` pair.
 
     Both are created once at ``serve`` start-up and reused for every
     MCP tool call so that the NIM auth-token resolution, LanceDB
     connection pool, and litellm-retry bookkeeping are not repeated per
-    tool invocation.  Returns ``(retriever, llm, judge)`` where ``judge``
-    is currently always ``None`` -- see serve() for details.
+    tool invocation.  Returns ``(retriever, llm)``.
     """
     from nemo_retriever.llm.clients import LiteLLMClient
     from nemo_retriever.model import VL_EMBED_MODEL
@@ -152,7 +152,7 @@ def _build_retriever_and_llm(
         max_tokens=max_tokens,
     )
 
-    return retriever, llm, None
+    return retriever, llm
 
 
 def serve_command(
@@ -214,7 +214,7 @@ def serve_command(
     temperature: float = typer.Option(0.0, "--temperature", help="Sampling temperature."),
     max_tokens: int = typer.Option(4096, "--max-tokens", help="Max tokens per generation."),
 ) -> None:
-    """Serve :meth:`Retriever.answer` as an MCP tool over stdio.
+    """Serve :func:`nemo_retriever.generation.answer` as an MCP tool over stdio.
 
     Intended to be registered in ``mcp.json`` by an agent runtime::
 
@@ -231,15 +231,20 @@ def serve_command(
 
     The server exposes a single ``answer`` tool; its schema is identical
     to :data:`ANSWER_TOOL_INPUT_SCHEMA`.  Each tool call maps 1:1 to
-    :meth:`Retriever.answer` and returns a JSON-serialised
-    :class:`~nemo_retriever.llm.types.AnswerResult` in a single text
-    content block.
+    :func:`nemo_retriever.generation.answer` (or
+    :func:`nemo_retriever.generation.eval` when the call includes a
+    ``reference``) and returns an ``AnswerResult``-shaped JSON dict in a
+    single text content block.
     """
     import asyncio
 
+    from nemo_retriever.answer_cli import row_to_answer_dict
+    from nemo_retriever.generation import answer as answer_fn
+    from nemo_retriever.generation import eval as eval_fn
+
     mcp_server, mcp_stdio, mcp_types = _require_mcp()
 
-    retriever, llm, _judge = _build_retriever_and_llm(
+    retriever, llm = _build_retriever_and_llm(
         lancedb_uri=lancedb_uri,
         lancedb_table=lancedb_table,
         embedder=embedder,
@@ -283,19 +288,29 @@ def serve_command(
         if reference is not None and not isinstance(reference, str):
             raise ValueError("`reference`, if supplied, must be a string")
 
-        # Offload the synchronous Retriever.answer() call to a thread so
-        # we don't block the event loop that's driving stdio I/O.
+        def _invoke() -> dict[str, Any]:
+            if reference is not None:
+                df = eval_fn(
+                    retriever,
+                    [question],
+                    llm=llm,
+                    reference=reference,
+                    top_k=call_top_k,
+                )
+            else:
+                df = answer_fn(
+                    retriever,
+                    [question],
+                    llm=llm,
+                    top_k=call_top_k,
+                )
+            return row_to_answer_dict(df.iloc[0])
+
+        # Offload the synchronous generation call to a thread so we don't
+        # block the event loop that's driving stdio I/O.
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: retriever.answer(
-                question,
-                llm=llm,
-                reference=reference,
-                top_k=call_top_k,
-            ),
-        )
-        payload = json.dumps(dataclasses.asdict(result), default=str, ensure_ascii=False)
+        result_dict = await loop.run_in_executor(None, _invoke)
+        payload = json.dumps(result_dict, default=str, ensure_ascii=False)
         return [mcp_types.TextContent(type="text", text=payload)]
 
     async def _run() -> None:
