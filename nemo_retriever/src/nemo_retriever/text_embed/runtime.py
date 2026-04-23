@@ -164,8 +164,8 @@ def embed_text_main_text_embed(
             import torch
 
             torch.cuda.empty_cache()
-        except Exception:
-            pass
+        except Exception as _cache_exc:  # noqa: BLE001
+            logger.debug("torch.cuda.empty_cache() failed during error cleanup: %s", _cache_exc)
         logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         out_df = batch_df.copy()
         out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)

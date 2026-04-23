@@ -41,6 +41,9 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
         self._model = None
         self._device = None
 
+    def _ensure_loaded(self) -> None:
+        if self._model is not None:
+            return
         from nemo_retriever.model import _DEFAULT_EMBED_MODEL
         from transformers import AutoModel, AutoTokenizer
 
@@ -70,8 +73,7 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
         return False
 
     def _embed_local(self, texts: List[str], *, batch_size: int) -> torch.Tensor:
-        if self._tokenizer is None or self._model is None or self._device is None:
-            raise RuntimeError("HF embedder was not initialized.")
+        self._ensure_loaded()
         dev = self._device
         bs = max(1, int(batch_size))
         max_len = max(1, int(self.max_length))

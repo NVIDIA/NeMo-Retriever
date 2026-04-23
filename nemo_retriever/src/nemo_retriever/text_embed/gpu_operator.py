@@ -12,7 +12,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
-from nemo_retriever.text_embed.shared import build_embed_kwargs
+from nemo_retriever.text_embed.shared import build_embed_kwargs, _to_bool
 
 
 class _BatchEmbedActor(AbstractOperator, GPUOperator):
@@ -46,7 +46,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             backend=ingest_backend,
             hf_cache_dir=hf_cache,
             gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
-            enforce_eager=bool(self._kwargs.get("enforce_eager", False)),
+            enforce_eager=_to_bool(self._kwargs.get("enforce_eager"), default=False),
         )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

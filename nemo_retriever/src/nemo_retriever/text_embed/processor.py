@@ -14,6 +14,7 @@ from nv_ingest_api.internal.schemas.transform.transform_text_embedding_schema im
 from nv_ingest_api.internal.transform.embed_text import transform_create_text_embeddings_internal
 
 from nemo_retriever.io.dataframe import validate_primitives_dataframe
+from nemo_retriever.text_embed.shared import _to_bool
 from nemo_retriever.vector_store.lancedb_store import LanceDBConfig, write_embeddings_to_lancedb
 
 logger = logging.getLogger(__name__)
@@ -106,7 +107,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
         device=task_config.get("local_hf_device"),
         hf_cache_dir=task_config.get("local_hf_cache_dir"),
         gpu_memory_utilization=float(task_config.get("gpu_memory_utilization", 0.45)),
-        enforce_eager=bool(task_config.get("enforce_eager", False)),
+        enforce_eager=_to_bool(task_config.get("enforce_eager"), default=False),
         dimensions=task_config.get("dimensions"),
     )
 

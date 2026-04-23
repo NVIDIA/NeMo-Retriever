@@ -9,6 +9,14 @@ from __future__ import annotations
 from nemo_retriever.params import EmbedParams
 
 
+def _to_bool(v: object, default: bool = False) -> bool:
+    if isinstance(v, str):
+        return v.lower() not in ("false", "0", "no", "")
+    if v is None:
+        return default
+    return bool(v)
+
+
 def build_embed_kwargs(params: EmbedParams) -> dict[str, object]:
     kwargs = {
         **params.model_dump(mode="python", exclude={"runtime", "batch_tuning", "fused_tuning"}, exclude_none=True),

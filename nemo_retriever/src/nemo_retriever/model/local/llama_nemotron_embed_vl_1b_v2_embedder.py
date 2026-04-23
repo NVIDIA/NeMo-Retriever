@@ -179,6 +179,8 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
     gpu_memory_utilization: float = 0.45
     enforce_eager: bool = False
 
+    _llm: Any = field(default=None, init=False, repr=False)
+
     def __post_init__(self) -> None:
         try:
             import vllm as _vllm_mod
