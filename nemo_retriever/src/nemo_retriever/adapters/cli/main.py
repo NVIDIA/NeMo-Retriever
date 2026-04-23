@@ -39,7 +39,6 @@ app.add_typer(html_main.app, name="html")
 app.add_typer(pipeline_main.app, name="pipeline")
 
 
-
 def _version_callback(value: bool) -> None:
     if not value:
         return
