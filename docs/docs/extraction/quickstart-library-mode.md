@@ -115,9 +115,11 @@ This chart shows some gadgets, and some very fictitious costs.
 ... document extract continues ...
 ```
 
-## Step 3: Query ingested content (Milvus)
+## Query ingested content (Milvus)
 
-The following example uses **`nvingest_retrieval`** against a **Milvus** collection (for example data you uploaded with `milvus_uri`, including milvus-lite). If you ingested with **LanceDB** as in the previous example, use the LanceDB APIs, environment variables (`VDB_BACKEND`, `HYBRID`), and hybrid retrieval patterns described in [Data Upload](data-store.md) instead of this Milvus-specific helper.
+This step is optional and shows how to query your ingested content from Milvus. If you are using the default LanceDB path, see `data-store.md` for LanceDB query examples.
+
+The following example uses `nvingest_retrieval` against a Milvus collection (for example data you uploaded with `milvus_uri`, including milvus-lite). If you ingested with **LanceDB** as in the previous example, use the LanceDB APIs, environment variables (`VDB_BACKEND`, `HYBRID`), and hybrid retrieval patterns described in [Data Upload](data-store.md) instead of this Milvus-specific helper.
 
 To query for relevant snippets of Milvus-ingested content, and use them with an LLM to generate answers, use the following code.
 
