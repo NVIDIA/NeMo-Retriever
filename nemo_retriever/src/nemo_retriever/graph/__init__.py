@@ -14,6 +14,7 @@ from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, R
 from nemo_retriever.graph.file_loader_operator import FileListLoaderOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.graph_pipeline_registry import GraphPipelineRegistry, default_registry
+from nemo_retriever.graph.nv_ingest_vdb_operator import NvIngestVdbOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.store_operator import StoreOperator
 from nemo_retriever.graph.webhook_operator import WebhookNotifyOperator
@@ -30,6 +31,7 @@ __all__ = [
     "InprocessExecutor",
     "MultiTypeExtractOperator",
     "Node",
+    "NvIngestVdbOperator",
     "RayDataExecutor",
     "StoreOperator",
     "UDFOperator",
