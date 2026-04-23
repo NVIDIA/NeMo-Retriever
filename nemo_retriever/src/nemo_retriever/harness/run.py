@@ -518,8 +518,6 @@ def _build_command(
 
     if cfg.reranker:
         cmd += ["--reranker", "--reranker-model-name", cfg.reranker_model_name]
-        effective_rerank_modality = cfg.rerank_modality if cfg.rerank_modality is not None else cfg.embed_modality
-        cmd += ["--rerank-modality", effective_rerank_modality]
     else:
         cmd += ["--no-reranker"]
 
@@ -889,6 +887,7 @@ try:
         if os.environ.get(_fwd_key):
             ray_env_vars[_fwd_key] = os.environ[_fwd_key]
     ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+    os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
     runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:
