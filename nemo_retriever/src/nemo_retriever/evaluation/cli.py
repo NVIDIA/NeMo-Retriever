@@ -219,49 +219,20 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
     return config, qa_dataset, ground_truth_dir, results_dir, min_coverage
 
 
-@app.command("run")
-def run_cmd(
-    config: Optional[Path] = typer.Option(
-        None,
-        "--config",
-        help="Path to eval_sweep.yaml or .json config file.",
-        dir_okay=False,
-    ),
-    from_env: bool = typer.Option(
-        False,
-        "--from-env",
-        help="Build configuration from environment variables (Docker/CI mode). "
-        "Requires RETRIEVAL_FILE and QA_DATASET; see retriever eval run --help.",
-    ),
-) -> None:
-    """Run a QA evaluation sweep.
+def run_qa_sweep_from_config_dict(cfg: dict) -> int:
+    """Run a QA evaluation sweep from a loaded config dict (0 = success, 1 = failure).
 
-    Supply either --config (YAML/JSON file) or --from-env (reads
-    RETRIEVAL_FILE, QA_DATASET, GEN_MODEL, JUDGE_MODEL, etc. from
-    the environment).
+    Used by ``retriever eval run`` and by ``retriever pipeline run`` when
+    ``--evaluation-mode=qa`` so the LLM sweep stays in one implementation.
     """
     from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
     from nemo_retriever.evaluation.retrievers import FileRetriever
     from nemo_retriever.evaluation.runner import run_eval_sweep
 
-    if not config and not from_env:
-        typer.echo("ERROR: supply --config <path> or --from-env", err=True)
-        raise typer.Exit(code=1)
-    if config and from_env:
-        typer.echo("ERROR: --config and --from-env are mutually exclusive", err=True)
-        raise typer.Exit(code=1)
-
     if os.environ.get("LITELLM_DEBUG", "0").strip() in ("1", "true", "yes"):
         import litellm
 
         litellm._turn_on_debug()
-
-    if config:
-        from nemo_retriever.evaluation.config import load_eval_config
-
-        cfg = load_eval_config(str(config))
-    else:
-        cfg, *_ = _build_env_config()
 
     execution = cfg.get("execution", {})
     dataset_cfg = cfg.get("dataset", {})
@@ -271,7 +242,7 @@ def run_cmd(
     qa_dataset = dataset_cfg.get("source", "")
     if not qa_dataset:
         typer.echo("ERROR: dataset.source is required in config", err=True)
-        raise typer.Exit(code=1)
+        return 1
 
     results_dir = output_cfg.get("results_dir", "data/test_retrieval")
     qa_limit = execution.get("limit", 0)
@@ -310,7 +281,7 @@ def run_cmd(
         retrieval_file = retrieval_cfg.get("file_path", "")
         if not retrieval_file:
             typer.echo("ERROR: retrieval.file_path is required when type='file'", err=True)
-            raise typer.Exit(code=1)
+            return 1
         retriever = FileRetriever(file_path=retrieval_file)
 
     coverage = retriever.check_coverage(qa_pairs)
@@ -320,7 +291,7 @@ def run_cmd(
             f"ERROR: retrieval covers only {coverage:.1%} of queries " f"(min_coverage={min_coverage:.0%}). Aborting.",
             err=True,
         )
-        raise typer.Exit(code=1)
+        return 1
 
     results = run_eval_sweep(
         cfg,
@@ -336,8 +307,47 @@ def run_cmd(
     for r in results:
         typer.echo(f"  {r['status']}: {r['label']} -> {r.get('output_path', r.get('error', ''))}")
 
-    if passed < len(results):
+    return 0 if passed == len(results) else 1
+
+
+@app.command("run")
+def run_cmd(
+    config: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        help="Path to eval_sweep.yaml or .json config file.",
+        dir_okay=False,
+    ),
+    from_env: bool = typer.Option(
+        False,
+        "--from-env",
+        help="Build configuration from environment variables (Docker/CI mode). "
+        "Requires RETRIEVAL_FILE and QA_DATASET; see retriever eval run --help.",
+    ),
+) -> None:
+    """Run a QA evaluation sweep.
+
+    Supply either --config (YAML/JSON file) or --from-env (reads
+    RETRIEVAL_FILE, QA_DATASET, GEN_MODEL, JUDGE_MODEL, etc. from
+    the environment).
+    """
+    if not config and not from_env:
+        typer.echo("ERROR: supply --config <path> or --from-env", err=True)
         raise typer.Exit(code=1)
+    if config and from_env:
+        typer.echo("ERROR: --config and --from-env are mutually exclusive", err=True)
+        raise typer.Exit(code=1)
+
+    if config:
+        from nemo_retriever.evaluation.config import load_eval_config
+
+        cfg = load_eval_config(str(config))
+    else:
+        cfg, *_ = _build_env_config()
+
+    code = run_qa_sweep_from_config_dict(cfg)
+    if code != 0:
+        raise typer.Exit(code=code)
 
 
 @app.command("export")
