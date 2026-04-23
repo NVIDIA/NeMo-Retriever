@@ -153,6 +153,8 @@ class Retriever:
 
         resolved = resolve_embed_model(model_name)
         backend_raw = (self.local_query_embed_backend or "hf").strip().lower()
+        if backend_raw == "auto":
+            backend_raw = "hf"
         if backend_raw not in ("hf", "vllm"):
             raise ValueError(
                 "local_query_embed_backend must be 'hf' or 'vllm', " f"got {self.local_query_embed_backend!r}"
