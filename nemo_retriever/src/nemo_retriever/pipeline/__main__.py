@@ -51,7 +51,6 @@ from nemo_retriever.params import (
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.input_files import resolve_input_patterns
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
-from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +355,36 @@ def _build_embed_params(
     )
 
 
+def _resolve_vdb_upload_config(
+    *,
+    vdb_op: str,
+    vdb_kwargs_json: Optional[str],
+    lancedb_uri: str,
+    hybrid: bool,
+) -> tuple[str, dict[str, Any]]:
+    """Build opaque nv-ingest-client VDB constructor kwargs for upload."""
+    resolved_vdb_op = str(vdb_op or "lancedb")
+    vdb_kwargs: dict[str, Any] = {}
+    if resolved_vdb_op == "lancedb":
+        vdb_kwargs.update(
+            {
+                "uri": lancedb_uri,
+                "table_name": LANCEDB_TABLE,
+                "overwrite": True,
+                "hybrid": bool(hybrid),
+            }
+        )
+    if vdb_kwargs_json:
+        try:
+            parsed = json.loads(vdb_kwargs_json)
+        except json.JSONDecodeError as exc:
+            raise typer.BadParameter(f"--vdb-kwargs-json must be valid JSON: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise typer.BadParameter("--vdb-kwargs-json must decode to a JSON object.")
+        vdb_kwargs.update(parsed)
+    return resolved_vdb_op, vdb_kwargs
+
+
 def _build_ingestor(
     *,
     run_mode: str,
@@ -385,6 +414,8 @@ def _build_ingestor(
     segment_audio: bool,
     audio_split_type: str,
     audio_split_interval: int,
+    vdb_op: str,
+    vdb_kwargs: dict[str, Any],
 ) -> GraphIngestor:
     """Construct a :class:`GraphIngestor` with all requested stages attached."""
 
@@ -446,7 +477,10 @@ def _build_ingestor(
             )
         )
 
-    return ingestor.embed(embed_params)
+    return ingestor.embed(embed_params).vdb_upload(
+        vdb_op=vdb_op,
+        vdb_kwargs=vdb_kwargs,
+    )
 
 
 def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
@@ -753,6 +787,18 @@ def run(
     ),
     # --- LanceDB / outputs ---------------------------------------------
     lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri", rich_help_panel=_PANEL_LANCEDB),
+    vdb_op: str = typer.Option(
+        "lancedb",
+        "--vdb-op",
+        help="nv-ingest-client VDB operator key used for post-graph upload.",
+        rich_help_panel=_PANEL_LANCEDB,
+    ),
+    vdb_kwargs_json: Optional[str] = typer.Option(
+        None,
+        "--vdb-kwargs-json",
+        help="JSON object forwarded as constructor kwargs to the selected VDB operator.",
+        rich_help_panel=_PANEL_LANCEDB,
+    ),
     save_intermediate: Optional[Path] = typer.Option(
         None,
         "--save-intermediate",
@@ -849,7 +895,14 @@ def run(
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
 
         lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
-        _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
+        resolved_vdb_op, resolved_vdb_kwargs = _resolve_vdb_upload_config(
+            vdb_op=vdb_op,
+            vdb_kwargs_json=vdb_kwargs_json,
+            lancedb_uri=lancedb_uri,
+            hybrid=hybrid,
+        )
+        if resolved_vdb_op == "lancedb":
+            _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
 
         remote_api_key = resolve_remote_api_key(api_key)
         extract_remote_api_key = remote_api_key
@@ -976,15 +1029,28 @@ def run(
             segment_audio=segment_audio,
             audio_split_type=audio_split_type,
             audio_split_interval=audio_split_interval,
+            vdb_op=resolved_vdb_op,
+            vdb_kwargs=resolved_vdb_kwargs,
         )
 
         # --- Execute ---------------------------------------------------
         logger.info("Starting ingestion of %s ...", input_path)
         ingest_start = time.perf_counter()
         raw_result = ingestor.ingest()
-        ingestion_only_total_time = time.perf_counter() - ingest_start
+        ingestion_and_vdb_time = time.perf_counter() - ingest_start
+        lancedb_write_time = float(getattr(ingestor, "_last_vdb_upload_secs", 0.0))
+        ingestion_only_total_time = max(0.0, ingestion_and_vdb_time - lancedb_write_time)
 
-        ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
+        cached_upload_records = getattr(ingestor, "_last_vdb_upload_records", None)
+        if run_mode == "batch" and cached_upload_records is not None:
+            import pandas as pd
+
+            ingest_local_results = cached_upload_records
+            result_df = pd.DataFrame(ingest_local_results)
+            ray_download_time = 0.0
+            num_rows = _count_input_units(result_df)
+        else:
+            ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()
@@ -1004,12 +1070,39 @@ def run(
                 collect_detection_summary_from_df(result_df),
             )
 
-        # --- Write to LanceDB ----------------------------------------
-        lancedb_write_start = time.perf_counter()
-        handle_lancedb(ingest_local_results, lancedb_uri, LANCEDB_TABLE, hybrid=hybrid, mode="overwrite")
-        lancedb_write_time = time.perf_counter() - lancedb_write_start
-
         # --- Evaluation ---------------------------------------------
+        if resolved_vdb_op != "lancedb":
+            logger.warning(
+                "Skipping built-in evaluation because --vdb-op=%r is not 'lancedb'; "
+                "upload completed through nv-ingest-client VDB.",
+                resolved_vdb_op,
+            )
+            _write_runtime_summary(
+                runtime_metrics_dir,
+                runtime_metrics_prefix,
+                {
+                    "run_mode": run_mode,
+                    "input_path": str(Path(input_path).resolve()),
+                    "input_pages": int(num_rows),
+                    "num_pages": int(num_rows),
+                    "num_rows": int(len(result_df.index)),
+                    "ingestion_only_secs": float(ingestion_only_total_time),
+                    "ray_download_secs": float(ray_download_time),
+                    "lancedb_write_secs": float(lancedb_write_time),
+                    "evaluation_secs": 0.0,
+                    "total_secs": float(time.perf_counter() - ingest_start),
+                    "evaluation_mode": evaluation_mode,
+                    "evaluation_metrics": {},
+                    "recall_details": bool(recall_details),
+                    "vdb_op": str(resolved_vdb_op),
+                },
+            )
+            if run_mode == "batch":
+                import ray
+
+                ray.shutdown()
+            return
+
         import lancedb as _lancedb_mod
 
         db = _lancedb_mod.connect(lancedb_uri)

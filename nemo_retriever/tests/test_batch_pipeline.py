@@ -50,6 +50,7 @@ class _FakeIngestor:
         self.audio_asr_params = None
         self.embed_params = None
         self.file_patterns = None
+        self.vdb_upload_kwargs = None
 
     def files(self, file_patterns):
         self.file_patterns = file_patterns
@@ -79,6 +80,10 @@ class _FakeIngestor:
 
     def embed(self, params):
         self.embed_params = params
+        return self
+
+    def vdb_upload(self, **kwargs):
+        self.vdb_upload_kwargs = kwargs
         return self
 
     def ingest(self, params=None):
@@ -121,7 +126,6 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
     monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -171,7 +175,6 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
     monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -217,6 +220,35 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
     assert fake_ingestor.audio_asr_params["segment_audio"] is True
 
 
+def test_resolve_vdb_upload_config_keeps_non_lancedb_kwargs_opaque() -> None:
+    vdb_op, vdb_kwargs = pipeline_main._resolve_vdb_upload_config(
+        vdb_op="custom",
+        vdb_kwargs_json='{"collection_name": "docs", "uri": "http://localhost:19530"}',
+        lancedb_uri="/tmp/lancedb",
+        hybrid=True,
+    )
+
+    assert vdb_op == "custom"
+    assert vdb_kwargs == {"collection_name": "docs", "uri": "http://localhost:19530"}
+
+
+def test_resolve_vdb_upload_config_supplies_lancedb_defaults() -> None:
+    vdb_op, vdb_kwargs = pipeline_main._resolve_vdb_upload_config(
+        vdb_op="lancedb",
+        vdb_kwargs_json=None,
+        lancedb_uri="/tmp/lancedb",
+        hybrid=True,
+    )
+
+    assert vdb_op == "lancedb"
+    assert vdb_kwargs == {
+        "uri": "/tmp/lancedb",
+        "table_name": pipeline_main.LANCEDB_TABLE,
+        "overwrite": True,
+        "hybrid": True,
+    }
+
+
 def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -225,7 +257,6 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
     monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
 
     class _FakeTable:
@@ -290,7 +321,6 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
     monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",

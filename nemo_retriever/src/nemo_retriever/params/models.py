@@ -326,8 +326,9 @@ class EmbedParams(_ParamsModel):
 
 
 class VdbUploadParams(_ParamsModel):
-    purge_results_after_upload: bool = True
-    lancedb: LanceDbParams = Field(default_factory=LanceDbParams)
+    vdb_op: str = "lancedb"
+    vdb_kwargs: dict[str, Any] = Field(default_factory=dict)
+    purge_results_after_upload: bool = False
 
 
 class StoreParams(_ParamsModel):

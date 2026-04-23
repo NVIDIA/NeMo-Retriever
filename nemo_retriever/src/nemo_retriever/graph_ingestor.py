@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
@@ -45,9 +46,11 @@ from nemo_retriever.params import (
     HtmlChunkParams,
     StoreParams,
     TextChunkParams,
+    VdbUploadParams,
     WebhookParams,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.vdb import IngestVdbOperator
 
 
 def _resolve_api_key(params: Any) -> Any:
@@ -150,6 +153,9 @@ class GraphIngestor(ingestor):
         self._dedup_params: Any = None
         self._store_params: Any = None
         self._webhook_params: Any = None
+        self._vdb_upload_params: Any = None
+        self._last_vdb_upload_secs: float = 0.0
+        self._last_vdb_upload_records: Any = None
         # Ordered list of stage names; "extract" is tracked but excluded from
         # the post-extraction stage_order passed to graph builders.
         self._stage_order: List[str] = []
@@ -253,6 +259,12 @@ class GraphIngestor(ingestor):
         self._record_stage("webhook")
         return self
 
+    def vdb_upload(self, params: Optional[VdbUploadParams] = None, **kwargs: Any) -> "GraphIngestor":
+        """Upload final graph output through an nv-ingest-client VDB after execution."""
+        self._vdb_upload_params = _coerce(params, kwargs, default_factory=VdbUploadParams)
+        self._record_stage("vdb_upload")
+        return self
+
     # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
@@ -280,7 +292,7 @@ class GraphIngestor(ingestor):
                     idx = len(self._stage_order)
                 self._stage_order.insert(idx, "dedup")
 
-        post_extract_order = tuple(s for s in self._stage_order if s != "extract")
+        post_extract_order = tuple(s for s in self._stage_order if s not in {"extract", "vdb_upload"})
 
         if self._run_mode == "batch":
             import ray
@@ -347,7 +359,6 @@ class GraphIngestor(ingestor):
             )
             result = executor.ingest(self._documents)
             self._rd_dataset = result
-            return result
         else:
             graph = build_graph(
                 extraction_mode=self._extraction_mode,
@@ -366,7 +377,11 @@ class GraphIngestor(ingestor):
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)
             self._rd_dataset = None
-            return executor.ingest(self._documents)
+            result = executor.ingest(self._documents)
+
+        if self._vdb_upload_params is not None:
+            self._upload_vdb(result)
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -440,6 +455,20 @@ class GraphIngestor(ingestor):
 
     def get_dataset(self) -> Any:
         return self._rd_dataset
+
+    def _upload_vdb(self, result: Any) -> None:
+        params = self._vdb_upload_params
+        if params is None:
+            return
+        operator = IngestVdbOperator(
+            vdb_op=str(params.vdb_op),
+            vdb_kwargs=dict(params.vdb_kwargs or {}),
+        )
+        upload_start = time.perf_counter()
+        payload = result.take_all() if hasattr(result, "take_all") else result
+        self._last_vdb_upload_records = payload if isinstance(payload, list) else None
+        operator(payload)
+        self._last_vdb_upload_secs = time.perf_counter() - upload_start
 
     def _record_stage(self, name: str) -> None:
         """Append *name* to the stage order list (deduplicated in place)."""
