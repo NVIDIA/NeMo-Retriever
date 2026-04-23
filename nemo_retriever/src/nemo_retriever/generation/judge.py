@@ -51,7 +51,7 @@ def judge(df: "pd.DataFrame", *, judge: "LLMJudge") -> "pd.DataFrame":
     """
     from nemo_retriever.evaluation.judging import JudgingOperator
 
-    transport = judge._client.transport
+    transport = judge.transport
     operator = JudgingOperator(
         model=transport.model,
         api_base=transport.api_base,

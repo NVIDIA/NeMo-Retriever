@@ -5,10 +5,11 @@
 """Tests for :func:`nemo_retriever.generation.judge`.
 
 ``judge`` accepts a pre-built ``LLMJudge`` and constructs the
-``JudgingOperator`` from the judge's ``_client.transport``.  We assert
-the transport fields are plumbed correctly (including ``num_retries``,
-which has historically dropped silently) and verify the DataFrame
-contract via a stubbed operator so we don't require a live LLM.
+``JudgingOperator`` from the judge's public ``transport`` property.
+We assert the transport fields are plumbed correctly (including
+``num_retries``, which has historically dropped silently) and verify
+the DataFrame contract via a stubbed operator so we don't require a
+live LLM.
 """
 
 from __future__ import annotations
@@ -30,16 +31,22 @@ def _make_judge_stub(
     timeout: float = 90.0,
     extra_params: dict | None = None,
 ) -> MagicMock:
-    """Build a ``LLMJudge``-shaped MagicMock exposing just the used fields."""
+    """Build a ``LLMJudge``-shaped MagicMock exposing just the used fields.
+
+    The stub mirrors the real class surface: the production call site in
+    :mod:`nemo_retriever.generation.judge` reaches through the public
+    ``transport`` property, so the stub attaches its transport there --
+    *not* on ``_client.transport`` -- to catch encapsulation regressions
+    at test time rather than runtime.
+    """
     judge_stub = MagicMock()
-    judge_stub._client = MagicMock()
-    judge_stub._client.transport = MagicMock()
-    judge_stub._client.transport.model = model
-    judge_stub._client.transport.api_base = api_base
-    judge_stub._client.transport.api_key = api_key
-    judge_stub._client.transport.num_retries = num_retries
-    judge_stub._client.transport.timeout = timeout
-    judge_stub._client.transport.extra_params = extra_params or {}
+    judge_stub.transport = MagicMock()
+    judge_stub.transport.model = model
+    judge_stub.transport.api_base = api_base
+    judge_stub.transport.api_key = api_key
+    judge_stub.transport.num_retries = num_retries
+    judge_stub.transport.timeout = timeout
+    judge_stub.transport.extra_params = extra_params or {}
     return judge_stub
 
 

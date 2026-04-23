@@ -79,37 +79,52 @@ def test_retriever_answer_help_exits_zero() -> None:
     assert "Single-query live RAG" in result.stdout
 
 
-def test_retriever_answer_requires_model() -> None:
+def test_retriever_answer_requires_model(tmp_path: Any) -> None:
     """Missing ``--model`` exits 4 (usage error), not 2.
 
     2 is reserved for "answered but below judge threshold" in the
     documented exit-code contract, so conflating the two would break
-    agents relying on the schema.
+    agents relying on the schema.  ``--lancedb-uri`` is supplied so the
+    Click-level "missing required option" check does not fire first.
     """
-    result = RUNNER.invoke(app, ["answer", "hello"])
+    result = RUNNER.invoke(app, ["answer", "hello", "--lancedb-uri", str(tmp_path)])
     assert result.exit_code == EXIT_USAGE
     assert "--model is required" in result.stderr
 
 
-def test_retriever_answer_judge_without_reference_exits_usage() -> None:
+def test_retriever_answer_judge_without_reference_exits_usage(tmp_path: Any) -> None:
     """`--judge-model` without `--reference` is a usage error."""
-    result = RUNNER.invoke(app, ["answer", "hi", "--model", "x", "--judge-model", "y"])
+    result = RUNNER.invoke(
+        app,
+        ["answer", "hi", "--lancedb-uri", str(tmp_path), "--model", "x", "--judge-model", "y"],
+    )
     assert result.exit_code == EXIT_USAGE
     assert "--judge-model requires --reference" in result.stderr
 
 
-def test_retriever_answer_min_judge_score_without_judge_exits_usage() -> None:
+def test_retriever_answer_min_judge_score_without_judge_exits_usage(tmp_path: Any) -> None:
     """`--min-judge-score` needs a judge."""
-    result = RUNNER.invoke(app, ["answer", "hi", "--model", "x", "--min-judge-score", "4"])
+    result = RUNNER.invoke(
+        app,
+        ["answer", "hi", "--lancedb-uri", str(tmp_path), "--model", "x", "--min-judge-score", "4"],
+    )
     assert result.exit_code == EXIT_USAGE
     assert "--min-judge-score requires --judge-model" in result.stderr
 
 
 def test_retriever_answer_missing_lancedb_uri_exits_usage() -> None:
-    """Without ``--ingest``, ``--lancedb-uri`` is required."""
+    """``--lancedb-uri`` is a required Typer option.
+
+    Missing required options surface as a Click usage error (exit 2 with
+    ``Missing option`` in stderr), not our own ``EXIT_USAGE`` (4), because
+    Typer rejects the invocation before ``answer_command`` runs.  The
+    separation between Click's argument-parsing errors and our internal
+    usage errors is intentional so agents can distinguish them.
+    """
     result = RUNNER.invoke(app, ["answer", "hi", "--model", "x"])
-    assert result.exit_code == EXIT_USAGE
-    assert "--lancedb-uri is required" in result.stderr
+    assert result.exit_code == 2
+    assert "Missing option" in result.stderr
+    assert "--lancedb-uri" in result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +192,14 @@ def test_retriever_answer_empty_retrieval_exits_three(tmp_path: Any) -> None:
 
 
 def test_retriever_answer_generation_error_exits_five(tmp_path: Any) -> None:
-    """Generation failure -> exit 5, checked before empty-retrieval."""
+    """Generation failure with non-empty retrieval -> exit 5.
+
+    Exit 5 is reserved for "retrieval returned real chunks but the LLM
+    failed on them" (network timeout, model refusal, malformed response).
+    ``chunks`` is left at the default non-empty value so this test
+    isolates the ``gen_error`` branch; the empty-retrieval case is
+    covered by :func:`test_retriever_answer_empty_retrieval_wins_over_gen_error`.
+    """
     result = _make_answer_df(gen_error="boom")
     exit_code, _out, _err = _invoke_answer_with_patched_generation(
         result,
@@ -189,6 +211,30 @@ def test_retriever_answer_generation_error_exits_five(tmp_path: Any) -> None:
         "--quiet",
     )
     assert exit_code == EXIT_GENERATION_FAILED
+
+
+def test_retriever_answer_empty_retrieval_wins_over_gen_error(tmp_path: Any) -> None:
+    """Empty retrieval must surface as exit 3 even when ``gen_error`` is set.
+
+    The documented contract assigns exit 3 to "retrieval returned zero
+    chunks" and exit 5 to "generation failed".  Empty retrieval is
+    typically the root cause of the LLM failure (invoked with empty
+    context), so agents/CI branching on exit codes to diagnose failures
+    need the root cause reported first.  Regression guard for the
+    original ordering bug where ``gen_error`` was checked before
+    ``chunks``, mislabeling knowledge-base outages as generation bugs.
+    """
+    result = _make_answer_df(chunks=[], metadata=[], gen_error="context too short")
+    exit_code, _out, _err = _invoke_answer_with_patched_generation(
+        result,
+        "hello",
+        "--model",
+        "mock/llm",
+        "--lancedb-uri",
+        str(tmp_path),
+        "--quiet",
+    )
+    assert exit_code == EXIT_EMPTY_RETRIEVAL
 
 
 def test_retriever_answer_below_threshold_exits_two(tmp_path: Any) -> None:
@@ -210,6 +256,48 @@ def test_retriever_answer_below_threshold_exits_two(tmp_path: Any) -> None:
         "--quiet",
     )
     assert exit_code == EXIT_BELOW_JUDGE_THRESHOLD
+
+
+def test_retriever_answer_summary_includes_judge_reasoning(tmp_path: Any) -> None:
+    """When the judge tier ran, the human summary renders ``judge_reasoning``.
+
+    Guards against the common regression where a refactor of
+    ``_emit_human_summary`` drops the reasoning line silently -- it's
+    already in the JSON, so a CLI user watching the terminal could go a
+    long time before noticing the TTY summary is stale.
+    """
+    result = _make_answer_df(
+        judge_score=5,
+        judge_reasoning="Exact address match with the reference.",
+    )
+    _exit, out, _err = _invoke_answer_with_patched_generation(
+        result,
+        "hello",
+        "--model",
+        "mock/llm",
+        "--lancedb-uri",
+        str(tmp_path),
+        "--reference",
+        "ref",
+        "--judge-model",
+        "mock/judge",
+    )
+    assert "Judge:" in out
+    assert "Exact address match with the reference." in out
+
+
+def test_retriever_answer_summary_omits_judge_line_without_judge(tmp_path: Any) -> None:
+    """No judge tier -> no ``Judge:`` line (avoids confusing log parsers)."""
+    result = _make_answer_df()
+    _exit, out, _err = _invoke_answer_with_patched_generation(
+        result,
+        "hello",
+        "--model",
+        "mock/llm",
+        "--lancedb-uri",
+        str(tmp_path),
+    )
+    assert "Judge:" not in out
 
 
 def test_retriever_answer_json_stdout_emits_valid_payload(tmp_path: Any) -> None:

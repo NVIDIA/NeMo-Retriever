@@ -39,7 +39,7 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
 
 | Stage | Artifacts produced | Code / APIs involved |
 |-------|-------------------|----------------------|
-| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `python -m nemo_retriever.examples.graph_pipeline` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nv-ingest`). |
+| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `retriever pipeline run` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nv-ingest`). |
 | **2. Full-page markdown index** | `data/bo767_page_markdown.json` (`source_id` -> page -> markdown) | `retriever eval build-page-index` -> `nemo_retriever.io.markdown.build_page_index()` (which calls `to_markdown_by_page` per document); numpy list columns are coerced so structured content is not dropped. |
 | **3. Retrieval export** | `data/eval/bo767_retrieval_fullpage.json` (or sub-page JSON) | `retriever eval export` -> `nemo_retriever.export.export_retrieval_json()` queries LanceDB; if `--page-index` is provided, hits are expanded/deduped by `(source_id, page)` and replaced with full-page markdown strings. |
 | **4. Ground truth** | `data/bo767_annotations.csv` (repo root) | Questions/answers for export and eval; must align with **query string normalization** in `FileRetriever` (see retrieval JSON rules). |
@@ -240,6 +240,8 @@ uv pip install -e "./nemo_retriever[llm]"
 ```
 
 The `[llm]` extra installs `litellm` for LLM generation and judging (and powers both the batch-eval framework and the live-RAG SDK). If you are not using this tree, you can instead `uv pip install "nemo-retriever[llm]"` from PyPI (package name uses a hyphen).
+
+> **Migration note:** the previously-provided `nemo-retriever[eval]` install extra was removed in favor of `nemo-retriever[llm]`. Pin the new extra in any requirements files that still reference `[eval]`.
 
 **Eval-only path:** if you already have a retrieval JSON and only need to run `retriever eval run`, an environment with `nemo_retriever[llm]` installed is sufficient.
 
@@ -905,8 +907,6 @@ print(f"generation_failure_rate = {df.attrs['generation_failure_rate']:.2%}")
 ### Stable public surface
 
 `nemo_retriever.llm.__all__` is the supported integration point for the client + types layer. Import the Protocols, result dataclasses, `LiteLLMClient`, `LLMJudge`, and the `LLMInferenceParams` / `LLMRemoteClientParams` models from `nemo_retriever.llm`; deeper submodule paths (`llm.clients.litellm`, `llm.text_utils`, ...) are implementation details and may be reorganised without notice.
-
-The previously-provided `nemo-retriever[eval]` install extra was removed in favor of `nemo-retriever[llm]`; pin the new extra in any requirements files that still reference `[eval]`.
 
 ## Scoring System (Three-Tier Hierarchy)
 

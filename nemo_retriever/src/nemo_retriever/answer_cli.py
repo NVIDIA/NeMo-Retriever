@@ -5,11 +5,19 @@
 """``retriever answer`` Typer subcommand.
 
 Single-query live RAG entrypoint: retrieve from LanceDB, generate with an
-LLM, and optionally score against a reference answer.  The command now
+LLM, and optionally score against a reference answer.  The command
 delegates to :func:`nemo_retriever.generation.answer` (and, when a
 ``--reference`` is supplied, :func:`nemo_retriever.generation.eval`) and
 projects the resulting single DataFrame row back onto the historical
 ``AnswerResult``-shaped JSON payload.
+
+This command is strictly a *query-time* entrypoint.  It does not ingest
+documents; the caller is expected to have already populated the target
+LanceDB table via ``retriever pipeline run`` (see
+:mod:`nemo_retriever.pipeline`).  Keeping ingestion and retrieval behind
+separate CLI verbs mirrors the package boundary between
+:mod:`nemo_retriever.pipeline` and :mod:`nemo_retriever.generation` and
+lets each surface evolve independently.
 
 Design notes
 ------------
@@ -36,19 +44,12 @@ Exit-code contract (schema'd for agents and CI)::
 
 from __future__ import annotations
 
-import atexit
 import json
-import logging
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
 import typer
-
-logger = logging.getLogger(__name__)
-
 
 EXIT_OK = 0
 EXIT_BELOW_JUDGE_THRESHOLD = 2
@@ -161,51 +162,17 @@ def _emit_human_summary(result_dict: dict[str, Any], *, to_stderr: bool) -> None
     if score_bits:
         _w("-" * 60)
         _w("Scoring: " + "  ".join(score_bits))
+    # Render the judge's one-sentence rationale on its own line when the
+    # judge tier ran.  It's too long to pack into the space-joined
+    # score_bits summary, so keep it structurally distinct.  Hard-cap at
+    # 500 chars to protect the terminal from a verbose judge; full text
+    # remains available in the JSON payload under ``judge_reasoning``.
+    if result_dict.get("judge_score") is not None:
+        reasoning = result_dict.get("judge_reasoning")
+        if reasoning:
+            trimmed = reasoning if len(reasoning) <= 500 else f"{reasoning[:500]}... (truncated; see JSON)"
+            _w(f"Judge:   {trimmed}")
     _w("=" * 60)
-
-
-def _ingest_files(
-    files: list[Path],
-    *,
-    lancedb_uri: str,
-    lancedb_table: str,
-    embedder: str,
-    embedding_endpoint: Optional[str],
-    embedding_api_key: Optional[str],
-    hybrid: bool,
-) -> None:
-    """One-shot ingestion into an existing or newly created LanceDB URI.
-
-    Runs the inprocess GraphIngestor chain (extract -> split -> embed) and
-    writes the result DataFrame to LanceDB via the same
-    :func:`~nemo_retriever.vector_store.lancedb_store.handle_lancedb` helper
-    that the main :mod:`~nemo_retriever.examples.graph_pipeline` uses.
-    """
-    # Deferred imports so that ``retriever answer --help`` does not pull in
-    # pyarrow / ray / lancedb at argparse time.
-    from nemo_retriever import create_ingestor
-    from nemo_retriever.params import EmbedParams, ExtractParams, TextChunkParams
-    from nemo_retriever.vector_store.lancedb_store import handle_lancedb
-
-    file_strs = [str(p) for p in files]
-    logger.info("Ingesting %d file(s) into %s::%s", len(file_strs), lancedb_uri, lancedb_table)
-
-    embed_kwargs: dict[str, Any] = {"model_name": embedder}
-    if embedding_endpoint:
-        embed_kwargs["embed_invoke_url"] = embedding_endpoint
-    if embedding_api_key:
-        embed_kwargs["api_key"] = embedding_api_key
-
-    ingestor = (
-        create_ingestor(run_mode="inprocess")
-        .files(file_strs)
-        .extract(ExtractParams())
-        .split(TextChunkParams())
-        .embed(EmbedParams(**embed_kwargs))
-    )
-    result_df = ingestor.ingest()
-    handle_lancedb(result_df, lancedb_uri, lancedb_table, mode="overwrite", hybrid=hybrid)
-    logger.info("Ingestion complete.")
 
 
 def answer_command(
@@ -215,27 +182,16 @@ def answer_command(
         show_default=False,
     ),
     # ── Retrieval storage ─────────────────────────────────────────────────
-    lancedb_uri: Optional[Path] = typer.Option(
-        None,
+    lancedb_uri: Path = typer.Option(
+        ...,
         "--lancedb-uri",
-        help="Path to the LanceDB directory. Required unless --ingest is used, "
-        "in which case a temporary directory is created and cleaned up on exit.",
+        help="Path to the LanceDB directory populated by `retriever pipeline run`. "
+        "Required; this command does not ingest.",
     ),
     lancedb_table: str = typer.Option(
         "nv-ingest",
         "--lancedb-table",
-        help="LanceDB table name.",
-    ),
-    # ── Optional one-shot ingestion ──────────────────────────────────────
-    ingest: list[Path] = typer.Option(
-        [],
-        "--ingest",
-        help="File(s) to ingest into LanceDB before answering. " "Multiple --ingest flags are allowed.",
-    ),
-    keep_ingest: bool = typer.Option(
-        False,
-        "--keep-ingest",
-        help="Keep the temporary LanceDB directory created by --ingest " "instead of deleting it on exit.",
+        help="LanceDB table name (default matches `retriever pipeline run`).",
     ),
     # ── Retrieval tuning ─────────────────────────────────────────────────
     top_k: int = typer.Option(5, "--top-k", help="Number of chunks to retrieve."),
@@ -343,6 +299,9 @@ def answer_command(
     answer-in-context / LLM-as-judge scoring.  Pipes cleanly into agents
     and CI via schema'd ``--json`` output and the exit-code contract
     documented on this module.
+
+    ``--lancedb-uri`` is required.  Populate the target LanceDB with
+    ``retriever pipeline run`` before invoking this command.
     """
     if model is None:
         typer.echo("Error: --model is required.", err=True)
@@ -356,24 +315,7 @@ def answer_command(
         typer.echo("Error: --min-judge-score requires --judge-model.", err=True)
         raise typer.Exit(code=EXIT_USAGE)
 
-    ingest_files = [p for p in (ingest or []) if p is not None]
-    resolved_lancedb_uri: Optional[str] = None
-
-    if ingest_files and lancedb_uri is None:
-        tmp_dir = Path(tempfile.mkdtemp(prefix="retriever-answer-"))
-        resolved_lancedb_uri = str(tmp_dir)
-        if not keep_ingest:
-            atexit.register(shutil.rmtree, str(tmp_dir), True)
-        logger.info("Created temp LanceDB dir: %s", tmp_dir)
-    elif lancedb_uri is not None:
-        resolved_lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
-
-    if resolved_lancedb_uri is None:
-        typer.echo(
-            "Error: --lancedb-uri is required (or use --ingest to create a temp DB on the fly).",
-            err=True,
-        )
-        raise typer.Exit(code=EXIT_USAGE)
+    resolved_lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
 
     from nemo_retriever.generation import answer as answer_fn
     from nemo_retriever.generation import eval as eval_fn
@@ -382,17 +324,6 @@ def answer_command(
     from nemo_retriever.retriever import Retriever
 
     resolved_embedder = embedder or VL_EMBED_MODEL
-
-    if ingest_files:
-        _ingest_files(
-            ingest_files,
-            lancedb_uri=resolved_lancedb_uri,
-            lancedb_table=lancedb_table,
-            embedder=resolved_embedder,
-            embedding_endpoint=embedding_endpoint,
-            embedding_api_key=embedding_api_key,
-            hybrid=hybrid,
-        )
 
     retriever = Retriever(
         lancedb_uri=resolved_lancedb_uri,
@@ -460,10 +391,16 @@ def answer_command(
     chunks = result_dict.get("chunks") or []
     judge_score = result_dict.get("judge_score")
 
-    if gen_error is not None:
-        raise typer.Exit(code=EXIT_GENERATION_FAILED)
+    # Exit-code ordering matters for agents/CI that branch on exit codes to
+    # diagnose failures.  Empty retrieval is the *root cause* of most
+    # downstream "generation failed" errors (the LLM is handed an empty
+    # context and either refuses or timeouts).  We surface exit 3 ahead of
+    # exit 5 so callers are pointed at the knowledge-base / ingestion
+    # problem rather than the symptom.
     if not chunks:
         raise typer.Exit(code=EXIT_EMPTY_RETRIEVAL)
+    if gen_error is not None:
+        raise typer.Exit(code=EXIT_GENERATION_FAILED)
     if min_judge_score is not None and (judge_score is None or judge_score < min_judge_score):
         raise typer.Exit(code=EXIT_BELOW_JUDGE_THRESHOLD)
 
