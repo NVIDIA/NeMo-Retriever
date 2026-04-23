@@ -27,7 +27,8 @@ Highlights for the 26.03 release include:
 - VLM-based image caption enhancements:  
   - Infographics can be captioned  
   - Reasoning mode is configurable  
-- Enabled hybrid search with Lancedb  
+- **LanceDB is now the default vector database backend** for extraction and indexing; Milvus remains fully supported. For upload, hybrid search, and infrastructure options, see [Data Upload](data-store.md).  
+- Enabled hybrid search with LanceDB (BM25 full-text search combined with dense vectors and reciprocal rank fusion).  
 - Added retrieval_bench subfolder with generalizable agentic retrieval pipeline  
 - The project now uses UV as the primary environment and package manager instead of Conda, resulting in faster installs and simpler dependency handling  
 - Default Redis TTL increased from 1–2 hours to 48 hours so long-running jobs (e.g., VLM captioning) don’t expire before completion  
