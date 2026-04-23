@@ -6,7 +6,11 @@
 
 Use the [Quick Start for NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/nemo_retriever/README.md) to set up and run the NeMo Retriever Library locally, so you can build a GPU‑accelerated, multimodal RAG ingestion pipeline that parses PDFs, HTML, text, audio, and video into LanceDB vector embeddings, integrates with Nemotron RAG models (locally or via NIM endpoints), which includes Ray‑based scaling with built‑in recall evaluation. Python 3.12 or later is required (see [Prerequisites](prerequisites.md)).
 
-By default, library mode stores vectors in LanceDB (embedded; data under `./lancedb` unless you set `uri`). You do not need `milvus-lite` or a running Milvus server for that path. To use Milvus instead (for example [milvus-lite](https://milvus.io/docs/milvus_lite.md) with a local `milvus.db` file), call `.vdb_upload` with `milvus_uri` and without selecting the LanceDB operator—for example `.vdb_upload(collection_name=..., milvus_uri="milvus.db", ...)` as shown in [Data Upload](data-store.md#upload-to-milvus).
+By default, library mode stores vectors in LanceDB (embedded; data under `./lancedb` unless you set `uri`). You do not need to pass `uri` for the default setup.
+
+```python
+store = ExtractorStore.from_default()
+```
 
 ## `run_pipeline`
 
