@@ -15,7 +15,7 @@ from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.dedup.dedup import dedup_images
-from nemo_retriever.graph import Graph, StoreOperator, UDFOperator
+from nemo_retriever.graph import Graph, StoreOperator, UDFOperator, WebhookNotifyOperator
 from nemo_retriever.graph.content_transforms import (
     _CONTENT_COLUMNS,
     collapse_content_to_page_rows,
@@ -344,9 +344,11 @@ def _resolve_execution_inputs(
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
+    webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
 ) -> tuple[
     str,
+    Any | None,
     Any | None,
     Any | None,
     Any | None,
@@ -374,6 +376,7 @@ def _resolve_execution_inputs(
             caption_params,
             store_params,
             embed_params,
+            webhook_params,
             stage_order,
         )
 
@@ -390,6 +393,7 @@ def _resolve_execution_inputs(
         stage_map.get("caption"),
         stage_map.get("store"),
         stage_map.get("embed"),
+        stage_map.get("webhook"),
         tuple(stage.name for stage in execution_plan.stages),
     )
 
@@ -416,6 +420,7 @@ def _append_ordered_transform_stages(
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
+    webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
     reshape_for_modal_content: bool,
@@ -476,6 +481,9 @@ def _append_ordered_transform_stages(
                     )
             graph = graph >> _BatchEmbedActor(params=embed_params)
 
+    if webhook_params is not None and getattr(webhook_params, "endpoint_url", None):
+        graph = graph >> WebhookNotifyOperator(params=webhook_params)
+
     return graph
 
 
@@ -493,6 +501,7 @@ def build_graph(
     split_params: Any | None = None,
     caption_params: Any | None = None,
     store_params: Any | None = None,
+    webhook_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
 ) -> Graph:
     """Build a batch graph from explicit params or a shared execution plan."""
@@ -509,6 +518,7 @@ def build_graph(
         caption_params,
         store_params,
         embed_params,
+        webhook_params,
         stage_order,
     ) = _resolve_execution_inputs(
         execution_plan=execution_plan,
@@ -523,6 +533,7 @@ def build_graph(
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,
+        webhook_params=webhook_params,
         stage_order=stage_order,
     )
 
@@ -659,6 +670,7 @@ def build_graph(
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,
+        webhook_params=webhook_params,
         stage_order=stage_order,
         supports_dedup=True,
         reshape_for_modal_content=True,

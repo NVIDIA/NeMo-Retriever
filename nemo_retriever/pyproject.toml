@@ -16,7 +16,7 @@ name = "nemo-retriever"
 dynamic = ["version"]
 description = "A modern RAG ingestion pipeline from Nvidia"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 authors = [
   { name = "Jeremy Dyer", email = "jdyer@nvidia.com" },
 ]
@@ -34,6 +34,7 @@ dependencies = [
   "sqlglot>=30.0.0",
   "tqdm>=4.66.0",
   "typer>=0.12.0",
+  "click>=8.2.0",
   "pyyaml>=6.0",
   # Service layer
   "fastapi>=0.114.0",
@@ -72,8 +73,8 @@ local = [
   "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",
   "accelerate==1.12.0",
-  "torch~=2.9.1",
-  "torchvision>=0.24,<0.25",
+  "torch~=2.10.0",
+  "torchvision>=0.25,<0.26",
   "einops",
   "easydict",
   "addict",
@@ -87,7 +88,7 @@ local = [
   "nvidia-ml-py",
   "apscheduler>=3.10",
   "psutil>=5.9.0",
-  "vllm==0.16.0; sys_platform == 'linux'",
+  "vllm==0.17.0; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
@@ -114,10 +115,12 @@ benchmarks = [
   "open-clip-torch==3.2.0",
 ]
 
-eval = [
+# ── LLM client (generation + judge) ──────────────────────────────────────────
+# Install this if you want to call ``Retriever.answer()``, ``Retriever.pipeline()``,
+# or construct an ``LLMJudge`` / ``LiteLLMClient`` directly.  Powers both the
+# live-RAG SDK and the batch evaluation framework.
+llm = [
   "litellm>=1.40.0",
-  "pyyaml>=6.0",
-  "tenacity>=8.0.0",
 ]
 dev = [
   "build>=1.2.2",
@@ -126,7 +129,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[local,multimedia,stores,benchmarks]",
+  "nemo_retriever[local,multimedia,stores,benchmarks,llm]",
 ]
 
 [project.scripts]
@@ -152,8 +155,8 @@ torchvision = [
   { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 vllm = [
-  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
-  { url = "https://github.com/vllm-project/vllm/releases/download/v0.16.0/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
+  { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
 ]
 
 [[tool.uv.index]]
