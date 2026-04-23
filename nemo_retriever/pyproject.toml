@@ -57,7 +57,7 @@ dependencies = [
   "nv-ingest-client",
   # Document parsing and NIM client libs
   "pypdfium2==4.30.0",
-  "pillow==12.1.1",
+  "pillow==12.2.0",
   "nltk==3.9.3",
   "markitdown",
   "langchain-nvidia-ai-endpoints>=0.3.0",
