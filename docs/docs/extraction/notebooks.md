@@ -1,10 +1,5 @@
 # Notebooks for NeMo Retriever Library
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 To get started using [NeMo Retriever Library](overview.md), you can try one of the ready-made notebooks that are available.
 
 ## Dataset Downloads for Benchmarking

@@ -1,10 +1,5 @@
 # Use Custom Metadata to Filter Search Results
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 You can upload custom metadata for documents during ingestion. 
 By uploading custom metadata you can attach additional information to documents, 
 and use it for filtering results during retrieval operations. 

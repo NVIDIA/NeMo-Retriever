@@ -1,10 +1,5 @@
 # Advanced Visual Parsing with Nemotron Parse
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 For scanned documents, or documents with complex layouts, 
 we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
 Nemotron parse provides higher-accuracy text extraction. 

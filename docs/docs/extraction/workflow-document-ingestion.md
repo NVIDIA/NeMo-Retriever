@@ -1,10 +1,5 @@
 # Workflow: Document ingestion
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 **Document ingestion** is the step where NeMo Retriever Library reads your files (PDFs, Office documents, images, and other [supported formats](supported-file-types.md)), runs extraction and optional enrichment, and returns structured content you can chunk, embed, and index.
 
 Follow these steps:

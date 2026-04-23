@@ -6,11 +6,6 @@ By following these steps,
 your Lambda stages are robust, signature-validated, plug-and-play for your RayPipeline, 
 and operate on a well-defined DataFrame payload and metadata structure.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 To add user-defined stages to your pipeline, you need the following:
 
 - **A callable function** — Your function must have the following exact signature. For more information, refer to []().

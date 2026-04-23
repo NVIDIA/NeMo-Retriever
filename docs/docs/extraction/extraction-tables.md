@@ -1,10 +1,5 @@
 # Tables
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 NeMo Retriever Library detects tables as structured page elements, processes them through the appropriate NIMs, and exports formats suitable for downstream RAG (including Markdown-oriented representations where configured). Availability depends on pipeline and model configuration; refer to the [Support matrix](support-matrix.md).
 
 **Related**

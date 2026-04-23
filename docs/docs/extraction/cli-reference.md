@@ -1,10 +1,5 @@
 # CLI Reference
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 After you install the Python dependencies, you can use the [NeMo Retriever Library](overview.md) command line interface (CLI).
 To use the CLI, use the `nemo-retriever` command.
 

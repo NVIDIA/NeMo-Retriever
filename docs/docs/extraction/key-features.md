@@ -1,10 +1,5 @@
 # Key features
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 NeMo Retriever Library is built for **accuracy**, **throughput**, and **flexible deployment** in enterprise retrieval pipelines.
 
 ## Extraction and understanding

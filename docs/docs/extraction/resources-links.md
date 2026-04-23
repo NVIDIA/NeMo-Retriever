@@ -1,10 +1,5 @@
 # Resources
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 External pages for product context, catalogs, and solution blueprints.
 
 ## Product and catalog
