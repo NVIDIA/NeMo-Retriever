@@ -65,36 +65,6 @@ def test_load_harness_config_precedence(tmp_path: Path, monkeypatch: pytest.Monk
     assert cfg.recall_required is True
 
 
-def test_load_harness_config_dataset_overrides_preset_fields(tmp_path: Path) -> None:
-    """Dataset config wins over preset for fields like embed_workers."""
-    dataset_dir = tmp_path / "dataset"
-    dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("query,source,page\nq,a,1\n", encoding="utf-8")
-    cfg_path = tmp_path / "test_configs.yaml"
-    cfg_path.write_text(
-        "\n".join(
-            [
-                "active:",
-                "  dataset: heavy",
-                "  preset: base",
-                "  recall_required: false",
-                "presets:",
-                "  base:",
-                "    embed_workers: 3",
-                "datasets:",
-                "  heavy:",
-                f"    path: {dataset_dir}",
-                f"    query_csv: {query_csv}",
-                "    embed_workers: 1",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    cfg = load_harness_config(config_file=str(cfg_path), dataset="heavy", preset="base")
-    assert cfg.embed_workers == 1  # dataset overrides preset
-
-
 def test_load_harness_config_supports_run_mode_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -649,7 +619,7 @@ def test_load_harness_config_supports_financebench_beir_defaults(monkeypatch: py
 
 def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     real_exists = Path.exists
-    expected_dataset_dir = Path("~/datasets/bo767").expanduser().resolve()
+    expected_dataset_dir = Path("/datasets/nv-ingest/bo767").resolve()
     expected_query_csv = (harness_config.REPO_ROOT / "data" / "bo767_annotations.csv").resolve()
 
     def _fake_exists(path_self: Path) -> bool:

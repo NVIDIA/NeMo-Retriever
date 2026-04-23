@@ -1,81 +1,54 @@
-# JP20 embedder × reranker sweep — mirrors vllm_bo767_sweep.yaml on 20 PDFs for fast iteration.
+# JP20 VL/text embedder validation sweep — fast iteration on 20 PDFs.
 #
 # Run with:
 #   retriever harness sweep --runs-config nemo_retriever/harness/jp20_vl_sweep.yaml
 #
-# Same 18-run design as vllm_bo767_sweep.yaml; see that file for the full experiment table.
-# vLLM VL ingest runs (9-12, 15-18) require vLLM ≥ 0.17 with VL model support.
+# Mirrors vllm_bo767_sweep.yaml but uses JP20 (20 PDFs) for quick turnaround.
+# All VL configs use embed_local_ingest_backend: hf and embed_local_query_backend: hf
+# for image/text+image modalities — vLLM supports text-only embedding for the VL model.
+#
+# Experiment design:
+#   1  jp20_text_hf              — HF text embedder, ingest+query both HF   (pre-#1494 baseline)
+#   2  jp20_text_vllm_hf         — vLLM ingest + HF query                   (cross-backend alignment check)
+#   3  jp20_vl_text              — HF VL, text-only                         (VL model, page granularity)
+#   4  jp20_vl_text_image        — HF VL, text+image                        (multimodal)
+#   5  jp20_vl_text_image_reranked — HF VL, text+image + VL reranker        (full VL pipeline)
+#   6  jp20_baseline             — vLLM text, ingest+query both vLLM        (requires vLLM branch)
 
 preset: single_gpu
 
 overrides:
-  embed_workers: 1  # vLLM reserves gpu_memory_utilization per actor; VL model ~51 GiB — keep at 1
+  embed_workers: 1  # vLLM reserves gpu_memory_utilization (default 45%) of the full GPU per actor,
+                    # regardless of Ray fractional-GPU scheduling. single_gpu's embed_workers=3 × 0.25
+                    # spreads actors across 2 GPUs and causes OOM. 1 actor keeps embedding on one GPU.
 
 runs:
-  # --- Text model ---
+  # --- Text embedder matrix (HF vs vLLM ingest × HF query) ---
   - name: jp20_text_hf
     dataset: jp20_text_hf
     overrides:
-      embed_batch_size: 32  # HF materialises full (batch × seq) activations; 256 OOMs at seq_len=8192
-
-  - name: jp20_text_hf_reranked
-    dataset: jp20_text_hf_reranked
-    overrides:
-      embed_batch_size: 32
+      embed_batch_size: 16  # HF path materialises full (batch × seq) activations; 256 OOMs at seq_len=8192
 
   - name: jp20_text_vllm_hf
     dataset: jp20_text_vllm_hf
 
-  - name: jp20_text_vllm_hf_reranked
-    dataset: jp20_text_vllm_hf_reranked
+  # --- VL embedder experiments (HF ingest+query; vLLM supports text-only for VL model) ---
+  - name: jp20_vl_text
+    dataset: jp20_vl_text
 
-  - name: jp20_text_vllm
-    dataset: jp20_text_vllm
+  - name: jp20_vl_text_image
+    dataset: jp20_vl_text_image
 
-  - name: jp20_text_vllm_reranked
-    dataset: jp20_text_vllm_reranked
+  - name: jp20_vl_text_image_reranked
+    dataset: jp20_vl_text_image_reranked
 
-  # --- VL model, text modality ---
-  - name: jp20_vl_text_hf
-    dataset: jp20_vl_text_hf
-
-  - name: jp20_vl_text_hf_reranked
-    dataset: jp20_vl_text_hf_reranked
-
-  - name: jp20_vl_text_vllm_hf
-    dataset: jp20_vl_text_vllm_hf
-
-  - name: jp20_vl_text_vllm_hf_reranked
-    dataset: jp20_vl_text_vllm_hf_reranked
-
-  - name: jp20_vl_text_vllm
-    dataset: jp20_vl_text_vllm
-
-  - name: jp20_vl_text_vllm_reranked
-    dataset: jp20_vl_text_vllm_reranked
-
-  # --- VL model, text+image modality ---
-  - name: jp20_vl_text_image_hf
-    dataset: jp20_vl_text_image_hf
-
-  - name: jp20_vl_text_image_hf_reranked
-    dataset: jp20_vl_text_image_hf_reranked
-
-  - name: jp20_vl_text_image_vllm_hf
-    dataset: jp20_vl_text_image_vllm_hf
-
-  - name: jp20_vl_text_image_vllm_hf_reranked
-    dataset: jp20_vl_text_image_vllm_hf_reranked
-
-  - name: jp20_vl_text_image_vllm
-    dataset: jp20_vl_text_image_vllm
-
-  - name: jp20_vl_text_image_vllm_reranked
-    dataset: jp20_vl_text_image_vllm_reranked
+  # --- vLLM text baseline (requires retriever-vllm-for-embeddings-1 branch) ---
+  - name: jp20_baseline
+    dataset: jp20_baseline
 
 slack:
   enabled: false
-  title: JP20 Embedder × Reranker Sweep
+  title: JP20 VL Validation Sweep
   post_artifact_paths: true
   metric_keys:
     - pages
