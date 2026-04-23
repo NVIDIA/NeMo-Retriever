@@ -19,4 +19,4 @@ Haystack-related extraction modes may appear in API tables as **deprecated** in 
 
 - [Use the Python API](python-api-reference.md)
 - [Use the CLI](cli-reference.md)
-- [Split documents](chunking.md), [Upload data](data-store.md), [Filter search](custom-metadata.md)
+- [Split documents](chunking.md), [Upload data](vdbs.md), [Filter search](custom-metadata.md)

@@ -5,5 +5,5 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 **Related**
 
 - [Text and layout extraction](text-layout-extraction.md)
-- [Nemotron Parse](nemoretriever-parse.md)
+- [Nemotron Parse](nemotron-parse.md)
 - [Throughput is dataset-dependent](throughput-is-dataset-dependent.md)

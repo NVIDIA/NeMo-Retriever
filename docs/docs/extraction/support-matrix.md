@@ -16,8 +16,8 @@ The core pipeline models (for document type inputs) include the following:
 Advanced features (for example, for audio/video) require additional GPU support and disk space. 
 This includes the following:
 
-- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) for transcript extraction from [audio and video](audio.md). NVIDIA NIM: [Parakeet CTC (en-US) ASR](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html).
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) - for [maximally accurate table extraction](nemoretriever-parse.md). NVIDIA NIM: [Query the Nemotron-Parse-v1.2 API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/api.html).
+- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) for transcript extraction from [audio and video](audio-video.md). NVIDIA NIM: [Parakeet CTC (en-US) ASR](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html).
+- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) - for [maximally accurate table extraction](nemotron-parse.md). NVIDIA NIM: [Query the Nemotron-Parse-v1.2 API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/api.html).
 - [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) for image captioning of unstructured (not charts, tables, infographics) images. NVIDIA NIM: [Query the Nemotron Nano 12B v2 VL API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-nano-12b-v2-vl/api.html).
     
     !!! note

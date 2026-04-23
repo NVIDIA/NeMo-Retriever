@@ -11,7 +11,7 @@ Enable reranking when both of the following apply:
 
 **Configuration pointers**
 
-Reranker options appear in benchmarking and recall configurations. Start with [Benchmarking](benchmarking.md) and your vector store setup in [Vector databases](data-store.md).
+Reranker options appear in benchmarking and recall configurations. Start with [Benchmarking](benchmarking.md) and your vector store setup in [Vector databases](vdbs.md).
 
 **Related**
 
