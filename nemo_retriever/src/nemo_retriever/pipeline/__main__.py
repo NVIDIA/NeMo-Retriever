@@ -494,7 +494,7 @@ def _run_evaluation(
     beir_query_language: Optional[str],
     beir_doc_id_field: str,
     beir_k: list[int],
-    local_query_embed_backend: str = "auto",
+    local_query_embed_backend: str = "hf",
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
     """Run recall or BEIR evaluation.
 
@@ -792,9 +792,9 @@ def run(
     recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode", rich_help_panel=_PANEL_EVAL),
     recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details", rich_help_panel=_PANEL_EVAL),
     recall_local_query_embed_backend: str = typer.Option(
-        "auto",
+        "hf",
         "--recall-local-query-embed-backend",
-        help="Local query embedding backend when --embed-invoke-url is unset: auto|vllm (same as ingest) or hf.",
+        help="Local query embedding backend when --embed-invoke-url is unset: hf (default) or vllm.",
         rich_help_panel=_PANEL_EVAL,
     ),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker", rich_help_panel=_PANEL_EVAL),

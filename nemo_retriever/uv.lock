@@ -2186,6 +2186,7 @@ wheels = [
 name = "nemo-retriever"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "debugpy" },
     { name = "fastapi" },
     { name = "fastmcp" },
@@ -2229,6 +2230,7 @@ all = [
     { name = "einops" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
+    { name = "litellm" },
     { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "sys_platform == 'linux'" },
     { name = "nemotron-page-elements-v3" },
@@ -2259,10 +2261,8 @@ dev = [
     { name = "build" },
     { name = "pytest" },
 ]
-eval = [
+llm = [
     { name = "litellm" },
-    { name = "pyyaml" },
-    { name = "tenacity" },
 ]
 local = [
     { name = "accelerate" },
@@ -2310,6 +2310,7 @@ requires-dist = [
     { name = "apscheduler", marker = "extra == 'local'", specifier = ">=3.10" },
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2.2" },
     { name = "cairosvg", marker = "extra == 'multimedia'", specifier = ">=2.7.0" },
+    { name = "click", specifier = ">=8.2.0" },
     { name = "datasets", marker = "extra == 'benchmarks'", specifier = ">=4.8.2" },
     { name = "debugpy", specifier = ">=1.8.0" },
     { name = "duckdb", marker = "extra == 'stores'", specifier = ">=1.2.0" },
@@ -2323,9 +2324,9 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lancedb" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=0.3.0" },
-    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.40.0" },
+    { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40.0" },
     { name = "markitdown" },
-    { name = "nemo-retriever", extras = ["benchmarks", "local", "multimedia", "stores"], marker = "extra == 'all'" },
+    { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "stores"], marker = "extra == 'all'" },
     { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-ocr", marker = "sys_platform == 'linux' and extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
@@ -2345,7 +2346,6 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.2" },
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "pyyaml", marker = "extra == 'eval'", specifier = ">=6.0" },
     { name = "ray", extras = ["data", "serve"], specifier = ">=2.49.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "rich", specifier = ">=13.7.0" },
@@ -2353,7 +2353,6 @@ requires-dist = [
     { name = "scipy", marker = "extra == 'multimedia'", specifier = ">=1.11.0" },
     { name = "soundfile", marker = "extra == 'multimedia'", specifier = ">=0.12.0" },
     { name = "sqlglot", specifier = ">=30.0.0" },
-    { name = "tenacity", marker = "extra == 'eval'", specifier = ">=8.0.0" },
     { name = "timm", marker = "extra == 'local'", specifier = "==1.0.22" },
     { name = "tokenizers", marker = "extra == 'local'", specifier = ">=0.20.3" },
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = "~=2.10.0", index = "https://download.pytorch.org/whl/cu130" },
@@ -2370,7 +2369,7 @@ requires-dist = [
     { name = "vllm", marker = "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'local'", specifier = "==0.17.0" },
     { name = "vllm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local'", url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl" },
 ]
-provides-extras = ["local", "multimedia", "stores", "benchmarks", "eval", "dev", "all"]
+provides-extras = ["local", "multimedia", "stores", "benchmarks", "llm", "dev", "all"]
 
 [[package]]
 name = "nemotron-graphic-elements-v1"
@@ -4631,9 +4630,9 @@ dependencies = [
     { name = "typing-extensions", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:4fc8f67637f4c92b989a07d80ffe755e79a3510ca02ebf23ce66396fb277c88d" },
-    { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:858f0cbcc78d726fea9499eb3464faa98392fa093845a3262209bd226b7844d6" },
-    { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:224649fa0ab181ec483cc368e3303dda1760e4ba31bea806b88979f855436aaa" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:4fc8f67637f4c92b989a07d80ffe755e79a3510ca02ebf23ce66396fb277c88d", upload-time = "2026-01-21T19:01:36Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:858f0cbcc78d726fea9499eb3464faa98392fa093845a3262209bd226b7844d6", upload-time = "2026-01-21T19:02:22Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.10.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:224649fa0ab181ec483cc368e3303dda1760e4ba31bea806b88979f855436aaa", upload-time = "2026-01-21T19:00:27Z" },
 ]
 
 [[package]]
@@ -4697,9 +4696,9 @@ dependencies = [
     { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:3646e6c8fa5066da392d0ff13002cc683301386fe1933f8f1432fc5292e5d288" },
-    { url = "https://download-r2.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:c2f5e38f0cd57a2796e4503c0f13365deba01dbc167ef820f0beec7ca96f5f2e" },
-    { url = "https://download-r2.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:7dd245ee7df0ceb00125e57615de31ca7232bf046143c2c3fe7a3b321bb50958" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:3646e6c8fa5066da392d0ff13002cc683301386fe1933f8f1432fc5292e5d288", upload-time = "2026-01-21T22:34:43Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:c2f5e38f0cd57a2796e4503c0f13365deba01dbc167ef820f0beec7ca96f5f2e", upload-time = "2026-01-21T22:34:44Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torchvision-0.25.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:7dd245ee7df0ceb00125e57615de31ca7232bf046143c2c3fe7a3b321bb50958", upload-time = "2026-01-21T22:34:45Z" },
 ]
 
 [[package]]

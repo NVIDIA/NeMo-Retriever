@@ -38,23 +38,16 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
         ingest_backend = (self._kwargs.get("local_ingest_backend") or "vllm").strip().lower()
         hf_cache = str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None
-        if ingest_backend == "hf":
-            from nemo_retriever.model import create_local_query_embedder
 
-            self._model = create_local_query_embedder(
-                self._kwargs.get("model_name"),
-                backend="hf",
-                hf_cache_dir=hf_cache,
-            )
-        else:
-            from nemo_retriever.model import create_local_embedder
+        from nemo_retriever.model import create_local_embedder
 
-            self._model = create_local_embedder(
-                self._kwargs.get("model_name"),
-                hf_cache_dir=hf_cache,
-                gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
-                enforce_eager=bool(self._kwargs.get("enforce_eager", False)),
-            )
+        self._model = create_local_embedder(
+            self._kwargs.get("model_name"),
+            backend=ingest_backend,
+            hf_cache_dir=hf_cache,
+            gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
+            enforce_eager=bool(self._kwargs.get("enforce_eager", False)),
+        )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

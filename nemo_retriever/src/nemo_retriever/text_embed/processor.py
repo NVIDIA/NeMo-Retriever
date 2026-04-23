@@ -102,6 +102,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
 
     embedder_instance = create_local_embedder(
         embed_model,
+        backend="vllm",
         device=task_config.get("local_hf_device"),
         hf_cache_dir=task_config.get("local_hf_cache_dir"),
         gpu_memory_utilization=float(task_config.get("gpu_memory_utilization", 0.45)),

@@ -80,11 +80,9 @@ class Retriever:
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[Path] = None
     local_hf_batch_size: int = 64
-    #: When embedding queries locally (no HTTP endpoint): ``auto`` / ``vllm`` use
-    #: :func:`~nemo_retriever.model.create_local_embedder`; ``hf`` uses the HF text
-    #: embedder from :func:`~nemo_retriever.model.create_local_query_embedder`. VL
-    #: models always use HF regardless.
-    local_query_embed_backend: str = "auto"
+    #: When embedding queries locally (no HTTP endpoint): ``"hf"`` (default) uses
+    #: HuggingFace; ``"vllm"`` uses vLLM (same model as ingest).
+    local_query_embed_backend: str = "hf"
     # Reranking -----------------------------------------------------------
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
@@ -154,10 +152,10 @@ class Retriever:
         )
 
         resolved = resolve_embed_model(model_name)
-        backend_raw = (self.local_query_embed_backend or "auto").strip().lower()
-        if backend_raw not in ("auto", "hf", "vllm"):
+        backend_raw = (self.local_query_embed_backend or "hf").strip().lower()
+        if backend_raw not in ("hf", "vllm"):
             raise ValueError(
-                "local_query_embed_backend must be 'auto', 'hf', or 'vllm', " f"got {self.local_query_embed_backend!r}"
+                "local_query_embed_backend must be 'hf' or 'vllm', " f"got {self.local_query_embed_backend!r}"
             )
         cache_key: tuple[str, str] = (resolved, backend_raw)
 
