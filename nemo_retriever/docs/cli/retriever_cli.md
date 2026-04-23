@@ -77,7 +77,7 @@ nv-ingest-cli \
 
 With `retriever`, splitting is intrinsic to the pipeline. Control text-level
 chunking via `--text-chunk`, and control PDF page-batch sizing via
-`--pdf-split-batch`:
+`--pdf-split-batch-size`:
 
 ```bash
 retriever pipeline run ./data/test.pdf \
@@ -149,11 +149,11 @@ retriever pipeline run ./data/test.pdf \
   --input-type pdf \
   --method pdfium \
   --extract-text --no-extract-tables --no-extract-charts \
-  --pdf-split-batch 64 \
+  --pdf-split-batch-size 64 \
   --save-intermediate ./processed_docs
 ```
 
-**Parity note.** There is no v1/v2 concept in `retriever`; `--pdf-split-batch`
+**Parity note.** There is no v1/v2 concept in `retriever`; `--pdf-split-batch-size`
 is the batching knob used by the Ray pipeline.
 
 ### Example: Caption images

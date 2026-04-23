@@ -78,6 +78,6 @@ hits = retriever.query(
 - Pass a directory for batch ingestion:
   `retriever pipeline run ./data/pdf_corpus --input-type pdf …`.
 - For faster throughput on a multi-GPU node, keep `--run-mode batch` (default,
-  Ray-based) and tune `--pdf-split-batch`, `--embed-actors`,
+  Ray-based) and tune `--pdf-split-batch-size`, `--embed-actors`,
   `--embed-batch-size`, `--ocr-actors`, and `--page-elements-actors`.
 - For debugging or CI, use `--run-mode inprocess` to avoid starting Ray.

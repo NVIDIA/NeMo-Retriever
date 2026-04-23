@@ -45,7 +45,7 @@ retriever pipeline run "${SAMPLE_PDF0}" \
   --input-type pdf \
   --method pdfium \
   --extract-text --extract-tables --extract-charts \
-  --dedup --dedup-iou-thres 0.45 \
+  --dedup --dedup-iou-threshold 0.45 \
   --store-images-uri "${OUTPUT_DIRECTORY_SINGLE}/images" \
   --strip-base64 \
   --save-intermediate "${OUTPUT_DIRECTORY_SINGLE}"
@@ -56,7 +56,7 @@ retriever pipeline run "${SAMPLE_PDF0}" \
 - `extract_tables_method:"yolox"` is not a CLI selector — the pipeline picks
   its table/structure detectors automatically. Tables are still extracted.
 - `dedup:{content_type:"image", filter:true}` maps to `--dedup` (with
-  `--dedup-iou-thres` for the IoU threshold).
+  `--dedup-iou-threshold` for the IoU threshold).
 - `filter:{content_type:"image", min_size, min/max_aspect_ratio, filter:true}`
   **has no parity.** There is no image scale/aspect-ratio filter in the
   `retriever` CLI today. If that matters, drop to the Python API or keep the
@@ -87,7 +87,7 @@ retriever pipeline run "${PDF_DIR}" \
   --input-type pdf \
   --method pdfium \
   --extract-text --extract-tables --extract-charts \
-  --dedup --dedup-iou-thres 0.45 \
+  --dedup --dedup-iou-threshold 0.45 \
   --store-images-uri "${OUTPUT_DIRECTORY_BATCH}/images" \
   --strip-base64 \
   --save-intermediate "${OUTPUT_DIRECTORY_BATCH}"
@@ -99,7 +99,7 @@ retriever pipeline run "${PDF_DIR}" \
   are not reproduced. Materialize a directory (or glob) containing the files
   you want to process.
 - The `--shuffle_dataset` knob is not present; set Ray block / batch sizes
-  via `--pdf-split-batch`, `--pdf-split-batch-size`, etc. for throughput.
+  via `--pdf-split-batch-size`, `--pdf-extract-batch-size`, etc. for throughput.
 
 ## 4. Inspect results
 

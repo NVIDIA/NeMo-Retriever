@@ -11,8 +11,7 @@ service.
 
 `retriever` has **no V1/V2 API concept** — the graph pipeline is always the
 current generation. Page-batch parallelism is tuned directly on the pipeline
-via `--pdf-split-batch` (page-batch granularity) and `--pdf-split-batch-size`
-(Ray block size).
+via `--pdf-split-batch-size` (pages per split batch).
 
 ## Replacement example
 
@@ -34,13 +33,13 @@ retriever pipeline run large_document.pdf \
   --input-type pdf \
   --method pdfium \
   --extract-text --no-extract-tables --no-extract-charts \
-  --pdf-split-batch 64 \
+  --pdf-split-batch-size 64 \
   --save-intermediate ./results
 ```
 
-### What `--pdf-split-batch` does
+### What `--pdf-split-batch-size` does
 
-`--pdf-split-batch` controls how many pages are grouped into one batch passed
+`--pdf-split-batch-size` controls how many pages are grouped into one batch passed
 downstream to the OCR / page-elements / extraction actors. Smaller values give
 more parallelism but more overhead; larger values amortize overhead but limit
 concurrency — the same trade-off the V2 `--pdf_split_page_count` flag exposed.
@@ -50,7 +49,7 @@ For very wide fan-out you can also increase the number of concurrent actors:
 ```bash
 retriever pipeline run large_document.pdf \
   --input-type pdf \
-  --pdf-split-batch 64 \
+  --pdf-split-batch-size 64 \
   --page-elements-actors 4 \
   --ocr-actors 4 \
   --embed-actors 2 \
@@ -61,8 +60,8 @@ retriever pipeline run large_document.pdf \
 
 - The pipeline always runs through the current ingest graph — there is no
   `--api_version` flag.
-- `--pdf-split-batch` is a batching knob on the local Ray pipeline, not a
+- `--pdf-split-batch-size` is a batching knob on the local Ray pipeline, not a
   server-side splitter. End-user outcome (parallel extraction of a large PDF)
   is preserved.
 - Use `retriever pipeline run --help` to see related tuning flags
-  (`--pdf-split-batch-size`, `--pdf-extract-batch-size`, etc.).
+  (`--pdf-extract-batch-size`, etc.).

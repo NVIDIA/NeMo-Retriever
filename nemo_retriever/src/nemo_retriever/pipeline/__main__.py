@@ -205,6 +205,7 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     matched = [p for p in patterns if _glob.glob(p, recursive=True)]
     if not matched:
         raise typer.BadParameter(f"No files found for input_type={input_type!r} in {input_path}")
+    logger.debug("Using recursive input globs: %s", matched)
     return matched
 
 
@@ -375,6 +376,9 @@ def _build_ingestor(
     caption_context_text_max_chars: int,
     caption_gpu_memory_utilization: float,
     caption_gpus_per_actor: Optional[float],
+    caption_temperature: float,
+    caption_top_p: Optional[float],
+    caption_max_tokens: int,
     store_images_uri: Optional[str],
     store_text: bool,
     strip_base64: bool,
@@ -427,6 +431,9 @@ def _build_ingestor(
                 device=caption_device,
                 context_text_max_chars=caption_context_text_max_chars,
                 gpu_memory_utilization=caption_gpu_memory_utilization,
+                temperature=caption_temperature,
+                top_p=caption_top_p,
+                max_tokens=caption_max_tokens,
             )
         )
 
@@ -477,6 +484,8 @@ def _run_evaluation(
     hybrid: bool,
     reranker: Optional[bool],
     reranker_model_name: str,
+    reranker_invoke_url: Optional[str],
+    reranker_api_key: str,
     beir_loader: Optional[str],
     beir_dataset_name: Optional[str],
     beir_split: str,
@@ -518,6 +527,8 @@ def _run_evaluation(
             hybrid=hybrid,
             reranker=bool(reranker),
             reranker_model_name=str(reranker_model_name),
+            reranker_endpoint=reranker_invoke_url,
+            reranker_api_key=reranker_api_key,
         )
         evaluation_start = time.perf_counter()
         beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
@@ -543,6 +554,8 @@ def _run_evaluation(
         match_mode=recall_match_mode,
         audio_match_tolerance_secs=float(audio_match_tolerance_secs),
         reranker=reranker_model_name if reranker else None,
+        reranker_endpoint=reranker_invoke_url,
+        reranker_api_key=reranker_api_key,
         embed_modality=embed_modality,
     )
     evaluation_start = time.perf_counter()
@@ -653,6 +666,13 @@ def run(
     caption_gpus_per_actor: Optional[float] = typer.Option(
         None, "--caption-gpus-per-actor", max=1.0, rich_help_panel=_PANEL_DEDUP_CAPTION
     ),
+    caption_temperature: float = typer.Option(
+        1.0, "--caption-temperature", min=0.0, max=2.0, rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_top_p: Optional[float] = typer.Option(
+        None, "--caption-top-p", min=0.0, max=1.0, rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_max_tokens: int = typer.Option(1024, "--caption-max-tokens", min=1, rich_help_panel=_PANEL_DEDUP_CAPTION),
     # --- Storage and text chunking --------------------------------------
     store_images_uri: Optional[str] = typer.Option(
         None,
@@ -762,12 +782,49 @@ def run(
     recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details", rich_help_panel=_PANEL_EVAL),
     reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker", rich_help_panel=_PANEL_EVAL),
     reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name", rich_help_panel=_PANEL_EVAL),
+    reranker_invoke_url: Optional[str] = typer.Option(
+        None,
+        "--reranker-invoke-url",
+        help="OpenAI-compatible reranker NIM HTTP endpoint (recall and BEIR evaluation).",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    reranker_api_key: Optional[str] = typer.Option(
+        None,
+        "--reranker-api-key",
+        help="Bearer token for the reranker NIM; defaults to --api-key / NVIDIA_API_KEY when omitted.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader", rich_help_panel=_PANEL_EVAL),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name", rich_help_panel=_PANEL_EVAL),
     beir_split: str = typer.Option("test", "--beir-split", rich_help_panel=_PANEL_EVAL),
     beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language", rich_help_panel=_PANEL_EVAL),
     beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field", rich_help_panel=_PANEL_EVAL),
     beir_k: list[int] = typer.Option([], "--beir-k", rich_help_panel=_PANEL_EVAL),
+    eval_config: Optional[Path] = typer.Option(
+        None,
+        "--eval-config",
+        help="Path to QA sweep YAML/JSON (required when --evaluation-mode=qa; same as `retriever eval run --config`).",
+        path_type=Path,
+        dir_okay=False,
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    retrieval_save_path: Optional[Path] = typer.Option(
+        None,
+        "--retrieval-save-path",
+        help="Override retrieval.save_path in the QA config (page-index / export JSON, optional).",
+        path_type=Path,
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    eval_page_index: Optional[Path] = typer.Option(
+        None,
+        "--page-index",
+        help="Override retrieval.page_index in the QA config (optional).",
+        path_type=Path,
+        dir_okay=False,
+        file_okay=True,
+        exists=True,
+        rich_help_panel=_PANEL_EVAL,
+    ),
 ) -> None:
     """Run the end-to-end graph ingestion pipeline against ``INPUT_PATH``."""
 
@@ -780,8 +837,13 @@ def run(
             raise ValueError(f"Unsupported --recall-match-mode: {recall_match_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode not in {"recall", "beir"}:
+        if evaluation_mode not in {"recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+        if evaluation_mode == "qa" and eval_config is None:
+            raise typer.BadParameter(
+                "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
+                "Use the same file format as `retriever eval run --config` (dataset, retrieval, models, ...)."
+            )
 
         if run_mode == "batch":
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
@@ -793,6 +855,9 @@ def run(
         extract_remote_api_key = remote_api_key
         embed_remote_api_key = remote_api_key
         caption_remote_api_key = remote_api_key
+        reranker_bearer = (
+            resolve_remote_api_key(reranker_api_key) if reranker_api_key is not None else remote_api_key
+        ) or ""
 
         if (
             any(
@@ -807,6 +872,11 @@ def run(
             and remote_api_key is None
         ):
             logger.warning("Remote endpoint URL(s) were configured without an API key.")
+        if reranker_invoke_url and not reranker_bearer.strip():
+            logger.warning(
+                "Reranker invoke URL is set but no bearer token was resolved; "
+                "set --reranker-api-key or --api-key / NVIDIA_API_KEY."
+            )
 
         # Zero out GPU fractions when a remote URL replaces the local model.
         if page_elements_invoke_url and float(page_elements_gpus_per_actor or 0.0) != 0.0:
@@ -897,6 +967,9 @@ def run(
             caption_context_text_max_chars=caption_context_text_max_chars,
             caption_gpu_memory_utilization=caption_gpu_memory_utilization,
             caption_gpus_per_actor=caption_gpus_per_actor,
+            caption_temperature=caption_temperature,
+            caption_top_p=caption_top_p,
+            caption_max_tokens=caption_max_tokens,
             store_images_uri=store_images_uri,
             store_text=store_text,
             strip_base64=strip_base64,
@@ -971,6 +1044,76 @@ def run(
                 ray.shutdown()
             return
 
+        if evaluation_mode == "qa":
+            from nemo_retriever.evaluation.cli import run_qa_sweep_from_config_dict
+            from nemo_retriever.evaluation.config import load_eval_config
+
+            assert eval_config is not None
+            cfg = load_eval_config(str(eval_config))
+            r = cfg.setdefault("retrieval", {})
+            if r.get("type", "lancedb") == "lancedb":
+                r["type"] = "lancedb"
+                r["lancedb_uri"] = lancedb_uri
+                r["lancedb_table"] = LANCEDB_TABLE
+            if retrieval_save_path is not None:
+                r["save_path"] = str(Path(retrieval_save_path).resolve())
+            if eval_page_index is not None:
+                r["page_index"] = str(Path(eval_page_index).resolve())
+
+            qa_t0 = time.perf_counter()
+            qa_code = run_qa_sweep_from_config_dict(cfg)
+            evaluation_total_time = time.perf_counter() - qa_t0
+            total_time = time.perf_counter() - ingest_start
+
+            _write_runtime_summary(
+                runtime_metrics_dir,
+                runtime_metrics_prefix,
+                {
+                    "run_mode": run_mode,
+                    "input_path": str(Path(input_path).resolve()),
+                    "input_pages": int(num_rows),
+                    "num_pages": int(num_rows),
+                    "num_rows": int(len(result_df.index)),
+                    "ingestion_only_secs": float(ingestion_only_total_time),
+                    "ray_download_secs": float(ray_download_time),
+                    "lancedb_write_secs": float(lancedb_write_time),
+                    "evaluation_secs": float(evaluation_total_time),
+                    "total_secs": float(total_time),
+                    "evaluation_mode": "qa",
+                    "evaluation_metrics": {},
+                    "evaluation_count": None,
+                    "recall_details": bool(recall_details),
+                    "lancedb_uri": str(lancedb_uri),
+                    "lancedb_table": str(LANCEDB_TABLE),
+                    "qa_sweep_exit_code": qa_code,
+                },
+            )
+            if run_mode == "batch":
+                import ray
+
+                ray.shutdown()
+
+            from nemo_retriever.utils.detection_summary import print_run_summary
+
+            print_run_summary(
+                num_rows,
+                Path(input_path),
+                hybrid,
+                lancedb_uri,
+                LANCEDB_TABLE,
+                total_time,
+                ingestion_only_total_time,
+                ray_download_time,
+                lancedb_write_time,
+                evaluation_total_time,
+                {},
+                evaluation_label="QA",
+                evaluation_count=None,
+            )
+            if qa_code != 0:
+                raise typer.Exit(code=qa_code)
+            return
+
         evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = _run_evaluation(
             evaluation_mode=evaluation_mode,
             lancedb_uri=lancedb_uri,
@@ -984,6 +1127,8 @@ def run(
             hybrid=hybrid,
             reranker=reranker,
             reranker_model_name=reranker_model_name,
+            reranker_invoke_url=reranker_invoke_url,
+            reranker_api_key=reranker_bearer,
             beir_loader=beir_loader,
             beir_dataset_name=beir_dataset_name,
             beir_split=beir_split,
