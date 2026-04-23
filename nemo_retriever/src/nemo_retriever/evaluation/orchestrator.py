@@ -36,7 +36,7 @@ from nemo_retriever.evaluation.scoring import (
     classify_failure,
     token_f1,
 )
-from nemo_retriever.evaluation.types import (
+from nemo_retriever.llm.types import (
     AnswerJudge,
     GenerationResult,
     JudgeResult,
@@ -148,10 +148,9 @@ class QAEvalPipeline(EvalOperator):
         for model_name, client in self.llm_clients.items():
             prefix = _sanitize_prefix(model_name)
 
-            # _client and _model_name are captured via default args to avoid
-            # the late-binding closure bug across loop iterations. self.judge
-            # is safe to access directly since it does not change per-iteration.
-            def _process_row(row_tuple, row_aic, _client=client, _model_name=model_name):
+            # ``_client`` is captured via a default arg to pin each iteration's client
+            # into the closure and avoid the late-binding bug.
+            def _process_row(row_tuple, row_aic, _client=client):
                 _, row = row_tuple
                 query = row["query"]
                 ref = row["reference_answer"]
@@ -266,7 +265,7 @@ class QAEvalPipeline(EvalOperator):
 
         def _retrieve(idx: int, pair: dict) -> tuple[int, dict]:
             query = pair["query"]
-            reference = pair.get("reference_answer") or pair["answer"]
+            reference = pair.get("reference_answer") or pair.get("answer", "")
             retrieval = self.retriever.retrieve(query, self.top_k)
             return idx, {
                 "query": query,
