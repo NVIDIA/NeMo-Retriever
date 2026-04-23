@@ -216,106 +216,12 @@ datasets:
     table_extraction_method: nemotron_parse
 
   jp20:
-    path: ~/datasets/jp20
-    query_csv: ~/datasets/jp20/query.csv
+    path: /datasets/nv-ingest/jp20
+    query_csv: data/jp20_query_gt.csv
     input_type: pdf
     recall_required: true
     recall_match_mode: pdf_page
     recall_adapter: none
-
-  jp20_baseline:
-    embed_granularity: element
-    embed_modality: text
-    embed_model_name: nvidia/llama-nemotron-embed-1b-v2
-    extract_page_as_image: false
-    input_type: pdf
-    path: ~/datasets/jp20
-    query_csv: ~/datasets/jp20/query.csv
-    recall_adapter: none
-    recall_match_mode: pdf_page
-    recall_required: false
-    reranker: false
-
-  jp20_text_hf:
-    embed_granularity: element
-    embed_local_ingest_backend: hf
-    embed_local_query_backend: hf
-    embed_modality: text
-    embed_model_name: nvidia/llama-nemotron-embed-1b-v2
-    extract_page_as_image: false
-    input_type: pdf
-    path: ~/datasets/jp20
-    query_csv: ~/datasets/jp20/query.csv
-    recall_adapter: none
-    recall_match_mode: pdf_page
-    recall_required: false
-    reranker: false
-
-  jp20_text_vllm_hf:
-    embed_granularity: element
-    embed_local_ingest_backend: vllm
-    embed_local_query_backend: hf
-    embed_modality: text
-    embed_model_name: nvidia/llama-nemotron-embed-1b-v2
-    extract_page_as_image: false
-    input_type: pdf
-    path: ~/datasets/jp20
-    query_csv: ~/datasets/jp20/query.csv
-    recall_adapter: none
-    recall_match_mode: pdf_page
-    recall_required: false
-    reranker: false
-
-  jp20_vl_text:
-    embed_granularity: page
-    embed_local_ingest_backend: hf
-    embed_local_query_backend: hf
-    embed_modality: text
-    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
-    extract_infographics: false
-    extract_page_as_image: false
-    input_type: pdf
-    path: ~/datasets/jp20
-    query_csv: ~/datasets/jp20/query.csv
-    recall_adapter: none
-    recall_match_mode: pdf_page
-    recall_required: false
-    reranker: false
-
-  jp20_vl_text_image:
-    embed_granularity: page
-    embed_local_ingest_backend: hf
-    embed_local_query_backend: hf
-    embed_modality: text_image
-    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
-    embed_workers: 1
-    extract_infographics: true
-    extract_page_as_image: true
-    input_type: pdf
-    path: ~/datasets/jp20
-    query_csv: ~/datasets/jp20/query.csv
-    recall_adapter: none
-    recall_match_mode: pdf_page
-    recall_required: false
-    reranker: false
-
-  jp20_vl_text_image_reranked:
-    embed_granularity: page
-    embed_local_ingest_backend: hf
-    embed_local_query_backend: hf
-    embed_modality: text_image
-    embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
-    embed_workers: 1
-    extract_infographics: true
-    extract_page_as_image: true
-    input_type: pdf
-    path: ~/datasets/jp20
-    query_csv: ~/datasets/jp20/query.csv
-    recall_adapter: none
-    recall_match_mode: pdf_page
-    recall_required: false
-    reranker: true
-    reranker_model_name: nvidia/llama-nemotron-rerank-vl-1b-v2
 
   earnings:
     path: /datasets/nv-ingest/earnings_consulting
