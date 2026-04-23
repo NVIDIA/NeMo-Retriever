@@ -60,7 +60,7 @@ dependencies = [
     "transformers>=4.57.6",
     "tqdm>=4.67.1",
     "urllib3==2.6.3",
-    "nltk==3.9.3",
+    "nltk==3.9.4",
     "pillow==12.2.0",
     "uvicorn",
     "pip",
