@@ -120,11 +120,31 @@ def test_retriever_answer_missing_lancedb_uri_exits_usage() -> None:
     Typer rejects the invocation before ``answer_command`` runs.  The
     separation between Click's argument-parsing errors and our internal
     usage errors is intentional so agents can distinguish them.
+
+    We intentionally do not grep for ``--lancedb-uri`` in the rendered
+    error panel: Click+Rich word-wrap the panel based on the test
+    process's detected terminal width, which can split the option name
+    across a border.  The structural invariant (Click flags the option
+    as required) is asserted at the param level by
+    :func:`test_retriever_mcp_serve_requires_lancedb_uri_and_model`
+    and, for ``answer``, by :func:`test_retriever_answer_requires_lancedb_uri`.
     """
     result = RUNNER.invoke(app, ["answer", "hi", "--model", "x"])
     assert result.exit_code == 2
     assert "Missing option" in result.stderr
-    assert "--lancedb-uri" in result.stderr
+
+
+def test_retriever_answer_requires_lancedb_uri() -> None:
+    """``--lancedb-uri`` is declared required on ``retriever answer``.
+
+    Asserts directly against the Click command object rather than the
+    rendered help panel so the contract does not depend on terminal
+    width, ANSI colour, or Rich's panel wrapping.
+    """
+    answer_cmd = typer.main.get_command(app).commands["answer"]
+    by_opt = {opt: p for p in answer_cmd.params for opt in p.opts}
+    assert "--lancedb-uri" in by_opt, "retriever answer must expose --lancedb-uri"
+    assert by_opt["--lancedb-uri"].required, "--lancedb-uri must be marked required"
 
 
 # ---------------------------------------------------------------------------
@@ -367,11 +387,31 @@ def test_retriever_mcp_help_lists_serve() -> None:
 
 
 def test_retriever_mcp_serve_help_shows_required_flags() -> None:
-    """`retriever mcp serve --help` must list the required flags."""
+    """``retriever mcp serve --help`` must exit cleanly.
+
+    The structural check that ``--lancedb-uri`` and ``--model`` are
+    present and marked required lives in
+    :func:`test_retriever_mcp_serve_requires_lancedb_uri_and_model`,
+    which introspects the Click command object and is therefore
+    immune to Rich's terminal-width-dependent help panel rendering.
+    """
     result = RUNNER.invoke(app, ["mcp", "serve", "--help"])
     assert result.exit_code == 0
-    for required in ("--lancedb-uri", "--model"):
-        assert required in result.stdout
+
+
+def test_retriever_mcp_serve_requires_lancedb_uri_and_model() -> None:
+    """``mcp serve`` must declare ``--lancedb-uri`` and ``--model`` required.
+
+    Reads the contract directly from the Click command's ``params``
+    list.  This is the representation Click uses at invocation time
+    to produce ``Missing option`` errors, so it is the authoritative
+    source for whether an option is required.
+    """
+    serve_cmd = typer.main.get_command(app).commands["mcp"].commands["serve"]
+    by_opt = {opt: p for p in serve_cmd.params for opt in p.opts}
+    for flag in ("--lancedb-uri", "--model"):
+        assert flag in by_opt, f"retriever mcp serve must expose {flag}"
+        assert by_opt[flag].required, f"{flag} must be marked required"
 
 
 def test_answer_tool_schema_is_stable() -> None:
