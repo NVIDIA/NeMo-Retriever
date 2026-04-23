@@ -2178,6 +2178,7 @@ wheels = [
 name = "nemo-retriever"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "debugpy" },
     { name = "fastapi" },
     { name = "fastmcp" },
@@ -2297,6 +2298,7 @@ requires-dist = [
     { name = "apscheduler", marker = "extra == 'local'", specifier = ">=3.10" },
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2.2" },
     { name = "cairosvg", marker = "extra == 'multimedia'", specifier = ">=2.7.0" },
+    { name = "click", specifier = ">=8.2.0" },
     { name = "datasets", marker = "extra == 'benchmarks'", specifier = ">=4.8.2" },
     { name = "debugpy", specifier = ">=1.8.0" },
     { name = "duckdb", marker = "extra == 'stores'", specifier = ">=1.2.0" },
