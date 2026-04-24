@@ -164,7 +164,8 @@ Describes the structural location of content within a document.
 | `span`           | `int`                 | `-1`                       | Span identifier within a line, for finer granularity.                                                   |
 | `nearby_objects` | `NearbyObjectsSchema` | `NearbyObjectsSchema()`    | Information about objects (text, images, structured data) near the current content. See [NearbyObjectsSchema](#nearbyobjectsschema). |
 
-### `NearbyObjectsSchema` (Currently Unused) {#nearbyobjectsschema}
+<a id="nearbyobjectsschema"></a>
+### `NearbyObjectsSchema` (Currently Unused)
 Container for different types of nearby objects.
 
 | Field        | Type                   | Default Value                | Description                                                              |
@@ -243,7 +244,8 @@ Specific metadata for audio content.
 | `audio_transcript` | `str` | `""`          | Transcript of the audio content.                |
 | `audio_type`       | `str` | `""`          | Type or format of the audio (e.g., `mp3`, `wav`). |
 
-### `ErrorMetadataSchema` (Currently Unused) {#errormetadataschema}
+<a id="errormetadataschema"></a>
+### `ErrorMetadataSchema` (Currently Unused)
 Metadata describing errors encountered during processing.
 
 | Field       | Type           | Default Value | Description                                                              |
@@ -253,7 +255,8 @@ Metadata describing errors encountered during processing.
 | `source_id` | `str`          | `""`          | Identifier of the source item that caused the error, if applicable.        |
 | `error_msg` | `str`          | *Required*    | The error message.                                                       |
 
-### `InfoMessageMetadataSchema` (Currently Unused) {#infomessagemetadataschema}
+<a id="infomessagemetadataschema"></a>
+### `InfoMessageMetadataSchema` (Currently Unused)
 Informational messages related to processing.
 
 | Field     | Type           | Default Value | Description                                                              |
@@ -374,4 +377,4 @@ For the full file, refer to the [data folder](https://github.com/NVIDIA/nv-inges
 
 ## Related Topics
 
-- [Environment Variables](environment-variables.md)
+- [Environment Variables](environment-config.md)
