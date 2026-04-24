@@ -395,7 +395,7 @@ class Retriever:
     ) -> "RetrievalResult":
         """Run retrieval for a single query and return a structured result.
 
-        Thin adapter over :meth:`query` that reshapes the raw LanceDB hits
+        Thin adapter over :meth:`~nemo_retriever.retriever.Retriever.query` that reshapes the raw LanceDB hits
         into a :class:`~nemo_retriever.llm.RetrievalResult` with ``chunks``
         (the retrieved text, in rank order) and aligned ``metadata``
         (source, page_number, etc.).  Satisfies the
@@ -416,8 +416,8 @@ class Retriever:
         Example:
             >>> retriever = Retriever(lancedb_uri="./kb")
             >>> result = retriever.retrieve("What is RAG?", top_k=3)
-            >>> result.chunks[0][:40]  # doctest: +SKIP
-            'Retrieval augmented generation combines...'
+            >>> bool(result.chunks[0])  # doctest: +SKIP
+            True
         """
         from nemo_retriever.llm.types import RetrievalResult
 
