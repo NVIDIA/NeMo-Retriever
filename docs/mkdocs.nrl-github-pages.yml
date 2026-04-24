@@ -194,7 +194,7 @@ markdown_extensions:
 # MkDocs 1.6+: drop pages that are not part of the NRL-only site (still in repo for upstream parity).
 exclude_docs: |
   index.md
-  extraction/nv-ingest_cli.md
+extraction/cli-reference.md
   extraction/nv-ingest-python-api.md
 
 extra:
