@@ -47,6 +47,8 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             hf_cache_dir=hf_cache,
             gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
             enforce_eager=_to_bool(self._kwargs.get("enforce_eager"), default=False),
+            normalize=bool(self._kwargs.get("normalize", True)),
+            max_length=int(self._kwargs.get("max_length", 8192)),
         )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

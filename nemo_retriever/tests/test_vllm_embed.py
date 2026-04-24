@@ -9,6 +9,8 @@ import io
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import torch
 
 from nemo_retriever.text_embed.vllm import embed_multimodal_with_vllm_llm, embed_with_vllm_llm
@@ -130,6 +132,9 @@ class TestEmbedMultimodalWithVllmLlm:
 
 
 class TestCreateVllmLlm:
+    def setup_method(self):
+        pytest.importorskip("vllm", reason="vLLM not installed")
+
     def test_limit_mm_per_prompt_absent_by_default(self):
         # LLM is imported inside create_vllm_llm's body, so patch at its source
         with patch("vllm.LLM") as mock_llm_cls:
