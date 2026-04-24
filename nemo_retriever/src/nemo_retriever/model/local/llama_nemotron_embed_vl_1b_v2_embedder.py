@@ -166,11 +166,6 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
     Supports text, image, and text+image modalities via vLLM's Python API
     (bfloat16 + FLASH_ATTN, pooling runner). Requires vLLM >= 0.17.0.
 
-    .. warning::
-        When ``device`` is set, ``CUDA_VISIBLE_DEVICES`` is overwritten for the entire
-        process. Constructing multiple instances with different devices in the same process
-        (e.g. in a Ray actor pool) will produce incorrect behaviour. Pass device constraints
-        via ``tensor_parallel_size`` or ensure each actor is launched in an isolated process.
     """
 
     model_id: Optional[str] = None
@@ -200,10 +195,16 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             )
 
         if self.device is not None:
-            import os
+            import warnings
 
-            dev_id = self.device.split(":")[-1] if ":" in self.device else self.device
-            os.environ["CUDA_VISIBLE_DEVICES"] = dev_id
+            warnings.warn(
+                "LlamaNemotronEmbedVL1BV2VLLMEmbedder no longer uses 'device'; "
+                "vLLM follows process-level GPU placement. Use CUDA_VISIBLE_DEVICES "
+                "or vLLM's tensor_parallel_size instead. 'device' will be removed "
+                "in a future release.",
+                DeprecationWarning,
+                stacklevel=4,
+            )
         configure_global_hf_cache_base(self.hf_cache_dir)
 
         model_id = self.model_id or "nvidia/llama-nemotron-embed-vl-1b-v2"

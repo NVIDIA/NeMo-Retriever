@@ -105,9 +105,11 @@ def create_local_embedder(
         )
 
         return LlamaNemotronEmbedVL1BV2VLLMEmbedder(
+            model_id=model_id,
             device=device,
             hf_cache_dir=hf_cache_dir,
-            model_id=model_id,
+            gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
         )
 
     if b == "hf":
