@@ -195,7 +195,7 @@ markdown_extensions:
 exclude_docs: |
   index.md
 extraction/cli-reference.md
-  extraction/nv-ingest-python-api.md
+  extraction/python-api.md
 
 extra:
   generator: false
