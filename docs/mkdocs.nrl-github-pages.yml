@@ -196,7 +196,6 @@ exclude_docs: |
   index.md
   extraction/nv-ingest_cli.md
   extraction/nv-ingest-python-api.md
-  extraction/helm.md
 
 extra:
   generator: false
