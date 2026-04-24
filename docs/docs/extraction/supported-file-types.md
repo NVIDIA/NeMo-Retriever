@@ -6,4 +6,4 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 
 - [Troubleshoot](troubleshoot.md) for format-specific issues
 - [Text and layout extraction](text-layout-extraction.md)
-- [Speech and audio](audio.md)
+- [Speech and audio](audio-video.md)

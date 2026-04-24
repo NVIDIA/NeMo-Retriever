@@ -5,7 +5,7 @@
 In NeMo Retriever Library, use these resources:
 
 - [Concepts](concepts.md) for pipeline and search patterns
-- [Vector databases](data-store.md) for LanceDB hybrid mode (dense, BM25, and RRF) and Milvus dense or sparse patterns
+- [Vector databases](vdbs.md) for LanceDB hybrid mode (dense, BM25, and RRF) and Milvus dense or sparse patterns
 - [Environment variables](environment-config.md) for hybrid-related flags where documented
 - [Custom metadata and filtering](custom-metadata.md) for filtering
 

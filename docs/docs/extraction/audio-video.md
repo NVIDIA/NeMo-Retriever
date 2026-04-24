@@ -51,7 +51,7 @@ Use the following procedure to run the NIM locally.
     Password: <your-ngc-key>
     ```
 
-2. For convenience and security, store [your NGC key](ngc-api-key.md) in an environment variable file (`.env`). This enables services to access it without needing to enter the key manually each time. Create a .env file in your working directory and add the following line. Replace `<your-ngc-key>` with your actual NGC key.
+2. For convenience and security, store [your NGC key](api-keys.md) in an environment variable file (`.env`). This enables services to access it without needing to enter the key manually each time. Create a .env file in your working directory and add the following line. Replace `<your-ngc-key>` with your actual NGC key.
 
     ```ini
     NGC_API_KEY=<your-ngc-key>

@@ -4,6 +4,6 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 **Related**
 
-- [Multimodal embeddings (VLM)](vlm-embed.md)
+- [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
 - [What is NeMo Retriever Library?](overview.md)
