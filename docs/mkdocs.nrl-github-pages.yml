@@ -166,7 +166,6 @@ plugins:
         extraction/nemoretriever-parse.md: extraction/nemotron-parse.md
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
-        extraction/audio.md: extraction/audio-video.md
   - site-urls
 
 markdown_extensions:
