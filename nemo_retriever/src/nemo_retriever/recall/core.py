@@ -49,10 +49,10 @@ class RecallConfig:
     local_hf_cache_dir: Optional[str] = None
     local_hf_batch_size: int = 64
     # When using local query embedding (no HTTP endpoint), select backend for *queries* only.
-    # ``auto`` / ``vllm`` use :func:`~nemo_retriever.model.create_local_embedder`; ``hf`` uses the
-    # HF mean-pooled text embedder (see ``LlamaNemotronEmbed1BV2HFEmbedder``). Ignored when an
+    # ``hf`` (default) uses the HF mean-pooled text embedder (see ``LlamaNemotronEmbed1BV2HFEmbedder``);
+    # ``vllm`` uses :func:`~nemo_retriever.model.create_local_embedder`. Ignored when an
     # embedding HTTP endpoint is set. VL models always use HF regardless of this field.
-    local_query_embed_backend: str = "auto"
+    local_query_embed_backend: str = "hf"
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys

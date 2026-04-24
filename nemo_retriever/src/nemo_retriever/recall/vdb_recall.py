@@ -54,9 +54,9 @@ def _coerce_endpoint_str(v: Optional[str]) -> Optional[str]:
 
 
 def _normalize_local_query_embed_backend(value: str) -> str:
-    raw = (value or "auto").strip().lower()
-    if raw not in ("auto", "hf", "vllm"):
-        raise typer.BadParameter("local query embed backend must be 'auto', 'hf', or 'vllm', " f"got {value!r}")
+    raw = (value or "hf").strip().lower()
+    if raw not in ("hf", "vllm"):
+        raise typer.BadParameter("local query embed backend must be 'hf' or 'vllm', " f"got {value!r}")
     return raw
 
 
@@ -139,11 +139,11 @@ def recall_with_main(
         help="Batch size for local HF embedding inference.",
     ),
     local_query_embed_backend: str = typer.Option(
-        "auto",
+        "hf",
         "--local-query-embed-backend",
         help=(
-            "When no remote embedding endpoint is set: 'auto'/'vllm' use the local vLLM path; "
-            "'hf' uses HuggingFace for query vectors (e.g. index built with vLLM, queries with HF)."
+            "When no remote embedding endpoint is set: 'hf' (default) uses HuggingFace; "
+            "'vllm' uses the local vLLM path."
         ),
     ),
 ) -> None:
@@ -269,11 +269,11 @@ def run(
         help="Batch size for local HF embedding inference.",
     ),
     local_query_embed_backend: str = typer.Option(
-        "auto",
+        "hf",
         "--local-query-embed-backend",
         help=(
-            "When no remote embedding endpoint is set: 'auto'/'vllm' use the local vLLM path; "
-            "'hf' uses HuggingFace for query vectors."
+            "When no remote embedding endpoint is set: 'hf' (default) uses HuggingFace; "
+            "'vllm' uses the local vLLM path."
         ),
     ),
     print_hits: bool = typer.Option(True, "--print-hits/--no-print-hits", help="Print top-k hits per query."),

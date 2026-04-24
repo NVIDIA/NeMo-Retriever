@@ -78,7 +78,7 @@ class BeirConfig:
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
     #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
-    local_query_embed_backend: str = "auto"
+    local_query_embed_backend: str = "hf"
 
 
 def _row_get(row: Any, key: str, default: Any = None) -> Any:
