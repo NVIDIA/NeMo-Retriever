@@ -281,4 +281,4 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     assert metrics["ndcg@10"] == 1.0
     assert metrics["recall@5"] == 1.0
     assert "embed_use_vllm" not in retriever_instances[0].kwargs
-    assert retriever_instances[0].kwargs.get("local_query_embed_backend") == "auto"
+    assert retriever_instances[0].kwargs.get("local_query_embed_backend") == "hf"
