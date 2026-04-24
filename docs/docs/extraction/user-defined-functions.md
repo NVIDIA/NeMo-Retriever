@@ -264,7 +264,7 @@ def enhance_metadata(control_message: IngestControlMessage) -> IngestControlMess
     return control_message
 ```
 
-> **📖 For detailed metadata schema documentation, see:** [metadata_documentation.md](metadata_documentation.md)
+> **📖 For detailed metadata schema documentation, see:** [Metadata reference](content-metadata.md)
 
 ### UDF Targeting
 
@@ -537,7 +537,7 @@ For detailed guidance on creating custom NIM integrations, including:
 - Error handling and debugging
 - Performance best practices
 
-See the comprehensive [**NimClient Usage Guide**](nimclient_usage.md).
+See the comprehensive [**NimClient Usage Guide**](nimclient.md).
 
 ### Error Handling
 
