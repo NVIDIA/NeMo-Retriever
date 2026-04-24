@@ -142,19 +142,25 @@ def recall_with_main(
         embedding_http_endpoint=embedding_http_endpoint,
         embedding_grpc_endpoint=embedding_grpc_endpoint,
     )
+    vdb_kwargs = {
+        "uri": str(lancedb_uri),
+        "table_name": str(table_name),
+        "model_name": str(embedding_model),
+    }
+    endpoint = http_ep or grpc_ep or _coerce_endpoint_str(embedding_endpoint)
+    if endpoint:
+        vdb_kwargs["embedding_endpoint"] = endpoint
+    if embedding_api_key:
+        vdb_kwargs["nvidia_api_key"] = embedding_api_key
+    if vector_column_name:
+        vdb_kwargs["vector_column_name"] = str(vector_column_name)
     cfg = RecallConfig(
-        lancedb_uri=str(lancedb_uri),
-        lancedb_table=str(table_name),
-        embedding_http_endpoint=http_ep,
-        embedding_grpc_endpoint=grpc_ep,
-        embedding_endpoint=_coerce_endpoint_str(embedding_endpoint),
-        embedding_model=str(embedding_model),
-        embedding_api_key=(embedding_api_key or ""),
+        vdb_op="lancedb",
+        vdb_kwargs=vdb_kwargs,
         top_k=int(search_k),
         ks=metrics_ks,
         local_hf_device=_coerce_endpoint_str(local_hf_device),
         local_hf_cache_dir=(str(local_hf_cache_dir) if local_hf_cache_dir is not None else None),
-        local_hf_batch_size=int(local_hf_batch_size),
     )
 
     print("Reading and normalizing query CSV...")
@@ -162,7 +168,6 @@ def recall_with_main(
         query_csv=query_csv,
         cfg=cfg,
         limit=None,
-        vector_column_name=str(vector_column_name),
     )
 
     queries = df_query["query"].astype(str).tolist()
@@ -269,26 +274,31 @@ def run(
         embedding_http_endpoint=embedding_http_endpoint,
         embedding_grpc_endpoint=embedding_grpc_endpoint,
     )
+    vdb_kwargs = {
+        "uri": str(lancedb_uri),
+        "table_name": str(table_name),
+        "model_name": str(embedding_model),
+    }
+    endpoint = http_ep or grpc_ep or _coerce_endpoint_str(embedding_endpoint)
+    if endpoint:
+        vdb_kwargs["embedding_endpoint"] = endpoint
+    if embedding_api_key:
+        vdb_kwargs["nvidia_api_key"] = embedding_api_key
+    if vector_column_name:
+        vdb_kwargs["vector_column_name"] = str(vector_column_name)
     cfg = RecallConfig(
-        lancedb_uri=str(lancedb_uri),
-        lancedb_table=str(table_name),
-        embedding_http_endpoint=http_ep,
-        embedding_grpc_endpoint=grpc_ep,
-        embedding_endpoint=_coerce_endpoint_str(embedding_endpoint),
-        embedding_model=str(embedding_model),
-        embedding_api_key=(embedding_api_key or ""),
+        vdb_op="lancedb",
+        vdb_kwargs=vdb_kwargs,
         top_k=int(search_k),
         ks=metrics_ks,
         local_hf_device=_coerce_endpoint_str(local_hf_device),
         local_hf_cache_dir=(str(local_hf_cache_dir) if local_hf_cache_dir is not None else None),
-        local_hf_batch_size=int(local_hf_batch_size),
     )
 
     df_query, gold, raw_hits, retrieved_keys, metrics = retrieve_and_score(
         query_csv=query_csv,
         cfg=cfg,
         limit=limit,
-        vector_column_name=str(vector_column_name),
     )
 
     if print_hits:

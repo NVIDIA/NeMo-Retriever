@@ -265,9 +265,8 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     monkeypatch.setattr("nemo_retriever.recall.beir.Retriever", _FakeRetriever)
 
     cfg = BeirConfig(
-        lancedb_uri="/tmp/lancedb",
-        lancedb_table="nv-ingest",
-        embedding_model="embedder",
+        vdb_op="lancedb",
+        vdb_kwargs={"uri": "/tmp/lancedb", "table_name": "nv-ingest", "model_name": "embedder"},
         loader="vidore_hf",
         dataset_name="vidore_v3_computer_science",
     )

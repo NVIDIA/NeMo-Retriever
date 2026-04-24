@@ -137,7 +137,7 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
 
 def test_retrieve_operator_delegates_to_retrieval() -> None:
     vdb = FakeVDB()
-    operator = RetrieveVdbOperator(vdb=vdb)
+    operator = RetrieveVdbOperator(vdb=vdb, vdb_kwargs={"collection_name": "docs", "model_name": "embedder"})
 
     result = operator.process(["query"], top_k=3)
 
@@ -155,7 +155,7 @@ def test_retrieve_operator_delegates_to_retrieval() -> None:
             }
         ]
     ]
-    assert vdb.retrieval_calls == [(["query"], {"top_k": 3})]
+    assert vdb.retrieval_calls == [(["query"], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
 
 
 def test_constructor_requires_exactly_one_vdb_source() -> None:

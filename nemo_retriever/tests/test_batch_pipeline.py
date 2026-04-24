@@ -249,6 +249,51 @@ def test_resolve_vdb_upload_config_supplies_lancedb_defaults() -> None:
     }
 
 
+def test_batch_pipeline_routes_non_lancedb_vdb_to_upload_and_evaluation(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(
+        pipeline_main,
+        "_ensure_lancedb_table",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LanceDB should not be initialized")),
+    )
+    monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
+    monkeypatch.setitem(
+        sys.modules,
+        "ray",
+        SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
+    )
+
+    captured_eval: dict[str, object] = {}
+
+    def _fake_run_evaluation(**kwargs):
+        captured_eval.update(kwargs)
+        return "Recall", 0.01, {"recall@1": 1.0}, 1, True
+
+    monkeypatch.setattr(pipeline_main, "_run_evaluation", _fake_run_evaluation)
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--vdb-op",
+            "milvus",
+            "--vdb-kwargs-json",
+            '{"collection_name": "docs", "milvus_uri": "http://localhost:19530"}',
+        ],
+    )
+
+    assert result.exit_code == 0
+    expected_vdb_kwargs = {"collection_name": "docs", "milvus_uri": "http://localhost:19530"}
+    assert fake_ingestor.vdb_upload_kwargs == {"vdb_op": "milvus", "vdb_kwargs": expected_vdb_kwargs}
+    assert captured_eval["vdb_op"] == "milvus"
+    assert captured_eval["vdb_kwargs"] == expected_vdb_kwargs
+
+
 def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -309,6 +354,9 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
     assert captured["cfg"].loader == "vidore_hf"
     assert captured["cfg"].dataset_name == "vidore_v3_computer_science"
     assert tuple(captured["cfg"].ks) == (5, 10)
+    assert captured["cfg"].vdb_op == "lancedb"
+    assert captured["cfg"].vdb_kwargs["table_name"] == pipeline_main.LANCEDB_TABLE
+    assert captured["cfg"].vdb_kwargs["model_name"] == "fake-embed-model"
 
 
 def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:

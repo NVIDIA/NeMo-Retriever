@@ -40,6 +40,7 @@ class IngestVdbOperator(AbstractOperator):
     ) -> None:
         vdb_kwargs = dict(vdb_kwargs or {})
         super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
+        self._vdb_kwargs = vdb_kwargs
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
@@ -66,13 +67,15 @@ class RetrieveVdbOperator(AbstractOperator):
     ) -> None:
         vdb_kwargs = dict(vdb_kwargs or {})
         super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
+        self._vdb_kwargs = vdb_kwargs
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
     def process(self, data: Any, **kwargs: Any) -> list[list[dict[str, Any]]]:
-        return normalize_retrieval_results(self._vdb.retrieval(data, **kwargs))
+        retrieval_kwargs = {**self._vdb_kwargs, **kwargs}
+        return normalize_retrieval_results(self._vdb.retrieval(data, **retrieval_kwargs))
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

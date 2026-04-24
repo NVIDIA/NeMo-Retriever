@@ -54,7 +54,7 @@ from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(help="End-to-end graph-based ingestion pipeline (extract -> embed -> LanceDB).")
+app = typer.Typer(help="End-to-end graph-based ingestion pipeline (extract -> embed -> VDB).")
 
 LANCEDB_URI = "lancedb"
 LANCEDB_TABLE = "nv-ingest"
@@ -68,7 +68,7 @@ _PANEL_DEDUP_CAPTION = "Dedup and Caption"
 _PANEL_STORE_CHUNK = "Storage and Text Chunking"
 _PANEL_AUDIO = "Audio"
 _PANEL_RAY = "Ray / Batch Tuning"
-_PANEL_LANCEDB = "LanceDB and Outputs"
+_PANEL_LANCEDB = "VDB and Outputs"
 _PANEL_EVAL = "Evaluation (Recall / BEIR)"
 _PANEL_OBS = "Observability"
 
@@ -507,7 +507,8 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
 def _run_evaluation(
     *,
     evaluation_mode: str,
-    lancedb_uri: str,
+    vdb_op: str,
+    vdb_kwargs: dict[str, Any],
     embed_model_name: str,
     embed_invoke_url: Optional[str],
     embed_remote_api_key: Optional[str],
@@ -515,7 +516,6 @@ def _run_evaluation(
     query_csv: Path,
     recall_match_mode: str,
     audio_match_tolerance_secs: float,
-    hybrid: bool,
     reranker: Optional[bool],
     reranker_model_name: str,
     reranker_invoke_url: Optional[str],
@@ -537,6 +537,12 @@ def _run_evaluation(
     from nemo_retriever.model import resolve_embed_model
 
     embed_model = resolve_embed_model(str(embed_model_name))
+    eval_vdb_kwargs = dict(vdb_kwargs or {})
+    eval_vdb_kwargs.setdefault("model_name", embed_model)
+    if embed_invoke_url:
+        eval_vdb_kwargs.setdefault("embedding_endpoint", embed_invoke_url)
+    if embed_remote_api_key:
+        eval_vdb_kwargs.setdefault("nvidia_api_key", embed_remote_api_key)
 
     if evaluation_mode == "beir":
         if not beir_loader:
@@ -547,18 +553,14 @@ def _run_evaluation(
         from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
 
         cfg = BeirConfig(
-            lancedb_uri=str(lancedb_uri),
-            lancedb_table=str(LANCEDB_TABLE),
-            embedding_model=embed_model,
+            vdb_op=str(vdb_op),
+            vdb_kwargs=eval_vdb_kwargs,
             loader=str(beir_loader),
             dataset_name=str(beir_dataset_name),
             split=str(beir_split),
             query_language=beir_query_language,
             doc_id_field=str(beir_doc_id_field),
             ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
-            embedding_http_endpoint=embed_invoke_url,
-            embedding_api_key=embed_remote_api_key or "",
-            hybrid=hybrid,
             reranker=bool(reranker),
             reranker_model_name=str(reranker_model_name),
             reranker_endpoint=reranker_invoke_url,
@@ -577,14 +579,10 @@ def _run_evaluation(
     from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
 
     recall_cfg = RecallConfig(
-        lancedb_uri=str(lancedb_uri),
-        lancedb_table=str(LANCEDB_TABLE),
-        embedding_model=embed_model,
-        embedding_http_endpoint=embed_invoke_url,
-        embedding_api_key=embed_remote_api_key or "",
+        vdb_op=str(vdb_op),
+        vdb_kwargs=eval_vdb_kwargs,
         top_k=10,
         ks=(1, 5, 10),
-        hybrid=hybrid,
         match_mode=recall_match_mode,
         audio_match_tolerance_secs=float(audio_match_tolerance_secs),
         reranker=reranker_model_name if reranker else None,
@@ -1071,71 +1069,41 @@ def run(
             )
 
         # --- Evaluation ---------------------------------------------
-        if resolved_vdb_op != "lancedb":
-            logger.warning(
-                "Skipping built-in evaluation because --vdb-op=%r is not 'lancedb'; "
-                "upload completed through nv-ingest-client VDB.",
-                resolved_vdb_op,
-            )
-            _write_runtime_summary(
-                runtime_metrics_dir,
-                runtime_metrics_prefix,
-                {
-                    "run_mode": run_mode,
-                    "input_path": str(Path(input_path).resolve()),
-                    "input_pages": int(num_rows),
-                    "num_pages": int(num_rows),
-                    "num_rows": int(len(result_df.index)),
-                    "ingestion_only_secs": float(ingestion_only_total_time),
-                    "ray_download_secs": float(ray_download_time),
-                    "lancedb_write_secs": float(lancedb_write_time),
-                    "evaluation_secs": 0.0,
-                    "total_secs": float(time.perf_counter() - ingest_start),
-                    "evaluation_mode": evaluation_mode,
-                    "evaluation_metrics": {},
-                    "recall_details": bool(recall_details),
-                    "vdb_op": str(resolved_vdb_op),
-                },
-            )
-            if run_mode == "batch":
-                import ray
+        if resolved_vdb_op == "lancedb":
+            import lancedb as _lancedb_mod
 
-                ray.shutdown()
-            return
+            db = _lancedb_mod.connect(lancedb_uri)
+            table = db.open_table(LANCEDB_TABLE)
 
-        import lancedb as _lancedb_mod
+            if int(table.count_rows()) == 0:
+                logger.warning("LanceDB table is empty; skipping %s evaluation.", evaluation_mode)
+                _write_runtime_summary(
+                    runtime_metrics_dir,
+                    runtime_metrics_prefix,
+                    {
+                        "run_mode": run_mode,
+                        "input_path": str(Path(input_path).resolve()),
+                        "input_pages": int(num_rows),
+                        "num_pages": int(num_rows),
+                        "num_rows": int(len(result_df.index)),
+                        "ingestion_only_secs": float(ingestion_only_total_time),
+                        "ray_download_secs": float(ray_download_time),
+                        "lancedb_write_secs": float(lancedb_write_time),
+                        "evaluation_secs": 0.0,
+                        "total_secs": float(time.perf_counter() - ingest_start),
+                        "evaluation_mode": evaluation_mode,
+                        "evaluation_metrics": {},
+                        "recall_details": bool(recall_details),
+                        "vdb_op": str(resolved_vdb_op),
+                        "lancedb_uri": str(lancedb_uri),
+                        "lancedb_table": str(LANCEDB_TABLE),
+                    },
+                )
+                if run_mode == "batch":
+                    import ray
 
-        db = _lancedb_mod.connect(lancedb_uri)
-        table = db.open_table(LANCEDB_TABLE)
-
-        if int(table.count_rows()) == 0:
-            logger.warning("LanceDB table is empty; skipping %s evaluation.", evaluation_mode)
-            _write_runtime_summary(
-                runtime_metrics_dir,
-                runtime_metrics_prefix,
-                {
-                    "run_mode": run_mode,
-                    "input_path": str(Path(input_path).resolve()),
-                    "input_pages": int(num_rows),
-                    "num_pages": int(num_rows),
-                    "num_rows": int(len(result_df.index)),
-                    "ingestion_only_secs": float(ingestion_only_total_time),
-                    "ray_download_secs": float(ray_download_time),
-                    "lancedb_write_secs": float(lancedb_write_time),
-                    "evaluation_secs": 0.0,
-                    "total_secs": float(time.perf_counter() - ingest_start),
-                    "evaluation_mode": evaluation_mode,
-                    "evaluation_metrics": {},
-                    "recall_details": bool(recall_details),
-                    "lancedb_uri": str(lancedb_uri),
-                    "lancedb_table": str(LANCEDB_TABLE),
-                },
-            )
-            if run_mode == "batch":
-                import ray
-
-                ray.shutdown()
-            return
+                    ray.shutdown()
+                return
 
         if evaluation_mode == "qa":
             from nemo_retriever.evaluation.cli import run_qa_sweep_from_config_dict
@@ -1176,6 +1144,7 @@ def run(
                     "evaluation_metrics": {},
                     "evaluation_count": None,
                     "recall_details": bool(recall_details),
+                    "vdb_op": str(resolved_vdb_op),
                     "lancedb_uri": str(lancedb_uri),
                     "lancedb_table": str(LANCEDB_TABLE),
                     "qa_sweep_exit_code": qa_code,
@@ -1209,7 +1178,8 @@ def run(
 
         evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = _run_evaluation(
             evaluation_mode=evaluation_mode,
-            lancedb_uri=lancedb_uri,
+            vdb_op=resolved_vdb_op,
+            vdb_kwargs=resolved_vdb_kwargs,
             embed_model_name=embed_model_name,
             embed_invoke_url=embed_invoke_url,
             embed_remote_api_key=embed_remote_api_key,
@@ -1217,7 +1187,6 @@ def run(
             query_csv=query_csv,
             recall_match_mode=recall_match_mode,
             audio_match_tolerance_secs=audio_match_tolerance_secs,
-            hybrid=hybrid,
             reranker=reranker,
             reranker_model_name=reranker_model_name,
             reranker_invoke_url=reranker_invoke_url,
@@ -1248,6 +1217,7 @@ def run(
                     "evaluation_mode": evaluation_mode,
                     "evaluation_metrics": {},
                     "recall_details": bool(recall_details),
+                    "vdb_op": str(resolved_vdb_op),
                     "lancedb_uri": str(lancedb_uri),
                     "lancedb_table": str(LANCEDB_TABLE),
                 },
@@ -1278,6 +1248,7 @@ def run(
                 "evaluation_metrics": dict(evaluation_metrics),
                 "evaluation_count": evaluation_query_count,
                 "recall_details": bool(recall_details),
+                "vdb_op": str(resolved_vdb_op),
                 "lancedb_uri": str(lancedb_uri),
                 "lancedb_table": str(LANCEDB_TABLE),
             },

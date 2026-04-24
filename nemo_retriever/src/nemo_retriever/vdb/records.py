@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -154,28 +155,54 @@ def _parse_mapping(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _first_mapping(*values: Any) -> dict[str, Any]:
+    for value in values:
+        parsed = _parse_mapping(value)
+        if parsed:
+            return parsed
+    return {}
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
 def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
+    """Adapt common nv-ingest-client VDB hit shapes to Retriever hits."""
     entity = hit.get("entity") if isinstance(hit.get("entity"), dict) else hit
 
-    source = _parse_mapping(entity.get("source")) or _parse_mapping(hit.get("source"))
-    content_metadata = (
-        _parse_mapping(entity.get("content_metadata"))
-        or _parse_mapping(entity.get("metadata"))
-        or _parse_mapping(hit.get("metadata"))
+    source = _first_mapping(
+        entity.get("source"),
+        entity.get("source_metadata"),
+        hit.get("source"),
+        hit.get("source_metadata"),
     )
+    content_metadata = _first_mapping(
+        entity.get("content_metadata"),
+        entity.get("metadata"),
+        hit.get("content_metadata"),
+        hit.get("metadata"),
+    )
+
     if not source and isinstance(entity.get("source"), str):
         source = {"source_id": entity.get("source")}
-    if isinstance(source.get("source_id"), str):
-        parsed_source_id = _parse_mapping(source["source_id"])
-        if parsed_source_id.get("source_id"):
-            source = parsed_source_id
-    if set(content_metadata) == {"page_number"} and isinstance(content_metadata.get("page_number"), str):
-        parsed_content_metadata = _parse_mapping(content_metadata["page_number"])
-        if parsed_content_metadata:
-            content_metadata = parsed_content_metadata
 
-    source_id = str(source.get("source_id") or source.get("source_name") or hit.get("source_id") or "").strip()
+    source_id = _first_text(
+        source.get("source_id"),
+        source.get("source_name"),
+        entity.get("source_id"),
+        hit.get("source_id"),
+        hit.get("path"),
+    )
     page_number = content_metadata.get("page_number") if isinstance(content_metadata, dict) else None
+    if page_number is None:
+        page_number = entity.get("page_number", hit.get("page_number"))
     try:
         page_number = int(page_number) if page_number is not None else None
     except (TypeError, ValueError):
@@ -184,7 +211,7 @@ def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
     path = Path(source_id) if source_id else None
     pdf_basename = path.stem if path is not None else ""
     normalized = {
-        "text": entity.get("text") or hit.get("text") or "",
+        "text": _first_text(entity.get("text"), entity.get("content"), hit.get("text")),
         "metadata": json.dumps(content_metadata, default=str),
         "source": source_id,
         "source_id": source_id,
@@ -201,6 +228,20 @@ def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _hit_to_dict(hit: Any) -> dict[str, Any] | None:
+    if isinstance(hit, dict):
+        return hit
+    if isinstance(hit, Mapping):
+        return dict(hit)
+    if hasattr(hit, "to_dict"):
+        try:
+            converted = hit.to_dict()
+        except Exception:
+            return None
+        return converted if isinstance(converted, dict) else None
+    return None
+
+
 def normalize_retrieval_results(results: Any) -> list[list[dict[str, Any]]]:
     if results is None:
         return []
@@ -210,5 +251,10 @@ def normalize_retrieval_results(results: Any) -> list[list[dict[str, Any]]]:
     for hits in results:
         if isinstance(hits, dict):
             hits = [hits]
-        normalized.append([_normalize_hit(hit) for hit in hits if isinstance(hit, dict)])
+        normalized_hits = []
+        for hit in hits:
+            hit_dict = _hit_to_dict(hit)
+            if hit_dict is not None:
+                normalized_hits.append(_normalize_hit(hit_dict))
+        normalized.append(normalized_hits)
     return normalized
