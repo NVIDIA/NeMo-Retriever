@@ -646,7 +646,7 @@ def run(
     embed_local_ingest_backend: str = typer.Option(
         "vllm",
         "--embed-local-ingest-backend",
-        help="Local ingest-time text embedder when --embed-invoke-url is unset: vllm or hf.",
+        help="Local ingest-time text embedder when --embed-invoke-url is unset: vllm or hf. VL models always use hf.",
         rich_help_panel=_PANEL_EMBED,
     ),
     text_elements_modality: Optional[str] = typer.Option(

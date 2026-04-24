@@ -71,15 +71,11 @@ def create_local_embedder(
 
     *backend* must be ``"vllm"`` or ``"hf"``.
 
-    For VL models:
-
-    - ``backend="vllm"``: vLLM via ``LlamaNemotronEmbedVL1BV2VLLMEmbedder``
-      (requires vLLM >= 0.17).
-    - ``backend="hf"``: HuggingFace via ``LlamaNemotronEmbedVL1BV2Embedder``.
+    VL models always use HuggingFace (``backend`` is ignored for them).
 
     For non-VL models:
 
-    - ``backend="vllm"``: vLLM via ``LlamaNemotronEmbed1BV2Embedder``.
+    - ``backend="vllm"`` (default): vLLM via ``LlamaNemotronEmbed1BV2Embedder``.
     - ``backend="hf"``: HuggingFace via ``LlamaNemotronEmbed1BV2HFEmbedder``.
 
     ``device`` applies only to HuggingFace paths. For vLLM paths, ``device`` is
@@ -95,26 +91,14 @@ def create_local_embedder(
     model_id = resolve_embed_model(model_name)
 
     if is_vl_embed_model(model_name):
-        if b == "hf":
-            from nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder import (
-                LlamaNemotronEmbedVL1BV2Embedder,
-            )
-
-            return LlamaNemotronEmbedVL1BV2Embedder(
-                device=device,
-                hf_cache_dir=hf_cache_dir,
-                model_id=model_id,
-            )
-
         from nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder import (
-            LlamaNemotronEmbedVL1BV2VLLMEmbedder,
+            LlamaNemotronEmbedVL1BV2Embedder,
         )
 
-        return LlamaNemotronEmbedVL1BV2VLLMEmbedder(
-            model_id=model_id,
+        return LlamaNemotronEmbedVL1BV2Embedder(
+            device=device,
             hf_cache_dir=hf_cache_dir,
-            gpu_memory_utilization=gpu_memory_utilization,
-            enforce_eager=enforce_eager,
+            model_id=model_id,
         )
 
     if b == "hf":
