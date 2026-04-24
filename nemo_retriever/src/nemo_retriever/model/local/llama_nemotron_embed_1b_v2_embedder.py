@@ -54,7 +54,7 @@ class LlamaNemotronEmbed1BV2Embedder:
                 "or vLLM's tensor_parallel_size instead. 'device' will be removed "
                 "in a future release.",
                 DeprecationWarning,
-                stacklevel=2,
+                stacklevel=4,
             )
         from nemo_retriever.model import _DEFAULT_EMBED_MODEL
         from nemo_retriever.text_embed.vllm import create_vllm_llm
