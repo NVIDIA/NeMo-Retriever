@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Recall Evaluator — Designer component for running recall/BEIR evaluation against a VDB.
+"""Recall Evaluator — Designer component for running recall/BEIR evaluation against LanceDB.
 
 Reuses the existing evaluation logic from ``nemo_retriever.recall.core`` and
 ``nemo_retriever.recall.beir``, and prints the standard run summary via
@@ -10,7 +10,6 @@ Reuses the existing evaluation logic from ``nemo_retriever.recall.core`` and
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from pathlib import Path
@@ -25,12 +24,12 @@ logger = logging.getLogger(__name__)
     name="Recall Evaluator",
     category="Evaluation",
     compute="cpu",
-    description="Runs recall or BEIR evaluation against a VDB and prints the standard run summary",
+    description="Runs recall or BEIR evaluation against a LanceDB table and prints the standard run summary",
     category_color="#42d6a4",
     component_type="pipeline_evaluator",
 )
 class RecallEvaluatorActor:
-    """Evaluation node placed after a VDB writer in the Designer pipeline.
+    """Evaluation node placed after a LanceDB Writer in the Designer pipeline.
 
     Supports both ``recall`` (ground-truth query CSV) and ``beir``
     (HuggingFace BEIR dataset) evaluation modes.  After evaluation, calls
@@ -41,11 +40,6 @@ class RecallEvaluatorActor:
     def __init__(
         self,
         evaluation_mode: Annotated[str, Param(label="Evaluation Mode", choices=["recall", "beir"])] = "recall",
-        vdb_op: Annotated[str, Param(label="VDB Operator")] = "lancedb",
-        vdb_kwargs_json: Annotated[
-            str,
-            Param(label="VDB Kwargs JSON", placeholder='{"collection_name": "docs"}'),
-        ] = "",
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
         query_csv: Annotated[str, Param(label="Query CSV", placeholder="/path/to/query_gt.csv")] = "",
@@ -69,9 +63,6 @@ class RecallEvaluatorActor:
         ] = "pdf_basename",
     ) -> None:
         self.evaluation_mode = evaluation_mode
-        self.vdb_op = str(vdb_op or "lancedb")
-        self.vdb_kwargs_json = vdb_kwargs_json
-        self.vdb_kwargs = self._parse_vdb_kwargs(vdb_kwargs_json)
         self.lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
         self.lancedb_table = lancedb_table
         self.query_csv = query_csv
@@ -92,15 +83,6 @@ class RecallEvaluatorActor:
         if not self._ks:
             self._ks = (1, 3, 5, 10)
 
-    @staticmethod
-    def _parse_vdb_kwargs(vdb_kwargs_json: str) -> dict[str, Any]:
-        if not vdb_kwargs_json:
-            return {}
-        parsed = json.loads(vdb_kwargs_json)
-        if not isinstance(parsed, dict):
-            raise ValueError("vdb_kwargs_json must decode to a JSON object")
-        return dict(parsed)
-
     def evaluate(self) -> dict[str, Any]:
         """Run the configured evaluation and print the standard run summary.
 
@@ -110,12 +92,6 @@ class RecallEvaluatorActor:
         from nemo_retriever.utils.detection_summary import print_run_summary
 
         resolved_model = resolve_embed_model(self.embedding_model)
-        vdb_kwargs = dict(self.vdb_kwargs)
-        if self.vdb_op == "lancedb":
-            vdb_kwargs.setdefault("uri", self.lancedb_uri)
-            vdb_kwargs.setdefault("table_name", self.lancedb_table)
-        vdb_kwargs.setdefault("model_name", resolved_model)
-        vdb_kwargs.setdefault("hybrid", self.hybrid)
 
         evaluation_label = "Recall"
         evaluation_total_time = 0.0
@@ -130,14 +106,16 @@ class RecallEvaluatorActor:
             from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
 
             beir_cfg = BeirConfig(
-                vdb_op=self.vdb_op,
-                vdb_kwargs=vdb_kwargs,
+                lancedb_uri=self.lancedb_uri,
+                lancedb_table=self.lancedb_table,
+                embedding_model=resolved_model,
                 loader=self.beir_loader,
                 dataset_name=self.beir_dataset_name,
                 split=self.beir_split,
                 query_language=self.beir_query_language,
                 doc_id_field=self.beir_doc_id_field,
                 ks=self._ks,
+                hybrid=self.hybrid,
             )
             eval_start = time.perf_counter()
             beir_dataset, _raw_hits, _run, evaluation_metrics = evaluate_lancedb_beir(beir_cfg)
@@ -152,10 +130,12 @@ class RecallEvaluatorActor:
                 return {}
 
             recall_cfg = RecallConfig(
-                vdb_op=self.vdb_op,
-                vdb_kwargs=vdb_kwargs,
+                lancedb_uri=self.lancedb_uri,
+                lancedb_table=self.lancedb_table,
+                embedding_model=resolved_model,
                 ks=self._ks,
                 match_mode=self.match_mode,
+                hybrid=self.hybrid,
             )
             eval_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(

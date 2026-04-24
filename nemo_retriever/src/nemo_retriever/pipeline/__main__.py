@@ -552,15 +552,22 @@ def _run_evaluation(
 
         from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
 
+        if str(vdb_op) != "lancedb":
+            raise ValueError("--evaluation-mode=beir currently supports --vdb-op=lancedb only")
+
         cfg = BeirConfig(
-            vdb_op=str(vdb_op),
-            vdb_kwargs=eval_vdb_kwargs,
+            lancedb_uri=str(eval_vdb_kwargs.get("uri") or LANCEDB_URI),
+            lancedb_table=str(eval_vdb_kwargs.get("table_name") or LANCEDB_TABLE),
+            embedding_model=embed_model,
             loader=str(beir_loader),
             dataset_name=str(beir_dataset_name),
             split=str(beir_split),
             query_language=beir_query_language,
             doc_id_field=str(beir_doc_id_field),
             ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
+            embedding_http_endpoint=eval_vdb_kwargs.get("embedding_endpoint"),
+            embedding_api_key=str(eval_vdb_kwargs.get("nvidia_api_key") or ""),
+            hybrid=bool(eval_vdb_kwargs.get("hybrid", False)),
             reranker=bool(reranker),
             reranker_model_name=str(reranker_model_name),
             reranker_endpoint=reranker_invoke_url,

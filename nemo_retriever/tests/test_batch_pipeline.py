@@ -354,9 +354,8 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
     assert captured["cfg"].loader == "vidore_hf"
     assert captured["cfg"].dataset_name == "vidore_v3_computer_science"
     assert tuple(captured["cfg"].ks) == (5, 10)
-    assert captured["cfg"].vdb_op == "lancedb"
-    assert captured["cfg"].vdb_kwargs["table_name"] == pipeline_main.LANCEDB_TABLE
-    assert captured["cfg"].vdb_kwargs["model_name"] == "fake-embed-model"
+    assert captured["cfg"].lancedb_table == pipeline_main.LANCEDB_TABLE
+    assert captured["cfg"].embedding_model == "fake-embed-model"
 
 
 def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:

@@ -650,27 +650,20 @@ def main(
             ray.shutdown()
             return
 
-        eval_vdb_kwargs = {
-            "uri": str(lancedb_uri),
-            "table_name": str(LANCEDB_TABLE),
-            "model_name": _recall_model,
-            "hybrid": bool(hybrid),
-        }
-        if embed_invoke_url:
-            eval_vdb_kwargs["embedding_endpoint"] = embed_invoke_url
-        if embed_remote_api_key:
-            eval_vdb_kwargs["nvidia_api_key"] = embed_remote_api_key
-
         if evaluation_mode == "beir":
             cfg = BeirConfig(
-                vdb_op="lancedb",
-                vdb_kwargs=eval_vdb_kwargs,
+                lancedb_uri=str(lancedb_uri),
+                lancedb_table=str(LANCEDB_TABLE),
+                embedding_model=_recall_model,
                 loader=str(beir_loader),
                 dataset_name=str(beir_dataset_name),
                 split=str(beir_split),
                 query_language=beir_query_language,
                 doc_id_field=str(beir_doc_id_field),
                 ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
+                embedding_http_endpoint=embed_invoke_url,
+                embedding_api_key=embed_remote_api_key or "",
+                hybrid=hybrid,
                 reranker=bool(reranker),
                 reranker_model_name=str(reranker_model_name),
             )
@@ -681,10 +674,14 @@ def main(
             evaluation_query_count = len(beir_dataset.query_ids)
         else:
             cfg = RecallConfig(
-                vdb_op="lancedb",
-                vdb_kwargs=eval_vdb_kwargs,
+                lancedb_uri=str(lancedb_uri),
+                lancedb_table=str(LANCEDB_TABLE),
+                embedding_model=_recall_model,
+                embedding_http_endpoint=embed_invoke_url,
+                embedding_api_key=embed_remote_api_key or "",
                 top_k=10,
                 ks=(1, 5, 10),
+                hybrid=hybrid,
                 match_mode=recall_match_mode,
                 reranker=reranker_model_name if reranker else None,
             )
@@ -740,22 +737,16 @@ def main(
 
         if not _skip_recall:
             _recall_model = resolve_embed_model(str(embed_model_name))
-            recall_vdb_kwargs = {
-                "uri": str(lancedb_uri),
-                "table_name": str(LANCEDB_TABLE),
-                "model_name": _recall_model,
-                "hybrid": bool(hybrid),
-            }
-            if embed_invoke_url:
-                recall_vdb_kwargs["embedding_endpoint"] = embed_invoke_url
-            if embed_remote_api_key:
-                recall_vdb_kwargs["nvidia_api_key"] = embed_remote_api_key
 
             cfg = RecallConfig(
-                vdb_op="lancedb",
-                vdb_kwargs=recall_vdb_kwargs,
+                lancedb_uri=str(lancedb_uri),
+                lancedb_table=str(LANCEDB_TABLE),
+                embedding_model=_recall_model,
+                embedding_http_endpoint=embed_invoke_url,
+                embedding_api_key=embed_remote_api_key or "",
                 top_k=10,
                 ks=(1, 5, 10),
+                hybrid=hybrid,
                 match_mode=recall_match_mode,
                 reranker=reranker_model_name if reranker else None,
             )

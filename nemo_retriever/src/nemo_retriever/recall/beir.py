@@ -1,11 +1,11 @@
-"""BEIR-style evaluation helpers backed by nv-ingest-client VDB retrieval."""
+"""BEIR-style evaluation helpers backed by LanceDB retrieval."""
 
 from __future__ import annotations
 
 import ast
 from collections import defaultdict
 import csv
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
 import logging
 import math
@@ -55,16 +55,23 @@ class BeirDataset:
 
 @dataclass(frozen=True)
 class BeirConfig:
+    lancedb_uri: str
+    lancedb_table: str
+    embedding_model: str
     loader: str
     dataset_name: str
-    vdb_op: str = "lancedb"
-    vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     split: str = "test"
     query_language: str | None = None
     doc_id_field: str = "pdf_basename"
     ks: Sequence[int] = DEFAULT_BEIR_KS
+    embedding_http_endpoint: str | None = None
+    embedding_api_key: str = ""
+    hybrid: bool = False
+    nprobes: int = 0
+    refine_factor: int = 10
     local_hf_device: str | None = None
     local_hf_cache_dir: str | None = None
+    local_hf_batch_size: int = 64
     reranker: bool = False
     reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
     reranker_endpoint: str | None = None
@@ -651,7 +658,7 @@ def compute_beir_metrics(
 def evaluate_lancedb_beir(
     cfg: BeirConfig,
 ) -> tuple[BeirDataset, list[list[dict[str, Any]]], dict[str, dict[str, float]], dict[str, float]]:
-    """Load a BEIR-style dataset, retrieve from a VDB, and compute aggregate metrics."""
+    """Load a BEIR-style dataset, retrieve from LanceDB, and compute aggregate metrics."""
     dataset = load_beir_dataset(
         cfg.loader,
         dataset_name=cfg.dataset_name,
@@ -661,11 +668,18 @@ def evaluate_lancedb_beir(
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
     retriever = Retriever(
-        vdb_op=str(cfg.vdb_op),
-        vdb_kwargs=dict(cfg.vdb_kwargs or {}),
+        lancedb_uri=str(cfg.lancedb_uri),
+        lancedb_table=str(cfg.lancedb_table),
+        embedder=str(cfg.embedding_model),
+        embedding_http_endpoint=cfg.embedding_http_endpoint,
+        embedding_api_key=(cfg.embedding_api_key or "").strip(),
         top_k=max(ks),
+        nprobes=int(cfg.nprobes),
+        refine_factor=int(cfg.refine_factor),
+        hybrid=bool(cfg.hybrid),
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=Path(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
+        local_hf_batch_size=int(cfg.local_hf_batch_size),
         reranker=bool(cfg.reranker),
         reranker_model_name=str(cfg.reranker_model_name),
         reranker_endpoint=cfg.reranker_endpoint,
