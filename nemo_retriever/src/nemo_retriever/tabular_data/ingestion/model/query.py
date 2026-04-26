@@ -26,7 +26,7 @@ class Query:
         year = ltimestamp.year
         props = {
             "name": f"query_{str(id)}",
-            f"cnt_{month}_{year}": count,
+            f"count_{month}_{year}": count,
             "total_counter": count,
             "sql_full_query": sql_text,
             "last_query_timestamp": ltimestamp,

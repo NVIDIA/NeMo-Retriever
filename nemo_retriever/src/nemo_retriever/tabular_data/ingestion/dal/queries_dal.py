@@ -31,11 +31,11 @@ def get_sql_by_full_query(sql_full_query: str):
 
 def get_sql_counters(sql_node):
     total_counter = sql_node.get_properties()["total_counter"]
-    cnt_per_month = {}
+    count_per_month = {}
     for prop_key, prop_val in sql_node.get_properties().items():
-        if prop_key.startswith("cnt_"):
-            cnt_per_month.update({prop_key: prop_val})
-    return total_counter, cnt_per_month
+        if prop_key.startswith("count_"):
+            count_per_month.update({prop_key: prop_val})
+    return total_counter, count_per_month
 
 
 def update_counters_and_timestamps_for_query_and_affected_data(
@@ -43,19 +43,17 @@ def update_counters_and_timestamps_for_query_and_affected_data(
     sql_node: Neo4jNode,
     update_data_last_query_timestamp: bool = True,
 ):
-    # If sql is already in graph and sql is not temporary metric sql - add +1 to sql's counter
-    # sql_node = edges[0][0]
     latest_timestamp = sql_node.get_properties()["last_query_timestamp"]
-    total_counter, cnt_per_month = get_sql_counters(sql_node)
-    set_cnts_str = ""
-    for month, cnt in cnt_per_month.items():
-        set_cnts_str = f"{set_cnts_str}SET s.{month} = coalesce(s.{month}, 0) + {cnt}\n"
+    total_counter, count_per_month = get_sql_counters(sql_node)
+    set_counts_str = ""
+    for month, count in count_per_month.items():
+        set_counts_str = f"{set_counts_str}SET s.{month} = coalesce(s.{month}, 0) + {count}\n"
     # if the sql already exists in the graph, then update the "last_query_timestamp" property
     # of the sql_node and the table and column nodes that appear as part of the sql.
     cypher_query = f"""MATCH (s:{Labels.SQL} {{id: $id}})
                                 SET s.last_query_timestamp = $latest_timestamp
                                 SET s.total_counter = s.total_counter + $total_counter
-                                {set_cnts_str}
+                                {set_counts_str}
                             """.strip()
     get_neo4j_conn().query_write(
         query=cypher_query,
@@ -68,9 +66,9 @@ def update_counters_and_timestamps_for_query_and_affected_data(
 
     if update_data_last_query_timestamp:
         cypher_query = f"""
-                MATCH (v:{Labels.SQL} {{id:$id}})
-                WITH v
-                CALL apoc.path.subgraphNodes(v, {{
+                MATCH (sql:{Labels.SQL} {{id:$id}})
+                WITH sql
+                CALL apoc.path.subgraphNodes(sql, {{
                     relationshipFilter: "SQL>",
                     labelFilter: "/{Labels.COLUMN}|/{Labels.TABLE}"}})
                     YIELD node
