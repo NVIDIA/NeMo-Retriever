@@ -17,6 +17,7 @@ import math
 import os
 import shutil
 import subprocess
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
@@ -67,6 +68,28 @@ def _probe(
     return json.loads(out.decode("utf-8"))
 
 
+def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
+    """Invoke an ``ffmpeg-python`` stream without the pipe-buffer deadlock.
+
+    ``stream.run(capture_stderr=True)`` reads ffmpeg's stderr through a 64 KB OS
+    pipe drained by a Python thread inside ``subprocess.communicate()``. In a
+    Ray Data worker that drain thread can starve under GIL contention; the pipe
+    fills, ffmpeg's I/O thread blocks on ``write(2)``, and its ``-threads N``
+    workers spin (=> 99% CPU, no progress, indefinite hang). Send stderr to a
+    tempfile instead — file writes never block, so ffmpeg always makes progress
+    and the call returns. We only read stderr when ``returncode != 0``.
+    """
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg-python is not installed.")
+    args = ffmpeg.compile(stream)
+    with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
+        result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=stderr_buf)
+        if result.returncode != 0:
+            stderr_buf.seek(0)
+            err = stderr_buf.read()
+            raise ffmpeg.Error(label, b"", err)
+
+
 def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optional[str] = None) -> Optional[Path]:
     """Extract audio from a video file. Returns output Path or None on failure."""
     if not _FFMPEG_AVAILABLE or ffmpeg is None:
@@ -74,12 +97,10 @@ def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optiona
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        (
-            ffmpeg.input(str(input_path))
-            .output(str(output_path), acodec="libmp3lame", map="0:a")
-            .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
+        stream = (
+            ffmpeg.input(str(input_path)).output(str(output_path), acodec="libmp3lame", map="0:a").overwrite_output()
         )
+        _run_ffmpeg(stream, label="extract_audio", input_path=str(input_path))
         return output_path
     except ffmpeg.Error as e:
         logger.error("FFmpeg error for file %s: %s", input_path, e.stderr.decode())
@@ -195,11 +216,8 @@ class MediaInterface(_LoaderInterface):
                         "sc_threshold": 0,
                     }
                 )
-            (
-                ffmpeg.input(str(input_path))
-                .output(str(output_pattern), **output_kwargs)
-                .run(capture_stdout=True, capture_stderr=True)
-            )
+            stream = ffmpeg.input(str(input_path)).output(str(output_pattern), **output_kwargs)
+            _run_ffmpeg(stream, label="split", input_path=str(input_path))
             self.path_metadata[str(input_path)] = probe
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", original_input_path, e.stderr.decode())
