@@ -18,7 +18,6 @@ from nemo_retriever.tabular_data.ingestion.parsers import schemas_parser
 from nemo_retriever.tabular_data.ingestion.services.queries import populate_queries
 from nemo_retriever.tabular_data.ingestion.dal.schemas_dal import (
     get_schemas_ids_and_names,
-    load_schema_from_graph,
     add_fks,
     add_pks,
     delete_old_fks,
@@ -43,7 +42,7 @@ def populate_tabular_data(data, num_workers, dialect):
 
     database = data["database_name"]
     logger.info(f"Started parsing db {database}.")
-    populate_db(tables_df, columns_df, database, num_workers)
+    all_schemas = populate_db(tables_df, columns_df, database, num_workers)
 
     if "fks" in data:
         populate_fks(fks=data["fks"])
@@ -51,7 +50,6 @@ def populate_tabular_data(data, num_workers, dialect):
         populate_pks(pks=data["pks"])
 
     if "queries" in data:
-        all_schemas = _load_schemas_from_graph(database)
         populate_queries(all_schemas, data["queries"], num_workers, dialect)
 
     return []
@@ -75,7 +73,7 @@ def populate_db(tables_df, columns_df, database, num_workers):
         update_node_property("db", str(db_node.get_id()), {"pulled": latest_timestamp})
 
         logger.info(f"Time took to add schemas:{time.time() - before_adding_schemas}")
-        return
+        return schemas
 
     before_adding_schema = time.time()
     existing_schemas = get_schemas_ids_and_names(existing_db_id)
@@ -121,23 +119,6 @@ def populate_db(tables_df, columns_df, database, num_workers):
     logger.info(f"Time took to update schemas:{time.time() - before_adding_schema}")
 
     update_node_property("db", existing_db_id, {"pulled": latest_timestamp})
-
-
-def _load_schemas_from_graph(database: str) -> dict:
-    """Load all schemas for *database* from Neo4j with authoritative node IDs.
-
-    Schemas built by ``populate_db`` carry freshly-generated Python UUIDs
-    that may differ from the IDs already stored in the graph.  Loading
-    schemas directly from the graph guarantees that table/column node IDs
-    match what ``load_sqls_to_tables`` returns, which is critical for the
-    heuristic duplicate pre-filter in ``parse_queries_df``.
-    """
-    schema_records = get_schemas_ids_and_names(db_name=database)
-    schemas: dict = {}
-    for rec in schema_records:
-        name = rec["schema_name"]
-        schemas[name.lower()] = load_schema_from_graph(database, name)
-    logger.info("Loaded %d schema(s) from graph for database %r.", len(schemas), database)
     return schemas
 
 
