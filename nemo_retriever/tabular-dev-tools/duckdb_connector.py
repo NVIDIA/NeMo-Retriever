@@ -145,10 +145,10 @@ class DuckDB(SQLDatabase):
         )
 
     def get_pks(self) -> pd.DataFrame:
-        pass
+        return pd.DataFrame()
 
     def get_fks(self) -> pd.DataFrame:
-       pass
+        return pd.DataFrame()
 
     # ------------------------------------------------------------------
     # Context manager / cleanup

@@ -45,9 +45,18 @@ def update_counters_and_timestamps_for_query_and_affected_data(
 ):
     latest_timestamp = sql_node.get_properties()["last_query_timestamp"]
     total_counter, count_per_month = get_sql_counters(sql_node)
+    # Counter values are bound as parameters (not f-string interpolated) to
+    # avoid building Cypher from arbitrary node-property values. Property
+    # names cannot be parameterised in Cypher, so the month key stays
+    # interpolated; get_sql_counters already constrains it to "count_*".
     set_counts_str = ""
-    for month, count in count_per_month.items():
-        set_counts_str = f"{set_counts_str}SET s.{month} = coalesce(s.{month}, 0) + {count}\n"
+    count_params: dict[str, int] = {}
+    for idx, (month, count) in enumerate(count_per_month.items()):
+        if not isinstance(count, int):
+            raise TypeError(f"Expected int counter for {month}, got {type(count).__name__}")
+        param_key = f"count_{idx}"
+        set_counts_str += f"SET s.{month} = coalesce(s.{month}, 0) + ${param_key}\n"
+        count_params[param_key] = count
     # if the sql already exists in the graph, then update the "last_query_timestamp" property
     # of the sql_node and the table and column nodes that appear as part of the sql.
     cypher_query = f"""MATCH (s:{Labels.SQL} {{id: $id}})
@@ -61,6 +70,7 @@ def update_counters_and_timestamps_for_query_and_affected_data(
             "latest_timestamp": latest_timestamp,
             "id": identical_sql_id,
             "total_counter": total_counter,
+            **count_params,
         },
     )
 
