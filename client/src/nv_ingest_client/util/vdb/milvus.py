@@ -2103,7 +2103,7 @@ class Milvus(VDB):
         """Run dense vector search with precomputed query embeddings."""
         collection_name = kwargs.pop("collection_name", self.collection_name)
         milvus_uri = kwargs.pop("milvus_uri", self.milvus_uri)
-        top_k = int(kwargs.pop("search_top_k", kwargs.pop("top_k", 5)))
+        top_k = int(kwargs.pop("top_k", 5))
         dense_field = kwargs.pop("dense_field", "vector")
         output_fields = kwargs.pop("output_fields", ["text", "source", "content_metadata"])
         _filter = kwargs.pop("_filter", "")

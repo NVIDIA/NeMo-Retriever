@@ -45,7 +45,7 @@ class Retriever:
     server instead of loading the model locally::
 
         retriever = Retriever(
-            vdb_op="lancedb",
+            vdb="lancedb",
             vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
             reranker="nvidia/llama-nemotron-rerank-1b-v2",
             reranker_endpoint="http://localhost:8000",
@@ -53,8 +53,7 @@ class Retriever:
         results = retriever.query("What is machine learning?")
     """
 
-    vdb: Any | None = None
-    vdb_op: Optional[str] = "lancedb"
+    vdb: Any = "lancedb"
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     embedder: str = VL_EMBED_MODEL
     top_k: int = 10
@@ -84,6 +83,8 @@ class Retriever:
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
     # Internal cache for local HF embedders, keyed by model name.
     _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
+    # Internal cache for the VDB retrieval operator.
+    _retrieve_operator: Any = field(default=None, init=False, repr=False, compare=False)
 
     def _get_local_embedder(self, model_name: str) -> Any:
         """Lazily load and cache the local HF embedder for *model_name*."""
@@ -109,6 +110,17 @@ class Retriever:
         else:
             vectors = embedder.embed(["query: " + q for q in query_texts], batch_size=int(self.local_hf_batch_size))
         return vectors.detach().to("cpu").tolist()
+
+    def _get_retrieve_operator(self) -> Any:
+        """Lazily construct the VDB retrieval operator for this Retriever."""
+        if self._retrieve_operator is None:
+            operator_kwargs: dict[str, Any] = {"vdb_kwargs": dict(self.vdb_kwargs or {})}
+            if isinstance(self.vdb, str):
+                operator_kwargs["vdb_op"] = self.vdb
+            else:
+                operator_kwargs["vdb"] = self.vdb
+            self._retrieve_operator = vdb_pkg.RetrieveVdbOperator(**operator_kwargs)
+        return self._retrieve_operator
 
     # ------------------------------------------------------------------
     # Reranking helpers
@@ -167,6 +179,7 @@ class Retriever:
         query: str,
         *,
         top_k: Optional[int] = None,
+        embedder: Optional[str] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
         """Run retrieval for a single query string.
@@ -175,16 +188,18 @@ class Retriever:
             query: The natural-language query.
             top_k: Per-call override of ``self.top_k``; passed as a local
                 value so the instance attribute is never mutated.
+            embedder: Per-call query embedding model override.
             vdb_kwargs: Per-call VDB retrieval kwargs. These override
                 instance-level ``self.vdb_kwargs`` for this call.
         """
-        return self.queries([query], top_k=top_k, vdb_kwargs=vdb_kwargs)[0]
+        return self.queries([query], top_k=top_k, embedder=embedder, vdb_kwargs=vdb_kwargs)[0]
 
     def queries(
         self,
         queries: Sequence[str],
         *,
         top_k: Optional[int] = None,
+        embedder: Optional[str] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[list[dict[str, Any]]]:
         """Run retrieval for multiple query strings.
@@ -206,20 +221,12 @@ class Retriever:
         if self.reranker:
             retrieval_top_k = effective_top_k * int(self.reranker_refine_factor)
 
-        merged_vdb_kwargs = {**dict(self.vdb_kwargs or {}), **dict(vdb_kwargs or {})}
-        merged_vdb_kwargs["top_k"] = int(retrieval_top_k)
-
-        resolved_embedder = str(
-            merged_vdb_kwargs.get("query_model_name") or merged_vdb_kwargs.get("model_name") or self.embedder
-        )
+        resolved_embedder = str(embedder or self.embedder)
         vectors = self._embed_queries_local_hf(query_texts, model_name=resolved_embedder)
 
-        operator_kwargs: dict[str, Any] = {"vdb_kwargs": dict(self.vdb_kwargs or {})}
-        if self.vdb is not None:
-            operator_kwargs["vdb"] = self.vdb
-        else:
-            operator_kwargs["vdb_op"] = self.vdb_op
-        results = vdb_pkg.RetrieveVdbOperator(**operator_kwargs).process(vectors, **merged_vdb_kwargs)
+        retrieval_kwargs = dict(vdb_kwargs or {})
+        retrieval_kwargs["top_k"] = int(retrieval_top_k)
+        results = self._get_retrieve_operator().process(vectors, **retrieval_kwargs)
 
         if self.reranker:
             results = self._rerank_results(query_texts, results, top_k=effective_top_k)

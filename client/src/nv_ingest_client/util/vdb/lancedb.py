@@ -265,7 +265,7 @@ class LanceDB(VDB):
         table = lancedb.connect(uri=table_path).open_table(table_name)
 
         result_fields = kwargs.pop("result_fields", ["text", "metadata", "source"])
-        search_top_k = int(kwargs.pop("search_top_k", kwargs.pop("top_k", 10)))
+        top_k = int(kwargs.pop("top_k", 10))
         refine_factor = int(kwargs.pop("refine_factor", 50))
         n_probe = int(kwargs.pop("n_probe", kwargs.pop("nprobes", 64)))
         vector_column_name = str(kwargs.pop("vector_column_name", "vector"))
@@ -275,7 +275,7 @@ class LanceDB(VDB):
             results = (
                 table.search([vector], vector_column_name=vector_column_name)
                 .select(result_fields)
-                .limit(search_top_k)
+                .limit(top_k)
                 .refine_factor(refine_factor)
                 .nprobes(n_probe)
                 .to_list()

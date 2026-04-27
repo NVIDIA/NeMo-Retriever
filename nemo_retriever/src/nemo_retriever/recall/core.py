@@ -425,9 +425,13 @@ def retrieve_and_score(
 
     queries = df_query["query"].astype(str).tolist()
     gold = df_query["golden_answer"].astype(str).tolist()
+    vdb_kwargs = dict(cfg.vdb_kwargs or {})
+    # TODO: Prefer passing the query embedding model explicitly in recall config.
+    query_embedder = str(vdb_kwargs.get("query_model_name") or vdb_kwargs.get("model_name") or VL_EMBED_MODEL)
     retriever = Retriever(
-        vdb_op=str(cfg.vdb_op),
-        vdb_kwargs=dict(cfg.vdb_kwargs or {}),
+        vdb=str(cfg.vdb_op),
+        vdb_kwargs=vdb_kwargs,
+        embedder=query_embedder,
         top_k=cfg.top_k,
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,

@@ -31,7 +31,8 @@ def _make_retriever(**overrides: Any):
     defaults = dict(
         reranker=None,
         top_k=5,
-        vdb_op="fake",
+        vdb="fake",
+        embedder="embedder",
         vdb_kwargs={"collection_name": "docs", "model_name": "embedder"},
     )
     defaults.update(overrides)
@@ -81,9 +82,6 @@ class TestQueriesVdbDelegation:
         mock_embed.assert_called_once_with(["q0", "123"], model_name="embedder")
         operator = _FakeRetrieveVdbOperator.instances[0]
         expected_kwargs = {
-            "collection_name": "docs",
-            "milvus_uri": "http://milvus",
-            "model_name": "embedder",
             "_filter": "content_type == 'text'",
             "top_k": 7,
         }
@@ -126,6 +124,7 @@ class TestQueriesVdbDelegation:
         vdb = FakeVDB()
         retriever = Retriever(
             vdb=vdb,
+            embedder="embedder",
             vdb_kwargs={"collection_name": "docs", "model_name": "embedder"},
             top_k=4,
         )
@@ -148,29 +147,46 @@ class TestQueriesVdbDelegation:
         assert result[0][0]["text"] == "direct hit"
         assert result[0][0]["pdf_page"] == "doc-a_2"
 
-    def test_queries_resolve_embedder_from_vdb_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_queries_accept_embedder_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
         from nemo_retriever.retriever import Retriever
 
         monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
 
-        retriever = Retriever(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp/lancedb", "model_name": "hf-embedder"}, top_k=6)
+        retriever = Retriever(vdb="lancedb", embedder="instance-embedder", vdb_kwargs={"uri": "/tmp/lancedb"}, top_k=6)
         with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]) as mock_embed:
-            result = retriever.queries(["q"], vdb_kwargs={"table_name": "nv-ingest"})
+            result = retriever.queries(["q"], embedder="call-embedder", vdb_kwargs={"table_name": "nv-ingest"})
 
-        mock_embed.assert_called_once_with(["q"], model_name="hf-embedder")
+        mock_embed.assert_called_once_with(["q"], model_name="call-embedder")
         operator = _FakeRetrieveVdbOperator.instances[0]
         assert operator.constructor_kwargs == {
             "vdb_op": "lancedb",
-            "vdb_kwargs": {"uri": "/tmp/lancedb", "model_name": "hf-embedder"},
+            "vdb_kwargs": {"uri": "/tmp/lancedb"},
         }
         assert operator.process_calls == [
             (
                 [[0.1, 0.2]],
-                {"uri": "/tmp/lancedb", "model_name": "hf-embedder", "table_name": "nv-ingest", "top_k": 6},
+                {"table_name": "nv-ingest", "top_k": 6},
             )
         ]
         assert result == _FakeRetrieveVdbOperator.next_result
+
+    def test_queries_reuse_retrieve_operator(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_retriever.vdb as vdb_pkg
+
+        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
+        retriever = _make_retriever()
+
+        with patch.object(retriever, "_embed_queries_local_hf", side_effect=[[[0.1, 0.2]], [[0.3, 0.4]]]):
+            retriever.queries(["q1"], vdb_kwargs={"refine_factor": 50})
+            retriever.queries(["q2"], vdb_kwargs={"refine_factor": 21})
+
+        assert len(_FakeRetrieveVdbOperator.instances) == 1
+        operator = _FakeRetrieveVdbOperator.instances[0]
+        assert operator.process_calls == [
+            ([[0.1, 0.2]], {"refine_factor": 50, "top_k": 5}),
+            ([[0.3, 0.4]], {"refine_factor": 21, "top_k": 5}),
+        ]
 
     def test_reranker_requests_fanout_and_reranks_to_requested_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
@@ -204,7 +220,9 @@ class TestQuerySingleConvenience:
         with patch.object(retriever, "queries", return_value=[expected]) as mock_queries:
             result = retriever.query("find something", top_k=4, vdb_kwargs={"collection_name": "docs"})
 
-        mock_queries.assert_called_once_with(["find something"], top_k=4, vdb_kwargs={"collection_name": "docs"})
+        mock_queries.assert_called_once_with(
+            ["find something"], top_k=4, embedder=None, vdb_kwargs={"collection_name": "docs"}
+        )
         assert result is expected
 
 
@@ -298,8 +316,7 @@ class TestRetrieverDefaults:
         from nemo_retriever.retriever import Retriever
 
         retriever = Retriever()
-        assert retriever.vdb is None
-        assert retriever.vdb_op == "lancedb"
+        assert retriever.vdb == "lancedb"
         assert retriever.vdb_kwargs == {}
 
     def test_default_reranker_is_nemotron_model(self) -> None:
@@ -317,6 +334,7 @@ class TestRetrieverDefaults:
 
         retriever = Retriever()
         assert retriever._reranker_model is None
+        assert retriever._retrieve_operator is None
 
     def test_retriever_alias_is_retriever_class(self) -> None:
         from nemo_retriever.retriever import Retriever, retriever
