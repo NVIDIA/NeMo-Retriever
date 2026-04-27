@@ -2373,7 +2373,7 @@ provides-extras = ["local", "multimedia", "stores", "benchmarks", "llm", "dev", 
 
 [[package]]
 name = "nemotron-graphic-elements-v1"
-version = "1.0.0.dev20260306"
+version = "1.0.0.dev20260427042805"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -2385,14 +2385,14 @@ dependencies = [
     { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/24/73/1a9fbe480faf81bf18748601617c7b99d5921042bf0b960e7813efc27346/nemotron_graphic_elements_v1-1.0.0.dev20260306.tar.gz", hash = "sha256:d363e4f99966bf75c779092dd25a5db4c5797e05ffaf596e9103ecd6b245fca7", size = 33625, upload-time = "2026-03-06T03:59:56.004Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/0e/2f/531ce6536b519b5e42416eb0e5eb9682e93135e35253ab7ec748f7da5829/nemotron_graphic_elements_v1-1.0.0.dev20260427042805.tar.gz", hash = "sha256:4cfa9c5ff8d9760f00043fab22646bf65e950395388d6454752c6ec05319fc32", size = 40137, upload-time = "2026-04-27T04:28:53.704Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/e7/fd/12f81adf24839162770fdb8a0dc49dba27964d71282ed95d3c5a45709986/nemotron_graphic_elements_v1-1.0.0.dev20260306-py3-none-any.whl", hash = "sha256:220f0177bc2f7cb23a65911c94204665dee209fc1ddf32784791cd4ac7de3017", size = 27075, upload-time = "2026-03-06T03:59:54.481Z" },
+    { url = "https://test-files.pythonhosted.org/packages/cd/18/f50103b5c90206418332efbfecb585ac955eca827db577219efce990a836/nemotron_graphic_elements_v1-1.0.0.dev20260427042805-py3-none-any.whl", hash = "sha256:736cb740ac671583f692cd11fec9fde5ad2e257306f85da9825744e459b656a0", size = 34235, upload-time = "2026-04-27T04:28:52.373Z" },
 ]
 
 [[package]]
 name = "nemotron-ocr"
-version = "1.0.0.dev20260306"
+version = "1.0.0.dev20260427042805"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
     { name = "huggingface-hub", marker = "sys_platform == 'linux'" },
@@ -2403,14 +2403,15 @@ dependencies = [
     { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
     { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/30/7f/f266759d97520c90e03d35f2fc1691d1aebf9b70a79eb71c0c8d3f2f301d/nemotron_ocr-1.0.0.dev20260306.tar.gz", hash = "sha256:d595eabc6977d6bb43cf2a4edd462103a86f8b5a2e1f3e70c103e30ed0354f89", size = 152974, upload-time = "2026-03-06T04:10:06.439Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/f3/59/aeffbde9727f912defff758b850c635c757b568e184e767b5b7b3865f1af/nemotron_ocr-1.0.0.dev20260427042805.tar.gz", hash = "sha256:9af585ea53467f0b1de815a3f466ac00ab1fe3ace7f0a829d1f9a2b596a6b97d", size = 153224, upload-time = "2026-04-27T04:37:55.779Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/15/a0/7532981dbd902de8f6b690c2b2e80f941270e86c6b19561062c8a76c4006/nemotron_ocr-1.0.0.dev20260306-py3-none-any.whl", hash = "sha256:8604aa05796e9d0ad4c598ac8970dd4688b5c790969f9cfc206995761e7de37b", size = 35941818, upload-time = "2026-03-06T04:10:03.139Z" },
+    { url = "https://test-files.pythonhosted.org/packages/fa/26/af6d02fa71584342c0497f9ee03d78527a879b88cbd86862eed651d1b181/nemotron_ocr-1.0.0.dev20260427042805-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:9324fb9aa4b3e9a64dab6bae527e6544b9b9742026c4f09c6a6682ee924b6f53", size = 36094400, upload-time = "2026-04-27T04:37:53.357Z" },
+    { url = "https://test-files.pythonhosted.org/packages/fa/bd/a84f67e5849ca3b625c46ca7698638ea436fccee1d71db4dc48170af2f61/nemotron_ocr-1.0.0.dev20260427042805-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:174a524161bf8300680e2b11fe12d1dc97b9a50023ca9e4438fe31d56fe98e5b", size = 36800012, upload-time = "2026-04-27T04:39:44.405Z" },
 ]
 
 [[package]]
 name = "nemotron-page-elements-v3"
-version = "3.0.1.dev20260306"
+version = "3.0.1.dev20260427042805"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -2431,14 +2432,14 @@ dependencies = [
     { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/c7/58/a9a0eadafa7b83dd90069cc4c5989f20db1ff261a61774fdd962a0fb6188/nemotron_page_elements_v3-3.0.1.dev20260306.tar.gz", hash = "sha256:b21da2ea3f27fe14f2b5c83b6f39df045afd0686b8f39994e8048f088f72bf36", size = 38302, upload-time = "2026-03-06T04:00:03.733Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/eb/27/e565273adcfc23e4f7e252861d4bba0d7c4159595c6653a031985e46b514/nemotron_page_elements_v3-3.0.1.dev20260427042805.tar.gz", hash = "sha256:1b23dd458e4e6ca3c35ef1bd19c309596d702e5e47adba843d59c9dcfee55488", size = 44747, upload-time = "2026-04-27T04:28:39.7Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/e8/89/45be9abd26ffcf3a3193151de3c5f23cf4ec2165794ce1037889195271f5/nemotron_page_elements_v3-3.0.1.dev20260306-py3-none-any.whl", hash = "sha256:115f2a0f15a222bd34919131673d8b6fd049f8ead2fb4066d3601a2dc019df0f", size = 32879, upload-time = "2026-03-06T04:00:02.61Z" },
+    { url = "https://test-files.pythonhosted.org/packages/34/4f/9caf16cf685a97a166abcac2afb61dea248981f4b9f6312c154ba65ab13f/nemotron_page_elements_v3-3.0.1.dev20260427042805-py3-none-any.whl", hash = "sha256:f9b31069c8be2ccfc7a0d966babe4ea6098ecd1124c61d4cb5d419fb65ffe7c7", size = 40036, upload-time = "2026-04-27T04:28:38.2Z" },
 ]
 
 [[package]]
 name = "nemotron-table-structure-v1"
-version = "1.0.0.dev20260306"
+version = "1.0.0.dev20260427042805"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -2450,9 +2451,9 @@ dependencies = [
     { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/25/34/d77db1cd3224b233ed860b94b0464ef1cf76253c0ce71ee97fb75556091e/nemotron_table_structure_v1-1.0.0.dev20260306.tar.gz", hash = "sha256:2642c0dd2c53846a05280b28b494ee6a34ff2b64e7b737517d48bfbe06d6d8f8", size = 42110, upload-time = "2026-03-06T04:00:01.478Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/5a/f4/c05850c8d51d17c1d0a01c481c13ba0bcbce03a2f2112b96aa99f0a22b51/nemotron_table_structure_v1-1.0.0.dev20260427042805.tar.gz", hash = "sha256:57ad833960d950e27ef51a6129f33268f3bc191ec802915532d07a95c02c7177", size = 48623, upload-time = "2026-04-27T04:28:55.304Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/ca/50/9a1e183b7af40507db7034a8d2f8a9e68003c8325a1ab740b0573e995eee/nemotron_table_structure_v1-1.0.0.dev20260306-py3-none-any.whl", hash = "sha256:21407cbd37dbd5268a0e2b7a80e6f85a5facc0cdf193ffc0cccad82a5feab29a", size = 31848, upload-time = "2026-03-06T04:00:00.197Z" },
+    { url = "https://test-files.pythonhosted.org/packages/e2/52/20be6b4d840bf0bb6fd126059f7be6a70581c8c6dc350ef344fefbc17099/nemotron_table_structure_v1-1.0.0.dev20260427042805-py3-none-any.whl", hash = "sha256:1e425b2efccadef4919cf9a9a7c2fdc9b9713a7998ecbc93a244075899504436", size = 39010, upload-time = "2026-04-27T04:28:53.995Z" },
 ]
 
 [[package]]
