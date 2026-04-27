@@ -56,7 +56,7 @@ class IngestVdbOperator(AbstractOperator):
 
 
 class RetrieveVdbOperator(AbstractOperator):
-    """Retrieve query hits through an nv-ingest-client VDB."""
+    """Retrieve hits from an nv-ingest-client VDB using precomputed query vectors."""
 
     def __init__(
         self,

@@ -66,33 +66,40 @@ class TestQueriesVdbDelegation:
         assert _make_retriever().queries([]) == []
         vdb_pkg.RetrieveVdbOperator.assert_not_called()
 
-    def test_queries_delegate_raw_strings_to_vdb_operator(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_queries_embed_and_delegate_vectors_to_vdb_operator(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
 
         monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
-        retriever = _make_retriever(vdb_kwargs={"collection_name": "docs", "milvus_uri": "http://milvus"})
+        retriever = _make_retriever(
+            vdb_kwargs={"collection_name": "docs", "milvus_uri": "http://milvus", "model_name": "embedder"}
+        )
 
-        result = retriever.queries(["q0", 123], top_k=7, vdb_kwargs={"_filter": "content_type == 'text'"})
+        with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2], [0.3, 0.4]]) as mock_embed:
+            result = retriever.queries(["q0", 123], top_k=7, vdb_kwargs={"_filter": "content_type == 'text'"})
 
         assert result == _FakeRetrieveVdbOperator.next_result
+        mock_embed.assert_called_once_with(["q0", "123"], model_name="embedder")
         operator = _FakeRetrieveVdbOperator.instances[0]
         expected_kwargs = {
             "collection_name": "docs",
             "milvus_uri": "http://milvus",
+            "model_name": "embedder",
             "_filter": "content_type == 'text'",
             "top_k": 7,
         }
         assert operator.constructor_kwargs == {
             "vdb_op": "fake",
-            "vdb_kwargs": {"collection_name": "docs", "milvus_uri": "http://milvus"},
+            "vdb_kwargs": {"collection_name": "docs", "milvus_uri": "http://milvus", "model_name": "embedder"},
         }
-        assert operator.process_calls == [(["q0", "123"], expected_kwargs)]
+        assert operator.process_calls == [([[0.1, 0.2], [0.3, 0.4]], expected_kwargs)]
 
     def test_queries_use_instance_top_k_when_not_overridden(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
 
         monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
-        _make_retriever(top_k=11).queries(["q"])
+        retriever = _make_retriever(top_k=11)
+        with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]):
+            retriever.queries(["q"])
 
         operator = _FakeRetrieveVdbOperator.instances[0]
         assert operator.process_calls[0][1]["top_k"] == 11
@@ -104,8 +111,8 @@ class TestQueriesVdbDelegation:
             def __init__(self) -> None:
                 self.calls: list[tuple[Any, dict[str, Any]]] = []
 
-            def retrieval(self, queries: list[str], **kwargs: Any) -> list[list[dict[str, Any]]]:
-                self.calls.append((queries, kwargs))
+            def retrieval(self, vectors: list[list[float]], **kwargs: Any) -> list[list[dict[str, Any]]]:
+                self.calls.append((vectors, kwargs))
                 return [
                     [
                         {
@@ -123,11 +130,13 @@ class TestQueriesVdbDelegation:
             top_k=4,
         )
 
-        result = retriever.queries(["q"], vdb_kwargs={"_filter": "content_type == 'text'"})
+        with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]) as mock_embed:
+            result = retriever.queries(["q"], vdb_kwargs={"_filter": "content_type == 'text'"})
 
+        mock_embed.assert_called_once_with(["q"], model_name="embedder")
         assert vdb.calls == [
             (
-                ["q"],
+                [[0.1, 0.2]],
                 {
                     "collection_name": "docs",
                     "model_name": "embedder",
@@ -139,50 +148,29 @@ class TestQueriesVdbDelegation:
         assert result[0][0]["text"] == "direct hit"
         assert result[0][0]["pdf_page"] == "doc-a_2"
 
-    def test_queries_embed_then_use_vector_search_for_known_vdb_op(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_queries_resolve_embedder_from_vdb_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
         from nemo_retriever.retriever import Retriever
 
-        captured: dict[str, Any] = {}
-
-        def fake_search_vdb_with_vectors(**kwargs: Any) -> list[list[dict[str, Any]]]:
-            captured.update(kwargs)
-            return [
-                [
-                    {
-                        "entity": {
-                            "text": "local hit",
-                            "source": {"source_id": "doc-local.pdf"},
-                            "content_metadata": {"page_number": 3},
-                        }
-                    }
-                ]
-            ]
-
-        def fake_supports_vector_search_vdb(vdb_op: str) -> bool:
-            captured["vdb_op"] = vdb_op
-            return True
-
-        monkeypatch.setattr(vdb_pkg, "supports_vector_search_vdb", fake_supports_vector_search_vdb)
-        monkeypatch.setattr(vdb_pkg, "search_vdb_with_vectors", fake_search_vdb_with_vectors)
+        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
 
         retriever = Retriever(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp/lancedb", "model_name": "hf-embedder"}, top_k=6)
         with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]) as mock_embed:
             result = retriever.queries(["q"], vdb_kwargs={"table_name": "nv-ingest"})
 
-        assert captured["vdb_op"] == "lancedb"
         mock_embed.assert_called_once_with(["q"], model_name="hf-embedder")
-        assert captured["query_vectors"] == [[0.1, 0.2]]
-        assert captured["query_texts"] == ["q"]
-        assert captured["top_k"] == 6
-        assert captured["vdb_kwargs"] == {
-            "uri": "/tmp/lancedb",
-            "model_name": "hf-embedder",
-            "table_name": "nv-ingest",
-            "top_k": 6,
+        operator = _FakeRetrieveVdbOperator.instances[0]
+        assert operator.constructor_kwargs == {
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {"uri": "/tmp/lancedb", "model_name": "hf-embedder"},
         }
-        assert result[0][0]["text"] == "local hit"
-        assert result[0][0]["pdf_page"] == "doc-local_3"
+        assert operator.process_calls == [
+            (
+                [[0.1, 0.2]],
+                {"uri": "/tmp/lancedb", "model_name": "hf-embedder", "table_name": "nv-ingest", "top_k": 6},
+            )
+        ]
+        assert result == _FakeRetrieveVdbOperator.next_result
 
     def test_reranker_requests_fanout_and_reranks_to_requested_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
@@ -197,7 +185,10 @@ class TestQueriesVdbDelegation:
             reranker_refine_factor=4,
         )
 
-        with patch.object(retriever, "_rerank_results", return_value=reranked) as mock_rerank:
+        with (
+            patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]),
+            patch.object(retriever, "_rerank_results", return_value=reranked) as mock_rerank,
+        ):
             result = retriever.queries(["q"])
 
         operator = _FakeRetrieveVdbOperator.instances[0]
@@ -231,7 +222,10 @@ class TestQueriesWithEndpointReranking:
             top_k=2,
         )
 
-        with patch.object(retriever, "_rerank_results", return_value=reranked):
+        with (
+            patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]),
+            patch.object(retriever, "_rerank_results", return_value=reranked),
+        ):
             out = retriever.queries(["q"])
 
         assert out is reranked

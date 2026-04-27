@@ -85,16 +85,6 @@ class Retriever:
     # Internal cache for local HF embedders, keyed by model name.
     _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
-    def _merged_vdb_kwargs(
-        self,
-        *,
-        top_k: int,
-        vdb_kwargs: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        merged = {**dict(self.vdb_kwargs or {}), **dict(vdb_kwargs or {})}
-        merged["top_k"] = int(top_k)
-        return merged
-
     def _get_local_embedder(self, model_name: str) -> Any:
         """Lazily load and cache the local HF embedder for *model_name*."""
         if model_name not in self._embedder_cache:
@@ -119,20 +109,6 @@ class Retriever:
         else:
             vectors = embedder.embed(["query: " + q for q in query_texts], batch_size=int(self.local_hf_batch_size))
         return vectors.detach().to("cpu").tolist()
-
-    def _retrieve_with_client_vdb(
-        self,
-        query_texts: list[str],
-        *,
-        vdb_kwargs: dict[str, Any],
-    ) -> list[list[dict[str, Any]]]:
-        operator_kwargs: dict[str, Any] = {"vdb_kwargs": dict(self.vdb_kwargs or {})}
-        if self.vdb is not None:
-            operator_kwargs["vdb"] = self.vdb
-        else:
-            operator_kwargs["vdb_op"] = self.vdb_op
-
-        return vdb_pkg.RetrieveVdbOperator(**operator_kwargs).process(query_texts, **vdb_kwargs)
 
     # ------------------------------------------------------------------
     # Reranking helpers
@@ -229,27 +205,21 @@ class Retriever:
         retrieval_top_k = effective_top_k
         if self.reranker:
             retrieval_top_k = effective_top_k * int(self.reranker_refine_factor)
-        merged_vdb_kwargs = self._merged_vdb_kwargs(top_k=retrieval_top_k, vdb_kwargs=vdb_kwargs)
 
-        # Normal graph-pipeline path: Retriever embeds locally, then the VDB
-        # helper performs backend-specific search with those vectors.
-        if self.vdb is None and vdb_pkg.supports_vector_search_vdb(self.vdb_op):
-            resolved_embedder = str(
-                merged_vdb_kwargs.get("query_model_name") or merged_vdb_kwargs.get("model_name") or self.embedder
-            )
-            vectors = self._embed_queries_local_hf(query_texts, model_name=resolved_embedder)
-            raw_results = vdb_pkg.search_vdb_with_vectors(
-                vdb_op=self.vdb_op,
-                query_vectors=vectors,
-                query_texts=query_texts,
-                top_k=retrieval_top_k,
-                vdb_kwargs=merged_vdb_kwargs,
-            )
-            results = vdb_pkg.normalize_retrieval_results(raw_results)
+        merged_vdb_kwargs = {**dict(self.vdb_kwargs or {}), **dict(vdb_kwargs or {})}
+        merged_vdb_kwargs["top_k"] = int(retrieval_top_k)
+
+        resolved_embedder = str(
+            merged_vdb_kwargs.get("query_model_name") or merged_vdb_kwargs.get("model_name") or self.embedder
+        )
+        vectors = self._embed_queries_local_hf(query_texts, model_name=resolved_embedder)
+
+        operator_kwargs: dict[str, Any] = {"vdb_kwargs": dict(self.vdb_kwargs or {})}
+        if self.vdb is not None:
+            operator_kwargs["vdb"] = self.vdb
         else:
-            # Escape hatch for prebuilt/custom client VDBs; their retrieval
-            # implementation owns any query embedding it requires.
-            results = self._retrieve_with_client_vdb(query_texts, vdb_kwargs=merged_vdb_kwargs)
+            operator_kwargs["vdb_op"] = self.vdb_op
+        results = vdb_pkg.RetrieveVdbOperator(**operator_kwargs).process(vectors, **merged_vdb_kwargs)
 
         if self.reranker:
             results = self._rerank_results(query_texts, results, top_k=effective_top_k)

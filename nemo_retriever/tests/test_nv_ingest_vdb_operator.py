@@ -25,8 +25,8 @@ class FakeVDB(VDB):
     def write_to_index(self, records: list, **kwargs: Any) -> None:
         return None
 
-    def retrieval(self, queries: list, **kwargs: Any) -> list[list[dict[str, Any]]]:
-        self.retrieval_calls.append((queries, kwargs))
+    def retrieval(self, vectors: list, **kwargs: Any) -> list[list[dict[str, Any]]]:
+        self.retrieval_calls.append((vectors, kwargs))
         return [
             [
                 {
@@ -135,11 +135,11 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
     ]
 
 
-def test_retrieve_operator_delegates_to_retrieval() -> None:
+def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
     vdb = FakeVDB()
     operator = RetrieveVdbOperator(vdb=vdb, vdb_kwargs={"collection_name": "docs", "model_name": "embedder"})
 
-    result = operator.process(["query"], top_k=3)
+    result = operator.process([[0.1, 0.2]], top_k=3)
 
     assert result == [
         [
@@ -155,7 +155,9 @@ def test_retrieve_operator_delegates_to_retrieval() -> None:
             }
         ]
     ]
-    assert vdb.retrieval_calls == [(["query"], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
+    assert vdb.retrieval_calls == [
+        ([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})
+    ]
 
 
 def test_constructor_requires_exactly_one_vdb_source() -> None:
@@ -180,6 +182,11 @@ def test_lancedb_vdb_writes_records_through_operator(tmp_path) -> None:
 
     table = lancedb.connect(str(tmp_path)).open_table(table_name)
     assert table.count_rows() == 2
+
+    hits = vdb.retrieval([[0.1] * 2048], top_k=1, result_fields=["text", "metadata", "source"])
+    assert len(hits) == 1
+    assert len(hits[0]) == 1
+    assert hits[0][0]["text"] == "first chunk"
 
 
 @pytest.mark.integration

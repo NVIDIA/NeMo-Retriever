@@ -254,25 +254,35 @@ class LanceDB(VDB):
         )
         return records
 
-    def retrieval(self, queries, **kwargs):
-        """Run LanceDB retrieval, using hybrid search if enabled."""
+    def retrieval(self, vectors, **kwargs):
+        """Search LanceDB with precomputed query vectors."""
         hybrid = kwargs.pop("hybrid", self.hybrid)
+        if hybrid:
+            raise NotImplementedError("LanceDB hybrid retrieval with precomputed vectors is not implemented yet.")
         table_path = kwargs.pop("table_path", self.uri)
         table_name = kwargs.pop("table_name", self.table_name)
 
-        if hybrid:
-            return lancedb_hybrid_retrieval(
-                queries,
-                table_path=table_path,
-                table_name=table_name,
-                **kwargs,
+        table = lancedb.connect(uri=table_path).open_table(table_name)
+
+        result_fields = kwargs.pop("result_fields", ["text", "metadata", "source"])
+        search_top_k = int(kwargs.pop("search_top_k", kwargs.pop("top_k", 10)))
+        refine_factor = int(kwargs.pop("refine_factor", 50))
+        n_probe = int(kwargs.pop("n_probe", kwargs.pop("nprobes", 64)))
+        vector_column_name = str(kwargs.pop("vector_column_name", "vector"))
+
+        search_results = []
+        for vector in vectors:
+            results = (
+                table.search([vector], vector_column_name=vector_column_name)
+                .select(result_fields)
+                .limit(search_top_k)
+                .refine_factor(refine_factor)
+                .nprobes(n_probe)
+                .to_list()
             )
-        return lancedb_retrieval(
-            queries,
-            table_path=table_path,
-            table_name=table_name,
-            **kwargs,
-        )
+            search_results.append(results)
+
+        return search_results
 
 
 def lancedb_retrieval(
