@@ -426,8 +426,8 @@ class Retriever:
         Example:
             >>> retriever = Retriever(lancedb_uri="./kb")
             >>> result = retriever.retrieve("What is RAG?", top_k=3)
-            >>> result.chunks[0][:40]  # doctest: +SKIP
-            'Retrieval augmented generation combines...'
+            >>> len(result.chunks[0]) > 0  # doctest: +SKIP
+            True
         """
         from nemo_retriever.llm.types import RetrievalResult
 
