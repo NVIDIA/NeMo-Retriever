@@ -43,9 +43,10 @@ def _use_remote(params: ASRParams) -> bool:
 
 logger = logging.getLogger(__name__)
 
-# Default NGC/NVCF Parakeet gRPC endpoint when using cloud ASR
+# Public NVCF Parakeet endpoint and the libmode function ID. Exposed as named
+# constants so Python callers can opt into NVCF without hardcoding strings:
+#   asr_params_from_env(default_grpc_endpoint=DEFAULT_NGC_ASR_GRPC_ENDPOINT)
 DEFAULT_NGC_ASR_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
-# Default NVCF function ID for Parakeet NIM (same as nv-ingest default_libmode_pipeline_impl)
 DEFAULT_NGC_ASR_FUNCTION_ID = "1598d209-5e27-4d3c-8079-4751568b1081"
 
 
@@ -54,26 +55,36 @@ def asr_params_from_env(
     grpc_endpoint_var: str = "AUDIO_GRPC_ENDPOINT",
     auth_token_var: str = "NGC_API_KEY",
     function_id_var: str = "AUDIO_FUNCTION_ID",
-    default_grpc_endpoint: Optional[str] = DEFAULT_NGC_ASR_GRPC_ENDPOINT,
+    default_grpc_endpoint: Optional[str] = None,
     default_function_id: Optional[str] = DEFAULT_NGC_ASR_FUNCTION_ID,
 ) -> ASRParams:
     """
-    Build ASRParams from environment variables.
+    Build ASRParams from environment variables, with optional Python-level defaults.
 
     Local Parakeet (nvidia/parakeet-ctc-1.1b via Transformers) is the default;
-    remote ASR is opted into explicitly via ``AUDIO_GRPC_ENDPOINT``. ``NGC_API_KEY``
-    alone never flips ASR to remote — it's set in many environments for unrelated
-    reasons (HF auth, other NIMs) and shouldn't silently route a local run to cloud.
+    remote ASR is opted into explicitly. ``NGC_API_KEY`` alone never flips ASR
+    to remote — it's set in many environments for unrelated reasons (HF auth,
+    other NIMs) and shouldn't silently route a local run to cloud.
 
-    - ``AUDIO_GRPC_ENDPOINT`` — remote gRPC endpoint (e.g. ``localhost:50051`` for
-      a locally-running Parakeet NIM, or ``grpc.nvcf.nvidia.com:443`` for NVCF).
-    - ``NGC_API_KEY`` — Bearer token, only consulted when the endpoint is set.
-    - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to the nv-ingest libmode
-      Parakeet NIM when the endpoint is set but no function ID is provided.
+    Two opt-in paths to remote, both honoured:
+
+    - **Environment variable**: ``AUDIO_GRPC_ENDPOINT=grpc.nvcf.nvidia.com:443``
+      (NVCF) or ``AUDIO_GRPC_ENDPOINT=localhost:50051`` (local NIM).
+    - **Python API**: pass ``default_grpc_endpoint=...`` to this function. The
+      env var wins when both are present. Use the exported
+      :data:`DEFAULT_NGC_ASR_GRPC_ENDPOINT` constant for NVCF.
+
+    - ``NGC_API_KEY`` — Bearer token; only consulted when an endpoint is set.
+    - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to ``default_function_id``
+      (the nv-ingest libmode Parakeet NIM) when an endpoint is set but the env
+      var is unset.
     """
     import os
 
     grpc_endpoint = (os.environ.get(grpc_endpoint_var) or "").strip()
+    if not grpc_endpoint and default_grpc_endpoint:
+        grpc_endpoint = default_grpc_endpoint.strip()
+
     auth_token = (os.environ.get(auth_token_var) or "").strip() or None
     function_id = (os.environ.get(function_id_var) or "").strip() or None
 
@@ -85,7 +96,6 @@ def asr_params_from_env(
     elif function_id is None and default_function_id:
         function_id = default_function_id
 
-    _ = default_grpc_endpoint  # accepted for backward-compat but no longer used
     return ASRParams(
         audio_endpoints=(grpc_endpoint or None, None),
         audio_infer_protocol="grpc",
