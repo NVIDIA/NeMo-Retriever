@@ -142,3 +142,13 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
         return self._embed_local(texts_list, batch_size=batch_size)
+
+    def unload(self) -> None:
+        """Release GPU memory held by the HF model."""
+        del self._model
+        del self._tokenizer
+        self._model = None
+        self._tokenizer = None
+        self._device = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()

@@ -108,3 +108,10 @@ class LlamaNemotronEmbed1BV2Embedder:
             return torch.empty((0, 0), dtype=torch.float32)
         vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix="query: ")
         return self._finalize_vectors(vectors)
+
+    def unload(self) -> None:
+        """Release GPU memory held by the vLLM engine."""
+        del self._llm
+        self._llm = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()

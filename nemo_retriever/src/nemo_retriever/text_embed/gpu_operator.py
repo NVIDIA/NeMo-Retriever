@@ -41,9 +41,11 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
         from nemo_retriever.model import create_local_embedder
 
+        hf_device = str(self._kwargs["local_hf_device"]) if self._kwargs.get("local_hf_device") else None
         self._model = create_local_embedder(
             self._kwargs.get("embed_model_name") or self._kwargs.get("model_name"),
             backend=ingest_backend,
+            device=hf_device,
             hf_cache_dir=hf_cache,
             gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
             enforce_eager=_to_bool(self._kwargs.get("enforce_eager"), default=False),

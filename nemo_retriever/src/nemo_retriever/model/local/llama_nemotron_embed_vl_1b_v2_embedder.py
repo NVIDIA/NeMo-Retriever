@@ -27,7 +27,10 @@ def _b64_to_pil(b64_str: str):
 
     from PIL import Image
 
-    return Image.open(io.BytesIO(base64.b64decode(b64_str))).convert("RGB")
+    try:
+        return Image.open(io.BytesIO(base64.b64decode(b64_str))).convert("RGB")
+    except Exception as exc:
+        raise ValueError(f"Failed to decode base64 image: {exc}") from exc
 
 
 @dataclass
@@ -156,6 +159,14 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         if isinstance(out, torch.Tensor):
             return _l2_normalize(out.detach().cpu())
         return _l2_normalize(torch.as_tensor(out, dtype=torch.float32).cpu())
+
+    def unload(self) -> None:
+        """Release GPU memory held by the HF model."""
+        del self._model
+        self._model = None
+        self._device = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 @dataclass
@@ -296,3 +307,10 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         dim = len(valid[0])
         padded = [v if v else [0.0] * dim for v in vectors]
         return _l2_normalize(torch.tensor(padded, dtype=torch.float32))
+
+    def unload(self) -> None:
+        """Release GPU memory held by the vLLM engine."""
+        del self._llm
+        self._llm = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
