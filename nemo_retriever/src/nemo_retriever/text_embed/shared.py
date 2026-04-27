@@ -11,7 +11,7 @@ from nemo_retriever.params import EmbedParams
 
 def _to_bool(v: object, default: bool = False) -> bool:
     if isinstance(v, str):
-        return v.lower() not in ("false", "0", "no", "")
+        return v.strip().lower() not in ("false", "0", "no", "off", "")
     if v is None:
         return default
     return bool(v)
