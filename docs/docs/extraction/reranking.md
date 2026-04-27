@@ -15,4 +15,4 @@ Reranker options appear in benchmarking and recall configurations. Start with [B
 
 **Related**
 
-- [Workflow: Query and rerank](workflow-query-rerank.md)
+- [Semantic and hybrid retrieval](semantic-hybrid-retrieval.md)

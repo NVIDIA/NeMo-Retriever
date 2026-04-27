@@ -179,6 +179,9 @@ plugins:
         extraction/nemoretriever-parse.md: extraction/nemotron-parse.md
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
+        extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md
+        extraction/workflow-build-searchable-collection.md: extraction/chunking.md
+        extraction/workflow-query-rerank.md: extraction/semantic-hybrid-retrieval.md
   - site-urls
 
 markdown_extensions:
@@ -212,6 +215,9 @@ exclude_docs: |
   extraction/self-host-nims-when-to-use.md
   extraction/workflow-e2e-blueprints.md
   extraction/releasenotes-nv-ingest.md
+  extraction/workflow-agentic-retrieval.md
+  extraction/workflow-build-searchable-collection.md
+  extraction/workflow-query-rerank.md
 
 extra:
   generator: false

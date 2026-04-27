@@ -10,4 +10,4 @@ Follow these steps:
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md).
 
-**Next:** [Workflow: Build a searchable collection](workflow-build-searchable-collection.md).
+**Next:** [Chunking and splitting](chunking.md), then [Vector databases](vdbs.md) to embed and index for search.

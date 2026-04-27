@@ -6,6 +6,5 @@ NeMo Retriever Library focuses on document ingestion, embeddings, vector stores,
 
 **Related**
 
-- [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Semantic and hybrid retrieval](semantic-hybrid-retrieval.md)
 - Framework examples: [LangChain, LlamaIndex, Haystack](integrations-langchain-llamaindex-haystack.md)
