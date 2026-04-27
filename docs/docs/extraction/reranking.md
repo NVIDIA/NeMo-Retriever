@@ -1,10 +1,5 @@
 # Reranking
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 A **reranker** model re-scores the top candidates from initial retrieval so the final top-K better matches the query. NeMo Retriever Library evaluation and deployments can integrate reranker NIMs (refer to the [Support matrix](support-matrix.md) for availability and GPU considerations).
 
 **When to enable reranking**
@@ -16,7 +11,7 @@ Enable reranking when both of the following apply:
 
 **Configuration pointers**
 
-Reranker options appear in benchmarking and recall configurations. Start with [Benchmarking](benchmarking.md) and your vector store setup in [Vector databases](data-store.md).
+Reranker options appear in benchmarking and recall configurations. Start with [Benchmarking](benchmarking.md) and your vector store setup in [Vector databases](vdbs.md).
 
 **Related**
 

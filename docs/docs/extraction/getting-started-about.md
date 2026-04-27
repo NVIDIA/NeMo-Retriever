@@ -1,15 +1,10 @@
 # About getting started
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 This section walks you from **access and prerequisites** through **first deployment** and **hands-on notebooks**.
 
 Typical order:
 
-1. [Get your API key](ngc-api-key.md) (NGC / API access as required by your workflow).
+1. [Get your API key](api-keys.md) (NGC / API access as required by your workflow).
 2. Confirm [Prerequisites](prerequisites.md) and the [Support matrix](support-matrix.md) for your OS, GPU, and software stack.
 3. Deploy using one of:
     - [Library mode](quickstart-library-mode.md) (without full stack containers where appropriate)

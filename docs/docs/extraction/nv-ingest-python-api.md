@@ -2,10 +2,6 @@
 
 The [NeMo Retriever Library](overview.md) Python API provides a simple and flexible interface for processing and extracting information from various document types, including PDFs.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 !!! tip
 
     There is a Jupyter notebook available to help you get started with the Python API. For more information, refer to [Python Client Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
@@ -31,7 +27,7 @@ The following table describes methods of the `Ingestor` class.
 | `save_to_disk` | Save ingestion results to disk instead of memory. |
 | `store`        | Persist extracted images/structured renderings to an fsspec-compatible backend. |
 | `split`        | Split documents into smaller sections for processing. For more information, refer to [Split Documents](chunking.md). |
-| `vdb_upload`   | Push extraction results to the vector database (LanceDB by default, or Milvus). For more information, refer to [Data Upload](data-store.md). |
+| `vdb_upload`   | Push extraction results to the vector database (LanceDB by default, or Milvus). For more information, refer to [Data Upload](vdbs.md). |
 
 
 ### Extract Method Options
@@ -422,7 +418,7 @@ results = ingestor.ingest()
 
 !!! tip
 
-    For more information about working with infographics and multimodal content, refer to [Use Multimodal Embedding](vlm-embed.md).
+    For more information about working with infographics and multimodal content, refer to [Use Multimodal Embedding](embedding.md).
 
 ## Extract Embeddings
 
@@ -542,6 +538,8 @@ For more information on environment variables, refer to [Environment Variables](
 
 Use the following code to extract mp3 audio content.
 
+The example uses the default tokenizer for token-based splitting; see [Llama tokenizer (default)](chunking.md#llama-tokenizer-default).
+
 ```python
 from nv_ingest_client.client import Ingestor
 
@@ -571,6 +569,6 @@ Set extract_audio_params={"segment_audio": True} to output sentence-like audio s
 
 - [Split Documents](chunking.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Advanced Visual Parsing](nemoretriever-parse.md)
-- [Use NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio.md)
-- [Use Multimodal Embedding](vlm-embed.md)
+- [Advanced Visual Parsing](nemotron-parse.md)
+- [Use NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio-video.md)
+- [Use Multimodal Embedding](embedding.md)

@@ -64,6 +64,12 @@ mkdocs:
 	@echo "📚 Building MkDocs site..."
 	mkdocs build
 
+# NeMo Retriever Library (NRL) staging site: flat 13-section nav (see mkdocs.nrl-github-pages.yml).
+.PHONY: nrl-github-pages
+nrl-github-pages:
+	@echo "📚 Building NRL GitHub Pages MkDocs site (strict)..."
+	mkdocs build -f mkdocs.nrl-github-pages.yml --strict
+
 # Full docs pipeline
 .PHONY: docs
 docs: sphinx-apidoc generate-openapi-schema sphinx copy-sphinx mkdocs

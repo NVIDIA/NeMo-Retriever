@@ -1,10 +1,5 @@
 # NeMo Retriever Library integration testing framework
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 A configurable, dataset-agnostic testing framework for end-to-end validation of NeMo Retriever Library pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
 
 ## Dataset Prerequisites

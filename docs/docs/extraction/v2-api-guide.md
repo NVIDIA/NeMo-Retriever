@@ -1,10 +1,5 @@
 # NeMo Retriever Library V2 API Guide: PDF Pre Splitting
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 > **TL;DR:** V2 API automatically splits large PDFs into chunks for faster parallel processing.
 > 
 > **Python:** Enable with `message_client_kwargs={"api_version": "v2"}` and configure chunk size with `.pdf_split_config(pages_per_chunk=64)`.

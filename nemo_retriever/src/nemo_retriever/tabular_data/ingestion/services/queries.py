@@ -2,22 +2,34 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import time
 import uuid
+
 import pandas as pd
-from nemo_retriever.tabular_data.ingestion.utils import chunks
 from tqdm import tqdm
 
-from nemo_retriever.tabular_data.ingestion.dal.queries_dal import add_query
+from nemo_retriever.tabular_data.ingestion.utils import chunks
+from nemo_retriever.tabular_data.ingestion.dal.queries_dal import (
+    add_query,
+    get_candidate_sql_ids,
+    get_sql_by_full_query,
+    load_sqls_to_tables,
+    update_counters_and_timestamps_for_query_and_affected_data,
+)
 
 
 from nemo_retriever.tabular_data.ingestion.model.query import Query
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Props
 from nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor import (
-    TableMatch,
+    ExtractionResult,
     extract_tables_and_columns,
+)
+from nemo_retriever.tabular_data.ingestion.parsers.query_comparator import (
+    compare_queries,
+    normalize_sql,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,25 +40,25 @@ def parse_query_slim(sql_text: str, query_obj: Query, dialect: str, schemas: dic
 
     Identifies referenced tables and columns for all SQL statement types without
     building a full AST.  Updates ``query_obj.tables_ids`` and appends SQL→table
-    and SQL→column edges to ``query_obj.edges``.
+    and SQL→column edges to ``query_obj.edges``.  Also stores the sqlglot AST
+    node count on the query as a cheap structural fingerprint.
 
     Returns True when at least one recognised table was found, False otherwise.
     """
-    table_matches: dict[str, TableMatch] = extract_tables_and_columns(
+    extraction: ExtractionResult = extract_tables_and_columns(
         sql=sql_text,
         dialect=dialect,
         all_schemas=schemas,
     )
 
-    if not table_matches:
+    query_obj.ast_node_count = extraction.ast_node_count
+
+    if not extraction.tables:
         return False
 
-    for table_key, match in table_matches.items():
-        # table_key may be "schema.table" or just "table"; bare name is always the last part.
+    for table_key, match in extraction.tables.items():
         bare_name = table_key.split(".")[-1]
 
-        # Use the schema identified by the extractor directly; fall back to scanning
-        # all schemas when the owning schema could not be determined.
         schema = schemas.get(match.schema_name) if match.schema_name else None
         if schema is None:
             for s in schemas.values():
@@ -103,15 +115,140 @@ def parse_query_single(
     return query_obj
 
 
+def _try_merge_with_graph(
+    query_obj: Query,
+    sql_text: str,
+    dialect: str,
+    sqls_tbls_df: pd.DataFrame,
+) -> bool:
+    """Check whether an equivalent query already exists in the graph.
+
+    1. Exact text match (cheapest).
+    2. Structural comparison against candidates pre-filtered by
+       table-set, column-set (leaves), and AST node count — mirroring
+       the old ``get_sqls_connected_to_tables`` heuristic.
+
+    Returns ``True`` if a match was found and counters were updated.
+    """
+    exact_id = get_sql_by_full_query(sql_text)
+    if exact_id:
+        update_counters_and_timestamps_for_query_and_affected_data(
+            identical_sql_id=exact_id,
+            sql_node=query_obj.sql_node,
+        )
+        logger.info("Found existing SQL in graph by full text; updated counters.")
+        return True
+
+    candidates = get_candidate_sql_ids(
+        tbl_ids=query_obj.get_tables_ids(),
+        col_ids=query_obj.get_column_ids(),
+        nodes_count=query_obj.get_nodes_counter(),
+        sqls_tbls_df=sqls_tbls_df,
+    )
+    for _, cand in candidates.iterrows():
+        cand_sql = cand.get("sql_full_query", "")
+        if not cand_sql:
+            continue
+        if compare_queries(sql_text, cand_sql, dialect=dialect, ignore_literals=True):
+            update_counters_and_timestamps_for_query_and_affected_data(
+                identical_sql_id=cand["sql_id"],
+                sql_node=query_obj.sql_node,
+            )
+            logger.info(
+                "Found structurally equivalent SQL %s in graph; updated counters.",
+                cand["sql_id"],
+            )
+            return True
+    return False
+
+
+def _try_merge_in_memory(
+    sql_text: str,
+    sql_count: int,
+    dialect: str,
+    query_obj: Query,
+    table_index: dict[frozenset, list[str]],
+    parsed_queries: dict[str, Query],
+    norm_cache: dict[str, str | None],
+) -> bool:
+    """Check whether a structurally equivalent query is already accumulated in memory.
+
+    Uses a table-set index (``table_index``) so only queries that share the
+    exact same set of table IDs are compared, then gates on matching column
+    IDs (leaves) and AST node count before falling through to the cached
+    normalised-string comparison.
+
+    Returns ``True`` if a duplicate was found and its counter was bumped.
+    """
+    tbl_key = frozenset(query_obj.get_tables_ids())
+    col_set = frozenset(query_obj.get_column_ids())
+    nodes_count = query_obj.get_nodes_counter()
+
+    new_norm = norm_cache.get(query_obj.id)
+    if new_norm is None:
+        new_norm = normalize_sql(sql_text, dialect=dialect, ignore_literals=True)
+        norm_cache[query_obj.id] = new_norm
+    if new_norm is None:
+        return False
+
+    for qid in table_index.get(tbl_key, []):
+        existing_q = parsed_queries[qid]
+        if existing_q.get_nodes_counter() != nodes_count:
+            continue
+        if frozenset(existing_q.get_column_ids()) != col_set:
+            continue
+
+        existing_norm = norm_cache.get(qid)
+        if existing_norm is None:
+            existing_sql = existing_q.sql_node.get_properties().get("sql_full_query", "")
+            existing_norm = normalize_sql(existing_sql, dialect=dialect, ignore_literals=True)
+            norm_cache[qid] = existing_norm
+        if existing_norm is None:
+            continue
+
+        if new_norm == existing_norm:
+            props = existing_q.sql_node.get_properties()
+            props["total_counter"] = props.get("total_counter", 0) + sql_count
+            existing_q.sql_node.add_property("total_counter", props["total_counter"])
+            # Carry over the incoming query's per-month counters so a
+            # different month from the deduplicated query is not lost.
+            for key, val in query_obj.sql_node.get_properties().items():
+                if key.startswith("count_"):
+                    merged = props.get(key, 0) + val
+                    existing_q.sql_node.add_property(key, merged)
+            logger.info(
+                "Merged structurally equivalent query into in-memory query %s.",
+                qid,
+            )
+            return True
+    return False
+
+
 def parse_queries_df(
     dialect: str,
     parsed_queries: dict[str, Query],
     queries_df: pd.DataFrame,
     schemas: dict,
+    sqls_tbls_df: pd.DataFrame | None = None,
 ) -> list[dict[str, str]]:
-    # parsed_queries is mutated in-place (rather than returned) so that each
-    # newly parsed query can be cross-checked against the queries already
-    # parsed in this run before being compared with what is stored in the graph.
+    """Parse rows from *queries_df* and accumulate unique queries in *parsed_queries*.
+
+    *parsed_queries* is mutated in-place so that each newly parsed query can
+    be cross-checked against the queries already parsed in this batch before
+    being compared with what is stored in the graph.
+
+    *sqls_tbls_df* is an optional pre-loaded DataFrame from
+    :func:`load_sqls_to_tables` (passed in to avoid re-querying the graph
+    for every chunk).
+    """
+    if sqls_tbls_df is None:
+        sqls_tbls_df = load_sqls_to_tables()
+
+    table_index: dict[frozenset, list[str]] = defaultdict(list)
+    norm_cache: dict[str, str | None] = {}
+    for qid, q in parsed_queries.items():
+        table_index[frozenset(q.get_tables_ids())].append(qid)
+
     failed_queries: list[dict[str, str]] = []
     for _, row in queries_df.iterrows():
         try:
@@ -134,9 +271,27 @@ def parse_queries_df(
                 dialect=dialect,
                 schemas=schemas,
             )
-            if is_parsed:
-                query_obj.sql_node.add_property("nodes_count", query_obj.get_nodes_counter())
-                parsed_queries.update({query_obj.id: query_obj})
+            if not is_parsed:
+                continue
+
+            if _try_merge_with_graph(query_obj, sql_text, dialect, sqls_tbls_df):
+                continue
+
+            if _try_merge_in_memory(
+                sql_text,
+                sql_count,
+                dialect,
+                query_obj,
+                table_index,
+                parsed_queries,
+                norm_cache,
+            ):
+                continue
+
+            query_obj.sql_node.add_property("nodes_count", query_obj.get_nodes_counter())
+            parsed_queries[query_obj.id] = query_obj
+            tbl_key = frozenset(query_obj.get_tables_ids())
+            table_index[tbl_key].append(query_obj.id)
         except Exception as err:
             logger.info("Failed parsing query")
             logger.exception(err)
@@ -153,12 +308,14 @@ def populate_queries(schemas, queries_df, num_workers, dialect):
         queries_chunks = list(chunks(queries_df.to_dict(orient="records"), 500))
         for i, chunk in enumerate(queries_chunks):
             logger.info(f"chunk {i + 1} out of {len(queries_chunks)} chunks")
+            sqls_tbls_df = load_sqls_to_tables()
             parsed_queries: dict[str, Query] = {}
             chunk_failed = parse_queries_df(
                 dialect=dialect,
                 parsed_queries=parsed_queries,
                 queries_df=pd.DataFrame(chunk),
                 schemas=schemas,
+                sqls_tbls_df=sqls_tbls_df,
             )
             failed_queries += chunk_failed
 
@@ -173,10 +330,9 @@ def populate_queries(schemas, queries_df, num_workers, dialect):
                     for future in as_completed(futures):
                         try:
                             future.result()
-                        except Exception as exc:
-                            logger.error("Failed to persist query to graph: %s", exc, exc_info=True)
-                        finally:
-                            pbar.update(1)
+                        except Exception:
+                            logger.exception("Failed to persist query to graph.")
+                        pbar.update(1)
 
     logger.info(f"Time took to parse and insert queries: {time.time() - before}")
     logger.info("Finished inserting the queries into the graph.")

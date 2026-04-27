@@ -2,10 +2,6 @@
 
 The [NeMo Retriever Library](overview.md) Python API provides a simple and flexible interface for processing and extracting information from various document types, including PDFs.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 !!! tip
 
     There is a Jupyter notebook available to help you get started with the Python API. For more information, refer to [Python Client Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
@@ -44,7 +40,7 @@ The following table describes methods of the `Ingestor` class.
 | `store_embed`      | Add a store-embed task.                                                      |
 | `split`            | Split documents into smaller sections. Refer to [Split Documents](chunking.md).  |
 | `udf`              | Add a user-defined function (UDF) task.                                      |
-| `vdb_upload`       | Push extraction results to Milvus vector database. Refer to [Data Upload](data-store.md). |
+| `vdb_upload`       | Push extraction results to Milvus vector database. Refer to [Data Upload](vdbs.md). |
 
 
 ### Extract Method Options
@@ -514,7 +510,7 @@ results = ingestor.ingest()
 
 !!! tip
 
-    For more information about working with infographics and multimodal content, refer to [Use Multimodal Embedding](vlm-embed.md).
+    For more information about working with infographics and multimodal content, refer to [Use Multimodal Embedding](embedding.md).
 
 ## Extract Embeddings
 
@@ -670,6 +666,6 @@ Face Parakeet model.
 
 - [Split Documents](chunking.md)
 - [Troubleshoot NeMo Retriever Library](troubleshoot.md)
-- [Advanced Visual Parsing](nemoretriever-parse.md)
-- [Use the NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio.md)
-- [Use Multimodal Embedding](vlm-embed.md)
+- [Advanced Visual Parsing](nemotron-parse.md)
+- [Use the NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio-video.md)
+- [Use Multimodal Embedding](embedding.md)

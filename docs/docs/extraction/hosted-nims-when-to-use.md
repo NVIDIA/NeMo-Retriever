@@ -1,11 +1,6 @@
 # When to use NVIDIA-hosted NIMs
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
-[NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](ngc-api-key.md)) without operating GPU nodes yourself.
+[NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](api-keys.md)) without operating GPU nodes yourself.
 
 Consider hosted NIMs when:
 

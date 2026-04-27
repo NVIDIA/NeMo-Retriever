@@ -88,7 +88,13 @@ local = [
   "nvidia-ml-py",
   "apscheduler>=3.10",
   "psutil>=5.9.0",
+  # vLLM compiles CUDA kernels at runtime via torch inductor (requires Python.h).
+  # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
+  # system Python installs typically omit them and will fail with InductorError.
   "vllm==0.17.0; sys_platform == 'linux'",
+  # flashinfer and cubin versions must match
+  "flashinfer-cubin==0.6.4; sys_platform == 'linux'",
+  "flashinfer-python==0.6.4; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────

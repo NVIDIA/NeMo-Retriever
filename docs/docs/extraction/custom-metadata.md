@@ -1,10 +1,5 @@
 # Use Custom Metadata to Filter Search Results
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 You can upload custom metadata for documents during ingestion. 
 By uploading custom metadata you can attach additional information to documents, 
 and use it for filtering results during retrieval operations. 
@@ -62,7 +57,7 @@ meta_df.to_csv(file_path)
 
 The following example adds custom metadata during ingestion. 
 For more information about the `Ingestor` class, refer to [Use the Python API](python-api-reference.md).
-For more information about the `vdb_upload` method, refer to [Upload Data](data-store.md).
+For more information about the `vdb_upload` method, refer to [Upload Data](vdbs.md).
 
 ```python
 from nv_ingest_client.client import Ingestor

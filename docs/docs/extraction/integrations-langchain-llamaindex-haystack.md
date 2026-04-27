@@ -1,10 +1,5 @@
 # Integrate with LangChain, LlamaIndex, and Haystack
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 NeMo Retriever Library is commonly used **behind** retrieval-augmented generation (RAG) apps built with popular orchestration frameworks.
 
 ## Jupyter examples (LangChain and LlamaIndex)
@@ -24,4 +19,4 @@ Haystack-related extraction modes may appear in API tables as **deprecated** in 
 
 - [Use the Python API](python-api-reference.md)
 - [Use the CLI](cli-reference.md)
-- [Split documents](chunking.md), [Upload data](data-store.md), [Filter search](custom-metadata.md)
+- [Split documents](chunking.md), [Upload data](vdbs.md), [Filter search](custom-metadata.md)

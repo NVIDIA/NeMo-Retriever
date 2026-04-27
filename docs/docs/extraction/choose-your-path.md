@@ -1,10 +1,5 @@
 # Choose your path
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
 Use this page to pick documentation and deployment options that match your goal.
 
 ## I want to run locally or embed the library
@@ -26,7 +21,7 @@ Use this page to pick documentation and deployment options that match your goal.
 
 ## I need API details and keys
 
-1. [Get your API key](ngc-api-key.md)
+1. [Get your API key](api-keys.md)
 2. [API reference](nemo-retriever-api-reference.md) and [V2 API guide](v2-api-guide.md) if applicable
 
 ## I am tuning performance or cost

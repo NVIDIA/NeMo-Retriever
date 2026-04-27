@@ -2,12 +2,6 @@
 
 This documentation contains the Frequently Asked Questions (FAQ) for [NeMo Retriever Library](overview.md).
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
-
-
 ## What if I already have a retrieval pipeline? Can I just use NeMo Retriever Library? 
 
 You can use the CLI or Python APIs to perform extraction only, and then consume the results.
@@ -23,7 +17,7 @@ NeMo Retriever Library supports extracting text representations of various forms
 and ingesting to a vector database. **[LanceDB](https://lancedb.com/) is the default**; [Milvus](https://milvus.io/) is also fully supported.
 NeMo Retriever Library does not store data on disk except through the vector database (LanceDB uses local Lance files; Milvus uses its server and MinIO).
 You can ingest to other data stores; however, you must configure other data stores yourself.
-For more information, refer to [Data Upload](data-store.md).
+For more information, refer to [Data Upload](vdbs.md).
 
 
 
@@ -41,7 +35,7 @@ For more information, refer to [Extract Captions from Images](python-api-referen
 For scanned documents, or documents with complex layouts, 
 we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
 Nemotron parse provides higher-accuracy text extraction. 
-For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md).
+For more information, refer to [Advanced Visual Parsing](nemotron-parse.md).
 
 
 
@@ -50,7 +44,7 @@ For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md)
 ### Self-Hosted Deployments
 
 For [self-hosted deployments](quickstart-guide.md), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
-For more information, refer to [Generate Your NGC Keys](ngc-api-key.md).
+For more information, refer to [Generate Your NGC Keys](api-keys.md).
 
 For advanced scenarios, you might want to set `docker-compose` environment variables for NIM container paths, tags, and batch sizes. 
 You can set those directly in `docker-compose.yaml`, or in an [environment variable file](environment-config.md) that docker compose uses.

@@ -48,6 +48,23 @@ class TableMatch:
     schema_name: str | None = None
 
 
+@dataclass
+class ExtractionResult:
+    """Container for the full output of :func:`extract_tables_and_columns`.
+
+    Attributes
+    ----------
+    tables:
+        ``{table_key: TableMatch}`` mapping.
+    ast_node_count:
+        Total number of nodes in the sqlglot AST.  Cheap structural
+        fingerprint used to pre-filter duplicate candidates.
+    """
+
+    tables: dict[str, TableMatch] = field(default_factory=dict)
+    ast_node_count: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -110,8 +127,8 @@ def extract_tables_and_columns(
     sql: str,
     dialect: str = "sqlite",
     all_schemas: dict = {},
-) -> dict[str, TableMatch]:
-    """Return ``{table_name: TableMatch}`` for all real source tables in *sql*.
+) -> ExtractionResult:
+    """Return an :class:`ExtractionResult` for all real source tables in *sql*.
 
     Parameters
     ----------
@@ -126,16 +143,22 @@ def extract_tables_and_columns(
 
     Returns
     -------
-    dict
-        ``{table_key: TableMatch}`` where ``table_key`` is ``"schema.table"``
-        when the SQL uses a schema prefix, or bare ``"table"`` otherwise.
-        ``TableMatch.schema_name`` carries the ``all_schemas`` key that owns
-        the table (``None`` when it could not be determined).
+    ExtractionResult
+        ``.tables`` — ``{table_key: TableMatch}`` where *table_key* is
+        ``"schema.table"`` when the SQL uses a schema prefix, or bare
+        ``"table"`` otherwise.  Each ``TableMatch.schema_name`` carries
+        the *all_schemas* key that owns the table (``None`` when
+        undetermined).
+
+        ``.ast_node_count`` — total number of sqlglot AST nodes; used as
+        a cheap structural fingerprint to pre-filter duplicate candidates.
     """
     try:
         statement = sqlglot.parse_one(sql, dialect=dialect)
     except Exception:
-        return {}
+        return ExtractionResult()
+
+    ast_node_count = sum(1 for _ in statement.walk())
 
     # CTE names are virtual — not real source tables.
     cte_names: set[str] = {cte.alias.lower() for cte in statement.find_all(exp.CTE)}
@@ -148,7 +171,7 @@ def extract_tables_and_columns(
     }
 
     if not source_table_names:
-        return {}
+        return ExtractionResult(ast_node_count=ast_node_count)
 
     # alias → real table name (e.g. "o" → "orders")
     alias_map = _alias_to_table_map(statement, cte_names)
@@ -295,4 +318,7 @@ def extract_tables_and_columns(
             # else: ambiguous — omit rather than guess.
 
     # Drop real-table entries that ended up with no columns attributed.
-    return {k: v for k, v in result.items() if v.columns}
+    return ExtractionResult(
+        tables={k: v for k, v in result.items() if v.columns},
+        ast_node_count=ast_node_count,
+    )
