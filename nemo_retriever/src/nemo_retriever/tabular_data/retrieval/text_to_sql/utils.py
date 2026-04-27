@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import json
 import logging
+import os
 import re
 import time
 from itertools import groupby
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING, Union
 import pandas as pd
 import numpy as np
 from datetime import date, timedelta
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
 
@@ -49,19 +51,28 @@ TABLES_USAGE_PERCENTILE = "tables_usage_percentile"
 COLUMNS_USAGE_PERCENTILE = "columns_usage_percentile"
 
 
+def _get_llm_client() -> ChatNVIDIA:
+    api_key = os.environ.get("NVIDIA_API_KEY")
+    return ChatNVIDIA(
+        base_url=os.environ.get("LLM_INVOKE_URL"),
+        api_key=api_key,
+        model=os.environ.get("LLM_MODEL", "meta/llama-3.1-70b-instruct"),
+    )
+
+
 def store_usage_percentiles(
     percentiles_type_name: str,
     usage_percentile_25: int,
     usage_percentile_75: int,
 ):
-    query = """
-            MATCH (n:{Labels.DB})
-            WITH n
+    query = f"""
+            MATCH (d:{Labels.DB})
+            WITH d
             CALL apoc.create.setProperties(n,
                 [$percentiles_type_name_25, $percentiles_type_name_75],
                 [$usage_percentile_25, $usage_percentile_75])
             YIELD node
-            RETURN n
+            RETURN d
             """
     get_neo4j_conn().query_write(
         query=query,
@@ -154,7 +165,7 @@ queries_for_columns_params = {
     "wildcard_names": ["Wildcard", "QualifiedWildcard"],
     "sql_subgraph_rel": "<SQL",
     "sql_subgraph_labels": ">sql|-table",
-    "sql_type": Labels.QUERY,
+    "sql_type": Labels.SQL,
 }
 queries_for_columns_params_keys = ", ".join([f"{key}:${key}" for key in queries_for_columns_params.keys()])
 
@@ -619,7 +630,7 @@ def format_response(candidates, response):
 
 def get_relevant_fks(tables_ids):
     # Build a connected graph by expanding from target tables through FK relationships
-    query = """
+    query = f"""
     // Start with target tables and expand outward to find connected tables
     WITH $tables_ids as current_ids
 
@@ -647,14 +658,14 @@ def get_relevant_fks(tables_ids):
     WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
       AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
 
-    RETURN collect(DISTINCT {
+    RETURN collect(DISTINCT {{
         table1: t1.schema_name + '.' + t1.name,
         column1: col1.name,
         column1_datatype: coalesce(col1.data_type, 'None'),
         table2: t2.schema_name + '.' + t2.name,
         column2: col2.name,
         column2_datatype: coalesce(col2.data_type, 'None')
-    }) as list_of_foreign_keys
+    }}) as list_of_foreign_keys
     """
     results = get_neo4j_conn().query_read(query, {"tables_ids": tables_ids})
     if len(results) > 0:
@@ -663,7 +674,7 @@ def get_relevant_fks(tables_ids):
         result_fks = []
 
     # Build a connected graph by expanding from target tables through FK relationships
-    query = """
+    query = f"""
     // Start with target tables and expand outward to find connected tables
 
     // Level 1: Find tables connected via FK
@@ -704,24 +715,24 @@ def get_relevant_fks(tables_ids):
       AND right_schema IS NOT NULL AND right_table IS NOT NULL AND right_column IS NOT NULL
 
     // Match the actual column nodes for left side
-    OPTIONAL MATCH (s1:{Labels.SCHEMA}{name: left_schema})
-        -[:schema]->(tbl1:{Labels.TABLE}{name: left_table})
-        -[:schema]->(col1:{Labels.COLUMN}{name: left_column})
+    OPTIONAL MATCH (s1:{Labels.SCHEMA} {{name: left_schema}})
+        -[:schema]->(tbl1:{Labels.TABLE} {{name: left_table}})
+        -[:schema]->(col1:{Labels.COLUMN} {{name: left_column}})
 
     // Match the actual column nodes for right side
-    OPTIONAL MATCH (s2:{Labels.SCHEMA}{name: right_schema})
-        -[:schema]->(tbl2:{Labels.TABLE}{name: right_table})
-        -[:schema]->(col2:{Labels.COLUMN}{name: right_column})
+    OPTIONAL MATCH (s2:{Labels.SCHEMA} {{name: right_schema}})
+        -[:schema]->(tbl2:{Labels.TABLE} {{name: right_table}})
+        -[:schema]->(col2:{Labels.COLUMN} {{name: right_column}})
 
     // Return the structured format
-    RETURN collect(DISTINCT {
+    RETURN collect(DISTINCT {{
         table1: t1.schema_name + '.' + t1.name,
         column1: coalesce(col1.name, left_column),
         column1_datatype: coalesce(col1.data_type, 'None'),
         table2: t2.schema_name + '.' + t2.name,
         column2: coalesce(col2.name, right_column),
         column2_datatype: coalesce(col2.data_type, 'None')
-    }) as list_of_foreign_keys
+    }}) as list_of_foreign_keys
     """
     results = get_neo4j_conn().query_read(query, {"tables_ids": tables_ids})
     if len(results) > 0:
@@ -789,43 +800,25 @@ def _parse_table_text(text: str) -> dict:
     return parsed
 
 
-def get_schemas_from_neo4j_by_ids(
+def get_schemas_from_graph_by_ids(
     relevant_schemas_ids: list | None = None,
 ) -> list[dict[str, str]]:
-    if relevant_schemas_ids is not None and len(relevant_schemas_ids) > 0:
-        query = f"""MATCH (db:{Labels.DB})-[:{Edges.CONTAINS}]->(schema:{Labels.SCHEMA}
-        WHERE schema.id in $relevant_schemas_ids)
-        -[:{Edges.CONTAINS}]->(table: {Labels.TABLE})
-        -[:{Edges.CONTAINS}]->(column: {Labels.COLUMN})
-
-        RETURN collect({{
-            id: column.id,
-            name: column.name,
-            db_name: column.db_name,
-            schema_name: column.schema_name,
-            table_name: column.table_name,
-            data_type: column.data_type,
-            label: labels(column)[0]
-       }}) as data
-        """
-        result = get_neo4j_conn().query_read(
-            query,
-            {"relevant_schemas_ids": relevant_schemas_ids},
-        )
-    else:
-        query = f"""MATCH (column:{Labels.COLUMN}
-        WHERE NOT column.database_name IS NULL)
-        RETURN collect({{
-            id:column.id,
-            name:column.name,
-            db_name:column.db_name,
-            schema_name:column.schema_name,
-            table_name:column.table_name,
-            data_type:column.data_type,
-            label:labels(column)[0]
-        }}) as data
-        """
-        result = get_neo4j_conn().query_read(query, None)
+    schema_ids = relevant_schemas_ids or []
+    query = f"""
+    MATCH (db:{Labels.DB})-[:{Edges.CONTAINS}]->(schema:{Labels.SCHEMA})
+          -[:{Edges.CONTAINS}]->(table:{Labels.TABLE})
+          -[:{Edges.CONTAINS}]->(column:{Labels.COLUMN})
+    WHERE size($relevant_schemas_ids) = 0
+       OR schema.id IN $relevant_schemas_ids
+    RETURN collect({{
+        column_name:  column.name,
+        table_name:   table.name,
+        db_name:      db.name,
+        table_schema: schema.name,
+        data_type:    column.data_type
+    }}) AS data
+    """
+    result = get_neo4j_conn().query_read(query, {"relevant_schemas_ids": schema_ids})
     if len(result) > 0:
         return result[0]["data"]
     return []
@@ -846,12 +839,12 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
     ## This function is for sql validations in the app - (for example metrics or analyses sql validations)
     ## in these cases we get a slim version of the data so the validation is faster
     before_get_all = time.time()
-    data_array = get_schemas_from_neo4j_by_ids(relevant_schemas_ids)
+    data_array = get_schemas_from_graph_by_ids(relevant_schemas_ids)
     logger.info(f"time took to get all data from graph: {time.time() - before_get_all}")
     data_df = pd.DataFrame(data_array)
     dbs = list(data_df["db_name"].unique())
 
-    schemas = data_df[["schema_name", "db_name"]]
+    schemas = data_df[["db_name", "table_schema"]]
     schemas = schemas.drop_duplicates().to_dict(orient="records")
 
     all_schemas = {}
@@ -861,42 +854,36 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
         db_node = Neo4jNode(name=db_name, label=Labels.DB, props={"name": db_name})
         dbs_nodes[db_name] = db_node
 
-    tables_df = data_df[["schema_name", "db_name", "table_name"]]
+    tables_df = data_df[["db_name", "table_schema", "table_name"]]
     tables_df = tables_df.drop_duplicates()
-    # TODO: add db_name to the schema's identifying key in the all_schemas map
-    unique_schemas = data_df.schema_name.unique()
-    for schema_name in unique_schemas:
-        schema_tables_df = tables_df.loc[tables_df["schema_name"] == schema_name]
-        schema_dfs[schema_name] = {"tables": schema_tables_df.to_dict(orient="records")}
 
-    for schema_name in unique_schemas:
-        columns_df = data_df.loc[data_df["schema_name"] == schema_name]
-        schema_dfs[schema_name]["columns"] = columns_df.to_dict(orient="records")
+    unique_schemas = data_df.table_schema.unique()
+    for table_schema in unique_schemas:
+        schema_tables_df = tables_df.loc[tables_df["table_schema"] == table_schema]
+        schema_dfs[table_schema] = {"tables": schema_tables_df.to_dict(orient="records")}
 
-    def create_schema_node(schema):
-        schema_name: str = schema["schema_name"]
-        if schema_name != "":
-            schema_db_name: str = schema["db_name"]
-            schema_db_node = dbs_nodes[schema_db_name]
-            tables_df = pd.DataFrame(schema_dfs[schema_name]["tables"])
-            tables_df = tables_df.rename(columns={"schema_name": "schema"})
-            tables_df["name"] = tables_df["table_name"]
-            tables_df["is_temp"] = False
-            columns_df = pd.DataFrame(schema_dfs[schema_name]["columns"])
-            columns_df["column_name"] = columns_df["name"]
-            columns_df = columns_df.rename(columns={"schema_name": "schema"})
-            columns_df["is_temp"] = False
-            all_schemas[schema_name.lower()] = Schema(
-                schema_db_node,
-                tables_df,
-                columns_df,
-                schema_name,
-                is_creation_mode=False,
-            )
+    for table_schema in unique_schemas:
+        columns_df = data_df.loc[data_df["table_schema"] == table_schema]
+        schema_dfs[table_schema]["columns"] = columns_df.to_dict(orient="records")
 
     before_modify_all = time.time()
     for schema in schemas:
-        create_schema_node(schema)
+        table_schema: str = schema.get("table_schema")
+        if not table_schema:
+            continue
+
+        schema_db_name: str = schema["db_name"]
+        schema_db_node = dbs_nodes[schema_db_name]
+        tables_df = pd.DataFrame(schema_dfs[table_schema]["tables"])
+        columns_df = pd.DataFrame(schema_dfs[table_schema]["columns"])
+
+        all_schemas[table_schema.lower()] = Schema(
+            schema_db_node,
+            tables_df,
+            columns_df,
+            table_schema,
+            is_creation_mode=False,
+        )
     logger.info(f"total time it took to create all schemas nodes: {time.time() - before_modify_all}")
     logger.info(f"total time for get_schemas_by_ids(): {time.time() - before_get_all}")
     return all_schemas

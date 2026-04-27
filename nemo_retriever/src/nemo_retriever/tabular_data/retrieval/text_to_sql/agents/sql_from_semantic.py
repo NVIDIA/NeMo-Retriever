@@ -164,7 +164,7 @@ class SQLFromCandidatesAgent(BaseAgent):
         """
         path_state = state.get("path_state", {})
         llm = state["llm"]
-        dialect = state["dialect"]
+        connector = state["connector"]
         question = get_question_for_processing(state)
 
         relevant_tables = path_state.get("relevant_tables", [])
@@ -189,7 +189,7 @@ class SQLFromCandidatesAgent(BaseAgent):
 
             # Build user prompt with formatted tables
             user_prompt = create_sql_user_prompt.format(
-                dialect=dialect,
+                dialect=connector.dialect,
                 main_question=question,
                 observation_block=observation_block,
                 fks=[

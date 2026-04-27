@@ -56,7 +56,6 @@ class Schema:
 
             self.columns_df["table_name_lower"] = self.columns_df["table_name"].apply(lambda x: x.lower())
 
-            # Sciplay table has one column with empty name, no idea how this can happen
             self.columns_df = self.columns_df[~self.columns_df["column_name"].isna()]
 
             self.columns_df["column_name_lower"] = self.columns_df["column_name"].apply(lambda x: x.strip('"').lower())
@@ -73,7 +72,7 @@ class Schema:
 
             # This is for improving is_column_in_table
             self.columns_map = {}
-            for index, row in self.columns_df.iterrows():
+            for _, row in self.columns_df.iterrows():
                 if row["table_name_lower"] not in self.columns_map:
                     self.columns_map[row["table_name_lower"]] = {}
                 self.columns_map[row["table_name_lower"]][row["column_name_lower"]] = True
@@ -81,16 +80,11 @@ class Schema:
             if is_creation_mode:  # ingestion mode
                 self.reset_tables_props()
                 self.reset_columns_props()
-            else:
-                # retrieval mode
-                self.schema_name = schema_name
-                self.reset_slim_columns_props()
-                self.reset_slim_tables_props()
 
     def reset_tables_props(self):
         self.tables_df["props"] = self.tables_df.apply(
             lambda x: {
-                "name": x["table_name"],
+                "name": x["table_name"].strip('"'),
                 "created": None if pd.isna(x["created"]) else x["created"],
                 "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
@@ -118,35 +112,6 @@ class Schema:
         )
         self.columns_df["match_props"] = self.columns_df.apply(
             lambda x: {"id": x.id},
-            axis=1,
-        )
-
-    def reset_slim_tables_props(self):
-        self.tables_df["props"] = self.tables_df.apply(
-            lambda x: {
-                "name": x["name"],
-                "id": x["id"],
-                "label": Labels.TABLE,
-            },
-            axis=1,
-        )
-        self.tables_df["match_props"] = self.tables_df.apply(
-            lambda x: {"id": x["id"]},
-            axis=1,
-        )
-
-    def reset_slim_columns_props(self):
-        self.columns_df["props"] = self.columns_df.apply(
-            lambda x: {
-                "name": x["name"].strip('"'),
-                "data_type": (x["data_type"] or "").strip('"'),
-                "id": x["id"],
-                "label": Labels.COLUMN,
-            },
-            axis=1,
-        )
-        self.columns_df["match_props"] = self.columns_df.apply(
-            lambda x: {"id": x["id"]},
             axis=1,
         )
 

@@ -6,12 +6,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.text_to_sql_graph import create_graph
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload, AgentState
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import main_system_prompt_template
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import _make_llm
+from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import _get_llm_client
 
 logger = logging.getLogger(__name__)
 
 try:
-    llm_client = _make_llm()
+    llm_client = _get_llm_client()
 except ValueError as e:
     logger.error("Failed to initialize LLM client: %s", e)
     llm_client = None
@@ -24,6 +24,7 @@ def get_agent_response(payload: AgentPayload):
     t0 = time.perf_counter()
     acronyms = payload.get("acronyms", "")
     custom_prompts = payload.get("custom_prompts", "")
+    connector = payload.get("connector")
 
     acronyms_text = f"Acronyms:\n{acronyms}\n\n" if acronyms else ""
     custom_prompts_text = f"{custom_prompts}\n\n" if custom_prompts else ""
@@ -32,7 +33,7 @@ def get_agent_response(payload: AgentPayload):
         date=datetime.now(),
         acronyms=acronyms_text,
         custom_prompts=custom_prompts_text,
-        dialect=payload.get("dialect"),
+        dialect=connector.dialect,
     )
     messages = [
         SystemMessage(content=main_system_prompt),
@@ -51,12 +52,11 @@ def get_agent_response(payload: AgentPayload):
     state: AgentState = {
         "llm": llm_client,
         "initial_question": payload["question"],
-        "dialect": payload.get("dialect"),
-        "connector": payload.get("connector"),
+        "connector": connector,
         "messages": messages,
-        "decision": "",
         "path_state": initial_path_state,
         "retriever": retriever,
+        "decision": "",
     }
 
     final_state = state.copy()

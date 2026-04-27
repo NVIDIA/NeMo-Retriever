@@ -42,7 +42,7 @@ class SQLFromTablesAgent(BaseAgent):
     - path_state["relevant_tables"]: Optional relevant tables (if not provided, will search)
     - path_state["error"]: Optional error from previous attempt (for reconstruction)
     - state["initial_question"]: User's question
-    - state["dialect"]: SQL dialect
+    - state["connector"]: Connector instance
 
     Output:
     - path_state["sql_generation_result"]: SQL response with SQL code
@@ -71,7 +71,7 @@ class SQLFromTablesAgent(BaseAgent):
         """
         path_state = state.get("path_state", {})
         llm = state["llm"]
-        dialect = state["dialect"]
+        connector = state["connector"]
         question = get_question_for_processing(state)
 
         system_prompt = create_sql_general_prompt
@@ -87,7 +87,7 @@ class SQLFromTablesAgent(BaseAgent):
 
         # Build user prompt with formatted tables
         user_prompt = create_sql_user_prompt.format(
-            dialect=dialect,
+            dialect=connector.dialect,
             main_question=question,
             observation_block="",
             fks=[],  # Foreign keys can be added if needed

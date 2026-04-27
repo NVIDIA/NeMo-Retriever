@@ -80,13 +80,12 @@ class SQLValidationAgent(BaseAgent):
             - decision: "valid_sql" or "invalid_sql"
         """
         path_state = state.get("path_state", {})
-
         response = path_state.get("sql_generation_result")
-        dialect = state.get("dialect", "")
+        connector = state.get("connector")
         schemas_ids = get_all_schemas_ids()
         schemas = get_schemas_by_ids(schemas_ids)
 
-        validation_result = self._sql_parse_validation(schemas, response.sql_code, dialect)
+        validation_result = self._sql_parse_validation(schemas, response.sql_code, connector.dialect)
 
         if validation_result.get("error"):
             error_msg = validation_result["error"]
