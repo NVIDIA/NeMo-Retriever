@@ -56,9 +56,6 @@ class Schema:
 
             self.columns_df["table_name_lower"] = self.columns_df["table_name"].apply(lambda x: x.lower())
 
-            # Sciplay table has one column with empty name, no idea how this can happen
-            self.columns_df = self.columns_df[~self.columns_df["column_name"].isna()]
-
             self.columns_df["column_name_lower"] = self.columns_df["column_name"].apply(lambda x: x.strip('"').lower())
             if "id" not in self.columns_df.columns:
                 self.columns_df["id"] = None
