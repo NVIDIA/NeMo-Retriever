@@ -1,8 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import os
 import re
 from pathlib import Path
-
-import pytest
 
 MODEL_ID = os.environ.get("PARAKEET_CTC_MODEL_ID", "nvidia/parakeet-ctc-1.1b")
 DEFAULT_AUDIO_PATH = "/datasets/nv-ingest/audio_retrieval_data_mp3/How_to_Convert_a_Word_Document_to_PDF_Dropbox.mp3"
