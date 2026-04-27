@@ -4,7 +4,7 @@ This documentation describes two methods to run [NeMo Retriever Library](overvie
 with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) 
 (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files.
 
-- Run the NIM locally by using Docker Compose
+- Run the NIM on your infrastructure (for example [Helm / Kubernetes](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html))
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
 
 Currently, you can extract speech from the following file types:
@@ -32,13 +32,13 @@ This pipeline enables users to retrieve speech files at the segment level.
 
 
 
-## Run the NIM Locally by Using Docker Compose
+## Run the Parakeet NIM on your infrastructure
 
-Use the following procedure to run the NIM locally.
+Use the following procedure to deploy the ASR NIM and NeMo Retriever Library services on infrastructure you control.
 
 !!! important
 
-    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Edit docker-compose.yaml to set the device_id to a dedicated GPU: device_ids: ["1"] or higher.
+    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). In Kubernetes, pin the workload to a dedicated GPU using resource limits, node selectors, or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) GPU placement rules for your cluster.
 
 1. To access the required container images, log in to the NVIDIA Container Registry (nvcr.io). Use [your NGC key](api-keys.md) as the password. Run the following command in your terminal.
 
@@ -51,17 +51,9 @@ Use the following procedure to run the NIM locally.
     Password: <your-ngc-key>
     ```
 
-2. For convenience and security, store [your NGC key](api-keys.md) in an environment variable file (`.env`). This enables services to access it without needing to enter the key manually each time. Create a .env file in your working directory and add the following line. Replace `<your-ngc-key>` with your actual NGC key.
+2. For convenience and security, store [your NGC key](api-keys.md) in a secret store or environment file that your deployment reads (for example a Kubernetes `Secret` or CI variable), following your platform’s best practices.
 
-    ```ini
-    NGC_API_KEY=<your-ngc-key>
-    ```
-
-3. Start the retriever services with the `audio` profile. This profile includes the necessary components for audio processing. Use the following command. The `--profile audio` flag ensures that speech-specific services are launched. For more information, refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository.
-
-    ```shell
-    docker compose --profile retrieval --profile audio up
-    ```
+3. Deploy the NeMo Retriever Library stack with **audio-capable** inference enabled. Follow [Deployment options](deployment-options.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) to enable the Parakeet ASR NIM and wire endpoints into the ingestion runtime.
 
 4. After the services are running, you can interact with the pipeline by using Python.
 
@@ -83,7 +75,7 @@ Use the following procedure to run the NIM locally.
         )
     )
     ```
-To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either locally through Docker or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
+To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either on your infrastructure or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
 
     !!! tip
 

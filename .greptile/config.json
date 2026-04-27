@@ -102,9 +102,9 @@
       "severity": "medium"
     },
     {
-      "id": "docker-helm-parity",
-      "rule": "When modifying environment variables or configuration in docker-compose.yaml, the corresponding changes MUST be reflected in helm/values.yaml (and vice versa). These two deployment surfaces must stay in sync.",
-      "scope": ["docker-compose*.yaml", "docker-compose*.yml", "helm/**/*.yaml"],
+      "id": "helm-deployment-consistency",
+      "rule": "When modifying Helm values or templates under helm/, keep chart defaults consistent with documented deployment guidance (for example docs extraction pages and README references to the same variables).",
+      "scope": ["helm/**/*.yaml"],
       "severity": "medium"
     },
     {

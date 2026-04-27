@@ -473,7 +473,7 @@ The `run_datasets()` function uses the service manager as follows:
 
 The `DockerComposeManager`:
 
-- Builds command with multiple `--profile` flags
+- When using the legacy compose driver, passes the configured service-group list through to the compose CLI (see `docker_compose.py`)
 - Supports `--build` or `--no-build` flag
 - Uses `docker compose down -v --remove-orphans` for cleanup
 - Checks both main service (`/v1/health/ready`) and optionally Milvus health endpoints

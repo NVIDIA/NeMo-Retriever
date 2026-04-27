@@ -5,7 +5,8 @@ A configurable, dataset-agnostic testing framework for end-to-end validation of 
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose running
+- **Helm mode:** Kubernetes cluster access (`kubectl`) and Helm (`helm` or distro-specific, for example `microk8s helm`)
+- **Legacy compose mode:** Docker only (used only when `deployment_type: compose` — not recommended for new setups)
 - Python 3.12+ environment
 - Access to test datasets
 
@@ -57,7 +58,10 @@ active:
   # Infrastructure
   hostname: localhost
   readiness_timeout: 600
-  profiles: [retrieval]
+  deployment_type: helm
+  helm:
+    release: nv-ingest
+    namespace: nv-ingest
   
   # Runtime
   sparse: true
@@ -201,8 +205,10 @@ EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dat
 
 #### Infrastructure Options
 - `hostname` (string): Service hostname
-- `readiness_timeout` (integer): Docker startup timeout in seconds
-- `profiles` (list): Docker compose profiles
+- `readiness_timeout` (integer): Startup timeout in seconds (managed mode)
+- `deployment_type` (string): `helm` (recommended) or `compose` (legacy harness driver)
+- `profiles` (list): **Legacy compose only** — service groups for the compose driver when `deployment_type: compose`
+- `helm` (mapping): Helm settings when `deployment_type: helm` (see `test_configs.yaml`)
 
 #### Runtime Options
 - `sparse` (boolean): Use sparse embeddings
@@ -680,33 +686,13 @@ EXTRACT_TABLES=false uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 
 ## Deployment Types
 
-The harness supports two deployment orchestrators for managing nv-ingest services:
+The harness can manage dependencies with **Helm** (recommended) or the **legacy compose driver** (not recommended for new setups).
 
-### Docker Compose (Default)
+### Helm (Kubernetes) — recommended
 
-Docker Compose is the default deployment type and is ideal for local development and testing:
-
-```bash
-# Default - uses Docker Compose
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
-
-# Explicitly specify Docker Compose
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=compose
-```
-
-**Features:**
-- Local container orchestration
-- Fast startup and rebuild
-- GPU-specific configuration via `--sku` option (A10G, L40S, A100-40GB)
-- Profile-based service selection
-- Docker volume management
-
-### Helm (Kubernetes)
-
-Helm deployment is for Kubernetes-based testing (MicroK8s, K3s, cloud K8s):
+Helm deployment targets MicroK8s, K3s, cloud Kubernetes, and so on:
 
 ```bash
-# Use Helm deployment
 uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=helm
 ```
 
@@ -717,32 +703,35 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-t
 - Pod log collection with previous logs on restart
 - Namespace isolation
 
-**Configuration:**
-Set deployment type in `test_configs.yaml` or use `--deployment-type` CLI flag:
+**Configuration (`test_configs.yaml` or `--deployment-type`):**
 
 ```yaml
 active:
-  deployment_type: compose  # or "helm"
-  
-  # Docker Compose settings
-  profiles: [retrieval, reranker]
-  
-  # Helm settings (only used when deployment_type: helm)
-  helm_bin: helm  # or "microk8s helm", "k3s helm"
-  helm_chart: nim-nvstaging/nv-ingest
-  helm_chart_version: 26.1.0-RC7
-  helm_release: nv-ingest
-  helm_namespace: nv-ingest
-  helm_values_file: .helm-env
+  deployment_type: helm
+
+  helm:
+    bin: helm  # or "microk8s helm", "k3s helm"
+    chart: nim-nvstaging/nv-ingest
+    chart_version: 26.1.0-RC7
+    release: nv-ingest
+    namespace: nv-ingest
+    values_file: .helm-env
 ```
 
-**CLI flag overrides YAML setting:**
 ```bash
-# Override to Helm even if YAML has deployment_type: compose
+# Force Helm managed mode from the CLI
 uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=helm
 ```
 
-For detailed Helm and Docker Compose configuration, see `plans/SERVICE_MANAGER.md`.
+### Legacy: Docker Compose driver
+
+Older workflows used the compose-based orchestrator (`deployment_type: compose`). Prefer Helm for new configurations. The legacy driver remains for compatibility; see `plans/SERVICE_MANAGER.md` for details.
+
+```bash
+uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=compose
+```
+
+For detailed Helm configuration (and the legacy compose driver), see `plans/SERVICE_MANAGER.md`.
 
 ## Execution Modes
 

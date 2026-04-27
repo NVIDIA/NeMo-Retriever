@@ -253,7 +253,7 @@ nemo-retriever \
 ```
 
 - `reasoning` (boolean): Set to `true` to enable reasoning, `false` to disable it. Defaults to service default (typically disabled).
-- Ensure the VLM caption profile/service is running or pointing to the public build endpoint; otherwise the caption task will be skipped.
+- Ensure a **VLM captioning** service is deployed (or point to the public build endpoint); otherwise the caption task will be skipped.
 
 !!! tip
 

@@ -458,10 +458,6 @@ with (
 The `caption` method generates image captions by using a VLM.
 You can use this to generate descriptions of unstructured images, infographics, and other visual content extracted from documents.
 
-!!! note
-
-    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository.
-
 ### Basic Usage
 
 !!! tip
@@ -574,29 +570,20 @@ The `store` task uses [fsspec](https://filesystem-spec.readthedocs.io/) for stor
 
 When `public_base_url` is provided, the metadata returned from `ingest()` surfaces that HTTP(S) link while still recording the underlying storage URI. Leave it unset when the storage endpoint itself is already publicly reachable.
 
-### Docker Volume Mounts for Local Storage
+### Volume mounts for `file://` storage
 
-When running the NeMo Retriever Library via Docker and using `file://` storage URIs, the path must be within a mounted volume for files to persist on the host machine.
+When the NeMo Retriever Library runs **inside containers** and you use `file://` storage URIs, the path must be backed by a **volume** (host bind mount, PVC, or similar) so files persist outside the container filesystem.
 
-By default, the `docker-compose.yaml` mounts a single volume:
+Typical pattern: mount a host or cluster directory at a stable path (for example `/workspace/data`) and set `storage_uri` under that prefix.
 
-```yaml
-volumes:
-  - ${DATASET_ROOT:-./data}:/workspace/data
-```
+| Path type | Works with `file://`? |
+|-----------|----------------------|
+| Path on a configured volume mount | ✅ Yes — survives pod restart when the volume is retained |
+| Ephemeral paths (for example `/tmp` only) | ❌ No — files can be lost on restart |
 
-This means:
-
-| Container Path | Host Path | Works with `file://`? |
-|----------------|-----------|----------------------|
-| `/workspace/data/...` | `${DATASET_ROOT}/...` (default: `./data/...`) | ✅ Yes |
-| `/tmp/...` | (container only) | ❌ No - files lost on restart |
-| `/raid/custom/path` | (container only) | ❌ No - path not mounted |
-
-**Example: Save to host filesystem**
+**Example: Save under a mounted data directory**
 
 ```python
-# Files save to ./data/artifacts/images on the host
 ingestor = ingestor.store(
     structured=True,
     images=True,
@@ -604,23 +591,7 @@ ingestor = ingestor.store(
 )
 ```
 
-**Example: Use a custom host directory**
-
-```bash
-# Set DATASET_ROOT before starting services
-export DATASET_ROOT=/raid/my-project/nemo-retriever-data
-docker compose up -d
-```
-
-```python
-# Now /workspace/data maps to /raid/my-project/nemo-retriever-data
-ingestor = ingestor.store(
-    structured=True,
-    images=True,
-    storage_uri="file:///workspace/data/extracted-images"
-)
-# Files save to /raid/my-project/nemo-retriever-data/extracted-images on host
-```
+Configure the mount in **Helm** (`values.yaml` volumes/volumeMounts) or your container runtime before starting the ingestion runtime. After changing `IMAGE_STORAGE_URI` or related env vars, **restart** the workload so the container picks up the new values.
 
 For more information on environment variables, refer to [Environment Variables](environment-config.md).
 

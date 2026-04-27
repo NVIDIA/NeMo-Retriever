@@ -554,39 +554,14 @@ This means defaults are deterministic but easy to override when you need fixed b
 
 ### Running multiple NIM service instances on multi-GPU hosts
 
-### Start two stacks on separate GPUs
+### Run separate NIM instances on multiple GPUs
 
-```bash
-# GPU 0 stack
-GPU_ID=0 \
-PAGE_ELEMENTS_HTTP_PORT=8000 PAGE_ELEMENTS_GRPC_PORT=8001 PAGE_ELEMENTS_METRICS_PORT=8002 \
-OCR_HTTP_PORT=8019 OCR_GRPC_PORT=8010 OCR_METRICS_PORT=8011 \
-docker compose -p retriever-gpu0 up -d page-elements ocr
+For **two stacks** on one host (different GPUs and non-colliding ports), use either:
 
-# GPU 1 stack
-GPU_ID=1 \
-PAGE_ELEMENTS_HTTP_PORT=8100 PAGE_ELEMENTS_GRPC_PORT=8101 PAGE_ELEMENTS_METRICS_PORT=8102 \
-OCR_HTTP_PORT=8119 OCR_GRPC_PORT=8110 OCR_METRICS_PORT=8111 \
-docker compose -p retriever-gpu1 up -d page-elements ocr
-```
+- **Two Helm releases** (or two namespaces) with per-release `values.yaml` that set GPU selectors, `GPU_ID`-style node affinity, and distinct **hostPorts** / **Services** for page-elements and OCR, or  
+- **Multiple NIM Operator** instances bound to different GPUs, again with unique service names and ports.
 
-The `-p` project names create isolated stacks, `GPU_ID` pins each stack to a specific physical GPU, and distinct host ports avoid collisions between the services.  
-
-### Check and tear down stacks
-
-To verify that both stacks are running use the following command.
-
-```bash
-docker compose -p retriever-gpu0 ps
-docker compose -p retriever-gpu1 ps
-```
-
-To stop and remove both stacks use the following command.
-
-```bash
-docker compose -p retriever-gpu0 down
-docker compose -p retriever-gpu1 down
-```
+Pin each workload to a physical GPU with your platform’s GPU scheduling rules, and assign non-overlapping HTTP/gRPC/metrics ports so clients can address each stack independently. See the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) documentation for concrete manifests.
 
 ## ViDoRe Harness Sweep
 

@@ -1,7 +1,7 @@
 # Quick Start — `retriever` CLI
 
 This page is the `retriever`-CLI counterpart to the CLI section of the former
-Docker Compose quickstart (`NeMo-Retriever/docs/docs/extraction/quickstart-guide.md`, removed from the published site; see [compare deployment options](https://docs.nvidia.com/nemo/retriever/extraction/deployment-options/) and the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)).
+The published quickstart for a multi-container local stack was retired (`NeMo-Retriever/docs/docs/extraction/quickstart-guide.md`). See [Deployment options](https://docs.nvidia.com/nemo/retriever/extraction/deployment-options/) and the [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) for current paths.
 
 ## Replacement for the quickstart CLI example
 

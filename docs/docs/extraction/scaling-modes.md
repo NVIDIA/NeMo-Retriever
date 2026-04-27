@@ -1,6 +1,6 @@
 # Resource Scaling Modes for NeMo Retriever Library
 
-This guide covers how resource scaling modes work across stages in [NeMo Retriever Library](overview.md), and how to configure it with docker-compose.
+This guide covers how resource scaling modes work across stages in [NeMo Retriever Library](overview.md), and how to configure them for deployments that expose the ingestion runtime API (for example via the [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)).
 
 - **Static scaling**: Each pipeline stage runs a fixed number of replicas based on heuristics (memory-aware). Good for consistent latency; higher steady-state memory usage.
 - **Dynamic scaling**: Only the source stage is fixed; other stages scale up/down based on observed resource pressure. Better memory efficiency; may briefly pause to spin replicas back up after idle periods.
@@ -10,9 +10,9 @@ This guide covers how resource scaling modes work across stages in [NeMo Retriev
 - **Choose Static** when latency consistency and warm pipelines matter more than memory minimization.
 - **Choose Dynamic** when memory headroom is constrained or workloads are bursty/idle for long periods.
 
-## Configure (docker-compose)
+## Configure (Kubernetes / Helm)
 
-Edit the **ingestion runtime** service’s `environment` in `docker-compose.yaml` (the service that exposes the NeMo Retriever Library API; in the reference compose file this is the `*-ms-runtime` service for ingestion).
+Set these variables on the **ingestion runtime** workload—the pod or deployment that exposes the NeMo Retriever Library API. In Helm, use `extraEnv`, `env`, or the chart’s documented values for the ingestion runtime service.
 
 ### Select mode
 
@@ -25,24 +25,34 @@ Edit the **ingestion runtime** service’s `environment` in `docker-compose.yaml
   - Optionally set a static memory threshold:
     - `INGEST_STATIC_MEMORY_THRESHOLD=0.85` (fraction of total memory reserved for static replicas)
 
-Example (Static):
+Example (Static) — illustrative `env` on a Deployment:
 
 ```yaml
-services:
-  ingestion-ms-runtime:
-    environment:
-      - INGEST_DISABLE_DYNAMIC_SCALING=true
-      - INGEST_STATIC_MEMORY_THRESHOLD=0.85
+spec:
+  template:
+    spec:
+      containers:
+        - name: ingestion-runtime
+          env:
+            - name: INGEST_DISABLE_DYNAMIC_SCALING
+              value: "true"
+            - name: INGEST_STATIC_MEMORY_THRESHOLD
+              value: "0.85"
 ```
 
 Example (Dynamic):
 
 ```yaml
-services:
-  ingestion-ms-runtime:
-    environment:
-      - INGEST_DISABLE_DYNAMIC_SCALING=false
-      - INGEST_DYNAMIC_MEMORY_THRESHOLD=0.80
+spec:
+  template:
+    spec:
+      containers:
+        - name: ingestion-runtime
+          env:
+            - name: INGEST_DISABLE_DYNAMIC_SCALING
+              value: "false"
+            - name: INGEST_DYNAMIC_MEMORY_THRESHOLD
+              value: "0.80"
 ```
 
 ### Pipeline config mapping
@@ -81,14 +91,15 @@ services:
 - **Queues and payloads**
   - Base64‑encoded, fragmented documents in Redis consume memory proportional to concurrent jobs, clients, and drain speed.
 
-## Where to look in docker-compose
+## Where to configure
 
-Open `docker-compose.yaml` and locate:
+In your Helm `values.yaml` or Kubernetes manifests for the ingestion runtime, set:
 
-- `services > <ingestion-runtime> > environment` (use the runtime service name from your compose file):
-  - `INGEST_DISABLE_DYNAMIC_SCALING`
-  - `INGEST_DYNAMIC_MEMORY_THRESHOLD`
-  - `INGEST_STATIC_MEMORY_THRESHOLD`
+- `INGEST_DISABLE_DYNAMIC_SCALING`
+- `INGEST_DYNAMIC_MEMORY_THRESHOLD`
+- `INGEST_STATIC_MEMORY_THRESHOLD`
+
+See [Deployment options](deployment-options.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) for the exact keys your chart version uses.
 
 
 

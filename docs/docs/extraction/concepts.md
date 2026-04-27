@@ -21,8 +21,8 @@ Optionally, the library can compute **embeddings** for extracted content and sto
 ## Deployment modes
 
 - **Library mode** — Run without the full container stack where appropriate ([quickstart](quickstart-library-mode.md)).
-- **Docker Compose (self-hosted)** — See the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) and [deployment options](deployment-options.md) for running the full microservices pipeline locally.
-- **Helm / Kubernetes** — [Helm-based deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) for cluster operations.
+- **Self-hosted Kubernetes (Helm)** — [Helm-based deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) for the full microservices pipeline on a cluster.
+- **Hosted NIMs** — Call NVIDIA-hosted inference APIs (see [Deployment options](deployment-options.md)).
 - **Notebooks** — [Jupyter examples](notebooks.md) for experimentation and RAG demos.
 
 For a concise comparison, refer to [Deployment options](deployment-options.md).

@@ -231,29 +231,20 @@ For advanced use cases, you can load a custom pipeline configuration from a YAML
 
 An example configuration (`config/custom_summarization_pipeline.yaml`) demonstrates a pipeline with a dedicated high-concurrency UDF stage (8 parallel workers) for LLM summarization.
 
-**To enable custom pipeline loading:**
+**To enable custom pipeline loading** (Kubernetes / Helm):
 
-1. **Uncomment the volume mount** in `docker-compose.yaml`:
+1. **Mount your config directory** into the ingestion runtime pod (for example an extra `volume` + `volumeMount` in `values.yaml` that maps `./config` on the host or a `ConfigMap` to `/workspace/config` in the container).
+
+2. **Set `INGEST_CONFIG_PATH`** on that workload to the path **inside** the container, for example:
 ```yaml
-nv-ingest-ms-runtime:
-  volumes:
-    - ${DATASET_ROOT:-./data}:/workspace/data
-    - ./config:/workspace/config  # Uncomment this line
+env:
+  - name: INGEST_CONFIG_PATH
+    value: "/workspace/config/custom_summarization_pipeline.yaml"
 ```
 
-2. **Uncomment and set INGEST_CONFIG_PATH** in `docker-compose.yaml`:
-```yaml
-  environment:
-    # Uncomment and specify your custom pipeline YAML file
-    - INGEST_CONFIG_PATH=/workspace/config/custom_summarization_pipeline.yaml
-```
+3. **Apply the chart / restart the deployment** so the runtime picks up the new mount and environment variables.
 
-3. **Rebuild and restart the nv-ingest-ms-runtime container:**
-```bash
-docker-compose up -d --build nv-ingest-ms-runtime
-```
-
-> **Important**: `INGEST_CONFIG_PATH` must point to a **YAML configuration file** inside the container (after volume mount). The file path is relative to the container's filesystem, not the host.
+> **Important**: `INGEST_CONFIG_PATH` must point to a **YAML configuration file** inside the container (after the volume is mounted). The path is relative to the container filesystem, not the host.
 
 **What's provided as an example:**
 - Sample pipeline YAML: `config/custom_summarization_pipeline.yaml`
@@ -264,8 +255,8 @@ docker-compose up -d --build nv-ingest-ms-runtime
 **To create your own custom pipeline:**
 1. Copy the example: `cp config/custom_summarization_pipeline.yaml config/my_pipeline.yaml`
 2. Edit `config/my_pipeline.yaml` to add/modify stages for your needs
-3. Update `INGEST_CONFIG_PATH` in docker-compose: `/workspace/config/my_pipeline.yaml`
-4. Rebuild and restart: `docker-compose up -d --build nv-ingest-ms-runtime`
+3. Update `INGEST_CONFIG_PATH` in your Helm values or manifest: `/workspace/config/my_pipeline.yaml`
+4. Redeploy or restart the ingestion runtime workload so the change takes effect
 
 **Pipeline customization options:**
 - Add custom stages (extractors, transformers, storage, etc.)
