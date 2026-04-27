@@ -14,12 +14,7 @@ active:
   # Infrastructure
   hostname: localhost
   readiness_timeout: 600
-
-  # Docker Compose configuration
-  compose:
-    profiles:
-      - retrieval
-      - reranker  # Required for recall evaluation
+  deployment_type: helm  # compose (legacy harness) or helm
 
   # Helm configuration
   helm:
@@ -73,7 +68,7 @@ active:
   # table_output_format: markdown
 
   # Optional pipeline steps
-  enable_caption: false  # Enable image captioning (ensure vlm profile is enabled)
+  enable_caption: false  # Enable image captioning (requires VLM / caption NIM in your Helm release)
   caption_prompt: null  # Override caption user prompt (null = service default)
   caption_reasoning: null  # Enable reasoning: true = enable, false = disable, null = service default (default is false)
 
@@ -91,8 +86,7 @@ active:
   llm_summarization_model: nvdev/nvidia/llama-3.1-nemotron-70b-instruct  # LLM for summarization - this does NOT propagate to the UDF, but useful for artifact storage.
 
 # Recall configuration (only used when running recall or e2e_recall tests)
-# Remember to start the reranker service before running recall tests:
-# docker compose --profile reranker up -d
+# Before recall tests, ensure the reranker NIM is enabled in your Helm values (see nimOperator.*.enabled keys).
 recall:
   recall_dataset: null
   reranker_mode: both  # Options: "none", "with", "both"
