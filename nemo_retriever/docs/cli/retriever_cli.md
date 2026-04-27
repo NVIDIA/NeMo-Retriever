@@ -189,7 +189,7 @@ retriever pipeline run ./data/test.pdf \
 - A custom `prompt` is not exposed either; the caption stage uses its default
   prompt. For prompt or reasoning control, drop to the Python API
   (`nemo_retriever.ingestor.Ingestor.caption(...)`).
-- If you do not set a caption endpoint / local VLM service, the caption stage
+- If you do not set a caption endpoint / local GPU profile, the caption stage
   is skipped at runtime — matching the old behavior.
 
 ### Example: Process a directory of documents

@@ -4,21 +4,16 @@
 #
 # Usage:
 #   1. Copy this file and customize as needed
-#   2. Mount it into the ingestion runtime pod (Helm extraVolume / ConfigMap) at a stable path
-#   3. Set INGEST_CONFIG_PATH on that workload to the in-container path (for example /config/custom_pipeline.yaml)
+#   2. Mount it into your Docker container
+#   3. Set INGEST_CONFIG_PATH environment variable in docker compose to point to this file
 #
-# Example (Helm values fragment — names depend on your chart version):
-#   extraVolumeMounts:
-#     - name: ingest-config
-#       mountPath: /config
-#       readOnly: true
-#   extraVolumes:
-#     - name: ingest-config
-#       configMap:
-#         name: custom-summarization-pipeline
-#   env:
-#     - name: INGEST_CONFIG_PATH
-#       value: "/config/custom_pipeline.yaml"
+# Example docker-compose.yaml:
+#   nv-ingest-ms-runtime:
+#     volumes:
+#       - ./config/custom_summarization_pipeline.yaml:/config/custom_pipeline.yaml:ro
+#     environment:
+#       - INGEST_CONFIG_PATH=/config/custom_pipeline.yaml
+#       - NGC_API_KEY=your-nvidia-api-key
 
 name: "Custom Summarization Pipeline"
 description: "Pipeline with dedicated udf_parallel_helper stage for LLM summarization"
