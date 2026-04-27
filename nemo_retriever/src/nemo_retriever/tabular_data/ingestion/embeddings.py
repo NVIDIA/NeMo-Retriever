@@ -22,7 +22,7 @@ def query_neo4j_tables_for_embedding(database_name: str) -> List[dict]:
                    THEN ", description: " + c.description ELSE "" END +
                  "}}") as columns
                RETURN collect({{
-                 text: "db_name: " + d.name + ", schema_name: " + s.name +
+                 text: "schema_name: " + s.name +
                    ", table_name: " + t.name +
                    CASE WHEN t.description IS NOT NULL AND trim(t.description) <> ''
                      THEN ", table_description: " + t.description ELSE "" END +
@@ -66,6 +66,7 @@ def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
                     "label": label,
                     "name": name,
                     "source_path": path,
+                    "database_name": database_name,
                 },
             }
         )
