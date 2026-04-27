@@ -206,8 +206,6 @@ markdown_extensions:
 # MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
 exclude_docs: |
   index.md
-  extraction/nv-ingest_cli.md
-  extraction/nv-ingest-python-api.md
   extraction/helm.md
   extraction/quickstart-guide.md
   extraction/choose-your-path.md
