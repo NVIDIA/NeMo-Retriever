@@ -78,7 +78,7 @@ def query_neo4j_columns_for_embedding() -> List[dict]:
                    column_desc,
             name: c.name,
             label: labels(c)[0],
-            id: c.id,
+            id: c.id
         }}) AS docs
     """
     result = neo4j_conn.query_read(query, parameters={})
