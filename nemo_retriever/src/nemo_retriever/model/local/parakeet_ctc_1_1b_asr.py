@@ -31,9 +31,14 @@ logger = logging.getLogger(__name__)
 
 MODEL_ID = "nvidia/parakeet-ctc-1.1b"
 SAMPLING_RATE = 16000
-# subsampling_factor (8) * mel hop_length (160) / sampling_rate (16000)
+# ParakeetEncoderConfig.subsampling_factor for parakeet-ctc-1.1b. Hardcoding it
+# avoids calling the model's private ``_get_subsampling_output_length`` which
+# can disappear across transformers versions and would silently yield empty
+# transcripts (the broad ``except Exception`` upstream swallows the AttributeError).
+SUBSAMPLING_FACTOR = 8
+# subsampling_factor * mel hop_length (160) / sampling_rate (16000) = 0.08 s
 FRAME_STRIDE_SECS = 0.08
-SAMPLES_PER_FRAME = 160 * 8
+SAMPLES_PER_FRAME = 160 * SUBSAMPLING_FACTOR
 DEFAULT_SEGMENT_GAP_SECS = 0.5
 DEFAULT_MAX_SEGMENT_SECS = 12.0
 # Stay well under the encoder's max_position_embeddings = 5000 ceiling (≈ 400 s).
@@ -344,7 +349,7 @@ class ParakeetCTC1B1ASR:
 
         attn_mask = inputs.get("attention_mask")
         if attn_mask is not None:
-            output_lengths = self._model._get_subsampling_output_length(attn_mask.sum(dim=-1))
+            output_lengths = attn_mask.sum(dim=-1) // SUBSAMPLING_FACTOR
         else:
             output_lengths = torch.full((logits.shape[0],), logits.shape[1], dtype=torch.long, device=logits.device)
 
