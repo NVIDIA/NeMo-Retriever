@@ -52,6 +52,12 @@ class LlamaNemotronEmbedVL1BV2Embedder:
     _device: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        pass
+
+    def _ensure_loaded(self) -> None:
+        if self._model is not None:
+            return
+
         from transformers import AutoModel
 
         from nemo_retriever.model import VL_EMBED_MODEL
@@ -100,6 +106,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
 
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document texts. Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:
             return torch.empty((0, 2048), dtype=torch.float32)
@@ -114,6 +121,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         texts_list = [str(t) for t in texts]
         if not texts_list:
             return torch.empty((0, 2048), dtype=torch.float32)
@@ -127,6 +135,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
 
     def embed_images(self, images_b64: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed images (base64-encoded). Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         image_dicts = [{"base64": b64} for b64 in images_b64 if b64]
         if not image_dicts:
             return torch.empty((0, 2048), dtype=torch.float32)
@@ -143,6 +152,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         self, texts: Sequence[str], images_b64: Sequence[str], *, batch_size: int = 64
     ) -> torch.Tensor:
         """Embed paired text+image inputs. Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         paired_texts: list[str] = []
         paired_images: list[dict[str, str]] = []
         for t, b64 in zip(texts, images_b64):
