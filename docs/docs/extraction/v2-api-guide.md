@@ -105,13 +105,19 @@ ingestor = Ingestor(
 
 ### Option 2: Server-Side Default
 
-Set a cluster-wide default on the **ingestion runtime** workload—for example in Helm `values.yaml` or a Kubernetes `ConfigMap` referenced by the deployment:
+Set a cluster-wide default via Docker Compose `.env`:
+
+```bash
+# .env file
+PDF_SPLIT_PAGE_COUNT=64
+```
 
 ```yaml
-# Example: extra environment on the ingestion runtime container
-env:
-  - name: PDF_SPLIT_PAGE_COUNT
-    value: "64"
+# docker-compose.yaml (already configured)
+services:
+  ingestion-ms-runtime:
+    environment:
+      - PDF_SPLIT_PAGE_COUNT=${PDF_SPLIT_PAGE_COUNT:-32}
 ```
 
 **Pros:**

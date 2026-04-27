@@ -1,4 +1,4 @@
-# Python API Reference
+# Use the NeMo Retriever Library Python API
 
 The [NeMo Retriever Library](overview.md) Python API provides a simple and flexible interface for processing and extracting information from various document types, including PDFs.
 
@@ -9,38 +9,25 @@ The [NeMo Retriever Library](overview.md) Python API provides a simple and flexi
 
 ## Summary of Key Methods
 
-The main class in the NeMo Retriever Library Python API is `Ingestor`.
-The `Ingestor` class provides an interface for building, managing, and running data ingestion jobs, enabling for chainable task additions and job state tracking.
+The main class in the Python API is `Ingestor`. 
+The `Ingestor` class provides an interface for building, managing, and running data ingestion jobs, enabling for chainable task additions and job state tracking. 
 
 ### Ingestor Methods
 
 The following table describes methods of the `Ingestor` class.
 
-| Method             | Description                                                                 |
-|--------------------|-----------------------------------------------------------------------------|
-| `all_tasks`        | Add a default set of tasks (extract, dedup, filter, split, embed, store_embed). |
-| `buffers`          | Add in-memory BytesIO buffers for processing (name, BytesIO pairs).          |
-| `caption`          | Extract captions from images within the document.                           |
-| `cancelled_jobs`   | Return the count of jobs in the CANCELLED state.                             |
-| `completed_jobs`   | Return the count of jobs in the COMPLETED state.                             |
-| `dedup`            | Add a deduplication task (e.g. bbox dedup for structured + image extraction). |
-| `embed`            | Generate embeddings from extracted content.                                  |
-| `extract`          | Add an extraction task (text, tables, charts, infographics).                 |
-| `failed_jobs`      | Return the count of jobs in the FAILED state.                                |
-| `files`            | Add document paths for processing.                                           |
-| `filter`           | Add a filter task (e.g. by size/aspect ratio).                              |
-| `get_status`       | Return a per-document status dict (for use with async ingestion).           |
-| `ingest`           | Submit jobs and retrieve results synchronously.                              |
-| `ingest_async`     | Submit jobs asynchronously; returns a Future that completes when done.       |
-| `load`             | Ensure files are locally accessible (downloads if needed).                     |
-| `pdf_split_config` | Configure V2 PDF splitting (e.g. pages per chunk). Refer to [V2 API Guide](v2-api-guide.md). |
-| `remaining_jobs`   | Return the count of jobs not yet in a terminal state.                       |
-| `save_to_disk`     | Save ingestion results to disk instead of memory.                             |
-| `store`            | Persist extracted images/structured renderings to an fsspec-compatible backend. |
-| `store_embed`      | Add a store-embed task.                                                      |
-| `split`            | Split documents into smaller sections. Refer to [Split Documents](chunking.md).  |
-| `udf`              | Add a user-defined function (UDF) task.                                      |
-| `vdb_upload`       | Push extraction results to Milvus vector database. Refer to [Data Upload](vdbs.md). |
+| Method         | Description                       |
+|----------------|-----------------------------------|
+| `caption`      | Extract captions from images within the document. |
+| `embed`        | Generate embeddings from extracted content. |
+| `extract`      | Add an extraction task (text, tables, charts, infographics). |
+| `files`        | Add document paths for processing. |
+| `ingest`       | Submit jobs and retrieve results synchronously. |
+| `load`         | Ensure files are locally accessible (downloads if needed). |
+| `save_to_disk` | Save ingestion results to disk instead of memory. |
+| `store`        | Persist extracted images/structured renderings to an fsspec-compatible backend. |
+| `split`        | Split documents into smaller sections for processing. For more information, refer to [Split Documents](chunking.md). |
+| `vdb_upload`   | Push extraction results to the vector database (LanceDB by default, or Milvus). For more information, refer to [Data Upload](vdbs.md). |
 
 
 ### Extract Method Options
@@ -68,15 +55,13 @@ The caption task can call a vision-language model (VLM) with the following optio
 
 - `prompt` (string): User prompt for captioning. Defaults to `"Caption the content of this image:"`.
 - `reasoning` (boolean): Enable reasoning mode. `True` enables reasoning, `False` disables it. Defaults to `None` (service default, typically disabled).
-- `context_text_max_chars` (int, optional): Maximum number of characters of page text to include as context for the VLM. Omit or `None` for service default.
-- `temperature` (float, optional): Sampling temperature for the VLM (e.g. 0.0–1.0). Omit or `None` for service default.
 
 !!! note
-    The `reasoning` parameter maps to the VLM's system prompt: `reasoning=True` sets the system prompt to `"/think"`, and `reasoning=False` sets it to `"/no_think"` according to the [Nemotron Nano 12B v2 VL model card] (https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard).
+    The `reasoning` parameter maps to the VLM's system prompt: `reasoning=True` sets the system prompt to `"/think"`, and `reasoning=False` sets it to `"/no_think"` per the [Nemotron Nano 12B v2 VL model card] (https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard).
 
 Example:
 ```python
-from nemo_retriever.client.interface import Ingestor
+from nv_ingest_client.client.interface import Ingestor
 
 ingestor = (
     Ingestor()
@@ -94,33 +79,8 @@ ingestor = (
 
 ## Track Job Progress
 
-For large document batches, you can enable a progress bar by setting `show_progress` to true.
+For large document batches, you can enable a progress bar by setting `show_progress` to true. 
 Use the following code.
-
-### ingest() parameters and return values
-
-`ingest()` supports the following parameters:
-
-| Parameter               | Type    | Default | Description |
-|-------------------------|---------|---------|-------------|
-| `show_progress`         | bool    | `False` | Show a progress bar. |
-| `return_failures`        | bool    | `False` | If `True`, return a tuple `(results, failures)`. |
-| `return_traces`          | bool    | `False` | If `True`, return trace metrics (timing per stage) with results. |
-| `save_to_disk`           | bool    | `False` | If `True`, save results to disk and return `LazyLoadedList` proxies (uses `save_to_disk()` config if already set). |
-| `timeout`                | int     | `100`   | Timeout in seconds for job processing. |
-| `max_job_retries`        | int     | `None`  | Maximum retries per job. |
-| `verbose`                | bool    | `False` | Enable verbose logging. |
-| `enable_telemetry`       | bool    | `None`  | Enable or disable telemetry collection. |
-| `show_telemetry`         | bool    | `None`  | Print telemetry summary after ingest (env: `NV_INGEST_CLIENT_SHOW_TELEMETRY`). |
-| `include_parent_trace_ids` | bool  | `False` | If `True`, also return parent job trace IDs (V2 API). |
-
-The return value depends on the following flags:
-
-- **Default:** `list` of results.
-- **`return_failures=True`:** `(results, failures)`.
-- **`return_traces=True`:** `(results, traces)`.
-- **`return_failures=True` and `return_traces=True`:** `(results, failures, traces)`.
-- With `include_parent_trace_ids=True`, an additional element (parent trace IDs) is appended to the tuple when applicable.
 
 ```python
 # Return only successes
@@ -133,7 +93,7 @@ print(len(results), "successful documents")
 
 ## Capture Job Failures
 
-You can capture job failures by setting `return_failures` to true.
+You can capture job failures by setting `return_failures` to true. 
 Use the following code.
 
 ```python
@@ -146,22 +106,14 @@ if failures:
     print("Failures:", failures[:1])
 ```
 
-To also obtain trace metrics (timing per stage), use `return_traces=True`:
-
-```python
-# Return results and traces
-results, traces = ingestor.ingest(show_progress=True, return_traces=True)
-# Or with failures: results, failures, traces = ingestor.ingest(return_failures=True, return_traces=True)
-```
-
-When you use the `vdb_upload` method, uploads are performed after ingestion completes.
+When you use the `vdb_upload` method, uploads are performed after ingestion completes. 
 The behavior of the upload depends on the following values of `return_failures`:
 
 - **False** – If any job fails, the `ingest` method raises a runtime error and does not upload any data (all-or-nothing data upload). This is the default setting.
 - **True** – If any jobs succeed, the results from those jobs are uploaded, and no errors are raised (partial data upload). The `ingest` method returns a failures object that contains the details for any jobs that failed. You can inspect the failures object and selectively retry or remediate the failed jobs.
 
 
-The following example uploads data to Milvus and returns any failures.
+The following example uploads data to the vector database (LanceDB by default; use `milvus_uri` for Milvus) and returns any failures.
 
 ```python
 ingestor = (
@@ -181,33 +133,6 @@ if failures:
     print("Failures:", failures[:1])
 ```
 
-## Async ingestion and job status
-
-Use `ingest_async()` to submit jobs without blocking. It returns a `concurrent.futures.Future` that completes when all jobs (and any VDB upload) have finished. The future's result has the same shape as `ingest()` depending on `return_failures` and `return_traces`.
-
-```python
-future = ingestor.ingest_async(return_failures=True)
-results, failures = future.result()
-```
-
-After calling `ingest_async()`, you can poll progress with:
-
-- **`get_status()`** — Returns a dict mapping document identifier to status string: `"pending"`, `"submitted"`, `"processing"`, `"completed"`, `"failed"`, `"cancelled"`, or `"unknown"`.
-- **`completed_jobs()`** — Count of jobs in the COMPLETED state.
-- **`failed_jobs()`** — Count of jobs in the FAILED state.
-- **`cancelled_jobs()`** — Count of jobs in the CANCELLED state.
-- **`remaining_jobs()`** — Count of jobs not yet in a terminal state.
-
-Example:
-
-```python
-future = ingestor.ingest_async()
-while not future.done():
-    status = ingestor.get_status()
-    print(ingestor.completed_jobs(), "completed,", ingestor.remaining_jobs(), "remaining")
-    time.sleep(2)
-results = future.result()
-```
 
 
 ## Quick Start: Extracting PDFs
@@ -220,7 +145,7 @@ The `extract` method enables different types of data to be extracted.
 Use the following code to extract a single PDF file.
 
 ```python
-from nemo_retriever.client.interface import Ingestor
+from nv_ingest_client.client.interface import Ingestor
 
 # Initialize Ingestor with a local PDF file
 ingestor = Ingestor().files("path/to/document.pdf")
@@ -245,18 +170,9 @@ for doc in result:
     print(doc)
 ```
 
-### Add in-memory buffers
-
-Use `buffers()` to process in-memory data (e.g. `BytesIO` objects) instead of file paths. Pass a single `(name, BytesIO)` tuple or a list of such tuples.
-
-```python
-from io import BytesIO
-ingestor = Ingestor().buffers(("doc1.pdf", pdf_bytes)).extract().ingest()
-```
-
 ### Extract Specific Elements from PDFs
 
-By default, the `extract` method extracts text, tables, charts, and images. Infographic extraction is **not** enabled by default (`extract_infographics=False`); set `extract_infographics=True` to include it.
+By default, the `extract` method extracts all supported content types. 
 You can customize the extraction behavior by using the following code.
 
 ```python
@@ -301,7 +217,7 @@ ingestor = ingestor.extract(document_type="pdf")
 
 ### Extract Office Documents (DOCX and PPTX)
 
-The NeMo Retriever Library offers the following two extraction methods for Microsoft Office documents (.docx and .pptx), to balance performance and layout fidelity:
+NeMo Retriever Library offers the following two extraction methods for Microsoft Office documents (.docx and .pptx), to balance performance and layout fidelity:
 
 - Native extraction
 - Render as PDF
@@ -337,8 +253,8 @@ ingestor = ingestor.extract(
 
 ### PDF Extraction Strategies
 
-The NeMo Retriever Library offers specialized strategies for PDF processing to handle various document qualities.
-You can select the strategy by using the following `extract_method` parameter values.
+NeMo Retriever Library offers specialized strategies for PDF processing to handle various document qualities.
+You can select the strategy by using the following `extract_method` parameter values. 
 For the full list of `extract_method` options, refer to [Extract Method Options](#extract-method-options).
 
 - **ocr** – Bypasses native text extraction and processes every page using the full OCR pipeline. Use this for fully scanned documents or when native text is corrupt.
@@ -360,26 +276,18 @@ results = ingestor.ingest()
 
 ## Work with Large Datasets: Save to Disk
 
-By default, the NeMo Retriever Library stores the results from every document in system memory (RAM).
-When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error.
+By default, NeMo Retriever Library stores the results from every document in system memory (RAM). 
+When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error. 
 The `save_to_disk` method configures the extraction pipeline to write the output for each document to a separate JSONL file on disk.
 
 
 ### Basic Usage: Save to a Directory
 
-To save results to disk, chain the `save_to_disk` method to your ingestion task.
-You can pass an optional `compression` argument (default `"gzip"`) to compress JSONL files; set `compression=None` to disable compression.
-
-| Parameter           | Type  | Default | Description |
-|---------------------|-------|---------|-------------|
-| `output_directory`  | str   | `None`  | Directory for result files. Defaults to env `NV_INGEST_CLIENT_SAVE_TO_DISK_OUTPUT_DIRECTORY` or a temporary directory. |
-| `cleanup`           | bool  | `True`  | If `True`, remove the output directory when exiting the context manager. |
-| `compression`       | str   | `"gzip"`| Compression for JSONL files. Use `"gzip"` or `None` to disable. Compressed files use a `.gz` suffix. |
-
-By using `save_to_disk` the `ingest` method returns a list of `LazyLoadedList` objects,
+To save results to disk, simply chain the `save_to_disk` method to your ingestion task.
+By using `save_to_disk` the `ingest` method returns a list of `LazyLoadedList` objects, 
 which are memory-efficient proxies that read from the result files on disk.
 
-In the following example, the results are saved to a directory named `my_ingest_results`.
+In the following example, the results are saved to a directory named `my_ingest_results`. 
 You are responsible for managing the created files.
 
 ```python
@@ -398,8 +306,8 @@ print("Ingestion results saved in ./my_ingest_results")
 
 ### Managing Disk Space with Automatic Cleanup
 
-When you use `save_to_disk`, the NeMo Retriever Library creates intermediate files.
-For workflows where these files are temporary, the NeMo Retriever Library provides two automatic cleanup mechanisms.
+When you use `save_to_disk`, NeMo Retriever Library creates intermediate files. 
+For workflows where these files are temporary, NeMo Retriever Library provides two automatic cleanup mechanisms.
 
 - **Directory Cleanup with Context Manager** — While not required for general use, the Ingestor can be used as a context manager (`with` statement). This enables the automatic cleanup of the entire output directory when `save_to_disk(cleanup=True)` is set (which is the default).
 
@@ -410,12 +318,12 @@ You can also configure the output directory by using the `NV_INGEST_CLIENT_SAVE_
 
 #### Example (Fully Automatic Cleanup)
 
-Fully Automatic cleanup is the recommended pattern for ingest-and-upload workflows where the intermediate files are no longer needed.
+Fully Automatic cleanup is the recommended pattern for ingest-and-upload workflows where the intermediate files are no longer needed. 
 The entire process is temporary, and no files are left on disk.
-The following example includes automatic file purge.
+The following example includes automatic file purge. 
 
 ```python
-# After the 'with' block finishes,
+# After the 'with' block finishes, 
 # the temporary directory and all its contents are automatically deleted.
 
 with (
@@ -433,11 +341,11 @@ with (
 
 #### Example (Preserve Results on Disk)
 
-In scenarios where you need to inspect or use the intermediate `jsonl` files, you can disable the cleanup features.
-The following example disables automatic file purge.
+In scenarios where you need to inspect or use the intermediate `jsonl` files, you can disable the cleanup features. 
+The following example disables automatic file purge. 
 
 ```python
-# After the 'with' block finishes,
+# After the 'with' block finishes, 
 # the './permanent_results' directory and all jsonl files are preserved for inspection or other uses.
 
 with (
@@ -455,7 +363,7 @@ with (
 
 ## Extract Captions from Images
 
-The `caption` method generates image captions by using a VLM.
+The `caption` method generates image captions by using a VLM. 
 You can use this to generate descriptions of unstructured images, infographics, and other visual content extracted from documents.
 
 !!! note
@@ -514,7 +422,7 @@ results = ingestor.ingest()
 
 ## Extract Embeddings
 
-The `embed` method in the NeMo Retriever Library generates text embeddings for document content.
+The `embed` method in the library generates text embeddings for document content.
 
 ```python
 ingestor = ingestor.embed()
@@ -522,7 +430,7 @@ ingestor = ingestor.embed()
 
 !!! note
 
-    By default, `embed` uses the [llama-nemotron-embed-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-1b-v2) model.
+    By default, `embed` uses the [llama-3.2-nv-embedqa-1b-v2](https://build.nvidia.com/nvidia/llama-3_2-nv-embedqa-1b-v2) model.
 
 To use a different embedding model, such as [nv-embedqa-e5-v5](https://build.nvidia.com/nvidia/nv-embedqa-e5-v5), specify a different `model_name` and `endpoint_url`.
 
@@ -570,13 +478,13 @@ The `store` task uses [fsspec](https://filesystem-spec.readthedocs.io/) for stor
 
 !!! tip
 
-    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nemo-retriever/...`). If you change that variable—for example to a host-mounted `file://` path—restart the NeMo Retriever Library runtime so the container picks up the new value.
+    `storage_uri` defaults to the server-side `IMAGE_STORAGE_URI` environment variable (commonly `s3://nemo-retriever/...`). If you change that variable—for example to a host-mounted `file://` path—restart the runtime so the container picks up the new value.
 
 When `public_base_url` is provided, the metadata returned from `ingest()` surfaces that HTTP(S) link while still recording the underlying storage URI. Leave it unset when the storage endpoint itself is already publicly reachable.
 
 ### Docker Volume Mounts for Local Storage
 
-When running the NeMo Retriever Library via Docker and using `file://` storage URIs, the path must be within a mounted volume for files to persist on the host machine.
+When running the pipeline via Docker and using `file://` storage URIs, the path must be within a mounted volume for files to persist on the host machine.
 
 By default, the `docker-compose.yaml` mounts a single volume:
 
@@ -630,8 +538,10 @@ For more information on environment variables, refer to [Environment Variables](
 
 Use the following code to extract mp3 audio content.
 
+The example uses the default tokenizer for token-based splitting; see [Llama tokenizer (default)](chunking.md#llama-tokenizer-default).
+
 ```python
-from nemo_retriever.client import Ingestor
+from nv_ingest_client.client import Ingestor
 
 ingestor = Ingestor().files("audio_file.mp3")
 
@@ -653,19 +563,12 @@ ingestor = ingestor.extract(
 
 results = ingestor.ingest()
 ```
-
-Set `extract_audio_params={"segment_audio": True}` to emit sentence-like
-audio segments as separate extracted elements. This option only takes effect
-when audio extraction is performed through a hosted Parakeet endpoint--such as the
-Parakeet ASR NIM or NVCF--and does not affect behavior when using the local Hugging
-Face Parakeet model.
-
-
+Set extract_audio_params={"segment_audio": True} to output sentence-like audio segments as distinct extracted elements. This setting applies only when audio extraction runs through a hosted Parakeet endpoint—such as the Parakeet ASR NIM or NVCF—and has no effect when using the local Hugging Face Parakeet model.
 
 ## Related Topics
 
 - [Split Documents](chunking.md)
-- [Troubleshoot NeMo Retriever Library](troubleshoot.md)
+- [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
 - [Advanced Visual Parsing](nemotron-parse.md)
-- [Use the NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio-video.md)
+- [Use NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio-video.md)
 - [Use Multimodal Embedding](embedding.md)

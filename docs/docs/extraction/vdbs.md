@@ -107,7 +107,7 @@ Enable hybrid search by setting `hybrid=True` when creating the LanceDB operator
 |---------------------|-------------------------|---------------------------|
 | Runtime model       | Embedded (in-process)   | Client-server             |
 | External services   | None                    | Milvus + etcd + MinIO     |
-| Cluster add-ons        | None                    | Milvus + etcd + MinIO (Helm / chart values) |
+| Docker Compose profile | Not needed           | `--profile retrieval`     |
 | Index type          | IVF_HNSW_SQ             | HNSW, GPU_CAGRA, etc.     |
 | Hybrid search       | BM25 FTS + vector (RRF) | BM42 sparse embeddings    |
 | Persistence         | Lance files on disk     | Milvus server + MinIO     |
@@ -126,8 +126,8 @@ If the number of ingested documents is 10 or fewer, the library uses faster stre
 You can control this by setting `stream=True`.
 
 If you set `recreate=True`, the pipeline drops and recreates the collection given as *collection_name*.
-The Milvus service persists data to disk using volumes configured in your **Helm chart** or Kubernetes manifests.
-You can delete all collections by removing the associated persistent volume claim (or equivalent storage) and restarting Milvus per your chart’s recovery procedure.
+The Milvus service persists data to disk by using a Docker volume defined in docker-compose.yaml.
+You can delete all collections by deleting that volume, and then restarting the Milvus service.
 
 !!! warning
 

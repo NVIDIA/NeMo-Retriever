@@ -7,7 +7,7 @@ Nemotron parse provides higher-accuracy text extraction.
 This documentation describes the following three methods 
 to run [NeMo Retriever Library](overview.md) with nemotron-parse.
 
-- Run the NIM on your infrastructure (for example [Helm / Kubernetes](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html))
+- Run the NIM locally by using Docker Compose
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
 - Run the Ray batch pipeline with nemotron-parse ([library mode](quickstart-library-mode.md))
 
@@ -19,16 +19,22 @@ Currently, the limitations to using `nemotron-parse` with NeMo Retriever Library
 - `nemotron-parse` is not supported on RTX Pro 6000, B200, or H200 NVL. For more information, refer to the [Nemotron Parse Support Matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-parse).
 
 
-## Run the Nemotron Parse NIM on your infrastructure
+## Run the NIM Locally by Using Docker Compose
 
-Use the following procedure to deploy nemotron-parse with NeMo Retriever Library on infrastructure you control.
+Use the following procedure to run the NIM locally.
 
 !!! important
 
-    Due to limitations in available VRAM controls in the current release of nemotron-parse, it must run on a [dedicated additional GPU](support-matrix.md). In Kubernetes, pin the workload to a dedicated GPU using resource limits, node selectors, or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html).
+    Due to limitations in available VRAM controls in the current release of nemotron-parse, it must run on a [dedicated additional GPU](support-matrix.md). Edit docker-compose.yaml to set nemotron-parse's device_id to a dedicated GPU: device_ids: ["1"] or higher.
 
 
-1. Deploy the NeMo Retriever Library stack with **nemotron-parse** enabled. Follow [Deployment options](deployment-options.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) to enable the service and wire `NEMOTRON_PARSE_HTTP_ENDPOINT` (or equivalent) into the ingestion runtime.
+1. Start the retriever services with the `nemotron-parse` profile. This profile includes the necessary components for extracting text and metadata from images. Use the following command.
+
+    - The --profile nemotron-parse flag ensures that vision-language retrieval services are launched. For more information, refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository.
+
+    ```shell
+    docker compose --profile nemotron-parse up
+    ```
 
 2. After the services are running, you can interact with the pipeline by using Python.
 
@@ -63,12 +69,12 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
     NVIDIA_API_KEY=nvapi-...
     ```
 
-2. Point the ingestion runtime at the hosted `nemotron-parse` endpoint (for example set `NEMOTRON_PARSE_HTTP_ENDPOINT` in Helm values or your process environment):
+2. Modify `docker-compose.yaml` to use the hosted `nemotron-parse` service.
 
     ```yaml
     # build.nvidia.com hosted nemotron-parse
-    NEMOTRON_PARSE_HTTP_ENDPOINT: "https://integrate.api.nvidia.com/v1/chat/completions"
-    # NEMOTRON_PARSE_HTTP_ENDPOINT: "http://nemotron-parse:8000/v1/chat/completions"  # in-cluster NIM
+    - NEMOTRON_PARSE_HTTP_ENDPOINT=https://integrate.api.nvidia.com/v1/chat/completions
+    #- NEMOTRON_PARSE_HTTP_ENDPOINT=http://nemotron-parse:8000/v1/chat/completions
     ```
 
 3. Run inference by using Python.

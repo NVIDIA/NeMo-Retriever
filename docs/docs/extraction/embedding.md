@@ -20,7 +20,11 @@ Use the following procedure to configure and run the multimodal embedding NIM lo
     EMBEDDING_NIM_MODEL_NAME=nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1
     ```
 
-2. Deploy the NeMo Retriever Library services with the multimodal embedding NIM available to the runtime (see [Deployment options](deployment-options.md) and the [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)). The multimodal embedding service is included when you enable it in your deployment configuration.
+2. Start the NeMo Retriever Library services. The multimodal embedding service is included by default.
+
+    ```
+    docker compose --profile retrieval up
+    ```
 
 
 After the services are running, you can interact with the extraction pipeline by using Python.

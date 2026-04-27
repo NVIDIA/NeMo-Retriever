@@ -46,15 +46,16 @@ For more information, refer to [Advanced Visual Parsing](nemotron-parse.md).
 For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
 For more information, refer to [Generate Your NGC Keys](api-keys.md).
 
-For advanced scenarios, set NIM image tags, batch sizes, and endpoints in your **Helm values** or Kubernetes manifests, or in an [environment variable file](environment-config.md) that your deployment loads into pods.
+For advanced scenarios, you might want to set `docker-compose` environment variables for NIM container paths, tags, and batch sizes. 
+You can set those directly in `docker-compose.yaml`, or in an [environment variable file](environment-config.md) that docker compose uses.
 
 ### Library Mode
 
-For [library mode](quickstart-library-mode.md), set `NVIDIA_API_KEY` (and any model endpoints) in the **environment of the Python process** that runs the library—for example your shell, a `.env` file loaded by your app, or your IDE—not only on a separate machine that only orchestrates containers.
+For production environments, you should use the provided Helm charts. For [library mode](quickstart-library-mode.md), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to the environment variables on the host machine where you run the `docker compose` command. Setting the variables in the `.env` file ensures that they are passed into the containers and available to the services that need them.
 
-For production-style deployments, use the [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and inject secrets via Kubernetes (for example `Secret` + `env` on the workload).
-
-For library mode with **self-hosted NIM instances**, set custom `*_ENDPOINT` variables as described in [Environment variables](environment-config.md) and the Helm chart documentation.
+For advanced scenarios, you might want to use library mode with self-hosted NIM instances. 
+You can set custom endpoints for each NIM. 
+For examples of `*_ENDPOINT` variables, refer to [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml).
 
 
 
@@ -64,7 +65,8 @@ For library mode with **self-hosted NIM instances**, set custom `*_ENDPOINT` var
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 
-Refer to [Deployment options](deployment-options.md), the [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md), and [Environment variables](environment-config.md) for optional NIM components and how they are configured.
+Refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository 
+for information about the optional NIM components of the pipeline.
 
 You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](python-api-reference.md).
 

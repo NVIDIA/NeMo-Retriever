@@ -28,7 +28,7 @@ Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/NeMo-Retri
 
 Before you use this documentation, you need the following:
 
-- Docker is available (the harness uses it to orchestrate dependencies unless you use a different deployment mode)
+- Docker and Docker Compose are running
 - A Python environment with the NeMo Retriever Library client and harness dependencies installed
 - The [benchmark datasets are downloaded](#dataset-prerequisites)
 
@@ -76,11 +76,10 @@ active:
   # Infrastructure
   hostname: localhost
   readiness_timeout: 600
-  deployment_type: helm  # use Helm to bring up dependencies (see tools/harness/test_configs.yaml)
-  helm:
-    release: nv-ingest
-    namespace: nv-ingest
-    chart: null  # null = local chart under ./helm; set to a remote ref if you use one
+  compose:
+    profiles:
+      - retrieval
+      - reranker  # Required for recall evaluation
   
   # Runtime
   sparse: false
@@ -207,7 +206,7 @@ EXTRACT_IMAGES=true API_VERSION=v1 uv run python -m nv_ingest_harness.cli.run --
 - `table_output_format` (string): Table output format - `markdown`, `pseudo_markdown`, `simple`
 
 #### Pipeline Options
-- `enable_caption` (boolean): Enable image captioning (requires a **VLM / captioning** NIM deployed and reachable)
+- `enable_caption` (boolean): Enable image captioning (requires the VLM profile to be running)
 - `caption_prompt` (string): Override the user prompt sent to the captioning VLM. Defaults to `"Caption the content of this image:"`.
 - `caption_reasoning` (boolean): Enable reasoning mode for the captioning VLM. `True` enables reasoning, `False` disables reasoning. Defaults to `null` (service default, typically disabled).
 - `enable_split` (boolean): Enable text chunking
@@ -217,8 +216,7 @@ EXTRACT_IMAGES=true API_VERSION=v1 uv run python -m nv_ingest_harness.cli.run --
 #### Infrastructure Options
 - `hostname` (string): Service hostname
 - `readiness_timeout` (integer): Docker startup timeout in seconds
-- `deployment_type` (string): `helm` or `compose` (legacy harness only) — see `tools/harness/test_configs.yaml`
-- `helm` (mapping): Helm settings when `deployment_type: helm` (release, namespace, `port_forwards`, values overrides, and so on)
+- `compose.profiles` (list): Docker Compose profiles, nested under `compose` in YAML (loaded as top-level `profiles`)
 
 #### Runtime Options
 - `sparse` (boolean): Use sparse embeddings
