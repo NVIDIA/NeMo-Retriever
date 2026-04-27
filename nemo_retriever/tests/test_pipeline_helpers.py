@@ -13,7 +13,6 @@ pipeline run`` command relies on:
 * ``_build_embed_params``       — translation from CLI flags to ``EmbedParams``.
 * ``_collect_results``          — Ray ``take_all`` vs. in-process DataFrame
                                   handling + ``_count_input_units`` fallback.
-* ``_ensure_lancedb_table``     — idempotent LanceDB table creation.
 
 They also exercise the lazy attribute access in
 ``nemo_retriever.pipeline.__init__`` so the package-level ``app`` / ``run``
@@ -26,7 +25,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import pyarrow as pa
 import pytest
 import typer
 
@@ -37,7 +35,6 @@ from nemo_retriever.pipeline.__main__ import (
     _build_extract_params,
     _collect_results,
     _count_input_units,
-    _ensure_lancedb_table,
     _resolve_file_patterns,
 )
 
@@ -568,75 +565,3 @@ class TestCountInputUnits:
     def test_empty_dataframe_without_columns(self):
         df = pd.DataFrame()
         assert _count_input_units(df) == 0
-
-
-# =============================================================================
-# _ensure_lancedb_table
-# =============================================================================
-
-
-class TestEnsureLancedbTable:
-    """Idempotent creation of the LanceDB table used by ``pipeline run``."""
-
-    def test_creates_uri_directory_when_missing(self, tmp_path: Path):
-        uri = tmp_path / "new_lancedb"
-        assert not uri.exists()
-
-        _ensure_lancedb_table(str(uri), "nv-ingest")
-
-        assert uri.exists() and uri.is_dir()
-
-    def test_creates_table_with_lancedb_schema(self, tmp_path: Path):
-        import lancedb
-        from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
-
-        uri = tmp_path / "lancedb"
-        _ensure_lancedb_table(str(uri), "nv-ingest")
-
-        db = lancedb.connect(str(uri))
-        # Table exists and is empty.
-        tbl = db.open_table("nv-ingest")
-        assert tbl.count_rows() == 0
-
-        # The schema matches the canonical lancedb_schema() pa schema.
-        expected = lancedb_schema()
-        actual = tbl.schema
-        assert actual.names == expected.names
-        for name in expected.names:
-            assert actual.field(name).type == expected.field(name).type
-
-    def test_is_idempotent_when_table_already_exists(self, tmp_path: Path):
-        import lancedb
-
-        uri = tmp_path / "lancedb"
-        _ensure_lancedb_table(str(uri), "nv-ingest")
-
-        # Seed one row so we can confirm the table was not recreated/emptied.
-        db = lancedb.connect(str(uri))
-        tbl = db.open_table("nv-ingest")
-        schema = tbl.schema
-        payload = {f.name: [None] for f in schema}
-        payload["page_number"] = [1]
-        payload["text"] = ["seed"]
-        row = pa.table(payload, schema=schema)
-        tbl.add(row)
-        assert tbl.count_rows() == 1
-
-        # Second call must be a no-op — the existing data must survive.
-        _ensure_lancedb_table(str(uri), "nv-ingest")
-        tbl = lancedb.connect(str(uri)).open_table("nv-ingest")
-        assert tbl.count_rows() == 1
-
-    def test_respects_custom_table_name(self, tmp_path: Path):
-        import lancedb
-
-        uri = tmp_path / "lancedb"
-        _ensure_lancedb_table(str(uri), "custom-name")
-
-        db = lancedb.connect(str(uri))
-        # Prefer the non-deprecated ``list_tables`` API; fall back to
-        # ``table_names`` on older LanceDB releases.  Both return either a flat
-        # sequence of names or a pydantic-style response with a ``tables`` attr.
-        raw = db.list_tables() if hasattr(db, "list_tables") else db.table_names()
-        names = getattr(raw, "tables", None) or list(raw)
-        assert "custom-name" in names

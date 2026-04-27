@@ -20,8 +20,12 @@ Examples::
 
     # Save extraction Parquet for full-page markdown (page index / export)
     retriever pipeline run /data/pdfs \\
-        --lancedb-uri lancedb \\
         --save-intermediate /path/to/extracted_parquet_dir
+
+    # Override the default VDB backend/configuration
+    retriever pipeline run /data/pdfs \\
+        --vdb-op <operator-key> \\
+        --vdb-kwargs-json '<operator kwargs JSON object>'
 """
 
 from __future__ import annotations
@@ -56,8 +60,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="End-to-end graph-based ingestion pipeline (extract -> embed -> VDB).")
 
-LANCEDB_URI = "lancedb"
-LANCEDB_TABLE = "nv-ingest"
+DEFAULT_VDB_OP = "lancedb"
 
 # Help panel labels (keep stable so --help groupings read consistently).
 _PANEL_IO = "I/O and Execution"
@@ -68,7 +71,7 @@ _PANEL_DEDUP_CAPTION = "Dedup and Caption"
 _PANEL_STORE_CHUNK = "Storage and Text Chunking"
 _PANEL_AUDIO = "Audio"
 _PANEL_RAY = "Ray / Batch Tuning"
-_PANEL_LANCEDB = "VDB and Outputs"
+_PANEL_VDB = "VDB and Outputs"
 _PANEL_EVAL = "Evaluation (Recall / BEIR)"
 _PANEL_OBS = "Observability"
 
@@ -136,28 +139,8 @@ def _configure_logging(log_file: Optional[Path], *, debug: bool = False) -> tupl
 
 
 # ---------------------------------------------------------------------------
-# Small utilities (LanceDB, summaries, file patterns)
+# Small utilities (summaries, file patterns)
 # ---------------------------------------------------------------------------
-
-
-def _ensure_lancedb_table(uri: str, table_name: str) -> None:
-    from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
-    import lancedb
-    import pyarrow as pa
-
-    Path(uri).mkdir(parents=True, exist_ok=True)
-    db = lancedb.connect(uri)
-    try:
-        db.open_table(table_name)
-        return
-    except ValueError as e:
-        # lancedb has no TableNotFoundError; missing tables raise ValueError, same
-        # substring LanceDB uses internally in db.py for this case.
-        if f"Table '{table_name}' was not found" not in str(e):
-            raise
-    schema = lancedb_schema()
-    empty = pa.table({f.name: [] for f in schema}, schema=schema)
-    db.create_table(table_name, data=empty, schema=schema, mode="create")
 
 
 def _write_runtime_summary(
@@ -359,21 +342,10 @@ def _resolve_vdb_upload_config(
     *,
     vdb_op: str,
     vdb_kwargs_json: Optional[str],
-    lancedb_uri: str,
-    hybrid: bool,
 ) -> tuple[str, dict[str, Any]]:
     """Build opaque nv-ingest-client VDB constructor kwargs for upload."""
-    resolved_vdb_op = str(vdb_op or "lancedb")
+    resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
     vdb_kwargs: dict[str, Any] = {}
-    if resolved_vdb_op == "lancedb":
-        vdb_kwargs.update(
-            {
-                "uri": lancedb_uri,
-                "table_name": LANCEDB_TABLE,
-                "overwrite": True,
-                "hybrid": bool(hybrid),
-            }
-        )
     if vdb_kwargs_json:
         try:
             parsed = json.loads(vdb_kwargs_json)
@@ -545,37 +517,7 @@ def _run_evaluation(
         eval_vdb_kwargs.setdefault("nvidia_api_key", embed_remote_api_key)
 
     if evaluation_mode == "beir":
-        if not beir_loader:
-            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
-        if not beir_dataset_name:
-            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
-
-        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
-
-        if str(vdb_op) != "lancedb":
-            raise ValueError("--evaluation-mode=beir currently supports --vdb-op=lancedb only")
-
-        cfg = BeirConfig(
-            lancedb_uri=str(eval_vdb_kwargs.get("uri") or LANCEDB_URI),
-            lancedb_table=str(eval_vdb_kwargs.get("table_name") or LANCEDB_TABLE),
-            embedding_model=embed_model,
-            loader=str(beir_loader),
-            dataset_name=str(beir_dataset_name),
-            split=str(beir_split),
-            query_language=beir_query_language,
-            doc_id_field=str(beir_doc_id_field),
-            ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
-            embedding_http_endpoint=eval_vdb_kwargs.get("embedding_endpoint"),
-            embedding_api_key=str(eval_vdb_kwargs.get("nvidia_api_key") or ""),
-            hybrid=bool(eval_vdb_kwargs.get("hybrid", False)),
-            reranker=bool(reranker),
-            reranker_model_name=str(reranker_model_name),
-            reranker_endpoint=reranker_invoke_url,
-            reranker_api_key=reranker_api_key,
-        )
-        evaluation_start = time.perf_counter()
-        beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
-        return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
+        raise ValueError("--evaluation-mode=beir is not available through the generic VDB pipeline path yet.")
 
     # Default: recall eval against a query CSV.
     query_csv_path = Path(query_csv)
@@ -790,19 +732,18 @@ def run(
     audio_match_tolerance_secs: float = typer.Option(
         2.0, "--audio-match-tolerance-secs", min=0.0, rich_help_panel=_PANEL_AUDIO
     ),
-    # --- LanceDB / outputs ---------------------------------------------
-    lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri", rich_help_panel=_PANEL_LANCEDB),
+    # --- VDB / outputs --------------------------------------------------
     vdb_op: str = typer.Option(
-        "lancedb",
+        DEFAULT_VDB_OP,
         "--vdb-op",
         help="nv-ingest-client VDB operator key used for post-graph upload.",
-        rich_help_panel=_PANEL_LANCEDB,
+        rich_help_panel=_PANEL_VDB,
     ),
     vdb_kwargs_json: Optional[str] = typer.Option(
         None,
         "--vdb-kwargs-json",
         help="JSON object forwarded as constructor kwargs to the selected VDB operator.",
-        rich_help_panel=_PANEL_LANCEDB,
+        rich_help_panel=_PANEL_VDB,
     ),
     save_intermediate: Optional[Path] = typer.Option(
         None,
@@ -811,11 +752,10 @@ def run(
         path_type=Path,
         file_okay=False,
         dir_okay=True,
-        rich_help_panel=_PANEL_LANCEDB,
+        rich_help_panel=_PANEL_VDB,
     ),
-    hybrid: bool = typer.Option(False, "--hybrid/--no-hybrid", rich_help_panel=_PANEL_LANCEDB),
     detection_summary_file: Optional[Path] = typer.Option(
-        None, "--detection-summary-file", path_type=Path, rich_help_panel=_PANEL_LANCEDB
+        None, "--detection-summary-file", path_type=Path, rich_help_panel=_PANEL_VDB
     ),
     runtime_metrics_dir: Optional[Path] = typer.Option(
         None, "--runtime-metrics-dir", path_type=Path, rich_help_panel=_PANEL_OBS
@@ -890,6 +830,8 @@ def run(
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+        if evaluation_mode == "beir":
+            raise ValueError("--evaluation-mode=beir is not available through the generic VDB pipeline path yet.")
         if evaluation_mode == "qa" and eval_config is None:
             raise typer.BadParameter(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
@@ -899,15 +841,10 @@ def run(
         if run_mode == "batch":
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
 
-        lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
         resolved_vdb_op, resolved_vdb_kwargs = _resolve_vdb_upload_config(
             vdb_op=vdb_op,
             vdb_kwargs_json=vdb_kwargs_json,
-            lancedb_uri=lancedb_uri,
-            hybrid=hybrid,
         )
-        if resolved_vdb_op == "lancedb":
-            _ensure_lancedb_table(lancedb_uri, LANCEDB_TABLE)
 
         remote_api_key = resolve_remote_api_key(api_key)
         extract_remote_api_key = remote_api_key
@@ -1043,8 +980,8 @@ def run(
         ingest_start = time.perf_counter()
         raw_result = ingestor.ingest()
         ingestion_and_vdb_time = time.perf_counter() - ingest_start
-        lancedb_write_time = float(getattr(ingestor, "_last_vdb_upload_secs", 0.0))
-        ingestion_only_total_time = max(0.0, ingestion_and_vdb_time - lancedb_write_time)
+        vdb_upload_time = float(getattr(ingestor, "_last_vdb_upload_secs", 0.0))
+        ingestion_only_total_time = max(0.0, ingestion_and_vdb_time - vdb_upload_time)
 
         cached_upload_records = getattr(ingestor, "_last_vdb_upload_records", None)
         if run_mode == "batch" and cached_upload_records is not None:
@@ -1075,43 +1012,6 @@ def run(
                 collect_detection_summary_from_df(result_df),
             )
 
-        # --- Evaluation ---------------------------------------------
-        if resolved_vdb_op == "lancedb":
-            import lancedb as _lancedb_mod
-
-            db = _lancedb_mod.connect(lancedb_uri)
-            table = db.open_table(LANCEDB_TABLE)
-
-            if int(table.count_rows()) == 0:
-                logger.warning("LanceDB table is empty; skipping %s evaluation.", evaluation_mode)
-                _write_runtime_summary(
-                    runtime_metrics_dir,
-                    runtime_metrics_prefix,
-                    {
-                        "run_mode": run_mode,
-                        "input_path": str(Path(input_path).resolve()),
-                        "input_pages": int(num_rows),
-                        "num_pages": int(num_rows),
-                        "num_rows": int(len(result_df.index)),
-                        "ingestion_only_secs": float(ingestion_only_total_time),
-                        "ray_download_secs": float(ray_download_time),
-                        "lancedb_write_secs": float(lancedb_write_time),
-                        "evaluation_secs": 0.0,
-                        "total_secs": float(time.perf_counter() - ingest_start),
-                        "evaluation_mode": evaluation_mode,
-                        "evaluation_metrics": {},
-                        "recall_details": bool(recall_details),
-                        "vdb_op": str(resolved_vdb_op),
-                        "lancedb_uri": str(lancedb_uri),
-                        "lancedb_table": str(LANCEDB_TABLE),
-                    },
-                )
-                if run_mode == "batch":
-                    import ray
-
-                    ray.shutdown()
-                return
-
         if evaluation_mode == "qa":
             from nemo_retriever.evaluation.cli import run_qa_sweep_from_config_dict
             from nemo_retriever.evaluation.config import load_eval_config
@@ -1119,10 +1019,6 @@ def run(
             assert eval_config is not None
             cfg = load_eval_config(str(eval_config))
             r = cfg.setdefault("retrieval", {})
-            if r.get("type", "lancedb") == "lancedb":
-                r["type"] = "lancedb"
-                r["lancedb_uri"] = lancedb_uri
-                r["lancedb_table"] = LANCEDB_TABLE
             if retrieval_save_path is not None:
                 r["save_path"] = str(Path(retrieval_save_path).resolve())
             if eval_page_index is not None:
@@ -1144,7 +1040,7 @@ def run(
                     "num_rows": int(len(result_df.index)),
                     "ingestion_only_secs": float(ingestion_only_total_time),
                     "ray_download_secs": float(ray_download_time),
-                    "lancedb_write_secs": float(lancedb_write_time),
+                    "vdb_upload_secs": float(vdb_upload_time),
                     "evaluation_secs": float(evaluation_total_time),
                     "total_secs": float(total_time),
                     "evaluation_mode": "qa",
@@ -1152,8 +1048,6 @@ def run(
                     "evaluation_count": None,
                     "recall_details": bool(recall_details),
                     "vdb_op": str(resolved_vdb_op),
-                    "lancedb_uri": str(lancedb_uri),
-                    "lancedb_table": str(LANCEDB_TABLE),
                     "qa_sweep_exit_code": qa_code,
                 },
             )
@@ -1165,17 +1059,16 @@ def run(
             from nemo_retriever.utils.detection_summary import print_run_summary
 
             print_run_summary(
-                num_rows,
-                Path(input_path),
-                hybrid,
-                lancedb_uri,
-                LANCEDB_TABLE,
-                total_time,
-                ingestion_only_total_time,
-                ray_download_time,
-                lancedb_write_time,
-                evaluation_total_time,
-                {},
+                processed_pages=num_rows,
+                input_path=Path(input_path),
+                vdb_op=str(resolved_vdb_op),
+                vdb_kwargs=resolved_vdb_kwargs,
+                total_time=total_time,
+                ingest_only_total_time=ingestion_only_total_time,
+                ray_dataset_download_total_time=ray_download_time,
+                vdb_upload_total_time=vdb_upload_time,
+                evaluation_total_time=evaluation_total_time,
+                evaluation_metrics={},
                 evaluation_label="QA",
                 evaluation_count=None,
             )
@@ -1218,15 +1111,13 @@ def run(
                     "num_rows": int(len(result_df.index)),
                     "ingestion_only_secs": float(ingestion_only_total_time),
                     "ray_download_secs": float(ray_download_time),
-                    "lancedb_write_secs": float(lancedb_write_time),
+                    "vdb_upload_secs": float(vdb_upload_time),
                     "evaluation_secs": 0.0,
                     "total_secs": float(time.perf_counter() - ingest_start),
                     "evaluation_mode": evaluation_mode,
                     "evaluation_metrics": {},
                     "recall_details": bool(recall_details),
                     "vdb_op": str(resolved_vdb_op),
-                    "lancedb_uri": str(lancedb_uri),
-                    "lancedb_table": str(LANCEDB_TABLE),
                 },
             )
             if run_mode == "batch":
@@ -1248,7 +1139,7 @@ def run(
                 "num_rows": int(len(result_df.index)),
                 "ingestion_only_secs": float(ingestion_only_total_time),
                 "ray_download_secs": float(ray_download_time),
-                "lancedb_write_secs": float(lancedb_write_time),
+                "vdb_upload_secs": float(vdb_upload_time),
                 "evaluation_secs": float(evaluation_total_time),
                 "total_secs": float(total_time),
                 "evaluation_mode": evaluation_mode,
@@ -1256,8 +1147,6 @@ def run(
                 "evaluation_count": evaluation_query_count,
                 "recall_details": bool(recall_details),
                 "vdb_op": str(resolved_vdb_op),
-                "lancedb_uri": str(lancedb_uri),
-                "lancedb_table": str(LANCEDB_TABLE),
             },
         )
 
@@ -1269,17 +1158,16 @@ def run(
         from nemo_retriever.utils.detection_summary import print_run_summary
 
         print_run_summary(
-            num_rows,
-            Path(input_path),
-            hybrid,
-            lancedb_uri,
-            LANCEDB_TABLE,
-            total_time,
-            ingestion_only_total_time,
-            ray_download_time,
-            lancedb_write_time,
-            evaluation_total_time,
-            evaluation_metrics,
+            processed_pages=num_rows,
+            input_path=Path(input_path),
+            vdb_op=str(resolved_vdb_op),
+            vdb_kwargs=resolved_vdb_kwargs,
+            total_time=total_time,
+            ingest_only_total_time=ingestion_only_total_time,
+            ray_dataset_download_total_time=ray_download_time,
+            vdb_upload_total_time=vdb_upload_time,
+            evaluation_total_time=evaluation_total_time,
+            evaluation_metrics=evaluation_metrics,
             evaluation_label=evaluation_label,
             evaluation_count=evaluation_query_count,
         )

@@ -7,7 +7,6 @@ from typer.testing import CliRunner
 import nemo_retriever.examples.graph_pipeline as batch_pipeline
 import nemo_retriever.model as model_module
 import nemo_retriever.pipeline.__main__ as pipeline_main
-import nemo_retriever.recall.beir as beir_module
 import nemo_retriever.utils.detection_summary as detection_summary_module
 from nemo_retriever.utils.input_files import resolve_input_patterns
 
@@ -125,22 +124,11 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
         SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
     )
-
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 1
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
 
     result = RUNNER.invoke(
@@ -174,23 +162,12 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
         SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
     )
     monkeypatch.setattr(pipeline_main, "asr_params_from_env", lambda: SimpleNamespace(model_copy=lambda update: update))
-
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 1
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
 
     result = RUNNER.invoke(
@@ -224,29 +201,20 @@ def test_resolve_vdb_upload_config_keeps_non_lancedb_kwargs_opaque() -> None:
     vdb_op, vdb_kwargs = pipeline_main._resolve_vdb_upload_config(
         vdb_op="custom",
         vdb_kwargs_json='{"collection_name": "docs", "uri": "http://localhost:19530"}',
-        lancedb_uri="/tmp/lancedb",
-        hybrid=True,
     )
 
     assert vdb_op == "custom"
     assert vdb_kwargs == {"collection_name": "docs", "uri": "http://localhost:19530"}
 
 
-def test_resolve_vdb_upload_config_supplies_lancedb_defaults() -> None:
+def test_resolve_vdb_upload_config_does_not_inject_backend_defaults() -> None:
     vdb_op, vdb_kwargs = pipeline_main._resolve_vdb_upload_config(
         vdb_op="lancedb",
         vdb_kwargs_json=None,
-        lancedb_uri="/tmp/lancedb",
-        hybrid=True,
     )
 
     assert vdb_op == "lancedb"
-    assert vdb_kwargs == {
-        "uri": "/tmp/lancedb",
-        "table_name": pipeline_main.LANCEDB_TABLE,
-        "overwrite": True,
-        "hybrid": True,
-    }
+    assert vdb_kwargs == {}
 
 
 def test_batch_pipeline_routes_non_lancedb_vdb_to_upload_and_evaluation(tmp_path, monkeypatch) -> None:
@@ -256,11 +224,6 @@ def test_batch_pipeline_routes_non_lancedb_vdb_to_upload_and_evaluation(tmp_path
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(
-        pipeline_main,
-        "_ensure_lancedb_table",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LanceDB should not be initialized")),
-    )
     monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
@@ -294,44 +257,20 @@ def test_batch_pipeline_routes_non_lancedb_vdb_to_upload_and_evaluation(tmp_path
     assert captured_eval["vdb_kwargs"] == expected_vdb_kwargs
 
 
-def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> None:
+def test_batch_pipeline_rejects_beir_mode_until_generic_vdb_evaluation_exists(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
     monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
-
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 1
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    class _FakeLanceModule:
-        @staticmethod
-        def connect(_uri):
-            return _FakeDb()
-
-    monkeypatch.setitem(sys.modules, "lancedb", _FakeLanceModule())
     monkeypatch.setitem(
         sys.modules,
         "ray",
         SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
     )
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
-
-    captured = {}
-
-    def _fake_evaluate(cfg):
-        captured["cfg"] = cfg
-        return type("Dataset", (), {"query_ids": ["1", "2"]})(), [], {}, {"ndcg@10": 0.75, "recall@5": 0.6}
-
-    monkeypatch.setattr(beir_module, "evaluate_lancedb_beir", _fake_evaluate)
 
     result = RUNNER.invoke(
         batch_pipeline.app,
@@ -350,12 +289,8 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
         ],
     )
 
-    assert result.exit_code == 0
-    assert captured["cfg"].loader == "vidore_hf"
-    assert captured["cfg"].dataset_name == "vidore_v3_computer_science"
-    assert tuple(captured["cfg"].ks) == (5, 10)
-    assert captured["cfg"].lancedb_table == pipeline_main.LANCEDB_TABLE
-    assert captured["cfg"].embedding_model == "fake-embed-model"
+    assert result.exit_code != 0
+    assert "generic VDB pipeline path" in str(result.exception)
 
 
 def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:
@@ -367,22 +302,11 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
         SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
     )
-
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 1
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
 
     result = RUNNER.invoke(
@@ -405,3 +329,4 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["recall_details"] is False
     assert payload["evaluation_mode"] == "recall"
+    assert "vdb_upload_secs" in payload

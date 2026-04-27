@@ -221,13 +221,12 @@ def _evaluation_metric_sort_key(item: tuple[str, float]) -> tuple[str, int, str]
 def print_run_summary(
     processed_pages: Optional[int],
     input_path: Path,
-    hybrid: bool,
-    lancedb_uri: str,
-    lancedb_table_name: str,
+    vdb_op: str,
+    vdb_kwargs: Optional[Dict[str, Any]],
     total_time: float,
     ingest_only_total_time: float,
     ray_dataset_download_total_time: float,
-    lancedb_write_total_time: float,
+    vdb_upload_total_time: float,
     evaluation_total_time: float = 0.0,
     evaluation_metrics: Optional[Dict[str, float]] = None,
     recall_total_time: float = 0.0,
@@ -249,18 +248,19 @@ def print_run_summary(
     pages = processed_pages if processed_pages is not None else 0
 
     ingest_only_pps = pages / ingest_only_total_time if ingest_only_total_time > 0 else 0
-    ingest_write_denom = ingest_only_total_time + lancedb_write_total_time
-    ingest_and_lancedb_write_pps = pages / ingest_write_denom if ingest_write_denom > 0 else 0
+    ingest_write_denom = ingest_only_total_time + vdb_upload_total_time
+    ingest_and_vdb_upload_pps = pages / ingest_write_denom if ingest_write_denom > 0 else 0
     recall_qps = pages / recall_total_time if recall_total_time > 0 else 0
     total_pps = pages / total_time if total_time > 0 else 0
+    vdb_kwargs = dict(vdb_kwargs or {})
 
     print(f"===== Run Summary - {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC =====")
 
     print("Run Configuration:")
     print(f"\tInput path: {input_path}")
-    print(f"\tHybrid: {hybrid}")
-    print(f"\tLancedb URI: {lancedb_uri}")
-    print(f"\tLancedb Table: {lancedb_table_name}")
+    print(f"\tVDB op: {vdb_op}")
+    if vdb_kwargs:
+        print(f"\tVDB kwargs: {json.dumps(vdb_kwargs, default=str, sort_keys=True)}")
 
     print("Runtimes:")
     if processed_files is not None:
@@ -268,7 +268,7 @@ def print_run_summary(
     print(f"\tTotal pages processed: {pages} from {input_path}")
     print(f"\tIngestion only time: {_fmt_time(ingest_only_total_time)}")
     print(f"\tRay dataset download time: {_fmt_time(ray_dataset_download_total_time)}")
-    print(f"\tLanceDB Write Time: {_fmt_time(lancedb_write_total_time)}")
+    print(f"\tVDB upload time: {_fmt_time(vdb_upload_total_time)}")
     if recall_total_time > 0:
         print(f"\tRecall time: {_fmt_time(recall_total_time)}")
     if evaluation_total_time > 0:
@@ -276,7 +276,7 @@ def print_run_summary(
 
     print("PPS:")
     print(f"\tIngestion only PPS: {ingest_only_pps:.2f}")
-    print(f"\tIngestion + LanceDB Write PPS: {ingest_and_lancedb_write_pps:.2f}")
+    print(f"\tIngestion + VDB upload PPS: {ingest_and_vdb_upload_pps:.2f}")
     if recall_total_time > 0:
         print(f"\tRecall QPS: {recall_qps:.2f}")
     print(f"\tTotal - Processed: {pages} pages in {_fmt_time(total_time)} @ {total_pps:.2f} PPS")
@@ -285,7 +285,7 @@ def print_run_summary(
         print("Recall metrics:")
         for k, v in sorted(recall_metrics.items(), key=_evaluation_metric_sort_key):
             print(f"  {k}: {v:.4f}")
-    else:
+    elif not evaluation_metrics:
         print("Recall metrics: skipped (no query CSV configured)")
 
     if evaluation_metrics:
@@ -301,7 +301,9 @@ def print_run_summary(
         "total_time_secs": round(total_time, 4),
         "total_pps": round(total_pps, 4),
         "ray_dataset_download_secs": round(ray_dataset_download_total_time, 4),
-        "lancedb_write_secs": round(lancedb_write_total_time, 4),
+        "vdb_op": str(vdb_op),
+        "vdb_kwargs": vdb_kwargs,
+        "vdb_upload_secs": round(vdb_upload_total_time, 4),
         "recall_time_secs": round(recall_total_time, 4),
         "evaluation_time_secs": round(evaluation_total_time, 4),
         "evaluation_label": evaluation_label,
