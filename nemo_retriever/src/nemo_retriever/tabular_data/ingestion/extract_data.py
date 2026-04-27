@@ -4,8 +4,6 @@
 
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from nemo_retriever.tabular_data.ingestion.utils import (
-    normalize_fks,
-    normalize_pks,
     normalize_tables,
     normalize_columns,
 )
@@ -27,8 +25,6 @@ def data_for_populate_tabular(connector: SQLDatabase):
     tables, columns, views, queries, pks, fks = create_dataframe(connector)
     tables = normalize_tables(tables)
     columns = normalize_columns(columns)
-    pks = normalize_pks(pks)
-    fks = normalize_fks(fks)
     data = {
         "database_name": connector.database_name,
         "tables": tables,

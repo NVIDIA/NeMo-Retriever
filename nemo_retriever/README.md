@@ -44,12 +44,15 @@ uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-inges
 For **remote NIM inference only** (no local GPU required), the base package is sufficient:
 
 ```bash
+uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
 uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
 ```
 
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
+
+> **Note:** `uv python install 3.12` installs a uv-managed Python that includes development headers (`Python.h`). These headers are required by vLLM, which compiles CUDA kernels at runtime using torch inductor. If you skip this step and use a system Python without headers, vLLM actor initialization will fail with `InductorError: fatal error: Python.h: No such file or directory`.
 
 2. Override Torch and Torchvision with CUDA 13 builds (local GPU only)
 
@@ -91,7 +94,22 @@ ingestor = (
   .embed()
   .vdb_upload()
 )
+```
 
+### Optional extras
+
+- **`asr`** — Local ASR (Parakeet). Has a different `transformers` requirement than the core package; install only if you need local ASR:
+  ```bash
+  uv pip install -e './nemo_retriever[asr]'
+  ```
+
+Run the batch pipeline script and point it at the directory that contains your PDFs using the following command.
+
+```bash
+uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/pdfs
+```
+
+```python
 # ingestor.ingest() actually executes the pipeline
 # results are returned as a ray dataset and inspectable as chunks
 ray_dataset = ingestor.ingest()

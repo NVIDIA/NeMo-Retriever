@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 """
-Lightweight text embedding helpers (local HF).
+Lightweight text embedding helpers (local vLLM for the default 1b-v2 text model).
 
 This module is intentionally independent of `nv-ingest-api` so it can be used in
 environments that don't have the full schema/transform stack installed.
@@ -194,7 +194,7 @@ class TextEmbedGPUActor(AbstractOperator, GPUOperator):
         super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
 
-        device = self.detect_kwargs.pop("device", None)
+        self.detect_kwargs.pop("device", None)  # unused for local text vLLM embedder
         hf_cache_dir = self.detect_kwargs.pop("hf_cache_dir", None)
         normalize = bool(self.detect_kwargs.pop("normalize", True))
         max_length = self.detect_kwargs.pop("max_length", 4096)
@@ -203,7 +203,6 @@ class TextEmbedGPUActor(AbstractOperator, GPUOperator):
 
         self._model = create_local_embedder(
             self.detect_kwargs.get("model_name"),
-            device=str(device) if device is not None else None,
             hf_cache_dir=str(hf_cache_dir) if hf_cache_dir is not None else None,
             normalize=normalize,
             max_length=int(max_length),
