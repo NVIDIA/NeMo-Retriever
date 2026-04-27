@@ -294,18 +294,27 @@ class NemotronRerankVLV2VLLM(BaseModel):
         if not pairs:
             return []
 
-        all_scores: List[float] = []
-        for i, (q, d) in enumerate(pairs):
-            img = None
-            if images_b64 is not None and i < len(images_b64):
-                img = images_b64[i]
-            d = self._truncate_doc_text(q, d, has_image=bool(img))
-            doc_input = self._build_document(d, img)
+        # Group consecutive pairs by query so each (query, [docs...]) goes to
+        # vLLM in a single batched score() call instead of one round-trip per pair.
+        scores: List[float] = [0.0] * len(pairs)
+        i = 0
+        while i < len(pairs):
+            q = pairs[i][0]
+            j = i
+            doc_inputs: list[Any] = []
+            while j < len(pairs) and pairs[j][0] == q:
+                _, d = pairs[j]
+                img = images_b64[j] if (images_b64 is not None and j < len(images_b64)) else None
+                d = self._truncate_doc_text(q, d, has_image=bool(img))
+                doc_inputs.append(self._build_document(d, img))
+                j += 1
             outputs = self._llm.score(
                 q,
-                [doc_input],
+                doc_inputs,
                 chat_template=SCORE_TEMPLATE,
             )
-            all_scores.append(outputs[0].outputs.score)
+            for k, out in enumerate(outputs):
+                scores[i + k] = out.outputs.score
+            i = j
 
-        return all_scores
+        return scores

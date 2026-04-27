@@ -182,9 +182,8 @@ class TestQueriesNoReranking:
 
 class TestLocalQueryEmbedBackend:
     def test_invalid_backend_raises(self):
-        r = _make_retriever(local_query_embed_backend="nope")
         with pytest.raises(ValueError, match="local_query_embed_backend"):
-            r._get_local_embedder("nvidia/llama-nemotron-embed-1b-v2")
+            _make_retriever(local_query_embed_backend="nope")
 
     def test_hf_text_model_uses_create_local_query_embedder(self, monkeypatch):
         recorded: list[tuple[str, str]] = []
