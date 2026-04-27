@@ -335,7 +335,10 @@ class ParakeetCTC1B1ASR:
         """Forward pass + greedy CTC for a batch of chunks. Returns ``(text, word_alignments)``."""
         import torch
 
-        assert self._model is not None and self._processor is not None
+        if self._model is None or self._processor is None:
+            raise RuntimeError(
+                "ParakeetCTC1B1ASR._decode_batch called before the model was loaded; " "call _ensure_loaded() first."
+            )
         inputs = self._processor(
             audios,
             sampling_rate=self._processor.feature_extractor.sampling_rate,
