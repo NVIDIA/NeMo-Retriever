@@ -320,7 +320,7 @@ def _build_embed_params(
     embed_batch_size: Optional[int],
     embed_cpus_per_actor: Optional[float],
     embed_gpus_per_actor: Optional[float],
-    local_ingest_backend: str = "vllm",
+    local_ingest_embed_backend: str = "vllm",
 ) -> EmbedParams:
     """Assemble :class:`EmbedParams` plus its :class:`BatchTuningParams`."""
 
@@ -349,7 +349,7 @@ def _build_embed_params(
                 "text_elements_modality": text_elements_modality,
                 "structured_elements_modality": structured_elements_modality,
                 "embed_granularity": embed_granularity,
-                "local_ingest_backend": local_ingest_backend,
+                "local_ingest_embed_backend": local_ingest_embed_backend,
                 "batch_tuning": embed_batch_tuning,
                 "inference_batch_size": embed_batch_size or None,
             }.items()
@@ -649,9 +649,9 @@ def run(
     embed_model_name: str = typer.Option(VL_EMBED_MODEL, "--embed-model-name", rich_help_panel=_PANEL_EMBED),
     embed_modality: str = typer.Option("text", "--embed-modality", rich_help_panel=_PANEL_EMBED),
     embed_granularity: str = typer.Option("element", "--embed-granularity", rich_help_panel=_PANEL_EMBED),
-    embed_local_ingest_backend: str = typer.Option(
+    local_ingest_embed_backend: str = typer.Option(
         "vllm",
-        "--embed-local-ingest-backend",
+        "--local-ingest-embed-backend",
         help="Local ingest-time text embedder when --embed-invoke-url is unset: vllm or hf. VL models always use hf.",
         rich_help_panel=_PANEL_EMBED,
     ),
@@ -797,9 +797,9 @@ def run(
     ),
     recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode", rich_help_panel=_PANEL_EVAL),
     recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details", rich_help_panel=_PANEL_EVAL),
-    recall_local_query_embed_backend: str = typer.Option(
+    local_query_embed_backend: str = typer.Option(
         "hf",
-        "--recall-local-query-embed-backend",
+        "--local-query-embed-backend",
         help="Local query embedding backend when --embed-invoke-url is unset: hf (default) or vllm.",
         rich_help_panel=_PANEL_EVAL,
     ),
@@ -820,7 +820,7 @@ def run(
     local_reranker_backend: str = typer.Option(
         "vllm",
         "--local-reranker-backend",
-        help="Local reranker backend: 'auto' / 'vllm' (default) or 'hf'.",
+        help="Local reranker backend: 'vllm' (default) or 'hf'.",
         rich_help_panel=_PANEL_EVAL,
     ),
     local_hf_batch_size: int = typer.Option(
@@ -972,7 +972,7 @@ def run(
             embed_batch_size=embed_batch_size,
             embed_cpus_per_actor=embed_cpus_per_actor,
             embed_gpus_per_actor=embed_gpus_per_actor,
-            local_ingest_backend=embed_local_ingest_backend,
+            local_ingest_embed_backend=local_ingest_embed_backend,
         )
 
         text_chunk_params = TextChunkParams(
@@ -1174,7 +1174,7 @@ def run(
             beir_query_language=beir_query_language,
             beir_doc_id_field=beir_doc_id_field,
             beir_k=beir_k,
-            local_query_embed_backend=recall_local_query_embed_backend,
+            local_query_embed_backend=local_query_embed_backend,
         )
 
         if not ran:

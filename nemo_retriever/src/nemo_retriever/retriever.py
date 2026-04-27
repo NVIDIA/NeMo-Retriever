@@ -103,13 +103,25 @@ class Retriever:
     """Reranking modality, typically matches embed_modality. Set to 'text_image'
     to enable multimodal reranking with images."""
     local_reranker_backend: str = "vllm"
-    """Backend for local VL reranking: ``"auto"`` / ``"vllm"`` (default) or ``"hf"``."""
+    """Backend for local VL reranking: ``"vllm"`` (default) or ``"hf"``."""
     reranker_gpu_memory_utilization: float = 0.5
     """Fraction of GPU memory for the vLLM reranker engine."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
     # Internal cache for local text embedders, keyed by model name.
     _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        qeb = (self.local_query_embed_backend or "hf").strip().lower()
+        if qeb not in ("hf", "vllm"):
+            raise ValueError(
+                "local_query_embed_backend must be 'hf' or 'vllm'; " f"got {self.local_query_embed_backend!r}"
+            )
+        self.local_query_embed_backend = qeb
+        rrb = (self.local_reranker_backend or "vllm").strip().lower()
+        if rrb not in ("vllm", "hf"):
+            raise ValueError("local_reranker_backend must be 'vllm' or 'hf'; " f"got {self.local_reranker_backend!r}")
+        self.local_reranker_backend = rrb
 
     def _resolve_embedding_endpoint(self) -> Optional[str]:
         http_ep = self.embedding_http_endpoint.strip() if isinstance(self.embedding_http_endpoint, str) else None
@@ -156,11 +168,7 @@ class Retriever:
         )
 
         resolved = resolve_embed_model(model_name)
-        backend_raw = (self.local_query_embed_backend or "hf").strip().lower()
-        if backend_raw not in ("hf", "vllm"):
-            raise ValueError(
-                "local_query_embed_backend must be 'hf' or 'vllm', " f"got {self.local_query_embed_backend!r}"
-            )
+        backend_raw = self.local_query_embed_backend
         cache_key: tuple[str, str] = (resolved, backend_raw)
 
         if cache_key not in self._embedder_cache:

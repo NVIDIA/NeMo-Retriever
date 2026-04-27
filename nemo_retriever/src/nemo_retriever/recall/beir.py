@@ -81,6 +81,18 @@ class BeirConfig:
     #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
     local_query_embed_backend: str = "hf"
 
+    def __post_init__(self) -> None:
+        qeb = (self.local_query_embed_backend or "hf").strip().lower()
+        if qeb not in ("hf", "vllm"):
+            raise ValueError(
+                "local_query_embed_backend must be 'hf' or 'vllm'; " f"got {self.local_query_embed_backend!r}"
+            )
+        object.__setattr__(self, "local_query_embed_backend", qeb)
+        rrb = (self.local_reranker_backend or "vllm").strip().lower()
+        if rrb not in ("vllm", "hf"):
+            raise ValueError("local_reranker_backend must be 'vllm' or 'hf'; " f"got {self.local_reranker_backend!r}")
+        object.__setattr__(self, "local_reranker_backend", rrb)
+
 
 def _row_get(row: Any, key: str, default: Any = None) -> Any:
     if isinstance(row, dict):
