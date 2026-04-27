@@ -317,6 +317,7 @@ class ParakeetCTC1B1ASR:
                     batch_start,
                     batch_start + len(batch) - 1,
                     e,
+                    exc_info=True,
                 )
                 continue
             for (audio_idx, sample_offset, _), (text, alignments) in zip(batch, decoded):
