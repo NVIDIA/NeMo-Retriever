@@ -19,10 +19,13 @@ EXPECTED_PHRASES = tuple(
     for phrase in os.environ.get("PARAKEET_CTC_EXPECTED_PHRASES", "||".join(DEFAULT_EXPECTED_PHRASES)).split("||")
     if phrase.strip()
 )
-pytestmark = pytest.mark.skipif(
-    os.environ.get("RUN_PARAKEET_CTC_HF_TEST") != "1",
-    reason="Set RUN_PARAKEET_CTC_HF_TEST=1 to run this large-model compatibility test.",
-)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        os.environ.get("RUN_PARAKEET_CTC_HF_TEST") != "1",
+        reason="Set RUN_PARAKEET_CTC_HF_TEST=1 to run this large-model compatibility test.",
+    ),
+]
 
 
 def _normalize_text(text: str) -> str:
