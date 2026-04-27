@@ -147,6 +147,20 @@ def create_local_embedder(
 
 
 _LOCAL_QUERY_BACKENDS = frozenset({"hf", "vllm"})
+_LOCAL_RERANKER_BACKENDS = frozenset({"hf", "vllm"})
+_LOCAL_INGEST_EMBED_BACKENDS = frozenset({"hf", "vllm"})
+
+
+def normalize_backend(value: str | None, valid: frozenset[str], *, field_name: str, default: str) -> str:
+    """Normalize *value* (strip + lowercase) and validate against *valid*.
+
+    Raises ``ValueError`` referencing *field_name* on invalid input.
+    Falsy *value* is replaced by *default* before validation.
+    """
+    v = (value or default).strip().lower()
+    if v not in valid:
+        raise ValueError(f"{field_name} must be one of {sorted(valid)}; got {value!r}")
+    return v
 
 
 def create_local_query_embedder(
@@ -168,9 +182,7 @@ def create_local_query_embedder(
     - ``backend="hf"``: HuggingFace for both VL and non-VL models.
     - ``backend="vllm"``: vLLM for both VL and non-VL models.
     """
-    b = (backend or "hf").strip().lower()
-    if b not in _LOCAL_QUERY_BACKENDS:
-        raise ValueError(f"backend must be one of {sorted(_LOCAL_QUERY_BACKENDS)}, got {backend!r}")
+    b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="hf")
 
     return create_local_embedder(
         model_name,
@@ -211,9 +223,7 @@ def create_local_reranker(
         Fraction of GPU memory for the vLLM engine (only used when
         *backend* is ``"vllm"``).
     """
-    b = (backend or "vllm").strip().lower()
-    if b not in ("vllm", "hf"):
-        raise ValueError(f"backend must be 'vllm' or 'hf'; got {backend!r}")
+    b = normalize_backend(backend, _LOCAL_RERANKER_BACKENDS, field_name="backend", default="vllm")
     if is_vl_rerank_model(model_name):
         if b == "vllm":
             from nemo_retriever.model.local.nemotron_rerank_vl_v2_vllm import NemotronRerankVLV2VLLM

@@ -311,10 +311,14 @@ class EmbedParams(_ParamsModel):
     @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod
     def _validate_local_ingest_embed_backend(cls, v: str) -> str:
-        val = str(v).strip().lower()
-        if val not in ("vllm", "hf"):
-            raise ValueError(f"local_ingest_embed_backend must be 'vllm' or 'hf', got {v!r}")
-        return val
+        from nemo_retriever.model import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+
+        return normalize_backend(
+            str(v) if v is not None else None,
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            field_name="local_ingest_embed_backend",
+            default="vllm",
+        )
 
     @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
     @classmethod

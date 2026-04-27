@@ -82,16 +82,33 @@ class BeirConfig:
     local_query_embed_backend: str = "hf"
 
     def __post_init__(self) -> None:
-        qeb = (self.local_query_embed_backend or "hf").strip().lower()
-        if qeb not in ("hf", "vllm"):
-            raise ValueError(
-                "local_query_embed_backend must be 'hf' or 'vllm'; " f"got {self.local_query_embed_backend!r}"
-            )
-        object.__setattr__(self, "local_query_embed_backend", qeb)
-        rrb = (self.local_reranker_backend or "vllm").strip().lower()
-        if rrb not in ("vllm", "hf"):
-            raise ValueError("local_reranker_backend must be 'vllm' or 'hf'; " f"got {self.local_reranker_backend!r}")
-        object.__setattr__(self, "local_reranker_backend", rrb)
+        from nemo_retriever.model import (
+            _LOCAL_QUERY_BACKENDS,
+            _LOCAL_RERANKER_BACKENDS,
+            normalize_backend,
+        )
+
+        # frozen=True: must use object.__setattr__ to write normalized values.
+        object.__setattr__(
+            self,
+            "local_query_embed_backend",
+            normalize_backend(
+                self.local_query_embed_backend,
+                _LOCAL_QUERY_BACKENDS,
+                field_name="local_query_embed_backend",
+                default="hf",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "local_reranker_backend",
+            normalize_backend(
+                self.local_reranker_backend,
+                _LOCAL_RERANKER_BACKENDS,
+                field_name="local_reranker_backend",
+                default="vllm",
+            ),
+        )
 
 
 def _row_get(row: Any, key: str, default: Any = None) -> Any:
