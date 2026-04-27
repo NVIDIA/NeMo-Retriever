@@ -33,7 +33,7 @@ The following table describes methods of the `Ingestor` class.
 | `ingest`           | Submit jobs and retrieve results synchronously.                              |
 | `ingest_async`     | Submit jobs asynchronously; returns a Future that completes when done.       |
 | `load`             | Ensure files are locally accessible (downloads if needed).                     |
-| `pdf_split_config` | Configure V2 PDF splitting (e.g. pages per chunk). Refer to [V2 API Guide](v2-api-guide.md). |
+| `pdf_split_config` | Configure server-side PDF splitting (pages per chunk) when using `api_version` `v2`. Refer to [PDF pre-splitting for ingest](v2-api-guide.md). |
 | `remaining_jobs`   | Return the count of jobs not yet in a terminal state.                       |
 | `save_to_disk`     | Save ingestion results to disk instead of memory.                             |
 | `store`            | Persist extracted images/structured renderings to an fsspec-compatible backend. |
@@ -112,7 +112,7 @@ Use the following code.
 | `verbose`                | bool    | `False` | Enable verbose logging. |
 | `enable_telemetry`       | bool    | `None`  | Enable or disable telemetry collection. |
 | `show_telemetry`         | bool    | `None`  | Print telemetry summary after ingest (env: `NV_INGEST_CLIENT_SHOW_TELEMETRY`). |
-| `include_parent_trace_ids` | bool  | `False` | If `True`, also return parent job trace IDs (V2 API). |
+| `include_parent_trace_ids` | bool  | `False` | If `True`, also return parent job trace IDs when using `api_version` `v2`. |
 
 The return value depends on the following flags:
 
@@ -458,10 +458,6 @@ with (
 The `caption` method generates image captions by using a VLM.
 You can use this to generate descriptions of unstructured images, infographics, and other visual content extracted from documents.
 
-!!! note
-
-    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository.
-
 ### Basic Usage
 
 !!! tip
@@ -574,29 +570,34 @@ The `store` task uses [fsspec](https://filesystem-spec.readthedocs.io/) for stor
 
 When `public_base_url` is provided, the metadata returned from `ingest()` surfaces that HTTP(S) link while still recording the underlying storage URI. Leave it unset when the storage endpoint itself is already publicly reachable.
 
-### Docker Volume Mounts for Local Storage
+### Persistent storage for `file://` URIs
 
-When running the NeMo Retriever Library via Docker and using `file://` storage URIs, the path must be within a mounted volume for files to persist on the host machine.
+When you use `file://` storage URIs, the path must exist inside the ingestion pod (or bind-mounted volume) so files persist across restarts. Configure a `PersistentVolumeClaim` or host path volume in your Helm values so `/workspace/data` (or your chosen mount) points at durable storage.
 
-By default, the `docker-compose.yaml` mounts a single volume:
+Illustrative mount (adapt keys to your chart version):
 
 ```yaml
-volumes:
-  - ${DATASET_ROOT:-./data}:/workspace/data
+# Example only — see Helm chart README for the supported values paths
+extraVolumeMounts:
+  - name: workspace-data
+    mountPath: /workspace/data
+extraVolumes:
+  - name: workspace-data
+    persistentVolumeClaim:
+      claimName: nemo-retriever-workspace
 ```
 
 This means:
 
-| Container Path | Host Path | Works with `file://`? |
-|----------------|-----------|----------------------|
-| `/workspace/data/...` | `${DATASET_ROOT}/...` (default: `./data/...`) | ✅ Yes |
-| `/tmp/...` | (container only) | ❌ No - files lost on restart |
-| `/raid/custom/path` | (container only) | ❌ No - path not mounted |
+| Path inside pod | Backing storage | Works with `file://`? |
+|-----------------|-----------------|----------------------|
+| `/workspace/data/...` | PVC or bind mount you configure | ✅ Yes |
+| `/tmp/...` | Ephemeral by default | ❌ No — often lost on restart |
+| Unmounted custom paths | None | ❌ No |
 
-**Example: Save to host filesystem**
+**Example: Save under the mounted workspace**
 
 ```python
-# Files save to ./data/artifacts/images on the host
 ingestor = ingestor.store(
     structured=True,
     images=True,
@@ -604,23 +605,9 @@ ingestor = ingestor.store(
 )
 ```
 
-**Example: Use a custom host directory**
+**Example: Point `DATASET_ROOT` at a large disk before install**
 
-```bash
-# Set DATASET_ROOT before starting services
-export DATASET_ROOT=/raid/my-project/nemo-retriever-data
-docker compose up -d
-```
-
-```python
-# Now /workspace/data maps to /raid/my-project/nemo-retriever-data
-ingestor = ingestor.store(
-    structured=True,
-    images=True,
-    storage_uri="file:///workspace/data/extracted-images"
-)
-# Files save to /raid/my-project/nemo-retriever-data/extracted-images on host
-```
+Set `DATASET_ROOT` (or the chart’s equivalent) in values so `/workspace/data` resolves to your PVC-backed path, apply the chart, then use the same `file:///workspace/data/...` URIs from Python.
 
 For more information on environment variables, refer to [Environment Variables](environment-config.md).
 

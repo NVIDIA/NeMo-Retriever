@@ -28,7 +28,7 @@ Use the [Digital Corpora Download Notebook](https://github.com/NVIDIA/NeMo-Retri
 
 Before you use this documentation, you need the following:
 
-- Docker and Docker Compose are running
+- Docker (or container tools) and a reachable NeMo Retriever extraction deployment (for example on Kubernetes) as required by your harness configuration
 - A Python environment with the NeMo Retriever Library client and harness dependencies installed
 - The [benchmark datasets are downloaded](#dataset-prerequisites)
 
@@ -216,7 +216,7 @@ EXTRACT_IMAGES=true API_VERSION=v1 uv run python -m nv_ingest_harness.cli.run --
 #### Infrastructure Options
 - `hostname` (string): Service hostname
 - `readiness_timeout` (integer): Docker startup timeout in seconds
-- `compose.profiles` (list): Docker Compose profiles, nested under `compose` in YAML (loaded as top-level `profiles`)
+- `compose.profiles` (list): Harness YAML field under `compose` (loaded as top-level `profiles`) used to select which optional services the run expects; align values with your deployed stack
 
 #### Runtime Options
 - `sparse` (boolean): Use sparse embeddings
@@ -330,7 +330,7 @@ DATASET_DIR=/custom/path uv run python -m nv_ingest_harness.cli.run --case=e2e
 
 ### Example Configurations
 
-**V2 API with PDF Splitting:**
+**PDF splitting with `api_version` `v2`:**
 ```yaml
 # Edit test_configs.yaml active section:
 active:

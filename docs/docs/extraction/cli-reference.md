@@ -38,7 +38,7 @@ The following table lists all CLI options.
 | `--client_host` | — | string | `localhost` | No | Hostname or IP of the ingest service. |
 | `--client_port` | — | int | `7670` | No | Port of the ingest service. |
 | `--api_version` | — | enum | `v2` | No | API version: `v1` or `v2`. Required for `--pdf_split_page_count`. |
-| `--pdf_split_page_count` | — | int | none | No | Pages per PDF chunk when splitting (V2 API). Typically 1–128; server default if unset. |
+| `--pdf_split_page_count` | — | int | none | No | Pages per PDF chunk when splitting with `api_version` `v2`. Typically 1–128; server default if unset. |
 | `--client_type` | — | enum | `rest` | No | Client transport: `rest` or `simple`. |
 | `--client_kwargs` | — | string (JSON) | `{}` | No | Extra JSON object passed to the client. |
 | `--batch_size` | — | int | `10` | No | The number of in-flight jobs. This value must be greater than or equal to 1. |
@@ -124,8 +124,8 @@ Options:
   --client_port INTEGER           Port for the client endpoint.  [default: 7670]
   --client_kwargs TEXT           Additional arguments to pass to the client.
                                  [default: {}]
-  --api_version [v1|v2]          API version to use (v1 or v2). V2 required
-                                 for PDF split page count feature.
+  --api_version [v1|v2]          API version to use (v1 or v2). `v2` is required
+                                 for the PDF split page count feature.
                                  [default: v2]
   --client_type [rest|simple]    Client type used to connect to the ingest
                                  service.  [default: rest]
@@ -150,7 +150,7 @@ Options:
   --zipkin_port INTEGER          Port for the Zipkin trace API.
                                  [default: 9411]
   --pdf_split_page_count INTEGER Number of pages per PDF chunk for splitting
-                                 (v2 api).  [default: (none)]
+                                 (only with `--api_version v2`).  [default: (none)]
   --version                      Show version.
   --help                         Show this message and exit.
 ```
@@ -224,7 +224,7 @@ To submit a PDF file with a custom split page count, use the `--pdf_split_page_c
 This allows you to control how many pages are included in each PDF chunk during processing.
 
 !!! note
-    The `--pdf_split_page_count` option requires using the V2 API (set via `--api_version v2` or environment variable `NEMO_RETRIEVER_API_VERSION=v2`).
+    The `--pdf_split_page_count` option requires `api_version` `v2` (set via `--api_version v2` or environment variable `NEMO_RETRIEVER_API_VERSION=v2`).
     It accepts values between 1 and 128 pages per chunk (default is server default, typically 32).
     Smaller chunks provide more parallelism but increase overhead, while larger chunks reduce overhead but limit concurrency.
 

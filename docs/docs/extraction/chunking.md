@@ -107,5 +107,5 @@ The following table contains the `split` parameters.
 ## Related Topics
 
 - [Use the Python API](python-api-reference.md)
-- [NeMo Retriever Library V2 API Guide](v2-api-guide.md)
+- [PDF pre-splitting for ingest](v2-api-guide.md)
 - [Environment variables](environment-config.md)

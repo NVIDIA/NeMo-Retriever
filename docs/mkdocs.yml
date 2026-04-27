@@ -76,8 +76,7 @@ nav:
       - "Hardware and support matrix": extraction/support-matrix.md
       - "Quickstart: NeMo Retriever Library (local)": extraction/quickstart-library-mode.md
       - "Authentication and API keys": extraction/api-keys.md
-  - "3. Choose your deployment":
-      - "Deployment options": extraction/deployment-options.md
+  - "3. Deployment options": extraction/deployment-options.md
   - "4. Core workflows":
       - "Workflow: Ingest documents into a searchable VDB collection": extraction/workflow-document-ingestion.md
       - "Workflow: Audio & Video Ingestion":
@@ -123,7 +122,7 @@ nav:
       - "Published metrics and comparisons": extraction/published-metrics-comparisons.md
   - "12. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
-      - "HTTP API (V2)": extraction/v2-api-guide.md
+      - "PDF pre-splitting for ingest": extraction/v2-api-guide.md
       - "Python API": extraction/python-api-reference.md
       - "CLI reference": extraction/cli-reference.md
       - Environment variables: extraction/environment-config.md
@@ -180,7 +179,7 @@ plugins:
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
         extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md
-        extraction/workflow-build-searchable-collection.md: extraction/chunking.md
+        extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/semantic-hybrid-retrieval.md
   - site-urls
 

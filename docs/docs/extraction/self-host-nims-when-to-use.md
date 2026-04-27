@@ -14,4 +14,4 @@ Consider self-hosting when:
 
 - [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [Support matrix](support-matrix.md)
-- [Compare deployment options](choose-your-path.md)
+- [Deployment options](deployment-options.md#when-to-self-host-nims)

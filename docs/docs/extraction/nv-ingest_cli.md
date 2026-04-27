@@ -86,7 +86,7 @@ To submit a PDF file with a custom split page count, use the `--pdf_split_page_c
 This allows you to control how many pages are included in each PDF chunk during processing.
 
 !!! note
-    The `--pdf_split_page_count` option requires using the V2 API (set via `--api_version v2` or environment variable `NV_INGEST_API_VERSION=v2`).
+    The `--pdf_split_page_count` option requires `api_version` `v2` (set via `--api_version v2` or environment variable `NV_INGEST_API_VERSION=v2`).
     It accepts values between 1 and 128 pages per chunk (default is server default, typically 32).
     Smaller chunks provide more parallelism but increase overhead, while larger chunks reduce overhead but limit concurrency.
 

@@ -1,6 +1,6 @@
-# NeMo Retriever Library V2 API Guide: PDF Pre Splitting
+# PDF pre-splitting for parallel ingest
 
-> **TL;DR:** V2 API automatically splits large PDFs into chunks for faster parallel processing.
+> **TL;DR:** With `api_version` `v2`, the service can split large PDFs into chunks before Ray processing for higher throughput.
 > 
 > **Python:** Enable with `message_client_kwargs={"api_version": "v2"}` and configure chunk size with `.pdf_split_config(pages_per_chunk=64)`.
 > 
@@ -18,9 +18,9 @@
 
 ## Quick Start
 
-### What is V2 API?
+### What is PDF pre-splitting?
 
-The V2 API automatically splits large PDFs into smaller chunks before processing, enabling:
+With `message_client_kwargs={"api_version": "v2"}`, the ingest service can split large PDFs into smaller chunks before processing, enabling:
 
 - **Higher throughput** - 1.3-1.5x faster for large documents
 - **Better parallelization** - Distribute work across Ray workers
@@ -35,7 +35,7 @@ from nv_ingest_client.client import Ingestor
 ingestor = Ingestor(
     message_client_hostname="http://localhost",
     message_client_port=7670,
-    message_client_kwargs={"api_version": "v2"}  # ← Step 1: Enable V2
+    message_client_kwargs={"api_version": "v2"}  # ← Step 1: use api_version v2
 )
 
 # Run with optional chunk size override
@@ -69,7 +69,7 @@ nemo-retriever \
 
 | Setting | Purpose | How to Set |
 |---------|---------|------------|
-| **API Version** | Route requests to V2 endpoints | `message_client_kwargs={"api_version": "v2"}` |
+| **API version** | Route requests to the v2 ingest routes | `message_client_kwargs={"api_version": "v2"}` |
 | **Chunk Size** | Pages per chunk (optional) | `.pdf_split_config(pages_per_chunk=N)` |
 
 ### Configuration Priority Chain
@@ -105,19 +105,12 @@ ingestor = Ingestor(
 
 ### Option 2: Server-Side Default
 
-Set a cluster-wide default via Docker Compose `.env`:
-
-```bash
-# .env file
-PDF_SPLIT_PAGE_COUNT=64
-```
+Set a cluster-wide default on the ingestion runtime (for example `PDF_SPLIT_PAGE_COUNT` in the Helm values or ConfigMap for the service that runs the NeMo Retriever Library API):
 
 ```yaml
-# docker-compose.yaml (already configured)
-services:
-  ingestion-ms-runtime:
-    environment:
-      - PDF_SPLIT_PAGE_COUNT=${PDF_SPLIT_PAGE_COUNT:-32}
+# Example: set in chart values for the ingestion runtime / ms-runtime workload
+env:
+  PDF_SPLIT_PAGE_COUNT: "64"
 ```
 
 **Pros:**
@@ -131,7 +124,7 @@ services:
 
 ### Option 3: Use the Default
 
-Simply enable V2 without configuring chunk size:
+Simply set `api_version` to `v2` without configuring chunk size:
 
 ```python
 # Uses default 32 pages per chunk
@@ -182,7 +175,7 @@ ingestor = Ingestor(
 ### Architecture Flow
 
 ```
-Client                    API Layer (V2)              Ray Workers
+Client                    API layer (v2)              Ray Workers
   │                            │                           │
   │   1. Submit PDF            │                           │
   ├──────────────────────────► │                           │
@@ -332,9 +325,9 @@ Compute time = resident_time = 450ms (actual work done)
 
 ## Migration from V1
 
-### Minimal Migration (V2, No Splitting)
+### Minimal migration (api_version v2, no splitting)
 
-Smallest possible change - just route to V2 endpoints:
+Smallest possible change — route requests to the v2 ingest routes:
 
 ```python
 # Before (V1)
@@ -343,7 +336,7 @@ ingestor = Ingestor(
     message_client_port=7670
 )
 
-# After (V2, identical behavior for PDFs ≤32 pages)
+# After (api_version v2, identical behavior for PDFs ≤32 pages)
 ingestor = Ingestor(
     message_client_hostname="http://localhost",
     message_client_port=7670,
@@ -353,12 +346,12 @@ ingestor = Ingestor(
 
 **Behavior:** No splitting occurs, responses identical to V1.
 
-### Full V2 with Splitting
+### Enable splitting with api_version v2
 
 Enable splitting for large PDFs:
 
 ```python
-# V2 with PDF splitting
+# api_version v2 with PDF splitting
 ingestor = Ingestor(
     message_client_hostname="http://localhost",
     message_client_port=7670,
@@ -387,14 +380,14 @@ ingestor_kwargs = {
     "message_client_port": 7670
 }
 
-# Enable V2 if configured
+# Enable api_version v2 if configured
 if api_version == "v2":
     ingestor_kwargs["message_client_kwargs"] = {"api_version": "v2"}
 
 # Create ingestor
 ingestor = Ingestor(**ingestor_kwargs).files(data_dir)
 
-# Configure splitting for V2
+# Configure splitting when using v2
 if api_version == "v2" and pdf_split_page_count:
     ingestor = ingestor.pdf_split_config(pages_per_chunk=pdf_split_page_count)
 
@@ -409,7 +402,7 @@ ingestor = ingestor.extract(...).ingest()
 - No changes required
 - No splitting occurs
 
-**V2 responses are V1-compatible:**
+**Responses with `api_version` `v2` stay compatible with v1 parsers:**
 - Top-level `data`, `trace`, `annotations` have same structure
 - Additional metadata in `metadata` object (ignored by V1 parsers)
 - Existing response parsing code works unchanged
@@ -470,7 +463,7 @@ WARNING: Client requested split_page_count=1000; clamped to 128
 ### Key Files
 
 **Server Implementation:**
-- `src/nv_ingest/api/v2/ingest.py` - V2 endpoints
+- `src/nv_ingest/api/v2/ingest.py` - v2 ingest routes
 - `src/nv_ingest/framework/util/service/impl/ingest/redis_ingest_service.py` - Redis state management
 
 **Client Implementation:**
@@ -491,8 +484,8 @@ A: No. If you don't call `.pdf_split_config()`, the server uses either the `PDF_
 **Q: When does splitting actually occur?**  
 A: Only when `page_count > pages_per_chunk`. Smaller PDFs are processed as single jobs (no overhead).
 
-**Q: Will my V1 response parsing code work with V2?**  
-A: Yes! Top-level `data`, `trace`, and `annotations` fields are identical. Additional metadata is added under `metadata` (which V1 parsers ignore).
+**Q: Will my v1 response parsing code work when the client uses `api_version` `v2`?**  
+A: Yes! Top-level `data`, `trace`, and `annotations` fields are identical. Additional metadata is added under `metadata` (which v1 parsers ignore).
 
 **Q: How do I know if splitting occurred?**  
 A: Check `len(result["metadata"].get("chunks", [])) > 0` or look for server logs: `"Splitting PDF ... into ... chunks"`.
@@ -500,5 +493,5 @@ A: Check `len(result["metadata"].get("chunks", [])) > 0` or look for server logs
 **Q: What happens if one chunk fails?**  
 A: Other chunks still return results. Check `metadata.failed_subjobs[]` for details. The job returns `status: "failed"` but includes partial results.
 
-**Q: Does V2 work without splitting?**  
-A: Yes! Just enable V2 without calling `.pdf_split_config()`. PDFs ≤ default chunk size behave identically to V1.
+**Q: Does `api_version` `v2` work without splitting?**  
+A: Yes. Use `api_version` `v2` without calling `.pdf_split_config()`. PDFs ≤ default chunk size behave identically to v1.
