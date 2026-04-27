@@ -308,6 +308,14 @@ class EmbedParams(_ParamsModel):
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
     fused_tuning: FusedTuningParams = Field(default_factory=FusedTuningParams)
 
+    @field_validator("local_ingest_backend", mode="before")
+    @classmethod
+    def _validate_local_ingest_backend(cls, v: str) -> str:
+        val = str(v).strip().lower()
+        if val not in ("vllm", "hf"):
+            raise ValueError(f"local_ingest_backend must be 'vllm' or 'hf', got {v!r}")
+        return val
+
     @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
     @classmethod
     def _validate_modality(cls, v: str | None) -> str | None:

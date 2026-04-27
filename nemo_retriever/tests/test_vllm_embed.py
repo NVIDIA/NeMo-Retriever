@@ -14,6 +14,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from nemo_retriever.text_embed.vllm import embed_multimodal_with_vllm_llm, embed_with_vllm_llm
+from nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder import LlamaNemotronEmbed1BV2Embedder
 
 
 def _make_output(embedding):
@@ -209,6 +210,62 @@ class TestVLLMEmbedderImages:
         ):
             result = self.embedder.embed_images([b64])
         assert result.shape[0] == 0
+
+
+def _make_text_embedder():
+    with patch.object(LlamaNemotronEmbed1BV2Embedder, "__post_init__", lambda self: None):
+        embedder = LlamaNemotronEmbed1BV2Embedder()
+    embedder._llm = MagicMock()
+    return embedder
+
+
+class TestLlamaNemotronEmbed1BV2Embedder:
+    def setup_method(self):
+        self.embedder = _make_text_embedder()
+
+    def test_finalize_vectors_all_empty_returns_empty_tensor(self):
+        result = self.embedder._finalize_vectors([[], []])
+        assert isinstance(result, torch.Tensor)
+        assert result.shape[0] == 0
+
+    def test_finalize_vectors_zero_pads_missing(self):
+        result = self.embedder._finalize_vectors([[1.0, 0.0], []])
+        assert result.shape == (2, 2)
+        assert result[1].tolist() == [0.0, 0.0]
+
+    def test_embed_uses_passage_prefix_by_default(self):
+        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
+            self.embedder.embed(["hello"])
+        assert mock_fn.call_args[1].get("prefix") == "passage: "
+
+    def test_embed_queries_uses_query_prefix(self):
+        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
+            self.embedder.embed_queries(["hello"])
+        assert mock_fn.call_args[1].get("prefix") == "query: "
+
+    def test_embed_empty_input_returns_empty_tensor(self):
+        result = self.embedder.embed(["", "  "])
+        assert result.shape == (0, 0)
+
+    def test_unload_clears_llm(self):
+        with patch("torch.cuda.is_available", return_value=False):
+            self.embedder.unload()
+        assert self.embedder._llm is None
+
+
+class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
+    def test_output_is_l2_normalized_by_default(self):
+        embedder = _make_text_embedder()
+        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]):
+            result = embedder.embed(["text"])
+        assert abs(float(torch.norm(result, dim=-1).item()) - 1.0) < 1e-5
+
+    def test_output_unnormalized_when_normalize_false(self):
+        embedder = _make_text_embedder()
+        embedder.normalize = False
+        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]):
+            result = embedder.embed(["text"])
+        assert abs(float(result[0][0].item()) - 3.0) < 1e-5
 
 
 class TestVLLMEmbedderTextImage:
