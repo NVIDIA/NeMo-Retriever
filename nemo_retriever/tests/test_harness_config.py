@@ -641,6 +641,30 @@ def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.Mo
     assert cfg.beir_doc_id_field == "pdf_page"
 
 
+def test_load_harness_config_supports_jp20_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_exists = Path.exists
+    expected_dataset_dir = Path("/datasets/nv-ingest/jp20").resolve()
+    expected_query_csv = (harness_config.REPO_ROOT / "data" / "jp20_query_gt.csv").resolve()
+
+    def _fake_exists(path_self: Path) -> bool:
+        if path_self == expected_dataset_dir:
+            return True
+        if path_self == expected_query_csv:
+            return True
+        return real_exists(path_self)
+
+    monkeypatch.setattr(harness_config.Path, "exists", _fake_exists)
+
+    cfg = load_harness_config(dataset="jp20", preset="single_gpu")
+
+    assert cfg.dataset_dir == str(expected_dataset_dir)
+    assert cfg.query_csv == str(expected_query_csv)
+    assert cfg.recall_required is False
+    assert cfg.evaluation_mode == "beir"
+    assert cfg.beir_loader == "jp20_csv"
+    assert cfg.beir_doc_id_field == "pdf_page"
+
+
 def test_load_harness_config_supports_bo10k_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     real_exists = Path.exists
     expected_dataset_dir = Path("/datasets/nv-ingest/bo10k").resolve()
