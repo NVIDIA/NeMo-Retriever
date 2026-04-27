@@ -127,5 +127,5 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Support Matrix](support-matrix.md)
 - [Prerequisites](prerequisites.md)
 - [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
-- [Deploy With Docker Compose (Self-Hosted)](quickstart-guide.md)
+- [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)

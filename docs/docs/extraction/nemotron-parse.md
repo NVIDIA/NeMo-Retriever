@@ -30,7 +30,7 @@ Use the following procedure to run the NIM locally.
 
 1. Start the retriever services with the `nemotron-parse` profile. This profile includes the necessary components for extracting text and metadata from images. Use the following command.
 
-    - The --profile nemotron-parse flag ensures that vision-language retrieval services are launched.  For more information, refer to [Profile Information](quickstart-guide.md#profile-information).
+    - The --profile nemotron-parse flag ensures that vision-language retrieval services are launched. For more information, refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository.
 
     ```shell
     docker compose --profile nemotron-parse up

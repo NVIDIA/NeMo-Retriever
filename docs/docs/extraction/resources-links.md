@@ -11,3 +11,7 @@ External pages for product context, catalogs, and solution blueprints.
 ## Open source
 
 - [OSS licences](../license.md) (optional reference for bundled or linked components)
+
+## See also
+
+- [What is NeMo Retriever Library?](overview.md) — product overview and where to start with deployment paths

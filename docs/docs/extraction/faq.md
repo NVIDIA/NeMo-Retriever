@@ -43,7 +43,7 @@ For more information, refer to [Advanced Visual Parsing](nemotron-parse.md).
 
 ### Self-Hosted Deployments
 
-For [self-hosted deployments](quickstart-guide.md), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
+For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
 For more information, refer to [Generate Your NGC Keys](api-keys.md).
 
 For advanced scenarios, you might want to set `docker-compose` environment variables for NIM container paths, tags, and batch sizes. 
@@ -65,7 +65,7 @@ For examples of `*_ENDPOINT` variables, refer to [docker-compose.yaml](https://g
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 
-Refer to the [Profile Information](quickstart-guide.md#profile-information) section 
+Refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository 
 for information about the optional NIM components of the pipeline.
 
 You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](python-api-reference.md).

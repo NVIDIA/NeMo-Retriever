@@ -57,7 +57,7 @@ Use the following procedure to run the NIM locally.
     NGC_API_KEY=<your-ngc-key>
     ```
 
-3. Start the retriever services with the `audio` profile. This profile includes the necessary components for audio processing. Use the following command. The `--profile audio` flag ensures that speech-specific services are launched. For more information, refer to [Profile Information](quickstart-guide.md#profile-information).
+3. Start the retriever services with the `audio` profile. This profile includes the necessary components for audio processing. Use the following command. The `--profile audio` flag ensures that speech-specific services are launched. For more information, refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository.
 
     ```shell
     docker compose --profile retrieval --profile audio up

@@ -368,7 +368,7 @@ You can use this to generate descriptions of unstructured images, infographics, 
 
 !!! note
 
-    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
+    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to the [reference `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) in the repository.
 
 ### Basic Usage
 

@@ -22,5 +22,5 @@ NeMo Retriever Library is built for **accuracy**, **throughput**, and **flexible
 ## Related topics
 
 - [Concepts](concepts.md) — Core ideas (jobs, pipelines, metadata).
-- [Choose your path](choose-your-path.md) — Pick a deployment and learning path.
+- [Deployment options](deployment-options.md) — Compare deployment paths and NIM hosting choices.
 - [Overview](overview.md) — Full product description.

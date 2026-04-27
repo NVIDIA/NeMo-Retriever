@@ -75,20 +75,14 @@ nav:
       - Prerequisites: extraction/prerequisites.md
       - "Hardware and support matrix": extraction/support-matrix.md
       - "Quickstart: NeMo Retriever Library (local)": extraction/quickstart-library-mode.md
-      - "Deploy (Docker Compose)": extraction/quickstart-guide.md
       - "Authentication and API keys": extraction/api-keys.md
   - "3. Choose your deployment":
-      - Compare deployment options: extraction/choose-your-path.md
-      - When to use NVIDIA-hosted NIMs: extraction/hosted-nims-when-to-use.md
-      - When to self-host NIMs: extraction/self-host-nims-when-to-use.md
+      - "Deployment options": extraction/deployment-options.md
   - "4. Core workflows":
-      - "Workflow: Document ingestion": extraction/workflow-document-ingestion.md
-      - "Workflow: Build a searchable collection": extraction/workflow-build-searchable-collection.md
-      - "Workflow: Query and rerank": extraction/workflow-query-rerank.md
-      - "Workflow: Agentic retrieval": extraction/workflow-agentic-retrieval.md
-      - "Workflow: Audio or video to text": extraction/audio-video.md
-      - "Workflow: Video processing with OCR": extraction/workflow-video-ocr.md
-      - "Workflow: End-to-end RAG with NVIDIA Blueprints": extraction/workflow-e2e-blueprints.md
+      - "Workflow: Ingest documents into a searchable VDB collection": extraction/workflow-document-ingestion.md
+      - "Workflow: Audio & Video Ingestion":
+          - "Speech and audio extraction": extraction/audio-video.md
+          - "OCR of video frames": extraction/workflow-video-ocr.md
   - "5. Multimodal extraction":
       - "Supported file types and formats": extraction/supported-file-types.md
       - "Text and layout extraction": extraction/text-layout-extraction.md
@@ -173,7 +167,12 @@ plugins:
         extraction/index.md: extraction/overview.md
         extraction/nv-ingest_cli.md: extraction/cli-reference.md
         extraction/nv-ingest-python-api.md: extraction/python-api-reference.md
-        extraction/helm.md: extraction/quickstart-guide.md
+        extraction/helm.md: extraction/deployment-options.md
+        extraction/quickstart-guide.md: extraction/deployment-options.md
+        extraction/choose-your-path.md: extraction/deployment-options.md
+        extraction/hosted-nims-when-to-use.md: extraction/deployment-options.md
+        extraction/self-host-nims-when-to-use.md: extraction/deployment-options.md
+        extraction/workflow-e2e-blueprints.md: extraction/resources-links.md
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
         extraction/ngc-api-key.md: extraction/api-keys.md
         extraction/data-store.md: extraction/vdbs.md
@@ -207,6 +206,11 @@ exclude_docs: |
   extraction/nv-ingest_cli.md
   extraction/nv-ingest-python-api.md
   extraction/helm.md
+  extraction/quickstart-guide.md
+  extraction/choose-your-path.md
+  extraction/hosted-nims-when-to-use.md
+  extraction/self-host-nims-when-to-use.md
+  extraction/workflow-e2e-blueprints.md
   extraction/releasenotes-nv-ingest.md
 
 extra:
