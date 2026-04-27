@@ -299,6 +299,7 @@ class EmbedParams(_ParamsModel):
     local_ingest_backend: str = (
         "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
     )
+    dimensions: Optional[int] = None
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32

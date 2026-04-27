@@ -71,10 +71,15 @@ def create_local_embedder(
 
     *backend* must be ``"vllm"`` or ``"hf"``.
 
-    For both VL and non-VL models:
+    For non-VL models:
 
     - ``backend="vllm"`` (default): vLLM via ``LlamaNemotronEmbed1BV2Embedder``.
     - ``backend="hf"``: HuggingFace via ``LlamaNemotronEmbed1BV2HFEmbedder``.
+
+    For VL models:
+
+    - ``backend="vllm"`` (default): vLLM via ``LlamaNemotronEmbedVL1BV2VLLMEmbedder``.
+    - ``backend="hf"``: HuggingFace via ``LlamaNemotronEmbedVL1BV2Embedder``.
 
     ``device`` applies only to HuggingFace paths. For vLLM paths, ``device`` is
     forwarded for compatibility but deprecated and ignored (vLLM placement is
