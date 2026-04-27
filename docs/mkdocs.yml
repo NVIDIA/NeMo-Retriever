@@ -1,15 +1,22 @@
-site_name: NeMo Retriever Documentation
-site_url: https://docs.nvidia.com/nemo/retriever/
+# NeMo Retriever documentation — single MkDocs config for NVIDIA docs and GitHub Pages.
+# Flat numbered nav (sections 1–13) drives the NRL TOC everywhere.
+#
+# Build: mkdocs build -f mkdocs.yml [--strict]
+# GitHub Pages: SITE_URL is set by configure-pages to the Pages base URL; locally omit it
+# to use the default NVIDIA docs URL below.
 
-repo_name: NVIDIA/nv-ingest
-repo_url: https://github.com/NVIDIA/nv-ingest/
+site_name: NeMo Retriever Documentation
+site_description: NeMo Retriever documentation — library, deployment, and operations guides
+site_url: !ENV [SITE_URL, "https://docs.nvidia.com/nemo/retriever/"]
+
+repo_name: NVIDIA/NeMo-Retriever
+repo_url: https://github.com/NVIDIA/NeMo-Retriever
 
 theme:
   name: material
   custom_dir: overrides
   features:
     - content.code.annotate
-    - navigation.tabs
     - navigation.indexes
     - navigation.instant
     - navigation.path
@@ -17,6 +24,7 @@ theme:
     - navigation.top
     - navigation.footer
     - navigation.expand
+    - toc.follow
     - search.suggest
     - search.highlight
     - content.code.copy
@@ -53,45 +61,85 @@ extra_css:
 # extra_javascript:
 #   - assets/js/chatbot.js
 
-
+# Flat numbered sections so the left sidebar shows the full TOC; Material hides the tab
+# bar when there is only one top-level tab.
 nav:
-  - NeMo Retriever: 
-    - Overview: 
-      - Overview: index.md
-    - NeMo Retriever Library:
-      - Overview: extraction/overview.md
-      - Release Notes: extraction/releasenotes-nv-ingest.md
-      - Get Started:
-        - Prerequisites: extraction/prerequisites.md
-        - Support Matrix: extraction/support-matrix.md
-        - Library Quickstart: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
-        - Helm Quickstart: https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md
-      - Developer Guide:
-        - Using the Python API: extraction/python-api-reference.md
-        - Using the CLI: extraction/cli-reference.md
-        - Splitting/Chunking: extraction/chunking.md
-        - Embedding Options: extraction/embedding.md
-        - Vector Databases: extraction/vdbs.md
-        - Audio/Video: extraction/audio-video.md
-        - Custom Metadata: https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb
-        - Nemotron-Parse: extraction/nemotron-parse.md
-        - Notebooks: https://github.com/NVIDIA/NeMo-Retriever/tree/main/examples/
-        - Configure Ray Logging: extraction/ray-logging.md
-      - Customize Your Pipeline:
-        - Add Custom Stages: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
-        - Add User-defined Functions: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#using-udfoperator
-      - Performance:
-        - Benchmarking: extraction/benchmarking.md
-        - Telemetry: extraction/telemetry.md
-        - Throughput Is Dataset-Dependent: extraction/throughput-is-dataset-dependent.md
-      - Reference:
-        - API Keys: extraction/api-keys.md
-        - Environment Variables: extraction/environment-config.md
-        - Metadata Reference: extraction/content-metadata.md
-      - Troubleshoot: extraction/troubleshoot.md
+  - "1. Introduction":
+      - "What is NeMo Retriever?": extraction/overview.md
+      - Key features: extraction/key-features.md
+      - Key concepts: extraction/concepts.md
+      - How to use this documentation: extraction/how-to-use-this-documentation.md
+      - Release notes: extraction/releasenotes.md
+  - "2. Get started":
+      - About this section: extraction/getting-started-about.md
+      - Prerequisites: extraction/prerequisites.md
+      - "Hardware and support matrix": extraction/support-matrix.md
+      - "Quickstart: NeMo Retriever Library (local)": extraction/quickstart-library-mode.md
+      - "Deploy (Docker Compose)": extraction/quickstart-guide.md
+      - "Authentication and API keys": extraction/api-keys.md
+  - "3. Choose your deployment":
+      - Compare deployment options: extraction/choose-your-path.md
+      - When to use NVIDIA-hosted NIMs: extraction/hosted-nims-when-to-use.md
+      - When to self-host NIMs: extraction/self-host-nims-when-to-use.md
+  - "4. Core workflows":
+      - "Workflow: Document ingestion": extraction/workflow-document-ingestion.md
+      - "Workflow: Build a searchable collection": extraction/workflow-build-searchable-collection.md
+      - "Workflow: Query and rerank": extraction/workflow-query-rerank.md
+      - "Workflow: Agentic retrieval": extraction/workflow-agentic-retrieval.md
+      - "Workflow: Audio or video to text": extraction/audio-video.md
+      - "Workflow: Video processing with OCR": extraction/workflow-video-ocr.md
+      - "Workflow: End-to-end RAG with NVIDIA Blueprints": extraction/workflow-e2e-blueprints.md
+  - "5. Multimodal extraction":
+      - "Supported file types and formats": extraction/supported-file-types.md
+      - "Text and layout extraction": extraction/text-layout-extraction.md
+      - Tables: extraction/extraction-tables.md
+      - "Charts and infographics": extraction/extraction-charts-infographics.md
+      - "OCR and scanned documents": extraction/extraction-ocr-scanned.md
+      - "Nemotron Parse based parsing": extraction/nemotron-parse.md
+      - Image captioning: extraction/image-captioning.md
+      - "Metadata and content schema": extraction/multimodal-metadata-schema.md
+      - "Extraction limitations and quality": extraction/throughput-is-dataset-dependent.md
+  - "6. Embedding, indexing & storage":
+      - "Embedding NIMs and models": extraction/embedding-nims-models.md
+      - "Multimodal embeddings (VLM)": extraction/embedding.md
+      - Vector databases: extraction/vdbs.md
+      - "Chunking and splitting": extraction/chunking.md
+  - "7. Retrieval & ranking":
+      - "Semantic and hybrid retrieval": extraction/semantic-hybrid-retrieval.md
+      - Reranking: extraction/reranking.md
+      - "Custom metadata and filtering": extraction/custom-metadata.md
+      - "Agentic retrieval (concept)": extraction/agentic-retrieval-concept.md
+  - "8. Deployment & operations":
+      - "Scaling: static and dynamic": extraction/scaling-modes.md
+      - "Ray and distributed ingest": extraction/ray-logging.md
+      - "Telemetry and observability": extraction/telemetry.md
+      - Production checklist: extraction/production-checklist.md
+  - "9. Customize & extend":
+      - User-defined functions: extraction/user-defined-functions.md
+      - User-defined stages: extraction/user-defined-stages.md
+      - "NimClient and custom NIM endpoints": extraction/nimclient.md
+  - "10. Integrations & ecosystem":
+      - "NVIDIA AI Blueprints": extraction/resources-links.md
+      - "Framework integrations": extraction/integrations-langchain-llamaindex-haystack.md
+      - "Vector database partners": extraction/vector-db-partners.md
+      - "Starter kits": extraction/notebooks.md
+  - "11. Evaluation & benchmarks":
+      - "Benchmarking methodology and evaluation harnesses": extraction/benchmarking.md
+      - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
+      - "Published metrics and comparisons": extraction/published-metrics-comparisons.md
+  - "12. Reference":
+      - "API guide": extraction/nemo-retriever-api-reference.md
+      - "HTTP API (V2)": extraction/v2-api-guide.md
+      - "Python API": extraction/python-api-reference.md
+      - "CLI reference": extraction/cli-reference.md
+      - Environment variables: extraction/environment-config.md
+      - "Metadata reference": extraction/content-metadata.md
+  - "13. Support & community":
+      - Troubleshooting: extraction/troubleshoot.md
       - FAQ: extraction/faq.md
-      - Contribute: extraction/contributing.md
-
+      - Contributing: extraction/contributing.md
+  - Additional resources:
+      - "OSS licences": license.md
 
 plugins:
   - search
@@ -116,16 +164,22 @@ plugins:
           paths:
             - ../api/src
             - ../nemo_retriever/src
-
   - mkdocs-jupyter:
       theme: auto
       highlight_extra_classes: "jupyter-notebook"
-  - include_dir_to_nav:
-      file_pattern: '.*\.(md|ipynb)$'
   - redirects:
       redirect_maps:
-        'extraction/index.md': 'extraction/overview.md'
-        'extraction/nv-ingest-python-api.md': 'extraction/python-api-reference.md'
+        index.md: extraction/overview.md
+        extraction/index.md: extraction/overview.md
+        extraction/nv-ingest_cli.md: extraction/cli-reference.md
+        extraction/nv-ingest-python-api.md: extraction/python-api-reference.md
+        extraction/helm.md: extraction/quickstart-guide.md
+        extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
+        extraction/ngc-api-key.md: extraction/api-keys.md
+        extraction/data-store.md: extraction/vdbs.md
+        extraction/nemoretriever-parse.md: extraction/nemotron-parse.md
+        extraction/vlm-embed.md: extraction/embedding.md
+        extraction/audio.md: extraction/audio-video.md
   - site-urls
 
 markdown_extensions:
@@ -135,7 +189,7 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.snippets:
       check_paths: true
-      restrict_base_path: False
+      restrict_base_path: false
       base_path: "."
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
@@ -147,17 +201,23 @@ markdown_extensions:
   - admonition
   - footnotes
 
+# MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
+exclude_docs: |
+  index.md
+  extraction/nv-ingest_cli.md
+  extraction/nv-ingest-python-api.md
+  extraction/helm.md
+  extraction/releasenotes-nv-ingest.md
+
 extra:
-   version:
-     provider: mike
-     default: latest
-     alias: true
-   social:
-     - icon: fontawesome/brands/github
-       link: https://github.com/NVIDIA/nv-ingest/
-#   docker_url: nvcr.io/nvidia/clara/bionemo-framework
-#   docker_tag: main--nightly
-#   github_url: https://github.com/NVIDIA/nv-ingest/
+  generator: false
+  version:
+    provider: mike
+    default: latest
+    alias: true
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/NVIDIA/NeMo-Retriever/
 
 copyright: |
-  &copy; Copyright 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  &copy; Copyright 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.

@@ -1,8 +1,8 @@
-# Full documentation pipeline in Docker (Sphinx + OpenAPI + default MkDocs), then
-# NRL-only MkDocs (`make docs-ci`: mkdocs.nrl-github-pages.yml --strict). Does NOT publish to GitHub Pages.
+# Full documentation pipeline in Docker (Sphinx + OpenAPI + MkDocs), then `make mkdocs`
+# (docs/mkdocs.yml --strict). Does NOT publish to GitHub Pages.
 #
 # Public documentation at https://nvidia.github.io/NeMo-Retriever/ is deployed only by
-# nrl-docs-github-pages.yml (NeMo Retriever Library MkDocs: mkdocs.nrl-github-pages.yml).
+# nrl-docs-github-pages.yml (docs/mkdocs.yml — 13-section NRL TOC).
 name: Documentation build (full pipeline, CI only)
 
 on:
@@ -13,23 +13,30 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: docs-full-docker-ci
+  group: "pages"
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build documentation (Docker)
+    name: Build Documentation
     runs-on: linux-large-disk
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
 
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx
 
-      - name: Build documentation Docker image
+      - name: Build Documentation Docker Image
         run: |
           docker build \
             --target docs \
@@ -37,23 +44,33 @@ jobs:
             -t nv-ingest-docs:latest \
             .
 
-      - name: Run documentation build container (full docs + NRL MkDocs strict)
+      - name: Run Documentation Build Container
         run: |
           CONTAINER_ID=$(docker run -d nv-ingest-docs:latest)
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
       - name: Wait for documentation generation
-        run: |
-          EXIT_CODE=$(docker wait $CONTAINER_ID)
-          docker logs $CONTAINER_ID
-          if [ "$EXIT_CODE" != "0" ]; then
-            echo "Error: docs build failed with exit code $EXIT_CODE"
-            exit 1
-          fi
+        run: docker wait $CONTAINER_ID
 
       - name: Copy generated docs from container
         run: docker cp $CONTAINER_ID:/workspace/docs/site ./generated-site
 
       - name: Clean up container
-        if: always()
-        run: docker rm -f $CONTAINER_ID
+        run: docker rm $CONTAINER_ID
+
+      - name: Upload Site Artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./generated-site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

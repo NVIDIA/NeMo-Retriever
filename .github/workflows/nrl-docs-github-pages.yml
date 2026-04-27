@@ -83,7 +83,7 @@ jobs:
         working-directory: docs
         env:
           SITE_URL: ${{ steps.pages.outputs.base_url }}
-        run: mkdocs build -f mkdocs.nrl-github-pages.yml --strict
+        run: mkdocs build -f mkdocs.yml --strict
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
