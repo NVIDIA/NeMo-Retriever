@@ -26,13 +26,22 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
     can be chained directly after this operator.
     """
 
+    def __init__(
+        self,
+        *,
+        database_name: str,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(database_name=database_name, **kwargs)
+        self._database_name = database_name
+
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
     def process(self, data: Any, **kwargs: Any) -> pd.DataFrame:
         from nemo_retriever.tabular_data.ingestion.embeddings import fetch_tabular_embedding_dataframe
 
-        return fetch_tabular_embedding_dataframe()
+        return fetch_tabular_embedding_dataframe(database_name=self._database_name)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

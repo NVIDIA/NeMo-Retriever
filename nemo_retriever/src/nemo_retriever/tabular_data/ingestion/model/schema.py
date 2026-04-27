@@ -43,7 +43,9 @@ class Schema:
 
             self.tables_df["table_name_lower"] = self.tables_df["table_name"].apply(lambda x: x.lower())
             if "id" not in self.tables_df.columns:
-                self.tables_df["id"] = [str(uuid.uuid4()) for x in range(self.tables_df.shape[0])]
+                self.tables_df["id"] = None
+            mask = self.tables_df["id"].isna()
+            self.tables_df.loc[mask, "id"] = [str(uuid.uuid4()) for _ in range(mask.sum())]
 
             self.tables_df["full_name"] = self.tables_df.apply(
                 lambda x: f"{x.table_schema}.{x.table_name}",
@@ -54,12 +56,11 @@ class Schema:
 
             self.columns_df["table_name_lower"] = self.columns_df["table_name"].apply(lambda x: x.lower())
 
-            # Sciplay table has one column with empty name, no idea how this can happen
-            self.columns_df = self.columns_df[~self.columns_df["column_name"].isna()]
-
             self.columns_df["column_name_lower"] = self.columns_df["column_name"].apply(lambda x: x.strip('"').lower())
             if "id" not in self.columns_df.columns:
-                self.columns_df["id"] = [str(uuid.uuid4()) for x in range(self.columns_df.shape[0])]
+                self.columns_df["id"] = None
+            mask = self.columns_df["id"].isna()
+            self.columns_df.loc[mask, "id"] = [str(uuid.uuid4()) for _ in range(mask.sum())]
             self.columns_df["data_type"] = self.columns_df["data_type"].str.strip('"')
             self.columns_df["full_name"] = self.columns_df.apply(
                 lambda x: f"{x.table_schema}.{x.table_name}.{x.column_name}",
@@ -74,10 +75,11 @@ class Schema:
                     self.columns_map[row["table_name_lower"]] = {}
                 self.columns_map[row["table_name_lower"]][row["column_name_lower"]] = True
 
-            if is_creation_mode:
+            if is_creation_mode:  # ingestion mode
                 self.reset_tables_props()
                 self.reset_columns_props()
             else:
+                # retrieval mode
                 self.schema_name = schema_name
                 self.reset_slim_columns_props()
                 self.reset_slim_tables_props()
@@ -89,16 +91,11 @@ class Schema:
                 "created": None if pd.isna(x["created"]) else x["created"],
                 "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
-                "label": Labels.TABLE,
             },
             axis=1,
         )
         self.tables_df["match_props"] = self.tables_df.apply(
-            lambda x: {
-                "db_name": self.db_node.name,
-                "name": x["table_name"],
-                "schema_name": x["table_schema"],
-            },
+            lambda x: {"id": x.id},
             axis=1,
         )
 
@@ -111,17 +108,11 @@ class Schema:
                 "ordinal_position": x["ordinal_position"],
                 "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
-                "label": Labels.COLUMN,
             },
             axis=1,
         )
         self.columns_df["match_props"] = self.columns_df.apply(
-            lambda x: {
-                "db_name": self.db_node.name,
-                "name": x.column_name,
-                "table_name": x.table_name,
-                "schema_name": x.table_schema,
-            },
+            lambda x: {"id": x.id},
             axis=1,
         )
 
@@ -130,16 +121,11 @@ class Schema:
             lambda x: {
                 "name": x["name"],
                 "id": x["id"],
-                "label": Labels.TABLE,
             },
             axis=1,
         )
         self.tables_df["match_props"] = self.tables_df.apply(
-            lambda x: {
-                "db_name": self.db_node.name,
-                "name": x["table_name"],
-                "schema_name": self.schema_name,
-            },
+            lambda x: {"id": x["id"]},
             axis=1,
         )
 
@@ -149,17 +135,11 @@ class Schema:
                 "name": x["name"].strip('"'),
                 "data_type": (x["data_type"] or "").strip('"'),
                 "id": x["id"],
-                "label": Labels.COLUMN,
             },
             axis=1,
         )
         self.columns_df["match_props"] = self.columns_df.apply(
-            lambda x: {
-                "db_name": self.db_node.name,
-                "name": x["name"],
-                "table_name": x["table_name"],
-                "schema_name": self.schema_name,
-            },
+            lambda x: {"id": x["id"]},
             axis=1,
         )
 
@@ -221,7 +201,7 @@ class Schema:
             raise Exception("No schema node exists in the given schema object.")
         else:
             schema_node = self.schema_node
-        edge = (db_node, schema_node, {"schema": db_node.get_name()})
+        edge = (db_node, schema_node, {})
         return edge
 
     def get_schema_to_tables_edges(self):
@@ -230,7 +210,7 @@ class Schema:
                 {
                     "vid": str(self.schema_node.get_id()),
                     "uid": table_id,
-                    "props": {"schema": self.schema_name},
+                    "props": {},
                 }
                 for table_id in [x["id"] for x in list(self.tables_df["props"])]
             ]
@@ -255,7 +235,7 @@ class Schema:
                     {
                         "vid": table_id,
                         "uid": column_id,
-                        "props": {"schema": self.schema_name},
+                        "props": {},
                     }
                     for column_id in [x["id"] for x in list(column_df["props"])]
                 ]
@@ -274,14 +254,8 @@ class Schema:
     ):
         column_name_lower = column_name.lower()
         table_name_lower = table_name.lower()
-        label = Labels.COLUMN
         props = {"name": column_name}
-        match_props = {
-            "db_name": self.get_db_name(),
-            "name": column_name,
-            "table_name": table_name,
-            "schema_name": self.schema_name,
-        }
+        match_props = {"id": id}
         props = self.update_column_props_by_arguments(
             props,
             data_type,
@@ -291,7 +265,7 @@ class Schema:
         )
         column_node = Neo4jNode(
             column_name,
-            label=label,
+            label=Labels.COLUMN,
             props=props,
             existing_id=id,
             match_props=match_props,
@@ -387,13 +361,8 @@ class Schema:
         description=None,
     ):
         table_name_lower = table_name.lower()
-        label = Labels.TABLE
         props = {"name": table_name}
-        match_props = {
-            "db_name": self.get_db_name(),
-            "name": table_name,
-            "schema_name": self.schema_name,
-        }
+        match_props = {"id": id}
         props = self.update_table_props_by_arguments(
             props,
             created,
@@ -401,7 +370,7 @@ class Schema:
         )
         table_node = Neo4jNode(
             name=table_name,
-            label=label,
+            label=Labels.TABLE,
             props=props,
             existing_id=id,
             match_props=match_props,

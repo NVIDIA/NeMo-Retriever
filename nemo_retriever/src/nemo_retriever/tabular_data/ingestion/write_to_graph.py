@@ -33,8 +33,6 @@ def populate_tabular_data(data, num_workers, dialect):
 
     add_indices()
 
-    all_schemas = {}
-
     tables_df = data["tables"]
     columns_df = data["columns"]
 
@@ -47,9 +45,9 @@ def populate_tabular_data(data, num_workers, dialect):
     all_schemas = populate_db(tables_df, columns_df, database, num_workers)
 
     if "fks" in data:
-        populate_fks(fks=data["fks"])
+        populate_fks(fks=data["fks"], database_name=database)
     if "pks" in data:
-        populate_pks(pks=data["pks"])
+        populate_pks(pks=data["pks"], database_name=database)
 
     if "queries" in data:
         populate_queries(all_schemas, data["queries"], num_workers, dialect)
@@ -124,17 +122,17 @@ def populate_db(tables_df, columns_df, database, num_workers):
     return schemas
 
 
-def populate_fks(fks):
+def populate_fks(fks, database_name: str):
     logger.info("Adding FKs.")
     last_seen = datetime.now(timezone.utc)
-    add_fks(fks, last_seen)
-    delete_old_fks(last_seen)
+    add_fks(fks, last_seen, database_name)
+    delete_old_fks(last_seen, database_name)
 
 
-def populate_pks(pks):
+def populate_pks(pks, database_name: str):
     logger.info("Adding PKs.")
-    reset_pks()
-    add_pks(pks)
+    reset_pks(database_name)
+    add_pks(pks, database_name)
 
 
 def _update_schema(schema, latest_timestamp):

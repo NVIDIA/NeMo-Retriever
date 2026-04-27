@@ -53,6 +53,7 @@ class DuckDB(SQLDatabase):
 
     def __init__(self, connection_string: str, *, read_only: bool = True) -> None:
         self.conn = duckdb.connect(database=connection_string, read_only=read_only)
+        self._connection_string = connection_string
         self._database_name: str = self.execute("SELECT current_database()").iloc[0, 0]
         logger.debug("DuckDB connected (database=%r, read_only=%s).", connection_string, read_only)
 
@@ -117,9 +118,19 @@ class DuckDB(SQLDatabase):
         """
         )
 
-    def get_queries(self) -> pd.DataFrame:
-        """DuckDB has no built-in query history — loads sample spider2-lite queries from CSV."""
-        csv_path = Path(__file__).parent / "sample_spider2_queries.csv"
+    def get_queries(self, hours: int = 24) -> pd.DataFrame:
+        """DuckDB has no built-in query history — loads sample queries from a CSV
+        whose name is derived from the database file (e.g. ``spider2.duckdb``
+        → ``sample_spider2_queries.csv``).
+
+        ``hours`` is accepted for interface compatibility; sample queries are
+        stamped with ``datetime.today()`` so they always fall within the window.
+        """
+        db_stem = Path(self._connection_string).stem
+        csv_path = Path(__file__).parent / "benchmarks" / db_stem / "sample_queries.csv"
+        if not csv_path.exists():
+            logger.warning("No sample queries CSV found at %s; returning empty DataFrame.", csv_path)
+            return pd.DataFrame(columns=["query_text", "end_time"])
         df = pd.read_csv(csv_path)
         df["end_time"] = datetime.today()
         return df
@@ -137,72 +148,11 @@ class DuckDB(SQLDatabase):
         """
         )
 
-    # Todo: Test as Spider2 has no PKs
     def get_pks(self) -> pd.DataFrame:
-        """Return primary key columns from duckdb_constraints() as a DataFrame.
+        return pd.DataFrame()
 
-        Columns: table_schema, table_name, column_name, ordinal_position.
-        If duckdb_constraints() is unavailable, returns an empty DataFrame with those columns.
-        """
-        empty = pd.DataFrame(
-            columns=[
-                "table_schema",
-                "table_name",
-                "column_name",
-                "ordinal_position",
-            ]
-        )
-        try:
-            # duckdb_constraints() returns constraint_column_names as list; unnest to one row per column
-            df = self.execute(
-                """
-                SELECT
-                    c.schema_name      AS "table_schema",
-                    c.table_name       AS "table_name",
-                    unnest(c.constraint_column_names) AS "column_name",
-                    unnest(range(1, len(c.constraint_column_names) + 1)) AS "ordinal_position"
-                FROM duckdb_constraints() c
-                WHERE c.constraint_type = 'PRIMARY KEY'
-                ORDER BY c.schema_name, c.table_name, "ordinal_position"
-            """
-            )
-            return df if not df.empty else empty
-        except Exception:
-            return empty
-
-    # Todo: Test as Spider2 has no FKs
     def get_fks(self) -> pd.DataFrame:
-        """Return foreign key columns from duckdb_constraints() as a DataFrame.
-
-        Columns: table_schema, table_name, column_name, and referenced_* if available.
-        If duckdb_constraints() is unavailable, returns an empty DataFrame with standard columns.
-        """
-        empty = pd.DataFrame(
-            columns=[
-                "table_schema",
-                "table_name",
-                "column_name",
-                "referenced_schema",
-                "referenced_table",
-                "referenced_column",
-            ]
-        )
-        try:
-            df = self.execute(
-                """
-                SELECT
-                    c.schema_name      AS "table_schema",
-                    c.table_name       AS "table_name",
-                    unnest(c.constraint_column_names) AS "column_name"
-                FROM duckdb_constraints() c
-                WHERE c.constraint_type = 'FOREIGN KEY'
-                ORDER BY c.schema_name, c.table_name
-            """
-            )
-
-            return df if not df.empty else empty
-        except Exception:
-            return empty
+        return pd.DataFrame()
 
     # ------------------------------------------------------------------
     # Context manager / cleanup

@@ -20,13 +20,13 @@ class Query:
         self.tables: list = []
         self.tables_ids: list[str] = []
         self.edges: list = []
-        self.nodes_counter: int = 0
+        self.ast_node_count: int = 0
 
         month = ltimestamp.month
         year = ltimestamp.year
         props = {
             "name": f"query_{str(id)}",
-            f"cnt_{month}_{year}": count,
+            f"count_{month}_{year}": count,
             "total_counter": count,
             "sql_full_query": sql_text,
             "last_query_timestamp": ltimestamp,
@@ -38,13 +38,29 @@ class Query:
             self.tables_ids.append(table_node.id)
         if (table_name, table_node) not in self.tables:
             self.tables.append((table_name, table_node))
-        self.nodes_counter += 1
 
     def get_tables_ids(self) -> list[str]:
         return list(set(self.tables_ids))
 
+    def get_column_ids(self) -> list[str]:
+        """Return deduplicated IDs of Column nodes linked by this query's edges.
+
+        In the flat edge structure produced by ``parse_query_slim``, Column
+        nodes are the leaf nodes — they have no further outgoing edges.
+        This mirrors the old ``get_leafs_from_graph`` heuristic used for
+        pre-filtering duplicate candidates.
+        """
+        return list({edge[1].id for edge in self.edges if edge[1].label == Labels.COLUMN})
+
     def get_nodes_counter(self) -> int:
-        return self.nodes_counter
+        """Total number of nodes in the sqlglot AST.
+
+        Set by ``parse_query_slim`` after ``extract_tables_and_columns``
+        parses the SQL.  Acts as a cheap structural fingerprint for
+        pre-filtering duplicate candidates — two queries with different
+        AST sizes cannot be structurally equivalent.
+        """
+        return self.ast_node_count
 
     def get_edges(self) -> list:
         return self.edges
