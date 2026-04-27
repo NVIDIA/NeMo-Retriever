@@ -56,6 +56,10 @@ class LlamaNemotronEmbed1BV2Embedder:
                 DeprecationWarning,
                 stacklevel=4,
             )
+
+    def _ensure_loaded(self) -> None:
+        if self._llm is not None:
+            return
         from nemo_retriever.model import _DEFAULT_EMBED_MODEL
         from nemo_retriever.text_embed.vllm import create_vllm_llm
 
@@ -91,6 +95,7 @@ class LlamaNemotronEmbed1BV2Embedder:
 
         ``prefix`` is prepended to every string before encoding (default ``passage: ``).
         """
+        self._ensure_loaded()
         from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
 
         texts_list = [str(t) for t in texts if str(t).strip()]
@@ -101,6 +106,7 @@ class LlamaNemotronEmbed1BV2Embedder:
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, D]``."""
+        self._ensure_loaded()
         from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
 
         texts_list = [str(t) for t in texts if str(t).strip()]

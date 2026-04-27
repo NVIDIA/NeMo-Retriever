@@ -190,8 +190,6 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
     def __post_init__(self) -> None:
         try:
             import vllm as _vllm_mod
-
-            from nemo_retriever.text_embed.vllm import create_vllm_llm
         except ImportError as e:
             raise RuntimeError("vLLM is not installed. Install with: uv pip install -e '.[local]'") from e
 
@@ -216,8 +214,13 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
                 DeprecationWarning,
                 stacklevel=4,
             )
-        configure_global_hf_cache_base(self.hf_cache_dir)
 
+    def _ensure_loaded(self) -> None:
+        if self._llm is not None:
+            return
+        from nemo_retriever.text_embed.vllm import create_vllm_llm
+
+        configure_global_hf_cache_base(self.hf_cache_dir)
         model_id = self.model_id or "nvidia/llama-nemotron-embed-vl-1b-v2"
         self._llm = create_vllm_llm(
             str(model_id),
@@ -233,6 +236,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
 
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document texts. Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
 
         texts_list = [str(t) for t in texts if str(t).strip()]
@@ -248,6 +252,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
 
         texts_list = [str(t) for t in texts if str(t).strip()]
@@ -263,6 +268,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
 
     def embed_images(self, images_b64: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed images (base64-encoded). Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         from nemo_retriever.text_embed.vllm import embed_multimodal_with_vllm_llm
 
         valid_b64 = [b64 for b64 in images_b64 if b64 and str(b64).strip()]
@@ -284,6 +290,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         self, texts: Sequence[str], images_b64: Sequence[str], *, batch_size: int = 64
     ) -> torch.Tensor:
         """Embed paired text+image inputs. Returns CPU tensor ``[N, 2048]``."""
+        self._ensure_loaded()
         from nemo_retriever.text_embed.vllm import embed_multimodal_with_vllm_llm
 
         paired_texts: list = []
