@@ -150,9 +150,7 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
             }
         ]
     ]
-    assert vdb.retrieval_calls == [
-        ([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})
-    ]
+    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
 
 
 def test_constructor_requires_exactly_one_vdb_source() -> None:
