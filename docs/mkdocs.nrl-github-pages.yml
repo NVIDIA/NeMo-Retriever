@@ -131,7 +131,7 @@ nav:
       - "Published metrics and comparisons": extraction/published-metrics-comparisons.md
   - "12. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
-      - "HTTP API (V2)": extraction/v2-api-guide.md
+      - "PDF pre-splitting for ingest": extraction/nemo-retriever-api-reference.md
       - "Python API": extraction/python-api-reference.md
       - "CLI reference": extraction/cli-reference.md
       - Environment variables: extraction/environment-config.md
