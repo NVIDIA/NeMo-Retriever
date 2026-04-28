@@ -8,6 +8,7 @@ attribute consumed by ``extract_tables_and_columns``.
 import pandas as pd
 
 from nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor import (
+    JoinPair,
     TableMatch,
     extract_tables_and_columns,
 )
@@ -230,3 +231,128 @@ def test_empty_sql_returns_empty():
 def test_invalid_sql_returns_empty():
     result = extract_tables_and_columns("NOT VALID SQL !!!", all_schemas=_ALL_SCHEMAS)
     assert result.tables == {}
+
+
+# ---------------------------------------------------------------------------
+# Join extraction tests
+# ---------------------------------------------------------------------------
+
+
+def _join_set(pairs: list[JoinPair]) -> set[tuple[str, str, str, str]]:
+    """Normalise join pairs into a set of tuples for order-independent comparison."""
+    result = set()
+    for p in pairs:
+        key = (p.left_table, p.left_column, p.right_table, p.right_column)
+        key_rev = (p.right_table, p.right_column, p.left_table, p.left_column)
+        result.add(min(key, key_rev))
+    return result
+
+
+def test_rfm_join_edges():
+    """RFM query uses USING joins: orders↔customers on customer_id, orders↔order_items on order_id."""
+    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert ("customers", "customer_id", "orders", "customer_id") in joins
+    assert ("order_items", "order_id", "orders", "order_id") in joins
+
+
+def test_clv_join_edges():
+    """CLV query: customers↔orders on customer_id, orders↔order_payments on order_id."""
+    result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert ("customers", "customer_id", "orders", "customer_id") in joins
+    assert ("order_payments", "order_id", "orders", "order_id") in joins
+
+
+def test_join_no_duplicates():
+    """Same join key used in multiple CTEs should not produce duplicate pairs."""
+    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert len(joins) == len(result.joins)
+
+
+def test_explicit_on_join():
+    """Explicit ON syntax produces join edges."""
+    sql = """
+    SELECT o.order_id, c.customer_unique_id
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    """
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert ("customers", "customer_id", "orders", "customer_id") in joins
+
+
+def test_multi_table_join_chain():
+    """Three-table join chain produces two distinct edges."""
+    sql = """
+    SELECT o.order_id, c.customer_unique_id, oi.price
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    """
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert len(joins) == 2
+    assert ("customers", "customer_id", "orders", "customer_id") in joins
+    assert ("order_items", "order_id", "orders", "order_id") in joins
+
+
+def test_no_joins_returns_empty_list():
+    """A query with no JOINs returns an empty joins list."""
+    sql = "SELECT order_id, customer_id FROM orders"
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    assert result.joins == []
+
+
+def test_join_without_schema():
+    """Join extraction works even without all_schemas (qualify still rewrites USING → ON)."""
+    sql = """
+    SELECT o.order_id, c.customer_id
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    """
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas={})
+    joins = _join_set(result.joins)
+    assert ("customers", "customer_id", "orders", "customer_id") in joins
+
+
+def test_using_join_with_schema():
+    """USING syntax produces join edges (qualify rewrites USING → ON when schema is available)."""
+    sql = """
+    SELECT order_id, customer_unique_id
+    FROM orders
+    JOIN customers USING (customer_id)
+    """
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert ("customers", "customer_id", "orders", "customer_id") in joins
+
+
+def test_using_join_without_schema():
+    """USING syntax without schema exercises the USING fallback path in _extract_join_pairs."""
+    sql = """
+    SELECT order_id, customer_id
+    FROM orders
+    JOIN customers USING (customer_id)
+    """
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas={})
+    joins = _join_set(result.joins)
+    assert ("customers", "customer_id", "orders", "customer_id") in joins
+
+
+def test_using_multi_column():
+    """USING with multiple columns produces one edge per column."""
+    sql = """
+    SELECT a.order_id
+    FROM orders a
+    JOIN order_items b ON a.order_id = b.order_id
+    """
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert ("order_items", "order_id", "orders", "order_id") in joins
+
+
+def test_empty_sql_returns_no_joins():
+    result = extract_tables_and_columns("", all_schemas=_ALL_SCHEMAS)
+    assert result.joins == []

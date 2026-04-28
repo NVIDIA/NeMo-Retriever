@@ -49,6 +49,20 @@ class TableMatch:
 
 
 @dataclass
+class JoinPair:
+    """A single equi-join condition between two resolved columns.
+
+    Both table references are resolved through the alias map to their
+    real (non-CTE, non-alias) qualified table names.
+    """
+
+    left_table: str
+    left_column: str
+    right_table: str
+    right_column: str
+
+
+@dataclass
 class ExtractionResult:
     """Container for the full output of :func:`extract_tables_and_columns`.
 
@@ -59,10 +73,14 @@ class ExtractionResult:
     ast_node_count:
         Total number of nodes in the sqlglot AST.  Cheap structural
         fingerprint used to pre-filter duplicate candidates.
+    joins:
+        Equi-join column pairs extracted from explicit ``JOIN … ON``
+        and ``JOIN … USING`` clauses, with aliases fully resolved.
     """
 
     tables: dict[str, TableMatch] = field(default_factory=dict)
     ast_node_count: int = 0
+    joins: list[JoinPair] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +134,129 @@ def _build_schema_dict(all_schemas: dict) -> dict[str, dict[str, str]]:
             col = str(row["column_name"]).lower()
             schema.setdefault(tbl, {})[col] = "TEXT"
     return schema
+
+
+_BINARY_CMP = (exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.NEQ)
+
+
+def _unwrap_column(node: exp.Expression) -> exp.Column | None:
+    """Return the single ``Column`` inside *node*, unwrapping functions/casts.
+
+    When *node* contains zero or more than one ``Column`` the reference is
+    ambiguous (e.g. ``col_a + col_b``), so ``None`` is returned.
+    """
+    if isinstance(node, exp.Column):
+        return node
+    cols = list(node.find_all(exp.Column))
+    return cols[0] if len(cols) == 1 else None
+
+
+def _extract_join_pairs(
+    qualified: exp.Expression,
+    alias_map: dict[str, str],
+    source_table_names: set[str],
+) -> list[JoinPair]:
+    """Extract join column pairs from the (post-qualify) AST.
+
+    After ``qualify()``, ``USING`` clauses are rewritten into ``ON``, so
+    walking ``JOIN … ON`` covers both syntaxes.  Falls back to raw
+    ``USING`` args when ``ON`` is absent (``qualify()`` failed or the
+    dialect preserved ``USING``).
+
+    Handled condition types:
+
+    * Binary comparisons (``=``, ``>``, ``>=``, ``<``, ``<=``, ``!=``)
+    * ``BETWEEN … AND …``
+    * Function-wrapped / cast-wrapped columns (e.g. ``LOWER(t.col)``)
+    """
+    pairs: list[JoinPair] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def _try_add(lc: exp.Column, rc: exp.Column) -> None:
+        """Resolve aliases and append a deduplicated ``JoinPair``."""
+        lt_ref = lc.table.lower() if lc.table else None
+        rt_ref = rc.table.lower() if rc.table else None
+        lt = alias_map.get(lt_ref) if lt_ref else None
+        rt = alias_map.get(rt_ref) if rt_ref else None
+        if not lt or not rt:
+            return
+        if lt not in source_table_names or rt not in source_table_names:
+            return
+        if lt == rt and lc.name.lower() == rc.name.lower():
+            return
+        key = (lt, lc.name.lower(), rt, rc.name.lower())
+        key_rev = (rt, rc.name.lower(), lt, lc.name.lower())
+        if key not in seen and key_rev not in seen:
+            seen.add(key)
+            pairs.append(JoinPair(
+                left_table=lt,
+                left_column=lc.name.lower(),
+                right_table=rt,
+                right_column=rc.name.lower(),
+            ))
+
+    for select_node in qualified.find_all(exp.Select):
+        from_clause = select_node.args.get("from_")
+        join_nodes = select_node.args.get("joins") or []
+        if not join_nodes:
+            continue
+
+        chain: list[str] = []
+        if from_clause:
+            ft = from_clause.this
+            if isinstance(ft, exp.Table):
+                resolved = alias_map.get((ft.alias or ft.name).lower())
+                if resolved:
+                    chain.append(resolved)
+
+        for join_node in join_nodes:
+            right_ast = join_node.this
+            right_resolved = None
+            if isinstance(right_ast, exp.Table):
+                right_resolved = alias_map.get(
+                    (right_ast.alias or right_ast.name).lower()
+                )
+
+            on_expr = join_node.args.get("on")
+            if on_expr:
+                for cmp in on_expr.find_all(*_BINARY_CMP):
+                    lc = _unwrap_column(cmp.left)
+                    rc = _unwrap_column(cmp.right)
+                    if lc and rc:
+                        _try_add(lc, rc)
+
+                for between in on_expr.find_all(exp.Between):
+                    main_c = _unwrap_column(between.this)
+                    low_arg = between.args.get("low")
+                    high_arg = between.args.get("high")
+                    low_c = _unwrap_column(low_arg) if low_arg else None
+                    high_c = _unwrap_column(high_arg) if high_arg else None
+                    if main_c and low_c:
+                        _try_add(main_c, low_c)
+                    if main_c and high_c:
+                        _try_add(main_c, high_c)
+            else:
+                using_cols = join_node.args.get("using") or []
+                if using_cols and chain and right_resolved:
+                    left_table = chain[-1]
+                    for col_ident in using_cols:
+                        col_name = col_ident.name.lower()
+                        if left_table in source_table_names and right_resolved in source_table_names:
+                            key = (left_table, col_name, right_resolved, col_name)
+                            key_rev = (right_resolved, col_name, left_table, col_name)
+                            if key not in seen and key_rev not in seen:
+                                seen.add(key)
+                                pairs.append(JoinPair(
+                                    left_table=left_table,
+                                    left_column=col_name,
+                                    right_table=right_resolved,
+                                    right_column=col_name,
+                                ))
+
+            if right_resolved:
+                chain.append(right_resolved)
+
+    return pairs
 
 
 # ---------------------------------------------------------------------------
@@ -298,9 +439,9 @@ def extract_tables_and_columns(
                 tbl_n = str(row["table_name"]).lower()
                 # Try the qualified name first (schema.table); fall back to bare
                 # table name for SQL that doesn't prefix tables with a schema.
-                qualified = f"{skey}.{tbl_n}"
+                qualified_name = f"{skey}.{tbl_n}"
                 matched = (
-                    qualified if qualified in source_table_names else (tbl_n if tbl_n in source_table_names else None)
+                    qualified_name if qualified_name in source_table_names else (tbl_n if tbl_n in source_table_names else None)
                 )
                 if matched and matched not in col_to_tables.get(col_n, []):
                     col_to_tables.setdefault(col_n, []).append(matched)
@@ -317,8 +458,11 @@ def extract_tables_and_columns(
                     result[tbl].columns.add(col_name)
             # else: ambiguous — omit rather than guess.
 
+    join_pairs = _extract_join_pairs(qualified, alias_map, source_table_names)
+
     # Drop real-table entries that ended up with no columns attributed.
     return ExtractionResult(
         tables={k: v for k, v in result.items() if v.columns},
         ast_node_count=ast_node_count,
+        joins=join_pairs,
     )
