@@ -227,6 +227,7 @@ class TestQuerySingleConvenience:
             embedder=None,
             lancedb_uri=None,
             lancedb_table=None,
+            label_in=None,
         )
         assert result is expected
 
@@ -235,7 +236,7 @@ class TestQuerySingleConvenience:
         with patch.object(r, "queries", return_value=[[]]) as mock_queries:
             r.query("q", embedder="e", lancedb_uri="u", lancedb_table="t")
 
-        mock_queries.assert_called_once_with(["q"], top_k=None, embedder="e", lancedb_uri="u", lancedb_table="t")
+        mock_queries.assert_called_once_with(["q"], top_k=None, embedder="e", lancedb_uri="u", lancedb_table="t", label_in=None)
 
 
 # ---------------------------------------------------------------------------
@@ -464,9 +465,9 @@ class TestSearchLancedbKeepKeys:
         hit = results[0][0]
         assert set(hit.keys()) <= _KEEP_KEYS
         assert "vector" not in hit
-        assert "_distance" not in hit
         assert "_rowid" not in hit
         assert hit["text"] == "hello"
+        assert hit["_distance"] == 0.42
 
     def test_extra_keys_stripped_from_hybrid_results(self):
         from nemo_retriever.retriever import _KEEP_KEYS
