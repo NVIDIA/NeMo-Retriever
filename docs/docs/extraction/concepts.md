@@ -22,7 +22,6 @@ Optionally, the library can compute **embeddings** for extracted content and sto
 
 - **Library mode** — Run without the full container stack where appropriate ([quickstart](quickstart-library-mode.md)).
 - **Kubernetes / Helm (self-hosted)** — See [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
-- **Helm / Kubernetes** — [Helm-based deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) for cluster operations.
 - **Notebooks** — [Jupyter examples](notebooks.md) for experimentation and RAG demos.
 
 For a concise comparison, refer to [Deployment options](deployment-options.md).
