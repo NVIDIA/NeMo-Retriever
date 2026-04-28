@@ -68,7 +68,7 @@ def store_usage_percentiles(
     query = f"""
             MATCH (d:{Labels.DB})
             WITH d
-            CALL apoc.create.setProperties(n,
+            CALL apoc.create.setProperties(d,
                 [$percentiles_type_name_25, $percentiles_type_name_75],
                 [$usage_percentile_25, $usage_percentile_75])
             YIELD node

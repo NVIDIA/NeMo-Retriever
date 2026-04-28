@@ -118,7 +118,7 @@ class DuckDB(SQLDatabase):
         """
         )
 
-    def get_queries(self) -> pd.DataFrame:
+    def get_queries(self, hours: int = 24) -> pd.DataFrame:
         """DuckDB has no built-in query history — loads sample queries from a CSV."""
         csv_path = Path(__file__).parent / "benchmarks" / self._database_name / "sample_queries.csv"
         if not csv_path.exists():

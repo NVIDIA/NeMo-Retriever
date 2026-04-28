@@ -7,7 +7,7 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     get_question_for_processing,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.candidates_preparation import CandidatePreparationAgent
-from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.candidates_retieval import CandidateRetrievalAgent
+from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.candidates_retrieval import CandidateRetrievalAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.entities_extraction import EntitiesExtractionAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.intent_validation import IntentValidationAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.response import ResponseAgent

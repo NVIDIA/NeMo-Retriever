@@ -287,7 +287,7 @@ def get_sql_tool_response_top_k(
         llm_client = _get_llm_client()
     except ValueError as e:
         logger.error("Failed to initialize LLM client: %s", e)
-        llm_client = None
+        return _dict_to_sql_result(None)
 
     # Invoke with structured output. On parse failure, extract raw output from exception.
     structured_llm = llm_client.with_structured_output(CALC_FINAL_RESPONSE_JSON_SCHEMA)
