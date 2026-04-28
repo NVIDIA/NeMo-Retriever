@@ -236,7 +236,9 @@ class TestQuerySingleConvenience:
         with patch.object(r, "queries", return_value=[[]]) as mock_queries:
             r.query("q", embedder="e", lancedb_uri="u", lancedb_table="t")
 
-        mock_queries.assert_called_once_with(["q"], top_k=None, embedder="e", lancedb_uri="u", lancedb_table="t", label_in=None)
+        mock_queries.assert_called_once_with(
+            ["q"], top_k=None, embedder="e", lancedb_uri="u", lancedb_table="t", label_in=None
+        )
 
 
 # ---------------------------------------------------------------------------
