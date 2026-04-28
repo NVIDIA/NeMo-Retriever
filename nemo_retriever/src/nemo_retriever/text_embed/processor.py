@@ -101,7 +101,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
 
     local_batch_size = int(task_config.get("local_batch_size") or task_config.get("local_hf_batch_size") or 64)
 
-    ingest_backend = (task_config.get("local_ingest_backend") or "vllm").strip().lower()
+    ingest_backend = (task_config.get("local_ingest_embed_backend") or "vllm").strip().lower()
 
     embedder_instance = create_local_embedder(
         embed_model,
