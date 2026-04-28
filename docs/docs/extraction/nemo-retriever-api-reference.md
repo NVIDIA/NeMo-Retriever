@@ -6,6 +6,8 @@ Server-side PDF splitting supports configurable page chunking. Use `.pdf_split_c
 
 ::: nemo_retriever.ingestor
 
-::: nemo_retriever.retriever
+## Retriever
+
+The `Retriever` class (LanceDB query helpers, optional reranking, and related utilities) lives in the NeMo Retriever Python package. For the authoritative interface—including method signatures, parameters, and inline examples—see [`nemo_retriever/retriever.py` on GitHub](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/retriever.py).
 
 ::: nemo_retriever.params

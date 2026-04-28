@@ -26,7 +26,7 @@ For more information, refer to [Data Upload](vdbs.md).
 For images that `nemoretriever-page-elements-v3` does not classify as tables, charts, or infographics,
 you can use our VLM caption task to create a dense caption of the detected image. 
 That caption is then be embedded along with the rest of your content. 
-For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md#extract-captions-from-images).
+For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 
 
@@ -64,12 +64,12 @@ For examples of `*_ENDPOINT` variables, refer to [Environment variables](environ
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 
-Refer to the [Performance guide](performance_guide.md) for extraction tuning and optimization guidance.
+Refer to [Evaluate on your data](evaluate-on-your-data.md) for extraction tuning and optimization guidance.
 
 You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](nemo-retriever-api-reference.md).
 
 To choose what types of content to extract, use code similar to the following. 
-For more information, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md#extract-specific-elements-from-pdfs).
+For more information, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md).
 
 ```python
 Ingestor(client=client)
@@ -85,7 +85,7 @@ Ingestor(client=client)
 ```
 
 To generate captions for images, use code similar to the following.
-For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md#extract-captions-from-images).
+For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 ```python
 Ingestor(client=client)

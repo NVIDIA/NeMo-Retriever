@@ -8,4 +8,4 @@ For visual text and OCR, scanned or image-heavy content often uses OCR-oriented 
 
 Container formats and early-access video types are listed in [Supported file types and formats](supported-file-types.md).
 
-For end-to-end RAG stacks that include multimodal ingestion, refer to [End-to-end RAG with NVIDIA Blueprints](workflow-e2e-blueprints.md).
+For end-to-end RAG stacks that include multimodal ingestion, refer to the [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) and related solution pages on [NVIDIA Build](https://build.nvidia.com/).

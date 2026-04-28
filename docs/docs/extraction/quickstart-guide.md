@@ -387,7 +387,7 @@ The following table maps **logical capability bundles** (optional NIM and storag
 | `retrieval`           | Core     | Embedding NIM and (optional) GPU-accelerated Milvus. Omit extra Milvus-related values to stay on the default LanceDB backend where supported. | 
 | `audio`               | Advanced | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) ASR NIM for audio files. See [Audio Processing](audio-video.md). | 
 | `nemotron-parse`      | Advanced | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) for higher-accuracy text and table extraction. |
-| `vlm`                 | Advanced | [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning. Enables the `caption` API. See [Use Multimodal Embedding](embedding.md) and [Extract Captions from Images](nemo-retriever-api-reference.md#extract-captions-from-images). | 
+| `vlm`                 | Advanced | [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning. Enables the `caption` API. See [Use Multimodal Embedding](embedding.md) and [Extract Captions from Images](nemo-retriever-api-reference.md). | 
 
 ### Example: VLM captioning for infographics
 
