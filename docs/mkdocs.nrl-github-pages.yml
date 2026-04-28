@@ -145,10 +145,6 @@ nav:
 
 plugins:
   - search
-  - autorefs:
-      resolve_closest: true
-      ignore:
-        - "^:[0-9]+$"
   - macros
   - mkdocstrings:
       handlers:
