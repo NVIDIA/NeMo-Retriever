@@ -342,6 +342,15 @@ def _hit_to_audio_segment_key(hit: Dict[str, Any]) -> str | None:
     if not media_id:
         return None
 
+    # Prefer the canonical "_seconds" keys (always wall-clock seconds).
+    start_time = metadata.get("segment_start_seconds")
+    end_time = metadata.get("segment_end_seconds")
+    if start_time is not None and end_time is not None:
+        try:
+            return _encode_audio_segment_key(media_id, float(start_time), float(end_time))
+        except (TypeError, ValueError):
+            return None
+
     start_time = metadata.get("segment_start")
     end_time = metadata.get("segment_end")
     if start_time is not None and end_time is not None:

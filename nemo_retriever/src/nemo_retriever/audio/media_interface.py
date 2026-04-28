@@ -107,6 +107,47 @@ def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optiona
         return None
 
 
+def _resolve_duration(probe: Any, stream0: Any, file_size: int) -> Optional[float]:
+    """Best-effort duration in seconds from an ffprobe payload.
+
+    Some encodings expose duration only at the format level, others only at
+    the stream level, and some segmented files (e.g. fragmented MP4 chunks
+    produced by ``-f segment``) don't carry either reliably — for those we
+    fall back to ``file_size * 8 / bit_rate``. Returns ``None`` when nothing
+    in the probe can be coerced to a float.
+    """
+    fmt = probe.get("format") if isinstance(probe, dict) else None
+    if isinstance(fmt, dict):
+        try:
+            d = fmt.get("duration")
+            if d is not None:
+                return float(d)
+        except (TypeError, ValueError):
+            pass
+    if isinstance(stream0, dict):
+        try:
+            d = stream0.get("duration")
+            if d is not None:
+                return float(d)
+        except (TypeError, ValueError):
+            pass
+    if isinstance(fmt, dict):
+        bitrate = fmt.get("bit_rate")
+        try:
+            if bitrate is not None and float(bitrate) > 0:
+                return (file_size * 8) / float(bitrate)
+        except (TypeError, ValueError):
+            pass
+    if isinstance(stream0, dict):
+        bitrate = stream0.get("bit_rate")
+        try:
+            if bitrate is not None and float(bitrate) > 0:
+                return (file_size * 8) / float(bitrate)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
 def _effective_cores() -> int:
     return int(max((os.cpu_count() or 4) * 0.2, 4))
 
@@ -144,20 +185,23 @@ class MediaInterface(_LoaderInterface):
                 probe = _probe("pipe:", format=path_file.suffix, file_handle=file_handle)
             else:
                 probe = _probe(str(path_file), format=path_file.suffix)
-            if probe["streams"][0]["codec_type"] == "video":
-                sample_rate = float(probe["streams"][0]["avg_frame_rate"].split("/")[0])
-                duration = float(probe["format"]["duration"])
-            elif probe["streams"][0]["codec_type"] == "audio":
-                sample_rate = float(probe["streams"][0]["sample_rate"])
-                bitrate = probe["format"]["bit_rate"]
-                duration = (file_size * 8) / float(bitrate)
+            stream0 = probe["streams"][0]
+            codec_type = stream0.get("codec_type")
+            if codec_type == "video":
+                sample_rate = float(stream0["avg_frame_rate"].split("/")[0])
+                duration = _resolve_duration(probe, stream0, file_size)
+            elif codec_type == "audio":
+                sample_rate = float(stream0["sample_rate"])
+                duration = _resolve_duration(probe, stream0, file_size)
             else:
-                raise ValueError(f"Unknown codec_type: {probe['streams'][0]}")
+                raise ValueError(f"Unknown codec_type: {stream0}")
+            if duration is None:
+                raise ValueError(f"Could not determine duration for {path_file}")
             num_splits = self.find_num_splits(file_size, sample_rate, duration, split_interval, split_type)
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", path_file, e.stderr.decode())
-        except ValueError as e:
-            logger.error("Error finding splits for file %s: %s", path_file, e)
+        except (KeyError, ValueError) as e:
+            logger.error("Error probing media for file %s: %s", path_file, e)
         return (probe, num_splits, duration)
 
     def get_audio_from_video(

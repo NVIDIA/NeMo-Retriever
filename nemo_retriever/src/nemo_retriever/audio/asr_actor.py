@@ -34,6 +34,25 @@ from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import ASRParams
 
 
+def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Optional[float]:
+    """Coerce a per-utterance timestamp to seconds, divided down from ms when needed.
+
+    Local Parakeet returns seconds; the remote NIM client returns milliseconds.
+    We can't tell from the dict which produced it, but we can detect the unit:
+    a timestamp that's larger than ~10× the chunk duration is almost certainly
+    in ms (a second-valued utterance can't extend that far past its chunk).
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if chunk_duration_secs > 0 and v > chunk_duration_secs * 10:
+        return v / 1000.0
+    return v
+
+
 def _use_remote(params: ASRParams) -> bool:
     """True if at least one of audio_endpoints is set (use remote gRPC client)."""
     grpc = (params.audio_endpoints[0] or "").strip()
@@ -323,6 +342,15 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
         metadata.setdefault("duration", duration)
         page_number = row.get("page_number", chunk_index)
 
+        try:
+            chunk_start = float(metadata.get("chunk_start_seconds") or 0.0)
+        except (TypeError, ValueError):
+            chunk_start = 0.0
+        try:
+            chunk_dur = float(duration) if duration is not None else 0.0
+        except (TypeError, ValueError):
+            chunk_dur = 0.0
+
         if self._params.segment_audio and segments:
             out_rows: List[Dict[str, Any]] = []
             segment_count = len(segments)
@@ -335,10 +363,17 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
                 segment_metadata = copy.deepcopy(metadata)
                 segment_metadata["segment_index"] = segment_index
                 segment_metadata["segment_count"] = segment_count
-                if segment.get("start") is not None:
-                    segment_metadata["segment_start"] = segment.get("start")
-                if segment.get("end") is not None:
-                    segment_metadata["segment_end"] = segment.get("end")
+                seg_s_secs = _to_chunk_relative_seconds(segment.get("start"), chunk_dur)
+                seg_e_secs = _to_chunk_relative_seconds(segment.get("end"), chunk_dur)
+                # Wall-clock span: chunk start + the chunk-relative times the ASR
+                # backend produced. Local Parakeet emits seconds; remote emits
+                # milliseconds — normalized above against the chunk duration.
+                if seg_s_secs is not None:
+                    segment_metadata["segment_start_seconds"] = seg_s_secs + chunk_start
+                if seg_e_secs is not None:
+                    segment_metadata["segment_end_seconds"] = seg_e_secs + chunk_start
+                segment_metadata["_content_type"] = "audio"
+                segment_metadata.setdefault("modality", "audio_segment")
                 out_rows.append(
                     {
                         "path": path,
@@ -348,11 +383,18 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
                         "metadata": segment_metadata,
                         "page_number": page_number,
                         "text": segment_text,
+                        "_content_type": "audio",
                     }
                 )
             if out_rows:
                 return out_rows
 
+        # Per-chunk fallback: anchor the row's span to the chunk's wall-clock
+        # window so audio_segment recall still works without per-utterance data.
+        metadata.setdefault("segment_start_seconds", chunk_start)
+        metadata.setdefault("segment_end_seconds", chunk_start + chunk_dur)
+        metadata["_content_type"] = "audio"
+        metadata.setdefault("modality", "audio_segment")
         return [
             {
                 "path": path,
@@ -362,6 +404,7 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
                 "metadata": metadata,
                 "page_number": page_number,
                 "text": transcript,
+                "_content_type": "audio",
             }
         ]
 

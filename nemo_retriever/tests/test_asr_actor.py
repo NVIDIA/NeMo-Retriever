@@ -150,11 +150,11 @@ def test_asr_actor_remote_segment_audio():
         assert out["chunk_index"].tolist() == [3, 3]
         assert out["metadata"].iloc[0]["segment_index"] == 0
         assert out["metadata"].iloc[0]["segment_count"] == 2
-        assert out["metadata"].iloc[0]["segment_start"] == 0.0
-        assert out["metadata"].iloc[0]["segment_end"] == 1.0
+        assert out["metadata"].iloc[0]["segment_start_seconds"] == 0.0
+        assert out["metadata"].iloc[0]["segment_end_seconds"] == 1.0
         assert out["metadata"].iloc[1]["segment_index"] == 1
-        assert out["metadata"].iloc[1]["segment_start"] == 1.0
-        assert out["metadata"].iloc[1]["segment_end"] == 2.5
+        assert out["metadata"].iloc[1]["segment_start_seconds"] == 1.0
+        assert out["metadata"].iloc[1]["segment_end_seconds"] == 2.5
 
 
 def test_apply_asr_to_df_segment_audio():

@@ -99,6 +99,7 @@ def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInter
             return []
 
         rows: List[Dict[str, Any]] = []
+        chunk_start_seconds = 0.0
         for idx, chunk_path in enumerate(files):
             _, _, duration = interface.probe_media(
                 Path(chunk_path),
@@ -110,6 +111,11 @@ def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInter
                 "source_path": source_path,
                 "chunk_index": idx,
                 "duration": duration,
+                # Wall-clock span of this chunk in the original media. Downstream
+                # ASR uses these to anchor per-utterance times; recall matches
+                # against them when no per-utterance segments are available.
+                "chunk_start_seconds": float(chunk_start_seconds),
+                "chunk_end_seconds": float(chunk_start_seconds + duration),
             }
             chunk_bytes: bytes
             try:
@@ -129,6 +135,7 @@ def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInter
                     "bytes": chunk_bytes,
                 }
             )
+            chunk_start_seconds += duration
         return rows
 
 

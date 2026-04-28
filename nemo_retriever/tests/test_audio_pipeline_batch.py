@@ -109,8 +109,8 @@ def test_inprocess_audio_pipeline_with_mocked_segmented_asr(tmp_path: Path):
     assert results["metadata"].iloc[0]["segment_index"] == 0
     assert results["metadata"].iloc[0]["segment_count"] == 2
     assert results["metadata"].iloc[1]["segment_index"] == 1
-    assert results["metadata"].iloc[1]["segment_start"] == 0.2
-    assert results["metadata"].iloc[1]["segment_end"] == 0.5
+    assert results["metadata"].iloc[1]["segment_start_seconds"] == 0.2
+    assert results["metadata"].iloc[1]["segment_end_seconds"] == 0.5
 
 
 @pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
