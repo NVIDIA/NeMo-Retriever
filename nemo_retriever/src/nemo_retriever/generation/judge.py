@@ -15,13 +15,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
+if TYPE_CHECKING:
     from nemo_retriever.llm.clients import LLMJudge
 
 
-def judge(df: "pd.DataFrame", *, judge: "LLMJudge") -> "pd.DataFrame":
+def judge(df: pd.DataFrame, *, judge: "LLMJudge") -> pd.DataFrame:
     """Run LLM-as-judge scoring over a DataFrame of answered queries.
 
     The input DataFrame is expected to carry ``query``,

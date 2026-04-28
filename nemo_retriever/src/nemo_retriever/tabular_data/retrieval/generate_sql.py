@@ -267,7 +267,14 @@ def get_sql_tool_response_top_k(
 
     table_context_lines = []
     for i, hit in enumerate(hits, 1):
-        text = (hit.get("text") or "").strip()
+        try:
+            text = (hit["text"] or "").strip()
+        except KeyError as exc:
+            raise KeyError(
+                "hit row missing required 'text' column; "
+                "this usually means the LanceDB table was written by an older ingestion path. "
+                "Re-run `retriever pipeline run` to regenerate."
+            ) from exc
         if text:
             table_context_lines.append(f"{i}. {text}")
     table_context = "\n".join(table_context_lines)

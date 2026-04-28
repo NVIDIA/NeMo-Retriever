@@ -9,12 +9,35 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import pandas as pd
+
 from nemo_retriever.evaluation.eval_operator import EvalOperator
 
 if TYPE_CHECKING:
     from nemo_retriever.retriever import Retriever
 
 logger = logging.getLogger(__name__)
+
+
+def _hit_text(hit: dict[str, Any]) -> str:
+    """Extract the required ``text`` field from a LanceDB hit row.
+
+    Tagged-error variant of ``hit["text"]`` that points the caller at
+    the most likely fix when the schema invariant is violated.  The
+    canonical path that populates this column is ``retriever pipeline
+    run``; older ingestion paths or hand-rolled tables may be missing
+    it.  Surfacing as ``KeyError`` (rather than silently returning an
+    empty string) prevents downstream operators from misclassifying a
+    schema bug as an empty-retrieval failure.
+    """
+    try:
+        return str(hit["text"])
+    except KeyError as exc:
+        raise KeyError(
+            "hit row missing required 'text' column; "
+            "this usually means the LanceDB table was written by an older ingestion path. "
+            "Re-run `retriever pipeline run` to regenerate."
+        ) from exc
 
 
 class LiveRetrievalOperator(EvalOperator):
@@ -64,8 +87,6 @@ class LiveRetrievalOperator(EvalOperator):
         self._top_k = int(top_k)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        import pandas as pd
-
         if not isinstance(data, pd.DataFrame):
             raise TypeError(f"{type(self).__name__} requires a pandas.DataFrame input, " f"got {type(data).__name__}")
 
@@ -87,7 +108,7 @@ class LiveRetrievalOperator(EvalOperator):
                 "this violates the contract and points at a Retriever bug."
             )
 
-        out["context"] = [[str(hit.get("text", "")) for hit in hits] for hits in hits_per_query]
+        out["context"] = [[_hit_text(hit) for hit in hits] for hits in hits_per_query]
         out["context_metadata"] = [
             [{k: v for k, v in hit.items() if k != "text"} for hit in hits] for hits in hits_per_query
         ]

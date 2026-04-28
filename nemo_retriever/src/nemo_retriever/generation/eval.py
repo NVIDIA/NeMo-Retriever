@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, Sequence, Union
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
+if TYPE_CHECKING:
     from nemo_retriever.llm.clients import LLMJudge, LiteLLMClient
     from nemo_retriever.retriever import Retriever
 
@@ -26,7 +26,7 @@ def eval(  # noqa: A001 -- matches the CLI subcommand name `retriever eval`
     embedder: Optional[str] = None,
     lancedb_uri: Optional[str] = None,
     lancedb_table: Optional[str] = None,
-) -> "pd.DataFrame":
+) -> pd.DataFrame:
     """Run the full live-RAG evaluation chain for a batch of queries.
 
     This is the batch-mode counterpart to ``retriever eval`` on the CLI:

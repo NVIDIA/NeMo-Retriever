@@ -241,8 +241,6 @@ uv pip install -e "./nemo_retriever[llm]"
 
 The `[llm]` extra installs `litellm` for LLM generation and judging (and powers both the batch-eval framework and the live-RAG SDK). If you are not using this tree, you can instead `uv pip install "nemo-retriever[llm]"` from PyPI (package name uses a hyphen).
 
-> **Migration note:** the previously-provided `nemo-retriever[eval]` install extra was removed in favor of `nemo-retriever[llm]`. Pin the new extra in any requirements files that still reference `[eval]`.
-
 **Eval-only path:** if you already have a retrieval JSON and only need to run `retriever eval run`, an environment with `nemo_retriever[llm]` installed is sufficient.
 
 ### Prerequisites (data and keys)

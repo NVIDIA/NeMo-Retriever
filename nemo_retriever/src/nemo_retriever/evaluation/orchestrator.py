@@ -257,8 +257,55 @@ class QAEvalPipeline(EvalOperator):
 
         For each pair, retrieves chunks via self.retriever (threaded)
         and builds a DataFrame with: query, reference_answer, context.
+
+        Fast path: when ``self.retriever`` exposes ``retrieve_many`` --
+        e.g. :class:`~nemo_retriever.evaluation.retrievers.FileRetriever`,
+        which is an in-memory dict lookup -- collapse the per-query
+        ThreadPoolExecutor fan-out into a single batched call. The
+        ``retrieve_many`` contract (must not raise per-batch; per-query
+        failures degrade to empty-context rows) is what makes this safe
+        without an outer try/except.
         """
         total = len(qa_pairs)
+        if hasattr(self.retriever, "retrieve_many"):
+            queries = [pair["query"] for pair in qa_pairs]
+            references = [pair.get("reference_answer") or pair.get("answer", "") for pair in qa_pairs]
+
+            if not queries:
+                return pd.DataFrame(columns=["query", "reference_answer", "context", "_retrieval_metadata"])
+
+            hit_df = self.retriever.retrieve_many(queries, self.top_k)
+
+            # Mirrors LiveRetrievalOperator.process's invariant check: a
+            # batched retriever that returns N != len(queries) rows has
+            # violated the documented retrieve_many contract and is a
+            # real bug, not an empty-result signal.
+            if len(hit_df) != len(queries):
+                raise RuntimeError(
+                    f"retrieve_many returned {len(hit_df)} rows for {len(queries)} queries; "
+                    "this violates the must-not-raise-per-batch + len(result) == len(queries) "
+                    "contract documented on FileRetriever.retrieve_many."
+                )
+
+            rows = [
+                {
+                    "query": q,
+                    "reference_answer": r,
+                    "context": chunks,
+                    "_retrieval_metadata": metadata,
+                }
+                for q, r, chunks, metadata in zip(
+                    queries,
+                    references,
+                    hit_df["chunks"].tolist(),
+                    hit_df["metadata"].tolist(),
+                    strict=True,
+                )
+            ]
+            if total >= 10:
+                logger.info("Retrieval progress: %d/%d queries completed", total, total)
+            return pd.DataFrame(rows)
+
         rows: list[Optional[dict]] = [None] * total
         counter = {"done": 0}
         lock = threading.Lock()

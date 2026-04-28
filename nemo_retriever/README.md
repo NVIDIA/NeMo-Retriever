@@ -389,8 +389,9 @@ The `retriever answer` JSON schema (`--json -` or `--json path.json`) is one row
 | `3` | Retrieval returned zero chunks. No answer generated. | Root cause is the corpus/embedder, not the LLM. Re-ingest or broaden `--top-k` before retrying. Dominates `5` when both conditions hold -- a dry retrieval can't produce a generation. |
 | `4` | Usage error (missing flag, `--judge-model` without `--reference`, `--min-judge-score` without `--judge-model`, unreadable `--lancedb-uri`, etc.). | Invalid invocation; fix the command line. |
 | `5` | Generation failed (`AnswerResult.error` populated) on a non-empty retrieval. | LLM / transport failure after a healthy retrieval. Retry the LLM or fall back to a different `--model`. |
+| `6` | Judge call failed (`judge_error` populated). The answer itself may still be usable. | Distinguished from `5` so agents can retry the judge tier (or fall back to scoring tiers 1-2) without regenerating the answer. Takes precedence over `2` because a missing judge score is not the same as a low one. |
 
-`retriever retrieve` and `retriever eval batch` use `0` / `4` only; they never run generation, so `2` / `3` / `5` are not applicable.
+`retriever retrieve` and `retriever eval batch` use `0` / `4` only; they never run generation, so `2` / `3` / `5` / `6` are not applicable.
 
 ### MCP server (`retriever mcp serve`)
 

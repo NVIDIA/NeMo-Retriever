@@ -12,13 +12,10 @@ framework.  No LLM dependency -- this is pure computation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
 
-def score(df: "pd.DataFrame") -> "pd.DataFrame":
+def score(df: pd.DataFrame) -> pd.DataFrame:
     """Apply Tier-1 and Tier-2 scoring to a DataFrame of answered queries.
 
     The input DataFrame is expected to carry ``query``, ``reference_answer``,

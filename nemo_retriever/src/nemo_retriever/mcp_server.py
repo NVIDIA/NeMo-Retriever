@@ -99,62 +99,6 @@ def _require_mcp() -> tuple[Any, Any, Any]:
     return mcp.server, mcp.server.stdio, mcp.types
 
 
-def _build_retriever_and_llm(
-    *,
-    lancedb_uri: Path,
-    lancedb_table: str,
-    embedder: Optional[str],
-    embedding_endpoint: Optional[str],
-    embedding_api_key: Optional[str],
-    top_k: int,
-    hybrid: bool,
-    reranker: Optional[str],
-    reranker_endpoint: Optional[str],
-    reranker_api_key: Optional[str],
-    model: str,
-    api_base: Optional[str],
-    api_key: Optional[str],
-    temperature: float,
-    max_tokens: int,
-) -> tuple[Any, Any]:
-    """Construct the shared ``Retriever`` + ``LiteLLMClient`` pair.
-
-    Both are created once at ``serve`` start-up and reused for every
-    MCP tool call so that the NIM auth-token resolution, LanceDB
-    connection pool, and litellm-retry bookkeeping are not repeated per
-    tool invocation.  Returns ``(retriever, llm)``.
-    """
-    from nemo_retriever.llm.clients import LiteLLMClient
-    from nemo_retriever.model import VL_EMBED_MODEL
-    from nemo_retriever.retriever import Retriever
-
-    resolved_embedder = embedder or VL_EMBED_MODEL
-
-    retriever = Retriever(
-        lancedb_uri=str(Path(lancedb_uri).expanduser().resolve()),
-        lancedb_table=lancedb_table,
-        embedder=resolved_embedder,
-        embedding_http_endpoint=embedding_endpoint,
-        embedding_api_key=embedding_api_key or "",
-        top_k=top_k,
-        hybrid=hybrid,
-        reranker=bool(reranker),
-        reranker_model_name=reranker,
-        reranker_endpoint=reranker_endpoint,
-        reranker_api_key=reranker_api_key or "",
-    )
-
-    llm = LiteLLMClient.from_kwargs(
-        model=model,
-        api_base=api_base,
-        api_key=api_key,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-
-    return retriever, llm
-
-
 def serve_command(
     lancedb_uri: Path = typer.Option(
         ...,
@@ -197,6 +141,7 @@ def serve_command(
     reranker_api_key: Optional[str] = typer.Option(
         None,
         "--reranker-api-key",
+        envvar="NVIDIA_API_KEY",
         help="Bearer token for the remote rerank endpoint.",
     ),
     model: str = typer.Option(
@@ -241,20 +186,30 @@ def serve_command(
     from nemo_retriever.answer_cli import row_to_answer_dict
     from nemo_retriever.generation import answer as answer_fn
     from nemo_retriever.generation import eval as eval_fn
+    from nemo_retriever.llm.clients import LiteLLMClient
+    from nemo_retriever.model import VL_EMBED_MODEL
+    from nemo_retriever.retriever import Retriever
 
     mcp_server, mcp_stdio, mcp_types = _require_mcp()
 
-    retriever, llm = _build_retriever_and_llm(
-        lancedb_uri=lancedb_uri,
+    # Construct the shared Retriever + LiteLLMClient pair once at startup
+    # so the LanceDB connection pool, NIM auth-token resolution, and
+    # litellm retry bookkeeping are reused across every tool call.
+    retriever = Retriever(
+        lancedb_uri=str(Path(lancedb_uri).expanduser().resolve()),
         lancedb_table=lancedb_table,
-        embedder=embedder,
-        embedding_endpoint=embedding_endpoint,
-        embedding_api_key=embedding_api_key,
+        embedder=embedder or VL_EMBED_MODEL,
+        embedding_http_endpoint=embedding_endpoint,
+        embedding_api_key=embedding_api_key or "",
         top_k=top_k,
         hybrid=hybrid,
-        reranker=reranker,
+        reranker=bool(reranker),
+        reranker_model_name=reranker,
         reranker_endpoint=reranker_endpoint,
-        reranker_api_key=reranker_api_key,
+        reranker_api_key=reranker_api_key or "",
+    )
+
+    llm = LiteLLMClient.from_kwargs(
         model=model,
         api_base=api_base,
         api_key=api_key,

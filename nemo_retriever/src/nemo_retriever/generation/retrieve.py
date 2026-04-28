@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional, Sequence, Union
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
+if TYPE_CHECKING:
     from nemo_retriever.retriever import Retriever
 
 
@@ -30,7 +30,7 @@ def retrieve(
     embedder: Optional[str] = None,
     lancedb_uri: Optional[str] = None,
     lancedb_table: Optional[str] = None,
-) -> "pd.DataFrame":
+) -> pd.DataFrame:
     """Run retrieval and return a DataFrame of hits.
 
     Thin adapter over :meth:`Retriever.queries <nemo_retriever.retriever.Retriever.queries>`
@@ -66,8 +66,6 @@ def retrieve(
         >>> list(df.columns)  # doctest: +SKIP
         ['query', 'chunks', 'metadata']
     """
-    import pandas as pd
-
     query_list: list[str] = [queries] if isinstance(queries, str) else [str(q) for q in queries]
 
     if not query_list:
@@ -83,7 +81,12 @@ def retrieve(
 
     rows: list[dict[str, Any]] = []
     for q, hits in zip(query_list, hits_per_query):
-        chunks = [str(hit.get("text", "")) for hit in hits]
+        # Strict access: every LanceDB row written by ``retriever pipeline run``
+        # carries a ``text`` field, so a missing key here is a real schema
+        # bug -- surface it as KeyError rather than silently emitting an
+        # empty chunk that downstream operators will misclassify as an
+        # empty-retrieval failure.
+        chunks = [str(hit["text"]) for hit in hits]
         metadata = [{k: v for k, v in hit.items() if k != "text"} for hit in hits]
         rows.append({"query": q, "chunks": chunks, "metadata": metadata})
 

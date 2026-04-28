@@ -22,10 +22,9 @@ Note on legacy shapes:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
 
 @runtime_checkable
@@ -44,7 +43,7 @@ class RetrieverStrategy(Protocol):
     ``generation.score``, ``generation.judge``, and ``generation.eval``.
     """
 
-    def retrieve(self, query: str, top_k: int) -> "pd.DataFrame": ...
+    def retrieve(self, query: str, top_k: int) -> pd.DataFrame: ...
 
 
 @runtime_checkable

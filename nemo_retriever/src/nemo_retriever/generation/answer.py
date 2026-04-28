@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, Sequence, Union
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
+if TYPE_CHECKING:
     from nemo_retriever.llm.clients import LiteLLMClient
     from nemo_retriever.retriever import Retriever
 
@@ -34,7 +34,7 @@ def answer(
     embedder: Optional[str] = None,
     lancedb_uri: Optional[str] = None,
     lancedb_table: Optional[str] = None,
-) -> "pd.DataFrame":
+) -> pd.DataFrame:
     """Retrieve chunks and generate grounded answers for each query.
 
     Internally performs :func:`~nemo_retriever.generation.retrieve` to

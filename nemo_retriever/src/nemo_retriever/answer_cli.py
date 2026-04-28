@@ -40,6 +40,9 @@ Exit-code contract (schema'd for agents and CI)::
     3 -- retrieval returned zero chunks; no answer generated.
     4 -- usage error (e.g. ``--judge-model`` without ``--reference``).
     5 -- generation failed (``AnswerResult.error`` populated).
+    6 -- judge call failed (``judge_error`` populated; the answer itself
+         may still be usable).  Distinguished from exit 5 so agents can
+         retry the judge without regenerating the answer.
 """
 
 from __future__ import annotations
@@ -56,6 +59,7 @@ EXIT_BELOW_JUDGE_THRESHOLD = 2
 EXIT_EMPTY_RETRIEVAL = 3
 EXIT_USAGE = 4
 EXIT_GENERATION_FAILED = 5
+EXIT_JUDGE_FAILED = 6
 
 
 # Columns in the generation DataFrame that we project onto the
@@ -229,6 +233,7 @@ def answer_command(
     reranker_api_key: Optional[str] = typer.Option(
         None,
         "--reranker-api-key",
+        envvar="NVIDIA_API_KEY",
         help="Bearer token for the remote rerank endpoint.",
     ),
     reranker_modality: str = typer.Option(
@@ -271,6 +276,7 @@ def answer_command(
     judge_api_key: Optional[str] = typer.Option(
         None,
         "--judge-api-key",
+        envvar="NVIDIA_API_KEY",
         help="Bearer token for the judge LLM (defaults to --api-key).",
     ),
     min_judge_score: Optional[int] = typer.Option(
@@ -379,9 +385,7 @@ def answer_command(
     row = df.iloc[0]
     result_dict = row_to_answer_dict(row)
 
-    # --json - routes JSON to stdout and the summary to stderr so the two
-    # streams can be piped independently (e.g. agents capture stdout, humans
-    # watch stderr).  Any other --json target keeps the summary on stdout.
+    # ``--json -`` routes JSON to stdout and the human summary to stderr.
     json_to_stdout = json_out is not None and str(json_out) == "-"
     _emit_json(result_dict, json_out)
     if not quiet:
@@ -390,17 +394,20 @@ def answer_command(
     gen_error = result_dict.get("error")
     chunks = result_dict.get("chunks") or []
     judge_score = result_dict.get("judge_score")
+    judge_error = result_dict.get("judge_error")
 
-    # Exit-code ordering matters for agents/CI that branch on exit codes to
-    # diagnose failures.  Empty retrieval is the *root cause* of most
-    # downstream "generation failed" errors (the LLM is handed an empty
-    # context and either refuses or timeouts).  We surface exit 3 ahead of
-    # exit 5 so callers are pointed at the knowledge-base / ingestion
-    # problem rather than the symptom.
+    # Exit 3 (empty retrieval) precedes exit 5 (generation failed) so callers
+    # are pointed at the root cause rather than the downstream symptom.
+    # Exit 6 (judge failed) is distinguished from exit 5 so agents can retry
+    # the judge without regenerating the answer; it also takes precedence
+    # over exit 2 because a missing judge score is not the same as a low one.
     if not chunks:
         raise typer.Exit(code=EXIT_EMPTY_RETRIEVAL)
     if gen_error is not None:
         raise typer.Exit(code=EXIT_GENERATION_FAILED)
+    if judge_error is not None:
+        typer.echo(f"Error: judge call failed: {judge_error}", err=True)
+        raise typer.Exit(code=EXIT_JUDGE_FAILED)
     if min_judge_score is not None and (judge_score is None or judge_score < min_judge_score):
         raise typer.Exit(code=EXIT_BELOW_JUDGE_THRESHOLD)
 

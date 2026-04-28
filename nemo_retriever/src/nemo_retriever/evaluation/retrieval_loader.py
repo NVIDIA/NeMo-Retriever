@@ -84,25 +84,25 @@ class RetrievalLoaderOperator(EvalOperator):
                 coverage * 100,
             )
 
-        rows: list[dict] = []
+        kept_queries: list[str] = []
+        kept_references: list[str] = []
         for pair in qa_pairs:
             query = pair.get(self._query_column, "")
-            reference = pair.get(self._answer_column, "")
             if not query:
                 continue
-            hit_df = retriever.retrieve(query, self._top_k)
-            # FileRetriever.retrieve now returns a single-row DataFrame
-            # with [query, chunks, metadata]; guarded empty-frame access
-            # so missing queries (graceful-miss path) produce an empty
-            # context list rather than an IndexError.
-            chunks = hit_df.iloc[0]["chunks"] if len(hit_df) else []
-            rows.append(
-                {
-                    "query": query,
-                    "reference_answer": reference,
-                    "context": chunks,
-                }
-            )
+            kept_queries.append(query)
+            kept_references.append(pair.get(self._answer_column, ""))
+
+        # FileRetriever.retrieve_many returns one row per input query in
+        # input order with the canonical [query, chunks, metadata]
+        # columns; misses degrade to empty chunks lists, so we can zip
+        # positionally against kept_queries/kept_references without
+        # guarding against empty frames.
+        hit_df = retriever.retrieve_many(kept_queries, self._top_k)
+        rows = [
+            {"query": q, "reference_answer": r, "context": chunks}
+            for q, r, chunks in zip(kept_queries, kept_references, hit_df["chunks"].tolist())
+        ]
 
         if not rows:
             logger.warning("RetrievalLoaderOperator produced 0 rows")

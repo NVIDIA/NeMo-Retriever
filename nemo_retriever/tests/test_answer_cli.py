@@ -17,6 +17,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 import typer
 from typer.testing import CliRunner
 
@@ -25,6 +26,7 @@ from nemo_retriever.answer_cli import (
     EXIT_BELOW_JUDGE_THRESHOLD,
     EXIT_EMPTY_RETRIEVAL,
     EXIT_GENERATION_FAILED,
+    EXIT_JUDGE_FAILED,
     EXIT_OK,
     EXIT_USAGE,
 )
@@ -145,6 +147,56 @@ def test_retriever_answer_requires_lancedb_uri() -> None:
     by_opt = {opt: p for p in answer_cmd.params for opt in p.opts}
     assert "--lancedb-uri" in by_opt, "retriever answer must expose --lancedb-uri"
     assert by_opt["--lancedb-uri"].required, "--lancedb-uri must be marked required"
+
+
+def _resolve_command(*path: str) -> Any:
+    """Walk a Click command group tree to a leaf command.
+
+    ``path`` is the chain of subcommand names from the root app to the
+    leaf, mirroring the way a user types it (e.g. ``("mcp", "serve")``
+    or ``("eval", "batch")``).  Returns the underlying Click command
+    object so callers can introspect its ``params`` list directly.
+    """
+    cmd = typer.main.get_command(app)
+    for name in path:
+        cmd = cmd.commands[name]
+    return cmd
+
+
+# Each tuple is (command-path, flag-name).  Parametrising over the cross
+# product of "command -> flag" sites locks the convention in once across
+# the four CLI surfaces that accept these bearer tokens, so a future
+# refactor that drops ``envvar=`` on any of them fails CI loudly.
+_NVIDIA_API_KEY_ENVVAR_SITES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("answer",), "--reranker-api-key"),
+    (("answer",), "--judge-api-key"),
+    (("mcp", "serve"), "--reranker-api-key"),
+    (("retrieve",), "--reranker-api-key"),
+    (("eval", "batch"), "--reranker-api-key"),
+    (("eval", "batch"), "--judge-api-key"),
+)
+
+
+@pytest.mark.parametrize(("command_path", "flag"), _NVIDIA_API_KEY_ENVVAR_SITES)
+def test_cli_flag_reads_nvidia_api_key_envvar(command_path: tuple[str, ...], flag: str) -> None:
+    """Bearer-token flags fall back to ``$NVIDIA_API_KEY`` when not passed.
+
+    The ``--api-key`` and ``--embedding-api-key`` flags already declare
+    ``envvar="NVIDIA_API_KEY"``; ``--reranker-api-key`` and
+    ``--judge-api-key`` should follow the same convention so a single
+    exported token covers the whole live-RAG stack.  Asserts against the
+    Click command object rather than the rendered help panel for the
+    same reason as :func:`test_retriever_answer_requires_lancedb_uri`.
+    """
+    cmd = _resolve_command(*command_path)
+    by_opt = {opt: p for p in cmd.params for opt in p.opts}
+    assert flag in by_opt, f"retriever {' '.join(command_path)} must expose {flag}"
+    envvar = by_opt[flag].envvar
+    envvars = [envvar] if isinstance(envvar, str) else list(envvar or ())
+    assert "NVIDIA_API_KEY" in envvars, (
+        f"retriever {' '.join(command_path)} {flag} must declare envvar='NVIDIA_API_KEY' "
+        f"to match the convention used by --api-key / --embedding-api-key"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +328,60 @@ def test_retriever_answer_below_threshold_exits_two(tmp_path: Any) -> None:
         "--quiet",
     )
     assert exit_code == EXIT_BELOW_JUDGE_THRESHOLD
+
+
+def test_retriever_answer_judge_error_exits_six(tmp_path: Any) -> None:
+    """Judge call failure (`judge_error` populated, no score) -> exit 6.
+
+    Distinguished from exit 2 (below threshold) and exit 5 (generation
+    failure) so agents can retry the judge tier without regenerating
+    the answer.  Also takes precedence over exit 2 even when
+    ``--min-judge-score`` is set, because a missing judge score is not
+    the same as a low one.
+    """
+    result = _make_answer_df(judge_score=None, judge_error="judge timeout")
+    exit_code, _out, err = _invoke_answer_with_patched_generation(
+        result,
+        "hello",
+        "--model",
+        "mock/llm",
+        "--lancedb-uri",
+        str(tmp_path),
+        "--reference",
+        "ref",
+        "--judge-model",
+        "mock/judge",
+        "--quiet",
+    )
+    assert exit_code == EXIT_JUDGE_FAILED
+    assert "judge call failed" in err
+
+
+def test_retriever_answer_judge_error_wins_over_below_threshold(tmp_path: Any) -> None:
+    """`judge_error` takes precedence over `--min-judge-score` (exit 6, not 2).
+
+    Regression guard: before the EXIT_JUDGE_FAILED branch, a judge that
+    errored out and returned no score would fall through to the
+    ``judge_score < min_judge_score`` check and exit 2, conflating
+    infrastructure failure with quality failure.
+    """
+    result = _make_answer_df(judge_score=None, judge_error="judge transport error")
+    exit_code, _out, _err = _invoke_answer_with_patched_generation(
+        result,
+        "hello",
+        "--model",
+        "mock/llm",
+        "--lancedb-uri",
+        str(tmp_path),
+        "--reference",
+        "ref",
+        "--judge-model",
+        "mock/judge",
+        "--min-judge-score",
+        "4",
+        "--quiet",
+    )
+    assert exit_code == EXIT_JUDGE_FAILED
 
 
 def test_retriever_answer_summary_includes_judge_reasoning(tmp_path: Any) -> None:

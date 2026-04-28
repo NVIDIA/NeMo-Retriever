@@ -196,6 +196,7 @@ def retrieve_command(
     reranker_api_key: Optional[str] = typer.Option(
         None,
         "--reranker-api-key",
+        envvar="NVIDIA_API_KEY",
         help="Bearer token for the remote rerank endpoint.",
     ),
     output: Optional[Path] = typer.Option(
@@ -259,7 +260,9 @@ def eval_batch_command(
     ),
     reranker: Optional[str] = typer.Option(None, "--reranker", help="Reranker model name."),
     reranker_endpoint: Optional[str] = typer.Option(None, "--reranker-endpoint", help="Rerank endpoint URL."),
-    reranker_api_key: Optional[str] = typer.Option(None, "--reranker-api-key", help="Rerank API key."),
+    reranker_api_key: Optional[str] = typer.Option(
+        None, "--reranker-api-key", envvar="NVIDIA_API_KEY", help="Rerank API key."
+    ),
     model: str = typer.Option(..., "--model", help="LLM model identifier in litellm notation."),
     api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL for the LLM."),
     api_key: Optional[str] = typer.Option(
@@ -279,7 +282,9 @@ def eval_batch_command(
     judge_api_base: Optional[str] = typer.Option(
         None, "--judge-api-base", help="Judge API base (defaults to --api-base)."
     ),
-    judge_api_key: Optional[str] = typer.Option(None, "--judge-api-key", help="Judge API key (defaults to --api-key)."),
+    judge_api_key: Optional[str] = typer.Option(
+        None, "--judge-api-key", envvar="NVIDIA_API_KEY", help="Judge API key (defaults to --api-key)."
+    ),
     output: Optional[Path] = typer.Option(
         None,
         "--output",

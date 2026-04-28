@@ -163,7 +163,14 @@ def query_lancedb(
                 chunks: list[str] = []
                 metadata: list[dict] = []
                 for hit in hits:
-                    chunks.append(hit.get("text", ""))
+                    try:
+                        chunks.append(hit["text"])
+                    except KeyError as exc:
+                        raise KeyError(
+                            "hit row missing required 'text' column; "
+                            "this usually means the LanceDB table was written by an older ingestion path. "
+                            "Re-run `retriever pipeline run` to regenerate."
+                        ) from exc
                     metadata.append(
                         {
                             "source_id": _extract_source_id(hit),

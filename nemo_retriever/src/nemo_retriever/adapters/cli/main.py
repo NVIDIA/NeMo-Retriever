@@ -50,10 +50,9 @@ app.command(
     help="Batch retrieval: emit one JSONL row per query with (query, chunks, metadata).",
 )(retrieve_command)
 
-# ``retriever eval batch`` -- see nemo_retriever.generation.cli.  Registered
-# on the existing ``eval_app`` group as a peer of ``run`` / ``export`` /
-# ``build-page-index`` so both YAML-driven and batch-JSONL evaluation
-# surfaces live under the same subcommand namespace.
+# ``retriever eval batch`` -- registered on the same ``eval_app`` group that
+# ``app.add_typer(eval_app, name="eval")`` mounts above, so it lives next to
+# ``run`` / ``export`` / ``build-page-index``.
 eval_app.command(
     name="batch",
     help="Batch evaluation: retrieve -> answer -> score -> judge, one JSONL row per query.",
