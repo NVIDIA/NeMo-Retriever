@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the navigation tree from mkdocs.nrl-github-pages.yml for pre-deploy review."""
+"""Print the navigation tree from mkdocs.yml for pre-deploy review."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from mkdocs.utils import yaml_load
 
-CONFIG = Path(__file__).resolve().parents[1] / "mkdocs.nrl-github-pages.yml"
+CONFIG = Path(__file__).resolve().parents[1] / "mkdocs.yml"
 
 
 def _walk(node, indent: int = 0) -> None:

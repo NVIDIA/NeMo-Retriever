@@ -64,11 +64,11 @@ mkdocs:
 	@echo "📚 Building MkDocs site..."
 	mkdocs build
 
-# NeMo Retriever Library (NRL) staging site: flat 13-section nav (see mkdocs.nrl-github-pages.yml).
+# NeMo Retriever Library (NRL) site: flat 13-section nav (see mkdocs.yml).
 .PHONY: nrl-github-pages
 nrl-github-pages:
 	@echo "📚 Building NRL GitHub Pages MkDocs site (strict)..."
-	mkdocs build -f mkdocs.nrl-github-pages.yml --strict
+	mkdocs build -f mkdocs.yml --strict
 
 # Full docs pipeline
 .PHONY: docs
