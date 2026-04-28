@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -100,8 +101,16 @@ class Retriever:
     to enable multimodal reranking with images."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
+    # Serialises cold-path initialisation of ``_reranker_model`` so concurrent
+    # threads (e.g. MCP's ``run_in_executor`` fan-out) cannot double-load the
+    # underlying model into VRAM.  Typed ``Any`` because ``threading.Lock`` is
+    # a factory function rather than a class, which trips strict type-checkers.
+    _reranker_lock: Any = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
     # Internal cache for local HF embedders, keyed by model name.
     _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
+    # Serialises cold-path inserts into ``_embedder_cache`` for the same
+    # reason; warm-cache reads bypass the lock via a fast-path early return.
+    _embedder_lock: Any = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
 
     def _resolve_embedding_endpoint(self) -> Optional[str]:
         http_ep = self.embedding_http_endpoint.strip() if isinstance(self.embedding_http_endpoint, str) else None
@@ -141,17 +150,30 @@ class Retriever:
         return out
 
     def _get_local_embedder(self, model_name: str) -> Any:
-        """Lazily load and cache the local HF embedder for *model_name*."""
-        if model_name not in self._embedder_cache:
+        """Lazily load and cache the local HF embedder for *model_name*.
+
+        Thread-safe: the warm-cache path returns without acquiring the lock,
+        and the cold path serialises through ``self._embedder_lock`` with an
+        inside-the-lock re-check so concurrent callers cannot double-load
+        the model.
+        """
+        cached = self._embedder_cache.get(model_name)
+        if cached is not None:
+            return cached
+        with self._embedder_lock:
+            cached = self._embedder_cache.get(model_name)
+            if cached is not None:
+                return cached
             from nemo_retriever.model import create_local_embedder
 
             cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            self._embedder_cache[model_name] = create_local_embedder(
+            embedder = create_local_embedder(
                 model_name,
                 device=self.local_hf_device,
                 hf_cache_dir=cache_dir,
             )
-        return self._embedder_cache[model_name]
+            self._embedder_cache[model_name] = embedder
+            return embedder
 
     def _embed_queries_local_hf(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
         from nemo_retriever.model import is_vl_embed_model
@@ -250,17 +272,26 @@ class Retriever:
     # ------------------------------------------------------------------
 
     def _get_reranker_model(self) -> Any:
-        """Lazily load and cache the local reranker model (text-only or VL)."""
-        if self._reranker_model is None and self.reranker:
-            from nemo_retriever.model import create_local_reranker
+        """Lazily load and cache the local reranker model (text-only or VL).
 
-            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            self._reranker_model = create_local_reranker(
-                model_name=self.reranker_model_name,
-                device=self.local_hf_device,
-                hf_cache_dir=cache_dir,
-            )
-        return self._reranker_model
+        Thread-safe: the fast-path early return covers both "already loaded"
+        and "feature disabled" so disabled-reranker callers never acquire the
+        lock; the cold path serialises through ``self._reranker_lock`` with
+        an inside-the-lock re-check.
+        """
+        if self._reranker_model is not None or not self.reranker:
+            return self._reranker_model
+        with self._reranker_lock:
+            if self._reranker_model is None and self.reranker:
+                from nemo_retriever.model import create_local_reranker
+
+                cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
+                self._reranker_model = create_local_reranker(
+                    model_name=self.reranker_model_name,
+                    device=self.local_hf_device,
+                    hf_cache_dir=cache_dir,
+                )
+            return self._reranker_model
 
     def _rerank_results(
         self,

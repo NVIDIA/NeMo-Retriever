@@ -480,3 +480,97 @@ class TestSearchLancedbKeepKeys:
         assert "vector" not in hit
         assert "_score" not in hit
         assert "_relevance_score" not in hit
+
+
+# ---------------------------------------------------------------------------
+# Retriever lazy-init concurrency (Greptile P1)
+# ---------------------------------------------------------------------------
+
+
+class TestLazyInitConcurrency:
+    """Regression tests for the threading.Lock added to ``_get_local_embedder``
+    and ``_get_reranker_model``.
+
+    Without the locks, two threads can both pass the cache-empty guard before
+    either completes the underlying ``create_local_*`` call, causing a
+    double-load (wasted VRAM, possible OOM).  Each test widens the race window
+    with a brief sleep inside the patched loader and then asserts the loader
+    was invoked exactly once across 8 concurrent callers.
+    """
+
+    _CONCURRENCY = 8
+    _LOAD_DELAY_S = 0.05
+
+    def test_get_local_embedder_loads_once_under_concurrency(self):
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        import time
+
+        call_count = 0
+        count_lock = threading.Lock()
+
+        def fake_create_local_embedder(model_name, device=None, hf_cache_dir=None):
+            nonlocal call_count
+            with count_lock:
+                call_count += 1
+            time.sleep(self._LOAD_DELAY_S)
+            return MagicMock(name=f"embedder<{model_name}>")
+
+        r = _make_retriever()
+        with patch(
+            "nemo_retriever.model.create_local_embedder",
+            side_effect=fake_create_local_embedder,
+        ):
+            with ThreadPoolExecutor(max_workers=self._CONCURRENCY) as pool:
+                futures = [pool.submit(r._get_local_embedder, "model-x") for _ in range(self._CONCURRENCY)]
+                results = [f.result() for f in futures]
+
+        assert call_count == 1, f"expected exactly one underlying load, got {call_count}"
+        assert all(result is results[0] for result in results), "all callers should observe the same cached embedder"
+
+    def test_get_reranker_model_loads_once_under_concurrency(self):
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        import time
+
+        call_count = 0
+        count_lock = threading.Lock()
+
+        def fake_create_local_reranker(model_name=None, device=None, hf_cache_dir=None):
+            nonlocal call_count
+            with count_lock:
+                call_count += 1
+            time.sleep(self._LOAD_DELAY_S)
+            return MagicMock(name=f"reranker<{model_name}>")
+
+        r = _make_retriever(reranker="nvidia/llama-nemotron-rerank-1b-v2")
+        with patch(
+            "nemo_retriever.model.create_local_reranker",
+            side_effect=fake_create_local_reranker,
+        ):
+            with ThreadPoolExecutor(max_workers=self._CONCURRENCY) as pool:
+                futures = [pool.submit(r._get_reranker_model) for _ in range(self._CONCURRENCY)]
+                results = [f.result() for f in futures]
+
+        assert call_count == 1, f"expected exactly one underlying load, got {call_count}"
+        assert all(result is results[0] for result in results), "all callers should observe the same cached reranker"
+
+    def test_get_reranker_model_skips_load_when_disabled(self):
+        """Sanity: the ``self.reranker`` short-circuit on the hot path means
+        ``create_local_reranker`` is never called when reranking is off."""
+
+        called = False
+
+        def fake_create_local_reranker(*args, **kwargs):
+            nonlocal called
+            called = True
+            return MagicMock()
+
+        r = _make_retriever(reranker=None)
+        with patch(
+            "nemo_retriever.model.create_local_reranker",
+            side_effect=fake_create_local_reranker,
+        ):
+            assert r._get_reranker_model() is None
+
+        assert not called, "create_local_reranker must not be invoked when reranker is disabled"
