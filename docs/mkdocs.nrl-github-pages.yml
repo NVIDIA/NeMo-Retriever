@@ -121,7 +121,6 @@ nav:
       - "Vector database partners": extraction/vector-db-partners.md
       - "Starter kits": extraction/notebooks.md
   - "11. Evaluation & benchmarks":
-      - "Evaluation methodology and harnesses": extraction/evaluate-on-your-data.md
       - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
   - "12. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
