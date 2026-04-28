@@ -89,7 +89,7 @@ h. Run `kubectl get pods -n <your-namespace>`. You should see pods reach `Runnin
 
     ```text
     NAME                                          READY   STATUS    RESTARTS   AGE
-    nv-ingest-ms-runtime-xxxxxxxxxx-xxxxx         1/1     Running   0          7m
+    nemo-retriever-ms-runtime-xxxxxxxxxx-xxxxx    1/1     Running   0          7m
     nemoretriever-embedding-xxxxxxxxxx-xxxxx      1/1     Running   0          7m
     nemoretriever-page-elements-xxxxxxxxxx-xxxxx  1/1     Running   0          7m
     redis-master-0                                1/1     Running   0          7m
@@ -414,7 +414,7 @@ For RTX Pro 6000 Server Edition and other GPUs with limited VRAM, start from the
 ### Example: merge a GPU override with `helm upgrade`
 
 ```shell
-helm upgrade --install nv-ingest <chart-or-tgz> -n "${NAMESPACE}" \
+helm upgrade --install nemo-retriever <chart-or-tgz> -n "${NAMESPACE}" \
   -f my-base-values.yaml \
   -f helm/overrides/values-a100-40gb.yaml
 ```
