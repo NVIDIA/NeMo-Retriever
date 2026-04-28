@@ -1,7 +1,3 @@
-# Workflow: Build a searchable collection
+# Workflow: Build a searchable collection (moved)
 
-After [document ingestion](workflow-document-ingestion.md), configure [chunking](chunking.md) and your [vector database](vdbs.md) so extracted content is embedded, indexed, and ready for search.
-
-Technical detail for storage and chunking is in the **Embedding, indexing, and storage** section of the navigation ([Vector databases](vdbs.md), [Chunking and splitting](chunking.md)).
-
-**Next:** [Workflow: Query and rerank](workflow-query-rerank.md).
+This topic is now part of [Workflow: Ingest documents into a searchable VDB collection](workflow-document-ingestion.md) so ingestion, chunking/indexing, and “searchable collection” guidance live on one page.

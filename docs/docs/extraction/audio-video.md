@@ -4,7 +4,7 @@ This documentation describes two methods to run [NeMo Retriever Library](overvie
 with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) 
 (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files.
 
-- Run the NIM locally by using Docker Compose
+- Run the NIM locally on your cluster with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
 
 Currently, you can extract speech from the following file types:
@@ -32,13 +32,13 @@ This pipeline enables users to retrieve speech files at the segment level.
 
 
 
-## Run the NIM Locally by Using Docker Compose
+## Run the NIM locally (Helm)
 
-Use the following procedure to run the NIM locally.
+Use the following procedure to run the NIM on your own infrastructure.
 
 !!! important
 
-    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Edit docker-compose.yaml to set the device_id to a dedicated GPU: device_ids: ["1"] or higher.
+    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Pin the workload to that GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
 
 1. To access the required container images, log in to the NVIDIA Container Registry (nvcr.io). Use [your NGC key](api-keys.md) as the password. Run the following command in your terminal.
 
@@ -57,11 +57,7 @@ Use the following procedure to run the NIM locally.
     NGC_API_KEY=<your-ngc-key>
     ```
 
-3. Start the retriever services with the `audio` profile. This profile includes the necessary components for audio processing. Use the following command. The `--profile audio` flag ensures that speech-specific services are launched. For more information, refer to [Profile Information](quickstart-guide.md#profile-information).
-
-    ```shell
-    docker compose --profile retrieval --profile audio up
-    ```
+3. Deploy or upgrade NeMo Retriever extraction with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM and any dependencies (for example, retrieval or Milvus) that match how you call the library.
 
 4. After the services are running, you can interact with the pipeline by using Python.
 
@@ -83,7 +79,7 @@ Use the following procedure to run the NIM locally.
         )
     )
     ```
-To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either locally through Docker or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
+To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either self-hosted on your cluster or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
 
     !!! tip
 
@@ -131,4 +127,4 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
 
 - [Support Matrix](support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Use the Python API](python-api-reference.md)
+- [Use the Python API](nemo-retriever-api-reference.md)

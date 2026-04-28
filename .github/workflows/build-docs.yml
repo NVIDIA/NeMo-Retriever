@@ -1,7 +1,7 @@
 # Legacy full-site Docker documentation build (nv-ingest HTML + bundled MkDocs).
 #
 # Public GitHub Pages at https://nvidia.github.io/NeMo-Retriever/ must be published ONLY by
-# nrl-docs-github-pages.yml (mkdocs.nrl-github-pages.yml — 13-section NRL TOC). This workflow
+# nrl-docs-github-pages.yml (mkdocs.yml — 13-section NRL TOC). This workflow
 # must not call deploy-pages or it will overwrite that site with the old navigation.
 #
 # For the same Docker pipeline on every push to main (CI only), see docs-deploy.yml.

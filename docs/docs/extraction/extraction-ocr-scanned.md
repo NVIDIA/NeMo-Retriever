@@ -1,9 +1,9 @@
 # OCR and scanned documents
 
-Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](python-api-reference.md).
+Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
 **Related**
 
 - [Text and layout extraction](text-layout-extraction.md)
-- [Nemotron Parse](nemotron-parse.md)
+- [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse)
 - [Throughput is dataset-dependent](throughput-is-dataset-dependent.md)

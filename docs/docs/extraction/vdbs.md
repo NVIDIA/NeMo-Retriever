@@ -15,10 +15,10 @@ It does not store the embeddings for images.
 
 !!! tip "Storing Extracted Images"
 
-    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](python-api-reference.md#store-extracted-images).
+    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md#store-extracted-images).
 
-NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](python-api-reference.md).
-Currently, data upload is not supported through the [CLI](cli-reference.md).
+NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](nemo-retriever-api-reference.md).
+Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 
 
@@ -107,7 +107,7 @@ Enable hybrid search by setting `hybrid=True` when creating the LanceDB operator
 |---------------------|-------------------------|---------------------------|
 | Runtime model       | Embedded (in-process)   | Client-server             |
 | External services   | None                    | Milvus + etcd + MinIO     |
-| Docker Compose profile | Not needed           | `--profile retrieval`     |
+| Helm / extra stack       | Not needed (default) | Enable Milvus (and deps) in chart values |
 | Index type          | IVF_HNSW_SQ             | HNSW, GPU_CAGRA, etc.     |
 | Hybrid search       | BM25 FTS + vector (RRF) | BM42 sparse embeddings    |
 | Persistence         | Lance files on disk     | Milvus server + MinIO     |
@@ -125,17 +125,13 @@ Bulk indexing is high throughput, but has a built-in overhead of around one minu
 If the number of ingested documents is 10 or fewer, the library uses faster streaming inserts instead.
 You can control this by setting `stream=True`.
 
-If you set `recreate=True`, the pipeline drops and recreates the collection given as *collection_name*.
-The Milvus service persists data to disk by using a Docker volume defined in docker-compose.yaml.
-You can delete all collections by deleting that volume, and then restarting the Milvus service.
-
 !!! warning
 
     When you use the `vdb_upload` task with Milvus, you must expose the ports for the Milvus and MinIO containers to the client. This ensures that the client can connect to both services and perform the `vdb_upload` action.
 
 !!! tip
 
-    When you use the `vdb_upload` method, the behavior of the upload depends on the `return_failures` parameter of the `ingest` method. For details, refer to [Capture Job Failures](python-api-reference.md#capture-job-failures).
+    When you use the `vdb_upload` method, the behavior of the upload depends on the `return_failures` parameter of the `ingest` method. For details, refer to [Capture Job Failures](nemo-retriever-api-reference.md#capture-job-failures).
 
 To upload to Milvus, use code similar to the following to define your `Ingestor`.
 
@@ -174,7 +170,7 @@ For more information, refer to [Build a Custom Vector Database Operator](https:/
 
 ## Related Topics
 
-- [Use the NeMo Retriever Library Python API](python-api-reference.md)
-- [Store Extracted Images](python-api-reference.md#store-extracted-images)
+- [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
+- [Store Extracted Images](nemo-retriever-api-reference.md#store-extracted-images)
 - [Environment Variables](environment-config.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)

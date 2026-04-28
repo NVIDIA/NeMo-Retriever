@@ -20,11 +20,7 @@ Use the following procedure to configure and run the multimodal embedding NIM lo
     EMBEDDING_NIM_MODEL_NAME=nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1
     ```
 
-2. Start the NeMo Retriever Library services. The multimodal embedding service is included by default.
-
-    ```
-    docker compose --profile retrieval up
-    ```
+2. Deploy NeMo Retriever extraction with the Helm chart so the multimodal embedding NIM and dependencies are running in your cluster. Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and enable the embedding stack your configuration needs (for example Milvus if you are not using the default LanceDB path).
 
 
 After the services are running, you can interact with the extraction pipeline by using Python.
@@ -117,5 +113,5 @@ results = ingestor.ingest()
 
 - [Support Matrix](support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Use the Python API](python-api-reference.md)
-- [Extract Captions from Images](python-api-reference.md#extract-captions-from-images)
+- [Use the Python API](nemo-retriever-api-reference.md)
+- [Extract Captions from Images](nemo-retriever-api-reference.md#extract-captions-from-images)
