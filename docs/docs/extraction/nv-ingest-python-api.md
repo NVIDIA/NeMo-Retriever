@@ -366,6 +366,10 @@ with (
 The `caption` method generates image captions by using a VLM. 
 You can use this to generate descriptions of unstructured images, infographics, and other visual content extracted from documents.
 
+!!! note
+
+    To use the `caption` option, enable the `vlm` profile when you start the NeMo Retriever Library services. The default model used by `caption` is `nvidia/nemotron-nano-12b-v2-vl`. For more information, refer to [Profile Information in the Quickstart Guide](quickstart-guide.md#profile-information).
+
 ### Basic Usage
 
 !!! tip
@@ -478,34 +482,29 @@ The `store` task uses [fsspec](https://filesystem-spec.readthedocs.io/) for stor
 
 When `public_base_url` is provided, the metadata returned from `ingest()` surfaces that HTTP(S) link while still recording the underlying storage URI. Leave it unset when the storage endpoint itself is already publicly reachable.
 
-### Persistent storage for `file://` URIs
+### Docker Volume Mounts for Local Storage
 
-When you use `file://` storage URIs, the path must exist inside the ingestion pod (or bind-mounted volume) so files persist across restarts. Configure a `PersistentVolumeClaim` or host path volume in your Helm values so `/workspace/data` (or your chosen mount) points at durable storage.
+When running the pipeline via Docker and using `file://` storage URIs, the path must be within a mounted volume for files to persist on the host machine.
 
-Illustrative mount (adapt keys to your chart version):
+By default, the `docker-compose.yaml` mounts a single volume:
 
 ```yaml
-# Example only — see Helm chart README for the supported values paths
-extraVolumeMounts:
-  - name: workspace-data
-    mountPath: /workspace/data
-extraVolumes:
-  - name: workspace-data
-    persistentVolumeClaim:
-      claimName: nemo-retriever-workspace
+volumes:
+  - ${DATASET_ROOT:-./data}:/workspace/data
 ```
 
 This means:
 
-| Path inside pod | Backing storage | Works with `file://`? |
-|-----------------|-----------------|----------------------|
-| `/workspace/data/...` | PVC or bind mount you configure | ✅ Yes |
-| `/tmp/...` | Ephemeral by default | ❌ No — often lost on restart |
-| Unmounted custom paths | None | ❌ No |
+| Container Path | Host Path | Works with `file://`? |
+|----------------|-----------|----------------------|
+| `/workspace/data/...` | `${DATASET_ROOT}/...` (default: `./data/...`) | ✅ Yes |
+| `/tmp/...` | (container only) | ❌ No - files lost on restart |
+| `/raid/custom/path` | (container only) | ❌ No - path not mounted |
 
-**Example: Save under the mounted workspace**
+**Example: Save to host filesystem**
 
 ```python
+# Files save to ./data/artifacts/images on the host
 ingestor = ingestor.store(
     structured=True,
     images=True,
@@ -513,9 +512,23 @@ ingestor = ingestor.store(
 )
 ```
 
-**Example: Point `DATASET_ROOT` at a large disk before install**
+**Example: Use a custom host directory**
 
-Set `DATASET_ROOT` (or the chart’s equivalent) in values so `/workspace/data` resolves to your PVC-backed path, apply the chart, then use the same `file:///workspace/data/...` URIs from Python.
+```bash
+# Set DATASET_ROOT before starting services
+export DATASET_ROOT=/raid/my-project/nemo-retriever-data
+docker compose up -d
+```
+
+```python
+# Now /workspace/data maps to /raid/my-project/nemo-retriever-data
+ingestor = ingestor.store(
+    structured=True,
+    images=True,
+    storage_uri="file:///workspace/data/extracted-images"
+)
+# Files save to /raid/my-project/nemo-retriever-data/extracted-images on host
+```
 
 For more information on environment variables, refer to [Environment Variables](environment-config.md).
 
