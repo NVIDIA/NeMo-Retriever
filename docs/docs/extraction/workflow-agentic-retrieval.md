@@ -8,7 +8,7 @@ NeMo Retriever Library provides ingestion, embedding, storage, and retrieval bui
 
 Use these pages together with your orchestration layer:
 
-- [Semantic and hybrid retrieval](semantic-hybrid-retrieval.md), [Custom metadata and filtering](custom-metadata.md), and [Reranking](reranking.md)
+- [Semantic and hybrid retrieval](semantic-hybrid-retrieval.md), [Custom metadata and filtering](custom-metadata.md), and [Reranking](workflow-query-rerank.md)
 - [Agentic retrieval (concept)](agentic-retrieval-concept.md)
 - [Benchmarking](benchmarking.md), which includes retrieval evaluation harnesses
 - [Release notes](releasenotes.md), which may mention agentic retrieval updates

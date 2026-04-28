@@ -12,6 +12,6 @@ Read [Throughput is dataset-dependent](throughput-is-dataset-dependent.md) for w
 
 ## Operational tuning
 
-- [Resource scaling modes](scaling-modes.md)
+- [Ray and distributed ingest](ray-logging.md)
 - [Support matrix](support-matrix.md) for supported configurations
 - [Troubleshoot](troubleshoot.md) when results or performance diverge from expectations

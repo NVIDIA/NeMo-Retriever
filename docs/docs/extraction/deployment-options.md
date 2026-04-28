@@ -10,7 +10,7 @@ Use the sections below to pick documentation and deployment options that match y
 
 1. [Prerequisites](prerequisites.md) and [Support matrix](support-matrix.md)
 2. [Deploy (Library mode)](quickstart-library-mode.md)
-3. [Use the Python API](python-api-reference.md) or [Use the CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli)
+3. [Use the Python API](nemo-retriever-api-reference.md) or [Use the CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli)
 
 ### I want a Kubernetes / Helm deployment
 

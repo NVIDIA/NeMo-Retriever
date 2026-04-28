@@ -1,20 +1,24 @@
-# NeMo Retriever documentation — single MkDocs config for NVIDIA docs and GitHub Pages.
-# Flat numbered nav (sections 1–13) drives the NRL TOC everywhere.
+# NeMo Retriever Library (NRL) only - GitHub Pages staging/nightly build.
+# Does not include the broader NeMo Retriever suite landing page (docs/docs/index.md),
+# full multi-package Sphinx API dumps, or legacy nv-ingest markdown aliases in the built site.
 #
-# Build: mkdocs build -f mkdocs.yml [--strict]
-# GitHub Pages: SITE_URL is set by configure-pages to the Pages base URL; locally omit it
-# to use the default NVIDIA docs URL below.
+# Build: make nrl-github-pages   OR   mkdocs build -f mkdocs.nrl-github-pages.yml
+# Optional: SITE_URL=https://owner.github.io/repo/ mkdocs build -f mkdocs.nrl-github-pages.yml
+#
+# Nav is a flat list of numbered sections (no single "NeMo Retriever" wrapper) so the
+# left sidebar shows the full TOC on GitHub Pages. Material hides the tab bar when there
+# is only one top-level tab, which made the structure easy to miss.
 
-site_name: NeMo Retriever Documentation
-site_description: NeMo Retriever documentation — library, deployment, and operations guides
-site_url: !ENV [SITE_URL, "https://docs.nvidia.com/nemo/retriever/"]
+site_name: NeMo Retriever (staging)
+site_description: NeMo Retriever documentation - staging / nightly (not a production release)
+site_url: !ENV [SITE_URL, 'https://example.invalid/']
 
 repo_name: NVIDIA/NeMo-Retriever
 repo_url: https://github.com/NVIDIA/NeMo-Retriever
 
 theme:
   name: material
-  custom_dir: overrides
+  custom_dir: overrides-nrl-staging
   features:
     - content.code.annotate
     - navigation.indexes
@@ -32,6 +36,9 @@ theme:
     code: Roboto Mono
   favicon: assets/images/favicon.png
   language: en
+  # Visible on every page - staging / not a release build
+  announcement: |
+    **Staging (nightly):** NeMo Retriever documentation only. This site is not a production or release publication.
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: light
@@ -56,36 +63,40 @@ extra_css:
   - assets/css/fonts.css
   - assets/css/custom-material.css
   - assets/css/jupyter-themes.css
-#  - assets/css/chatbot.css
 
-# extra_javascript:
-#   - assets/js/chatbot.js
-
-# Flat numbered sections so the left sidebar shows the full TOC; Material hides the tab
-# bar when there is only one top-level tab.
+# Broader suite overview and legacy duplicate pages are excluded from the build (see exclude_docs).
 nav:
   - "1. Introduction":
       - "What is NeMo Retriever?": extraction/overview.md
+      - Key features: extraction/key-features.md
       - Key concepts: extraction/concepts.md
+      - How to use this documentation: extraction/how-to-use-this-documentation.md
       - Release notes: extraction/releasenotes.md
   - "2. Get started":
       - About this section: extraction/getting-started-about.md
       - Prerequisites: extraction/prerequisites.md
       - "Hardware and support matrix": extraction/support-matrix.md
       - "Quickstart: NeMo Retriever Library (local)": extraction/quickstart-library-mode.md
+      - "Deploy (Docker Compose)": extraction/quickstart-guide.md
       - "Authentication and API keys": extraction/api-keys.md
-  - "3. Deployment options": extraction/deployment-options.md
+  - "3. Choose your deployment":
+      - Compare deployment options: extraction/choose-your-path.md
+      - When to use NVIDIA-hosted NIMs: extraction/hosted-nims-when-to-use.md
   - "4. Core workflows":
-      - "Workflow: Ingest documents into a searchable VDB collection": extraction/workflow-document-ingestion.md
-      - "Workflow: Audio & Video Ingestion":
-          - "Speech and audio extraction": extraction/audio-video.md
-          - "OCR of video frames": extraction/workflow-video-ocr.md
+      - "Workflow: Document ingestion": extraction/workflow-document-ingestion.md
+      - "Workflow: Build a searchable collection": extraction/workflow-build-searchable-collection.md
+      - "Workflow: Query and rerank": extraction/workflow-query-rerank.md
+      - "Workflow: Agentic retrieval": extraction/workflow-agentic-retrieval.md
+      - "Workflow: Audio or video to text": extraction/audio-video.md
+      - "Workflow: Video processing with OCR": extraction/workflow-video-ocr.md
+      - "Workflow: End-to-end RAG with NVIDIA Blueprints": extraction/workflow-e2e-blueprints.md
   - "5. Multimodal extraction":
       - "Supported file types and formats": extraction/supported-file-types.md
       - "Text and layout extraction": extraction/text-layout-extraction.md
       - Tables: extraction/extraction-tables.md
       - "Charts and infographics": extraction/extraction-charts-infographics.md
       - "OCR and scanned documents": extraction/extraction-ocr-scanned.md
+      - "Nemotron Parse based parsing": extraction/nemotron-parse.md
       - Image captioning: extraction/image-captioning.md
       - "Metadata and content schema": extraction/multimodal-metadata-schema.md
       - "Extraction limitations and quality": extraction/throughput-is-dataset-dependent.md
@@ -114,8 +125,7 @@ nav:
       - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
   - "12. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
-      # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
-      - "CLI reference": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
+      - "CLI reference": extraction/cli-reference.md
       - Environment variables: extraction/environment-config.md
       - "Metadata reference": extraction/content-metadata.md
   - "13. Support & community":
@@ -127,17 +137,7 @@ nav:
 
 plugins:
   - search
-  # uncomment below to grab api
-  # - gen-files:
-  #     scripts:
-  #       - scripts/gen_ref_pages.py
   - macros
-  - mike:
-      alias_type: copy
-      canonical_version: "latest"
-      version_selector: true
-      css_dir: assets/css
-      javascript_dir: assets/js
   - mkdocstrings:
       handlers:
         python:
@@ -146,31 +146,26 @@ plugins:
             show_source: true
             show_if_no_docstring: true
           paths:
-            - ../api/src
             - ../nemo_retriever/src
   - mkdocs-jupyter:
       theme: auto
       highlight_extra_classes: "jupyter-notebook"
   - redirects:
       redirect_maps:
+        # Suite docs/docs/index.md is excluded; still emit site/index.html (redirect to Library overview)
         index.md: extraction/overview.md
         extraction/index.md: extraction/overview.md
-        # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
-        extraction/nv-ingest_cli.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
+        extraction/nv-ingest_cli.md: extraction/cli-reference.md
         extraction/nv-ingest-python-api.md: extraction/nemo-retriever-api-reference.md
-        extraction/helm.md: extraction/deployment-options.md
-        extraction/quickstart-guide.md: extraction/deployment-options.md
-        extraction/choose-your-path.md: extraction/deployment-options.md
-        extraction/hosted-nims-when-to-use.md: extraction/deployment-options.md
+        # Legacy Helm doc URL (page excluded from NRL); keep redirect for bookmarks / external links.
+        extraction/helm.md: extraction/quickstart-guide.md
+        # Legacy filename; canonical NRL release notes are extraction/releasenotes.md
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
         extraction/ngc-api-key.md: extraction/api-keys.md
         extraction/data-store.md: extraction/vdbs.md
-        extraction/nemoretriever-parse.md: extraction/text-layout-extraction.md
+        extraction/nemoretriever-parse.md: extraction/nemotron-parse.md
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
-        extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md
-        extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
-        extraction/workflow-query-rerank.md: extraction/semantic-hybrid-retrieval.md
   - site-urls
 
 markdown_extensions:
@@ -192,29 +187,16 @@ markdown_extensions:
   - admonition
   - footnotes
 
-# MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
+# MkDocs 1.6+: drop pages that are not part of the NRL-only site (still in repo for upstream parity).
 exclude_docs: |
   index.md
+  extraction/nv-ingest_cli.md
   extraction/nv-ingest-python-api.md
   extraction/helm.md
-  extraction/quickstart-guide.md
-  extraction/choose-your-path.md
-  extraction/hosted-nims-when-to-use.md
-  extraction/workflow-e2e-blueprints.md
   extraction/releasenotes-nv-ingest.md
-  extraction/workflow-agentic-retrieval.md
-  extraction/workflow-build-searchable-collection.md
-  extraction/workflow-query-rerank.md
 
 extra:
   generator: false
-  version:
-    provider: mike
-    default: latest
-    alias: true
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/NVIDIA/NeMo-Retriever/
 
 copyright: |
-  &copy; Copyright 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  &copy; Copyright 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. Staging documentation build.
