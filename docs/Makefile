@@ -58,19 +58,17 @@ copy-sphinx: sphinx
 	mkdir -p $(SPHINX_OUTPUT_DIR)
 	cp -r $(SPHINX_BUILD_DIR)/html/* $(SPHINX_OUTPUT_DIR)/
 
-# Run MkDocs: same config and flags as GitHub Pages (mkdocs.yml).
+# Run MkDocs to build final documentation
 .PHONY: mkdocs
 mkdocs:
-	@echo "📚 Building MkDocs site (mkdocs.yml, strict)..."
-	mkdocs build -f mkdocs.yml --strict
+	@echo "📚 Building MkDocs site..."
+	mkdocs build
 
-# Alias for CI/docs comments; identical to mkdocs.
-.PHONY: docs-ci
-docs-ci: mkdocs
-
-# NeMo Retriever Library docs (GitHub Pages): alias for mkdocs (flat 13-section nav in mkdocs.yml).
+# NeMo Retriever Library (NRL) staging site: flat 13-section nav (see mkdocs.nrl-github-pages.yml).
 .PHONY: nrl-github-pages
-nrl-github-pages: mkdocs
+nrl-github-pages:
+	@echo "📚 Building NRL GitHub Pages MkDocs site (strict)..."
+	mkdocs build -f mkdocs.nrl-github-pages.yml --strict
 
 # Full docs pipeline
 .PHONY: docs

@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # GPU-specific overrides for L40S (loaded by harness when --deployment-type helm --sku l40s).
-# Sets NIM_TRITON_MAX_BATCH_SIZE=1 per NIM (L40S-friendly defaults).
+# Sets NIM_TRITON_MAX_BATCH_SIZE=1 per NIM to match docker-compose.l40s.yaml.
 
 nimOperator:
   page_elements:

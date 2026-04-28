@@ -58,23 +58,19 @@ uv pip install "neo4j>=5.0"
 
 ## 4 — Start Neo4j
 
-Run Neo4j in a container (credentials should match `.env`; example uses `neo4j` / `test`):
+Docker Compose reads credentials from `.env` automatically:
 
 ```bash
-docker run -d --name neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/test \
-  -v neo4j_data:/data \
-  neo4j:5.26
+docker compose --profile graph up -d neo4j
 ```
 
-Wait ~30 seconds for the database to finish starting, then verify:
+Wait ~30 seconds for the container to become healthy, then verify:
 
 ```bash
-docker ps --filter name=neo4j
+docker compose ps neo4j
 ```
 
-The container should stay in the `Up` state (Neo4j prints readiness in its logs).
+You should see `healthy` in the status column.
 
 ### Access points
 
@@ -110,24 +106,22 @@ conn.verify_connectivity()
 ## Day-to-day workflow
 
 ```bash
-# Stop Neo4j (data is preserved in the neo4j_data volume)
-docker stop neo4j
+# Start Neo4j
+docker compose --profile graph up -d neo4j
 
-# Start again
-docker start neo4j
+# Stop Neo4j (data is preserved in the neo4j_data volume)
+docker compose --profile graph down neo4j
 
 # Wipe all data and start fresh
-docker rm -f neo4j
-docker volume rm neo4j_data
-# then re-run the docker run command from section 4
+docker compose --profile graph down neo4j -v
 ```
 
 ---
 
 ## Troubleshooting
 
-**Neo4j is slow to accept connections on first start**  
-Give it more time (up to 60s on first run). Check logs: `docker logs neo4j`
+**`docker compose ps neo4j` shows `unhealthy`**  
+Give it more time (up to 60s on first run). Check logs: `docker compose logs neo4j`
 
 **`ServiceUnavailable: Failed to establish connection`**  
 Ensure the container is running and port 7687 is not blocked.
@@ -139,8 +133,17 @@ Ensure the container is running and port 7687 is not blocked.
 Neo4j native vector indexes require **Neo4j 5.11+**. The Docker image used (`neo4j:5.26`) satisfies this.
 
 **Password mismatch**  
-Stop and remove the container and volume, then start again with `NEO4J_AUTH` matching your `.env` credentials.
+Recreate the container after changing `.env`: `docker compose --profile graph down neo4j -v && docker compose --profile graph up -d neo4j`
 
-### Optional: enable APOC
 
-If you need APOC procedures, add the plugin and security flags to your `docker run` (see the [Neo4j Docker documentation](https://neo4j.com/docs/operations-manual/current/docker/introduction/)).
+
+# RUN WITH APOC!
+
+docker run \
+  --name neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/liav_is_my_king \
+  -e NEO4JLABS_PLUGINS='["apoc"]' \
+  -e NEO4J_dbms_security_procedures_unrestricted='apoc.*' \
+  -e NEO4J_dbms_security_procedures_allowlist='apoc.*' \
+  neo4j:5.26
