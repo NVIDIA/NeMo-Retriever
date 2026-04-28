@@ -163,7 +163,7 @@ plugins:
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
         extraction/ngc-api-key.md: extraction/api-keys.md
         extraction/data-store.md: extraction/vdbs.md
-        extraction/nemoretriever-parse.md: extraction/nemotron-parse.md
+        extraction/nemoretriever-parse.md: extraction/text-layout-extraction.md
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
   - site-urls
