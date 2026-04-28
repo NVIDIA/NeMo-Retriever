@@ -26,7 +26,7 @@ Use the sections below to pick documentation and deployment options that match y
 ### I need API details and keys
 
 1. [Get your API key](api-keys.md)
-2. [API reference](nemo-retriever-api-reference.md) and [PDF pre-splitting for ingest](v2-api-guide.md) if applicable
+2. [API reference — PDF pre-splitting](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest) if applicable
 
 ### I am tuning performance or cost
 

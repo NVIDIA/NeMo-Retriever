@@ -122,7 +122,6 @@ nav:
       - "Published metrics and comparisons": extraction/published-metrics-comparisons.md
   - "12. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
-      - "PDF pre-splitting for ingest": extraction/v2-api-guide.md
       - "Python API": extraction/python-api-reference.md
       - "CLI reference": extraction/cli-reference.md
       - Environment variables: extraction/environment-config.md
@@ -181,6 +180,7 @@ plugins:
         extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/semantic-hybrid-retrieval.md
+        extraction/v2-api-guide.md: extraction/nemo-retriever-api-reference.md
   - site-urls
 
 markdown_extensions:
@@ -217,6 +217,7 @@ exclude_docs: |
   extraction/workflow-agentic-retrieval.md
   extraction/workflow-build-searchable-collection.md
   extraction/workflow-query-rerank.md
+  extraction/v2-api-guide.md
 
 extra:
   generator: false

@@ -33,7 +33,7 @@ The following table describes methods of the `Ingestor` class.
 | `ingest`           | Submit jobs and retrieve results synchronously.                              |
 | `ingest_async`     | Submit jobs asynchronously; returns a Future that completes when done.       |
 | `load`             | Ensure files are locally accessible (downloads if needed).                     |
-| `pdf_split_config` | Configure server-side PDF splitting (pages per chunk) when using `api_version` `v2`. Refer to [PDF pre-splitting for ingest](v2-api-guide.md). |
+| `pdf_split_config` | Configure server-side PDF splitting (pages per chunk) when using `api_version` `v2`. Refer to [PDF pre-splitting](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest). |
 | `remaining_jobs`   | Return the count of jobs not yet in a terminal state.                       |
 | `save_to_disk`     | Save ingestion results to disk instead of memory.                             |
 | `store`            | Persist extracted images/structured renderings to an fsspec-compatible backend. |
