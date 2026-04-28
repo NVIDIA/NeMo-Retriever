@@ -64,7 +64,7 @@ For examples of `*_ENDPOINT` variables, refer to [Environment variables](environ
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 
-Refer to [Deployment options](deployment-options.md) for how you run NeMo Retriever Library (library vs Helm, hosted vs self-hosted NIMs), and to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Environment variables](environment-config.md) for how to enable and tune optional NIM stacks on Kubernetes.
+Refer to the [Performance guide](performance_guide.md) for extraction tuning and optimization guidance.
 
 You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](python-api-reference.md).
 
