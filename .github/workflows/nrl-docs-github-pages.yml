@@ -51,18 +51,9 @@ jobs:
           pip install -r docs/requirements.txt
           pip install -e ./nemo_retriever
 
-      - name: Print NRL site navigation (pre-deploy)
-        run: python docs/scripts/print_nrl_mkdocs_nav.py
-
-      - name: Write nav + scan summary for the workflow run
+      - name: Write scan summary for the workflow run
         run: |
           {
-            echo "### NRL GitHub Pages — site navigation"
-            echo
-            echo '```'
-            python docs/scripts/print_nrl_mkdocs_nav.py
-            echo '```'
-            echo
             echo "### Non-NRL / legacy reference scan (excerpt)"
             echo "Full report is attached as an artifact."
             echo
