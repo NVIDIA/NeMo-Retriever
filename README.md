@@ -17,7 +17,7 @@ NeMo Retriever Library is a scalable, performance-oriented framework for documen
 > [!Note]
 > NeMo Retriever extraction is also known as NVIDIA Ingest and nv-ingest.
 
-NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. From there, NeMo Retriever Library manages computaiton of embeddings for the extracted content as well as storing them in a vector database [Milvus](https://milvus.io/).
+NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. From there, NeMo Retriever Library manages computation of embeddings for the extracted content as well as storing them in a vector database [Milvus](https://milvus.io/).
 
 The following diagram shows the NeMo Retriever Library pipeline.
 
