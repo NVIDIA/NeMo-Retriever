@@ -59,6 +59,7 @@ This creates a dedicated Python environment and installs the `nemo-retriever` Py
 The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Linux. Reinstall from the CUDA 13.0 wheel index to match the CUDA runtime required by the Nemotron model packages:
 
 ```bash
+uv pip uninstall torch torchvision
 uv pip install torch==2.10.0 torchvision -i https://download.pytorch.org/whl/cu130
 ```
 
@@ -587,6 +588,31 @@ To stop and remove both stacks use the following command.
 docker compose -p retriever-gpu0 down
 docker compose -p retriever-gpu1 down
 ```
+
+## Troubleshooting
+
+### vLLM engine fails to start during CUDA graph capture
+
+When using the vLLM-based VL reranker, the engine may fail to start with errors similar to the following:
+
+```
+fatal error: Python.h: No such file or directory
+...
+torch._inductor.exc.InductorError: CalledProcessError: Command '['/usr/bin/gcc', '...cuda_utils.c', ...]' returned non-zero exit status 1.
+...
+RuntimeError: Engine core initialization failed.
+```
+
+This occurs because Triton compiles a small C extension at runtime during CUDA graph capture and requires the Python development headers. If `Python.h` is not installed, the compilation fails and the vLLM engine cannot start.
+
+To resolve this, install the Python development headers for your Python version:
+
+```bash
+# For Python 3.12 on Ubuntu/Debian
+sudo apt install python3.12-dev
+```
+
+After installing the headers, restart the pipeline.
 
 ## ViDoRe Harness Sweep
 

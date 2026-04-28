@@ -79,7 +79,7 @@ class Retriever:
     hybrid: bool = False
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[Path] = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
     #: When embedding queries locally (no HTTP endpoint): ``"hf"`` (default) uses
     #: HuggingFace; ``"vllm"`` uses vLLM (same model as ingest).
     local_query_embed_backend: str = "hf"
@@ -102,10 +102,34 @@ class Retriever:
     rerank_modality: str = "text"
     """Reranking modality, typically matches embed_modality. Set to 'text_image'
     to enable multimodal reranking with images."""
+    local_reranker_backend: str = "vllm"
+    """Backend for local VL reranking: ``"vllm"`` (default) or ``"hf"``."""
+    reranker_gpu_memory_utilization: float = 0.5
+    """Fraction of GPU memory for the vLLM reranker engine."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
     # Internal cache for local text embedders, keyed by model name.
     _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        from nemo_retriever.model import (
+            _LOCAL_QUERY_BACKENDS,
+            _LOCAL_RERANKER_BACKENDS,
+            normalize_backend,
+        )
+
+        self.local_query_embed_backend = normalize_backend(
+            self.local_query_embed_backend,
+            _LOCAL_QUERY_BACKENDS,
+            field_name="local_query_embed_backend",
+            default="hf",
+        )
+        self.local_reranker_backend = normalize_backend(
+            self.local_reranker_backend,
+            _LOCAL_RERANKER_BACKENDS,
+            field_name="local_reranker_backend",
+            default="vllm",
+        )
 
     def _resolve_embedding_endpoint(self) -> Optional[str]:
         http_ep = self.embedding_http_endpoint.strip() if isinstance(self.embedding_http_endpoint, str) else None
@@ -152,11 +176,7 @@ class Retriever:
         )
 
         resolved = resolve_embed_model(model_name)
-        backend_raw = (self.local_query_embed_backend or "hf").strip().lower()
-        if backend_raw not in ("hf", "vllm"):
-            raise ValueError(
-                "local_query_embed_backend must be 'hf' or 'vllm', " f"got {self.local_query_embed_backend!r}"
-            )
+        backend_raw = self.local_query_embed_backend
         cache_key: tuple[str, str] = (resolved, backend_raw)
 
         if cache_key not in self._embedder_cache:
@@ -270,6 +290,8 @@ class Retriever:
                 model_name=self.reranker_model_name,
                 device=self.local_hf_device,
                 hf_cache_dir=cache_dir,
+                backend=self.local_reranker_backend,
+                gpu_memory_utilization=self.reranker_gpu_memory_utilization,
             )
         return self._reranker_model
 

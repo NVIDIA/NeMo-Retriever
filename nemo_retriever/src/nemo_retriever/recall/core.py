@@ -47,7 +47,7 @@ class RecallConfig:
     # Local HF knobs (only used when endpoints are missing).
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
     # When using local query embedding (no HTTP endpoint), select backend for *queries* only.
     # ``hf`` (default) uses the HF mean-pooled text embedder (see ``LlamaNemotronEmbed1BV2HFEmbedder``);
     # ``vllm`` uses :func:`~nemo_retriever.model.create_local_embedder`. Ignored when an
@@ -63,7 +63,37 @@ class RecallConfig:
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
+    local_reranker_backend: str = "vllm"
     embed_modality: str = "text"
+
+    def __post_init__(self) -> None:
+        from nemo_retriever.model import (
+            _LOCAL_QUERY_BACKENDS,
+            _LOCAL_RERANKER_BACKENDS,
+            normalize_backend,
+        )
+
+        # frozen=True: must use object.__setattr__ to write normalized values.
+        object.__setattr__(
+            self,
+            "local_query_embed_backend",
+            normalize_backend(
+                self.local_query_embed_backend,
+                _LOCAL_QUERY_BACKENDS,
+                field_name="local_query_embed_backend",
+                default="hf",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "local_reranker_backend",
+            normalize_backend(
+                self.local_reranker_backend,
+                _LOCAL_RERANKER_BACKENDS,
+                field_name="local_reranker_backend",
+                default="vllm",
+            ),
+        )
 
 
 def _normalize_pdf_name(value: str) -> str:
@@ -551,6 +581,7 @@ def retrieve_and_score(
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=cfg.reranker_api_key,
         reranker_batch_size=cfg.reranker_batch_size,
+        local_reranker_backend=cfg.local_reranker_backend,
         rerank_modality=cfg.embed_modality,
     )
     start = time.time()

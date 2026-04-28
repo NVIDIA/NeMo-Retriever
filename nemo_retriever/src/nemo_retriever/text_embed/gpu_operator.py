@@ -36,7 +36,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             self._model = None
             return
 
-        ingest_backend = (self._kwargs.get("local_ingest_backend") or "vllm").strip().lower()
+        ingest_backend = (self._kwargs.get("local_ingest_embed_backend") or "vllm").strip().lower()
         hf_cache = str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None
 
         from nemo_retriever.model import create_local_embedder
