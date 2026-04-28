@@ -205,6 +205,7 @@ exclude_docs: |
   extraction/workflow-agentic-retrieval.md
   extraction/workflow-build-searchable-collection.md
   extraction/workflow-query-rerank.md
+  extraction/performance_guide.md
 
 extra:
   generator: false

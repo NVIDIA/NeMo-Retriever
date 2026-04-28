@@ -194,6 +194,7 @@ exclude_docs: |
   extraction/nv-ingest-python-api.md
   extraction/helm.md
   extraction/releasenotes-nv-ingest.md
+  extraction/performance_guide.md
 
 extra:
   generator: false
