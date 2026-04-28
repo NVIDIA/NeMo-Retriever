@@ -7,6 +7,7 @@
 #
 # Local build (strict; from docs/):
 #   cd docs && mkdocs build -f mkdocs.yml --strict
+#   (mkdocs.nrl-github-pages.yml was removed; use mkdocs.yml only)
 # Output: docs/site/ (static HTML; open site/index.html or serve the folder).
 #
 # GitHub Pages: .github/workflows/nrl-docs-github-pages.yml runs the same command after
