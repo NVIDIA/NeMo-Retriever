@@ -7,8 +7,7 @@ It runs before SQL generation agents to gather all necessary context.
 Responsibilities:
 - Fetch relevant tables and foreign keys from candidates
 - Retrieve relevant queries for context
-- Find similar questions from conversation history
-- Filter and process complex candidates (with SQL snippets, metrics, analyses)
+- Filter and process complex candidates (custom analyses)
 - Store all prepared data in path_state for downstream agents
 
 Design Decisions:
@@ -36,7 +35,7 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
 logger = logging.getLogger(__name__)
 
 
-def _get_relevant_queries(candidates: list) -> list[str]:
+def _extract_relevant_queries(candidates: list) -> list[str]:
     queries = []
     for candidate in candidates:
         if candidate.get("label", "") == Labels.CUSTOM_ANALYSIS:
@@ -71,12 +70,12 @@ class CandidatePreparationAgent(BaseAgent):
         super().__init__("candidate_preparation")
 
     def validate_input(self, state: AgentState) -> bool:
-        """Validate that retrieval (or legacy candidates) produced at least one hit."""
+        """Validate that retrieval produced at least one hit."""
         path_state = state.get("path_state", {})
         if not path_state.get("retrieved_candidates"):
             self.logger.warning(
                 "No candidates for preparation: set retrieved_custom_analyses / "
-                "retrieved_column_candidates, retrieved_candidates, or legacy candidates"
+                "retrieved_column_candidates, retrieved_candidates"
             )
             return False
         return True
@@ -112,7 +111,7 @@ class CandidatePreparationAgent(BaseAgent):
         _apply_foreign_key_hints(relevant_tables, relevant_fks)
         self.logger.info(f"Found {len(relevant_tables)} relevant tables and {len(relevant_fks)} foreign keys")
 
-        relevant_queries = _get_relevant_queries(
+        relevant_queries = _extract_relevant_queries(
             candidates,
         )
         self.logger.info(f"Found {len(relevant_queries)} relevant queries")

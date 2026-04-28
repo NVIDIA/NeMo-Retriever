@@ -11,7 +11,6 @@ Responsibilities:
 - Store validation result in path_state
 
 Design Decisions:
-- Skips validation for text-based answers (from file contents)
 - Uses LLM to validate logical correctness
 - Sets connection data based on retrieved tables
 - Returns decision: "valid_sql" or "invalid_sql"

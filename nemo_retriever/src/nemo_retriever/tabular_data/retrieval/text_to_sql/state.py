@@ -48,8 +48,6 @@ def get_question_for_processing(state: AgentState) -> str:
     otherwise ``initial_question``.
     """
     path_state = state.get("path_state", {})
-    # normalized_question = path_state.get("normalized_question")
-    # TODO remove normalized question, for question : give me all student from seattle , seattle was removed
     normalized_question = path_state.get("initial_question")
     if normalized_question:
         return normalized_question

@@ -87,7 +87,6 @@ class CandidateRetrievalAgent(BaseAgent):
                 retrieved_custom_analyses = clean_results(list(custom_raw or []))
                 retrieved_column_candidates = clean_results(list(column_raw or []))
             else:
-                # Legacy: flat list[{"candidate": ..., "entity": ...}] or raw dicts — merge then split by label.
                 merged_raw_candidates = []
                 for item in extracted or []:
                     merged_raw_candidates.append(item.get("candidate", item))

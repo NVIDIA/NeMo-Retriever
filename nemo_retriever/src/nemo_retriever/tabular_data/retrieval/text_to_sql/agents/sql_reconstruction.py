@@ -102,17 +102,6 @@ class SQLReconstructionAgent(BaseAgent):
             "Do not explain how you corrected the sql, like you were never wrong. \n"
         )
 
-        # Add specific guidance for unknown column errors (likely wrong schema)
-        if "unknown column name" in error.lower() and "in table" in error.lower():
-            error_prompt += (
-                "\nRECONSTRUCTION HINT: The 'Unknown column name in table' error typically indicates "
-                "that you're using the correct table name but referencing it from the wrong schema. "
-                "Look for the same table name in a different schema from the additional tables provided above. "
-                "The column you're looking for likely exists in the same table name under a different schema.\n\n"
-                "VERY IMPORTANT: Review the failed SQL and the error message carefully. "
-                "Do NOT attempt to use the same column that caused this error in your next attempt. "
-                "Either find the column in a different schema's version of the table, or exclude it from your query.\n"
-            )
 
         error_prompt += (
             "\nUse only the tables provided in the history.\n\n"

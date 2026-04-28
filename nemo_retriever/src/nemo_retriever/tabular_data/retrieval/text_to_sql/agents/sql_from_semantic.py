@@ -124,7 +124,6 @@ class SQLFromCandidatesAgent(BaseAgent):
 
     Input Requirements:
     - path_state["retrieved_candidates"]: Candidate dicts from preparation
-      (flat list; legacy wrapped shape still accepted)
     - path_state["relevant_tables"] / relevant_fks: schema context
     - path_state["relevant_queries"]: Relevant queries (from CandidatePreparationAgent)
 
