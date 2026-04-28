@@ -38,9 +38,8 @@ def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Option
     """Coerce a per-utterance timestamp to seconds, divided down from ms when needed.
 
     Local Parakeet returns seconds; the remote NIM client returns milliseconds.
-    We can't tell from the dict which produced it, but we can detect the unit:
-    a timestamp that's larger than ~10× the chunk duration is almost certainly
-    in ms (a second-valued utterance can't extend that far past its chunk).
+    We can't tell from the dict which produced it, but a seconds-valued
+    utterance can't exceed the chunk duration — so anything past it must be ms.
     """
     if value is None:
         return None
@@ -48,7 +47,7 @@ def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Option
         v = float(value)
     except (TypeError, ValueError):
         return None
-    if chunk_duration_secs > 0 and v > chunk_duration_secs * 10:
+    if chunk_duration_secs > 0 and v > chunk_duration_secs:
         return v / 1000.0
     return v
 
