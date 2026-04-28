@@ -266,6 +266,9 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
                     "refine_factor": 10,
                 },
                 "embedder": "embedder",
+                "embedding_endpoint": "http://embed.example/v1",
+                "embedding_api_key": "secret",
+                "embedding_use_grpc": False,
                 "top_k": 10,
                 "local_hf_device": None,
                 "local_hf_cache_dir": None,
@@ -288,6 +291,8 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
         lancedb_uri="/tmp/lancedb",
         lancedb_table="nv-ingest",
         embedding_model="embedder",
+        embedding_http_endpoint="http://embed.example/v1",
+        embedding_api_key=" secret ",
         loader="vidore_hf",
         dataset_name="vidore_v3_computer_science",
     )

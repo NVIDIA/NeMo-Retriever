@@ -204,6 +204,10 @@ These are intentionally out of scope for this PR unless explicitly reopened:
 - making all legacy BEIR, harness, or outdated example pipelines fully
   VDB-agnostic beyond the compatibility fixes needed to keep current callers
   constructible;
+- renaming/generalizing the legacy `evaluate_lancedb_beir(...)` helper and
+  `BeirConfig` LanceDB fields. That API should become VDB-agnostic in a
+  follow-up, but this PR only keeps the existing BEIR compatibility path wired
+  through `Retriever`;
 - preserving deprecated LanceDB public shims in the graph pipeline CLI;
 - adding a broad new retrieval framework.
 
