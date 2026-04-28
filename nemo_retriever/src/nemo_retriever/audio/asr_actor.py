@@ -9,10 +9,10 @@ Supports remote (Parakeet/Riva gRPC) or local (HuggingFace nvidia/parakeet-ctc-1
 When audio_endpoints are both null/empty, uses local model; otherwise uses remote client.
 
 Consumes chunk rows (path, bytes, source_path, duration, chunk_index, metadata)
-and produces rows with text (transcript) for downstream embed/VDB. For now,
-``segment_audio=True`` only fans out rows when using a hosted/remote Parakeet
-client, because the local Hugging Face Parakeet model does not emit
-punctuation-aware transcripts that can be segmented into sentences.
+and produces rows with text (transcript) for downstream embed/VDB. With
+``segment_audio=True`` the remote (punctuation-bounded) and local (silence-gap,
+from CTC frame timestamps) paths both fan out per-segment rows with start/end
+times so ``recall_match_mode: audio_segment`` can match against time-aligned hits.
 """
 
 from __future__ import annotations
@@ -29,8 +29,32 @@ import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import ASRParams
+
+
+def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Optional[float]:
+    """Coerce a per-utterance timestamp to seconds, divided down from ms when needed.
+
+    Local Parakeet returns seconds; the remote NIM client returns milliseconds.
+    A seconds-valued utterance can't exceed the chunk duration — so anything
+    past it must be ms. When the chunk duration is unknown (probe_media
+    couldn't resolve it for some segmented MP4s and chunk_actor.py substitutes
+    0.0), fall back to a value-range check: no legitimate audio segment lasts
+    more than an hour, so anything past 3600 must be ms.
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if chunk_duration_secs > 0 and v > chunk_duration_secs:
+        return v / 1000.0
+    if chunk_duration_secs <= 0 and v > 3600:
+        return v / 1000.0
+    return v
 
 
 def _use_remote(params: ASRParams) -> bool:
@@ -42,9 +66,10 @@ def _use_remote(params: ASRParams) -> bool:
 
 logger = logging.getLogger(__name__)
 
-# Default NGC/NVCF Parakeet gRPC endpoint when using cloud ASR
+# Public NVCF Parakeet endpoint and the libmode function ID. Exposed as named
+# constants so Python callers can opt into NVCF without hardcoding strings:
+#   asr_params_from_env(default_grpc_endpoint=DEFAULT_NGC_ASR_GRPC_ENDPOINT)
 DEFAULT_NGC_ASR_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
-# Default NVCF function ID for Parakeet NIM (same as nv-ingest default_libmode_pipeline_impl)
 DEFAULT_NGC_ASR_FUNCTION_ID = "1598d209-5e27-4d3c-8079-4751568b1081"
 
 
@@ -53,35 +78,46 @@ def asr_params_from_env(
     grpc_endpoint_var: str = "AUDIO_GRPC_ENDPOINT",
     auth_token_var: str = "NGC_API_KEY",
     function_id_var: str = "AUDIO_FUNCTION_ID",
-    default_grpc_endpoint: Optional[str] = DEFAULT_NGC_ASR_GRPC_ENDPOINT,
+    default_grpc_endpoint: Optional[str] = None,
     default_function_id: Optional[str] = DEFAULT_NGC_ASR_FUNCTION_ID,
 ) -> ASRParams:
     """
-    Build ASRParams from environment variables for cloud/NGC ASR.
+    Build ASRParams from environment variables, with optional Python-level defaults.
 
-    - AUDIO_GRPC_ENDPOINT: gRPC endpoint (default: grpc.nvcf.nvidia.com:443 for NGC).
-    - NGC_API_KEY: Bearer token for NGC/NVCF (required for cloud).
-    - AUDIO_FUNCTION_ID: NVCF function ID for the Parakeet NIM (default: same as nv-ingest libmode).
+    Local Parakeet (nvidia/parakeet-ctc-1.1b via Transformers) is the default;
+    remote ASR is opted into explicitly. ``NGC_API_KEY`` alone never flips ASR
+    to remote — it's set in many environments for unrelated reasons (HF auth,
+    other NIMs) and shouldn't silently route a local run to cloud.
 
-    Returns ASRParams with auth_token and function_id set from env when present.
-    When NGC_API_KEY is set but AUDIO_FUNCTION_ID is not, uses the nv-ingest default Parakeet NIM function ID.
-    Local ASR always uses the transformers backend (nvidia/parakeet-ctc-1.1b).
+    Two opt-in paths to remote, both honoured:
+
+    - **Environment variable**: ``AUDIO_GRPC_ENDPOINT=grpc.nvcf.nvidia.com:443``
+      (NVCF) or ``AUDIO_GRPC_ENDPOINT=localhost:50051`` (local NIM).
+    - **Python API**: pass ``default_grpc_endpoint=...`` to this function. The
+      env var wins when both are present. Use the exported
+      :data:`DEFAULT_NGC_ASR_GRPC_ENDPOINT` constant for NVCF.
+
+    - ``NGC_API_KEY`` — Bearer token; only consulted when an endpoint is set.
+    - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to ``default_function_id``
+      (the nv-ingest libmode Parakeet NIM) when an endpoint is set but the env
+      var is unset.
     """
     import os
 
+    grpc_endpoint = (os.environ.get(grpc_endpoint_var) or "").strip()
+    if not grpc_endpoint and default_grpc_endpoint:
+        grpc_endpoint = default_grpc_endpoint.strip()
+
     auth_token = (os.environ.get(auth_token_var) or "").strip() or None
     function_id = (os.environ.get(function_id_var) or "").strip() or None
-    if auth_token and function_id is None and default_function_id:
-        function_id = default_function_id
 
-    # Only use remote (NGC) endpoint when credentials are set; otherwise use local Parakeet.
-    grpc_from_env = (os.environ.get(grpc_endpoint_var) or "").strip()
-    if grpc_from_env:
-        grpc_endpoint = grpc_from_env
-    elif auth_token or function_id:
-        grpc_endpoint = default_grpc_endpoint or ""
-    else:
-        grpc_endpoint = ""  # Local ASR (nvidia/parakeet-ctc-1.1b via Transformers)
+    if not grpc_endpoint:
+        # Local path: drop any cloud credentials that happen to be in the env so
+        # _use_remote() returns False and the local Parakeet model is loaded.
+        auth_token = None
+        function_id = None
+    elif function_id is None and default_function_id:
+        function_id = default_function_id
 
     return ASRParams(
         audio_endpoints=(grpc_endpoint or None, None),
@@ -237,15 +273,15 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
             temp_paths.append(temp_created)
 
         try:
-            transcripts = self._model.transcribe(paths_for_model) if paths_for_model else []
+            decoded = self._model.transcribe_with_segments(paths_for_model) if paths_for_model else []
         finally:
             for p in temp_paths:
                 if p:
                     Path(p).unlink(missing_ok=True)
 
         out_rows: List[Dict[str, Any]] = []
-        for row, transcript in zip(rows_list, transcripts):
-            out_rows.extend(self._build_output_rows(row, transcript or ""))
+        for row, (transcript, segments) in zip(rows_list, decoded):
+            out_rows.extend(self._build_output_rows(row, transcript or "", segments=segments))
 
         if not out_rows:
             return pd.DataFrame(
@@ -268,24 +304,25 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
             logger.warning("Parakeet infer failed for path=%s: %s", path, e)
             return None
 
-    def _transcribe_local(self, raw: bytes, path: Optional[str]) -> Optional[str]:
+    def _transcribe_local(self, raw: bytes, path: Optional[str]) -> Optional[tuple[str, List[Dict[str, Any]]]]:
         """Use local Parakeet model to transcribe; path or temp file with raw bytes."""
         if self._model is None:
             return None
         path_to_use = path
         if not path_to_use or not Path(path_to_use).exists():
-            # Raw bytes: write to temp file (format detected by loader/ffmpeg)
             with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as f:
                 f.write(raw)
                 path_to_use = f.name
             try:
-                transcripts = self._model.transcribe([path_to_use])
-                return transcripts[0] if transcripts else ""
+                results = self._model.transcribe_with_segments([path_to_use])
             finally:
                 Path(path_to_use).unlink(missing_ok=True)
         else:
-            transcripts = self._model.transcribe([path_to_use])
-            return transcripts[0] if transcripts else ""
+            results = self._model.transcribe_with_segments([path_to_use])
+        if not results:
+            return ("", [])
+        text, segments = results[0]
+        return (text, list(segments))
 
     def _build_output_rows(
         self,
@@ -309,6 +346,15 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
         metadata.setdefault("duration", duration)
         page_number = row.get("page_number", chunk_index)
 
+        try:
+            chunk_start = float(metadata.get("chunk_start_seconds") or 0.0)
+        except (TypeError, ValueError):
+            chunk_start = 0.0
+        try:
+            chunk_dur = float(duration) if duration is not None else 0.0
+        except (TypeError, ValueError):
+            chunk_dur = 0.0
+
         if self._params.segment_audio and segments:
             out_rows: List[Dict[str, Any]] = []
             segment_count = len(segments)
@@ -321,10 +367,17 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
                 segment_metadata = copy.deepcopy(metadata)
                 segment_metadata["segment_index"] = segment_index
                 segment_metadata["segment_count"] = segment_count
-                if segment.get("start") is not None:
-                    segment_metadata["segment_start"] = segment.get("start")
-                if segment.get("end") is not None:
-                    segment_metadata["segment_end"] = segment.get("end")
+                seg_s_secs = _to_chunk_relative_seconds(segment.get("start"), chunk_dur)
+                seg_e_secs = _to_chunk_relative_seconds(segment.get("end"), chunk_dur)
+                # Wall-clock span: chunk start + the chunk-relative times the ASR
+                # backend produced. Local Parakeet emits seconds; remote emits
+                # milliseconds — normalized above against the chunk duration.
+                if seg_s_secs is not None:
+                    segment_metadata["segment_start_seconds"] = seg_s_secs + chunk_start
+                if seg_e_secs is not None:
+                    segment_metadata["segment_end_seconds"] = seg_e_secs + chunk_start
+                segment_metadata["_content_type"] = "audio"
+                segment_metadata.setdefault("modality", "audio_segment")
                 out_rows.append(
                     {
                         "path": path,
@@ -334,11 +387,18 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
                         "metadata": segment_metadata,
                         "page_number": page_number,
                         "text": segment_text,
+                        "_content_type": "audio",
                     }
                 )
             if out_rows:
                 return out_rows
 
+        # Per-chunk fallback: anchor the row's span to the chunk's wall-clock
+        # window so audio_segment recall still works without per-utterance data.
+        metadata.setdefault("segment_start_seconds", chunk_start)
+        metadata.setdefault("segment_end_seconds", chunk_start + chunk_dur)
+        metadata["_content_type"] = "audio"
+        metadata.setdefault("modality", "audio_segment")
         return [
             {
                 "path": path,
@@ -348,6 +408,7 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
                 "metadata": metadata,
                 "page_number": page_number,
                 "text": transcript,
+                "_content_type": "audio",
             }
         ]
 
@@ -371,16 +432,36 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
             segments, transcript = remote_result
             return self._build_output_rows(row, transcript, segments=segments)
         else:
-            transcript = self._transcribe_local(raw, path)
-            if transcript is None:
+            local_result = self._transcribe_local(raw, path)
+            if local_result is None:
                 return []
-            return self._build_output_rows(row, transcript)
+            transcript, segments = local_result
+            return self._build_output_rows(row, transcript, segments=segments)
+
+
+class ASRGPUActor(ASRCPUActor, GPUOperator):
+    """Local Parakeet on GPU.
+
+    Reuses :class:`ASRCPUActor`'s implementation; the only difference is the
+    :class:`GPUOperator` mixin so the executor allocates a GPU when scheduling
+    and the pipeline registry renders the node as ``[GPU]``. The :class:`ASRActor`
+    archetype routes here when no remote ``audio_endpoints`` is configured.
+    """
+
+    pass
 
 
 class ASRActor(ArchetypeOperator):
-    """Graph-facing ASR archetype resolved to the best concrete runtime implementation."""
+    """Graph-facing ASR archetype: GPU (local Parakeet) or CPU (remote gRPC)."""
 
     _cpu_variant_class = ASRCPUActor
+    _gpu_variant_class = ASRGPUActor
+
+    @classmethod
+    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
+        """CPU variant when a remote endpoint is set — no local GPU needed."""
+        params = (operator_kwargs or {}).get("params")
+        return isinstance(params, ASRParams) and _use_remote(params)
 
     def __init__(self, params: ASRParams | None = None) -> None:
         resolved_params = params or ASRParams()

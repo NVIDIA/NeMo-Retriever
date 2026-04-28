@@ -92,6 +92,8 @@ class ModelRuntimeParams(_ParamsModel):
     normalize: bool = True
     max_length: int = 8192
     model_name: Optional[str] = None
+    gpu_memory_utilization: float = 0.45
+    enforce_eager: bool = False
 
 
 class IngestorCreateParams(_ParamsModel):
@@ -279,6 +281,7 @@ class EmbedParams(_ParamsModel):
     model_name: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
+    embed_model_name: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types
@@ -292,12 +295,30 @@ class EmbedParams(_ParamsModel):
     has_embedding_column: str = "text_embeddings_1b_v2_has_embedding"
     embed_output_column: str = "text_embeddings_1b_v2"
     embed_inference_batch_size: int = 16
+
+    local_ingest_embed_backend: str = (
+        "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
+    )
+    dimensions: Optional[int] = None
+
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
     fused_tuning: FusedTuningParams = Field(default_factory=FusedTuningParams)
+
+    @field_validator("local_ingest_embed_backend", mode="before")
+    @classmethod
+    def _validate_local_ingest_embed_backend(cls, v: str) -> str:
+        from nemo_retriever.model import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+
+        return normalize_backend(
+            str(v) if v is not None else None,
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            field_name="local_ingest_embed_backend",
+            default="vllm",
+        )
 
     @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
     @classmethod

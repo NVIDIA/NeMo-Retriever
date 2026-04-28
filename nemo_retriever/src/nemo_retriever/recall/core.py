@@ -25,6 +25,8 @@ class RecallConfig:
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     query_embedder: str = VL_EMBED_MODEL
+    embedding_http_endpoint: Optional[str] = None
+    embedding_grpc_endpoint: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
     embedding_use_grpc: Optional[bool] = None
@@ -32,7 +34,12 @@ class RecallConfig:
     ks: Sequence[int] = (1, 3, 5, 10)
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
+    # When using local query embedding (no HTTP endpoint), select backend for *queries* only.
+    # ``hf`` (default) uses the HF mean-pooled text embedder (see ``LlamaNemotronEmbed1BV2HFEmbedder``);
+    # ``vllm`` uses :func:`~nemo_retriever.model.create_local_embedder`. Ignored when an
+    # embedding HTTP endpoint is set.
+    local_query_embed_backend: str = "hf"
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys
@@ -43,7 +50,37 @@ class RecallConfig:
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
+    local_reranker_backend: str = "vllm"
     embed_modality: str = "text"
+
+    def __post_init__(self) -> None:
+        from nemo_retriever.model import (
+            _LOCAL_QUERY_BACKENDS,
+            _LOCAL_RERANKER_BACKENDS,
+            normalize_backend,
+        )
+
+        # frozen=True: must use object.__setattr__ to write normalized values.
+        object.__setattr__(
+            self,
+            "local_query_embed_backend",
+            normalize_backend(
+                self.local_query_embed_backend,
+                _LOCAL_QUERY_BACKENDS,
+                field_name="local_query_embed_backend",
+                default="hf",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "local_reranker_backend",
+            normalize_backend(
+                self.local_reranker_backend,
+                _LOCAL_RERANKER_BACKENDS,
+                field_name="local_reranker_backend",
+                default="vllm",
+            ),
+        )
 
 
 def _normalize_pdf_name(value: str) -> str:
@@ -215,6 +252,31 @@ def _normalize_query_df(df: pd.DataFrame, *, match_mode: str) -> pd.DataFrame:
     return df
 
 
+def _resolve_embedding_endpoint(cfg: RecallConfig) -> Tuple[Optional[str], Optional[bool]]:
+    """
+    Resolve which embedding endpoint to use.
+
+    Returns (endpoint, use_grpc) where:
+      - endpoint is either an http(s) URL or a host:port string for gRPC
+      - use_grpc is True for gRPC, False for HTTP, None when no endpoint is configured
+    """
+    http_ep = (cfg.embedding_http_endpoint or "").strip() if isinstance(cfg.embedding_http_endpoint, str) else None
+    grpc_ep = (cfg.embedding_grpc_endpoint or "").strip() if isinstance(cfg.embedding_grpc_endpoint, str) else None
+    single = (cfg.embedding_endpoint or "").strip() if isinstance(cfg.embedding_endpoint, str) else None
+
+    if http_ep:
+        return http_ep, False
+    if grpc_ep:
+        return grpc_ep, True
+    if single:
+        if cfg.embedding_use_grpc is not None:
+            return single, bool(cfg.embedding_use_grpc)
+        # Infer protocol: if a URL scheme is present, treat as HTTP; otherwise gRPC.
+        return single, (not single.lower().startswith("http"))
+
+    return None, None
+
+
 def _hits_to_keys(raw_hits: List[List[Dict[str, Any]]]) -> List[List[str]]:
     retrieved_keys: List[List[str]] = []
     for hits in raw_hits:
@@ -249,6 +311,15 @@ def _hit_to_audio_segment_key(hit: Dict[str, Any]) -> str | None:
     media_id = _normalize_audio_media_id(source_id)
     if not media_id:
         return None
+
+    # Prefer the canonical "_seconds" keys (always wall-clock seconds).
+    start_time = metadata.get("segment_start_seconds")
+    end_time = metadata.get("segment_end_seconds")
+    if start_time is not None and end_time is not None:
+        try:
+            return _encode_audio_segment_key(media_id, float(start_time), float(end_time))
+        except (TypeError, ValueError):
+            return None
 
     start_time = metadata.get("segment_start")
     end_time = metadata.get("segment_end")
@@ -432,22 +503,25 @@ def retrieve_and_score(
     gold = df_query["golden_answer"].astype(str).tolist()
     vdb_kwargs = dict(cfg.vdb_kwargs or {})
     query_embedder = str(cfg.query_embedder or VL_EMBED_MODEL)
+    embedding_endpoint, embedding_use_grpc = _resolve_embedding_endpoint(cfg)
     retriever = Retriever(
         vdb=str(cfg.vdb_op),
         vdb_kwargs=vdb_kwargs,
         embedder=query_embedder,
-        embedding_endpoint=cfg.embedding_endpoint,
+        embedding_endpoint=embedding_endpoint,
         embedding_api_key=cfg.embedding_api_key,
-        embedding_use_grpc=cfg.embedding_use_grpc,
+        embedding_use_grpc=embedding_use_grpc,
         top_k=cfg.top_k,
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,
         local_hf_batch_size=int(cfg.local_hf_batch_size),
+        local_query_embed_backend=cfg.local_query_embed_backend,
         reranker=bool(cfg.reranker),
         reranker_model_name=cfg.reranker or VL_RERANK_MODEL,
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=cfg.reranker_api_key,
         reranker_batch_size=cfg.reranker_batch_size,
+        local_reranker_backend=cfg.local_reranker_backend,
         rerank_modality=cfg.embed_modality,
     )
     start = time.time()

@@ -1,23 +1,20 @@
-name: Build NV-Ingest Documentation
+# Legacy full-site Docker documentation build (nv-ingest HTML + bundled MkDocs).
+#
+# Public GitHub Pages at https://nvidia.github.io/NeMo-Retriever/ must be published ONLY by
+# nrl-docs-github-pages.yml (mkdocs.nrl-github-pages.yml — 13-section NRL TOC). This workflow
+# must not call deploy-pages or it will overwrite that site with the old navigation.
+#
+# For the same Docker pipeline on every push to main (CI only), see docs-deploy.yml.
+name: Build NV-Ingest Documentation (legacy Docker site, artifact only)
 
-# Trigger for pull requests and pushing to main
 on:
-  # Runs on pushes targeting the default branch
-  push:
-    branches: ["main"]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages"
+  group: docs-legacy-docker-artifact
   cancel-in-progress: false
 
 jobs:
@@ -27,14 +24,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      # Set up Docker Buildx, useful for building multi-platform images
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Build the Docker image using the Dockerfile
       - name: Build Docker image
         run: |
           docker build --target docs --build-arg GIT_COMMIT=${GITHUB_SHA} -t nv-ingest-docs:latest .
@@ -59,19 +51,8 @@ jobs:
       - name: Stop and remove the container
         run: docker rm $CONTAINER_ID
 
-      - name: Upload Site Artifacts
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload legacy Docker site (not deployed to Pages)
+        uses: actions/upload-artifact@v4
         with:
+          name: nv-ingest-docs-docker-site
           path: ./generated-site
-
-  deploy:
-    needs:
-      - build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

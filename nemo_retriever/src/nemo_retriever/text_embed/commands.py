@@ -121,6 +121,11 @@ def run(
         "--local-hf-fallback/--no-local-hf-fallback",
         help="If no embedding endpoint is configured, run local HuggingFace embeddings instead.",
     ),
+    local_ingest_embed_backend: Optional[str] = typer.Option(
+        None,
+        "--local-ingest-backend",
+        help="Local embedding backend: 'vllm' (default) or 'hf'.",
+    ),
     local_hf_device: Optional[str] = typer.Option(
         None,
         "--local-hf-device",
@@ -169,11 +174,13 @@ def run(
         # No CLI endpoint and no config-file endpoint — override the schema default
         # so maybe_inject_local_hf_embedder() will inject the local HF fallback.
         task_cfg["endpoint_url"] = None
-    if model_name is not None:
+    if model_name is not None and "model_name" not in task_cfg:
         task_cfg["model_name"] = model_name
     if dimensions is not None:
         task_cfg["dimensions"] = int(dimensions)
     task_cfg["use_local_hf_if_no_endpoint"] = bool(use_local_hf_if_no_endpoint)
+    if local_ingest_embed_backend is not None:
+        task_cfg["local_ingest_embed_backend"] = local_ingest_embed_backend.strip().lower()
     if local_hf_device is not None:
         task_cfg["local_hf_device"] = str(local_hf_device)
     if local_hf_cache_dir is not None:

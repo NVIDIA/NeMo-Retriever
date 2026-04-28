@@ -10,10 +10,11 @@ from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
 
 
-def query_neo4j_tables_for_embedding() -> List[dict]:
+def query_neo4j_tables_for_embedding(database_name: str) -> List[dict]:
     """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
     neo4j_conn = get_neo4j_conn()
-    query = f"""MATCH (d:{Labels.DB})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})-[:{Edges.CONTAINS}]->(t:{Labels.TABLE})
+    query = f"""MATCH (d:{Labels.DB}{{name: $database_name}})-[:{Edges.CONTAINS}]->
+      (s:{Labels.SCHEMA})-[:{Edges.CONTAINS}]->(t:{Labels.TABLE})
                MATCH (t)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
                WITH d, s, t, collect(
                  "{{name: " + c.name + ", data_type: " + c.data_type +
@@ -21,7 +22,7 @@ def query_neo4j_tables_for_embedding() -> List[dict]:
                    THEN ", description: " + c.description ELSE "" END +
                  "}}") as columns
                RETURN collect({{
-                 text: "db_name: " + d.name + ", schema_name: " + s.name +
+                 text: "schema_name: " + s.name +
                    ", table_name: " + t.name +
                    CASE WHEN t.description IS NOT NULL AND trim(t.description) <> ''
                      THEN ", table_description: " + t.description ELSE "" END +
@@ -29,13 +30,13 @@ def query_neo4j_tables_for_embedding() -> List[dict]:
                  name: t.name, label: labels(t)[0], id: t.id
                }}) as docs
             """
-    result = neo4j_conn.query_read(query, parameters={})
+    result = neo4j_conn.query_read(query, parameters={"database_name": database_name})
     if not result:
         return []
     return result[0].get("docs") or []
 
 
-def fetch_tabular_embedding_dataframe() -> pd.DataFrame:
+def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
     """Fetch all tabular entity docs from Neo4j and return a DataFrame ready for embedding.
 
     Each row has: text, _embed_modality, path, page_number, metadata
@@ -43,7 +44,7 @@ def fetch_tabular_embedding_dataframe() -> pd.DataFrame:
     unstructured pipeline so run_pipeline_tasks_on_df works without changes.
     """
     _empty = pd.DataFrame(columns=["text", "_embed_modality", "path", "page_number", "metadata"])
-    docs = query_neo4j_tables_for_embedding()
+    docs = query_neo4j_tables_for_embedding(database_name=database_name)
     if not docs:
         return _empty
 
@@ -65,6 +66,7 @@ def fetch_tabular_embedding_dataframe() -> pd.DataFrame:
                     "label": label,
                     "name": name,
                     "source_path": path,
+                    "database_name": database_name,
                 },
             }
         )
