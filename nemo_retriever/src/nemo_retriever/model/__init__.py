@@ -226,7 +226,7 @@ def create_local_reranker(
     b = normalize_backend(backend, _LOCAL_RERANKER_BACKENDS, field_name="backend", default="vllm")
     if is_vl_rerank_model(model_name):
         if b == "vllm":
-            from nemo_retriever.model.local.nemotron_rerank_vl_v2_vllm import NemotronRerankVLV2VLLM
+            from nemo_retriever.model.local.nemotron_rerank_vl_v2 import NemotronRerankVLV2VLLM
 
             return NemotronRerankVLV2VLLM(
                 model_name=model_name,
@@ -235,7 +235,7 @@ def create_local_reranker(
                 gpu_memory_utilization=gpu_memory_utilization,
             )
 
-        from nemo_retriever.model.local.nemotron_rerank_vl_v2 import NemotronRerankVLV2
+        from nemo_retriever.model.local.nemotron_rerank_vl_v2_hf import NemotronRerankVLV2
 
         return NemotronRerankVLV2(
             model_name=model_name,
