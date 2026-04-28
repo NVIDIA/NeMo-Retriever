@@ -158,7 +158,7 @@ plugins:
         extraction/nv-ingest_cli.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
         extraction/nv-ingest-python-api.md: extraction/nemo-retriever-api-reference.md
         extraction/helm.md: extraction/deployment-options.md
-        extraction/quickstart-guide.md: extraction/deployment-options.md
+        extraction/nemoretriever-parse.md: extraction/text-layout-extraction.md
         extraction/choose-your-path.md: extraction/deployment-options.md
         extraction/hosted-nims-when-to-use.md: extraction/deployment-options.md
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
