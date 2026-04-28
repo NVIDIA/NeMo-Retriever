@@ -146,8 +146,10 @@ def _emit_human_summary(result_dict: dict[str, Any], *, to_stderr: bool) -> None
     _w("=" * 60)
     _w(f"Query:   {result_dict['query']}")
     _w(f"Model:   {result_dict['model']}")
-    _w(f"Latency: {result_dict['latency_s']:.2f}s")
-    _w(f"Chunks:  {len(result_dict['chunks'])}")
+    latency = result_dict.get("latency_s")
+    _w(f"Latency: {latency:.2f}s" if isinstance(latency, (int, float)) else "Latency: N/A")
+    chunks = result_dict.get("chunks") or []
+    _w(f"Chunks:  {len(chunks)}")
     if result_dict.get("error"):
         _w(f"Error:   {result_dict['error']}")
     _w("-" * 60)
