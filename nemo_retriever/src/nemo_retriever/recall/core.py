@@ -25,6 +25,9 @@ class RecallConfig:
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     query_embedder: str = VL_EMBED_MODEL
+    embedding_endpoint: Optional[str] = None
+    embedding_api_key: str = ""
+    embedding_use_grpc: Optional[bool] = None
     top_k: int = 10
     ks: Sequence[int] = (1, 3, 5, 10)
     local_hf_device: Optional[str] = None
@@ -433,6 +436,9 @@ def retrieve_and_score(
         vdb=str(cfg.vdb_op),
         vdb_kwargs=vdb_kwargs,
         embedder=query_embedder,
+        embedding_endpoint=cfg.embedding_endpoint,
+        embedding_api_key=cfg.embedding_api_key,
+        embedding_use_grpc=cfg.embedding_use_grpc,
         top_k=cfg.top_k,
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,

@@ -12,9 +12,9 @@ The intended mental model is:
 > Old Retriever, but the LanceDB-only search/write assumptions become VDB
 > operator boundaries that can support LanceDB and Milvus.
 
-The immediate target is graph pipeline recall over locally embedded document
-chunks stored in LanceDB or Milvus. The implementation should stay small,
-reviewable, and centered on the graph pipeline path.
+The immediate target is graph pipeline recall over embedded document chunks
+stored in LanceDB or Milvus. The implementation should stay small, reviewable,
+and centered on the graph pipeline path.
 
 ## Why This Exists
 
@@ -26,10 +26,10 @@ Historically, much of the system was LanceDB-first:
 - the older client VDB retrieval path owned query embedding through an endpoint
   or client-side retrieval helper.
 
-That was reasonable when the nv-ingest system did not have the local HF
-embedding path now used by NeMo Retriever. The newer Retriever path is different:
-the graph pipeline creates document embeddings locally, and retrieval should
-create matching query embeddings locally.
+That was reasonable before NeMo Retriever had a clear query-embedding owner.
+The newer Retriever path is different: the graph pipeline creates document
+embeddings with its configured embedding path, and retrieval should create
+matching query embeddings before calling VDB search.
 
 The goal is not to discard `nv_ingest_client.util.vdb.VDB`. That client VDB API
 is the backend boundary we want to satisfy. For this PR, that means:
@@ -42,18 +42,20 @@ is the backend boundary we want to satisfy. For this PR, that means:
 
 For graph recall, the desired contract is:
 
-1. The graph pipeline embeds document chunks with a local HF model.
+1. The graph pipeline embeds document chunks with local HF by default, or with a
+   configured embedding endpoint.
 2. The pipeline CLI materializes the graph result once.
 3. `IngestVdbOperator` uploads those already-embedded records through
    `nv_ingest_client.util.vdb.VDB.run(...)`.
-4. `Retriever` embeds query strings with the matching local HF model.
+4. `Retriever` embeds query strings with the matching embedding model/path.
 5. `RetrieveVdbOperator` passes those precomputed query vectors to
    `nv_ingest_client.util.vdb.VDB.retrieval(...)`.
 6. Recall scoring consumes normalized Retriever hits.
 
 For this PR, VDB-agnostic means backend-agnostic storage and vector search. It
-does not mean embedding-owner-agnostic. Retriever remains the owner of local HF
-query embedding unless we explicitly change that contract.
+does not mean embedding-owner-agnostic. Retriever remains the owner of query
+embedding; local HF is the default, and a configured embedding endpoint is used
+only when one is explicitly provided.
 
 ## In-Scope Flow: Graph Ingestion and VDB Upload
 
@@ -125,7 +127,7 @@ pipeline run --query-csv ...
   -> retrieve_and_score(...)
   -> Retriever(vdb=..., vdb_kwargs=...)
   -> Retriever.queries(...)
-  -> local HF query embedding
+  -> local HF or endpoint query embedding
   -> RetrieveVdbOperator.process(query_vectors, ...)
   -> VDB.retrieval(query_vectors, ...)
   -> normalized Retriever hits
@@ -136,14 +138,15 @@ Responsibilities:
 
 - `RecallConfig` carries the selected VDB backend and kwargs into recall.
 - `retrieve_and_score()` constructs `Retriever`.
-- `Retriever.queries()` owns query text normalization, top-k handling, local HF
-  query embedding, optional reranking, and returning Retriever-shaped hits.
+- `Retriever.queries()` owns query text normalization, top-k handling, query
+  embedding, optional reranking, and returning Retriever-shaped hits.
 - Backend-specific VDB search should live behind the client VDB retrieval
   boundary, not inline in `Retriever`.
 
 The important invariant is that document vectors and query vectors are produced
-by the same local HF embedding model family. This avoids depending on the older
-hosted embedding path for graph recall.
+by the same embedding model/path. In `pipeline run`, recall receives the same
+embedding model and endpoint/API-key settings used by document embedding. When
+no endpoint is configured, both sides default to local HF.
 
 ## Retrieval Contract Change
 
@@ -155,7 +158,7 @@ query strings -> endpoint/service embedding -> vector search
 ```
 
 That contract does not match graph recall, where Retriever must use the same
-local HF embedding path as graph document embedding.
+query/document embedding configuration before VDB search.
 
 The approved direction for this PR is to redefine retrieval VDBs toward:
 
@@ -168,7 +171,7 @@ That lets `Retriever.queries()` stay close to the upstream flow:
 ```text
 resolve query strings
 resolve top_k
-embed query strings locally
+embed query strings locally or through the configured endpoint
 call VDB retrieval with query vectors
 rerank if configured
 ```
@@ -197,7 +200,7 @@ These are intentionally out of scope for this PR unless explicitly reopened:
 
 - changing nv-ingest-client VDB behavior beyond the retrieval vector-in
   contract;
-- moving local HF query embedding into a new adapter;
+- moving query embedding into a broad new adapter framework;
 - making all legacy BEIR, harness, or outdated example pipelines fully
   VDB-agnostic beyond the compatibility fixes needed to keep current callers
   constructible;
@@ -213,12 +216,13 @@ The implementation should converge on:
 - generic runtime language such as "VDB upload" instead of "LanceDB write";
 - minimal record conversion needed by the graph pipeline upload path;
 - one graph-result materialization point in the CLI before upload/evaluation;
-- local HF query embedding remaining in Retriever;
+- query embedding remaining in Retriever, with local HF as the default and
+  endpoint embedding used only when configured;
 - backend-specific vector search hidden behind VDB code, not spread through
   Retriever;
 - nv-ingest-client VDB upload behavior unchanged.
 
-## Validation Target
+## Validation
 
 The PR is considered behaviorally sound when both LanceDB and Milvus can run the
 same graph pipeline recall flow:
@@ -230,7 +234,42 @@ ingest jp20
   -> recall@1/5/10 matches between LanceDB and Milvus
 ```
 
-The most recent JP20 validation showed:
+Two embedding modes were validated:
+
+- **Local HF default:** no embedding endpoint is configured. The graph embeds
+  document chunks locally and `Retriever` embeds queries locally with the same
+  model family.
+- **Hosted embedding endpoint:** `pipeline run` is passed
+  `--embed-invoke-url http://localhost:8012/v1` and
+  `--embed-model-name nvidia/llama-nemotron-embed-1b-v2`. The same endpoint and
+  model are propagated into recall, so document and query embeddings are
+  produced by the hosted NIM.
+
+The hosted service was checked with:
+
+```text
+curl http://localhost:8012/v1/models
+```
+
+It advertised:
+
+```text
+nvidia/llama-nemotron-embed-1b-v2
+```
+
+Direct `/v1/embeddings` probes with both `input_type=query` and
+`input_type=passage` succeeded. A failed full run with the pipeline's default
+`nvidia/llama-nemotron-embed-vl-1b-v2` model produced `/v1/embeddings` 404s;
+that was a hosted-model name mismatch, not an embedding concurrency issue.
+
+### Local HF JP20
+
+Artifacts:
+
+- `nemo_retriever/artifacts/jp20_vdb_e2e_lancedb_vector_in_retrieval/`
+- `nemo_retriever/artifacts/jp20_vdb_e2e_milvus_vector_in_retrieval/`
+
+Results:
 
 ```text
 LanceDB:
@@ -238,13 +277,53 @@ LanceDB:
   rows uploaded:  3147
   queries:        115
   recall@1/5/10: 0.6261 / 0.9043 / 0.9391
+  total_secs:     84.26
 
 Milvus:
   rows collected: 3154
   rows uploaded:  3147
   queries:        115
   recall@1/5/10: 0.6261 / 0.9043 / 0.9391
+  total_secs:     234.60
 ```
+
+### Hosted Embedding Endpoint JP20
+
+Artifacts:
+
+- `nemo_retriever/artifacts/jp20_vdb_e2e_lancedb_remote_1b_embed_retrieval_20260428_1922/`
+- `nemo_retriever/artifacts/jp20_vdb_e2e_milvus_remote_1b_embed_retrieval_20260428_1929/`
+- `nemo_retriever/artifacts/jp20_vdb_e2e_lancedb_remote_1b_embed_default_embed_flags_20260428_1936/`
+
+Results:
+
+```text
+LanceDB, conservative embed tuning:
+  rows collected: 3154
+  rows uploaded:  3147
+  queries:        115
+  recall@1/5/10: 0.6261 / 0.8783 / 0.9391
+  total_secs:     121.79
+
+Milvus, conservative embed tuning:
+  rows collected: 3154
+  rows uploaded:  3147
+  queries:        115
+  recall@1/5/10: 0.6261 / 0.8870 / 0.9391
+  total_secs:     154.05
+
+LanceDB, default embed tuning:
+  rows collected: 3154
+  rows uploaded:  3147
+  queries:        115
+  recall@1/5/10: 0.6348 / 0.8696 / 0.9304
+  total_secs:     73.20
+```
+
+The default-tuning LanceDB run used no `--embed-actors` or
+`--embed-batch-size` overrides. It used the normal pipeline embed settings and
+confirmed that explicit hosted model alignment is sufficient for the endpoint
+path.
 
 Milvus upload is expected to be slower for this local deployment because the
 current client backend uses MinIO-backed bulk import plus collection load/refresh

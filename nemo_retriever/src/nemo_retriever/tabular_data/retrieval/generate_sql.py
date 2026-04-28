@@ -260,6 +260,9 @@ def get_sql_tool_response_top_k(
     retriever = Retriever(
         vdb="lancedb",
         vdb_kwargs={"table_name": "nv-ingest-tabular"},
+        embedding_endpoint=embedding_http_endpoint or None,
+        embedding_api_key=embedding_api_key or "",
+        embedding_use_grpc=False if embedding_http_endpoint else None,
         top_k=top_k,
     )
     hits = retriever.query(question)

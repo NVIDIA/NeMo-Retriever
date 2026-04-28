@@ -171,6 +171,34 @@ class TestQueriesVdbDelegation:
         ]
         assert result == _FakeRetrieveVdbOperator.next_result
 
+    def test_queries_use_remote_embedding_endpoint_when_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import nemo_retriever.vdb as vdb_pkg
+
+        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
+        retriever = _make_retriever(
+            embedding_endpoint="http://embed.example/v1",
+            embedding_api_key="secret",
+            embedding_use_grpc=False,
+        )
+
+        with (
+            patch("nv_ingest_api.util.nim.infer_microservice", return_value=[[0.5, 0.6]]) as mock_embed,
+            patch.object(retriever, "_embed_queries_local_hf") as mock_local_embed,
+        ):
+            retriever.queries(["q"], embedder="query-model")
+
+        mock_embed.assert_called_once_with(
+            ["q"],
+            model_name="query-model",
+            embedding_endpoint="http://embed.example/v1",
+            nvidia_api_key="secret",
+            grpc=False,
+            input_type="query",
+        )
+        mock_local_embed.assert_not_called()
+        operator = _FakeRetrieveVdbOperator.instances[0]
+        assert operator.process_calls == [([[0.5, 0.6]], {"top_k": 5})]
+
     def test_queries_reuse_retrieve_operator(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
 

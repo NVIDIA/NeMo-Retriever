@@ -53,6 +53,25 @@ def _coerce_endpoint_str(v: Optional[str]) -> Optional[str]:
     return s
 
 
+def _resolve_query_embedding_endpoint(
+    *,
+    embedding_endpoint: Optional[str],
+    embedding_http_endpoint: Optional[str],
+    embedding_grpc_endpoint: Optional[str],
+) -> tuple[Optional[str], Optional[bool]]:
+    http_ep = _coerce_endpoint_str(embedding_http_endpoint)
+    grpc_ep = _coerce_endpoint_str(embedding_grpc_endpoint)
+    single = _coerce_endpoint_str(embedding_endpoint)
+
+    if http_ep:
+        return http_ep, False
+    if grpc_ep:
+        return grpc_ep, True
+    if single:
+        return single, not single.lower().startswith("http")
+    return None, None
+
+
 @app.command("recall-with-main")
 def recall_with_main(
     query_csv: Path = typer.Option(
@@ -112,6 +131,11 @@ def recall_with_main(
 
     metrics_ks = (1, 5, 10)
     search_k = max(int(top_k), max(metrics_ks))
+    query_embedding_endpoint, query_embedding_use_grpc = _resolve_query_embedding_endpoint(
+        embedding_endpoint=embedding_endpoint,
+        embedding_http_endpoint=embedding_http_endpoint,
+        embedding_grpc_endpoint=embedding_grpc_endpoint,
+    )
 
     cfg = RecallConfig(
         vdb_op="lancedb",
@@ -121,6 +145,9 @@ def recall_with_main(
             "vector_column_name": str(vector_column_name),
         },
         query_embedder=str(embedding_model),
+        embedding_endpoint=query_embedding_endpoint,
+        embedding_api_key=(embedding_api_key or ""),
+        embedding_use_grpc=query_embedding_use_grpc,
         top_k=int(search_k),
         ks=metrics_ks,
         local_hf_device=_coerce_endpoint_str(local_hf_device),
@@ -233,6 +260,11 @@ def run(
 
     metrics_ks = (1, 5, 10)
     search_k = max(int(top_k), max(metrics_ks))
+    query_embedding_endpoint, query_embedding_use_grpc = _resolve_query_embedding_endpoint(
+        embedding_endpoint=embedding_endpoint,
+        embedding_http_endpoint=embedding_http_endpoint,
+        embedding_grpc_endpoint=embedding_grpc_endpoint,
+    )
 
     cfg = RecallConfig(
         vdb_op="lancedb",
@@ -242,6 +274,9 @@ def run(
             "vector_column_name": str(vector_column_name),
         },
         query_embedder=str(embedding_model),
+        embedding_endpoint=query_embedding_endpoint,
+        embedding_api_key=(embedding_api_key or ""),
+        embedding_use_grpc=query_embedding_use_grpc,
         top_k=int(search_k),
         ks=metrics_ks,
         local_hf_device=_coerce_endpoint_str(local_hf_device),

@@ -29,7 +29,8 @@ class Retriever:
 
     Retrieval pipeline
     ------------------
-    1. Embed query strings with a local HuggingFace model.
+    1. Embed query strings with a local HuggingFace model, or with a
+       configured embedding endpoint.
     2. Search the configured vector database.
     3. Optionally rerank the results with ``nvidia/llama-nemotron-rerank-1b-v2``
        (NIM/vLLM endpoint or local HuggingFace model).
@@ -57,6 +58,12 @@ class Retriever:
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     embedder: str = VL_EMBED_MODEL
     top_k: int = 10
+    embedding_endpoint: Optional[str] = None
+    """Optional query embedding endpoint. If unset, query embedding uses local HuggingFace."""
+    embedding_api_key: str = ""
+    """Bearer token/API key for the query embedding endpoint."""
+    embedding_use_grpc: Optional[bool] = None
+    """Whether the query embedding endpoint is gRPC. If unset, infer from the endpoint string."""
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[Path] = None
     local_hf_batch_size: int = 64
@@ -110,6 +117,42 @@ class Retriever:
         else:
             vectors = embedder.embed(["query: " + q for q in query_texts], batch_size=int(self.local_hf_batch_size))
         return vectors.detach().to("cpu").tolist()
+
+    def _resolve_embedding_endpoint(self) -> tuple[str | None, bool | None]:
+        endpoint = (self.embedding_endpoint or "").strip()
+        if not endpoint:
+            return None, None
+        if self.embedding_use_grpc is not None:
+            return endpoint, bool(self.embedding_use_grpc)
+        return endpoint, not endpoint.lower().startswith("http")
+
+    def _embed_queries_remote(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
+        endpoint, use_grpc = self._resolve_embedding_endpoint()
+        if endpoint is None or use_grpc is None:
+            raise ValueError("Remote query embedding requires embedding_endpoint.")
+
+        from nv_ingest_api.util.nim import infer_microservice
+
+        embeddings = infer_microservice(
+            query_texts,
+            model_name=str(model_name or self.embedder),
+            embedding_endpoint=endpoint,
+            nvidia_api_key=(self.embedding_api_key or "").strip(),
+            grpc=bool(use_grpc),
+            input_type="query",
+        )
+        vectors: list[list[float]] = []
+        for embedding in embeddings:
+            tolist = getattr(embedding, "tolist", None)
+            values = tolist() if callable(tolist) else embedding
+            vectors.append(list(values))
+        return vectors
+
+    def _embed_queries(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
+        endpoint, _use_grpc = self._resolve_embedding_endpoint()
+        if endpoint is not None:
+            return self._embed_queries_remote(query_texts, model_name=model_name)
+        return self._embed_queries_local_hf(query_texts, model_name=model_name)
 
     def _get_retrieve_operator(self) -> Any:
         """Lazily construct the VDB retrieval operator for this Retriever."""
@@ -222,7 +265,7 @@ class Retriever:
             retrieval_top_k = effective_top_k * int(self.reranker_refine_factor)
 
         resolved_embedder = str(embedder or self.embedder)
-        vectors = self._embed_queries_local_hf(query_texts, model_name=resolved_embedder)
+        vectors = self._embed_queries(query_texts, model_name=resolved_embedder)
 
         retrieval_kwargs = dict(vdb_kwargs or {})
         retrieval_kwargs["top_k"] = int(retrieval_top_k)
