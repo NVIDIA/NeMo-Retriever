@@ -10,4 +10,4 @@ Follow these steps:
 
 **Bridge from extraction**
 
-Pipeline stages are summarized in [Concepts](concepts.md). Retrieval quality evaluation appears in [Benchmarking](benchmarking.md) and [Evaluate on your data](evaluate-on-your-data.md).
+Pipeline stages are summarized in [Concepts](concepts.md). Retrieval quality evaluation appears in [Evaluate on your data](evaluate-on-your-data.md).

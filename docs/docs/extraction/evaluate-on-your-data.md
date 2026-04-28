@@ -4,7 +4,7 @@ Retrieval and ingestion performance **depend on your documents**, hardware, and 
 
 ## Benchmarking and baselines
 
-Start with [Benchmarking](benchmarking.md) for methodology and baseline expectations. Combine with [Telemetry](telemetry.md) to observe production-like runs.
+Use this page as the baseline for methodology and expectations. Combine with [Telemetry](telemetry.md) to observe production-like runs.
 
 ## Throughput and dataset effects
 
