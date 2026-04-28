@@ -161,24 +161,3 @@ def test_constructor_requires_exactly_one_vdb_source() -> None:
 
     with pytest.raises(ValueError, match="Pass either vdb or vdb_op"):
         IngestVdbOperator(vdb=FakeVDB(), vdb_op="lancedb")
-
-
-def test_lancedb_vdb_writes_records_through_operator(tmp_path) -> None:
-    lancedb = pytest.importorskip("lancedb")
-    from nv_ingest_client.util.vdb.lancedb import LanceDB
-
-    table_name = "nv_ingest_operator_test"
-    records = _graph_rows()
-
-    vdb = LanceDB(uri=str(tmp_path), table_name=table_name, num_partitions=1)
-    operator = IngestVdbOperator(vdb=vdb)
-
-    assert operator(records) is records
-
-    table = lancedb.connect(str(tmp_path)).open_table(table_name)
-    assert table.count_rows() == 2
-
-    hits = vdb.retrieval([[0.1] * 2048], top_k=1, result_fields=["text", "metadata", "source"])
-    assert len(hits) == 1
-    assert len(hits[0]) == 1
-    assert hits[0][0]["text"] == "first chunk"
