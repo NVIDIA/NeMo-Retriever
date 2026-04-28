@@ -35,6 +35,7 @@ jobs:
 
       - name: Configure Pages
         id: pages
+        if: ${{ github.repository == 'NVIDIA/NeMo-Retriever' }}
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
       - name: Set up Python
@@ -82,16 +83,25 @@ jobs:
       - name: Build MkDocs (NRL only)
         working-directory: docs
         env:
-          SITE_URL: ${{ steps.pages.outputs.base_url }}
+          SITE_URL: ${{ steps.pages.outputs.base_url || 'https://example.invalid/' }}
         run: mkdocs build -f mkdocs.yml --strict
 
       - name: Upload Pages artifact
+        if: ${{ github.repository == 'NVIDIA/NeMo-Retriever' }}
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: docs/site
 
+      - name: Upload docs artifact (non-Pages repos)
+        if: ${{ github.repository != 'NVIDIA/NeMo-Retriever' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nrl-docs-site
+          path: docs/site
+
   deploy:
     name: Deploy to GitHub Pages
+    if: ${{ github.repository == 'NVIDIA/NeMo-Retriever' }}
     needs: build
     runs-on: ubuntu-latest
     environment:

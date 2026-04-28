@@ -135,6 +135,10 @@ nav:
 
 plugins:
   - search
+  - autorefs:
+      resolve_closest: true
+      ignore:
+        - "^:[0-9]+$"
   # uncomment below to grab api
   # - gen-files:
   #     scripts:
