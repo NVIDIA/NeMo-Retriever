@@ -38,22 +38,59 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+import pandas as pd
 import pytest
 
 from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
-from nemo_retriever.llm.types import RetrievalResult
+from nemo_retriever.evaluation.retrievers import FileRetriever
+
+_FAST_PATH_SAMPLE_QUERIES: dict[str, dict] = {
+    "What is the range of the 767?": {
+        "chunks": ["The 767 has a range of ~6,000 nmi."],
+        "metadata": [{"source": "spec.pdf"}],
+    },
+}
+
+
+def _make_fast_path_pipeline(retriever: FileRetriever) -> QAEvalPipeline:
+    """Build a QAEvalPipeline backed by a real ``FileRetriever``.
+
+    ``FileRetriever`` exposes ``retrieve_many``, so the orchestrator's
+    capability-gated fast path is the one under test (vs. the threaded
+    fan-out exercised by the ``MagicMock(spec=["retrieve"])`` fixture
+    used elsewhere in this file).
+    """
+    return QAEvalPipeline(
+        retriever=retriever,
+        llm_clients={"m": MagicMock()},
+        judge=MagicMock(),
+        top_k=3,
+        max_workers=1,
+    )
+
+
+def _empty_retrieval_df() -> pd.DataFrame:
+    """Return a single-row DataFrame matching the RetrieverStrategy contract."""
+    return pd.DataFrame([{"query": "", "chunks": [], "metadata": []}])
 
 
 def _make_pipeline(*, retrieve_side_effect: Any = None) -> QAEvalPipeline:
     """Build a QAEvalPipeline with mocked retriever/llm/judge.
 
-    The retriever returns a stable empty RetrievalResult unless a custom
-    ``retrieve_side_effect`` is provided (e.g. to simulate a real retrieval
-    failure for the exception-path test).
+    The retriever is spec'd to expose only ``retrieve`` so it represents
+    a minimal :class:`~nemo_retriever.llm.types.RetrieverStrategy`
+    Protocol implementer.  The orchestrator's batched fast path
+    (``hasattr(retriever, "retrieve_many")``) therefore stays inactive
+    for these tests, which exercise the threaded fan-out path
+    (including the ``retrieve_side_effect`` failure cases).
+
+    The retriever returns a stable empty single-row DataFrame unless a
+    custom ``retrieve_side_effect`` is provided (e.g. to simulate a real
+    retrieval failure for the exception-path test).
     """
-    retriever = MagicMock()
+    retriever = MagicMock(spec=["retrieve"])
     if retrieve_side_effect is None:
-        retriever.retrieve.return_value = RetrievalResult(chunks=[], metadata=[])
+        retriever.retrieve.return_value = _empty_retrieval_df()
     else:
         retriever.retrieve.side_effect = retrieve_side_effect
 
@@ -147,3 +184,54 @@ class TestRetrievalExceptionPathMatchesHappyPath:
         boom_df = boom_pipeline._prepare_dataframe([pair])
         assert boom_df.iloc[0]["reference_answer"] == expected_reference
         assert boom_df.iloc[0]["context"] == []
+
+
+class TestFastPathInvariants:
+    """Hardening guards on the ``retrieve_many`` fast path.
+
+    These tests use a real :class:`FileRetriever` (not a ``MagicMock``)
+    so the orchestrator's ``hasattr(retriever, "retrieve_many")`` gate
+    fires and the fast-path code is the one exercised.
+    """
+
+    def test_prepare_dataframe_empty_qa_pairs_returns_typed_empty(self) -> None:
+        """Empty input must produce a typed-empty frame, not a column-less one.
+
+        Without the guard, the fast path's positional ``zip`` loop runs
+        zero times and ``pd.DataFrame([])`` returns a frame with **no
+        columns**, which then ``KeyError``s downstream on
+        ``df["query"]``.
+        """
+        retriever = FileRetriever._from_dict(_FAST_PATH_SAMPLE_QUERIES)
+        pipeline = _make_fast_path_pipeline(retriever)
+
+        df = pipeline._prepare_dataframe([])
+
+        assert len(df) == 0
+        assert list(df.columns) == ["query", "reference_answer", "context", "_retrieval_metadata"]
+
+    def test_prepare_dataframe_raises_on_contract_violation(self) -> None:
+        """``retrieve_many`` returning N != len(queries) rows is a real bug.
+
+        Mirrors the invariant check
+        :class:`~nemo_retriever.evaluation.live_retrieval.LiveRetrievalOperator`
+        already enforces for ``Retriever.queries``.  Replacing
+        ``retrieve_many`` with a stub that drops a row reliably triggers
+        the contract violation regardless of pandas version.
+        """
+        retriever = FileRetriever._from_dict(_FAST_PATH_SAMPLE_QUERIES)
+
+        def _truncating_retrieve_many(queries, top_k):  # type: ignore[no-untyped-def]
+            return pd.DataFrame(columns=["query", "chunks", "metadata"])
+
+        retriever.retrieve_many = _truncating_retrieve_many  # type: ignore[method-assign]
+
+        pipeline = _make_fast_path_pipeline(retriever)
+
+        qa_pairs = [
+            {"query": "q1", "reference_answer": "r1"},
+            {"query": "q2", "reference_answer": "r2"},
+            {"query": "q3", "reference_answer": "r3"},
+        ]
+        with pytest.raises(RuntimeError, match=r"len\(result\) == len\(queries\)"):
+            pipeline._prepare_dataframe(qa_pairs)

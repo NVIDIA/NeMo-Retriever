@@ -91,6 +91,19 @@ class LLMJudge:
         """Return the judge model identifier from the transport params."""
         return self._client.transport.model
 
+    @property
+    def transport(self) -> LLMRemoteClientParams:
+        """Return the transport config owning endpoint / auth / retries.
+
+        Exposed publicly so callers -- notably
+        :mod:`nemo_retriever.generation.judge` -- can build their own
+        operators using the judge's resolved transport without reaching
+        into the private ``_client`` attribute.  The returned object is
+        the same :class:`LLMRemoteClientParams` the caller supplied at
+        construction; mutating it mutates the judge.
+        """
+        return self._client.transport
+
     @classmethod
     def from_kwargs(
         cls,

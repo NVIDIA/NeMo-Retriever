@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import pandas as pd
+
 from nemo_retriever.evaluation.eval_operator import EvalOperator
 
 if TYPE_CHECKING:
@@ -17,16 +19,36 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _hit_text(hit: dict[str, Any]) -> str:
+    """Extract the required ``text`` field from a LanceDB hit row.
+
+    Tagged-error variant of ``hit["text"]`` that points the caller at
+    the most likely fix when the schema invariant is violated.  The
+    canonical path that populates this column is ``retriever pipeline
+    run``; older ingestion paths or hand-rolled tables may be missing
+    it.  Surfacing as ``KeyError`` (rather than silently returning an
+    empty string) prevents downstream operators from misclassifying a
+    schema bug as an empty-retrieval failure.
+    """
+    try:
+        return str(hit["text"])
+    except KeyError as exc:
+        raise KeyError(
+            "hit row missing required 'text' column; "
+            "this usually means the LanceDB table was written by an older ingestion path. "
+            "Re-run `retriever pipeline run` to regenerate."
+        ) from exc
+
+
 class LiveRetrievalOperator(EvalOperator):
     """Live retrieval source for evaluation chains.
 
     Parallels :class:`~nemo_retriever.evaluation.retrieval_loader.RetrievalLoaderOperator`
     but pulls chunks from LanceDB on the fly via
-    :meth:`Retriever.retrieve <nemo_retriever.retriever.Retriever.retrieve>`
-    rather than loading them from a pre-computed retrieval JSON.  Used by
-    :meth:`Retriever.pipeline <nemo_retriever.retriever.Retriever.pipeline>`
-    to prepend retrieval to a DataFrame-in/out generation / scoring /
-    judging graph.
+    :meth:`Retriever.queries <nemo_retriever.retriever.Retriever.queries>`
+    rather than loading them from a pre-computed retrieval JSON.  Used
+    by :func:`nemo_retriever.generation.eval` to prepend retrieval to a
+    DataFrame-in/out generation / scoring / judging graph.
 
     Input DataFrame must have a ``query`` column.  Adds ``context``
     (``list[str]`` of chunk texts per row) and ``context_metadata``
@@ -65,8 +87,6 @@ class LiveRetrievalOperator(EvalOperator):
         self._top_k = int(top_k)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        import pandas as pd
-
         if not isinstance(data, pd.DataFrame):
             raise TypeError(f"{type(self).__name__} requires a pandas.DataFrame input, " f"got {type(data).__name__}")
 
@@ -76,17 +96,20 @@ class LiveRetrievalOperator(EvalOperator):
         # One batched call instead of per-row iteration.  The Retriever
         # embeds all queries in a single NIM round trip and issues a
         # single LanceDB sweep, so an N-row DataFrame pays O(1) network
-        # cost end-to-end rather than O(N).  Order is preserved by
-        # ``retrieve_batch`` so ``results[i]`` aligns with row ``i``.
-        results = self._retriever.retrieve_batch(query_texts, top_k=self._top_k)
+        # cost end-to-end rather than O(N).  ``Retriever.queries``
+        # preserves input order so ``hits_per_query[i]`` aligns with
+        # row ``i``.
+        hits_per_query = self._retriever.queries(query_texts, top_k=self._top_k)
 
-        if len(results) != len(query_texts):
+        if len(hits_per_query) != len(query_texts):
             raise RuntimeError(
-                "retrieve_batch returned "
-                f"{len(results)} results for {len(query_texts)} queries; "
+                "Retriever.queries returned "
+                f"{len(hits_per_query)} results for {len(query_texts)} queries; "
                 "this violates the contract and points at a Retriever bug."
             )
 
-        out["context"] = [list(r.chunks) for r in results]
-        out["context_metadata"] = [list(r.metadata) for r in results]
+        out["context"] = [[_hit_text(hit) for hit in hits] for hits in hits_per_query]
+        out["context_metadata"] = [
+            [{k: v for k, v in hit.items() if k != "text"} for hit in hits] for hits in hits_per_query
+        ]
         return out

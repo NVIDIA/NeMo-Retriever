@@ -7,8 +7,16 @@ Protocol definitions and result dataclasses for LLM-based pipelines.
 
 These abstractions allow retrieval strategies, LLM clients, and judges
 to be swapped independently.  They are consumed by both the evaluation
-framework (``nemo_retriever.evaluation``) and the live RAG surface on
-``nemo_retriever.retriever.Retriever``.
+framework (``nemo_retriever.evaluation``) and the live RAG surface
+(:mod:`nemo_retriever.generation`).
+
+Note on legacy shapes:
+    ``RetrievalResult`` and ``AnswerResult`` predate the current
+    DataFrame-centric contract.  They are kept around because they
+    mirror (respectively) the per-row ``[chunks, metadata]`` shape and
+    the ``retriever answer`` JSON schema, so user code that imports them
+    continues to work.  Production paths now move data as
+    ``pandas.DataFrame`` values.
 """
 
 from __future__ import annotations
@@ -16,12 +24,26 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
 
+import pandas as pd
+
 
 @runtime_checkable
 class RetrieverStrategy(Protocol):
-    """Pluggable retrieval strategy interface."""
+    """Pluggable retrieval strategy interface.
 
-    def retrieve(self, query: str, top_k: int) -> "RetrievalResult": ...
+    Implementations return a :class:`pandas.DataFrame` with exactly the
+    columns ``[query, chunks, metadata]`` and one row per invocation.
+    ``chunks`` is a ``list[str]`` in rank order; ``metadata`` is the
+    aligned ``list[dict]`` holding everything else a hit record carries
+    (source, page_number, distance scores, ...).
+
+    The DataFrame return type is the single contract shared with
+    :mod:`nemo_retriever.generation`, so an implementation that satisfies
+    this Protocol is immediately composable with ``generation.answer``,
+    ``generation.score``, ``generation.judge``, and ``generation.eval``.
+    """
+
+    def retrieve(self, query: str, top_k: int) -> pd.DataFrame: ...
 
 
 @runtime_checkable
@@ -71,13 +93,21 @@ class JudgeResult:
 
 @dataclass
 class AnswerResult:
-    """Result from a single live-RAG call to ``Retriever.answer``.
+    """Legacy shape mirroring one row of the ``generation.eval`` DataFrame.
 
     Holds the generated answer alongside the retrieved context that was used
     to produce it and -- when a ``reference`` answer and/or ``judge`` are
     supplied -- the Tier-1 / Tier-2 / Tier-3 scoring artefacts produced by
     :mod:`nemo_retriever.evaluation.scoring` and
     :class:`~nemo_retriever.llm.clients.judge.LLMJudge`.
+
+    Production code no longer returns ``AnswerResult`` -- call
+    :func:`nemo_retriever.generation.answer` or
+    :func:`nemo_retriever.generation.eval` instead, which return a
+    :class:`pandas.DataFrame` whose column union is this dataclass's
+    fields.  ``AnswerResult`` is retained because the ``retriever
+    answer`` CLI and the MCP server advertise this exact JSON schema
+    (see :func:`nemo_retriever.answer_cli.row_to_answer_dict`).
 
     Attributes:
         query: The question that was answered.

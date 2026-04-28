@@ -39,7 +39,7 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
 
 | Stage | Artifacts produced | Code / APIs involved |
 |-------|-------------------|----------------------|
-| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `python -m nemo_retriever.examples.graph_pipeline` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nv-ingest`). |
+| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `retriever pipeline run` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nv-ingest`). |
 | **2. Full-page markdown index** | `data/bo767_page_markdown.json` (`source_id` -> page -> markdown) | `retriever eval build-page-index` -> `nemo_retriever.io.markdown.build_page_index()` (which calls `to_markdown_by_page` per document); numpy list columns are coerced so structured content is not dropped. |
 | **3. Retrieval export** | `data/eval/bo767_retrieval_fullpage.json` (or sub-page JSON) | `retriever eval export` -> `nemo_retriever.export.export_retrieval_json()` queries LanceDB; if `--page-index` is provided, hits are expanded/deduped by `(source_id, page)` and replaced with full-page markdown strings. |
 | **4. Ground truth** | `data/bo767_annotations.csv` (repo root) | Questions/answers for export and eval; must align with **query string normalization** in `FileRetriever` (see retrieval JSON rules). |
@@ -618,7 +618,7 @@ signature works -- no inheritance or registration required.
 
 | Protocol | Method | Default implementation |
 |----------|--------|----------------------|
-| `RetrieverStrategy` | `retrieve(query, top_k) -> RetrievalResult` | `FileRetriever` (cached JSON) |
+| `RetrieverStrategy` | `retrieve(query, top_k) -> pandas.DataFrame` (one row, columns `[query, chunks, metadata]`) | `FileRetriever` (cached JSON), `Retriever` via `generation.retrieve` |
 | `LLMClient` | `generate(query, chunks) -> GenerationResult` | `LiteLLMClient` (NIM, OpenAI, vLLM) |
 | `AnswerJudge` | `judge(query, reference, candidate) -> JudgeResult` | `LLMJudge` (1-5 rubric) |
 
@@ -628,7 +628,7 @@ The evaluation framework lives in `nemo_retriever/src/nemo_retriever/evaluation/
 
 | Module | Purpose |
 |--------|---------|
-| `types.py` | Protocol definitions (`RetrieverStrategy`, `LLMClient`, `AnswerJudge`) and dataclasses (`RetrievalResult`, `GenerationResult`, `JudgeResult`) |
+| `types.py` | Protocol definitions (`RetrieverStrategy`, `LLMClient`, `AnswerJudge`) and dataclasses (`GenerationResult`, `JudgeResult`, `AnswerResult`). `RetrievalResult` is retained as a legacy shape; the `RetrieverStrategy.retrieve` contract now returns a `pandas.DataFrame` directly. |
 | `eval_operator.py` | `EvalOperator` base class for all QA operators -- extends `AbstractOperator` + `CPUOperator`, adds `required_columns` / `output_columns` validation |
 | `retrieval_loader.py` | `RetrievalLoaderOperator` -- entry point for graph chains; loads ground truth + retrieval JSON into a DataFrame |
 | `generation.py` | `QAGenerationOperator` -- wraps `LiteLLMClient` for concurrent batch generation (ThreadPoolExecutor) |
@@ -891,20 +891,20 @@ Transport params redact the bearer token in their `__repr__` / `__str__` (`api_k
 
 ### Batch generation failure rate
 
-When the fluent builder ran `.generate(...)`, the returned `DataFrame` exposes the aggregate generation failure rate on `df.attrs` so batch-eval reports can surface it alongside `token_f1` / `judge_score`:
+`QAGenerationOperator` attaches the aggregate generation failure rate to `df.attrs` so batch-eval reports can surface it alongside `token_f1` / `judge_score`. `generation.answer` and `generation.eval` both run that operator, so the attribute is present on their returned DataFrames as well:
 
 ```python
-df = retriever.pipeline().generate(llm).run(queries=questions)
+from nemo_retriever import generation
+
+df = generation.answer(retriever, questions, llm=llm)
 print(f"generation_failure_rate = {df.attrs['generation_failure_rate']:.2%}")
 ```
 
-`generation_failure_rate` is the fraction of rows whose `gen_error` column is non-null; it is only attached when the `.generate()` step ran.
+`generation_failure_rate` is the fraction of rows whose `gen_error` column is non-null; it is only attached when a generation step actually ran.
 
 ### Stable public surface
 
 `nemo_retriever.llm.__all__` is the supported integration point for the client + types layer. Import the Protocols, result dataclasses, `LiteLLMClient`, `LLMJudge`, and the `LLMInferenceParams` / `LLMRemoteClientParams` models from `nemo_retriever.llm`; deeper submodule paths (`llm.clients.litellm`, `llm.text_utils`, ...) are implementation details and may be reorganised without notice.
-
-The previously-provided `nemo-retriever[eval]` install extra was removed in favor of `nemo-retriever[llm]`; pin the new extra in any requirements files that still reference `[eval]`.
 
 ## Scoring System (Three-Tier Hierarchy)
 
@@ -1065,13 +1065,23 @@ The same pattern works for custom failure classifiers, alternative judge prompts
 ### Custom Retriever
 
 ```python
-from nemo_retriever.llm.types import RetrieverStrategy, RetrievalResult
+import pandas as pd
+
+from nemo_retriever.llm.types import RetrieverStrategy
 
 class MyRetriever:
-    def retrieve(self, query: str, top_k: int) -> RetrievalResult:
+    def retrieve(self, query: str, top_k: int) -> pd.DataFrame:
         chunks = my_search(query, top_k)
-        return RetrievalResult(chunks=chunks, metadata=[])
+        return pd.DataFrame(
+            {
+                "query": [query],
+                "chunks": [list(chunks)],
+                "metadata": [[{} for _ in chunks]],
+            }
+        )
 ```
+
+Any object that returns a single-row DataFrame with exactly those three columns satisfies `RetrieverStrategy` and composes with `generation.answer` / `generation.score` / `generation.judge` / `generation.eval` out of the box.
 
 ### Custom LLM Client
 

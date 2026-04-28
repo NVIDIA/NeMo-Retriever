@@ -22,8 +22,9 @@ import os
 import re
 import threading
 import unicodedata
+from typing import Sequence
 
-from nemo_retriever.llm.types import RetrievalResult
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,21 @@ def _normalize_query(text: str) -> str:
     text = text.strip().casefold()
     text = re.sub(r"\s+", " ", text)
     return text
+
+
+def _validate_top_k(top_k: int) -> int:
+    """Reject non-positive ``top_k`` at the public boundary.
+
+    Without this guard, ``top_k=0`` silently produces miss-shaped rows
+    (empty ``chunks`` / ``metadata``) without bumping ``_miss_count`` --
+    a behavioural divergence between the "real miss" and "zero-budget"
+    states.  Negative values produce even stranger results via Python
+    slice semantics (``list[:-1]`` returns all-but-last).  Surface both
+    as a clear ``ValueError`` instead.
+    """
+    if top_k <= 0:
+        raise ValueError(f"top_k must be > 0; got {top_k!r}")
+    return int(top_k)
 
 
 class FileRetriever:
@@ -223,21 +239,101 @@ class FileRetriever:
 
         return coverage
 
-    def retrieve(self, query: str, top_k: int) -> RetrievalResult:
-        """Look up pre-computed chunks for a query string."""
+    def _record_miss(self, query: str) -> None:
+        """Increment the miss counter and emit a suppression-aware warning.
+
+        Single owner of the miss-warning policy: the first 20 misses log
+        a warning, the 21st logs a one-time "suppressing further" notice,
+        and all subsequent misses are silent.  Counter access is
+        serialised through ``self._miss_lock`` so concurrent callers
+        (e.g. the orchestrator's ``ThreadPoolExecutor``) can never
+        double-count or race on the suppression boundary.
+        """
+        with self._miss_lock:
+            self._miss_count += 1
+            count = self._miss_count
+        if count <= 20:
+            logger.warning("FileRetriever: query not found in retrieval file: %r", query)
+        elif count == 21:
+            logger.warning("FileRetriever: suppressing further miss warnings (>20)")
+
+    def _lookup(self, query: str, top_k: int) -> tuple[list[str], list[dict]]:
+        """Return the ``(chunks, metadata)`` pair for ``query``.
+
+        Single source of truth for the normalise + dict-get + miss-record
+        + slice path shared by :meth:`retrieve` and
+        :meth:`retrieve_many`.  Missing queries return ``([], [])`` and
+        increment the miss counter via :meth:`_record_miss`; both lists
+        are sliced to ``top_k`` for hits.  Never raises -- callers can
+        rely on the graceful-miss contract.
+        """
         norm = _normalize_query(query)
         entry = self._norm_index.get(norm)
-
         if entry is None:
-            with self._miss_lock:
-                self._miss_count += 1
-                count = self._miss_count
-            if count <= 20:
-                logger.warning("FileRetriever: query not found in retrieval file: %r", query)
-            elif count == 21:
-                logger.warning("FileRetriever: suppressing further miss warnings (>20)")
-            return RetrievalResult(chunks=[], metadata=[])
+            self._record_miss(query)
+            return [], []
+        return entry.get("chunks", [])[:top_k], entry.get("metadata", [])[:top_k]
 
-        chunks = entry.get("chunks", [])[:top_k]
-        metadata = entry.get("metadata", [])[:top_k]
-        return RetrievalResult(chunks=chunks, metadata=metadata)
+    def retrieve(self, query: str, top_k: int) -> pd.DataFrame:
+        """Look up pre-computed chunks for a query string.
+
+        Returns a single-row :class:`pandas.DataFrame` with columns
+        ``[query, chunks, metadata]`` -- the same shape produced by
+        :func:`nemo_retriever.generation.retrieve` -- so that the QA eval
+        harness can consume both live and cached retrieval through the
+        same DataFrame contract.  Missing queries are represented as a
+        row with empty ``chunks`` / ``metadata`` lists rather than a
+        raised exception, mirroring the previous "graceful miss"
+        behaviour that counted misses on ``_miss_count``.
+
+        Raises:
+            ValueError: ``top_k`` is not a positive integer.
+        """
+        top_k = _validate_top_k(top_k)
+        chunks, metadata = self._lookup(query, top_k)
+        return pd.DataFrame([{"query": query, "chunks": chunks, "metadata": metadata}])
+
+    def retrieve_many(self, queries: Sequence[str], top_k: int) -> pd.DataFrame:
+        """Batched lookup for multiple queries.
+
+        Returns a :class:`pandas.DataFrame` with columns
+        ``[query, chunks, metadata]`` -- one row per input query, in
+        input order -- so callers can ``zip`` the result against
+        per-query metadata (references, ground truth, ...) without
+        worrying about row-order drift.  Builds a single DataFrame from
+        a single ``rows: list[dict]`` rather than concatenating N
+        single-row frames, so it is also cheaper than calling
+        :meth:`retrieve` in a loop.
+
+        Contract:
+            **Must not raise per-batch.**  Per-query failures degrade to
+            a row with empty ``chunks`` / ``metadata`` lists and a
+            recorded miss; this is what allows the orchestrator's fast
+            path (see :meth:`QAEvalPipeline._prepare_dataframe
+            <nemo_retriever.evaluation.orchestrator.QAEvalPipeline._prepare_dataframe>`)
+            to skip its threaded fan-out without an outer try/except.
+
+        Args:
+            queries: Sequence of query strings.  Order is preserved in
+                the returned DataFrame.  Empty input returns an empty
+                DataFrame with the canonical ``[query, chunks,
+                metadata]`` columns.
+            top_k: Maximum chunks to return per query.
+
+        Returns:
+            DataFrame with columns ``[query, chunks, metadata]`` and one
+            row per input query.
+
+        Raises:
+            ValueError: ``top_k`` is not a positive integer.
+        """
+        top_k = _validate_top_k(top_k)
+        if not queries:
+            return pd.DataFrame(columns=["query", "chunks", "metadata"])
+
+        rows: list[dict] = []
+        for query in queries:
+            chunks, metadata = self._lookup(query, top_k)
+            rows.append({"query": query, "chunks": chunks, "metadata": metadata})
+
+        return pd.DataFrame(rows, columns=["query", "chunks", "metadata"])
