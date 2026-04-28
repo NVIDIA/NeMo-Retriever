@@ -38,8 +38,11 @@ def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Option
     """Coerce a per-utterance timestamp to seconds, divided down from ms when needed.
 
     Local Parakeet returns seconds; the remote NIM client returns milliseconds.
-    We can't tell from the dict which produced it, but a seconds-valued
-    utterance can't exceed the chunk duration — so anything past it must be ms.
+    A seconds-valued utterance can't exceed the chunk duration — so anything
+    past it must be ms. When the chunk duration is unknown (probe_media
+    couldn't resolve it for some segmented MP4s and chunk_actor.py substitutes
+    0.0), fall back to a value-range check: no legitimate audio segment lasts
+    more than an hour, so anything past 3600 must be ms.
     """
     if value is None:
         return None
@@ -48,6 +51,8 @@ def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Option
     except (TypeError, ValueError):
         return None
     if chunk_duration_secs > 0 and v > chunk_duration_secs:
+        return v / 1000.0
+    if chunk_duration_secs <= 0 and v > 3600:
         return v / 1000.0
     return v
 
