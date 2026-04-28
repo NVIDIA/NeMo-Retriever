@@ -1,9 +1,17 @@
 # NeMo Retriever documentation — single MkDocs config for NVIDIA docs and GitHub Pages.
 # Flat numbered nav (sections 1–13) drives the NRL TOC everywhere.
 #
-# Build: mkdocs build -f mkdocs.yml [--strict]
-# GitHub Pages: SITE_URL is set by configure-pages to the Pages base URL; locally omit it
-# to use the default NVIDIA docs URL below.
+# Local setup (once, from repository root):
+#   pip install -r docs/requirements.txt
+#   pip install -e ./nemo_retriever
+#
+# Local build (strict; from docs/):
+#   cd docs && mkdocs build -f mkdocs.yml --strict
+# Output: docs/site/ (static HTML; open site/index.html or serve the folder).
+#
+# GitHub Pages: .github/workflows/nrl-docs-github-pages.yml runs the same command after
+# actions/configure-pages sets SITE_URL, then uploads docs/site as the Pages artifact.
+# Locally, omit SITE_URL to use the default site_url below.
 
 site_name: NeMo Retriever Documentation
 site_description: NeMo Retriever documentation — library, deployment, and operations guides
