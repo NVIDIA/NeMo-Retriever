@@ -35,7 +35,7 @@ For more information, refer to [Extract Captions from Images](python-api-referen
 For scanned documents, or documents with complex layouts, 
 we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
 Nemotron parse provides higher-accuracy text extraction. 
-For more information, refer to [Advanced Visual Parsing](nemotron-parse.md).
+For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 
 

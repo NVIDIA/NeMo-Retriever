@@ -653,6 +653,6 @@ Face Parakeet model.
 
 - [Split Documents](chunking.md)
 - [Troubleshoot NeMo Retriever Library](troubleshoot.md)
-- [Advanced Visual Parsing](nemotron-parse.md)
+- [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse)
 - [Use the NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio-video.md)
 - [Use Multimodal Embedding](embedding.md)

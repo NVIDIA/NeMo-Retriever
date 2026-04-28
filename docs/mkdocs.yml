@@ -86,7 +86,6 @@ nav:
       - Tables: extraction/extraction-tables.md
       - "Charts and infographics": extraction/extraction-charts-infographics.md
       - "OCR and scanned documents": extraction/extraction-ocr-scanned.md
-      - "Nemotron Parse based parsing": extraction/nemotron-parse.md
       - Image captioning: extraction/image-captioning.md
       - "Metadata and content schema": extraction/multimodal-metadata-schema.md
       - "Extraction limitations and quality": extraction/throughput-is-dataset-dependent.md
@@ -174,7 +173,7 @@ plugins:
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
         extraction/ngc-api-key.md: extraction/api-keys.md
         extraction/data-store.md: extraction/vdbs.md
-        extraction/nemoretriever-parse.md: extraction/nemotron-parse.md
+        extraction/nemoretriever-parse.md: extraction/text-layout-extraction.md
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
         extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md

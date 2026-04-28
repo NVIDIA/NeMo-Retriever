@@ -569,6 +569,6 @@ Set extract_audio_params={"segment_audio": True} to output sentence-like audio s
 
 - [Split Documents](chunking.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Advanced Visual Parsing](nemotron-parse.md)
+- [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse)
 - [Use NeMo Retriever Library with the Parakeet ASR NIM for Audio Processing](audio-video.md)
 - [Use Multimodal Embedding](embedding.md)
