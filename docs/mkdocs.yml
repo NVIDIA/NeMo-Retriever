@@ -123,7 +123,8 @@ nav:
   - "12. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
       - "Python API": extraction/python-api-reference.md
-      - "CLI reference": extraction/cli-reference.md
+      # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
+      - "CLI reference": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
       - Environment variables: extraction/environment-config.md
       - "Metadata reference": extraction/content-metadata.md
   - "13. Support & community":
@@ -163,7 +164,8 @@ plugins:
       redirect_maps:
         index.md: extraction/overview.md
         extraction/index.md: extraction/overview.md
-        extraction/nv-ingest_cli.md: extraction/cli-reference.md
+        # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
+        extraction/nv-ingest_cli.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
         extraction/nv-ingest-python-api.md: extraction/python-api-reference.md
         extraction/helm.md: extraction/deployment-options.md
         extraction/quickstart-guide.md: extraction/deployment-options.md

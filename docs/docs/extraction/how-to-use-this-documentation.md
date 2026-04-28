@@ -4,7 +4,7 @@ Use the sections below as a reading order that matches how you run NeMo Retrieve
 
 ## NeMo Retriever Library (local or embedded)
 
-Start with the [Introduction](overview.md), [Concepts](concepts.md), and [Get started](getting-started-about.md) pages. Then follow [Prerequisites](prerequisites.md), [Quickstart: Library mode](quickstart-library-mode.md), and either the [Python API](python-api-reference.md) or [CLI](cli-reference.md). For deeper topics, refer to [Document ingestion workflow](workflow-document-ingestion.md) and [Multimodal extraction](supported-file-types.md).
+Start with the [Introduction](overview.md), [Concepts](concepts.md), and [Get started](getting-started-about.md) pages. Then follow [Prerequisites](prerequisites.md), [Quickstart: Library mode](quickstart-library-mode.md), and either the [Python API](python-api-reference.md) or [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli). For deeper topics, refer to [Document ingestion workflow](workflow-document-ingestion.md) and [Multimodal extraction](supported-file-types.md).
 
 ## Microservices, Helm, and production clusters
 

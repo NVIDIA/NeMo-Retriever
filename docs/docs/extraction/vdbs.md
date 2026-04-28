@@ -18,7 +18,7 @@ It does not store the embeddings for images.
     To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](python-api-reference.md#store-extracted-images).
 
 NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](python-api-reference.md).
-Currently, data upload is not supported through the [CLI](cli-reference.md).
+Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 
 

@@ -97,7 +97,7 @@ h. Run `kubectl get pods -n <your-namespace>`. You should see pods reach `Runnin
 
 ## Step 2: Ingest Documents
 
-You can submit jobs programmatically in Python or using the [CLI](cli-reference.md).
+You can submit jobs programmatically in Python or using the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 !!! important "Python version"
 
