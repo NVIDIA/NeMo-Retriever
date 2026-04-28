@@ -66,7 +66,6 @@ extra_css:
 nav:
   - "1. Introduction":
       - "What is NeMo Retriever?": extraction/overview.md
-      - Key features: extraction/key-features.md
       - Key concepts: extraction/concepts.md
       - Release notes: extraction/releasenotes.md
   - "2. Get started":
