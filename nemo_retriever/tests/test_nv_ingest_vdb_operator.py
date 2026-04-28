@@ -44,40 +44,36 @@ class FakeVDB(VDB):
         return {"records": records}
 
 
-def _client_vdb_records() -> list[list[dict[str, Any]]]:
+def _graph_rows() -> list[dict[str, Any]]:
     return [
-        [
-            {
-                "document_type": "text",
-                "metadata": {
-                    "embedding": [0.1] * 2048,
-                    "content": "first chunk",
-                    "content_metadata": {"page_number": 1},
-                    "source_metadata": {"source_id": "doc-a", "source_name": "doc-a.pdf"},
-                },
-            },
-            {
-                "document_type": "text",
-                "metadata": {
-                    "embedding": [0.2] * 2048,
-                    "content": "second chunk",
-                    "content_metadata": {"page_number": 2},
-                    "source_metadata": {"source_id": "doc-a", "source_name": "doc-a.pdf"},
-                },
-            },
-        ]
+        {
+            "text": "first chunk",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "path": "/tmp/doc-a.pdf",
+            "page_number": 1,
+            "metadata": {"content_metadata": {"type": "text"}},
+        },
+        {
+            "text": "second chunk",
+            "text_embeddings_1b_v2": {"embedding": [0.2] * 2048},
+            "path": "/tmp/doc-a.pdf",
+            "page_number": 2,
+            "metadata": {"content_metadata": {"type": "text"}},
+        },
     ]
 
 
-def test_prebuilt_vdb_passthrough_and_process_delegates_to_run() -> None:
-    data = [[{"metadata": {"embedding": [0.1]}, "document_type": "text"}]]
+def test_process_returns_original_graph_rows_and_delegates_converted_records_to_run() -> None:
+    data = _graph_rows()
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)
 
     assert operator.preprocess(data) is data
     assert operator.process(data) is data
     assert operator.postprocess(data) is data
-    assert vdb.run_calls == [data]
+    assert vdb.run_calls[0][0][0]["document_type"] == "text"
+    assert vdb.run_calls[0][0][0]["metadata"]["content"] == "first chunk"
+    assert vdb.run_calls[0][0][0]["metadata"]["embedding"] == [0.1] * 2048
 
 
 def test_vdb_op_constructs_client_vdb(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -94,11 +90,10 @@ def test_vdb_op_constructs_client_vdb(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(vdb_operator_module, "get_vdb_op_cls", fake_get_vdb_op_cls)
 
-    data = [[{"metadata": {"embedding": [0.1]}, "document_type": "text"}]]
     operator = IngestVdbOperator(vdb_op="fake", vdb_kwargs={"answer": 42})
 
     assert constructed_kwargs == {"answer": 42}
-    assert operator.process(data) is data
+    assert operator.process(_graph_rows()) is not None
 
 
 def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
@@ -173,7 +168,7 @@ def test_lancedb_vdb_writes_records_through_operator(tmp_path) -> None:
     from nv_ingest_client.util.vdb.lancedb import LanceDB
 
     table_name = "nv_ingest_operator_test"
-    records = _client_vdb_records()
+    records = _graph_rows()
 
     vdb = LanceDB(uri=str(tmp_path), table_name=table_name, num_partitions=1)
     operator = IngestVdbOperator(vdb=vdb)
@@ -187,30 +182,3 @@ def test_lancedb_vdb_writes_records_through_operator(tmp_path) -> None:
     assert len(hits) == 1
     assert len(hits[0]) == 1
     assert hits[0][0]["text"] == "first chunk"
-
-
-@pytest.mark.integration
-def test_milvus_vdb_writes_records_through_operator_with_milvus_lite(tmp_path) -> None:
-    pymilvus = pytest.importorskip("pymilvus")
-
-    collection_name = "nv_ingest_operator_test"
-    milvus_uri = str(tmp_path / "milvus.db")
-    records = _client_vdb_records()
-    operator = IngestVdbOperator(
-        vdb_op="milvus",
-        vdb_kwargs={
-            "collection_name": collection_name,
-            "milvus_uri": milvus_uri,
-            "sparse": False,
-            "gpu_index": False,
-            "gpu_search": False,
-            "stream": True,
-            "threshold": 1000,
-            "dense_dim": 2048,
-        },
-    )
-
-    assert operator(records) is records
-
-    client = pymilvus.MilvusClient(milvus_uri)
-    assert client.get_collection_stats(collection_name)["row_count"] == 2

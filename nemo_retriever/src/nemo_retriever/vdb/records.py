@@ -9,45 +9,14 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Iterable
-
-
-def _graph_rows(data: Any) -> list[dict[str, Any]]:
-    """Return graph output rows from the forms used by GraphIngestor."""
-    if hasattr(data, "take_all"):
-        data = data.take_all()
-    if hasattr(data, "to_dict"):
-        try:
-            return list(data.to_dict(orient="records"))
-        except TypeError:
-            pass
-    if isinstance(data, (str, bytes)):
-        return []
-    if isinstance(data, dict):
-        return [data]
-    if isinstance(data, list):
-        return [row for row in data if isinstance(row, dict)]
-    if isinstance(data, Iterable):
-        return [row for row in data if isinstance(row, dict)]
-    return []
-
-
-def _is_client_record(element: Any) -> bool:
-    return isinstance(element, dict) and "document_type" in element and isinstance(element.get("metadata"), dict)
-
-
-def _is_nested_client_records(data: Any) -> bool:
-    return (
-        isinstance(data, list)
-        and bool(data)
-        and all(isinstance(group, list) for group in data)
-        and all(_is_client_record(element) for group in data for element in group)
-    )
+from typing import Any
 
 
 def _embedding_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
+    if metadata.get("embedding") is not None:
+        return metadata["embedding"]
     payload = row.get("text_embeddings_1b_v2")
-    return metadata.get("embedding") or (payload.get("embedding") if isinstance(payload, dict) else None)
+    return payload.get("embedding") if isinstance(payload, dict) else None
 
 
 def _first_str(*values: Any) -> str:
@@ -66,16 +35,19 @@ def _optional_int(value: Any) -> int | None:
     return None
 
 
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
 def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
-    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-    metadata = dict(metadata)
+    metadata = _dict_or_empty(row.get("metadata"))
 
     embedding = _embedding_from_graph_row(row, metadata)
     text = row.get("text") or row.get("content") or metadata.get("content")
     if embedding is None or not text:
         return None
 
-    content_metadata = dict(metadata.get("content_metadata") or {})
+    content_metadata = _dict_or_empty(metadata.get("content_metadata"))
     page_number = _optional_int(content_metadata.get("page_number"))
     if page_number is None:
         page_number = _optional_int(row.get("page_number"))
@@ -100,7 +72,7 @@ def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
         metadata.get("source_id"),
     )
     source_name = Path(source_path).name if source_path else str(row.get("filename") or row.get("source_id") or "")
-    source_metadata = dict(metadata.get("source_metadata") or {})
+    source_metadata = _dict_or_empty(metadata.get("source_metadata"))
     if source_path:
         source_metadata.setdefault("source_id", source_path)
     if source_name:
@@ -115,16 +87,13 @@ def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
     return {"document_type": str(row.get("document_type") or "text"), "metadata": record_metadata}
 
 
-def to_client_vdb_records(data: Any) -> list[list[dict[str, Any]]]:
+def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Convert graph-pipeline rows into the nested record shape expected by client VDBs."""
-    if data is None:
-        return []
-    if _is_nested_client_records(data):
-        return data
-
     records: list[dict[str, Any]] = []
-    for row in _graph_rows(data):
-        record = row if _is_client_record(row) else _client_record_from_graph_row(row)
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        record = _client_record_from_graph_row(row)
         if record is not None:
             records.append(record)
     return [records] if records else []
