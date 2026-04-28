@@ -164,7 +164,6 @@ plugins:
         extraction/index.md: extraction/overview.md
         # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
         extraction/nv-ingest_cli.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
-        extraction/nv-ingest-python-api.md: extraction/nemo-retriever-api-reference.md
         extraction/helm.md: extraction/deployment-options.md
         extraction/quickstart-guide.md: extraction/deployment-options.md
         extraction/choose-your-path.md: extraction/deployment-options.md
@@ -202,7 +201,6 @@ markdown_extensions:
 # MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
 exclude_docs: |
   index.md
-  extraction/nv-ingest-python-api.md
   extraction/helm.md
   extraction/quickstart-guide.md
   extraction/choose-your-path.md
