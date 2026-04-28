@@ -58,7 +58,7 @@ dependencies = [
   # Document parsing and NIM client libs
   "pypdfium2==4.30.0",
   "pillow==12.1.1",
-  "nltk==3.9.3",
+  "nltk==3.9.4",
   "markitdown",
   "langchain-nvidia-ai-endpoints>=0.3.0",
   # Default VDB solution
