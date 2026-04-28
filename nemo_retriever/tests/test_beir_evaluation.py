@@ -256,6 +256,26 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
 
     class _FakeRetriever:
         def __init__(self, **kwargs):
+            assert kwargs == {
+                "vdb": "lancedb",
+                "vdb_kwargs": {
+                    "uri": "/tmp/lancedb",
+                    "table_name": "nv-ingest",
+                    "hybrid": False,
+                    "nprobes": 0,
+                    "refine_factor": 10,
+                },
+                "embedder": "embedder",
+                "top_k": 10,
+                "local_hf_device": None,
+                "local_hf_cache_dir": None,
+                "local_hf_batch_size": 64,
+                "reranker": False,
+                "reranker_model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+                "reranker_endpoint": None,
+                "reranker_api_key": "",
+                "reranker_batch_size": 32,
+            }
             self.kwargs = kwargs
 
         def queries(self, queries):

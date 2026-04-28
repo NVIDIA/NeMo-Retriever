@@ -668,15 +668,16 @@ def evaluate_lancedb_beir(
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
     retriever = Retriever(
-        lancedb_uri=str(cfg.lancedb_uri),
-        lancedb_table=str(cfg.lancedb_table),
+        vdb="lancedb",
+        vdb_kwargs={
+            "uri": str(cfg.lancedb_uri),
+            "table_name": str(cfg.lancedb_table),
+            "hybrid": bool(cfg.hybrid),
+            "nprobes": int(cfg.nprobes),
+            "refine_factor": int(cfg.refine_factor),
+        },
         embedder=str(cfg.embedding_model),
-        embedding_http_endpoint=cfg.embedding_http_endpoint,
-        embedding_api_key=(cfg.embedding_api_key or "").strip(),
         top_k=max(ks),
-        nprobes=int(cfg.nprobes),
-        refine_factor=int(cfg.refine_factor),
-        hybrid=bool(cfg.hybrid),
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=Path(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
         local_hf_batch_size=int(cfg.local_hf_batch_size),

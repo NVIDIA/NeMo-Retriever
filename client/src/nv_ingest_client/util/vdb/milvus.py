@@ -2109,6 +2109,9 @@ class Milvus(VDB):
         _filter = kwargs.pop("_filter", "")
         gpu_search = bool(kwargs.pop("gpu_search", self.gpu_search))
         ef_param = int(kwargs.pop("ef_param", 200))
+        username = kwargs.pop("username", self.__dict__.get("username", None))
+        password = kwargs.pop("password", self.__dict__.get("password", None))
+        client = kwargs.pop("client", None)
 
         if kwargs.pop("hybrid", False):
             raise NotImplementedError("Milvus hybrid retrieval with precomputed vectors is not implemented.")
@@ -2117,7 +2120,11 @@ class Milvus(VDB):
         if not gpu_search:
             search_params["params"] = {"ef": ef_param}
 
-        client = MilvusClient(milvus_uri)
+        if client is None:
+            client_kwargs = {"uri": milvus_uri}
+            if username is not None or password is not None:
+                client_kwargs["token"] = f"{username or ''}:{password or ''}"
+            client = MilvusClient(**client_kwargs)
         return client.search(
             collection_name=collection_name,
             data=vectors,

@@ -338,14 +338,8 @@ def _build_embed_params(
     )
 
 
-def _resolve_vdb_upload_config(
-    *,
-    vdb_op: str,
-    vdb_kwargs_json: Optional[str],
-) -> tuple[str, dict[str, Any]]:
-    """Build opaque nv-ingest-client VDB constructor kwargs for upload."""
-    resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
-    vdb_kwargs: dict[str, Any] = {}
+def _parse_vdb_kwargs_json(vdb_kwargs_json: Optional[str]) -> dict[str, Any]:
+    """Parse opaque nv-ingest-client VDB constructor kwargs from CLI JSON."""
     if vdb_kwargs_json:
         try:
             parsed = json.loads(vdb_kwargs_json)
@@ -353,8 +347,8 @@ def _resolve_vdb_upload_config(
             raise typer.BadParameter(f"--vdb-kwargs-json must be valid JSON: {exc}") from exc
         if not isinstance(parsed, dict):
             raise typer.BadParameter("--vdb-kwargs-json must decode to a JSON object.")
-        vdb_kwargs.update(parsed)
-    return resolved_vdb_op, vdb_kwargs
+        return parsed
+    return {}
 
 
 def _build_ingestor(
@@ -510,11 +504,6 @@ def _run_evaluation(
 
     embed_model = resolve_embed_model(str(embed_model_name))
     eval_vdb_kwargs = dict(vdb_kwargs or {})
-    eval_vdb_kwargs.setdefault("model_name", embed_model)
-    if embed_invoke_url:
-        eval_vdb_kwargs.setdefault("embedding_endpoint", embed_invoke_url)
-    if embed_remote_api_key:
-        eval_vdb_kwargs.setdefault("nvidia_api_key", embed_remote_api_key)
 
     if evaluation_mode == "beir":
         raise ValueError("--evaluation-mode=beir is not available through the generic VDB pipeline path yet.")
@@ -530,6 +519,7 @@ def _run_evaluation(
     recall_cfg = RecallConfig(
         vdb_op=str(vdb_op),
         vdb_kwargs=eval_vdb_kwargs,
+        query_embedder=embed_model,
         top_k=10,
         ks=(1, 5, 10),
         match_mode=recall_match_mode,
@@ -841,10 +831,8 @@ def run(
         if run_mode == "batch":
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
 
-        resolved_vdb_op, resolved_vdb_kwargs = _resolve_vdb_upload_config(
-            vdb_op=vdb_op,
-            vdb_kwargs_json=vdb_kwargs_json,
-        )
+        resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
+        resolved_vdb_kwargs = _parse_vdb_kwargs_json(vdb_kwargs_json)
 
         remote_api_key = resolve_remote_api_key(api_key)
         extract_remote_api_key = remote_api_key

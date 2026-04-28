@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from nemo_retriever.model import VL_RERANK_MODEL
+from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.retriever import Retriever
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,12 @@ import pandas as pd
 class RecallConfig:
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
+    query_embedder: str = VL_EMBED_MODEL
     top_k: int = 10
     ks: Sequence[int] = (1, 3, 5, 10)
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
+    local_hf_batch_size: int = 64
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys
@@ -426,8 +428,7 @@ def retrieve_and_score(
     queries = df_query["query"].astype(str).tolist()
     gold = df_query["golden_answer"].astype(str).tolist()
     vdb_kwargs = dict(cfg.vdb_kwargs or {})
-    # TODO: Prefer passing the query embedding model explicitly in recall config.
-    query_embedder = str(vdb_kwargs.get("query_model_name") or vdb_kwargs.get("model_name") or VL_EMBED_MODEL)
+    query_embedder = str(cfg.query_embedder or VL_EMBED_MODEL)
     retriever = Retriever(
         vdb=str(cfg.vdb_op),
         vdb_kwargs=vdb_kwargs,
@@ -435,6 +436,7 @@ def retrieve_and_score(
         top_k=cfg.top_k,
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,
+        local_hf_batch_size=int(cfg.local_hf_batch_size),
         reranker=bool(cfg.reranker),
         reranker_model_name=cfg.reranker or VL_RERANK_MODEL,
         reranker_endpoint=cfg.reranker_endpoint,

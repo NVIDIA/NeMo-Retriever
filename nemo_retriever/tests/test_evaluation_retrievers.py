@@ -177,6 +177,43 @@ def test_from_lancedb_save_path_sets_file_path(tmp_path: Path) -> None:
     mock_write.assert_called_once()
 
 
+def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
+    import importlib
+
+    from nemo_retriever.export import query_lancedb
+
+    captured_kwargs: dict[str, object] = {}
+
+    class _FakeRetriever:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+
+        def queries(self, queries):
+            assert queries == ["What is the range of the 767?"]
+            return [[{"text": "range chunk", "source": "spec.pdf", "page_number": 3, "_distance": 0.1}]]
+
+    retriever_module = importlib.import_module("nemo_retriever.retriever")
+    monkeypatch.setattr(retriever_module, "Retriever", _FakeRetriever)
+
+    all_results, meta = query_lancedb(
+        lancedb_uri="/tmp/lancedb",
+        lancedb_table="nv-ingest",
+        queries=[{"query": "What is the range of the 767?"}],
+        top_k=7,
+        embedder="embedder",
+    )
+
+    assert captured_kwargs == {
+        "vdb": "lancedb",
+        "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "nv-ingest"},
+        "embedder": "embedder",
+        "top_k": 7,
+        "reranker": False,
+    }
+    assert all_results["What is the range of the 767?"]["chunks"] == ["range chunk"]
+    assert meta["collection_name"] == "nv-ingest"
+
+
 def test_from_lancedb_no_save_path_keeps_memory_label() -> None:
     """Without ``save_path`` the instance reports the in-memory origin."""
     fake_meta = {"lancedb_uri": "mock"}

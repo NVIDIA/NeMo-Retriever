@@ -16,8 +16,7 @@ installing ``litellm``::
 Credentials
 -----------
 Per-component API keys (``api_key``) and base URLs (``api_base``) are
-passed directly on ``LiteLLMClient.from_kwargs`` / ``LLMJudge.from_kwargs``
-or on ``Retriever(embedding_api_key=..., embedding_endpoint=...)``.  When
+passed directly on ``LiteLLMClient.from_kwargs`` / ``LLMJudge.from_kwargs``.  When
 ``api_key`` is left ``None`` the shared ``_ParamsModel`` validator
 resolves ``NVIDIA_API_KEY`` / ``NGC_API_KEY`` from the environment.  This
 keeps the common single-provider path a one-liner while still allowing

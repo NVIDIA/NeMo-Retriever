@@ -197,24 +197,16 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
     assert fake_ingestor.audio_asr_params["segment_audio"] is True
 
 
-def test_resolve_vdb_upload_config_keeps_non_lancedb_kwargs_opaque() -> None:
-    vdb_op, vdb_kwargs = pipeline_main._resolve_vdb_upload_config(
-        vdb_op="custom",
-        vdb_kwargs_json='{"collection_name": "docs", "uri": "http://localhost:19530"}',
+def test_parse_vdb_kwargs_json_keeps_backend_kwargs_opaque() -> None:
+    vdb_kwargs = pipeline_main._parse_vdb_kwargs_json(
+        '{"collection_name": "docs", "uri": "http://localhost:19530"}'
     )
 
-    assert vdb_op == "custom"
     assert vdb_kwargs == {"collection_name": "docs", "uri": "http://localhost:19530"}
 
 
-def test_resolve_vdb_upload_config_does_not_inject_backend_defaults() -> None:
-    vdb_op, vdb_kwargs = pipeline_main._resolve_vdb_upload_config(
-        vdb_op="lancedb",
-        vdb_kwargs_json=None,
-    )
-
-    assert vdb_op == "lancedb"
-    assert vdb_kwargs == {}
+def test_parse_vdb_kwargs_json_returns_empty_dict_when_omitted() -> None:
+    assert pipeline_main._parse_vdb_kwargs_json(None) == {}
 
 
 def test_batch_pipeline_routes_non_lancedb_vdb_to_upload_and_evaluation(tmp_path, monkeypatch) -> None:

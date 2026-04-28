@@ -47,6 +47,8 @@ class IngestVdbOperator(AbstractOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
+        # Compatibility shim: graph_pipeline emits flat embedded rows, while
+        # nv-ingest-client VDB.run still expects nested NV-Ingest records.
         records = to_client_vdb_records(data)
         self._vdb.run(records)
         return data

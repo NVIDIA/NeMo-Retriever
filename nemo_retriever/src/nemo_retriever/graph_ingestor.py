@@ -262,7 +262,7 @@ class GraphIngestor(ingestor):
     def vdb_upload(self, params: Optional[VdbUploadParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Upload final graph output through an nv-ingest-client VDB after execution."""
         self._vdb_upload_params = _coerce(params, kwargs, default_factory=VdbUploadParams)
-        self._record_stage("vdb_upload")
+        # self._record_stage("vdb_upload")
         return self
 
     # ------------------------------------------------------------------
