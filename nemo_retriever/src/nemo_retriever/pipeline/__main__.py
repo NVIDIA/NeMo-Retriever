@@ -455,17 +455,9 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
     Returns ``(records, result_df, ray_download_secs, num_input_units)``.
     """
 
-    import pandas as pd
-
-    if run_mode == "batch":
-        ray_download_start = time.perf_counter()
-        records = result.take_all()
-        ray_download_time = time.perf_counter() - ray_download_start
-        result_df = pd.DataFrame(records)
-    else:
-        result_df = result
-        records = result_df.to_dict("records")
-        ray_download_time = 0.0
+    result_df = result
+    records = result_df.to_dict("records")
+    ray_download_time = 0.0
 
     return records, result_df, float(ray_download_time), _count_input_units(result_df)
 
