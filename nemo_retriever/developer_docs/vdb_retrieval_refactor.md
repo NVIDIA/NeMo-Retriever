@@ -1,11 +1,11 @@
-# VDB Retrieval Refactor Scope
+# VDB Retrieval Refactor Scope and Current Contract
 
 **Module area:** `nemo_retriever.vdb`, `nemo_retriever.retriever`, graph pipeline recall
 
 ## Purpose
 
-This PR is about making graph-pipeline retrieval work across VDB backends
-without turning Retriever into a new retrieval framework.
+This PR is about making graph-pipeline upload and retrieval work across VDB
+backends without turning Retriever into a new retrieval framework.
 
 The intended mental model is:
 
@@ -13,7 +13,7 @@ The intended mental model is:
 > operator boundaries that can support LanceDB and Milvus.
 
 The immediate target is graph pipeline recall over locally embedded document
-chunks stored in LanceDB or Milvus. The PR should keep the implementation small,
+chunks stored in LanceDB or Milvus. The implementation should stay small,
 reviewable, and centered on the graph pipeline path.
 
 ## Why This Exists
@@ -43,12 +43,13 @@ is the backend boundary we want to satisfy. For this PR, that means:
 For graph recall, the desired contract is:
 
 1. The graph pipeline embeds document chunks with a local HF model.
-2. `IngestVdbOperator` uploads those already-embedded records through
+2. The pipeline CLI materializes the graph result once.
+3. `IngestVdbOperator` uploads those already-embedded records through
    `nv_ingest_client.util.vdb.VDB.run(...)`.
-3. `Retriever` embeds query strings with the matching local HF model.
-4. `RetrieveVdbOperator` passes those precomputed query vectors to
+4. `Retriever` embeds query strings with the matching local HF model.
+5. `RetrieveVdbOperator` passes those precomputed query vectors to
    `nv_ingest_client.util.vdb.VDB.retrieval(...)`.
-5. Recall scoring consumes normalized Retriever hits.
+6. Recall scoring consumes normalized Retriever hits.
 
 For this PR, VDB-agnostic means backend-agnostic storage and vector search. It
 does not mean embedding-owner-agnostic. Retriever remains the owner of local HF
@@ -56,12 +57,18 @@ query embedding unless we explicitly change that contract.
 
 ## In-Scope Flow: Graph Ingestion and VDB Upload
 
-The graph upload path is:
+The graph upload path is currently CLI orchestration, not a graph node:
 
 ```text
 pipeline run
-  -> GraphIngestor.vdb_upload(VdbUploadParams)
-  -> GraphIngestor._upload_vdb(...)
+  -> _build_ingestor(...)
+  -> GraphIngestor.ingest()
+  -> build_graph(...)
+  -> RayDataExecutor/InprocessExecutor
+  -> raw graph result
+  -> _collect_results(run_mode, raw_result)
+  -> _upload_vdb_records(records, vdb_op, vdb_kwargs)
+  -> IngestVdbOperator(records)
   -> IngestVdbOperator.process(...)
   -> graph rows -> nv-ingest-client VDB record shape
   -> nv_ingest_client.util.vdb.<backend>.run(records)
@@ -69,9 +76,14 @@ pipeline run
 
 Responsibilities:
 
-- `pipeline/__main__.py` resolves `vdb_op` and opaque `vdb_kwargs`.
-- `VdbUploadParams` carries `vdb_op` and backend-specific `vdb_kwargs`.
-- `GraphIngestor` invokes the upload operator after graph execution.
+- `pipeline/__main__.py` resolves `vdb_op` and opaque `vdb_kwargs`, owns result
+  materialization, and invokes VDB upload.
+- `GraphIngestor` only builds and executes the graph, then returns the graph
+  result.
+- `_collect_results(...)` is the single place that calls `take_all()` in batch
+  mode.
+- `_upload_vdb_records(...)` is the CLI handoff from materialized graph records
+  to VDB upload.
 - `IngestVdbOperator` is the boundary to nv-ingest-client VDB writers.
 - Record conversion exists only because `VDB.run(...)` expects the
   nv-ingest-client nested record shape, while graph output rows are ordinary
@@ -80,6 +92,27 @@ Responsibilities:
 This path should not contain LanceDB-specific logic except for the default
 `vdb_op="lancedb"` and whatever opaque kwargs are passed to the LanceDB client
 VDB implementation.
+
+### Why Upload Is Not a Graph Step Yet
+
+`vdb_upload` is intentionally not recorded in `GraphIngestor._stage_order`
+today. The previous post-graph hook made upload look like a graph stage while it
+actually ran after graph execution and cached materialized Ray records for the
+CLI. The current shape is more explicit:
+
+```text
+GraphIngestor
+  -> graph construction/execution only
+
+pipeline CLI
+  -> materialize once
+  -> upload once
+  -> save/evaluate/summarize
+```
+
+When VDB upload is made part of the graph, it should be added deliberately as a
+real graph sink/stage, likely by wiring `IngestVdbOperator` through graph
+construction rather than reintroducing a hidden post-execution hook.
 
 ## In-Scope Flow: Recall Against a Populated VDB
 
@@ -90,7 +123,7 @@ pipeline run --query-csv ...
   -> _run_evaluation(...)
   -> RecallConfig(vdb_op=..., vdb_kwargs=...)
   -> retrieve_and_score(...)
-  -> Retriever(vdb_op=..., vdb_kwargs=...)
+  -> Retriever(vdb=..., vdb_kwargs=...)
   -> Retriever.queries(...)
   -> local HF query embedding
   -> RetrieveVdbOperator.process(query_vectors, ...)
@@ -140,10 +173,6 @@ call VDB retrieval with query vectors
 rerank if configured
 ```
 
-The first implementation slice updates LanceDB to this vector-in retrieval
-contract. Milvus should follow the same pattern after the LanceDB path is
-validated.
-
 ## Records and Hit Normalization
 
 There are two separate conversion concerns that should not be confused:
@@ -151,7 +180,6 @@ There are two separate conversion concerns that should not be confused:
 1. **Upload conversion**
    - graph rows -> nv-ingest-client nested records
    - required while `VDB.run(records)` is the upload contract
-
 2. **Retrieval normalization**
    - backend/client hits -> Retriever hit dictionaries
    - required while LanceDB and Milvus return different hit shapes
@@ -170,7 +198,9 @@ These are intentionally out of scope for this PR unless explicitly reopened:
 - changing nv-ingest-client VDB behavior beyond the retrieval vector-in
   contract;
 - moving local HF query embedding into a new adapter;
-- making BEIR, harness, or outdated example pipelines fully VDB-agnostic;
+- making all legacy BEIR, harness, or outdated example pipelines fully
+  VDB-agnostic beyond the compatibility fixes needed to keep current callers
+  constructible;
 - preserving deprecated LanceDB public shims in the graph pipeline CLI;
 - adding a broad new retrieval framework.
 
@@ -182,6 +212,7 @@ The implementation should converge on:
 - `vdb_op` plus opaque `vdb_kwargs` for backend selection/configuration;
 - generic runtime language such as "VDB upload" instead of "LanceDB write";
 - minimal record conversion needed by the graph pipeline upload path;
+- one graph-result materialization point in the CLI before upload/evaluation;
 - local HF query embedding remaining in Retriever;
 - backend-specific vector search hidden behind VDB code, not spread through
   Retriever;
@@ -199,9 +230,24 @@ ingest jp20
   -> recall@1/5/10 matches between LanceDB and Milvus
 ```
 
-The most recent validation before this note showed:
+The most recent JP20 validation showed:
 
 ```text
-LanceDB recall@1/5/10: 0.6261 / 0.9043 / 0.9391
-Milvus recall@1/5/10:  0.6261 / 0.9043 / 0.9391
+LanceDB:
+  rows collected: 3154
+  rows uploaded:  3147
+  queries:        115
+  recall@1/5/10: 0.6261 / 0.9043 / 0.9391
+
+Milvus:
+  rows collected: 3154
+  rows uploaded:  3147
+  queries:        115
+  recall@1/5/10: 0.6261 / 0.9043 / 0.9391
 ```
+
+Milvus upload is expected to be slower for this local deployment because the
+current client backend uses MinIO-backed bulk import plus collection load/refresh
+for datasets above the streaming threshold. That behavior is backend-specific
+and outside this PR's scope unless Milvus upload performance is explicitly
+reopened.

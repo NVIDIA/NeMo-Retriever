@@ -380,8 +380,6 @@ def _build_ingestor(
     segment_audio: bool,
     audio_split_type: str,
     audio_split_interval: int,
-    vdb_op: str,
-    vdb_kwargs: dict[str, Any],
 ) -> GraphIngestor:
     """Construct a :class:`GraphIngestor` with all requested stages attached."""
 
@@ -443,10 +441,7 @@ def _build_ingestor(
             )
         )
 
-    return ingestor.embed(embed_params).vdb_upload(
-        vdb_op=vdb_op,
-        vdb_kwargs=vdb_kwargs,
-    )
+    return ingestor.embed(embed_params)
 
 
 def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
@@ -468,6 +463,20 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
         ray_download_time = 0.0
 
     return records, result_df, float(ray_download_time), _count_input_units(result_df)
+
+
+def _upload_vdb_records(records: list[dict[str, Any]], *, vdb_op: str, vdb_kwargs: dict[str, Any]) -> float:
+    """Upload materialized graph records through the configured VDB backend."""
+
+    from nemo_retriever.vdb import IngestVdbOperator
+
+    upload_start = time.perf_counter()
+    operator = IngestVdbOperator(
+        vdb_op=str(vdb_op),
+        vdb_kwargs=dict(vdb_kwargs or {}),
+    )
+    operator(records)
+    return time.perf_counter() - upload_start
 
 
 def _run_evaluation(
@@ -959,28 +968,20 @@ def run(
             segment_audio=segment_audio,
             audio_split_type=audio_split_type,
             audio_split_interval=audio_split_interval,
-            vdb_op=resolved_vdb_op,
-            vdb_kwargs=resolved_vdb_kwargs,
         )
 
         # --- Execute ---------------------------------------------------
         logger.info("Starting ingestion of %s ...", input_path)
         ingest_start = time.perf_counter()
         raw_result = ingestor.ingest()
-        ingestion_and_vdb_time = time.perf_counter() - ingest_start
-        vdb_upload_time = float(getattr(ingestor, "_last_vdb_upload_secs", 0.0))
-        ingestion_only_total_time = max(0.0, ingestion_and_vdb_time - vdb_upload_time)
-
-        cached_upload_records = getattr(ingestor, "_last_vdb_upload_records", None)
-        if run_mode == "batch" and cached_upload_records is not None:
-            import pandas as pd
-
-            ingest_local_results = cached_upload_records
-            result_df = pd.DataFrame(ingest_local_results)
-            ray_download_time = 0.0
-            num_rows = _count_input_units(result_df)
-        else:
-            ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
+        ingestion_only_total_time = time.perf_counter() - ingest_start
+        ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
+        logger.info("Uploading %s graph records to VDB backend %s ...", len(ingest_local_results), resolved_vdb_op)
+        vdb_upload_time = _upload_vdb_records(
+            ingest_local_results,
+            vdb_op=resolved_vdb_op,
+            vdb_kwargs=resolved_vdb_kwargs,
+        )
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()
