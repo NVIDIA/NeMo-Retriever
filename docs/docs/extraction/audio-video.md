@@ -32,13 +32,13 @@ This pipeline enables users to retrieve speech files at the segment level.
 
 
 
-## Run the NIM Locally by Using Docker Compose
+## Run the NIM locally (Helm)
 
 Use the following procedure to run the NIM on your own infrastructure.
 
 !!! important
 
-    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Edit docker-compose.yaml to set the device_id to a dedicated GPU: device_ids: ["1"] or higher.
+    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Pin the workload to that GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
 
 1. To access the required container images, log in to the NVIDIA Container Registry (nvcr.io). Use [your NGC key](api-keys.md) as the password. Run the following command in your terminal.
 
@@ -79,7 +79,8 @@ Use the following procedure to run the NIM on your own infrastructure.
         )
     )
     ```
-To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either self-hosted on your cluster or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
+
+    To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either self-hosted on your cluster or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
 
     !!! tip
 
