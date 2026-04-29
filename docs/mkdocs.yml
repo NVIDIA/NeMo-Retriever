@@ -81,7 +81,7 @@ nav:
       - About this section: extraction/getting-started-about.md
       - Prerequisites: extraction/prerequisites.md
       - "Hardware and support matrix": extraction/support-matrix.md
-      - "Quickstart: NeMo Retriever Library (local)": extraction/quickstart-library-mode.md
+      - "Quickstart: NeMo Retriever Library": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
       - "Authentication and API keys": extraction/api-keys.md
   - "3. Deployment options": extraction/deployment-options.md
   - "4. Core workflows":
