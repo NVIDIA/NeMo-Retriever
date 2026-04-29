@@ -353,7 +353,8 @@ class Retriever:
         Example:
             >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})
             >>> result = retriever.retrieve("What is RAG?", top_k=3)
-            >>> result.chunks[0][:40]  # doctest: +SKIP
+            >>> import itertools
+            >>> "".join(itertools.islice(result.chunks[0], 40))  # doctest: +SKIP
             'Retrieval augmented generation combines...'
         """
         from nemo_retriever.llm.types import RetrievalResult

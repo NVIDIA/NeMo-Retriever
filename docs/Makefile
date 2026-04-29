@@ -71,7 +71,7 @@ mkdocs:
 .PHONY: nrl-github-pages
 nrl-github-pages:
 	@echo "📚 Building NRL MkDocs site (mkdocs.yml, strict) — output: $(CURDIR)/site ..."
-	mkdocs build -f mkdocs.yml --strict
+	DISABLE_MKDOCS_2_WARNING=true mkdocs build -f mkdocs.yml --strict
 
 # Full docs pipeline
 .PHONY: docs

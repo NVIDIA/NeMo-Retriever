@@ -15,7 +15,7 @@ It does not store the embeddings for images.
 
 !!! tip "Storing Extracted Images"
 
-    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md#store-extracted-images).
+    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md).
 
 NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](nemo-retriever-api-reference.md).
 Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
@@ -131,7 +131,7 @@ You can control this by setting `stream=True`.
 
 !!! tip
 
-    When you use the `vdb_upload` method, the behavior of the upload depends on the `return_failures` parameter of the `ingest` method. For details, refer to [Capture Job Failures](nemo-retriever-api-reference.md#capture-job-failures).
+    When you use the `vdb_upload` method, the behavior of the upload depends on the `return_failures` parameter of the `ingest` method. For details, refer to [Capture Job Failures](nemo-retriever-api-reference.md).
 
 To upload to Milvus, use code similar to the following to define your `Ingestor`.
 
@@ -171,6 +171,6 @@ For more information, refer to [Build a Custom Vector Database Operator](https:/
 ## Related Topics
 
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
-- [Store Extracted Images](nemo-retriever-api-reference.md#store-extracted-images)
+- [Store Extracted Images](nemo-retriever-api-reference.md)
 - [Environment Variables](environment-config.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)

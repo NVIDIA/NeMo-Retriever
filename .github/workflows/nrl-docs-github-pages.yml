@@ -75,6 +75,7 @@ jobs:
         working-directory: docs
         env:
           SITE_URL: ${{ steps.pages.outputs.base_url || 'https://example.invalid/' }}
+          DISABLE_MKDOCS_2_WARNING: "true"
         run: mkdocs build -f mkdocs.yml --strict
 
       - name: Upload Pages artifact
