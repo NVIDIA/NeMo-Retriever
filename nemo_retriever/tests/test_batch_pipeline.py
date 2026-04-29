@@ -1,7 +1,8 @@
-import sys
 import json
+import sys
 from types import SimpleNamespace
 
+import pandas as pd
 from typer.testing import CliRunner
 
 import nemo_retriever.examples.graph_pipeline as batch_pipeline
@@ -20,6 +21,9 @@ class _FakeDataset:
 
     def take_all(self):
         return []
+
+    def to_pandas(self) -> pd.DataFrame:
+        return pd.DataFrame(self.take_all())
 
     def groupby(self, _key):
         class _FakeGrouped:

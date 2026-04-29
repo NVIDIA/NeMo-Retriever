@@ -11,8 +11,9 @@ pipeline run`` command relies on:
 * ``_build_extract_params``     — translation from CLI flags to ``ExtractParams``
                                   and the nested ``BatchTuningParams``.
 * ``_build_embed_params``       — translation from CLI flags to ``EmbedParams``.
-* ``_collect_results``          — Ray ``take_all`` vs. in-process DataFrame
-                                  handling + ``_count_input_units`` fallback.
+* ``_collect_results``          — materialize ingest output (a pandas
+                                  DataFrame, after ``Dataset.to_pandas()`` in
+                                  the graph executor) + ``_count_input_units`` fallback.
 * ``_ensure_lancedb_table``     — idempotent LanceDB table creation.
 
 They also exercise the lazy attribute access in
@@ -23,7 +24,6 @@ exports stay wired to ``__main__``.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 import pyarrow as pa
@@ -478,44 +478,32 @@ class TestBuildEmbedParams:
 # =============================================================================
 
 
-class _FakeRayDataset:
-    """Minimal stand-in for a Ray Data dataset produced by ``ingestor.ingest()``."""
-
-    def __init__(self, records: list[dict[str, Any]]) -> None:
-        self._records = records
-        self.take_all_calls = 0
-
-    def take_all(self) -> list[dict[str, Any]]:
-        self.take_all_calls += 1
-        return list(self._records)
-
-
 class TestCollectResults:
-    """Ray (batch) and pandas (inprocess) result materialization."""
+    """Ingest returns a DataFrame (``ingestor.ingest()`` → ``ds.to_pandas()``); _collect_results consumes it."""
 
-    def test_batch_mode_calls_take_all_and_builds_dataframe(self):
+    def test_batch_mode_accepts_ingest_dataframe(self):
         rows = [
             {"source_id": "a", "text": "hello"},
             {"source_id": "a", "text": "world"},
             {"source_id": "b", "text": "!"},
         ]
-        fake = _FakeRayDataset(rows)
+        # Same shape as the graph executor return after ``Dataset.to_pandas()``.
+        result_df = pd.DataFrame(rows)
 
-        records, df, download_time, num_units = _collect_results("batch", fake)
+        records, df, download_time, num_units = _collect_results("batch", result_df)
 
-        assert fake.take_all_calls == 1
         assert records == rows
+        assert df is result_df
         assert isinstance(df, pd.DataFrame)
         assert list(df.columns) == ["source_id", "text"]
         assert len(df) == 3
         # ``source_id`` has two distinct values → that is the unit count.
         assert num_units == 2
-        # Elapsed time is measured with ``perf_counter``; it must be non-negative.
         assert download_time >= 0.0
 
     def test_batch_mode_handles_empty_result(self):
-        fake = _FakeRayDataset([])
-        records, df, download_time, num_units = _collect_results("batch", fake)
+        result_df = pd.DataFrame()
+        records, df, download_time, num_units = _collect_results("batch", result_df)
         assert records == []
         assert df.empty
         # Empty DataFrame has no columns → falls through to len(df.index) == 0.

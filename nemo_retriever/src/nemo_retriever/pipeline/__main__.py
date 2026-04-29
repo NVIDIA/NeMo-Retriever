@@ -34,6 +34,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional, TextIO
 
+import pandas as pd
 import typer
 
 from nemo_retriever.audio import asr_params_from_env
@@ -452,10 +453,17 @@ def _build_ingestor(
 def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
     """Materialize the graph result into a list of records + DataFrame.
 
+    Ingest may return a ``pandas.DataFrame`` (in-process or after
+    ``ray.data.Dataset.to_pandas()`` in the executor) or a ``ray.data.Dataset``;
+    normalize via ``.to_pandas()`` when the result is not already a DataFrame.
+
     Returns ``(records, result_df, ray_download_secs, num_input_units)``.
     """
 
-    result_df = result
+    if isinstance(result, pd.DataFrame):
+        result_df = result
+    else:
+        result_df = result.to_pandas()
     records = result_df.to_dict("records")
     ray_download_time = 0.0
 

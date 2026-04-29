@@ -863,6 +863,9 @@ class TestRayDataExecutor:
             def materialize(self):
                 return self
 
+            def to_pandas(self):
+                return pd.DataFrame()
+
         captured: dict[str, object] = {}
 
         class _FakeDataContext:
@@ -896,7 +899,7 @@ class TestRayDataExecutor:
         executor = RayDataExecutor(Graph())
         result = executor.ingest([str(tmp_path / "**" / "*.pdf")])
 
-        assert isinstance(result, _FakeDataset)
+        assert isinstance(result, pd.DataFrame)
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
 
