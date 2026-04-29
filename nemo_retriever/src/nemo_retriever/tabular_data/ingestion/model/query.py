@@ -21,6 +21,7 @@ class Query:
         self.tables_ids: list[str] = []
         self.edges: list = []
         self.ast_node_count: int = 0
+        self.join_count: int = 0
 
         month = ltimestamp.month
         year = ltimestamp.year
@@ -61,6 +62,10 @@ class Query:
         AST sizes cannot be structurally equivalent.
         """
         return self.ast_node_count
+
+    def get_join_count(self) -> int:
+        """Number of join pairs extracted from the SQL by sqlglot."""
+        return self.join_count
 
     def get_edges(self) -> list:
         return self.edges

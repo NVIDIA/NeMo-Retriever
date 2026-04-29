@@ -50,7 +50,7 @@ class TableMatch:
 
 @dataclass
 class JoinPair:
-    """A single equi-join condition between two resolved columns.
+    """A single join condition between two resolved columns.
 
     Both table references are resolved through the alias map to their
     real (non-CTE, non-alias) qualified table names.
@@ -60,6 +60,7 @@ class JoinPair:
     left_column: str
     right_table: str
     right_column: str
+    operator: str = "="
 
 
 @dataclass
@@ -138,6 +139,15 @@ def _build_schema_dict(all_schemas: dict) -> dict[str, dict[str, str]]:
 
 _BINARY_CMP = (exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.NEQ)
 
+_OP_SYMBOL: dict[type, str] = {
+    exp.EQ: "=",
+    exp.GT: ">",
+    exp.GTE: ">=",
+    exp.LT: "<",
+    exp.LTE: "<=",
+    exp.NEQ: "!=",
+}
+
 
 def _unwrap_column(node: exp.Expression) -> exp.Column | None:
     """Return the single ``Column`` inside *node*, unwrapping functions/casts.
@@ -149,6 +159,46 @@ def _unwrap_column(node: exp.Expression) -> exp.Column | None:
         return node
     cols = list(node.find_all(exp.Column))
     return cols[0] if len(cols) == 1 else None
+
+
+def _build_derived_col_map(
+    qualified: exp.Expression,
+    alias_map: dict[str, str],
+    source_table_names: set[str],
+) -> dict[str, dict[str, tuple[str, str]]]:
+    """Map derived-table aliases to their output columns' real source.
+
+    For ``(SELECT order_items.order_id, ... FROM order_items) AS d``, produces:
+    ``{"d": {"order_id": ("order_items", "order_id"), ...}}``
+
+    Only maps columns that trace unambiguously to a single real source table.
+    """
+    derived: dict[str, dict[str, tuple[str, str]]] = {}
+    for subq in qualified.find_all(exp.Subquery):
+        alias = subq.alias.lower() if subq.alias else None
+        if not alias:
+            continue
+        inner_select = subq.find(exp.Select)
+        if not inner_select:
+            continue
+        col_map: dict[str, tuple[str, str]] = {}
+        for expr in inner_select.expressions:
+            output_name = expr.alias.lower() if isinstance(expr, exp.Alias) else None
+            source_expr = expr.this if isinstance(expr, exp.Alias) else expr
+            col = _unwrap_column(source_expr)
+            if col is None:
+                continue
+            if output_name is None:
+                output_name = col.name.lower() if col.name else None
+            if not output_name:
+                continue
+            tbl_ref = col.table.lower() if col.table else None
+            real_table = alias_map.get(tbl_ref) if tbl_ref else None
+            if real_table and real_table in source_table_names:
+                col_map[output_name] = (real_table, col.name.lower())
+        if col_map:
+            derived[alias] = col_map
+    return derived
 
 
 def _extract_join_pairs(
@@ -168,31 +218,44 @@ def _extract_join_pairs(
     * Binary comparisons (``=``, ``>``, ``>=``, ``<``, ``<=``, ``!=``)
     * ``BETWEEN … AND …``
     * Function-wrapped / cast-wrapped columns (e.g. ``LOWER(t.col)``)
+    * Columns referencing derived tables (traced back to source real table)
     """
+    derived_map = _build_derived_col_map(qualified, alias_map, source_table_names)
     pairs: list[JoinPair] = []
     seen: set[tuple[str, str, str, str]] = set()
 
-    def _try_add(lc: exp.Column, rc: exp.Column) -> None:
-        """Resolve aliases and append a deduplicated ``JoinPair``."""
-        lt_ref = lc.table.lower() if lc.table else None
-        rt_ref = rc.table.lower() if rc.table else None
-        lt = alias_map.get(lt_ref) if lt_ref else None
-        rt = alias_map.get(rt_ref) if rt_ref else None
+    def _resolve_col(col: exp.Column) -> tuple[str | None, str]:
+        """Resolve a column to (real_table, col_name), using derived_map as fallback."""
+        col_name = col.name.lower()
+        tbl_ref = col.table.lower() if col.table else None
+        real_table = alias_map.get(tbl_ref) if tbl_ref else None
+        if real_table and real_table in source_table_names:
+            return real_table, col_name
+        if tbl_ref and tbl_ref in derived_map:
+            entry = derived_map[tbl_ref].get(col_name)
+            if entry:
+                return entry
+        return None, col_name
+
+    def _try_add(lc: exp.Column, rc: exp.Column, op: str = "=") -> None:
+        """Resolve aliases and append a canonically-ordered, deduplicated ``JoinPair``."""
+        lt, l_col = _resolve_col(lc)
+        rt, r_col = _resolve_col(rc)
         if not lt or not rt:
             return
-        if lt not in source_table_names or rt not in source_table_names:
+        if lt == rt and l_col == r_col:
             return
-        if lt == rt and lc.name.lower() == rc.name.lower():
-            return
-        key = (lt, lc.name.lower(), rt, rc.name.lower())
-        key_rev = (rt, rc.name.lower(), lt, lc.name.lower())
-        if key not in seen and key_rev not in seen:
+        if (lt, l_col) > (rt, r_col):
+            lt, l_col, rt, r_col = rt, r_col, lt, l_col
+        key = (lt, l_col, rt, r_col)
+        if key not in seen:
             seen.add(key)
             pairs.append(JoinPair(
                 left_table=lt,
-                left_column=lc.name.lower(),
+                left_column=l_col,
                 right_table=rt,
-                right_column=rc.name.lower(),
+                right_column=r_col,
+                operator=op,
             ))
 
     for select_node in qualified.find_all(exp.Select):
@@ -223,7 +286,7 @@ def _extract_join_pairs(
                     lc = _unwrap_column(cmp.left)
                     rc = _unwrap_column(cmp.right)
                     if lc and rc:
-                        _try_add(lc, rc)
+                        _try_add(lc, rc, _OP_SYMBOL.get(type(cmp), "="))
 
                 for between in on_expr.find_all(exp.Between):
                     main_c = _unwrap_column(between.this)
@@ -232,9 +295,9 @@ def _extract_join_pairs(
                     low_c = _unwrap_column(low_arg) if low_arg else None
                     high_c = _unwrap_column(high_arg) if high_arg else None
                     if main_c and low_c:
-                        _try_add(main_c, low_c)
+                        _try_add(main_c, low_c, "BETWEEN")
                     if main_c and high_c:
-                        _try_add(main_c, high_c)
+                        _try_add(main_c, high_c, "BETWEEN")
             else:
                 using_cols = join_node.args.get("using") or []
                 if using_cols and chain and right_resolved:
@@ -242,15 +305,17 @@ def _extract_join_pairs(
                     for col_ident in using_cols:
                         col_name = col_ident.name.lower()
                         if left_table in source_table_names and right_resolved in source_table_names:
-                            key = (left_table, col_name, right_resolved, col_name)
-                            key_rev = (right_resolved, col_name, left_table, col_name)
-                            if key not in seen and key_rev not in seen:
+                            lt, lc, rt, rc = left_table, col_name, right_resolved, col_name
+                            if (lt, lc) > (rt, rc):
+                                lt, lc, rt, rc = rt, rc, lt, lc
+                            key = (lt, lc, rt, rc)
+                            if key not in seen:
                                 seen.add(key)
                                 pairs.append(JoinPair(
-                                    left_table=left_table,
-                                    left_column=col_name,
-                                    right_table=right_resolved,
-                                    right_column=col_name,
+                                    left_table=lt,
+                                    left_column=lc,
+                                    right_table=rt,
+                                    right_column=rc,
                                 ))
 
             if right_resolved:

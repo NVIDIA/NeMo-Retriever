@@ -113,12 +113,13 @@ def load_sqls_to_tables() -> pd.DataFrame:
             tbls: tbls,
             cols: cols,
             nodes_count: s.nodes_count,
+            join_count: coalesce(s.join_count, 0),
             sql_full_query: s.sql_full_query
         }}) AS sqls_tbls
     """
     result = get_neo4j_conn().query_read(query=query)
     if not result or not result[0].get("sqls_tbls"):
-        return pd.DataFrame(columns=["sql_id", "tbls", "cols", "nodes_count", "sql_full_query"])
+        return pd.DataFrame(columns=["sql_id", "tbls", "cols", "nodes_count", "join_count", "sql_full_query"])
     return pd.DataFrame(result[0]["sqls_tbls"])
 
 
@@ -127,12 +128,13 @@ def get_candidate_sql_ids(
     col_ids: list[str],
     nodes_count: int,
     sqls_tbls_df: pd.DataFrame,
+    join_count: int = 0,
 ) -> pd.DataFrame:
-    """Pre-filter graph SQLs by table set, column set (leaves), and AST node count.
+    """Pre-filter graph SQLs by table set, column set (leaves), AST node count, and join count.
 
     Mirrors the old ``get_sqls_connected_to_tables`` heuristic: same tables,
-    same leaf columns, same structural size.  Only candidates passing all
-    three gates need the expensive sqlglot structural comparison.
+    same leaf columns, same structural size, same number of joins.  Only
+    candidates passing all gates need the expensive sqlglot structural comparison.
     """
     if sqls_tbls_df.empty:
         return sqls_tbls_df.iloc[0:0]
@@ -141,6 +143,7 @@ def get_candidate_sql_ids(
     col_set = set(col_ids)
     mask = (
         (sqls_tbls_df["nodes_count"] == nodes_count)
+        & (sqls_tbls_df["join_count"] == join_count)
         & sqls_tbls_df["tbls"].apply(lambda t: set(t) == tbl_set)
         & sqls_tbls_df["cols"].apply(lambda c: set(c) == col_set)
     )

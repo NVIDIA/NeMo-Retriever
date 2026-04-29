@@ -353,6 +353,19 @@ def test_using_multi_column():
     assert ("order_items", "order_id", "orders", "order_id") in joins
 
 
+def test_derived_table_join():
+    """Join between a real table and a derived table traces back to the source columns."""
+    sql = """
+    SELECT t.order_id, d.total
+    FROM orders t
+    JOIN (SELECT order_id, SUM(price) AS total FROM order_items GROUP BY order_id) d
+      ON t.order_id = d.order_id
+    """
+    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    joins = _join_set(result.joins)
+    assert ("order_items", "order_id", "orders", "order_id") in joins
+
+
 def test_empty_sql_returns_no_joins():
     result = extract_tables_and_columns("", all_schemas=_ALL_SCHEMAS)
     assert result.joins == []
