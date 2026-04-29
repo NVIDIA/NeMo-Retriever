@@ -46,7 +46,7 @@ Pass `vdb_op="lancedb"` to `vdb_upload`, or construct a `LanceDB` instance and p
 from nv_ingest_client.util.vdb.lancedb import LanceDB
 
 vdb = LanceDB(
-    uri="lancedb",           # Path to LanceDB database directory
+    uri="./lancedb_data",    # Path to LanceDB database directory
     table_name="nemo-retriever",  # Table name
     index_type="IVF_HNSW_SQ",  # Index type (default)
     hybrid=False,            # Enable hybrid search (BM25 FTS + vector)

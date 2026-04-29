@@ -106,19 +106,30 @@ The following are the best practices when you work with custom metadata:
 ## Use Custom Metadata to Filter Results During Retrieval
 
 You can use custom metadata to filter documents during retrieval operations.
-Express filters with [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) (for example predicates on the `metadata` JSON your pipeline stored). The helper below performs vector search; add table-native filtering or post-filter in application code as needed for your schema.
+For **predicate pushdown**, use [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) on an opened table (see the native query sketch below). The **`lancedb_retrieval` helper does not accept a server-side filter**: it always returns up to `top_k` hits from the index, so any list comprehension over those hits is **application-side only**—raise `top_k` if your matches might sit outside the first `top_k` neighbors, or use a native `table.search(...).where(...)` query instead.
 
 
 ### Example filter ideas
 
-Typical keys to filter on include `category`, `department`, `priority`, and `timestamp` (use comparable ISO-8601 strings for time ranges). Apply them with [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) on the stored `metadata` column, or by inspecting `hit["entity"]["content_metadata"]` after vector search as in the example below.
+Typical keys to filter on include `category`, `department`, `priority`, and `timestamp` (use comparable ISO-8601 strings for time ranges). Encode predicates in LanceDB SQL against your table columns (often the serialized `metadata` string), or inspect `hit["entity"]["content_metadata"]` after search as in the `lancedb_retrieval` example below.
 
 ### Example: Use a Filter Expression in Search
 
 After ingestion is complete, and documents are uploaded to LanceDB with metadata,
-you can read `content_metadata` from each hit (or push predicates into LanceDB SQL) to narrow results—for example by department.
+you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
 
-The following example runs vector search with [lancedb_retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/lancedb.py); filter hits in Python or extend the query with LanceDB-native filters for your deployment.
+**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB SQL](https://lancedb.github.io/lancedb/sql/).
+
+```python
+import lancedb
+
+# Pseudocode sketch — replace YOUR_VECTOR and YOUR_PREDICATE with real values.
+db = lancedb.connect("./lancedb_data")
+table = db.open_table("nemo_retriever_collection")
+# table.search(YOUR_VECTOR, vector_column_name="vector").where(YOUR_PREDICATE).limit(10).to_list()
+```
+
+**`lancedb_retrieval` + post-filter:** the helper only returns `top_k` rows with no `where` argument; filtering in Python is for illustration and does **not** change what the database evaluates.
 
 ```python
 from nv_ingest_client.util.vdb.lancedb import lancedb_retrieval
@@ -140,7 +151,7 @@ for que in queries:
         top_k=top_k,
         model_name=model_name,
     )
-    # Example post-filter: keep hits whose content_metadata lists Engineering
+    # Application-side only: fewer than top_k hits if Engineering rows are not in this batch
     filtered = [
         hit
         for hit in batch[0]
