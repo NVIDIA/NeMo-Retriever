@@ -250,13 +250,15 @@ def _extract_join_pairs(
         key = (lt, l_col, rt, r_col)
         if key not in seen:
             seen.add(key)
-            pairs.append(JoinPair(
-                left_table=lt,
-                left_column=l_col,
-                right_table=rt,
-                right_column=r_col,
-                operator=op,
-            ))
+            pairs.append(
+                JoinPair(
+                    left_table=lt,
+                    left_column=l_col,
+                    right_table=rt,
+                    right_column=r_col,
+                    operator=op,
+                )
+            )
 
     for select_node in qualified.find_all(exp.Select):
         from_clause = select_node.args.get("from_")
@@ -276,9 +278,7 @@ def _extract_join_pairs(
             right_ast = join_node.this
             right_resolved = None
             if isinstance(right_ast, exp.Table):
-                right_resolved = alias_map.get(
-                    (right_ast.alias or right_ast.name).lower()
-                )
+                right_resolved = alias_map.get((right_ast.alias or right_ast.name).lower())
 
             on_expr = join_node.args.get("on")
             if on_expr:
@@ -311,12 +311,14 @@ def _extract_join_pairs(
                             key = (lt, lc, rt, rc)
                             if key not in seen:
                                 seen.add(key)
-                                pairs.append(JoinPair(
-                                    left_table=lt,
-                                    left_column=lc,
-                                    right_table=rt,
-                                    right_column=rc,
-                                ))
+                                pairs.append(
+                                    JoinPair(
+                                        left_table=lt,
+                                        left_column=lc,
+                                        right_table=rt,
+                                        right_column=rc,
+                                    )
+                                )
 
             if right_resolved:
                 chain.append(right_resolved)
@@ -506,7 +508,9 @@ def extract_tables_and_columns(
                 # table name for SQL that doesn't prefix tables with a schema.
                 qualified_name = f"{skey}.{tbl_n}"
                 matched = (
-                    qualified_name if qualified_name in source_table_names else (tbl_n if tbl_n in source_table_names else None)
+                    qualified_name
+                    if qualified_name in source_table_names
+                    else (tbl_n if tbl_n in source_table_names else None)
                 )
                 if matched and matched not in col_to_tables.get(col_n, []):
                     col_to_tables.setdefault(col_n, []).append(matched)

@@ -104,10 +104,9 @@ def parse_query_slim(sql_text: str, query_obj: Query, dialect: str, schemas: dic
         try:
             left_table_node = left_schema.get_table_node(left_bare)
             right_table_node = right_schema.get_table_node(right_bare)
-            if (
-                not left_schema.is_column_in_table(left_table_node, jp.left_column)
-                or not right_schema.is_column_in_table(right_table_node, jp.right_column)
-            ):
+            if not left_schema.is_column_in_table(
+                left_table_node, jp.left_column
+            ) or not right_schema.is_column_in_table(right_table_node, jp.right_column):
                 continue
             left_col_node = left_schema.get_column_node(jp.left_column, left_bare)
             right_col_node = right_schema.get_column_node(jp.right_column, right_bare)
@@ -120,7 +119,10 @@ def parse_query_slim(sql_text: str, query_obj: Query, dialect: str, schemas: dic
         except Exception:
             logger.debug(
                 "Failed to create JOIN edge: %s.%s → %s.%s",
-                left_bare, jp.left_column, right_bare, jp.right_column,
+                left_bare,
+                jp.left_column,
+                right_bare,
+                jp.right_column,
             )
             continue
 
