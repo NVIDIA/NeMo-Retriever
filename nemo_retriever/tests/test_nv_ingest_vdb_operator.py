@@ -30,11 +30,15 @@ class FakeVDB(VDB):
         return [
             [
                 {
+                    "_distance": 0.12,
+                    "bbox_xyxy_norm": "[0, 0, 1, 1]",
+                    "content_type": "table",
                     "entity": {
                         "text": "retrieved chunk",
                         "source": {"source_id": "doc-a.pdf"},
                         "content_metadata": {"page_number": 1},
-                    }
+                    },
+                    "stored_image_uri": "file:///tmp/page.png",
                 }
             ]
         ]
@@ -147,6 +151,10 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
                 "page_number": 1,
                 "pdf_basename": "doc-a",
                 "pdf_page": "doc-a_1",
+                "_distance": 0.12,
+                "stored_image_uri": "file:///tmp/page.png",
+                "content_type": "table",
+                "bbox_xyxy_norm": "[0, 0, 1, 1]",
             }
         ]
     ]

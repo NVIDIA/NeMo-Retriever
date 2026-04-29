@@ -467,6 +467,14 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
     return records, result_df, float(ray_download_time), _count_input_units(result_df)
 
 
+def _count_uploadable_vdb_records(records: list[dict[str, Any]]) -> int:
+    """Count records that will survive conversion into the client VDB record contract."""
+
+    from nemo_retriever.vdb.records import to_client_vdb_records
+
+    return sum(len(batch) for batch in to_client_vdb_records(records))
+
+
 def _upload_vdb_records(records: list[dict[str, Any]], *, vdb_op: str, vdb_kwargs: dict[str, Any]) -> float:
     """Upload materialized graph records through the configured VDB backend."""
 
@@ -1048,12 +1056,25 @@ def run(
         raw_result = ingestor.ingest()
         ingestion_only_total_time = time.perf_counter() - ingest_start
         ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
-        logger.info("Uploading %s graph records to VDB backend %s ...", len(ingest_local_results), resolved_vdb_op)
-        vdb_upload_time = _upload_vdb_records(
-            ingest_local_results,
-            vdb_op=resolved_vdb_op,
-            vdb_kwargs=resolved_vdb_kwargs,
-        )
+        uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+        if uploadable_vdb_records == 0:
+            logger.warning(
+                "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
+                evaluation_mode,
+            )
+            vdb_upload_time = 0.0
+        else:
+            logger.info(
+                "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
+                len(ingest_local_results),
+                uploadable_vdb_records,
+                resolved_vdb_op,
+            )
+            vdb_upload_time = _upload_vdb_records(
+                ingest_local_results,
+                vdb_op=resolved_vdb_op,
+                vdb_kwargs=resolved_vdb_kwargs,
+            )
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()
@@ -1072,6 +1093,13 @@ def run(
                 Path(detection_summary_file),
                 collect_detection_summary_from_df(result_df),
             )
+
+        if uploadable_vdb_records == 0:
+            if run_mode == "batch":
+                import ray
+
+                ray.shutdown()
+            return
 
         if evaluation_mode == "qa":
             from nemo_retriever.evaluation.cli import run_qa_sweep_from_config_dict

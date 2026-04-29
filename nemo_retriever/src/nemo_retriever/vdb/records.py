@@ -106,7 +106,7 @@ def _mapping(value: Any) -> dict[str, Any]:
         return {}
     try:
         parsed = json.loads(value)
-    except Exception:
+    except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
 

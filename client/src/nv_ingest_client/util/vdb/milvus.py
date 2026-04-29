@@ -2122,8 +2122,8 @@ class Milvus(VDB):
 
         if client is None:
             client_kwargs = {"uri": milvus_uri}
-            if username is not None or password is not None:
-                client_kwargs["token"] = f"{username or ''}:{password or ''}"
+            if username and password:
+                client_kwargs["token"] = f"{username}:{password}"
             client = MilvusClient(**client_kwargs)
         return client.search(
             collection_name=collection_name,

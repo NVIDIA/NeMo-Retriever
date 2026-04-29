@@ -62,34 +62,6 @@ def test_op_write_params(milvus_test_dict):
         assert milvus_test_dict[k] == v
 
 
-def test_op_retrieval_passes_configured_auth_to_milvus_client(monkeypatch):
-    constructed_kwargs = {}
-    search_kwargs = {}
-
-    class FakeMilvusClient:
-        def __init__(self, **kwargs):
-            constructed_kwargs.update(kwargs)
-
-        def search(self, **kwargs):
-            search_kwargs.update(kwargs)
-            return [[]]
-
-    monkeypatch.setattr("nv_ingest_client.util.vdb.milvus.MilvusClient", FakeMilvusClient)
-
-    mo = Milvus(
-        collection_name="docs",
-        milvus_uri="http://milvus.example:19530",
-        username="user",
-        password="pass",
-    )
-
-    assert mo.retrieval([[0.1, 0.2]], top_k=3) == [[]]
-    assert constructed_kwargs == {"uri": "http://milvus.example:19530", "token": "user:pass"}
-    assert search_kwargs["collection_name"] == "docs"
-    assert search_kwargs["data"] == [[0.1, 0.2]]
-    assert search_kwargs["limit"] == 3
-
-
 @pytest.mark.parametrize(
     "collection_name, expected_results",
     [

@@ -17,6 +17,7 @@ from nemo_retriever.pipeline.__main__ import (
     _build_embed_params,
     _collect_results,
     _count_input_units,
+    _count_uploadable_vdb_records,
     _parse_vdb_kwargs_json,
     _resolve_file_patterns,
 )
@@ -147,6 +148,30 @@ def test_collect_results_accepts_inprocess_dataframe() -> None:
     assert records == [{"source_path": "/a.pdf"}, {"source_path": "/b.pdf"}]
     assert download_time == 0.0
     assert num_units == 2
+
+
+def test_count_uploadable_vdb_records_filters_rows_without_embedding_or_text() -> None:
+    rows = [
+        {
+            "text": "keep",
+            "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
+            "source_id": "/tmp/doc-a.pdf",
+            "page_number": 1,
+        },
+        {
+            "text": "drop missing embedding",
+            "source_id": "/tmp/doc-a.pdf",
+            "page_number": 2,
+        },
+        {
+            "text_embeddings_1b_v2": {"embedding": [0.3, 0.4]},
+            "source_id": "/tmp/doc-a.pdf",
+            "page_number": 3,
+        },
+    ]
+
+    assert _count_uploadable_vdb_records(rows) == 1
+    assert _count_uploadable_vdb_records([]) == 0
 
 
 def test_count_input_units_prefers_source_id_then_source_path() -> None:
