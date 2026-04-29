@@ -93,7 +93,7 @@ nav:
         - Generate Your NGC Keys: extraction/ngc-api-key.md
         - Environment Variables: extraction/environment-config.md
         - Metadata Reference: extraction/content-metadata.md
-        - API Reference: extraction/api-docs
+        - API Reference: extraction/python-api-reference.md
       - Troubleshoot: extraction/troubleshoot.md
       - FAQ: extraction/faq.md
       - Contribute: extraction/contributing.md

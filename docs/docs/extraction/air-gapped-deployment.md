@@ -71,7 +71,7 @@ If your process forbids live `helm install` from URLs, use `helm pull` on the st
 ## Pinning versions and digests
 
 - Tags — Align Compose `*_TAG` / Helm `image.tag` fields with the same release line you qualified (for example `26.3.0` for the ingest image, NIM tags from `docker-compose.yaml` / `nimOperator` in `values.yaml`).
-- Digests — After `docker pull nvcr.io/...:tag`, run `docker inspect --format='{{index .RepoDigests 0}}' image:tag` (or use crane / skopeo; see tooling below) and record `repository@sha256:...`. Prefer deploying with digests in highly regulated environments; keep a mapping table from digest → human-readable tag for operations.
+- Digests — After `docker pull nvcr.io/...:tag`, run `docker inspect --format='{% raw %}{{index .RepoDigests 0}}{% endraw %}' image:tag` (or use crane / skopeo; see tooling below) and record `repository@sha256:...`. Prefer deploying with digests in highly regulated environments; keep a mapping table from digest → human-readable tag for operations.
 
 ## Mirroring images into a private registry
 
