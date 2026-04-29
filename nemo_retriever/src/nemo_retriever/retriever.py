@@ -58,7 +58,8 @@ def _build_label_where(
     Rows may store the semantic label in a top-level ``label`` column and/or inside
     the serialized ``metadata`` string. The filter is ``(label IN (...)) OR (<metadata LIKE …>)``
     when both exist, so vector search keeps rows whether the denormalized column or the blob
-    carries the label (and Neo4j-style ``Column`` vs ``column`` is covered in ``LIKE`` patterns).
+    carries the label. Callers are expected to pass canonical label values since we control
+    the label vocabulary at ingestion time.
     """
     if not label_in:
         return None
@@ -77,24 +78,14 @@ def _build_label_where(
         or_parts.append(f"label IN ({_sql_in_literals(labels)})")
 
     if have_metadata:
-
-        def value_variants(canonical: str) -> list[str]:
-            c = canonical.lower()
-            if c == "table":
-                return ["table", "Table", "TABLE"]
-            if c == "column":
-                return ["column", "Column", "COLUMN"]
-            return [canonical]
-
         like_parts: list[str] = []
         for lab in labels:
-            for v in value_variants(lab):
-                for inner in (f'"label": "{v}"', f'"label":"{v}"'):
-                    pat = "%" + inner + "%"
-                    like_parts.append(f"metadata LIKE {_sql_string_literal(pat)}")
-                inner_repr = f"'label': '{v}'"
-                pat_repr = "%" + inner_repr + "%"
-                like_parts.append(f"metadata LIKE {_sql_string_literal(pat_repr)}")
+            for inner in (f'"label": "{lab}"', f'"label":"{lab}"'):
+                pat = "%" + inner + "%"
+                like_parts.append(f"metadata LIKE {_sql_string_literal(pat)}")
+            inner_repr = f"'label': '{lab}'"
+            pat_repr = "%" + inner_repr + "%"
+            like_parts.append(f"metadata LIKE {_sql_string_literal(pat_repr)}")
         if like_parts:
             or_parts.append("(" + " OR ".join(like_parts) + ")")
 
