@@ -22,7 +22,7 @@ The core pipeline features include the following:
 - nemotron-table-structure-v1 — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. 
 - nemotron-graphic-elements-v1 — Detects graphic elements within chart images such as titles, legends, axes, and numerical values. 
 - nemotron-ocr-v1 — Image OCR model to detect and extract text from images.
-- retrieval — Enables embedding and indexing into Milvus.
+- retrieval — Enables embedding and indexing into [LanceDB](https://lancedb.com/) (default) or [Milvus](https://milvus.io/). For configuration and alternatives, refer to [Data Upload](data-store.md).
 
 Advanced features require additional GPU support and disk space. 
 This includes the following:
