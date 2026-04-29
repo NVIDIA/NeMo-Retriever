@@ -6,7 +6,7 @@ import os
 import json
 import logging
 
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import _get_llm_client
+from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -284,7 +284,7 @@ def get_sql_tool_response_top_k(
 
     result_dict = None
     try:
-        llm_client = _get_llm_client()
+        llm_client = get_llm_client()
     except ValueError as e:
         logger.error("Failed to initialize LLM client: %s", e)
         return _dict_to_sql_result(None)

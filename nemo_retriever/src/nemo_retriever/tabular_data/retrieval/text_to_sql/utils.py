@@ -51,7 +51,7 @@ TABLES_USAGE_PERCENTILE = "tables_usage_percentile"
 COLUMNS_USAGE_PERCENTILE = "columns_usage_percentile"
 
 
-def _get_llm_client() -> ChatNVIDIA:
+def get_llm_client() -> ChatNVIDIA:
     return ChatNVIDIA(
         base_url=os.environ.get("BASE_URL"),
         api_key=os.environ.get("NVIDIA_API_KEY"),
@@ -1009,7 +1009,7 @@ def dedupe_merge_relevant_tables(tables: list[dict]) -> list[dict]:
     return merged
 
 
-def _apply_foreign_key_hints(tables: list[dict], relevant_fks: list) -> None:
+def apply_foreign_key_hints(tables: list[dict], relevant_fks: list) -> None:
     """Set ``foreign_key`` on tables when name matches FK side (same as ``get_relevant_tables``)."""
     for table in tables:
         for fk in relevant_fks:
@@ -1067,7 +1067,7 @@ def get_relevant_fks_from_candidates_tables(
         logger.exception("get_relevant_fks failed for candidate tables")
         relevant_fks = []
 
-    _apply_foreign_key_hints(relevant_tables, relevant_fks)
+    apply_foreign_key_hints(relevant_tables, relevant_fks)
     _strip_relevant_tables()
     return relevant_tables, relevant_fks
 
@@ -1117,7 +1117,7 @@ def get_relevant_tables(
         except Exception:
             logger.exception("get_relevant_fks failed in get_relevant_tables")
             relevant_fks = []
-    _apply_foreign_key_hints(relevant_tables_list, relevant_fks)
+    apply_foreign_key_hints(relevant_tables_list, relevant_fks)
 
     return relevant_tables_list, relevant_fks
 

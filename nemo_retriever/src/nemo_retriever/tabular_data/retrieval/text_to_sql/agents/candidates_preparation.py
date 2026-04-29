@@ -26,7 +26,7 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
     Labels,
-    _apply_foreign_key_hints,
+    apply_foreign_key_hints,
     dedupe_merge_relevant_tables,
     get_relevant_fks_from_candidates_tables,
     get_relevant_tables,
@@ -108,7 +108,7 @@ class CandidatePreparationAgent(BaseAgent):
         relevant_tables.extend(additional_tables)
         relevant_fks.extend(additional_fks)
         relevant_tables = dedupe_merge_relevant_tables(relevant_tables)
-        _apply_foreign_key_hints(relevant_tables, relevant_fks)
+        apply_foreign_key_hints(relevant_tables, relevant_fks)
         self.logger.info(f"Found {len(relevant_tables)} relevant tables and {len(relevant_fks)} foreign keys")
 
         relevant_queries = _extract_relevant_queries(
