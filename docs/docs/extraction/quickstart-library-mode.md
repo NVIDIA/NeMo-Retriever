@@ -6,7 +6,11 @@
 
 Use the [Quick Start for NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/nemo_retriever/README.md) to set up and run the NeMo Retriever Library locally, so you can build a GPU‑accelerated, multimodal RAG ingestion pipeline that parses PDFs, HTML, text, audio, and video into LanceDB vector embeddings, integrates with Nemotron RAG models (locally or via NIM endpoints), which includes Ray‑based scaling with built‑in recall evaluation. Python 3.12 or later is required (see [Prerequisites](prerequisites.md)).
 
-By default, library mode stores vectors in LanceDB (embedded; data under `./lancedb` unless you set `uri`). You do not need `milvus-lite` or a running Milvus server for that path. To use Milvus instead (for example [milvus-lite](https://milvus.io/docs/milvus_lite.md) with a local `milvus.db` file), call `.vdb_upload` with `milvus_uri` and without selecting the LanceDB operator—for example `.vdb_upload(collection_name=..., milvus_uri="milvus.db", ...)` as shown in [Data Upload](data-store.md#upload-to-milvus).
+By default, library mode stores vectors in LanceDB (embedded; data under `./lancedb` unless you set `uri`). You do not need to pass `uri` for the default setup.
+
+```python
+store = ExtractorStore.from_default()
+```
 
 ## `run_pipeline`
 
@@ -115,15 +119,11 @@ This chart shows some gadgets, and some very fictitious costs.
 ... document extract continues ...
 ```
 
-## Query ingested content
+## Query ingested content (Milvus)
 
-### LanceDB (default path)
+This step is optional and shows how to query your ingested content from Milvus. If you are using the default LanceDB path, see `data-store.md` for LanceDB query examples.
 
-If you ingested with LanceDB as in the `run_pipeline` example, query with **`lancedb_retrieval`** or the `LanceDB` operator’s **`retrieval`** method using the same `uri` and `table_name` you passed to **`vdb_upload`**. See [Data Upload — Upload to LanceDB (default)](data-store.md#upload-to-lancedb-default) for a minimal example, hybrid search, and related configuration.
-
-### Milvus (optional)
-
-The following example uses **`nvingest_retrieval`** against a **Milvus** collection (for example data you uploaded with `milvus_uri`, including milvus-lite). Skip this subsection if you used LanceDB above.
+The following example uses `nvingest_retrieval` against a Milvus collection (for example data you uploaded with `milvus_uri`, including milvus-lite). If you ingested with **LanceDB** as in the previous example, use the LanceDB APIs, environment variables (`VDB_BACKEND`, `HYBRID`), and hybrid retrieval patterns described in [Data Upload](data-store.md) instead of this Milvus-specific helper.
 
 To query for relevant snippets of Milvus-ingested content, and use them with an LLM to generate answers, use the following code.
 

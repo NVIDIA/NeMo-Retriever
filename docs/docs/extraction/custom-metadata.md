@@ -4,7 +4,7 @@ You can upload custom metadata for documents during ingestion.
 By uploading custom metadata you can attach additional information to documents, 
 and use it for filtering results during retrieval operations. 
 For example, you can add author metadata to your documents, and filter by author when you retrieve results. 
-To create filters, you use [Milvus Filtering Expressions](https://milvus.io/docs/boolean.md).
+To create filters at query time, use predicates supported by [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) against your table schema (custom fields are serialized into the `metadata` column with your ingested chunks). For a worked example, see the repository notebook linked at the end of this page.
 
 Use this documentation to use custom metadata to filter search results when you work with [NeMo Retriever Library](overview.md).
 
