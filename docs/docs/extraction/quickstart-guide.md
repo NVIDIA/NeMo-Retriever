@@ -51,13 +51,13 @@ d. Create a .env file that contains your NVIDIA Build API key.
    
 e. Ensure your GPU nodes meet the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) and driver requirements from the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
-f. Install or upgrade the release. By default, the pipeline can use **LanceDB** as the vector database (embedded, in-process). If you want **Milvus** and related services, enable them in chart values instead of the LanceDB-only path. For more information about optional components (audio, nemotron-parse, VLM captioning, and Milvus), refer to [Profile Information](#profile-information) and [Data Upload](vdbs.md).
+f. Install or upgrade the release. The documented path uses **LanceDB** as the vector database (embedded, in-process). For more information about optional components (audio, nemotron-parse, VLM captioning), refer to [Profile Information](#profile-information) and [Data Upload](vdbs.md).
 
     Follow the `helm upgrade --install` flow in the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md), including NGC authentication and any `--set` values your cluster requires.
 
-    !!! tip "LanceDB (default)"
+    !!! tip "LanceDB"
 
-        LanceDB runs in-process and does not require Milvus, etcd, or MinIO unless you opt into Milvus in values. For details, refer to [Data Upload](vdbs.md).
+        LanceDB runs in-process alongside your client; you do not deploy separate vector-database containers for this path. For details, refer to [Data Upload](vdbs.md).
 
     !!! tip
 
@@ -76,7 +76,6 @@ g. When core services have fully started, `nvidia-smi` on a GPU node should show
     |  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
     |        ID   ID                                                             Usage      |
     |=======================================================================================|
-    |    0   N/A  N/A     80461      C   milvus                                     1438MiB |
     |    0   N/A  N/A     83791      C   tritonserver                               2492MiB |
     |    0   N/A  N/A     85605      C   tritonserver                               1896MiB |
     |    0   N/A  N/A     85889      C   tritonserver                               2824MiB |
@@ -141,11 +140,12 @@ ingestor = (
         text_depth="page"
     ).embed()
     .vdb_upload(
-        collection_name="test",
-        sparse=False,
+        vdb_op="lancedb",
+        uri="./lancedb_data",
+        table_name="test",
+        hybrid=False,
         # for llama-3.2 embedder, use 1024 for e5-v5
         dense_dim=2048,
-        # milvus_uri="http://milvus:19530"  # When running inside the cluster, use the in-cluster DNS name for the Milvus service.
     )
 )
 
@@ -178,7 +178,7 @@ The output looks similar to the following.
 
 ```
 Starting ingestion..
-1 records to insert to milvus
+Indexed records into LanceDB
 logged 8 records
 Total time: 5.479151725769043 seconds
 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost   Chart 1 - Hammer - Powerdrill - Bluetooth speaker - Minifridge - Premium desk fan Dollars $- - $20.00 - $40.00 - $60.00 - $80.00 - $100.00 - $120.00 - $140.00 - $160.00 Cost
@@ -309,8 +309,6 @@ INFO:retriever_client.processing:caption_ext: Avg: 0.55 ms, Median: 0.55 ms, Tot
 INFO:retriever_client.processing:caption_ext_channel_in: Avg: 0.51 ms, Median: 0.51 ms, Total Time: 0.51 ms, Total % of Trace Computation: 0.01%
 INFO:retriever_client.processing:embed_text: Avg: 1.21 ms, Median: 1.21 ms, Total Time: 1.21 ms, Total % of Trace Computation: 0.03%
 INFO:retriever_client.processing:embed_text_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
-INFO:retriever_client.processing:store_embedding_minio: Avg: 0.32 ms, Median: 0.32 ms, Total Time: 0.32 ms, Total % of Trace Computation: 0.01%
-INFO:retriever_client.processing:store_embedding_minio_channel_in: Avg: 1.18 ms, Median: 1.18 ms, Total Time: 1.18 ms, Total % of Trace Computation: 0.03%
 INFO:retriever_client.processing:message_broker_task_sink_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
 INFO:retriever_client.processing:No unresolved time detected. Trace times account for the entire elapsed duration.
 INFO:retriever_client.processing:Processed 1 files in 2.34 seconds.
@@ -384,7 +382,7 @@ The following table maps **logical capability bundles** (optional NIM and storag
 
 | Capability            | Type     | Description                                                       | 
 |-----------------------|----------|-------------------------------------------------------------------| 
-| `retrieval`           | Core     | Embedding NIM and (optional) GPU-accelerated Milvus. Omit extra Milvus-related values to stay on the default LanceDB backend where supported. | 
+| `retrieval`           | Core     | Embedding NIM for passage and query embeddings; pair with LanceDB in your client configuration for vector storage. | 
 | `audio`               | Advanced | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) ASR NIM for audio files. See [Audio Processing](audio-video.md). | 
 | `nemotron-parse`      | Advanced | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) for higher-accuracy text and table extraction. |
 | `vlm`                 | Advanced | [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning. Enables the `caption` API. See [Use Multimodal Embedding](embedding.md) and [Extract Captions from Images](nemo-retriever-api-reference.md). | 
@@ -393,7 +391,7 @@ The following table maps **logical capability bundles** (optional NIM and storag
 
 Infographics often combine text, charts, and diagrams into complex visuals. Vision-language model (VLM) captioning generates natural language descriptions that capture this complexity, making the content searchable and more accessible for downstream applications.
 
-Enable the VLM / captioning NIM and any dependencies (for example retrieval + Milvus if your values require them) in your Helm values, then upgrade the release. Refer to the chart README and [embedding](embedding.md) for the environment variables that select the multimodal embedding and caption stack.
+Enable the VLM / captioning NIM and the retrieval (embedding) stack your values require in your Helm values, then upgrade the release. Refer to the chart README and [embedding](embedding.md) for the environment variables that select the multimodal embedding and caption stack.
 
 ## Air-gapped deployment (Kubernetes)
 

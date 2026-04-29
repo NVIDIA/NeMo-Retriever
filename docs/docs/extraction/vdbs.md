@@ -5,10 +5,10 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) handle
 ## Overview
 
 NeMo Retriever Library supports extracting text representations of various forms of content,
-and ingesting to a vector database. **[LanceDB](https://lancedb.com/) is the default vector database backend** for storing and retrieving extracted embeddings. [Milvus](https://milvus.io/) remains fully supported as an alternative.
+and ingesting to a vector database. **[LanceDB](https://lancedb.com/) is the vector database backend** for storing and retrieving extracted embeddings.
 
 The data upload task (`vdb_upload`) pulls extraction results to the Python client,
-and then pushes them to the configured vector database (LanceDB or Milvus). When using Milvus, data is pushed by using its underlying MinIO object store service.
+and then pushes them to LanceDB (embedded, in-process).
 
 The vector database stores only the extracted text representations of ingested data.
 It does not store the embeddings for images.
@@ -24,21 +24,23 @@ Currently, data upload is not supported through the [CLI](https://github.com/NVI
 
 ## Why LanceDB?
 
-LanceDB delivers measurably lower retrieval latency through three architectural advantages over the previous Milvus default:
+LanceDB is optimized for low-latency retrieval in this stack:
 
-- **Lance columnar format** — Data is stored in Lance files, an Arrow/Parquet-style analytics layout optimized for fast local scans and indexed retrieval. This eliminates the serialization overhead of client-server protocols.
+- **Lance columnar format** — Data is stored in Lance files, an Arrow/Parquet-style analytics layout optimized for fast local scans and indexed retrieval. This reduces serialization overhead compared with a separate database server.
 - **IVF_HNSW_SQ index** — Vectors are scalar-quantized (SQ) within an IVF-HNSW index, compressing them for faster search with lower memory bandwidth cost.
-- **Embedded runtime** — LanceDB runs in-process, removing the multi-service dependency chain required by Milvus (Milvus server + etcd + MinIO). No external containers to start, configure, or maintain.
+- **Embedded runtime** — LanceDB runs in-process, so you do not run extra vector-database containers for the default path. Fewer moving parts to start, configure, and maintain.
 
-This combination of file format, index strategy, and simpler runtime path produces the latency improvements observed in benchmarks.
+This combination of file format, index strategy, and in-process runtime supports the latency characteristics described in benchmarks.
 
 
 
-## Upload to LanceDB (default)
+## Upload to LanceDB
 
 LanceDB uses the `LanceDB` operator class from the client library. You can configure it via the Python API or via the test harness.
 
 ### Programmatic API (Python)
+
+Pass `vdb_op="lancedb"` to `vdb_upload`, or construct a `LanceDB` instance and pass it as `vdb_op`:
 
 ```python
 from nv_ingest_client.util.vdb.lancedb import LanceDB
@@ -57,7 +59,7 @@ vdb.run(results)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
-When using the `Ingestor` with `vdb_upload`, the backend defaults to LanceDB unless you configure Milvus (refer to [Upload to Milvus](#upload-to-milvus)).
+When using the `Ingestor` with `vdb_upload`, omitting `vdb_op` in Python still selects the legacy `"milvus"` operator—use `vdb_op="lancedb"` (or a `LanceDB` instance) for LanceDB.
 
 ### Test harness configuration
 
@@ -65,17 +67,13 @@ In `tools/harness/test_configs.yaml`:
 
 ```yaml
 active:
-  vdb_backend: lancedb   # Options: "lancedb" (default) or "milvus"
-  hybrid: false          # LanceDB only: enable hybrid retrieval (FTS + vector)
-  sparse: false          # Milvus only: enable BM42 sparse embeddings
+  vdb_backend: lancedb
+  hybrid: false          # Set true to enable hybrid retrieval (FTS + vector)
 ```
 
 Or via environment variables:
 
 ```bash
-# Switch to Milvus
-VDB_BACKEND=milvus uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
-
 # Enable LanceDB hybrid search
 HYBRID=true uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 ```
@@ -101,56 +99,16 @@ Enable hybrid search by setting `hybrid=True` when creating the LanceDB operator
 
 
 
-## Infrastructure: LanceDB vs Milvus
+## LanceDB deployment characteristics
 
-| Aspect              | LanceDB (default)       | Milvus                    |
-|---------------------|-------------------------|---------------------------|
-| Runtime model       | Embedded (in-process)   | Client-server             |
-| External services   | None                    | Milvus + etcd + MinIO     |
-| Helm / extra stack       | Not needed (default) | Enable Milvus (and deps) in chart values |
-| Index type          | IVF_HNSW_SQ             | HNSW, GPU_CAGRA, etc.     |
-| Hybrid search       | BM25 FTS + vector (RRF) | BM42 sparse embeddings    |
-| Persistence         | Lance files on disk     | Milvus server + MinIO     |
-
-
-
-## Upload to Milvus
-
-You can continue using Milvus with no code changes — set `vdb_backend: milvus` in the harness config or use the existing Milvus API calls (`vdb_upload(milvus_uri=...)`, `nvingest_retrieval(...)`).
-
-The `vdb_upload` method uses GPU Cagra accelerated bulk indexing support to load chunks into Milvus.
-To enable hybrid retrieval with Milvus, the library supports both dense (llama-embedder embeddings) and sparse (BM42) embeddings.
-
-Bulk indexing is high throughput, but has a built-in overhead of around one minute.
-If the number of ingested documents is 10 or fewer, the library uses faster streaming inserts instead.
-You can control this by setting `stream=True`.
-
-!!! warning
-
-    When you use the `vdb_upload` task with Milvus, you must expose the ports for the Milvus and MinIO containers to the client. This ensures that the client can connect to both services and perform the `vdb_upload` action.
-
-!!! tip
-
-    When you use the `vdb_upload` method, the behavior of the upload depends on the `return_failures` parameter of the `ingest` method. For details, refer to [Capture Job Failures](nemo-retriever-api-reference.md).
-
-To upload to Milvus, use code similar to the following to define your `Ingestor`.
-
-```python
-Ingestor(client=client)
-    .files("data/multimodal_test.pdf")
-    .extract()
-    .embed()
-    .caption()
-    .vdb_upload(
-        collection_name=collection_name,
-        milvus_uri=milvus_uri,
-        sparse=sparse,
-        # for llama-3.2 embedder, use 1024 for e5-v5
-        dense_dim=2048,
-        stream=False,
-        recreate=False
-    )
-```
+| Aspect              | LanceDB                                      |
+|---------------------|----------------------------------------------|
+| Runtime model       | Embedded (in-process)                        |
+| External services   | None for the vector store itself             |
+| Helm / extra stack  | Not required for LanceDB (default path)      |
+| Index type          | IVF_HNSW_SQ (default)                        |
+| Hybrid search       | BM25 FTS + vector (RRF) when enabled         |
+| Persistence         | Lance files on disk under your configured URI |
 
 
 
@@ -162,9 +120,9 @@ NeMo Retriever Library does not provide connections to other data sources.
 
 !!! important
 
-    NVIDIA makes no claim about accuracy, performance, or functionality of any vector database except Milvus. If you use a different vector database, it's your responsibility to test and maintain it.
+    NVIDIA documents and validates the first-party LanceDB operator for this library. If you integrate a different vector store, you are responsible for testing and maintaining that integration.
 
-For more information, refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
+To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
 
 
 

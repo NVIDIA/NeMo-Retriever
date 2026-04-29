@@ -14,8 +14,7 @@ and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blo
 ## Where does NeMo Retriever Library ingest to?
 
 NeMo Retriever Library supports extracting text representations of various forms of content,
-and ingesting to a vector database. **[LanceDB](https://lancedb.com/) is the default**; [Milvus](https://milvus.io/) is also fully supported.
-NeMo Retriever Library does not store data on disk except through the vector database (LanceDB uses local Lance files; Milvus uses its server and MinIO).
+and ingesting to a vector database. **[LanceDB](https://lancedb.com/)** stores vectors as local Lance files on disk for the supported ingestion path.
 You can ingest to other data stores; however, you must configure other data stores yourself.
 For more information, refer to [Data Upload](vdbs.md).
 
