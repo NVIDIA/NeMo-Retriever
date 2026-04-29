@@ -110,13 +110,13 @@ def expand_info(ids_and_labels):
                     MATCH (n:{label} {{id: label_id.id}})
                     CALL apoc.case([
                         n:{Labels.CUSTOM_ANALYSIS},
-                            'MATCH(n)-[:analysis_of]->(sql:{Labels.SQL})
+                            'MATCH(n)-[:{Edges.ANALYSIS_OF}]->(sql:{Labels.SQL})
                             WITH n, collect(distinct {{sql_code: sql.sql_full_query}}) as sql
                             RETURN apoc.map.setKey(properties(n), "sql", sql) as item',
                         n:{Labels.COLUMN},
-                            'MATCH(n)<-[:CONTAINS]-(parent)
+                            'MATCH(n)<-[:{Edges.CONTAINS}]-(parent)
                             WITH n, parent,
-                                 [(parent)-[:CONTAINS]->(c:{Labels.COLUMN}) |
+                                 [(parent)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
                                   {{name: c.name, data_type: toString(coalesce(c.data_type, ""))}}] AS column_list
                             WITH n, parent, column_list,
                                  apoc.map.merge(
@@ -258,9 +258,6 @@ def get_candidates_information(
 ):
     """
     Vector search over LanceDB, then merge graph properties from ``expand_info``.
-
-    Column nodes get ``relevant_tables``: one normalized table dict (parent ``:table`` via
-    ``<-[:schema]-``), same shape as :func:`get_relevant_tables` / ``_normalize_table_to_relevant_shape``.
 
     Matches the call shape used by ``extract_candidates``:
     ``get_candidates_information(retriever, text, k=..., list_of_semantic=[...])``.

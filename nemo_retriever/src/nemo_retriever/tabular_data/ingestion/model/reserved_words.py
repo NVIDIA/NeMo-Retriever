@@ -27,6 +27,7 @@ class Edges:
     JOIN = "JOIN"
     UNION = "UNION"
     SQL = "SQL"
+    ANALYSIS_OF = "ANALYSIS_OF"
 
 
 class Props:
