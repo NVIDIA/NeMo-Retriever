@@ -57,7 +57,7 @@ Use the following procedure to run the NIM on your own infrastructure. **Self-ho
     NGC_API_KEY=<your-ngc-key>
     ```
 
-3. Deploy or upgrade NeMo Retriever extraction with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM and any other dependencies (for example, the retrieval / embedding stack) that match how you call the library.
+3. Deploy or upgrade NeMo Retriever Library with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM.
 
 4. After the services are running, you can interact with the pipeline by using Python.
 
