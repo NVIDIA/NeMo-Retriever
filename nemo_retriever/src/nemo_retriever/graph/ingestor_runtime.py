@@ -71,6 +71,7 @@ def batch_tuning_to_node_overrides(
     allow_no_gpu: bool | None = None,
     caption_params: Any | None = None,
     caption_gpus_per_actor: float | None = None,
+    video_frame_params: Any | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
 
@@ -332,6 +333,18 @@ def batch_tuning_to_node_overrides(
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
+
+    # VideoSplitActor: one ffmpeg subprocess per input video, ~1-2 CPU cores
+    # per actor during decode. Default Ray Data concurrency=1 serialises every
+    # video, making this stage the wall-clock bottleneck on multi-video inputs.
+    # Scale with available CPUs (one actor per ~4 cores leaves headroom for
+    # downstream ASR/OCR/fuse stages); cap at 8 to avoid disk-I/O contention
+    # on slower storage. With fewer input videos than the cap, Ray Data only
+    # spawns as many actors as there are blocks — so an oversized cap is safe.
+    if video_frame_params is not None and getattr(video_frame_params, "enabled", True):
+        cpus = cluster_resources.total_cpu_count() if cluster_resources is not None else 0
+        if cpus > 0:
+            _set(VideoSplitActor.__name__, "concurrency", max(1, min(cpus // 4, 8)))
 
     return overrides
 
