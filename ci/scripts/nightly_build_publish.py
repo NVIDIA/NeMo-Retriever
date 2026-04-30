@@ -39,7 +39,7 @@ def _write_text(path: Path, text: str) -> None:
 
 
 def _canonical_dependency_name(name: str) -> str:
-    return name.strip().replace("_", "-").lower()
+    return re.sub(r"[-_.]", "-", name.strip()).lower()
 
 
 def _dependency_name(requirement: str) -> str | None:

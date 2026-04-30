@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -65,6 +67,28 @@ def test_patch_pyproject_runtime_dependency_pins_requires_matching_dependency(tm
         nightly._patch_pyproject_runtime_dependency_pins(tmp_path, {"torch": "2.10.0"})
 
 
+def test_patch_pyproject_runtime_dependency_pins_normalizes_dotted_names(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        textwrap.dedent(
+            """
+            [project]
+            name = "example"
+            version = "1.0.0"
+            dependencies = [
+                "torch.special>=2.8.0",
+            ]
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    assert nightly._patch_pyproject_runtime_dependency_pins(tmp_path, {"torch-special": "2.10.0"})
+
+    patched = pyproject.read_text(encoding="utf-8")
+    assert '"torch.special~=2.10.0",' in patched
+
+
 def test_patch_pyproject_runtime_dependency_pins_searches_across_project_subtables(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
@@ -97,3 +121,57 @@ def test_patch_pyproject_runtime_dependency_pins_searches_across_project_subtabl
 
 def test_runtime_dependency_specifier_omits_local_suffix_and_allows_patch_releases():
     assert nightly._runtime_dependency_specifier("2.10.0+cu130") == "~=2.10.0"
+
+
+def test_installed_distribution_public_version_strips_local_suffix(monkeypatch):
+    run = Mock(
+        return_value=nightly.subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="2.10.0+cu130\n",
+            stderr="",
+        )
+    )
+    monkeypatch.setattr(nightly.subprocess, "run", run)
+
+    version = nightly._installed_distribution_public_version(
+        Path("/venv/bin/python"),
+        "torch",
+        cwd=Path("/project"),
+        env={"PIP_DISABLE_PIP_VERSION_CHECK": "1"},
+    )
+
+    assert version == "2.10.0"
+    run.assert_called_once()
+    args, kwargs = run.call_args
+    assert args[0][0] == "/venv/bin/python"
+    assert args[0][-1] == "torch"
+    assert kwargs["cwd"] == "/project"
+    assert kwargs["env"] == {"PIP_DISABLE_PIP_VERSION_CHECK": "1"}
+    assert kwargs["text"] is True
+    assert kwargs["stdout"] is nightly.subprocess.PIPE
+    assert kwargs["stderr"] is nightly.subprocess.PIPE
+
+
+def test_installed_distribution_public_version_raises_on_subprocess_failure(monkeypatch, capsys):
+    run = Mock(
+        return_value=nightly.subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="partial stdout\n",
+            stderr="metadata failed\n",
+        )
+    )
+    monkeypatch.setattr(nightly.subprocess, "run", run)
+
+    with pytest.raises(RuntimeError, match="Unable to read installed distribution version for 'torch'"):
+        nightly._installed_distribution_public_version(
+            Path("/venv/bin/python"),
+            "torch",
+            cwd=Path("/project"),
+            env={},
+        )
+
+    captured = capsys.readouterr()
+    assert "partial stdout" in captured.out
+    assert "metadata failed" in captured.err
