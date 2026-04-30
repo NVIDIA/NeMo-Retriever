@@ -185,3 +185,35 @@ def test_fuser_replace_audio_window_match_is_exact() -> None:
     audio = [r for _, r in out.iterrows() if r["metadata"]["_content_type"] == "audio"]
     assert len(audio) == 1
     assert audio[0]["metadata"]["segment_start_seconds"] == 100.0
+
+
+def test_fuser_is_invariant_to_per_source_batching() -> None:
+    """Per-source partitioning is the executor's contract for parallelism.
+
+    Running the fuser on the whole multi-source batch must produce the same
+    fused rows as running it once per source and concatenating — i.e. the
+    self-join only ever needs rows for a single source to be co-located. If
+    this invariant ever breaks, ``GLOBAL_BATCH_GROUP_KEYS`` would no longer
+    be safe to advertise on the operator.
+    """
+    rows = [
+        _audio_row("/a.mp4", "alpha audio one", 0.0, 3.0),
+        _audio_row("/a.mp4", "alpha audio two", 5.0, 8.0),
+        _audio_row("/b.mp4", "beta audio", 0.0, 3.0),
+        _audio_row("/c.mp4", "gamma orphan", 0.0, 2.0),  # no concurrent frame
+        _frame_row("/a.mp4", "ALPHA SLIDE 1", 1.0),
+        _frame_row("/a.mp4", "ALPHA SLIDE 2", 6.0),
+        _frame_row("/b.mp4", "BETA SLIDE", 1.5),
+    ]
+    fuser = AudioVisualFuser(AudioVisualFuseParams())
+
+    sort_cols = ["source_path", "_content_type", "text"]
+    whole = fuser.run(pd.DataFrame(rows)).sort_values(sort_cols).reset_index(drop=True)
+
+    by_source: list[pd.DataFrame] = []
+    for src in {r["source_path"] for r in rows}:
+        sub = [r for r in rows if r["source_path"] == src]
+        by_source.append(fuser.run(pd.DataFrame(sub)))
+    chunked = pd.concat(by_source, ignore_index=True).sort_values(sort_cols).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(whole[sort_cols], chunked[sort_cols])

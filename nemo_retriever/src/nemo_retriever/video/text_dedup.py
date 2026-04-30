@@ -96,6 +96,8 @@ class VideoFrameTextDedup(AbstractOperator, CPUOperator):
 
     #: Read by ``RayDataExecutor`` to force one block + ``batch_size=None``.
     REQUIRES_GLOBAL_BATCH: bool = True
+    #: Per-source self-join — ``source_path`` co-locates all needed rows.
+    GLOBAL_BATCH_GROUP_KEYS: tuple[str, ...] = ("source_path",)
 
     def __init__(self, params: VideoFrameTextDedupParams | None = None) -> None:
         super().__init__(params=params)

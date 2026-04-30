@@ -91,6 +91,8 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
 
     #: Read by ``RayDataExecutor`` to force a global view (one block, one batch).
     REQUIRES_GLOBAL_BATCH: bool = True
+    #: Per-source self-join — ``source_path`` co-locates all needed rows.
+    GLOBAL_BATCH_GROUP_KEYS: tuple[str, ...] = ("source_path",)
 
     def __init__(self, params: AudioVisualFuseParams | None = None) -> None:
         super().__init__(params=params)
