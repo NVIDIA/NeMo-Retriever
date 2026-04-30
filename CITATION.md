@@ -1,22 +1,24 @@
 # Citation Guide
 
-## To Cite NVIDIA Ingest
-If you use NVIDIA Ingest in a publication, please use citations in the following format (BibTeX entry for LaTeX):
+## To cite NeMo Retriever Library
+
+If you use NeMo Retriever Library in a publication, please use citations in the following format (BibTeX entry for LaTeX):
+
 ```tex
 @Manual{,
-  title = {NVIDIA Ingest: An accelerated pipeline for document ingestion},
-  author = {NVIDIA Ingest Development Team},
+  title = {NeMo Retriever Library: A scalable framework for document content and metadata extraction},
+  author = {{NVIDIA Corporation}},
   year = {2024},
-  url = {https://github.com/NVIDIA/nv-ingest},
+  url = {https://github.com/NVIDIA/NeMo-Retriever},
 }
 ```
 
-
-## Sample Citations:
+## Sample citations
 
 Using [RAPIDS](https://rapids.ai/) citations for reference.
 
 ### Bringing UMAP Closer to the Speed of Light <br> with GPU Acceleration
+
 ```tex
 @misc{
       nolet2020bringing,
@@ -30,6 +32,7 @@ Using [RAPIDS](https://rapids.ai/) citations for reference.
 ```
 
 ### Machine Learning in Python: <br> Main developments and technology trends in data science, machine learning, and artificial intelligence
+
 ```tex
 @article{
   raschka2020machine,

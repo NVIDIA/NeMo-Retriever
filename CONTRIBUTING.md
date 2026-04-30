@@ -1,4 +1,4 @@
-# Contributing to NV-Ingest
+# Contributing to NeMo Retriever
 
 External contributions will be welcome soon, and they are greatly appreciated! Every little bit helps, and credit will always be given.
 
@@ -12,9 +12,9 @@ External contributions will be welcome soon, and they are greatly appreciated! E
    - [Seasoned Developers](#seasoned-developers)
    - [Workflow](#workflow)
    - [Common Processing Patterns](#common-processing-patterns)
-     - [traceable](#traceable---srcnv_ingestutiltracingtaggingpy)
-     - [nv_ingest_node_failure_context_manager](#nv_ingest_node_failure_context_manager---srcnv_ingestutilexception_handlersdecoratorspy)
-     - [filter_by_task](#filter_by_task---srcnv_ingestutilflow_controlfilter_by_taskpy)
+     - [traceable decorator](#traceable-decorator)
+     - [nv_ingest_node_failure_try_except decorator](#nv_ingest_node_failure_try_except-decorator)
+     - [filter_by_task decorator](#filter_by_task-decorator)
    - [Adding a New Stage or Module](#adding-a-new-stage-or-module)
    - [Common Practices for Writing Unit Tests](#common-practices-for-writing-unit-tests)
      - [General Guidelines](#general-guidelines)
@@ -45,9 +45,9 @@ External contributions will be welcome soon, and they are greatly appreciated! E
 ## Filing Issues
 
 1. **Bug Reports, Feature Requests, and Documentation Issues:** Please file
-   an [issue](https://github.com/NVIDIA/nv-ingest/issues) with a detailed
+   an [issue](https://github.com/NVIDIA/NeMo-Retriever/issues) with a detailed
    description of
-   the problem, feature request, or documentation issue. The NV-Ingest team will review and triage these issues,
+   the problem, feature request, or documentation issue. The NeMo Retriever team will review and triage these issues,
    and if appropriate, schedule them for a future release.
 
 ## Developer Certificate of Origin (DCO)
@@ -101,9 +101,9 @@ By making a contribution to this project, I certify that:
 ```bash
 DATASET_ROOT=[path to your dataset root]
 MODULE_NAME=[]
-NV_INGEST_ROOT=[path to your NV-Ingest root]
-git clone https://github.com/NVIDIA/nv-ingest.git $NV_INGEST_ROOT
-cd $NV_INGEST_ROOT
+NEMO_RETRIEVER_ROOT=[path to your NeMo Retriever clone]
+git clone https://github.com/NVIDIA/NeMo-Retriever.git $NEMO_RETRIEVER_ROOT
+cd $NEMO_RETRIEVER_ROOT
 ```
 
 Ensure all submodules are checked out:
@@ -117,11 +117,11 @@ git submodule update --init --recursive
 ### Your First Issue
 
 1. **Finding an Issue:** Start with issues
-   labeled [good first issue](https://github.com/NVIDIA/nv-ingest/labels/bug).
+   labeled [good first issue](https://github.com/NVIDIA/NeMo-Retriever/labels/good%20first%20issue).
 2. **Claim an Issue:** Comment on the issue you wish to work on.
 3. **Implement Your Solution:** Dive into the code! Update or add unit tests as necessary.
 4. **Submit Your Pull Request:
-   ** [Create a pull request](https://github.com/NVIDIA/nv-ingest/pulls) once your
+   ** [Create a pull request](https://github.com/NVIDIA/NeMo-Retriever/pulls) once your
    code is ready.
 5. **Code Review:** Wait for the review by other developers and make necessary updates.
 6. **Merge:** After approval, an NVIDIA developer will approve your pull request.
@@ -134,8 +134,8 @@ issues. Look for unassigned issues and follow the steps starting from **Claim an
 
 ### Workflow
 
-1. **NV-Ingest Foundation**: Built on top
-   of [RAY](https://docs.ray.io/en/latest/serve/architecture.html).
+1. **NeMo Retriever foundation**: Built on top
+   of [Ray](https://docs.ray.io/en/latest/serve/architecture.html).
 
 2. **Pipeline Structure**: Designed around a pipeline that processes individual jobs within an asynchronous execution
    graph. Each job is processed by a series of stages or task handlers.
@@ -202,54 +202,60 @@ issues. Look for unassigned issues and follow the steps starting from **Claim an
 
 ### Common Processing Patterns
 
-In NV-Ingest, decorators are used to enhance the functionality of functions by adding additional processing logic. These
+In this repository, decorators are used to enhance the functionality of functions by adding additional processing logic. These
 decorators help ensure consistency, traceability, and robust error handling across the pipeline. Below, we introduce
-some common decorators used in NV-Ingest, explain their usage, and provide examples.
+some common decorators used in the ingestion pipeline, explain their usage, and provide examples.
 
-#### `traceable` -> `src/nv_ingest/util/tracing/tagging.py`
+#### traceable decorator
 
-The `traceable` decorator adds entry and exit trace timestamps to a `ControlMessage`'s metadata. This helps in
+Defined in `api/src/nv_ingest_api/internal/primitives/tracing/tagging.py`.
+
+The `traceable` decorator adds entry and exit trace timestamps to an `IngestControlMessage`'s metadata when trace tagging is enabled. This helps in
 monitoring and debugging by recording the time taken for function execution.
 
 **Usage:**
 
-- To track function execution time with default trace names:
+- To track function execution time (trace name from `self.stage_name` or the function name on methods):
   ```python
   @traceable()
-  def process_message(message):
+  def process_message(self, message):
       pass
   ```
 - To use a custom trace name:
   ```python
-  @traceable(trace_name="CustomTraceName")
+  @traceable("CustomTraceName")
   def process_message(message):
       pass
   ```
 
-#### `nv_ingest_node_failure_context_manager` -> `src/nv_ingest/util/exception_handlers/decorators.py`
+#### nv_ingest_node_failure_try_except decorator
 
-This decorator wraps a function with failure handling logic to manage potential failures involving `ControlMessages`. It
-ensures that failures are managed consistently, optionally raising exceptions or annotating the `ControlMessage`.
+Defined in `api/src/nv_ingest_api/util/exception_handlers/decorators.py`.
+
+This decorator wraps a function with failure handling logic to manage potential failures involving `IngestControlMessage` instances. It
+ensures that failures are managed consistently, optionally raising exceptions or annotating the message.
 
 **Usage:**
 
 - To handle failures with default settings:
   ```python
-  @nv_ingest_node_failure_context_manager(annotation_id="example_task")
+  @nv_ingest_node_failure_try_except(annotation_id="example_task")
   def process_message(message):
       pass
   ```
 - To handle failures and allow empty payloads:
   ```python
-  @nv_ingest_node_failure_context_manager(annotation_id="example_task", payload_can_be_empty=True)
+  @nv_ingest_node_failure_try_except(annotation_id="example_task", payload_can_be_empty=True)
   def process_message(message):
       pass
   ```
 
-#### `filter_by_task` -> `src/nv_ingest/util/flow_control/filter_by_task.py`
+#### filter_by_task decorator
 
-The `filter_by_task` decorator checks if the `ControlMessage` contains any of the specified tasks. Each task can be a
-string of the task name or a tuple of the task name and task properties. If the message does not contain any listed task
+Defined in `src/nv_ingest/framework/util/flow_control/filter_by_task.py`.
+
+The `filter_by_task` decorator checks if the `IngestControlMessage` contains any of the required tasks. Each entry can be a
+task name string or a tuple of the task name and required task properties. If the message does not contain any listed task
 and/or task properties, the message is returned directly without calling the wrapped function, unless a forwarding
 function is provided.
 
@@ -257,21 +263,20 @@ function is provided.
 
 - To filter messages based on tasks:
   ```python
-  @filter_by_task(["task1", "task2"])
+  @filter_by_task(required_tasks=["task1", "task2"])
   def process_message(message):
       pass
   ```
 - To filter messages based on tasks with specific properties:
   ```python
-  @filter_by_task([("task", {"prop": "value"})])
+  @filter_by_task(required_tasks=[("task", {"prop": "value"})])
   def process_message(message):
       pass
   ```
-- To forward messages to another function. This is necessary when the decorated function does not return the message
-  directly, but instead forwards it to another function. In this case, the forwarding function should be provided as an
-  argument to the decorator.
+- To forward messages to another function when the decorated function does not return the message
+  directly, provide `forward_func`:
   ```python
-  @filter_by_task(["task1", "task2"], forward_func=other_function)
+  @filter_by_task(required_tasks=["task1", "task2"], forward_func=other_function)
   def process_message(message):
       pass
   ```
@@ -381,7 +386,7 @@ def test_function_handles_invalid_input(mock_external_service):
 
 ### Models
 
-1. **Model Integration**: NV-Ingest is designed to be scalable and flexible, so running models directly in the pipeline
+1. **Model Integration**: NeMo Retriever is designed to be scalable and flexible, so running models directly in the pipeline
    is discouraged.
 2. **Model Export**: Models should be exported to a format compatible with Triton Inference Server or TensorRT.
    - Model acquisition and conversion should be documented in `triton_models/README.md`, including the model name,
@@ -397,7 +402,7 @@ def test_function_handles_invalid_input(mock_external_service):
 
 ## Architectural Guidelines
 
-To ensure the quality and maintainability of the NV-Ingest codebase, the following architectural guidelines should be
+To ensure the quality and maintainability of the NeMo Retriever codebase, the following architectural guidelines should be
 followed:
 
 ### 1. Single Responsibility Principle (SRP)
@@ -520,7 +525,7 @@ to use the Chicago Style Guide as your reference for writing and formatting.
 
 ## Licensing
 
-NV-Ingest is licensed under the NVIDIA Proprietary Software License -- ensure that any contributions are compatible.
+NeMo Retriever is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) -- ensure that any contributions are compatible.
 
 The following should be included in the header of any new files:
 
