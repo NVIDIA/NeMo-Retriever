@@ -38,6 +38,7 @@ from nemo_retriever.ingestor import ingestor
 from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,
+    AudioVisualFuseParams,
     CaptionParams,
     DedupParams,
     EmbedParams,
@@ -45,6 +46,8 @@ from nemo_retriever.params import (
     HtmlChunkParams,
     StoreParams,
     TextChunkParams,
+    VideoFrameParams,
+    VideoOCRParams,
     WebhookParams,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
@@ -144,6 +147,9 @@ class GraphIngestor(ingestor):
         self._html_params: Any = None
         self._audio_chunk_params: Any = None
         self._asr_params: Any = None
+        self._video_frame_params: Any = None
+        self._video_ocr_params: Any = None
+        self._av_fuse_params: Any = None
         self._embed_params: Any = None
         self._split_params: Any = None
         self._caption_params: Any = None
@@ -206,6 +212,32 @@ class GraphIngestor(ingestor):
         self._extraction_mode = "audio"
         self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
         self._asr_params = asr_params or ASRParams()
+        self._record_stage("extract")
+        return self
+
+    def extract_video(
+        self,
+        params: Optional[AudioChunkParams] = None,
+        *,
+        asr_params: Optional[ASRParams] = None,
+        video_frame_params: Optional[VideoFrameParams] = None,
+        video_ocr_params: Optional[VideoOCRParams] = None,
+        av_fuse_params: Optional[AudioVisualFuseParams] = None,
+        **kwargs: Any,
+    ) -> "GraphIngestor":
+        """Configure video extraction.
+
+        Sets ``extraction_mode='auto'`` so :class:`MultiTypeExtractOperator`
+        dispatches by file extension; ``.mp4``/``.mov``/``.mkv``
+        files are routed to a combined audio-from-video ASR + frame OCR +
+        scene fusion pipeline.
+        """
+        self._extraction_mode = "auto"
+        self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
+        self._asr_params = asr_params or ASRParams()
+        self._video_frame_params = video_frame_params or VideoFrameParams()
+        self._video_ocr_params = _resolve_api_key(video_ocr_params or VideoOCRParams())
+        self._av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         self._record_stage("extract")
         return self
 
@@ -314,6 +346,9 @@ class GraphIngestor(ingestor):
                 html_params=self._html_params,
                 audio_chunk_params=self._audio_chunk_params,
                 asr_params=self._asr_params,
+                video_frame_params=self._video_frame_params,
+                video_ocr_params=self._video_ocr_params,
+                av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
                 split_params=self._split_params,
                 caption_params=self._caption_params,
@@ -358,6 +393,9 @@ class GraphIngestor(ingestor):
                 html_params=self._html_params,
                 audio_chunk_params=self._audio_chunk_params,
                 asr_params=self._asr_params,
+                video_frame_params=self._video_frame_params,
+                video_ocr_params=self._video_ocr_params,
+                av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
                 split_params=self._split_params,
                 caption_params=self._caption_params,

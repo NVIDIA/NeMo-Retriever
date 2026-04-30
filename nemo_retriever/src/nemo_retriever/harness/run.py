@@ -500,10 +500,14 @@ def _build_command(
         cmd += ["--caption-invoke-url", cfg.caption_invoke_url]
 
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    if cfg.input_type == "audio":
+    if cfg.input_type in ("audio", "video"):
         cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
         cmd += ["--audio-split-type", cfg.audio_split_type]
         cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
+    if cfg.input_type == "video":
+        cmd += ["--video-frame-fps", str(cfg.video_frame_fps)]
+        cmd += ["--video-frame-dedup" if cfg.video_frame_dedup else "--no-video-frame-dedup"]
+        cmd += ["--video-av-fuse" if cfg.video_av_fuse else "--no-video-av-fuse"]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
@@ -576,23 +580,24 @@ def _print_failure_report(
     lines.append(f"  {BOLD}Return Code    :{RESET}  {rc}")
     lines.append("")
 
+    em_dash = "\u2014"
     lines.append(f"  {CYAN}{BOLD}Test Configuration{RESET}")
     lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Dataset        :  {cfg.get('dataset_label', '\u2014')}")
-    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', '\u2014')}")
-    lines.append(f"  Preset         :  {cfg.get('preset', '\u2014')}")
-    lines.append(f"  Input Type     :  {cfg.get('input_type', '\u2014')}")
+    lines.append(f"  Dataset        :  {cfg.get('dataset_label', em_dash)}")
+    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', em_dash)}")
+    lines.append(f"  Preset         :  {cfg.get('preset', em_dash)}")
+    lines.append(f"  Input Type     :  {cfg.get('input_type', em_dash)}")
     lines.append(f"  Recall Required:  {cfg.get('recall_required', False)}")
     lines.append(f"  Hybrid         :  {cfg.get('hybrid', False)}")
-    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', '\u2014')}")
+    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', em_dash)}")
     lines.append("")
 
     lines.append(f"  {CYAN}{BOLD}Host Information{RESET}")
     lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Hostname       :  {meta.get('host', '\u2014')}")
-    lines.append(f"  GPU            :  {meta.get('gpu_type', '\u2014')} (x{meta.get('gpu_count', '?')})")
-    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', '\u2014')}")
-    lines.append(f"  Python         :  {meta.get('python_version', '\u2014')}")
+    lines.append(f"  Hostname       :  {meta.get('host', em_dash)}")
+    lines.append(f"  GPU            :  {meta.get('gpu_type', em_dash)} (x{meta.get('gpu_count', '?')})")
+    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', em_dash)}")
+    lines.append(f"  Python         :  {meta.get('python_version', em_dash)}")
     lines.append(f"  CPU / Memory   :  {meta.get('cpu_count', '?')} cores / {meta.get('memory_gb', '?')} GB")
     lines.append("")
 

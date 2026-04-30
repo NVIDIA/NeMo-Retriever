@@ -154,6 +154,34 @@ class ASRParams(_ParamsModel):
     segment_audio: bool = False
 
 
+class VideoFrameParams(_ParamsModel):
+    """Params for video frame extraction (ffmpeg fps + content-hash dedup)."""
+
+    fps: float = 1.0
+    max_frames: Optional[int] = None
+    dedup: bool = True
+    dedup_iou_threshold: float = 0.95
+
+
+class VideoOCRParams(_ParamsModel):
+    """Params for full-frame OCR (Nemotron OCR v1, local or NIM)."""
+
+    ocr_invoke_url: Optional[str] = None
+    api_key: Optional[str] = None
+    batch_size: int = 8
+    merge_level: str = "paragraph"
+    request_timeout_s: float = 120.0
+
+
+class AudioVisualFuseParams(_ParamsModel):
+    """Params for fusing audio utterances with concurrent video frame OCR text."""
+
+    enabled: bool = True
+    audio_label: str = "[AUDIO] "
+    visual_label: str = "[VISUAL] "
+    frame_separator: str = " | "
+
+
 class LanceDbParams(_ParamsModel):
     lancedb_uri: str = "lancedb"
     table_name: str = "nv-ingest"

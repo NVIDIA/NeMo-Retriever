@@ -4,6 +4,7 @@
 
 from .models import ASRParams
 from .models import AudioChunkParams
+from .models import AudioVisualFuseParams
 from .models import BatchTuningParams
 from .models import CaptionParams
 from .models import ChartParams
@@ -31,11 +32,14 @@ from .models import TabularExtractParams
 from .models import TableParams
 from .models import TextChunkParams
 from .models import VdbUploadParams
+from .models import VideoFrameParams
+from .models import VideoOCRParams
 from .models import WebhookParams
 
 __all__ = [
     "ASRParams",
     "AudioChunkParams",
+    "AudioVisualFuseParams",
     "BatchTuningParams",
     "CaptionParams",
     "ChartParams",
@@ -63,5 +67,7 @@ __all__ = [
     "TableParams",
     "TextChunkParams",
     "VdbUploadParams",
+    "VideoFrameParams",
+    "VideoOCRParams",
     "WebhookParams",
 ]

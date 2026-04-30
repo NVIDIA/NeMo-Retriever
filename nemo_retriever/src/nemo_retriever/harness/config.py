@@ -66,6 +66,9 @@ class HarnessConfig:
     segment_audio: bool = False
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
+    video_frame_fps: float = 1.0
+    video_frame_dedup: bool = True
+    video_av_fuse: bool = True
     evaluation_mode: str = "recall"
     beir_loader: str | None = None
     beir_dataset_name: str | None = None
@@ -133,8 +136,8 @@ class HarnessConfig:
         if self.evaluation_mode == "recall" and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
 
-        if self.input_type not in {"pdf", "txt", "html", "doc", "audio"}:
-            errors.append(f"input_type must be one of pdf/txt/html/doc/audio, got '{self.input_type}'")
+        if self.input_type not in {"pdf", "txt", "html", "doc", "audio", "video"}:
+            errors.append(f"input_type must be one of pdf/txt/html/doc/audio/video, got '{self.input_type}'")
 
         if self.evaluation_mode == "recall":
             if self.recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
@@ -148,6 +151,8 @@ class HarnessConfig:
                 errors.append("audio_split_type must be one of size/time/frame")
             if int(self.audio_split_interval) < 1:
                 errors.append("audio_split_interval must be >= 1")
+            if float(self.video_frame_fps) <= 0.0:
+                errors.append("video_frame_fps must be > 0.0")
         else:
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
@@ -288,6 +293,9 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_SEGMENT_AUDIO": ("segment_audio", _parse_bool),
         "HARNESS_AUDIO_SPLIT_TYPE": ("audio_split_type", str),
         "HARNESS_AUDIO_SPLIT_INTERVAL": ("audio_split_interval", _parse_number),
+        "HARNESS_VIDEO_FRAME_FPS": ("video_frame_fps", _parse_number),
+        "HARNESS_VIDEO_FRAME_DEDUP": ("video_frame_dedup", _parse_bool),
+        "HARNESS_VIDEO_AV_FUSE": ("video_av_fuse", _parse_bool),
         "HARNESS_EVALUATION_MODE": ("evaluation_mode", str),
         "HARNESS_BEIR_LOADER": ("beir_loader", str),
         "HARNESS_BEIR_DATASET_NAME": ("beir_dataset_name", str),

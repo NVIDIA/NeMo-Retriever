@@ -296,6 +296,14 @@ class RayDataExecutor(AbstractExecutor):
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
 
+            # Operators that perform a self-join (e.g. AudioVisualFuser) need
+            # the entire dataset in one batch, otherwise rows from different
+            # source files (or different content types) end up in different
+            # batches and the join silently produces nothing.
+            if getattr(node.operator_class, "REQUIRES_GLOBAL_BATCH", False):
+                batch_size = None
+                target_num_rows_per_block = int(1e12)
+
             # When no explicit num_gpus override is given, auto-detect from the
             # GPUOperator mixin using actual cluster GPU availability.
             if "num_gpus" in overrides:

@@ -41,12 +41,15 @@ from nemo_retriever.graph_ingestor import GraphIngestor
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.params import (
     AudioChunkParams,
+    AudioVisualFuseParams,
     CaptionParams,
     DedupParams,
     EmbedParams,
     ExtractParams,
     StoreParams,
     TextChunkParams,
+    VideoFrameParams,
+    VideoOCRParams,
 )
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.input_files import resolve_input_patterns
@@ -68,6 +71,7 @@ _PANEL_EMBED = "Embedding"
 _PANEL_DEDUP_CAPTION = "Dedup and Caption"
 _PANEL_STORE_CHUNK = "Storage and Text Chunking"
 _PANEL_AUDIO = "Audio"
+_PANEL_VIDEO = "Video"
 _PANEL_RAY = "Ray / Batch Tuning"
 _PANEL_LANCEDB = "LanceDB and Outputs"
 _PANEL_EVAL = "Evaluation (Recall / BEIR)"
@@ -198,7 +202,7 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     if not input_path.is_dir():
         raise typer.BadParameter(f"Path does not exist: {input_path}")
 
-    if input_type not in {"pdf", "doc", "txt", "html", "image", "audio"}:
+    if input_type not in {"pdf", "doc", "txt", "html", "image", "audio", "video"}:
         raise typer.BadParameter(f"Unsupported --input-type: {input_type!r}")
 
     patterns = resolve_input_patterns(input_path, input_type)
@@ -387,6 +391,10 @@ def _build_ingestor(
     segment_audio: bool,
     audio_split_type: str,
     audio_split_interval: int,
+    video_frame_fps: float,
+    video_frame_dedup: bool,
+    video_ocr_batch_size: int,
+    video_av_fuse: bool,
 ) -> GraphIngestor:
     """Construct a :class:`GraphIngestor` with all requested stages attached."""
 
@@ -413,6 +421,22 @@ def _build_ingestor(
         ingestor = ingestor.extract_audio(
             params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
             asr_params=asr_params,
+        )
+    elif input_type == "video":
+        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+        ingestor = ingestor.extract_video(
+            params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+            asr_params=asr_params,
+            video_frame_params=VideoFrameParams(
+                fps=float(video_frame_fps),
+                dedup=bool(video_frame_dedup),
+            ),
+            video_ocr_params=VideoOCRParams(
+                ocr_invoke_url=extract_params.ocr_invoke_url,
+                api_key=extract_params.api_key,
+                batch_size=int(video_ocr_batch_size),
+            ),
+            av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
         )
     else:
         # "pdf" or "doc"
@@ -768,6 +792,33 @@ def run(
     audio_match_tolerance_secs: float = typer.Option(
         2.0, "--audio-match-tolerance-secs", min=0.0, rich_help_panel=_PANEL_AUDIO
     ),
+    # --- Video ----------------------------------------------------------
+    video_frame_fps: float = typer.Option(
+        1.0,
+        "--video-frame-fps",
+        min=0.001,
+        help="Frames per second to extract from videos (input_type=video).",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_frame_dedup: bool = typer.Option(
+        True,
+        "--video-frame-dedup/--no-video-frame-dedup",
+        help="Drop content-hash-duplicate frames before OCR.",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_ocr_batch_size: int = typer.Option(
+        8,
+        "--video-ocr-batch-size",
+        min=1,
+        help="Batch size for remote video frame OCR (NIM).",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_av_fuse: bool = typer.Option(
+        True,
+        "--video-av-fuse/--no-video-av-fuse",
+        help="Emit fused per-utterance rows (audio transcript + concurrent OCR).",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
     # --- LanceDB / outputs ---------------------------------------------
     lancedb_uri: str = typer.Option(LANCEDB_URI, "--lancedb-uri", rich_help_panel=_PANEL_LANCEDB),
     save_intermediate: Optional[Path] = typer.Option(
@@ -1013,6 +1064,10 @@ def run(
             segment_audio=segment_audio,
             audio_split_type=audio_split_type,
             audio_split_interval=audio_split_interval,
+            video_frame_fps=video_frame_fps,
+            video_frame_dedup=video_frame_dedup,
+            video_ocr_batch_size=video_ocr_batch_size,
+            video_av_fuse=video_av_fuse,
         )
 
         # --- Execute ---------------------------------------------------

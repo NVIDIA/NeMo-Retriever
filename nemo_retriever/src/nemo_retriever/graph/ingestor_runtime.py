@@ -23,6 +23,11 @@ from nemo_retriever.graph.content_transforms import (
 )
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
 from nemo_retriever.text_embed.operators import _BatchEmbedActor
+from nemo_retriever.video import (
+    AudioVisualFuser,
+    VideoFrameOCRActor,
+    VideoSplitActor,
+)
 from nemo_retriever.ocr.ocr import OCRActor
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
@@ -502,6 +507,9 @@ def build_graph(
     caption_params: Any | None = None,
     store_params: Any | None = None,
     webhook_params: Any | None = None,
+    video_frame_params: Any | None = None,
+    video_ocr_params: Any | None = None,
+    av_fuse_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
 ) -> Graph:
     """Build a batch graph from explicit params or a shared execution plan."""
@@ -537,7 +545,28 @@ def build_graph(
         stage_order=stage_order,
     )
 
-    if _should_build_audio_graph(
+    # Video ingestion uses a dedicated chain so each stage (fan-out, ASR,
+    # frame OCR, scene fusion) shows up as its own Ray Data MapBatches op.
+    # The audio-only shortcut below would otherwise short-circuit to a
+    # single ``MediaChunkActor → ASRActor`` graph and we'd lose frame OCR.
+    has_video_branch = video_frame_params is not None
+    if has_video_branch:
+        graph = (
+            Graph()
+            >> VideoSplitActor(
+                audio_chunk_params=audio_chunk_params,
+                video_frame_params=video_frame_params,
+            )
+            >> ASRActor(params=asr_params)
+            >> VideoFrameOCRActor(
+                params=video_ocr_params,
+                ocr_invoke_url=getattr(video_ocr_params, "ocr_invoke_url", None)
+                or getattr(extract_params, "ocr_invoke_url", None),
+                api_key=getattr(video_ocr_params, "api_key", None) or getattr(extract_params, "api_key", None),
+            )
+            >> AudioVisualFuser(params=av_fuse_params)
+        )
+    elif _should_build_audio_graph(
         extract_params=extract_params,
         asr_params=asr_params,
     ):
@@ -551,6 +580,9 @@ def build_graph(
             audio_chunk_params=audio_chunk_params,
             asr_params=asr_params,
             caption_params=caption_params,
+            video_frame_params=video_frame_params,
+            video_ocr_params=video_ocr_params,
+            av_fuse_params=av_fuse_params,
         )
     else:
         graph = Graph()
