@@ -18,6 +18,7 @@ Tweak the params below to match your local setup before running.
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -84,7 +85,9 @@ VDB_PARAMS = VdbUploadParams(
 
 # ─────────────────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+
+def run_ingest() -> None:
+    """Build the tabular ingest graph, run it, and write embeddings to LanceDB."""
     graph = (
         Graph()
         >> TabularSchemaExtractOp(tabular_params=TABULAR_PARAMS)
@@ -106,6 +109,9 @@ if __name__ == "__main__":
     else:
         print("Tabular ingest result: no rows produced")
 
+
+def run_retrieve() -> None:
+    """Run the text-to-SQL agent against the previously ingested LanceDB."""
     lancedb_kwargs = VDB_PARAMS.vdb_kwargs
     retriever = Retriever(
         vdb="lancedb",
@@ -118,8 +124,10 @@ if __name__ == "__main__":
         embedding_http_endpoint=EMBED_PARAMS.embed_invoke_url,
     )
 
+    question = "List aircraft codes"
+
     payload: AgentPayload = {
-        "question": "sum unqieue seat ids",
+        "question": question,
         "retriever": retriever,
         "connector": connector,
         "path_state": {},
@@ -129,3 +137,27 @@ if __name__ == "__main__":
 
     agent_result = get_agent_response(payload)
     print("get_agent_response result:", agent_result)
+
+
+_ALL_MODES = ("ingest", "retrieve")
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--mode",
+        choices=_ALL_MODES,
+        nargs="*",
+        default=None,
+        help="Phases to run. Pass one or more (e.g. --mode ingest retrieve). " "Default: run all phases.",
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = _parse_args()
+    modes = args.mode if args.mode else _ALL_MODES
+    if "ingest" in modes:
+        run_ingest()
+    if "retrieve" in modes:
+        run_retrieve()
