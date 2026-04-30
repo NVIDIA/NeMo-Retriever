@@ -8,7 +8,7 @@ import ast
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
@@ -17,34 +17,21 @@ from nemo_retriever.retriever import Retriever
 logger = logging.getLogger(__name__)
 AUDIO_MATCH_TOLERANCE_SECS = 2.0
 
-import numpy as np
 import pandas as pd
 
 
 @dataclass(frozen=True)
 class RecallConfig:
-    lancedb_uri: str
-    lancedb_table: str
-    embedding_model: str
-    # Embedding endpoints (optional).
-    #
-    # If neither HTTP nor gRPC endpoint is provided (and embedding_endpoint is empty),
-    # stage7 will fall back to local vLLM embeddings via:
-    #   nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder
+    vdb_op: str = "lancedb"
+    vdb_kwargs: dict[str, Any] = field(default_factory=dict)
+    query_embedder: str = VL_EMBED_MODEL
     embedding_http_endpoint: Optional[str] = None
     embedding_grpc_endpoint: Optional[str] = None
-    # Back-compat single endpoint string (http URL or host:port for gRPC).
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
+    embedding_use_grpc: Optional[bool] = None
     top_k: int = 10
     ks: Sequence[int] = (1, 3, 5, 10)
-    # ANN search tuning (LanceDB IVF_HNSW_SQ).
-    # nprobes=0 means "search all partitions" (exhaustive); refine_factor re-ranks
-    # top candidates with full-precision vectors to eliminate SQ quantization error.
-    nprobes: int = 0
-    refine_factor: int = 10
-    hybrid: bool = False
-    # Local HF knobs (only used when endpoints are missing).
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
     local_hf_batch_size: int = 32
@@ -282,59 +269,12 @@ def _resolve_embedding_endpoint(cfg: RecallConfig) -> Tuple[Optional[str], Optio
     if grpc_ep:
         return grpc_ep, True
     if single:
+        if cfg.embedding_use_grpc is not None:
+            return single, bool(cfg.embedding_use_grpc)
         # Infer protocol: if a URL scheme is present, treat as HTTP; otherwise gRPC.
         return single, (not single.lower().startswith("http"))
 
     return None, None
-
-
-def _embed_queries_nim(
-    queries: List[str],
-    *,
-    endpoint: str,
-    model: str,
-    api_key: str,
-    grpc: bool,
-) -> List[List[float]]:
-    from nv_ingest_api.util.nim import infer_microservice
-
-    # `infer_microservice` returns a list of embeddings.
-    embeddings = infer_microservice(
-        queries,
-        model_name=model,
-        embedding_endpoint=endpoint,
-        nvidia_api_key=(api_key or "").strip(),
-        grpc=bool(grpc),
-        input_type="query",
-    )
-    # Some backends return numpy arrays; normalize to list-of-list floats.
-    out: List[List[float]] = []
-    for e in embeddings:
-        if isinstance(e, np.ndarray):
-            out.append(e.astype("float32").tolist())
-        else:
-            out.append(list(e))
-    return out
-
-
-def _embed_queries_local_hf(
-    queries: List[str],
-    *,
-    device: Optional[str],
-    cache_dir: Optional[str],
-    batch_size: int,
-    model_name: Optional[str] = None,
-) -> List[List[float]]:
-    from nemo_retriever.model import create_local_query_embedder
-
-    embedder = create_local_query_embedder(
-        model_name,
-        backend="hf",
-        device=device,
-        hf_cache_dir=cache_dir,
-    )
-    vecs = embedder.embed_queries(queries, batch_size=int(batch_size))
-    return vecs.detach().to("cpu").tolist()
 
 
 def _hits_to_keys(raw_hits: List[List[Dict[str, Any]]]) -> List[List[str]]:
@@ -503,10 +443,10 @@ def gold_to_doc_page(golden_key: str) -> tuple[str, str]:
 
 
 def hit_key_and_distance(hit: dict) -> tuple[str | None, float | None]:
-    """Extract ``(pdf_page key, distance)`` from a single LanceDB hit dict.
+    """Extract ``(pdf_page key, distance)`` from a single VDB hit dict.
 
     Supports both ``_distance`` and ``_score`` fields for compatibility across
-    LanceDB query types (vector vs hybrid).
+    dense and hybrid query types.
     """
     try:
         res = json.loads(hit.get("metadata", "{}"))
@@ -544,15 +484,14 @@ def retrieve_and_score(
     *,
     cfg: RecallConfig,
     limit: Optional[int] = None,
-    vector_column_name: str = "vector",
 ) -> Tuple[pd.DataFrame, List[str], List[List[Dict[str, Any]]], List[List[str]], Dict[str, float]]:
     """
-    Run embeddings + LanceDB retrieval for a query CSV.
+    Run VDB retrieval for a query CSV.
 
     Returns:
       - normalized query DataFrame
       - gold keys
-      - raw LanceDB hits
+      - raw VDB hits
       - retrieved keys (pdf_page-like or audio-segment-like)
       - metrics dict (recall@k)
     """
@@ -562,19 +501,20 @@ def retrieve_and_score(
 
     queries = df_query["query"].astype(str).tolist()
     gold = df_query["golden_answer"].astype(str).tolist()
+    vdb_kwargs = dict(cfg.vdb_kwargs or {})
+    query_embedder = str(cfg.query_embedder or VL_EMBED_MODEL)
+    embedding_endpoint, embedding_use_grpc = _resolve_embedding_endpoint(cfg)
     retriever = Retriever(
-        lancedb_uri=cfg.lancedb_uri,
-        lancedb_table=cfg.lancedb_table,
-        embedder=cfg.embedding_model or VL_EMBED_MODEL,
-        embedding_http_endpoint=cfg.embedding_http_endpoint,
+        vdb=str(cfg.vdb_op),
+        vdb_kwargs=vdb_kwargs,
+        embedder=query_embedder,
+        embedding_endpoint=embedding_endpoint,
         embedding_api_key=cfg.embedding_api_key,
+        embedding_use_grpc=embedding_use_grpc,
         top_k=cfg.top_k,
-        nprobes=cfg.nprobes,
-        refine_factor=cfg.refine_factor,
-        hybrid=bool(cfg.hybrid),
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=cfg.local_hf_cache_dir,
-        local_hf_batch_size=cfg.local_hf_batch_size,
+        local_hf_batch_size=int(cfg.local_hf_batch_size),
         local_query_embed_backend=cfg.local_query_embed_backend,
         reranker=bool(cfg.reranker),
         reranker_model_name=cfg.reranker or VL_RERANK_MODEL,
@@ -620,7 +560,6 @@ def evaluate_recall(
         query_csv,
         cfg=cfg,
         limit=None,
-        vector_column_name="vector",
     )
 
     # Build per-query analysis DataFrame

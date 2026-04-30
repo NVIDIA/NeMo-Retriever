@@ -258,10 +258,12 @@ def get_sql_tool_response_top_k(
     from nemo_retriever.retriever import Retriever
 
     retriever = Retriever(
-        lancedb_table="nv-ingest-tabular",
+        vdb="lancedb",
+        vdb_kwargs={"table_name": "nv-ingest-tabular"},
+        embedding_endpoint=embedding_http_endpoint or None,
+        embedding_api_key=embedding_api_key or "",
+        embedding_use_grpc=False if embedding_http_endpoint else None,
         top_k=top_k,
-        embedding_api_key=embedding_api_key,
-        embedding_http_endpoint=embedding_http_endpoint,
     )
     hits = retriever.query(question)
 
