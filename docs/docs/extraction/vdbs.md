@@ -5,7 +5,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) handle
 ## Overview
 
 NeMo Retriever Library supports extracting text representations of various forms of content,
-and ingesting to a vector database. **[LanceDB](https://lancedb.com/) is the vector database backend** for storing and retrieving extracted embeddings.
+and ingesting to a vector database. [LanceDB](https://lancedb.com/) is the vector database backend for storing and retrieving extracted embeddings.
 
 The data upload task (`vdb_upload`) pulls extraction results to the Python client,
 and then pushes them to LanceDB (embedded, in-process).
