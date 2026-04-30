@@ -7,13 +7,12 @@ def test_print_run_summary_sorts_evaluation_metrics_by_numeric_k(capsys) -> None
     print_run_summary(
         processed_pages=10,
         input_path=Path("/tmp/input"),
-        hybrid=False,
-        lancedb_uri="/tmp/lancedb",
-        lancedb_table_name="nv-ingest",
+        vdb_op="custom",
+        vdb_kwargs={"collection_name": "docs"},
         total_time=10.0,
         ingest_only_total_time=5.0,
         ray_dataset_download_total_time=1.0,
-        lancedb_write_total_time=1.0,
+        vdb_upload_total_time=1.0,
         evaluation_total_time=2.0,
         evaluation_metrics={
             "ndcg@10": 0.5,

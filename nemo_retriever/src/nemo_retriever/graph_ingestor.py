@@ -395,7 +395,6 @@ class GraphIngestor(ingestor):
             )
             result = executor.ingest(self._documents)
             self._rd_dataset = result
-            return result
         else:
             graph = build_graph(
                 extraction_mode=self._extraction_mode,
@@ -417,7 +416,9 @@ class GraphIngestor(ingestor):
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)
             self._rd_dataset = None
-            return executor.ingest(self._documents)
+            result = executor.ingest(self._documents)
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers

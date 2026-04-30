@@ -89,43 +89,6 @@ def test_write_to_index_creates_index_and_waits(monkeypatch):
     fake_table.wait_for_index.assert_called()
 
 
-def test_retrieval_calls_embed_and_search(monkeypatch):
-    def fake_infer_microservice(queries, **kwargs):
-        return [[0.1, 0.2, 0.3] for _ in queries]
-
-    monkeypatch.setattr(lancedb_mod, "infer_microservice", fake_infer_microservice)
-
-    class FakeSearchResult:
-        def __init__(self, items):
-            self._items = items
-
-        def select(self, cols):
-            return self
-
-        def limit(self, n):
-            return self
-
-        def refine_factor(self, n):
-            return self
-
-        def nprobes(self, n):
-            return self
-
-        def to_list(self):
-            return self._items
-
-    fake_table = Mock()
-    fake_table.search = Mock(return_value=FakeSearchResult([{"text": "hit1", "metadata": 1, "source": "s"}]))
-
-    ldb = lancedb_mod.LanceDB()
-    queries = ["hello", "world"]
-    results = ldb.retrieval(queries, table=fake_table)
-
-    assert isinstance(results, list)
-    assert len(results) == len(queries)
-    assert results[0][0]["entity"]["text"] == "hit1"
-
-
 def test_run_calls_create_and_write(monkeypatch):
     ldb = lancedb_mod.LanceDB(hybrid=True, fts_language="Spanish")
     monkeypatch.setattr(ldb, "create_index", Mock(return_value="table_obj"))
@@ -314,21 +277,6 @@ def test_write_to_index_respects_kwargs(monkeypatch):
     fake_table.create_fts_index.assert_called_once_with("text", language="English")
 
 
-def test_retrieval_dispatches_to_hybrid(monkeypatch):
-    mock_hybrid_retrieval = Mock(return_value=[["hybrid_result"]])
-    mock_regular_retrieval = Mock(return_value=[["regular_result"]])
-
-    monkeypatch.setattr(lancedb_mod, "lancedb_hybrid_retrieval", mock_hybrid_retrieval)
-    monkeypatch.setattr(lancedb_mod, "lancedb_retrieval", mock_regular_retrieval)
-
-    ldb = lancedb_mod.LanceDB(hybrid=True)
-    results = ldb.retrieval(["test query"])
-
-    mock_hybrid_retrieval.assert_called_once()
-    mock_regular_retrieval.assert_not_called()
-    assert results == [["hybrid_result"]]
-
-
 def test_hybrid_retrieval_search_chain(monkeypatch):
     def fake_infer_microservice(queries, **kwargs):
         fake_infer_microservice.captured_kwargs = kwargs
@@ -407,128 +355,6 @@ def test_hybrid_retrieval_search_chain(monkeypatch):
     assert fake_infer_microservice.captured_kwargs["nvidia_api_key"] == custom_key
 
 
-def test_retrieval_with_custom_result_fields(monkeypatch):
-    """Test retrieval with custom result fields."""
-
-    def fake_infer_microservice(queries, **kwargs):
-        return [[0.1] for _ in queries]
-
-    monkeypatch.setattr(lancedb_mod, "infer_microservice", fake_infer_microservice)
-
-    captured_select_fields = []
-
-    class FakeSearchResult:
-        def __init__(self):
-            self.select_fields = None
-
-        def select(self, cols):
-            captured_select_fields.append(cols)
-            return self
-
-        def limit(self, n):
-            return self
-
-        def refine_factor(self, n):
-            return self
-
-        def nprobes(self, n):
-            return self
-
-        def to_list(self):
-            return [{"custom_field": "value"}]
-
-    fake_table = Mock()
-    fake_table.search = Mock(return_value=FakeSearchResult())
-
-    ldb = lancedb_mod.LanceDB()
-    custom_fields = ["field1", "field2", "field3"]
-
-    ldb.retrieval(
-        ["query"],
-        table=fake_table,
-        result_fields=custom_fields,
-    )
-
-    assert captured_select_fields[0] == custom_fields
-
-
-def test_retrieval_with_custom_top_k(monkeypatch):
-    """Test retrieval respects custom top_k parameter."""
-
-    def fake_infer_microservice(queries, **kwargs):
-        return [[0.1] for _ in queries]
-
-    monkeypatch.setattr(lancedb_mod, "infer_microservice", fake_infer_microservice)
-
-    captured_limit = []
-
-    class FakeSearchResult:
-        def select(self, cols):
-            return self
-
-        def limit(self, n):
-            captured_limit.append(n)
-            return self
-
-        def refine_factor(self, n):
-            return self
-
-        def nprobes(self, n):
-            return self
-
-        def to_list(self):
-            return [{"text": "result"}]
-
-    fake_table = Mock()
-    fake_table.search = Mock(return_value=FakeSearchResult())
-
-    ldb = lancedb_mod.LanceDB()
-    ldb.retrieval(
-        ["query"],
-        table=fake_table,
-        top_k=50,
-    )
-
-    assert captured_limit[0] == 50
-
-
-def test_retrieval_default_top_k(monkeypatch):
-    """Test retrieval uses default top_k when not specified."""
-
-    def fake_infer_microservice(queries, **kwargs):
-        return [[0.1] for _ in queries]
-
-    monkeypatch.setattr(lancedb_mod, "infer_microservice", fake_infer_microservice)
-
-    captured_limit = []
-
-    class FakeSearchResult:
-        def select(self, cols):
-            return self
-
-        def limit(self, n):
-            captured_limit.append(n)
-            return self
-
-        def refine_factor(self, n):
-            return self
-
-        def nprobes(self, n):
-            return self
-
-        def to_list(self):
-            return [{"text": "result"}]
-
-    fake_table = Mock()
-    fake_table.search = Mock(return_value=FakeSearchResult())
-
-    ldb = lancedb_mod.LanceDB()
-    ldb.retrieval(["query"], table=fake_table)
-
-    # Default top_k is 10
-    assert captured_limit[0] == 10
-
-
 def test_create_lancedb_results_missing_content_metadata_graceful():
     """Test that missing content_metadata is handled gracefully (empty dict default)."""
     results = [
@@ -549,54 +375,6 @@ def test_create_lancedb_results_missing_content_metadata_graceful():
     assert len(out) == 1
     assert out[0]["metadata"] == "{}"
     assert out[0]["text"] == "text with missing content_metadata"
-
-
-def test_retrieval_multiple_queries(monkeypatch):
-    """Test retrieval processes multiple queries correctly."""
-
-    def fake_infer_microservice(queries, **kwargs):
-        return [[0.1 * i] for i in range(len(queries))]
-
-    monkeypatch.setattr(lancedb_mod, "infer_microservice", fake_infer_microservice)
-
-    class FakeSearchResult:
-        def __init__(self, query_idx):
-            self.query_idx = query_idx
-
-        def select(self, cols):
-            return self
-
-        def limit(self, n):
-            return self
-
-        def refine_factor(self, n):
-            return self
-
-        def nprobes(self, n):
-            return self
-
-        def to_list(self):
-            return [{"text": f"result_{self.query_idx}"}]
-
-    search_call_count = [0]
-
-    def make_search_result(query_vec, **kwargs):
-        result = FakeSearchResult(search_call_count[0])
-        search_call_count[0] += 1
-        return result
-
-    fake_table = Mock()
-    fake_table.search = Mock(side_effect=make_search_result)
-
-    ldb = lancedb_mod.LanceDB()
-    queries = ["query1", "query2", "query3"]
-    results = ldb.retrieval(queries, table=fake_table)
-
-    # Should have results for all 3 queries
-    assert len(results) == 3
-    assert results[0][0]["entity"]["text"] == "result_0"
-    assert results[1][0]["entity"]["text"] == "result_1"
-    assert results[2][0]["entity"]["text"] == "result_2"
 
 
 # ============ Tests for _get_text_for_element() ============

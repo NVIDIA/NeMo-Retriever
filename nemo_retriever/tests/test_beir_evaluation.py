@@ -258,6 +258,34 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
 
     class _FakeRetriever:
         def __init__(self, **kwargs):
+            expected_kwargs = {
+                "vdb": "lancedb",
+                "vdb_kwargs": {
+                    "uri": "/tmp/lancedb",
+                    "table_name": "nv-ingest",
+                    "hybrid": False,
+                    "nprobes": 0,
+                    "refine_factor": 10,
+                },
+                "embedder": "embedder",
+                "embedding_endpoint": "http://embed.example/v1",
+                "embedding_api_key": "secret",
+                "embedding_use_grpc": False,
+                "top_k": 10,
+                "local_hf_device": None,
+                "local_hf_cache_dir": None,
+                "local_hf_batch_size": 32,
+                "local_query_embed_backend": "hf",
+                "reranker": False,
+                "reranker_model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+                "reranker_endpoint": None,
+                "reranker_api_key": "",
+                "reranker_batch_size": 32,
+                "local_reranker_backend": "vllm",
+            }
+            missing_keys = set(expected_kwargs) - set(kwargs)
+            assert not missing_keys
+            assert {key: kwargs[key] for key in expected_kwargs} == expected_kwargs
             self.kwargs = kwargs
             retriever_instances.append(self)
 
@@ -271,6 +299,8 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
         lancedb_uri="/tmp/lancedb",
         lancedb_table="nv-ingest",
         embedding_model="embedder",
+        embedding_http_endpoint="http://embed.example/v1",
+        embedding_api_key=" secret ",
         loader="vidore_hf",
         dataset_name="vidore_v3_computer_science",
     )
@@ -282,3 +312,4 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     assert metrics["recall@5"] == 1.0
     assert "embed_use_vllm" not in retriever_instances[0].kwargs
     assert retriever_instances[0].kwargs.get("local_query_embed_backend") == "hf"
+    assert retriever_instances[0].kwargs.get("local_reranker_backend") == "vllm"
