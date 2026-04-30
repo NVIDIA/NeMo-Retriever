@@ -509,6 +509,11 @@ def _build_command(
         cmd += ["--video-extract-frames" if cfg.video_extract_frames else "--no-video-extract-frames"]
         cmd += ["--video-frame-fps", str(cfg.video_frame_fps)]
         cmd += ["--video-frame-dedup" if cfg.video_frame_dedup else "--no-video-frame-dedup"]
+        cmd += ["--video-frame-text-dedup" if cfg.video_frame_text_dedup else "--no-video-frame-text-dedup"]
+        cmd += [
+            "--video-frame-text-dedup-max-dropped-frames",
+            str(cfg.video_frame_text_dedup_max_dropped_frames),
+        ]
         cmd += ["--video-av-fuse" if cfg.video_av_fuse else "--no-video-av-fuse"]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]

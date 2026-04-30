@@ -102,7 +102,11 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
         if self._video_frame_params.dedup and "_content_type" in out.columns:
             frame_mask = out["_content_type"] == "video_frame"
             if frame_mask.any():
-                deduped_frames = dedup_video_frames(out[frame_mask].reset_index(drop=True))
+                deduped_frames = dedup_video_frames(
+                    out[frame_mask].reset_index(drop=True),
+                    max_hamming_distance=int(self._video_frame_params.dedup_max_hamming_distance),
+                    max_dropped_frames=int(self._video_frame_params.dedup_max_dropped_frames),
+                )
                 non_frames = out[~frame_mask].reset_index(drop=True)
                 out = pd.concat([non_frames, deduped_frames], ignore_index=True, sort=False)
         return out

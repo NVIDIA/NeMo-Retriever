@@ -70,6 +70,8 @@ class HarnessConfig:
     video_extract_frames: bool = True
     video_frame_fps: float = 1.0
     video_frame_dedup: bool = True
+    video_frame_text_dedup: bool = True
+    video_frame_text_dedup_max_dropped_frames: int = 2
     video_av_fuse: bool = True
     evaluation_mode: str = "recall"
     beir_loader: str | None = None
@@ -155,6 +157,8 @@ class HarnessConfig:
                 errors.append("audio_split_interval must be >= 1")
             if float(self.video_frame_fps) <= 0.0:
                 errors.append("video_frame_fps must be > 0.0")
+            if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
+                errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
         else:
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
@@ -299,6 +303,11 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_VIDEO_EXTRACT_FRAMES": ("video_extract_frames", _parse_bool),
         "HARNESS_VIDEO_FRAME_FPS": ("video_frame_fps", _parse_number),
         "HARNESS_VIDEO_FRAME_DEDUP": ("video_frame_dedup", _parse_bool),
+        "HARNESS_VIDEO_FRAME_TEXT_DEDUP": ("video_frame_text_dedup", _parse_bool),
+        "HARNESS_VIDEO_FRAME_TEXT_DEDUP_MAX_DROPPED_FRAMES": (
+            "video_frame_text_dedup_max_dropped_frames",
+            _parse_number,
+        ),
         "HARNESS_VIDEO_AV_FUSE": ("video_av_fuse", _parse_bool),
         "HARNESS_EVALUATION_MODE": ("evaluation_mode", str),
         "HARNESS_BEIR_LOADER": ("beir_loader", str),

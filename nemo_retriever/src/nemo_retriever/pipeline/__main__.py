@@ -49,6 +49,7 @@ from nemo_retriever.params import (
     StoreParams,
     TextChunkParams,
     VideoFrameParams,
+    VideoFrameTextDedupParams,
     VideoOCRParams,
 )
 from nemo_retriever.params.models import BatchTuningParams
@@ -395,6 +396,8 @@ def _build_ingestor(
     video_extract_frames: bool,
     video_frame_fps: float,
     video_frame_dedup: bool,
+    video_frame_text_dedup: bool,
+    video_frame_text_dedup_max_dropped_frames: int,
     video_ocr_batch_size: int,
     video_av_fuse: bool,
 ) -> GraphIngestor:
@@ -442,6 +445,10 @@ def _build_ingestor(
                 ocr_invoke_url=extract_params.ocr_invoke_url,
                 api_key=extract_params.api_key,
                 batch_size=int(video_ocr_batch_size),
+            ),
+            video_text_dedup_params=VideoFrameTextDedupParams(
+                enabled=bool(video_frame_text_dedup),
+                max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
             ),
             av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
         )
@@ -819,7 +826,7 @@ def run(
         rich_help_panel=_PANEL_VIDEO,
     ),
     video_frame_fps: float = typer.Option(
-        1.0,
+        0.5,
         "--video-frame-fps",
         min=0.001,
         help="Frames per second to extract from videos (input_type=video).",
@@ -829,6 +836,26 @@ def run(
         True,
         "--video-frame-dedup/--no-video-frame-dedup",
         help="Drop content-hash-duplicate frames before OCR.",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_frame_text_dedup: bool = typer.Option(
+        True,
+        "--video-frame-text-dedup/--no-video-frame-text-dedup",
+        help=(
+            "Merge consecutive frame OCR rows whose text is identical into "
+            "a single row spanning their combined time window."
+        ),
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_frame_text_dedup_max_dropped_frames: int = typer.Option(
+        2,
+        "--video-frame-text-dedup-max-dropped-frames",
+        min=0,
+        help=(
+            "Tolerated dropped-frame count between same-text frames before they are "
+            "treated as separate runs. Converted to seconds at runtime via "
+            "max_gap_seconds = max_dropped_frames / fps."
+        ),
         rich_help_panel=_PANEL_VIDEO,
     ),
     video_ocr_batch_size: int = typer.Option(
@@ -1093,6 +1120,8 @@ def run(
             video_extract_frames=video_extract_frames,
             video_frame_fps=video_frame_fps,
             video_frame_dedup=video_frame_dedup,
+            video_frame_text_dedup=video_frame_text_dedup,
+            video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
             video_ocr_batch_size=video_ocr_batch_size,
             video_av_fuse=video_av_fuse,
         )

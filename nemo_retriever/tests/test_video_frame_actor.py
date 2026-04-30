@@ -98,21 +98,128 @@ def test_video_frame_actor_runs_on_dataframe(tmp_path: Path) -> None:
     assert all(isinstance(b, str) and b for b in out["image_b64"])
 
 
-def test_dedup_video_frames_drops_identical_image_b64() -> None:
+def _solid_png_b64(rgb: tuple[int, int, int], size: int = 16) -> str:
+    """Tiny solid-color PNG, base64-encoded — used to exercise dhash dedup."""
+    import base64
+    import io
+    from PIL import Image
+
+    img = Image.new("RGB", (size, size), rgb)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def test_dedup_video_frames_drops_perceptually_identical_frames() -> None:
+    # Two frames with the same flat colour have an identical dhash; a frame
+    # with a very different brightness pattern stays distinct.
+    flat = _solid_png_b64((128, 128, 128))
+    other = _solid_png_b64((128, 128, 128))  # same colour → same dhash
+    distinct = _checkerboard_png_b64()  # very different perceptual hash
     rows = [
-        {"image_b64": "AAA", "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 0.5}},
-        {"image_b64": "AAA", "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 1.5}},
-        {"image_b64": "BBB", "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 2.5}},
-        {"image_b64": "AAA", "source_path": "/other.mp4", "metadata": {"frame_timestamp_seconds": 0.5}},
+        {"image_b64": flat, "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 0.5}},
+        {"image_b64": other, "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 1.5}},
+        {"image_b64": distinct, "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 2.5}},
+        {"image_b64": flat, "source_path": "/other.mp4", "metadata": {"frame_timestamp_seconds": 0.5}},
     ]
-    df = pd.DataFrame(rows)
-    out = dedup_video_frames(df)
-    # Two AAA rows from /v.mp4 collapse to one; BBB and the /other.mp4 AAA both kept.
+    out = dedup_video_frames(pd.DataFrame(rows), max_hamming_distance=5)
+    # Two flat rows from /v.mp4 collapse to one; distinct and the /other.mp4 flat survive.
     assert len(out) == 3
     timestamps = sorted(r["metadata"]["frame_timestamp_seconds"] for _, r in out.iterrows())
     assert timestamps == [0.5, 0.5, 2.5]
 
 
+def test_dedup_video_frames_extends_time_window_across_run() -> None:
+    """A run of perceptually-similar adjacent frames collapses to one row whose
+    ``segment_end_seconds`` covers the whole run — so retrieval can still
+    match utterances anywhere in the slide's visible span."""
+    flat = _solid_png_b64((128, 128, 128))
+    rows = []
+    for i in range(5):
+        start = float(i * 2)
+        end = start + 2.0
+        rows.append(
+            {
+                "image_b64": flat,
+                "source_path": "/v.mp4",
+                "metadata": {
+                    "segment_start_seconds": start,
+                    "segment_end_seconds": end,
+                    "frame_timestamp_seconds": (start + end) / 2.0,
+                    "fps": 0.5,
+                },
+            }
+        )
+    out = dedup_video_frames(pd.DataFrame(rows), max_hamming_distance=5, max_dropped_frames=2)
+    assert len(out) == 1
+    md = out.iloc[0]["metadata"]
+    assert md["segment_start_seconds"] == 0.0
+    assert md["segment_end_seconds"] == 10.0  # all 5 frames merged
+    assert md["frame_timestamp_seconds"] == 5.0
+    assert md["dedup_merged_count"] == 5
+
+
+def test_dedup_video_frames_starts_new_run_after_long_gap() -> None:
+    """Same content reappearing after a gap larger than max_dropped_frames/fps
+    seconds opens a new run rather than merging across the gap."""
+    flat = _solid_png_b64((128, 128, 128))
+    rows = []
+    for start in (0.0, 2.0, 4.0, 200.0, 202.0):  # 196s gap between groups
+        rows.append(
+            {
+                "image_b64": flat,
+                "source_path": "/v.mp4",
+                "metadata": {
+                    "segment_start_seconds": start,
+                    "segment_end_seconds": start + 2.0,
+                    "frame_timestamp_seconds": start + 1.0,
+                    "fps": 0.5,
+                },
+            }
+        )
+    out = dedup_video_frames(pd.DataFrame(rows), max_hamming_distance=5, max_dropped_frames=2)
+    assert len(out) == 2
+    starts = sorted(r["metadata"]["segment_start_seconds"] for _, r in out.iterrows())
+    ends = sorted(r["metadata"]["segment_end_seconds"] for _, r in out.iterrows())
+    assert starts == [0.0, 200.0]
+    assert ends == [6.0, 204.0]
+
+
+def test_dedup_video_frames_threshold_zero_requires_exact_dhash() -> None:
+    # Same dhash → still collapsed at threshold=0.
+    flat_a = _solid_png_b64((100, 100, 100))
+    flat_b = _solid_png_b64((100, 100, 100))
+    rows = [
+        {"image_b64": flat_a, "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 0.5}},
+        {"image_b64": flat_b, "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 1.5}},
+    ]
+    out = dedup_video_frames(pd.DataFrame(rows), max_hamming_distance=0)
+    assert len(out) == 1
+
+
+def test_dedup_video_frames_keeps_undecodable_rows() -> None:
+    # When PIL can't decode the bytes, the row is kept (better than silently dropping).
+    rows = [
+        {"image_b64": "not-actually-base64-png", "source_path": "/v.mp4", "metadata": {}},
+    ]
+    out = dedup_video_frames(pd.DataFrame(rows))
+    assert len(out) == 1
+
+
 def test_dedup_video_frames_passthrough_for_empty_df() -> None:
     empty = pd.DataFrame()
     assert dedup_video_frames(empty).empty
+
+
+def _checkerboard_png_b64(size: int = 16) -> str:
+    """High-contrast checkerboard PNG with a very different dhash from solids."""
+    import base64
+    import io
+    from PIL import Image
+
+    img = Image.new("RGB", (size, size))
+    pixels = [(255, 255, 255) if (x + y) % 2 == 0 else (0, 0, 0) for y in range(size) for x in range(size)]
+    img.putdata(pixels)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")

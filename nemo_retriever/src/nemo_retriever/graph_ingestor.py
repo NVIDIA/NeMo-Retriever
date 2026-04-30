@@ -47,6 +47,7 @@ from nemo_retriever.params import (
     StoreParams,
     TextChunkParams,
     VideoFrameParams,
+    VideoFrameTextDedupParams,
     VideoOCRParams,
     WebhookParams,
 )
@@ -149,6 +150,7 @@ class GraphIngestor(ingestor):
         self._asr_params: Any = None
         self._video_frame_params: Any = None
         self._video_ocr_params: Any = None
+        self._video_text_dedup_params: Any = None
         self._av_fuse_params: Any = None
         self._embed_params: Any = None
         self._split_params: Any = None
@@ -222,6 +224,7 @@ class GraphIngestor(ingestor):
         asr_params: Optional[ASRParams] = None,
         video_frame_params: Optional[VideoFrameParams] = None,
         video_ocr_params: Optional[VideoOCRParams] = None,
+        video_text_dedup_params: Optional[VideoFrameTextDedupParams] = None,
         av_fuse_params: Optional[AudioVisualFuseParams] = None,
         **kwargs: Any,
     ) -> "GraphIngestor":
@@ -237,6 +240,7 @@ class GraphIngestor(ingestor):
         self._asr_params = asr_params or ASRParams()
         self._video_frame_params = video_frame_params or VideoFrameParams()
         self._video_ocr_params = _resolve_api_key(video_ocr_params or VideoOCRParams())
+        self._video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
         self._av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         self._record_stage("extract")
         return self
@@ -348,6 +352,7 @@ class GraphIngestor(ingestor):
                 asr_params=self._asr_params,
                 video_frame_params=self._video_frame_params,
                 video_ocr_params=self._video_ocr_params,
+                video_text_dedup_params=self._video_text_dedup_params,
                 av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
                 split_params=self._split_params,
@@ -395,6 +400,7 @@ class GraphIngestor(ingestor):
                 asr_params=self._asr_params,
                 video_frame_params=self._video_frame_params,
                 video_ocr_params=self._video_ocr_params,
+                video_text_dedup_params=self._video_text_dedup_params,
                 av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
                 split_params=self._split_params,

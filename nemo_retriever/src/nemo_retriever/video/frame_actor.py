@@ -12,10 +12,10 @@ per frame with path, source_path, image_b64, bytes, page_number, metadata.
 from __future__ import annotations
 
 import base64
-import hashlib
+import io
 import logging
 import tempfile
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -151,34 +151,132 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
         return rows
 
 
-def dedup_video_frames(batch_df: pd.DataFrame) -> pd.DataFrame:
-    """Drop frame rows whose ``image_b64`` content matches an earlier row.
+def _dhash(image_b64: str, hash_size: int = 8) -> Optional[int]:
+    """Difference-hash of a base64-encoded PNG, packed into a 64-bit integer.
 
-    Per ``source_path``, hashes each row's base64 PNG and keeps the first
-    occurrence. Preserves the order and metadata of retained rows. Rows
-    without an ``image_b64`` are passed through unchanged.
+    dhash is a perceptual hash: resize to ``(hash_size+1) x hash_size``
+    grayscale, then compare each pixel to its right neighbour and pack the
+    results as bits. Two frames with similar overall brightness layout end
+    up with hashes that are close in Hamming distance, even if individual
+    pixel values differ from encoder noise. Returns ``None`` if decoding
+    fails so the caller can fall back to keeping the row.
+    """
+    try:
+        from PIL import Image  # local import to avoid hard dep at module load
+    except Exception:  # pragma: no cover
+        return None
+    try:
+        raw = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(raw)).convert("L").resize((hash_size + 1, hash_size), Image.LANCZOS)
+        px = list(img.getdata())
+    except Exception:
+        return None
+    bits = 0
+    for r in range(hash_size):
+        for c in range(hash_size):
+            i = r * (hash_size + 1) + c
+            if px[i] > px[i + 1]:
+                bits |= 1 << (r * hash_size + c)
+    return bits
+
+
+def _hamming(a: int, b: int) -> int:
+    return (a ^ b).bit_count()
+
+
+def _seg_field(md: Any, key: str, default: float = 0.0) -> float:
+    if isinstance(md, dict):
+        try:
+            return float(md.get(key) or default)
+        except (TypeError, ValueError):
+            return default
+    return default
+
+
+def dedup_video_frames(
+    batch_df: pd.DataFrame,
+    max_hamming_distance: int = 5,
+    max_dropped_frames: int = 2,
+) -> pd.DataFrame:
+    """Collapse runs of perceptually-similar adjacent frames into one row each.
+
+    Per ``source_path``, frames are sorted by ``segment_start_seconds`` and
+    walked in order. A frame joins the current run when:
+      - its dhash is within ``max_hamming_distance`` bits of the run's hash, AND
+      - the gap to the run's current end is at most
+        ``max_dropped_frames / fps`` seconds (so a small number of dropped
+        frames in the middle is tolerated, but a long disappearance closes the run).
+    The run's first frame is kept; its ``segment_end_seconds`` (and
+    ``frame_timestamp_seconds`` midpoint) is extended to span the whole run.
+    Other frames in the run are dropped.
+
+    Without the time-window extension the kept row would say a slide was
+    visible only for its first frame (e.g. [2.0, 4.0]) even when it stayed
+    on screen for minutes — utterances during that span would miss the
+    midpoint-overlap recall match. This function fixes that.
     """
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
         return batch_df
     if "image_b64" not in batch_df.columns:
         return batch_df
 
-    seen: dict[str, set[str]] = {}
-    keep: List[bool] = []
-    for _, row in batch_df.iterrows():
-        b64 = row.get("image_b64")
-        source = row.get("source_path") or "<no_source>"
-        if not isinstance(b64, str) or not b64:
-            keep.append(True)
-            continue
-        h = hashlib.md5(b64.encode("utf-8")).hexdigest()
-        bucket = seen.setdefault(str(source), set())
-        if h in bucket:
-            keep.append(False)
-            continue
-        bucket.add(h)
-        keep.append(True)
-    return batch_df.loc[keep].reset_index(drop=True)
+    threshold = max(0, int(max_hamming_distance))
+    max_drop = max(0, int(max_dropped_frames))
+
+    work = batch_df.reset_index(drop=True).copy()
+    work["__seg_start"] = work["metadata"].apply(lambda m: _seg_field(m, "segment_start_seconds"))
+
+    output_rows: List[Dict[str, Any]] = []
+    for _source, group in work.groupby("source_path", sort=False):
+        group = group.sort_values("__seg_start")
+        active_hash: Optional[int] = None
+        active_idx: Optional[int] = None  # index in output_rows
+        active_end: Optional[float] = None
+
+        for _, row in group.iterrows():
+            md = row.get("metadata")
+            row_start = _seg_field(md, "segment_start_seconds")
+            row_end = _seg_field(md, "segment_end_seconds")
+            fps = _seg_field(md, "fps", default=1.0) or 1.0
+            b64 = row.get("image_b64")
+
+            row_dict = row.to_dict()
+            row_dict.pop("__seg_start", None)
+
+            h: Optional[int] = None
+            if isinstance(b64, str) and b64:
+                h = _dhash(b64)
+
+            max_gap = float(max_drop) / max(fps, 0.001)
+            can_merge = (
+                active_hash is not None
+                and h is not None
+                and active_end is not None
+                and _hamming(h, active_hash) <= threshold
+                and (row_start - active_end) <= max_gap
+            )
+            if can_merge:
+                # Extend the kept run's window through this frame.
+                kept = output_rows[active_idx]
+                kept_md = dict(kept.get("metadata") or {})
+                if row_end > float(kept_md.get("segment_end_seconds") or 0.0):
+                    kept_md["segment_end_seconds"] = row_end
+                    start = float(kept_md.get("segment_start_seconds") or 0.0)
+                    kept_md["frame_timestamp_seconds"] = (start + row_end) / 2.0
+                kept_md["dedup_merged_count"] = int(kept_md.get("dedup_merged_count", 1)) + 1
+                kept["metadata"] = kept_md
+                active_end = row_end
+            else:
+                # Either no active run, hash too different, gap too large, or unhashable —
+                # start a new run rooted at this frame.
+                output_rows.append(row_dict)
+                active_idx = len(output_rows) - 1
+                active_end = row_end
+                active_hash = h  # may be None for unhashable frames; that breaks the run
+
+    if not output_rows:
+        return pd.DataFrame()
+    return pd.DataFrame(output_rows)
 
 
 def video_path_to_frames_df(path: str, params: VideoFrameParams | None = None) -> pd.DataFrame:

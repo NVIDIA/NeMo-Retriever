@@ -33,6 +33,7 @@ from .models import TableParams
 from .models import TextChunkParams
 from .models import VdbUploadParams
 from .models import VideoFrameParams
+from .models import VideoFrameTextDedupParams
 from .models import VideoOCRParams
 from .models import WebhookParams
 
@@ -68,6 +69,7 @@ __all__ = [
     "TextChunkParams",
     "VdbUploadParams",
     "VideoFrameParams",
+    "VideoFrameTextDedupParams",
     "VideoOCRParams",
     "WebhookParams",
 ]

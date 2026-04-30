@@ -26,6 +26,7 @@ from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.video import (
     AudioVisualFuser,
     VideoFrameOCRActor,
+    VideoFrameTextDedup,
     VideoSplitActor,
 )
 from nemo_retriever.ocr.ocr import OCRActor
@@ -509,6 +510,7 @@ def build_graph(
     webhook_params: Any | None = None,
     video_frame_params: Any | None = None,
     video_ocr_params: Any | None = None,
+    video_text_dedup_params: Any | None = None,
     av_fuse_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
 ) -> Graph:
@@ -556,6 +558,9 @@ def build_graph(
         # empty Ray Data MapBatches stages cluttering the dashboard.
         audio_enabled = audio_chunk_params is not None and getattr(audio_chunk_params, "enabled", True)
         frames_enabled = getattr(video_frame_params, "enabled", True)
+        text_dedup_enabled = (
+            frames_enabled and video_text_dedup_params is not None and getattr(video_text_dedup_params, "enabled", True)
+        )
         fuse_enabled = (
             audio_enabled and frames_enabled and av_fuse_params is not None and getattr(av_fuse_params, "enabled", True)
         )
@@ -573,6 +578,8 @@ def build_graph(
                 or getattr(extract_params, "ocr_invoke_url", None),
                 api_key=getattr(video_ocr_params, "api_key", None) or getattr(extract_params, "api_key", None),
             )
+        if text_dedup_enabled:
+            graph = graph >> VideoFrameTextDedup(params=video_text_dedup_params)
         if fuse_enabled:
             graph = graph >> AudioVisualFuser(params=av_fuse_params)
     elif _should_build_audio_graph(

@@ -53,16 +53,6 @@ def _row_segment_window(row: Any) -> tuple[float, float] | None:
     return start, end
 
 
-def _row_frame_timestamp(row: Any) -> float | None:
-    md = row.get("metadata") if isinstance(row, dict) else getattr(row, "metadata", None)
-    if not isinstance(md, dict):
-        return None
-    try:
-        return float(md["frame_timestamp_seconds"])
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
 @designer_component(
     name="Audio-Visual Fuser",
     category="Video",
@@ -96,18 +86,22 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             return batch_df
 
         # Bucket frame rows by source_path so we can self-join cheaply.
-        frames_by_source: Dict[str, List[tuple[float, str]]] = {}
+        # Each entry is (frame_start_seconds, frame_end_seconds, text). Storing
+        # the window (rather than the midpoint timestamp) means dedup-merged
+        # rows with wide windows still fuse with utterances inside that window.
+        frames_by_source: Dict[str, List[tuple[float, float, str]]] = {}
         for row in batch_df.itertuples(index=False):
             if _row_content_type(row) != "video_frame":
                 continue
-            timestamp = _row_frame_timestamp(row)
+            window = _row_segment_window(row)
             text = getattr(row, "text", None)
-            if timestamp is None or not isinstance(text, str) or not text.strip():
+            if window is None or not isinstance(text, str) or not text.strip():
                 continue
             source = getattr(row, "source_path", None)
             if not isinstance(source, str):
                 continue
-            frames_by_source.setdefault(source, []).append((timestamp, text.strip()))
+            f_start, f_end = window
+            frames_by_source.setdefault(source, []).append((float(f_start), float(f_end), text.strip()))
 
         for entries in frames_by_source.values():
             entries.sort(key=lambda t: t[0])
@@ -131,7 +125,10 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             if not isinstance(audio_text, str) or not audio_text.strip():
                 continue
             frame_entries = frames_by_source.get(source, [])
-            concurrent = [text for ts, text in frame_entries if u_start <= ts <= u_end]
+            # Window-overlap: a frame fuses when its visibility window
+            # intersects the utterance window. Handles narrow per-frame windows
+            # (single frame) and wide merged windows (text-dedup output) alike.
+            concurrent = [text for f_start, f_end, text in frame_entries if max(u_start, f_start) <= min(u_end, f_end)]
             if not concurrent:
                 continue
 
