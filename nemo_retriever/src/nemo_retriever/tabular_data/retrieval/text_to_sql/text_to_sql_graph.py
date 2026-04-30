@@ -276,7 +276,14 @@ def create_graph():
         },
     )
 
-    graph.add_edge("construct_sql_not_from_snippets", "validate_sql_query")
+    graph.add_conditional_edges(
+        "construct_sql_not_from_snippets",
+        route_decision,
+        {
+            "validate_sql_query": "validate_sql_query",
+            "unconstructable": "unconstructable_sql_response",
+        },
+    )
     graph.add_edge("reconstruct_sql", "validate_sql_query")
 
     graph.add_edge("unconstructable_sql_response", END)
