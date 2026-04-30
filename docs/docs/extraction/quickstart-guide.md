@@ -51,7 +51,7 @@ d. Create a .env file that contains your NVIDIA Build API key.
    
 e. Ensure your GPU nodes meet the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) and driver requirements from the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
-f. Install or upgrade the release. The documented path uses **LanceDB** as the vector database (embedded, in-process). For more information about optional components (audio, nemotron-parse, VLM captioning), refer to [Profile Information](#profile-information) and [Data Upload](vdbs.md).
+f. Install or upgrade the release. The documented path uses LanceDB as the vector database (embedded, in-process). For more information about optional components (audio, nemotron-parse, VLM captioning), refer to [Profile Information](#profile-information) and [Data Upload](vdbs.md).
 
     Follow the `helm upgrade --install` flow in the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md), including NGC authentication and any `--set` values your cluster requires.
 
