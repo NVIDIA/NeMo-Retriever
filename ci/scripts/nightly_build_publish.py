@@ -213,9 +213,12 @@ def _project_table_bounds(text: str) -> tuple[int, int] | None:
     m = re.search(r"(?m)^\[project\]\s*(?:#.*)?$", text)
     if not m:
         return None
-    next_table = re.search(r"(?m)^\[[^\]]+\]\s*(?:#.*)?$", text[m.end() :])
-    end = m.end() + next_table.start() if next_table else len(text)
-    return m.end(), end
+
+    for next_table in re.finditer(r"(?m)^\[([^\]]+)\]\s*(?:#.*)?$", text[m.end() :]):
+        table_name = next_table.group(1).strip()
+        if table_name != "project" and not table_name.startswith("project."):
+            return m.end(), m.end() + next_table.start()
+    return m.end(), len(text)
 
 
 def _set_requirement_specifier(requirement: str, specifier: str) -> str:
@@ -247,8 +250,7 @@ def _patch_pyproject_runtime_dependency_pins(project_dir: Path, pins: dict[str, 
         raise RuntimeError(f"Cannot pin runtime dependencies: {pyproject} not found")
 
     normalized_specifiers = {
-        _canonical_dependency_name(package): _runtime_dependency_specifier(version)
-        for package, version in pins.items()
+        _canonical_dependency_name(package): _runtime_dependency_specifier(version) for package, version in pins.items()
     }
     text = _read_text(pyproject)
     bounds = _project_table_bounds(text)
@@ -281,18 +283,12 @@ def _patch_pyproject_runtime_dependency_pins(project_dir: Path, pins: dict[str, 
 
     missing = sorted(set(normalized_specifiers) - found)
     if missing:
-        raise RuntimeError(
-            "No matching [project].dependencies entries found for runtime pin(s): " + ", ".join(missing)
-        )
+        raise RuntimeError("No matching [project].dependencies entries found for runtime pin(s): " + ", ".join(missing))
 
     if patched_body == deps_body:
         return False
 
-    patched_project_text = (
-        project_text[: deps_match.start(2)]
-        + patched_body
-        + project_text[deps_match.end(2) :]
-    )
+    patched_project_text = project_text[: deps_match.start(2)] + patched_body + project_text[deps_match.end(2) :]
     patched_text = text[:project_start] + patched_project_text + text[project_end:]
     _write_text(pyproject, patched_text)
     for package in sorted(found):

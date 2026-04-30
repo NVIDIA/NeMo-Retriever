@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import textwrap
@@ -59,6 +63,36 @@ def test_patch_pyproject_runtime_dependency_pins_requires_matching_dependency(tm
 
     with pytest.raises(RuntimeError, match="No matching \\[project\\].dependencies entries"):
         nightly._patch_pyproject_runtime_dependency_pins(tmp_path, {"torch": "2.10.0"})
+
+
+def test_patch_pyproject_runtime_dependency_pins_searches_across_project_subtables(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        textwrap.dedent(
+            """
+            [project]
+            name = "nemotron-ocr"
+            version = "1.0.0"
+
+            [project.optional-dependencies]
+            dev = ["pytest>=8"]
+
+            dependencies = [
+                "torch>=2.8.0",
+            ]
+
+            [tool.hatch.build.targets.wheel.hooks.custom]
+            dependencies = ["torch>=2.0"]
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    assert nightly._patch_pyproject_runtime_dependency_pins(tmp_path, {"torch": "2.10.0"})
+
+    patched = pyproject.read_text(encoding="utf-8")
+    assert '"torch~=2.10.0",' in patched
+    assert 'dependencies = ["torch>=2.0"]' in patched
 
 
 def test_runtime_dependency_specifier_omits_local_suffix_and_allows_patch_releases():
