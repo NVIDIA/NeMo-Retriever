@@ -17,7 +17,7 @@ DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
 VALID_RUN_MODES = {"batch", "inprocess"}
 VALID_EVALUATION_MODES = {"recall", "beir"}
-VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
+VALID_RECALL_ADAPTERS = {"none"}
 VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
@@ -60,14 +60,14 @@ class HarnessConfig:
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = True
-    recall_match_mode: str = "pdf_page"
+    recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
     audio_match_tolerance_secs: float = 2.0
     segment_audio: bool = False
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
-    evaluation_mode: str = "recall"
-    beir_loader: str | None = None
+    evaluation_mode: str = "beir"
+    beir_loader: str | None = "vidore_hf"
     beir_dataset_name: str | None = None
     beir_split: str = "test"
     beir_query_language: str | None = None
@@ -129,8 +129,10 @@ class HarnessConfig:
             errors.append(f"input_type must be one of pdf/txt/html/doc/audio, got '{self.input_type}'")
 
         if self.evaluation_mode == "recall":
-            if self.recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
-                errors.append("recall_match_mode must be one of pdf_page/pdf_only/audio_segment")
+            if self.input_type != "audio":
+                errors.append("evaluation_mode=recall is only supported for input_type=audio; use evaluation_mode=beir")
+            if self.recall_match_mode != "audio_segment":
+                errors.append("recall_match_mode must be audio_segment when evaluation_mode=recall")
 
             if self.recall_adapter not in VALID_RECALL_ADAPTERS:
                 errors.append(f"recall_adapter must be one of {sorted(VALID_RECALL_ADAPTERS)}")

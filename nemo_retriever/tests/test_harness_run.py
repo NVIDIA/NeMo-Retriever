@@ -111,14 +111,18 @@ def test_last_commit_fallback_reads_git_metadata(
 def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         write_detection_file=False,
     )
     cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
@@ -126,9 +130,9 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert cmd[cmd.index("--run-mode") + 1] == "batch"
     assert "--detection-summary-file" in cmd
     assert "--evaluation-mode" in cmd
-    assert cmd[cmd.index("--evaluation-mode") + 1] == "recall"
-    assert "--recall-match-mode" in cmd
-    assert "pdf_page" in cmd
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
+    assert "--beir-loader" in cmd
+    assert "--recall-match-mode" not in cmd
     assert "--pdf-extract-tasks" in cmd
     assert "--pdf-extract-cpus-per-task" in cmd
     assert "--page-elements-actors" in cmd
@@ -145,21 +149,25 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert "--no-extract-page-as-image" not in cmd
     assert detection_file.parent == runtime_dir
     assert detection_file.name == ".detection_summary.json"
-    assert effective_query_csv == query_csv
+    assert effective_query_csv is None
 
 
 def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
         run_mode="inprocess",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         write_detection_file=False,
     )
     cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
@@ -170,15 +178,17 @@ def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
 def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
-        dataset_label="vidore_v3_computer_science",
+        dataset_label="jp20",
         preset="single_gpu",
         evaluation_mode="beir",
-        beir_loader="vidore_hf",
-        beir_dataset_name="vidore_v3_computer_science",
-        query_csv=None,
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
         recall_required=False,
     )
 
@@ -186,7 +196,7 @@ def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     assert "--evaluation-mode" in cmd
     assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
     assert "--beir-loader" in cmd
-    assert cmd[cmd.index("--beir-loader") + 1] == "vidore_hf"
+    assert cmd[cmd.index("--beir-loader") + 1] == "jp20_csv"
     assert "--beir-dataset-name" in cmd
     assert "--beir-k" in cmd
     assert "--query-csv" not in cmd
@@ -327,21 +337,25 @@ def test_build_command_supports_financebench_beir_pdf_basename_doc_id_field(tmp_
 def test_build_command_uses_top_level_detection_file_when_enabled(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         write_detection_file=True,
     )
     cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--detection-summary-file" in cmd
     assert detection_file.parent == tmp_path
     assert detection_file.name == "detection_summary.json"
-    assert effective_query_csv == query_csv
+    assert effective_query_csv is None
 
 
 def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: Path) -> None:
@@ -354,7 +368,11 @@ def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: 
         dataset_dir=str(dataset_dir),
         dataset_label="earnings",
         preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="earnings_csv",
+        beir_doc_id_field="pdf_page",
         query_csv=str(query_csv),
+        recall_required=False,
         embed_modality="text_image",
         embed_granularity="element",
         extract_page_as_image=False,
@@ -373,7 +391,7 @@ def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: 
     assert cmd[cmd.index("--structured-elements-modality") + 1] == "text_image"
 
 
-def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
+def test_build_command_rejects_document_legacy_recall(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -384,21 +402,12 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
         dataset_label="earnings",
         preset="single_gpu",
         query_csv=str(query_csv),
-        recall_adapter="page_plus_one",
+        evaluation_mode="recall",
+        recall_match_mode="pdf_page",
+        recall_adapter="none",
     )
-    cmd, runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
-
-    assert effective_query_csv.parent == runtime_dir
-    assert effective_query_csv.name == "query_adapter.page_plus_one.csv"
-    assert "--query-csv" in cmd
-    assert str(effective_query_csv) in cmd
-    csv_contents = effective_query_csv.read_text(encoding="utf-8")
-    assert "query,pdf_page" in csv_contents
-    assert "q,doc_name_1" in csv_contents
-    assert "--segment-audio" not in cmd
-    assert "--no-segment-audio" not in cmd
-    assert "--audio-split-type" not in cmd
-    assert "--audio-split-interval" not in cmd
+    with pytest.raises(ValueError, match="Legacy recall evaluation is only supported for audio input"):
+        _build_command(cfg, tmp_path, run_id="r1")
 
 
 def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
@@ -416,6 +425,7 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
         preset="single_gpu",
         query_csv=str(query_csv),
         input_type="audio",
+        evaluation_mode="recall",
         segment_audio=True,
         audio_split_type="time",
         audio_split_interval=45,
@@ -441,14 +451,18 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
 def test_build_command_omits_tuning_flags_when_use_heuristics(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         use_heuristics=True,
     )
     cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
@@ -888,9 +902,12 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
-        dataset_label="jp20",
+        dataset_label="audio_retrieval",
         preset="single_gpu",
         query_csv=str(query_csv),
+        input_type="audio",
+        evaluation_mode="recall",
+        recall_match_mode="audio_segment",
         write_detection_file=False,
         recall_required=False,
     )

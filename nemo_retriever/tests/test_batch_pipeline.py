@@ -130,7 +130,7 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
 
     class _FakeTable:
         def count_rows(self) -> int:
-            return 1
+            return 0
 
     class _FakeDb:
         def open_table(self, _name):
@@ -143,6 +143,12 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
         batch_pipeline.app,
         [
             str(dataset_dir),
+            "--evaluation-mode",
+            "beir",
+            "--beir-loader",
+            "vidore_hf",
+            "--beir-dataset-name",
+            "vidore_v3_computer_science",
             "--query-csv",
             str(missing_query_csv),
             "--embed-modality",
@@ -181,7 +187,7 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
 
     class _FakeTable:
         def count_rows(self) -> int:
-            return 1
+            return 0
 
     class _FakeDb:
         def open_table(self, _name):
@@ -299,7 +305,7 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
 
     class _FakeTable:
         def count_rows(self) -> int:
-            return 1
+            return 0
 
     class _FakeDb:
         def open_table(self, _name):
@@ -312,6 +318,12 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
         batch_pipeline.app,
         [
             str(dataset_dir),
+            "--evaluation-mode",
+            "beir",
+            "--beir-loader",
+            "vidore_hf",
+            "--beir-dataset-name",
+            "vidore_v3_computer_science",
             "--query-csv",
             str(missing_query_csv),
             "--runtime-metrics-dir",
@@ -327,4 +339,4 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
     assert summary_path.exists()
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["recall_details"] is False
-    assert payload["evaluation_mode"] == "recall"
+    assert payload["evaluation_mode"] == "beir"

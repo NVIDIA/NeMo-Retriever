@@ -7,8 +7,6 @@ active:
   query_csv: data/jp20_query_gt.csv
   input_type: pdf
   recall_required: false
-  recall_match_mode: pdf_page
-  recall_adapter: none
   evaluation_mode: beir
   beir_loader: jp20_csv
   beir_dataset_name: null
@@ -125,6 +123,7 @@ datasets:
     path: /datasets/nv-ingest/audio_retrieval_data_mp3
     query_csv: /datasets/nv-ingest/video_retrieval_eval_gt_audio_only.csv
     input_type: audio
+    evaluation_mode: recall
     segment_audio: true
     audio_split_type: time
     audio_split_interval: 36000
@@ -140,8 +139,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_computer_science
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_computer_science
@@ -156,8 +153,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_energy
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_energy
@@ -172,8 +167,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_finance_en
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_finance_en
@@ -188,8 +181,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_finance_fr
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_finance_fr
@@ -204,8 +195,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_hr
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_hr
@@ -220,8 +209,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_industrial
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_industrial
@@ -236,8 +223,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_pharmaceuticals
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_pharmaceuticals
@@ -252,8 +237,6 @@ datasets:
     path: /datasets/nv-ingest/vidore_v3_corpus_pdf/vidore_v3_physics
     query_csv: null
     recall_required: false
-    recall_match_mode: pdf_page
-    recall_adapter: none
     evaluation_mode: beir
     beir_loader: vidore_hf
     beir_dataset_name: vidore_v3_physics

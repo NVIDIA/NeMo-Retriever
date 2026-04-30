@@ -34,7 +34,6 @@ from nemo_retriever.harness.config import (
     load_harness_config,
     load_nightly_config,
 )
-from nemo_retriever.harness.recall_adapters import prepare_recall_query_file
 from nemo_retriever.utils.input_files import resolve_input_files
 
 
@@ -358,7 +357,10 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
 
     if cfg.evaluation_mode == "beir":
         beir_dataset_name = cfg.beir_dataset_name or cfg.dataset_label
-        if cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv", "financebench_json", "jp20_csv"} and cfg.query_csv:
+        if (
+            cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv", "financebench_json", "jp20_csv"}
+            and cfg.query_csv
+        ):
             beir_dataset_name = str(Path(cfg.query_csv).resolve())
         cmd += [
             "--beir-loader",
@@ -375,11 +377,13 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         for k in cfg.beir_ks:
             cmd += ["--beir-k", str(int(k))]
     else:
-        effective_query_csv = prepare_recall_query_file(
-            query_csv=Path(cfg.query_csv) if cfg.query_csv else None,
-            recall_adapter=cfg.recall_adapter,
-            output_dir=runtime_dir,
-        )
+        if cfg.input_type != "audio":
+            raise ValueError("Legacy recall evaluation is only supported for audio input")
+        if cfg.recall_match_mode != "audio_segment" or cfg.recall_adapter != "none":
+            raise ValueError("Audio recall evaluation requires recall_match_mode=audio_segment and recall_adapter=none")
+        if not cfg.query_csv:
+            raise ValueError("Audio recall evaluation requires query_csv")
+        effective_query_csv = Path(cfg.query_csv)
         cmd += [
             "--query-csv",
             str(effective_query_csv),

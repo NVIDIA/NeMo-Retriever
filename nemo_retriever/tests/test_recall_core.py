@@ -7,8 +7,6 @@ from nemo_retriever.recall.core import _hit_to_audio_segment_key, _normalize_que
 @pytest.mark.parametrize(
     "match_mode,df,expected",
     [
-        ("pdf_only", pd.DataFrame({"query": ["q1"], "expected_pdf": ["Doc_A.pdf"]}), ["Doc_A"]),
-        ("pdf_page", pd.DataFrame({"query": ["q1"], "pdf": ["Doc_A.pdf"], "page": [2]}), ["Doc_A_2"]),
         (
             "audio_segment",
             pd.DataFrame({"question": ["q1"], "name": ["clip.mp3"], "start_time": [12.0], "end_time": [15.0]}),
@@ -24,10 +22,6 @@ def test_normalize_query_df_modes(match_mode: str, df: pd.DataFrame, expected: l
 @pytest.mark.parametrize(
     "match_mode,golden,retrieved,k,expected",
     [
-        ("pdf_only", "Doc_A", ["Doc_A_7", "Doc_B_1"], 1, True),
-        ("pdf_only", "Doc_B", ["Doc_A_7", "Doc_B_1"], 1, False),
-        ("pdf_page", "Doc_A_2", ["Doc_A_2", "Doc_A_9"], 1, True),
-        ("pdf_page", "Doc_A_2", ["Doc_A_9", "Doc_A_-1"], 1, False),
         (
             "audio_segment",
             "clip\t10.000000\t20.000000",
