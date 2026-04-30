@@ -227,7 +227,6 @@ class TestQuerySingleConvenience:
             embedder=None,
             lancedb_uri=None,
             lancedb_table=None,
-            label_in=None,
         )
         assert result is expected
 
@@ -237,7 +236,7 @@ class TestQuerySingleConvenience:
             r.query("q", embedder="e", lancedb_uri="u", lancedb_table="t")
 
         mock_queries.assert_called_once_with(
-            ["q"], top_k=None, embedder="e", lancedb_uri="u", lancedb_table="t", label_in=None
+            ["q"], top_k=None, embedder="e", lancedb_uri="u", lancedb_table="t"
         )
 
 

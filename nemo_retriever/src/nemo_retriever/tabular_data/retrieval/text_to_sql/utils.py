@@ -191,9 +191,8 @@ def _vector_distance_value(distance: object | None) -> float:
 def _hits_to_semantic_rows(hits: list[dict], _allowed_labels: set[str], k: int) -> list[dict]:
     """Turn raw LanceDB hits into candidate dicts.
 
-    Label filtering is already applied in LanceDB via ``label_in``; each row uses ``text`` as
-    the candidate string. ``id`` / ``label`` are taken from metadata (minimal parse) for
-    ``expand_info`` / Neo4j enrichment only.
+    Each row uses ``text`` as the candidate string. ``id`` / ``label`` are taken from
+    metadata (minimal parse) for ``expand_info`` / Neo4j enrichment only.
 
     ``score`` is the raw vector ``_distance`` from Lance (lower is better; see sorts below).
     """
@@ -228,11 +227,6 @@ def search_lancedb_semantic_index(
     Vector search over LanceDB via the injected :class:`~nemo_retriever.retriever.Retriever`
     (same stack as ``generate_sql.get_sql_tool_response_top_k``).
 
-    ``Retriever`` applies ``label_filter`` in LanceDB with ``(label IN (...)) OR
-    (metadata LIKE …)`` when those columns exist (substring patterns include Neo4j-style
-    ``Column`` vs ``column``). ``_hits_to_semantic_rows`` maps hits to ``text`` + ``id``/``label``
-    for downstream enrichment (no second label filter).
-
     The retriever's ``lancedb_uri`` / ``lancedb_table`` / ``embedder`` / embedding
     endpoint and credentials are fully decided at retriever construction time;
     this function does not read any environment variables.
@@ -242,10 +236,7 @@ def search_lancedb_semantic_index(
 
     retriever.top_k = limit
 
-    hits = retriever.query(
-        entity,
-        label_in=sorted(allowed_labels) if allowed_labels else None,
-    )
+    hits = retriever.query(entity)
 
     return _hits_to_semantic_rows(hits, allowed_labels, limit)
 
