@@ -11,6 +11,12 @@ model lifecycle (NIM client init, lazy ``NemotronOCRV1`` load); the
 batch-shape handling and OCR call are reused from the page-elements
 OCR pipeline so response parsing, the empty-text fallback fix, and
 selective passthrough live in exactly one place.
+
+Configuration is read from loose kwargs (mirroring :class:`OCRActor`):
+``ocr_invoke_url`` / ``invoke_url``, ``api_key``, ``inference_batch_size``,
+``merge_level``, ``request_timeout_s``, plus the standard remote-retry
+knobs. Callers typically pass these straight from :class:`ExtractParams`
+so the user only configures OCR once.
 """
 
 from __future__ import annotations
@@ -31,22 +37,14 @@ from nemo_retriever.ocr.shared import (
     full_image_ocr_df,
     split_ocrable_rows,
 )
-from nemo_retriever.params import RemoteRetryParams, VideoOCRParams
+from nemo_retriever.params import RemoteRetryParams
 
 logger = logging.getLogger(__name__)
 
 
-def _params_from_kwargs(ocr_kwargs: dict[str, Any]) -> VideoOCRParams:
-    params = ocr_kwargs.get("params")
-    if isinstance(params, VideoOCRParams):
-        return params
-    return VideoOCRParams(
-        ocr_invoke_url=ocr_kwargs.get("ocr_invoke_url") or ocr_kwargs.get("invoke_url"),
-        api_key=ocr_kwargs.get("api_key"),
-        batch_size=int(ocr_kwargs.get("batch_size", 8)),
-        merge_level=str(ocr_kwargs.get("merge_level", "paragraph")),
-        request_timeout_s=float(ocr_kwargs.get("request_timeout_s", 120.0)),
-    )
+def _ocr_invoke_url(ocr_kwargs: dict[str, Any]) -> str | None:
+    raw = ocr_kwargs.get("ocr_invoke_url") or ocr_kwargs.get("invoke_url")
+    return str(raw).strip() if raw else None
 
 
 class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
@@ -54,7 +52,7 @@ class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
-        self._params = _params_from_kwargs(ocr_kwargs)
+        self._merge_level = str(ocr_kwargs.get("merge_level", "paragraph"))
         self._model = None  # lazily loaded on first call
 
     def _ensure_model(self) -> None:
@@ -73,7 +71,7 @@ class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
         if ocr_df.empty:
             return passthrough
         self._ensure_model()
-        out = full_image_ocr_df(ocr_df, model=self._model, merge_level=self._params.merge_level)
+        out = full_image_ocr_df(ocr_df, model=self._model, merge_level=self._merge_level)
         return concat_with_passthrough(out, passthrough)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
@@ -87,8 +85,11 @@ class VideoFrameOCRCPUActor(AbstractOperator, CPUOperator):
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
-        self._params = _params_from_kwargs(ocr_kwargs)
-        self._invoke_url = (self._params.ocr_invoke_url or self.DEFAULT_INVOKE_URL).strip()
+        self._invoke_url = (_ocr_invoke_url(ocr_kwargs) or self.DEFAULT_INVOKE_URL).strip()
+        self._api_key = ocr_kwargs.get("api_key")
+        self._batch_size = int(ocr_kwargs.get("inference_batch_size") or ocr_kwargs.get("batch_size") or 8)
+        self._merge_level = str(ocr_kwargs.get("merge_level", "paragraph"))
+        self._timeout_s = float(ocr_kwargs.get("request_timeout_s", 120.0))
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(ocr_kwargs.get("remote_max_pool_workers", 16)),
             remote_max_retries=int(ocr_kwargs.get("remote_max_retries", 10)),
@@ -108,11 +109,11 @@ class VideoFrameOCRCPUActor(AbstractOperator, CPUOperator):
         out = full_image_ocr_df(
             ocr_df,
             invoke_url=self._invoke_url,
-            api_key=self._params.api_key,
+            api_key=self._api_key,
             nim_client=self._nim_client,
-            merge_level=self._params.merge_level,
-            batch_size=int(self._params.batch_size),
-            timeout_s=float(self._params.request_timeout_s),
+            merge_level=self._merge_level,
+            batch_size=self._batch_size,
+            timeout_s=self._timeout_s,
             retry=self._remote_retry,
         )
         return concat_with_passthrough(out, passthrough)
@@ -137,11 +138,7 @@ class VideoFrameOCRActor(ArchetypeOperator):
 
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
-        kwargs = operator_kwargs or {}
-        params = kwargs.get("params")
-        if isinstance(params, VideoOCRParams) and params.ocr_invoke_url:
-            return True
-        return bool(str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return bool(_ocr_invoke_url(operator_kwargs or {}))
 
     @classmethod
     def cpu_variant_class(cls):

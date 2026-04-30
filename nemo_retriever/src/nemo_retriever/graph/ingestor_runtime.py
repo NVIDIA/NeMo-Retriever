@@ -509,7 +509,6 @@ def build_graph(
     store_params: Any | None = None,
     webhook_params: Any | None = None,
     video_frame_params: Any | None = None,
-    video_ocr_params: Any | None = None,
     video_text_dedup_params: Any | None = None,
     av_fuse_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
@@ -573,10 +572,14 @@ def build_graph(
             graph = graph >> ASRActor(params=asr_params)
         if frames_enabled:
             graph = graph >> VideoFrameOCRActor(
-                params=video_ocr_params,
-                ocr_invoke_url=getattr(video_ocr_params, "ocr_invoke_url", None)
-                or getattr(extract_params, "ocr_invoke_url", None),
-                api_key=getattr(video_ocr_params, "api_key", None) or getattr(extract_params, "api_key", None),
+                ocr_invoke_url=getattr(extract_params, "ocr_invoke_url", None),
+                api_key=getattr(extract_params, "ocr_api_key", None) or getattr(extract_params, "api_key", None),
+                inference_batch_size=int(getattr(extract_params, "inference_batch_size", None) or 8),
+                request_timeout_s=float(
+                    getattr(extract_params, "ocr_request_timeout_s", None)
+                    or getattr(extract_params, "request_timeout_s", None)
+                    or 120.0
+                ),
             )
         if text_dedup_enabled:
             graph = graph >> VideoFrameTextDedup(params=video_text_dedup_params)
@@ -597,7 +600,6 @@ def build_graph(
             asr_params=asr_params,
             caption_params=caption_params,
             video_frame_params=video_frame_params,
-            video_ocr_params=video_ocr_params,
             av_fuse_params=av_fuse_params,
         )
     else:

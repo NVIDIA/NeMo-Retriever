@@ -10,7 +10,6 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from nemo_retriever.params import VideoOCRParams
 from nemo_retriever.video.ocr_actor import (
     VideoFrameOCRActor,
     VideoFrameOCRCPUActor,
@@ -43,15 +42,11 @@ def _make_frame_df(image_b64s: list[str]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def test_archetype_prefers_cpu_when_invoke_url_set_via_params() -> None:
-    actor = VideoFrameOCRActor(params=VideoOCRParams(ocr_invoke_url="https://example/ocr"))
-    assert (
-        VideoFrameOCRActor.prefers_cpu_variant({"params": VideoOCRParams(ocr_invoke_url="https://example/ocr")}) is True
-    )
+def test_archetype_prefers_cpu_when_invoke_url_set() -> None:
+    assert VideoFrameOCRActor.prefers_cpu_variant({"ocr_invoke_url": "https://example/ocr"}) is True
+    assert VideoFrameOCRActor.prefers_cpu_variant({"invoke_url": "https://example/ocr"}) is True
     # Without invoke_url, prefers GPU when available.
     assert VideoFrameOCRActor.prefers_cpu_variant({}) is False
-    # Constructed actor records its kwargs for delegate resolution.
-    assert isinstance(actor.params, VideoOCRParams)
 
 
 def test_cpu_actor_calls_remote_batched_with_b64_list() -> None:
@@ -64,7 +59,7 @@ def test_cpu_actor_calls_remote_batched_with_b64_list() -> None:
     nim_client = MagicMock()
     nim_client.invoke_image_inference_batches = MagicMock(return_value=fake_response)
 
-    actor = VideoFrameOCRCPUActor(params=VideoOCRParams(ocr_invoke_url="https://example/ocr"))
+    actor = VideoFrameOCRCPUActor(ocr_invoke_url="https://example/ocr")
     actor._nim_client = nim_client
 
     out = actor.run(df)
@@ -78,7 +73,7 @@ def test_cpu_actor_calls_remote_batched_with_b64_list() -> None:
 
 
 def test_cpu_actor_returns_empty_for_empty_input() -> None:
-    actor = VideoFrameOCRCPUActor(params=VideoOCRParams(ocr_invoke_url="https://example/ocr"))
+    actor = VideoFrameOCRCPUActor(ocr_invoke_url="https://example/ocr")
     out = actor.run(pd.DataFrame())
     assert isinstance(out, pd.DataFrame)
     assert out.empty
@@ -88,7 +83,6 @@ def test_gpu_actor_invokes_local_model_per_frame() -> None:
     df = _make_frame_df(["b64_one", "b64_two"])
 
     fake_model = MagicMock()
-    # Returns a response that _parse_ocr_result can extract text from.
     fake_model.invoke = MagicMock(
         side_effect=[
             [{"text_prediction": {"text": "alpha"}}],
@@ -96,7 +90,7 @@ def test_gpu_actor_invokes_local_model_per_frame() -> None:
         ]
     )
 
-    actor = VideoFrameOCRGPUActor(params=VideoOCRParams())
+    actor = VideoFrameOCRGPUActor()
     actor._model = fake_model
 
     out = actor.run(df)
@@ -108,14 +102,13 @@ def test_gpu_actor_invokes_local_model_per_frame() -> None:
 def test_gpu_actor_drops_empty_text_rows() -> None:
     df = _make_frame_df(["b64_one", "b64_two"])
     fake_model = MagicMock()
-    # Second frame returns an empty/no-text response.
     fake_model.invoke = MagicMock(
         side_effect=[
             [{"text_prediction": {"text": "alpha"}}],
             [{"text_prediction": {"text": ""}}],
         ]
     )
-    actor = VideoFrameOCRGPUActor(params=VideoOCRParams())
+    actor = VideoFrameOCRGPUActor()
     actor._model = fake_model
 
     out = actor.run(df)

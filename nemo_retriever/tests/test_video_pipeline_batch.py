@@ -19,8 +19,8 @@ from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
+    ExtractParams,
     VideoFrameParams,
-    VideoOCRParams,
 )
 
 
@@ -67,10 +67,10 @@ def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> 
     # resolves to its CPU (NIM) variant.
     op = _MultiTypeExtractBase(
         extraction_mode="auto",
+        extract_params=ExtractParams(ocr_invoke_url="https://example/ocr"),
         audio_chunk_params=AudioChunkParams(split_type="time", split_interval=10),
         asr_params=ASRParams(),
         video_frame_params=VideoFrameParams(fps=1.0, dedup=False),
-        video_ocr_params=VideoOCRParams(ocr_invoke_url="https://example/ocr"),
         av_fuse_params=AudioVisualFuseParams(enabled=True),
     )
 

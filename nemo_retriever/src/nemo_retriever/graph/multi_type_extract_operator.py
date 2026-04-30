@@ -34,7 +34,6 @@ from nemo_retriever.params import PdfSplitParams
 from nemo_retriever.params import AudioVisualFuseParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VideoFrameParams
-from nemo_retriever.params import VideoOCRParams
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
@@ -129,7 +128,6 @@ class _MultiTypeExtractBase(AbstractOperator):
         asr_params: ASRParams | None = None,
         caption_params: CaptionParams | None = None,
         video_frame_params: VideoFrameParams | None = None,
-        video_ocr_params: VideoOCRParams | None = None,
         av_fuse_params: AudioVisualFuseParams | None = None,
         **kwargs: Any,
     ) -> None:
@@ -142,7 +140,6 @@ class _MultiTypeExtractBase(AbstractOperator):
         self.asr_params = asr_params or ASRParams()
         self.caption_params = caption_params
         self.video_frame_params = video_frame_params or VideoFrameParams()
-        self.video_ocr_params = video_ocr_params or VideoOCRParams()
         self.av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         self._resolved_resources = None
 
@@ -285,25 +282,18 @@ class _MultiTypeExtractBase(AbstractOperator):
         return self._run_detection_pipeline(batch_df)
 
     def _video_ocr_kwargs(self) -> dict[str, Any]:
-        """Resolve OCR kwargs for the video frame branch.
+        """Build OCR kwargs for the video frame branch from ``extract_params``.
 
-        ``video_ocr_params`` overrides ``extract_params`` when set;
-        otherwise falls back to the same ``ocr_invoke_url`` / ``api_key``
-        the PDF/image pipelines use.
+        Video OCR shares its endpoint, API key, batch size, and timeout with
+        the PDF/image OCR config — the user only configures OCR once via
+        :class:`ExtractParams`.
         """
-        params = self.video_ocr_params
-        ocr_invoke_url = params.ocr_invoke_url or self.extract_params.ocr_invoke_url
-        api_key = params.api_key or self.extract_params.api_key
+        ep = self.extract_params
         return {
-            "params": VideoOCRParams(
-                ocr_invoke_url=ocr_invoke_url,
-                api_key=api_key,
-                batch_size=int(params.batch_size),
-                merge_level=str(params.merge_level),
-                request_timeout_s=float(params.request_timeout_s),
-            ),
-            "ocr_invoke_url": ocr_invoke_url,
-            "api_key": api_key,
+            "ocr_invoke_url": ep.ocr_invoke_url,
+            "api_key": ep.ocr_api_key or ep.api_key,
+            "inference_batch_size": int(ep.inference_batch_size),
+            "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
         }
 
     def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
@@ -469,7 +459,6 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         asr_params: ASRParams | None = None,
         caption_params: CaptionParams | None = None,
         video_frame_params: VideoFrameParams | None = None,
-        video_ocr_params: VideoOCRParams | None = None,
         av_fuse_params: AudioVisualFuseParams | None = None,
         **kwargs: Any,
     ) -> None:
@@ -482,7 +471,6 @@ class MultiTypeExtractOperator(ArchetypeOperator):
             asr_params=asr_params,
             caption_params=caption_params,
             video_frame_params=video_frame_params,
-            video_ocr_params=video_ocr_params,
             av_fuse_params=av_fuse_params,
             **kwargs,
         )
@@ -494,5 +482,4 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         self.asr_params = asr_params
         self.caption_params = caption_params
         self.video_frame_params = video_frame_params
-        self.video_ocr_params = video_ocr_params
         self.av_fuse_params = av_fuse_params

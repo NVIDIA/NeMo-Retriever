@@ -276,7 +276,6 @@ datasets:
     video_extract_audio: true
     video_extract_frames: true
     video_frame_fps: 0.5
-    video_frame_dedup: true
     video_av_fuse: true
     recall_required: true
     recall_match_mode: audio_segment

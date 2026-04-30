@@ -186,16 +186,6 @@ class VideoFrameParams(_ParamsModel):
     dedup_max_dropped_frames: int = 2
 
 
-class VideoOCRParams(_ParamsModel):
-    """Params for full-frame OCR (Nemotron OCR v1, local or NIM)."""
-
-    ocr_invoke_url: Optional[str] = None
-    api_key: Optional[str] = None
-    batch_size: int = 8
-    merge_level: str = "paragraph"
-    request_timeout_s: float = 120.0
-
-
 class VideoFrameTextDedupParams(_ParamsModel):
     """Params for merging consecutive video_frame rows with identical OCR text.
 

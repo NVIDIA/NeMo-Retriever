@@ -50,7 +50,6 @@ from nemo_retriever.params import (
     TextChunkParams,
     VideoFrameParams,
     VideoFrameTextDedupParams,
-    VideoOCRParams,
 )
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.input_files import resolve_input_patterns
@@ -398,7 +397,6 @@ def _build_ingestor(
     video_frame_dedup: bool,
     video_frame_text_dedup: bool,
     video_frame_text_dedup_max_dropped_frames: int,
-    video_ocr_batch_size: int,
     video_av_fuse: bool,
 ) -> GraphIngestor:
     """Construct a :class:`GraphIngestor` with all requested stages attached."""
@@ -441,16 +439,12 @@ def _build_ingestor(
                 fps=float(video_frame_fps),
                 dedup=bool(video_frame_dedup),
             ),
-            video_ocr_params=VideoOCRParams(
-                ocr_invoke_url=extract_params.ocr_invoke_url,
-                api_key=extract_params.api_key,
-                batch_size=int(video_ocr_batch_size),
-            ),
             video_text_dedup_params=VideoFrameTextDedupParams(
                 enabled=bool(video_frame_text_dedup),
                 max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
             ),
             av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
+            extract_params=extract_params,
         )
     else:
         # "pdf" or "doc"
@@ -858,13 +852,6 @@ def run(
         ),
         rich_help_panel=_PANEL_VIDEO,
     ),
-    video_ocr_batch_size: int = typer.Option(
-        8,
-        "--video-ocr-batch-size",
-        min=1,
-        help="Batch size for remote video frame OCR (NIM).",
-        rich_help_panel=_PANEL_VIDEO,
-    ),
     video_av_fuse: bool = typer.Option(
         True,
         "--video-av-fuse/--no-video-av-fuse",
@@ -1122,7 +1109,6 @@ def run(
             video_frame_dedup=video_frame_dedup,
             video_frame_text_dedup=video_frame_text_dedup,
             video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-            video_ocr_batch_size=video_ocr_batch_size,
             video_av_fuse=video_av_fuse,
         )
 

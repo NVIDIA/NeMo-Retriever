@@ -16,7 +16,6 @@ from __future__ import annotations
 from nemo_retriever.params import AudioVisualFuseParams
 from nemo_retriever.params import VideoFrameParams
 from nemo_retriever.params import VideoFrameTextDedupParams
-from nemo_retriever.params import VideoOCRParams
 from nemo_retriever.video.audio_visual_fuser import AudioVisualFuser
 from nemo_retriever.video.frame_actor import VideoFrameActor
 from nemo_retriever.video.frame_actor import dedup_video_frames
@@ -41,7 +40,6 @@ __all__ = [
     "VideoFrameParams",
     "VideoFrameTextDedup",
     "VideoFrameTextDedupParams",
-    "VideoOCRParams",
     "VideoSplitActor",
     "video_path_to_frames_df",
 ]
