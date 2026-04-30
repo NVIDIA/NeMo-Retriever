@@ -29,7 +29,7 @@ b. Change the directory to the cloned repo by running the following code.
 
 c. [Generate API keys](api-keys.md) for your deployment: create an NGC personal key with the scopes listed there, then supply it to the cluster through the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (`helm upgrade` flags such as `ngcImagePullSecret` / `ngcApiSecret`, Helm repo login with username `$oauthtoken`, or your organization’s equivalent secrets).
 
-d. Create a .env file that contains your NVIDIA Build API key.
+d. If tools on this machine read keys from a `.env` file, add the NGC-scoped variables below (see note — not the same as `NVIDIA_API_KEY` for build.nvidia.com).
 
     !!! note
 
