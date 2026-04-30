@@ -33,7 +33,7 @@ d. Create a .env file that contains your NVIDIA Build API key.
 
     !!! note
 
-        If you use an NGC personal key, then you should provide the same value for all keys, but you must specify each environment variable individually. In the past, you could create an API key. If you have an API key, you can still use that. For more information, refer to [Authentication and API keys](api-keys.md) and [Environment Configuration Variables](environment-config.md).
+        If you use an NGC personal key for cluster access, supply the same NGC personal key value for each of the NGC-scoped variables listed below (`NGC_API_KEY`, `NIM_NGC_API_KEY`), specifying each variable individually. The `NVIDIA_API_KEY` for hosted build.nvidia.com inference is a separate credential — see [Authentication and API keys](api-keys.md). If you have a legacy NGC API key, you can still use it for the NGC-scoped variables. Refer to [Environment variables](environment-config.md) for details.
 
     ```
     # Container images must access resources from NGC.
