@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Sequence
 from tqdm import tqdm
 
+import nemo_retriever.vdb as vdb_pkg
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 
 if TYPE_CHECKING:
@@ -21,31 +22,16 @@ if TYPE_CHECKING:
         RetrievalResult,
     )
 
-_KEEP_KEYS = frozenset(
-    {
-        "text",
-        "metadata",
-        "source",
-        "page_number",
-        "pdf_page",
-        "pdf_basename",
-        "source_id",
-        "path",
-        "stored_image_uri",
-        "content_type",
-        "bbox_xyxy_norm",
-    }
-)
-
 
 @dataclass
 class Retriever:
-    """Simple query helper over LanceDB with configurable embedders.
+    """VDB-agnostic query helper over vector databases.
 
     Retrieval pipeline
     ------------------
-    1. Embed query strings (NIM endpoint or local HuggingFace model).
-    2. Search LanceDB (vector or hybrid vector+BM25).
+    1. Embed query strings with a local query embedder, or with a configured
+       embedding endpoint.
+    2. Search the configured vector database.
     3. Optionally rerank the results with ``nvidia/llama-nemotron-rerank-1b-v2``
        (NIM/vLLM endpoint or local HuggingFace model).
 
@@ -60,26 +46,34 @@ class Retriever:
     server instead of loading the model locally::
 
         retriever = Retriever(
+            vdb="lancedb",
+            vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
             reranker="nvidia/llama-nemotron-rerank-1b-v2",
             reranker_endpoint="http://localhost:8000",
         )
         results = retriever.query("What is machine learning?")
     """
 
-    lancedb_uri: str = "lancedb"
-    lancedb_table: str = "nv-ingest"
+    vdb: Any = "lancedb"
+    vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     embedder: str = VL_EMBED_MODEL
-    embedding_http_endpoint: Optional[str] = None
-    embedding_endpoint: Optional[str] = None
-    embedding_api_key: str = ""
     top_k: int = 10
-    vector_column_name: str = "vector"
-    nprobes: int = 0
-    refine_factor: int = 10
-    hybrid: bool = False
+    embedding_endpoint: Optional[str] = None
+    """Optional query embedding endpoint. If unset, query embedding uses local HuggingFace."""
+    embedding_http_endpoint: Optional[str] = None
+    """Back-compat HTTP query embedding endpoint alias."""
+    embedding_grpc_endpoint: Optional[str] = None
+    """Back-compat gRPC query embedding endpoint alias."""
+    embedding_api_key: str = ""
+    """Bearer token/API key for the query embedding endpoint."""
+    embedding_use_grpc: Optional[bool] = None
+    """Whether the query embedding endpoint is gRPC. If unset, infer from the endpoint string."""
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[Path] = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
+    #: When embedding queries locally (no HTTP endpoint): ``"hf"`` (default) uses
+    #: HuggingFace; ``"vllm"`` uses vLLM (same model as ingest).
+    local_query_embed_backend: str = "hf"
     # Reranking -----------------------------------------------------------
     reranker: Optional[bool] = False
     """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
@@ -99,152 +93,120 @@ class Retriever:
     rerank_modality: str = "text"
     """Reranking modality, typically matches embed_modality. Set to 'text_image'
     to enable multimodal reranking with images."""
+    local_reranker_backend: str = "vllm"
+    """Backend for local VL reranking: ``"vllm"`` (default) or ``"hf"``."""
+    reranker_gpu_memory_utilization: float = 0.5
+    """Fraction of GPU memory for the vLLM reranker engine."""
     # Internal cache for the local rerank model (not part of the public API).
     _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
-    # Internal cache for local HF embedders, keyed by model name.
+    # Internal cache for local text embedders, keyed by model name.
     _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
+    # Internal cache for the VDB retrieval operator.
+    _retrieve_operator: Any = field(default=None, init=False, repr=False, compare=False)
 
-    def _resolve_embedding_endpoint(self) -> Optional[str]:
-        http_ep = self.embedding_http_endpoint.strip() if isinstance(self.embedding_http_endpoint, str) else None
-        single = self.embedding_endpoint.strip() if isinstance(self.embedding_endpoint, str) else None
+    def __post_init__(self) -> None:
+        from nemo_retriever.model import (
+            _LOCAL_QUERY_BACKENDS,
+            _LOCAL_RERANKER_BACKENDS,
+            normalize_backend,
+        )
 
+        self.local_query_embed_backend = normalize_backend(
+            self.local_query_embed_backend,
+            _LOCAL_QUERY_BACKENDS,
+            field_name="local_query_embed_backend",
+            default="hf",
+        )
+        self.local_reranker_backend = normalize_backend(
+            self.local_reranker_backend,
+            _LOCAL_RERANKER_BACKENDS,
+            field_name="local_reranker_backend",
+            default="vllm",
+        )
+
+    def _get_local_embedder(self, model_name: str) -> Any:
+        """Lazily load and cache the local embedder for *model_name*."""
+        from nemo_retriever.model import (
+            create_local_query_embedder,
+            resolve_embed_model,
+        )
+
+        resolved = resolve_embed_model(model_name)
+        backend_raw = self.local_query_embed_backend
+        cache_key: tuple[str, str] = (resolved, backend_raw)
+
+        if cache_key not in self._embedder_cache:
+            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
+            dev = str(self.local_hf_device) if self.local_hf_device else None
+            self._embedder_cache[cache_key] = create_local_query_embedder(
+                resolved,
+                backend=backend_raw,
+                device=dev,
+                hf_cache_dir=cache_dir,
+            )
+        return self._embedder_cache[cache_key]
+
+    def _embed_queries_local(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
+        embedder = self._get_local_embedder(model_name)
+        vectors = embedder.embed_queries(query_texts, batch_size=int(self.local_hf_batch_size))
+        return vectors.detach().to("cpu").tolist()
+
+    def _embed_queries_local_hf(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
+        """Compatibility wrapper for the local-HF default query embedding path."""
+        return self._embed_queries_local(query_texts, model_name=str(model_name or self.embedder))
+
+    def _resolve_embedding_endpoint(self) -> tuple[str | None, bool | None]:
+        http_ep = (self.embedding_http_endpoint or "").strip()
+        grpc_ep = (self.embedding_grpc_endpoint or "").strip()
+        endpoint = (self.embedding_endpoint or "").strip()
         if http_ep:
-            return http_ep
-        if single:
-            if not single.lower().startswith("http"):
-                raise ValueError("gRPC endpoints are not supported; provide an HTTP NIM endpoint URL.")
-            return single
-        return None
+            return http_ep, False
+        if grpc_ep:
+            return grpc_ep, True
+        if self.embedding_use_grpc is not None:
+            return (endpoint, bool(self.embedding_use_grpc)) if endpoint else (None, None)
+        if not endpoint:
+            return None, None
+        return endpoint, not endpoint.lower().startswith("http")
 
-    def _embed_queries_nim(
-        self,
-        query_texts: list[str],
-        *,
-        endpoint: str,
-        model: str,
-    ) -> list[list[float]]:
-        import numpy as np
+    def _embed_queries_remote(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
+        endpoint, use_grpc = self._resolve_embedding_endpoint()
+        if endpoint is None or use_grpc is None:
+            raise ValueError("Remote query embedding requires embedding_endpoint.")
+
         from nv_ingest_api.util.nim import infer_microservice
 
         embeddings = infer_microservice(
             query_texts,
-            model_name=model,
+            model_name=str(model_name or self.embedder),
             embedding_endpoint=endpoint,
-            nvidia_api_key=self.embedding_api_key,
+            nvidia_api_key=(self.embedding_api_key or "").strip(),
+            grpc=bool(use_grpc),
             input_type="query",
         )
-        out: list[list[float]] = []
+        vectors: list[list[float]] = []
         for embedding in embeddings:
-            if isinstance(embedding, np.ndarray):
-                out.append(embedding.astype("float32").tolist())
+            tolist = getattr(embedding, "tolist", None)
+            values = tolist() if callable(tolist) else embedding
+            vectors.append(list(values))
+        return vectors
+
+    def _embed_queries(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
+        endpoint, _use_grpc = self._resolve_embedding_endpoint()
+        if endpoint is not None:
+            return self._embed_queries_remote(query_texts, model_name=model_name)
+        return self._embed_queries_local_hf(query_texts, model_name=model_name)
+
+    def _get_retrieve_operator(self) -> Any:
+        """Lazily construct the VDB retrieval operator for this Retriever."""
+        if self._retrieve_operator is None:
+            operator_kwargs: dict[str, Any] = {"vdb_kwargs": dict(self.vdb_kwargs or {})}
+            if isinstance(self.vdb, str):
+                operator_kwargs["vdb_op"] = self.vdb
             else:
-                out.append(list(embedding))
-        return out
-
-    def _get_local_embedder(self, model_name: str) -> Any:
-        """Lazily load and cache the local HF embedder for *model_name*."""
-        if model_name not in self._embedder_cache:
-            from nemo_retriever.model import create_local_embedder
-
-            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            self._embedder_cache[model_name] = create_local_embedder(
-                model_name,
-                device=self.local_hf_device,
-                hf_cache_dir=cache_dir,
-            )
-        return self._embedder_cache[model_name]
-
-    def _embed_queries_local_hf(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
-        from nemo_retriever.model import is_vl_embed_model
-
-        embedder = self._get_local_embedder(model_name)
-
-        if is_vl_embed_model(model_name):
-            vectors = embedder.embed_queries(query_texts, batch_size=int(self.local_hf_batch_size))
-        else:
-            vectors = embedder.embed(["query: " + q for q in query_texts], batch_size=int(self.local_hf_batch_size))
-        return vectors.detach().to("cpu").tolist()
-
-    def _search_lancedb(
-        self,
-        *,
-        lancedb_uri: str,
-        lancedb_table: str,
-        query_vectors: list[list[float]],
-        query_texts: list[str],
-        top_k: int,
-    ) -> list[list[dict[str, Any]]]:
-        import lancedb  # type: ignore
-        import numpy as np
-
-        db = lancedb.connect(lancedb_uri)
-        table = db.open_table(lancedb_table)
-
-        effective_nprobes = int(self.nprobes)
-        if effective_nprobes <= 0:
-            try:
-                for idx in table.list_indices():
-                    num_parts = getattr(idx, "num_partitions", None)
-                    if num_parts and int(num_parts) > 0:
-                        effective_nprobes = int(num_parts)
-                        break
-            except Exception:
-                pass
-            if effective_nprobes <= 0:
-                effective_nprobes = 16
-
-        # Check whether the table has a stored_image_uri column (added for VL reranking).
-        table_columns = {f.name for f in table.schema}
-        has_image_uri = "stored_image_uri" in table_columns
-        has_content_type = "content_type" in table_columns
-        has_bbox = "bbox_xyxy_norm" in table_columns
-
-        results: list[list[dict[str, Any]]] = []
-        for i, vector in enumerate(query_vectors):
-            q = np.asarray(vector, dtype="float32")
-            # doubling top_k for both hybrid and dense search in order to have more to rerank
-            fanout_top_k = top_k if not self.reranker else top_k * self.reranker_refine_factor
-            if self.hybrid:
-                from lancedb.rerankers import RRFReranker  # type: ignore
-
-                hits = (
-                    table.search(query_type="hybrid")
-                    .vector(q)
-                    .text(query_texts[i])
-                    .nprobes(effective_nprobes)
-                    .refine_factor(int(self.refine_factor))
-                    .limit(int(fanout_top_k))
-                    .rerank(RRFReranker())
-                    .to_list()
-                )
-            else:
-                select_cols = [
-                    "text",
-                    "metadata",
-                    "source",
-                    "page_number",
-                    "_distance",
-                    "pdf_page",
-                    "pdf_basename",
-                    "source_id",
-                    "path",
-                ]
-                if has_image_uri:
-                    select_cols.append("stored_image_uri")
-                if has_content_type:
-                    select_cols.append("content_type")
-                if has_bbox:
-                    select_cols.append("bbox_xyxy_norm")
-                hits = (
-                    table.search(q, vector_column_name=self.vector_column_name)
-                    .nprobes(effective_nprobes)
-                    .refine_factor(int(self.refine_factor))
-                    .select(select_cols)
-                    .limit(int(fanout_top_k))
-                    .to_list()
-                )
-            results.append([{k: v for k, v in h.items() if k in _KEEP_KEYS} for h in hits])
-        return results
+                operator_kwargs["vdb"] = self.vdb
+            self._retrieve_operator = vdb_pkg.RetrieveVdbOperator(**operator_kwargs)
+        return self._retrieve_operator
 
     # ------------------------------------------------------------------
     # Reranking helpers
@@ -260,6 +222,8 @@ class Retriever:
                 model_name=self.reranker_model_name,
                 device=self.local_hf_device,
                 hf_cache_dir=cache_dir,
+                backend=self.local_reranker_backend,
+                gpu_memory_utilization=self.reranker_gpu_memory_utilization,
             )
         return self._reranker_model
 
@@ -304,8 +268,7 @@ class Retriever:
         *,
         top_k: Optional[int] = None,
         embedder: Optional[str] = None,
-        lancedb_uri: Optional[str] = None,
-        lancedb_table: Optional[str] = None,
+        vdb_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
         """Run retrieval for a single query string.
 
@@ -313,17 +276,11 @@ class Retriever:
             query: The natural-language query.
             top_k: Per-call override of ``self.top_k``; passed as a local
                 value so the instance attribute is never mutated.
-            embedder: Per-call embedder override.
-            lancedb_uri: Per-call LanceDB URI override.
-            lancedb_table: Per-call LanceDB table override.
+            embedder: Per-call query embedding model override.
+            vdb_kwargs: Per-call VDB retrieval kwargs. These override
+                instance-level ``self.vdb_kwargs`` for this call.
         """
-        return self.queries(
-            [query],
-            top_k=top_k,
-            embedder=embedder,
-            lancedb_uri=lancedb_uri,
-            lancedb_table=lancedb_table,
-        )[0]
+        return self.queries([query], top_k=top_k, embedder=embedder, vdb_kwargs=vdb_kwargs)[0]
 
     def queries(
         self,
@@ -331,8 +288,7 @@ class Retriever:
         *,
         top_k: Optional[int] = None,
         embedder: Optional[str] = None,
-        lancedb_uri: Optional[str] = None,
-        lancedb_table: Optional[str] = None,
+        vdb_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[list[dict[str, Any]]]:
         """Run retrieval for multiple query strings.
 
@@ -349,31 +305,16 @@ class Retriever:
             return []
 
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
+        retrieval_top_k = effective_top_k
+        if self.reranker:
+            retrieval_top_k = effective_top_k * int(self.reranker_refine_factor)
 
         resolved_embedder = str(embedder or self.embedder)
-        resolved_lancedb_uri = str(lancedb_uri or self.lancedb_uri)
-        resolved_lancedb_table = str(lancedb_table or self.lancedb_table)
+        vectors = self._embed_queries(query_texts, model_name=resolved_embedder)
 
-        endpoint = self._resolve_embedding_endpoint()
-        if endpoint is not None:
-            vectors = self._embed_queries_nim(
-                query_texts,
-                endpoint=endpoint,
-                model=resolved_embedder,
-            )
-        else:
-            vectors = self._embed_queries_local_hf(
-                query_texts,
-                model_name=resolved_embedder,
-            )
-
-        results = self._search_lancedb(
-            lancedb_uri=resolved_lancedb_uri,
-            lancedb_table=resolved_lancedb_table,
-            query_vectors=vectors,
-            query_texts=query_texts,
-            top_k=effective_top_k,
-        )
+        retrieval_kwargs = dict(vdb_kwargs or {})
+        retrieval_kwargs["top_k"] = int(retrieval_top_k)
+        results = self._get_retrieve_operator().process(vectors, **retrieval_kwargs)
 
         if self.reranker:
             results = self._rerank_results(query_texts, results, top_k=effective_top_k)
@@ -389,13 +330,11 @@ class Retriever:
         query: str,
         top_k: Optional[int] = None,
         *,
-        embedder: Optional[str] = None,
-        lancedb_uri: Optional[str] = None,
-        lancedb_table: Optional[str] = None,
+        vdb_kwargs: Optional[dict[str, Any]] = None,
     ) -> "RetrievalResult":
         """Run retrieval for a single query and return a structured result.
 
-        Thin adapter over :meth:`query` that reshapes the raw LanceDB hits
+        Thin adapter over :meth:`query` that reshapes the raw VDB hits
         into a :class:`~nemo_retriever.llm.RetrievalResult` with ``chunks``
         (the retrieved text, in rank order) and aligned ``metadata``
         (source, page_number, etc.).  Satisfies the
@@ -405,29 +344,22 @@ class Retriever:
             query: The natural-language query.
             top_k: Per-call override of ``self.top_k``; passed as a local
                 value so the instance attribute is never mutated.
-            embedder: Override ``self.embedder`` for this call.
-            lancedb_uri: Override ``self.lancedb_uri`` for this call.
-            lancedb_table: Override ``self.lancedb_table`` for this call.
+            vdb_kwargs: Per-call VDB retrieval kwargs.
 
         Returns:
             A :class:`~nemo_retriever.llm.RetrievalResult` whose ``chunks``
             and ``metadata`` lists have the same length.
 
         Example:
-            >>> retriever = Retriever(lancedb_uri="./kb")
+            >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})
             >>> result = retriever.retrieve("What is RAG?", top_k=3)
-            >>> result.chunks[0][:40]  # doctest: +SKIP
+            >>> import itertools
+            >>> "".join(itertools.islice(result.chunks[0], 40))  # doctest: +SKIP
             'Retrieval augmented generation combines...'
         """
         from nemo_retriever.llm.types import RetrievalResult
 
-        hits = self.query(
-            query,
-            top_k=top_k,
-            embedder=embedder,
-            lancedb_uri=lancedb_uri,
-            lancedb_table=lancedb_table,
-        )
+        hits = self.query(query, top_k=top_k, vdb_kwargs=vdb_kwargs)
 
         chunks: list[str] = []
         metadata: list[dict[str, Any]] = []
@@ -441,23 +373,19 @@ class Retriever:
         queries: Sequence[str],
         *,
         top_k: Optional[int] = None,
-        embedder: Optional[str] = None,
-        lancedb_uri: Optional[str] = None,
-        lancedb_table: Optional[str] = None,
+        vdb_kwargs: Optional[dict[str, Any]] = None,
     ) -> list["RetrievalResult"]:
-        """Run retrieval for a batch of queries in a single embedder call.
+        """Run retrieval for a batch of queries in one VDB call.
 
-        Funnels the whole query list through :meth:`queries`, which issues
-        exactly one embed request regardless of ``len(queries)``.
+        Funnels the whole query list through :meth:`queries`, which delegates
+        embedding and backend-specific search to the configured VDB.
 
         Args:
             queries: Iterable of natural-language query strings.  Order
                 is preserved in the returned list.
             top_k: Per-call override of ``self.top_k``; passed as a local
                 value so the instance attribute is never mutated.
-            embedder: Per-call embedder override.
-            lancedb_uri: Per-call LanceDB URI override.
-            lancedb_table: Per-call LanceDB table override.
+            vdb_kwargs: Per-call VDB retrieval kwargs.
 
         Returns:
             A list of :class:`~nemo_retriever.llm.RetrievalResult`,
@@ -471,13 +399,7 @@ class Retriever:
         if not query_texts:
             return []
 
-        hits_per_query = self.queries(
-            query_texts,
-            top_k=top_k,
-            embedder=embedder,
-            lancedb_uri=lancedb_uri,
-            lancedb_table=lancedb_table,
-        )
+        hits_per_query = self.queries(query_texts, top_k=top_k, vdb_kwargs=vdb_kwargs)
 
         results: list[RetrievalResult] = []
         for hits in hits_per_query:
@@ -494,9 +416,7 @@ class Retriever:
         judge: Optional["AnswerJudge"] = None,
         reference: Optional[str] = None,
         top_k: Optional[int] = None,
-        embedder: Optional[str] = None,
-        lancedb_uri: Optional[str] = None,
-        lancedb_table: Optional[str] = None,
+        vdb_kwargs: Optional[dict[str, Any]] = None,
     ) -> "AnswerResult":
         """Run live RAG for a single query and optionally score the answer.
 
@@ -526,9 +446,7 @@ class Retriever:
             judge: Optional LLM-as-judge.  Requires ``reference``.
             reference: Ground-truth answer for token-F1 and judge scoring.
             top_k: Per-call override of ``self.top_k``.
-            embedder: Per-call override of ``self.embedder``.
-            lancedb_uri: Per-call override of ``self.lancedb_uri``.
-            lancedb_table: Per-call override of ``self.lancedb_table``.
+            vdb_kwargs: Per-call VDB retrieval kwargs.
 
         Returns:
             An :class:`~nemo_retriever.llm.AnswerResult` carrying the
@@ -540,7 +458,7 @@ class Retriever:
 
         Example:
             >>> from nemo_retriever.llm import LiteLLMClient
-            >>> retriever = Retriever(lancedb_uri="./kb")
+            >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})
             >>> llm = LiteLLMClient.from_kwargs(
             ...     model="nvidia_nim/meta/llama-3.3-70b-instruct",
             ... )
@@ -556,13 +474,7 @@ class Retriever:
         if judge is not None and reference is None:
             raise ValueError("judge requires reference")
 
-        retrieved = self.retrieve(
-            query,
-            top_k=top_k,
-            embedder=embedder,
-            lancedb_uri=lancedb_uri,
-            lancedb_table=lancedb_table,
-        )
+        retrieved = self.retrieve(query, top_k=top_k, vdb_kwargs=vdb_kwargs)
 
         gen = llm.generate(query, retrieved.chunks)
 
@@ -676,7 +588,7 @@ class Retriever:
 
         Example:
             >>> from nemo_retriever.llm import LiteLLMClient, LLMJudge
-            >>> retriever = Retriever(lancedb_uri="./kb")
+            >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})
             >>> llm = LiteLLMClient.from_kwargs(model="nvidia_nim/meta/llama-3.3-70b-instruct")
             >>> judge = LLMJudge.from_kwargs(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
             >>> df = (  # doctest: +SKIP

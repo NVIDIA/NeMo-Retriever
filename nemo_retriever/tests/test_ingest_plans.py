@@ -20,7 +20,6 @@ from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import TextChunkParams
-from nemo_retriever.params import VdbUploadParams
 from nemo_retriever.utils.ray_resource_hueristics import ClusterResources
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
@@ -49,13 +48,11 @@ def test_base_ingest_plan_builds_ordered_execution_plan() -> None:
         model_name="nvidia/llama-nemotron-embed-1b-v2",
         embedding_endpoint="http://embed.example/v1",
     )
-    plan.vdb_upload_params = VdbUploadParams()
 
     plan.record_stage("caption")
     plan.record_stage("split")
     plan.record_stage("embed")
     plan.record_stage("caption")
-    plan.record_sink("vdb_upload")
 
     execution_plan = plan.build_execution_plan()
 
@@ -65,7 +62,6 @@ def test_base_ingest_plan_builds_ordered_execution_plan() -> None:
     assert execution_plan.stages[0].params.max_tokens == 128
     assert execution_plan.stages[1].params.model_name == "nvidia/llama-nemotron-embed-1b-v2"
     assert execution_plan.stages[2].params.endpoint_url == "http://caption.example/v1"
-    assert [sink.name for sink in execution_plan.sinks] == ["vdb_upload"]
 
 
 def test_base_ingest_plan_builds_audio_execution_plan() -> None:

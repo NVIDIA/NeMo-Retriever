@@ -81,7 +81,7 @@ def _embed_group(
             "embedder": embedder,
             "multimodal_embedder": multimodal_embedder,
             "endpoint_url": endpoint,
-            "local_batch_size": int(inference_batch_size),
+            "local_batch_size": int(effective_batch_size),
             "nim_http_max_concurrent": max(1, int(nim_http_max_concurrent)),
         },
         transform_config=cfg,
@@ -160,6 +160,12 @@ def embed_text_main_text_embed(
                 parts.append(part)
             out_df = pd.concat(parts).sort_index()
     except Exception as exc:
+        try:
+            import torch
+
+            torch.cuda.empty_cache()
+        except Exception as _cache_exc:  # noqa: BLE001
+            logger.debug("torch.cuda.empty_cache() failed during error cleanup: %s", _cache_exc)
         logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         out_df = batch_df.copy()
         out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)

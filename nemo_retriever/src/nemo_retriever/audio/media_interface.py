@@ -17,6 +17,7 @@ import math
 import os
 import shutil
 import subprocess
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
@@ -67,6 +68,28 @@ def _probe(
     return json.loads(out.decode("utf-8"))
 
 
+def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
+    """Invoke an ``ffmpeg-python`` stream without the pipe-buffer deadlock.
+
+    ``stream.run(capture_stderr=True)`` reads ffmpeg's stderr through a 64 KB OS
+    pipe drained by a Python thread inside ``subprocess.communicate()``. In a
+    Ray Data worker that drain thread can starve under GIL contention; the pipe
+    fills, ffmpeg's I/O thread blocks on ``write(2)``, and its ``-threads N``
+    workers spin (=> 99% CPU, no progress, indefinite hang). Send stderr to a
+    tempfile instead — file writes never block, so ffmpeg always makes progress
+    and the call returns. We only read stderr when ``returncode != 0``.
+    """
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg-python is not installed.")
+    args = ffmpeg.compile(stream)
+    with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
+        result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=stderr_buf)
+        if result.returncode != 0:
+            stderr_buf.seek(0)
+            err = stderr_buf.read()
+            raise ffmpeg.Error(label, b"", err)
+
+
 def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optional[str] = None) -> Optional[Path]:
     """Extract audio from a video file. Returns output Path or None on failure."""
     if not _FFMPEG_AVAILABLE or ffmpeg is None:
@@ -74,16 +97,55 @@ def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optiona
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        (
-            ffmpeg.input(str(input_path))
-            .output(str(output_path), acodec="libmp3lame", map="0:a")
-            .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
+        stream = (
+            ffmpeg.input(str(input_path)).output(str(output_path), acodec="libmp3lame", map="0:a").overwrite_output()
         )
+        _run_ffmpeg(stream, label="extract_audio", input_path=str(input_path))
         return output_path
     except ffmpeg.Error as e:
         logger.error("FFmpeg error for file %s: %s", input_path, e.stderr.decode())
         return None
+
+
+def _resolve_duration(probe: Any, stream0: Any, file_size: int) -> Optional[float]:
+    """Best-effort duration in seconds from an ffprobe payload.
+
+    Some encodings expose duration only at the format level, others only at
+    the stream level, and some segmented files (e.g. fragmented MP4 chunks
+    produced by ``-f segment``) don't carry either reliably — for those we
+    fall back to ``file_size * 8 / bit_rate``. Returns ``None`` when nothing
+    in the probe can be coerced to a float.
+    """
+    fmt = probe.get("format") if isinstance(probe, dict) else None
+    if isinstance(fmt, dict):
+        try:
+            d = fmt.get("duration")
+            if d is not None:
+                return float(d)
+        except (TypeError, ValueError):
+            pass
+    if isinstance(stream0, dict):
+        try:
+            d = stream0.get("duration")
+            if d is not None:
+                return float(d)
+        except (TypeError, ValueError):
+            pass
+    if isinstance(fmt, dict):
+        bitrate = fmt.get("bit_rate")
+        try:
+            if bitrate is not None and float(bitrate) > 0:
+                return (file_size * 8) / float(bitrate)
+        except (TypeError, ValueError):
+            pass
+    if isinstance(stream0, dict):
+        bitrate = stream0.get("bit_rate")
+        try:
+            if bitrate is not None and float(bitrate) > 0:
+                return (file_size * 8) / float(bitrate)
+        except (TypeError, ValueError):
+            pass
+    return None
 
 
 def _effective_cores() -> int:
@@ -123,20 +185,23 @@ class MediaInterface(_LoaderInterface):
                 probe = _probe("pipe:", format=path_file.suffix, file_handle=file_handle)
             else:
                 probe = _probe(str(path_file), format=path_file.suffix)
-            if probe["streams"][0]["codec_type"] == "video":
-                sample_rate = float(probe["streams"][0]["avg_frame_rate"].split("/")[0])
-                duration = float(probe["format"]["duration"])
-            elif probe["streams"][0]["codec_type"] == "audio":
-                sample_rate = float(probe["streams"][0]["sample_rate"])
-                bitrate = probe["format"]["bit_rate"]
-                duration = (file_size * 8) / float(bitrate)
+            stream0 = probe["streams"][0]
+            codec_type = stream0.get("codec_type")
+            if codec_type == "video":
+                sample_rate = float(stream0["avg_frame_rate"].split("/")[0])
+                duration = _resolve_duration(probe, stream0, file_size)
+            elif codec_type == "audio":
+                sample_rate = float(stream0["sample_rate"])
+                duration = _resolve_duration(probe, stream0, file_size)
             else:
-                raise ValueError(f"Unknown codec_type: {probe['streams'][0]}")
+                raise ValueError(f"Unknown codec_type: {stream0}")
+            if duration is None:
+                raise ValueError(f"Could not determine duration for {path_file}")
             num_splits = self.find_num_splits(file_size, sample_rate, duration, split_interval, split_type)
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", path_file, e.stderr.decode())
-        except ValueError as e:
-            logger.error("Error finding splits for file %s: %s", path_file, e)
+        except (KeyError, ValueError) as e:
+            logger.error("Error probing media for file %s: %s", path_file, e)
         return (probe, num_splits, duration)
 
     def get_audio_from_video(
@@ -195,11 +260,8 @@ class MediaInterface(_LoaderInterface):
                         "sc_threshold": 0,
                     }
                 )
-            (
-                ffmpeg.input(str(input_path))
-                .output(str(output_pattern), **output_kwargs)
-                .run(capture_stdout=True, capture_stderr=True)
-            )
+            stream = ffmpeg.input(str(input_path)).output(str(output_pattern), **output_kwargs)
+            _run_ffmpeg(stream, label="split", input_path=str(input_path))
             self.path_metadata[str(input_path)] = probe
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", original_input_path, e.stderr.decode())

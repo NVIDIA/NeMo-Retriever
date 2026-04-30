@@ -17,7 +17,7 @@ NeMo Retriever Library supports extracting text representations of various forms
 and ingesting to a vector database. **[LanceDB](https://lancedb.com/) is the default**; [Milvus](https://milvus.io/) is also fully supported.
 NeMo Retriever Library does not store data on disk except through the vector database (LanceDB uses local Lance files; Milvus uses its server and MinIO).
 You can ingest to other data stores; however, you must configure other data stores yourself.
-For more information, refer to [Data Upload](data-store.md).
+For more information, refer to [Data Upload](vdbs.md).
 
 
 
@@ -26,7 +26,7 @@ For more information, refer to [Data Upload](data-store.md).
 For images that `nemoretriever-page-elements-v3` does not classify as tables, charts, or infographics,
 you can use our VLM caption task to create a dense caption of the detected image. 
 That caption is then be embedded along with the rest of your content. 
-For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
+For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 
 
@@ -35,7 +35,7 @@ For more information, refer to [Extract Captions from Images](python-api-referen
 For scanned documents, or documents with complex layouts, 
 we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
 Nemotron parse provides higher-accuracy text extraction. 
-For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md).
+For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 
 
@@ -43,19 +43,18 @@ For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md)
 
 ### Self-Hosted Deployments
 
-For [self-hosted deployments](quickstart-guide.md), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
-For more information, refer to [Generate Your NGC Keys](ngc-api-key.md).
+For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
+For more information, refer to [Generate Your NGC Keys](api-keys.md).
 
-For advanced scenarios, you might want to set `docker-compose` environment variables for NIM container paths, tags, and batch sizes. 
-You can set those directly in `docker-compose.yaml`, or in an [environment variable file](environment-config.md) that docker compose uses.
+For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md).
 
 ### Library Mode
 
-For production environments, you should use the provided Helm charts. For [library mode](quickstart-library-mode.md), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to the environment variables on the host machine where you run the `docker compose` command. Setting the variables in the `.env` file ensures that they are passed into the containers and available to the services that need them.
+For production environments, you should use the provided Helm charts. For [library mode](quickstart-library-mode.md), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to arbitrary variables on your laptop or jump host unless you inject them into the workload (for example via Helm, `Secret`, or the client environment as documented for library mode).
 
 For advanced scenarios, you might want to use library mode with self-hosted NIM instances. 
 You can set custom endpoints for each NIM. 
-For examples of `*_ENDPOINT` variables, refer to [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml).
+For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
 
 
@@ -65,13 +64,12 @@ For examples of `*_ENDPOINT` variables, refer to [docker-compose.yaml](https://g
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 
-Refer to the [Profile Information](quickstart-guide.md#profile-information) section 
-for information about the optional NIM components of the pipeline.
+Refer to [Evaluate on your data](evaluate-on-your-data.md) for extraction tuning and optimization guidance.
 
-You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](python-api-reference.md).
+You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](nemo-retriever-api-reference.md).
 
 To choose what types of content to extract, use code similar to the following. 
-For more information, refer to [Extract Specific Elements from PDFs](python-api-reference.md#extract-specific-elements-from-pdfs).
+For more information, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md).
 
 ```python
 Ingestor(client=client)
@@ -87,7 +85,7 @@ Ingestor(client=client)
 ```
 
 To generate captions for images, use code similar to the following.
-For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
+For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 ```python
 Ingestor(client=client)

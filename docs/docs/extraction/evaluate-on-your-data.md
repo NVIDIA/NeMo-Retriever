@@ -4,7 +4,7 @@ Retrieval and ingestion performance **depend on your documents**, hardware, and 
 
 ## Benchmarking and baselines
 
-Start with [Benchmarking](benchmarking.md) for methodology and baseline expectations. Combine with [Telemetry](telemetry.md) to observe production-like runs.
+Use this page as the baseline for methodology and expectations. Combine with [Telemetry](telemetry.md) to observe production-like runs.
 
 ## Throughput and dataset effects
 
@@ -12,6 +12,6 @@ Read [Throughput is dataset-dependent](throughput-is-dataset-dependent.md) for w
 
 ## Operational tuning
 
-- [Resource scaling modes](scaling-modes.md)
+- [Ray and distributed ingest](ray-logging.md)
 - [Support matrix](support-matrix.md) for supported configurations
 - [Troubleshoot](troubleshoot.md) when results or performance diverge from expectations

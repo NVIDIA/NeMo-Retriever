@@ -44,6 +44,7 @@ uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-inges
 For **remote NIM inference only** (no local GPU required), the base package is sufficient:
 
 ```bash
+uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
 uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
@@ -51,11 +52,14 @@ uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0
 
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
 
+> **Note:** `uv python install 3.12` installs a uv-managed Python that includes development headers (`Python.h`). These headers are required by vLLM, which compiles CUDA kernels at runtime using torch inductor. If you skip this step and use a system Python without headers, vLLM actor initialization will fail with `InductorError: fatal error: Python.h: No such file or directory`.
+
 2. Override Torch and Torchvision with CUDA 13 builds (local GPU only)
 
 The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Linux. Reinstall from the CUDA 13.0 wheel index to match the CUDA runtime required by the Nemotron model packages:
 
 ```bash
+uv pip uninstall torch torchvision
 uv pip install torch==2.10.0 torchvision -i https://download.pytorch.org/whl/cu130
 ```
 
@@ -91,7 +95,22 @@ ingestor = (
   .embed()
   .vdb_upload()
 )
+```
 
+### Optional extras
+
+- **`asr`** — Local ASR (Parakeet). Has a different `transformers` requirement than the core package; install only if you need local ASR:
+  ```bash
+  uv pip install -e './nemo_retriever[asr]'
+  ```
+
+Run the batch pipeline script and point it at the directory that contains your PDFs using the following command.
+
+```bash
+uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/pdfs
+```
+
+```python
 # ingestor.ingest() actually executes the pipeline
 # results are returned as a ray dataset and inspectable as chunks
 ray_dataset = ingestor.ingest()
@@ -569,6 +588,31 @@ To stop and remove both stacks use the following command.
 docker compose -p retriever-gpu0 down
 docker compose -p retriever-gpu1 down
 ```
+
+## Troubleshooting
+
+### vLLM engine fails to start during CUDA graph capture
+
+When using the vLLM-based VL reranker, the engine may fail to start with errors similar to the following:
+
+```
+fatal error: Python.h: No such file or directory
+...
+torch._inductor.exc.InductorError: CalledProcessError: Command '['/usr/bin/gcc', '...cuda_utils.c', ...]' returned non-zero exit status 1.
+...
+RuntimeError: Engine core initialization failed.
+```
+
+This occurs because Triton compiles a small C extension at runtime during CUDA graph capture and requires the Python development headers. If `Python.h` is not installed, the compilation fails and the vLLM engine cannot start.
+
+To resolve this, install the Python development headers for your Python version:
+
+```bash
+# For Python 3.12 on Ubuntu/Debian
+sudo apt install python3.12-dev
+```
+
+After installing the headers, restart the pipeline.
 
 ## ViDoRe Harness Sweep
 

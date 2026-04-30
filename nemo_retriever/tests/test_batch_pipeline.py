@@ -2,6 +2,7 @@ import sys
 import json
 from types import SimpleNamespace
 
+import pandas as pd
 from typer.testing import CliRunner
 
 import nemo_retriever.examples.graph_pipeline as batch_pipeline
@@ -20,6 +21,9 @@ class _FakeDataset:
 
     def take_all(self):
         return []
+
+    def to_pandas(self):
+        return pd.DataFrame()
 
     def groupby(self, _key):
         class _FakeGrouped:
@@ -120,8 +124,6 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -138,7 +140,6 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
 
     monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
-
     result = RUNNER.invoke(
         batch_pipeline.app,
         [
@@ -176,8 +177,6 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -230,8 +229,8 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
+    monkeypatch.setattr(pipeline_main, "_upload_vdb_records", lambda *args, **kwargs: 0.0)
     monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
 
     class _FakeTable:
@@ -295,8 +294,6 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_ensure_lancedb_table", lambda *args, **kwargs: None)
-    monkeypatch.setattr(pipeline_main, "handle_lancedb", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -313,6 +310,13 @@ def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypat
 
     monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+    monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
+    monkeypatch.setattr(pipeline_main, "_upload_vdb_records", lambda *args, **kwargs: 0.0)
+    monkeypatch.setattr(
+        pipeline_main,
+        "_run_evaluation",
+        lambda **_kwargs: ("BEIR", 0.0, {"recall@5": 0.6}, 2, True),
+    )
 
     result = RUNNER.invoke(
         batch_pipeline.app,

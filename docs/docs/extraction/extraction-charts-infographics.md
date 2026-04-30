@@ -6,4 +6,4 @@ Charts and infographic regions are classified as graphic elements and processed 
 
 - [What is NeMo Retriever Library?](overview.md)
 - [Support matrix](support-matrix.md)
-- [Multimodal embeddings (VLM)](vlm-embed.md) when you treat graphics as images for embedding
+- [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding

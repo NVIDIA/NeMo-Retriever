@@ -40,12 +40,12 @@ However, in some cases, such as with `.txt` documents, there aren't any page bre
 
 If you want chunks smaller than `page`, use token-based splitting as described in the following section.
 
-## Token-Based Splitting
+## Token-Based Splitting {: #token-based-splitting }
 
 The `split` task uses a tokenizer to count the number of tokens in the document, 
 and splits the document based on the desired maximum chunk size and chunk overlap.
 
-We recommend the default tokenizer for token-based splitting. For more information, refer to [Llama tokenizer (default)](#llama-tokenizer-default).
+We recommend the default tokenizer for token-based splitting. For more information, refer to [Llama tokenizer (default)](#llama-tokenizer).
 You can also use any tokenizer from any HuggingFace model that includes a tokenizer file.
 
 Use the `split` method to chunk large documents as shown in the following code.
@@ -106,6 +106,6 @@ The following table contains the `split` parameters.
 
 ## Related Topics
 
-- [Use the Python API](python-api-reference.md)
-- [NeMo Retriever Library V2 API Guide](v2-api-guide.md)
+- [Use the Python API](nemo-retriever-api-reference.md)
+- [PDF pre-splitting for parallel ingest](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest)
 - [Environment variables](environment-config.md)

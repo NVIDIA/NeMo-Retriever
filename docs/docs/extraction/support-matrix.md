@@ -16,13 +16,13 @@ The core pipeline models (for document type inputs) include the following:
 Advanced features (for example, for audio/video) require additional GPU support and disk space. 
 This includes the following:
 
-- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) for transcript extraction from [audio and video](audio.md). NVIDIA NIM: [Parakeet CTC (en-US) ASR](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html).
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) - for [maximally accurate table extraction](nemoretriever-parse.md). NVIDIA NIM: [Query the Nemotron-Parse-v1.2 API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/api.html).
+- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) for transcript extraction from [audio and video](audio-video.md). NVIDIA NIM: [Parakeet CTC (en-US) ASR](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html).
+- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) - for maximally accurate table extraction. NVIDIA NIM: [Query the Nemotron-Parse-v1.2 API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/api.html).
 - [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) for image captioning of unstructured (not charts, tables, infographics) images. NVIDIA NIM: [Query the Nemotron Nano 12B v2 VL API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-nano-12b-v2-vl/api.html).
     
     !!! note
     
-        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](python-api-reference.md#extract-captions-from-images).
+        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 - [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) for improved retrieval accuracy. NVIDIA NIM: [NeMo Retriever Text Reranking NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html).
 

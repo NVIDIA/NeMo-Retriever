@@ -2099,9 +2099,42 @@ class Milvus(VDB):
         collection_name = kwargs.pop("collection_name")
         write_to_nvingest_collection(records, collection_name=collection_name, **kwargs)
 
-    def retrieval(self, queries, **kwargs):
-        collection_name = kwargs.pop("collection_name")
-        return nvingest_retrieval(queries, collection_name=collection_name, **kwargs)
+    def retrieval(self, vectors, **kwargs):
+        """Run dense vector search with precomputed query embeddings."""
+        collection_name = kwargs.pop("collection_name", self.collection_name)
+        milvus_uri = kwargs.pop("milvus_uri", self.milvus_uri)
+        top_k = int(kwargs.pop("top_k", 5))
+        dense_field = kwargs.pop("dense_field", "vector")
+        output_fields = kwargs.pop("output_fields", ["text", "source", "content_metadata"])
+        _filter = kwargs.pop("_filter", "")
+        gpu_search = bool(kwargs.pop("gpu_search", self.gpu_search))
+        ef_param = int(kwargs.pop("ef_param", 200))
+        username = kwargs.pop("username", self.__dict__.get("username", None))
+        password = kwargs.pop("password", self.__dict__.get("password", None))
+        client = kwargs.pop("client", None)
+
+        if kwargs.pop("hybrid", False):
+            raise NotImplementedError("Milvus hybrid retrieval with precomputed vectors is not implemented.")
+
+        search_params = {}
+        if not gpu_search:
+            search_params["params"] = {"ef": ef_param}
+
+        if client is None:
+            client_kwargs = {"uri": milvus_uri}
+            if username and password:
+                client_kwargs["token"] = f"{username}:{password}"
+            client = MilvusClient(**client_kwargs)
+        return client.search(
+            collection_name=collection_name,
+            data=vectors,
+            anns_field=dense_field,
+            limit=top_k,
+            output_fields=output_fields,
+            filter=_filter,
+            consistency_level=CONSISTENCY,
+            search_params=search_params,
+        )
 
     def reindex(self, **kwargs):
         collection_name = kwargs.pop("current_collection_name")

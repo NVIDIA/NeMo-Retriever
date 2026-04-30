@@ -297,6 +297,8 @@ class GraphIngestor(ingestor):
                 for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
                     if os.environ.get(_fwd_key):
                         ray_env_vars[_fwd_key] = os.environ[_fwd_key]
+                ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+                os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
                 runtime_env = {"env_vars": ray_env_vars}
                 ray.init(
                     address=self._ray_address,
@@ -347,7 +349,6 @@ class GraphIngestor(ingestor):
             )
             result = executor.ingest(self._documents)
             self._rd_dataset = result
-            return result
         else:
             graph = build_graph(
                 extraction_mode=self._extraction_mode,
@@ -366,7 +367,9 @@ class GraphIngestor(ingestor):
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)
             self._rd_dataset = None
-            return executor.ingest(self._documents)
+            result = executor.ingest(self._documents)
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -852,8 +852,8 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
         from nemo_retriever.retriever import Retriever
 
         retriever = Retriever(
-            lancedb_uri=uri,
-            lancedb_table=LANCEDB_TABLE,
+            vdb="lancedb",
+            vdb_kwargs={"uri": uri, "table_name": LANCEDB_TABLE},
             embedder=embed_model,
             top_k=req.top_k,
         )

@@ -72,12 +72,44 @@ class BeirConfig:
     refine_factor: int = 10
     local_hf_device: str | None = None
     local_hf_cache_dir: str | None = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
     reranker: bool = False
     reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
     reranker_endpoint: str | None = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
+    local_reranker_backend: str = "vllm"
+    #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
+    local_query_embed_backend: str = "hf"
+
+    def __post_init__(self) -> None:
+        from nemo_retriever.model import (
+            _LOCAL_QUERY_BACKENDS,
+            _LOCAL_RERANKER_BACKENDS,
+            normalize_backend,
+        )
+
+        # frozen=True: must use object.__setattr__ to write normalized values.
+        object.__setattr__(
+            self,
+            "local_query_embed_backend",
+            normalize_backend(
+                self.local_query_embed_backend,
+                _LOCAL_QUERY_BACKENDS,
+                field_name="local_query_embed_backend",
+                default="hf",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "local_reranker_backend",
+            normalize_backend(
+                self.local_reranker_backend,
+                _LOCAL_RERANKER_BACKENDS,
+                field_name="local_reranker_backend",
+                default="vllm",
+            ),
+        )
 
 
 def _row_get(row: Any, key: str, default: Any = None) -> Any:
@@ -602,15 +634,19 @@ def evaluate_lancedb_beir(
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
     retriever = Retriever(
-        lancedb_uri=str(cfg.lancedb_uri),
-        lancedb_table=str(cfg.lancedb_table),
+        vdb="lancedb",
+        vdb_kwargs={
+            "uri": str(cfg.lancedb_uri),
+            "table_name": str(cfg.lancedb_table),
+            "hybrid": bool(cfg.hybrid),
+            "nprobes": int(cfg.nprobes),
+            "refine_factor": int(cfg.refine_factor),
+        },
         embedder=str(cfg.embedding_model),
-        embedding_http_endpoint=cfg.embedding_http_endpoint,
+        embedding_endpoint=cfg.embedding_http_endpoint,
         embedding_api_key=(cfg.embedding_api_key or "").strip(),
+        embedding_use_grpc=False if cfg.embedding_http_endpoint else None,
         top_k=max(ks),
-        nprobes=int(cfg.nprobes),
-        refine_factor=int(cfg.refine_factor),
-        hybrid=bool(cfg.hybrid),
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=Path(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
         local_hf_batch_size=int(cfg.local_hf_batch_size),
@@ -619,6 +655,8 @@ def evaluate_lancedb_beir(
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=(cfg.reranker_api_key or "").strip(),
         reranker_batch_size=int(cfg.reranker_batch_size),
+        local_reranker_backend=str(cfg.local_reranker_backend),
+        local_query_embed_backend=str(cfg.local_query_embed_backend),
     )
     raw_hits = retriever.queries(dataset.queries)
     run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)

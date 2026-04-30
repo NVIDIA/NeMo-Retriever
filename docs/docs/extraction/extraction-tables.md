@@ -5,5 +5,5 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 **Related**
 
 - [What is NeMo Retriever Library?](overview.md) for artifact classification
-- [Nemotron Parse](nemoretriever-parse.md) for advanced visual parsing
+- [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing
 - [Metadata reference](content-metadata.md)

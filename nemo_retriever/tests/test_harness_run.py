@@ -772,7 +772,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
         harness_run,
         "_build_command",
         lambda _cfg, _artifact_dir, _run_id: (
-            ["python", "-m", "nemo_retriever.examples.batch_pipeline", str(dataset_dir)],
+            ["python", "-m", "nemo_retriever.examples.graph_pipeline", str(dataset_dir)],
             runtime_dir,
             detection_file,
             query_csv,
@@ -916,7 +916,7 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
         harness_run,
         "_build_command",
         lambda _cfg, _artifact_dir, _run_id: (
-            ["python", "-m", "nemo_retriever.examples.batch_pipeline", str(dataset_dir)],
+            ["python", "-m", "nemo_retriever.examples.graph_pipeline", str(dataset_dir)],
             runtime_dir,
             detection_file,
             query_csv,
