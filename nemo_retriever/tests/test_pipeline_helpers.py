@@ -2,10 +2,10 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 import pytest
@@ -112,31 +112,53 @@ def test_build_embed_params_forwards_remote_and_modality_flags() -> None:
     assert params.batch_tuning.gpu_embed == 0.0
 
 
-class _FakeRayDataset:
-    def __init__(self, records: list[dict[str, Any]]) -> None:
-        self._records = records
-        self.take_all_calls = 0
+class TestCollectResults:
+    """Ingest returns a DataFrame (``ingestor.ingest()`` → ``ds.to_pandas()``); _collect_results consumes it."""
 
-    def take_all(self) -> list[dict[str, Any]]:
-        self.take_all_calls += 1
-        return list(self._records)
+    def test_batch_mode_accepts_ingest_dataframe(self):
+        rows = [
+            {"source_id": "a", "text": "hello"},
+            {"source_id": "a", "text": "world"},
+            {"source_id": "b", "text": "!"},
+        ]
+        # Same shape as the graph executor return after ``Dataset.to_pandas()``.
+        result_df = pd.DataFrame(rows)
 
+        records, df, download_time, num_units = _collect_results("batch", result_df)
 
-def test_collect_results_materializes_batch_once() -> None:
-    rows = [
-        {"source_id": "a", "text": "hello"},
-        {"source_id": "a", "text": "world"},
-        {"source_id": "b", "text": "!"},
-    ]
-    dataset = _FakeRayDataset(rows)
+        assert records == rows
+        assert df is result_df
+        assert isinstance(df, pd.DataFrame)
+        assert list(df.columns) == ["source_id", "text"]
+        assert len(df) == 3
+        # ``source_id`` has two distinct values → that is the unit count.
+        assert num_units == 2
+        assert download_time >= 0.0
 
-    records, df, download_time, num_units = _collect_results("batch", dataset)
+    def test_batch_mode_handles_empty_result(self):
+        result_df = pd.DataFrame()
+        records, df, download_time, num_units = _collect_results("batch", result_df)
+        assert records == []
+        assert df.empty
+        # Empty DataFrame has no columns → falls through to len(df.index) == 0.
+        assert num_units == 0
+        assert download_time >= 0.0
 
-    assert dataset.take_all_calls == 1
-    assert records == rows
-    assert list(df.columns) == ["source_id", "text"]
-    assert download_time >= 0.0
-    assert num_units == 2
+    def test_inprocess_mode_accepts_dataframe_directly(self):
+        rows = [
+            {"source_id": "a", "text": "x"},
+            {"source_id": "b", "text": "y"},
+        ]
+        df_in = pd.DataFrame(rows)
+
+        records, df_out, download_time, num_units = _collect_results("inprocess", df_in)
+
+        # The DataFrame is passed through unchanged (same object).
+        assert df_out is df_in
+        assert records == rows
+        # inprocess mode never incurs Ray download time.
+        assert download_time == 0.0
+        assert num_units == 2
 
 
 def test_collect_results_accepts_inprocess_dataframe() -> None:
