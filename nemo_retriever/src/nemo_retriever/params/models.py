@@ -136,8 +136,15 @@ class HtmlChunkParams(TextChunkParams):
 
 
 class AudioChunkParams(_ParamsModel):
-    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader."""
+    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader.
 
+    Set ``enabled=False`` (when wired through ``VideoSplitActor``) to skip
+    audio chunking and ASR on a video pipeline — useful for visual-only
+    recall benchmarks. ``MediaChunkActor`` ignores this flag for the
+    audio-only pipeline since chunking is the whole point there.
+    """
+
+    enabled: bool = True
     split_type: Literal["size", "time", "frame"] = "size"
     split_interval: int = 450
     audio_only: bool = False
@@ -155,8 +162,15 @@ class ASRParams(_ParamsModel):
 
 
 class VideoFrameParams(_ParamsModel):
-    """Params for video frame extraction (ffmpeg fps + content-hash dedup)."""
+    """Params for video frame extraction (ffmpeg fps + content-hash dedup).
 
+    Set ``enabled=False`` to skip frame extraction entirely; the video
+    pipeline then produces only audio (ASR) rows — no frame OCR, no
+    audio+visual fusion. Useful for ablating the visual modality or for
+    audio-only recall benchmarks against video corpora.
+    """
+
+    enabled: bool = True
     fps: float = 1.0
     max_frames: Optional[int] = None
     dedup: bool = True

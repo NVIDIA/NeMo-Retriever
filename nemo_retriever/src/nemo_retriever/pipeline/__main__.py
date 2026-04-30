@@ -391,6 +391,8 @@ def _build_ingestor(
     segment_audio: bool,
     audio_split_type: str,
     audio_split_interval: int,
+    video_extract_audio: bool,
+    video_extract_frames: bool,
     video_frame_fps: float,
     video_frame_dedup: bool,
     video_ocr_batch_size: int,
@@ -425,9 +427,14 @@ def _build_ingestor(
     elif input_type == "video":
         asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
         ingestor = ingestor.extract_video(
-            params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+            params=AudioChunkParams(
+                enabled=bool(video_extract_audio),
+                split_type=audio_split_type,
+                split_interval=int(audio_split_interval),
+            ),
             asr_params=asr_params,
             video_frame_params=VideoFrameParams(
+                enabled=bool(video_extract_frames),
                 fps=float(video_frame_fps),
                 dedup=bool(video_frame_dedup),
             ),
@@ -793,6 +800,24 @@ def run(
         2.0, "--audio-match-tolerance-secs", min=0.0, rich_help_panel=_PANEL_AUDIO
     ),
     # --- Video ----------------------------------------------------------
+    video_extract_audio: bool = typer.Option(
+        True,
+        "--video-extract-audio/--no-video-extract-audio",
+        help=(
+            "Extract the video's audio track and run ASR. Disable to "
+            "produce frame-OCR rows only (no audio, no fusion)."
+        ),
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_extract_frames: bool = typer.Option(
+        True,
+        "--video-extract-frames/--no-video-extract-frames",
+        help=(
+            "Extract video frames and run frame OCR. Disable to produce "
+            "audio-only rows from video input (no frames, no OCR, no fusion)."
+        ),
+        rich_help_panel=_PANEL_VIDEO,
+    ),
     video_frame_fps: float = typer.Option(
         1.0,
         "--video-frame-fps",
@@ -1064,6 +1089,8 @@ def run(
             segment_audio=segment_audio,
             audio_split_type=audio_split_type,
             audio_split_interval=audio_split_interval,
+            video_extract_audio=video_extract_audio,
+            video_extract_frames=video_extract_frames,
             video_frame_fps=video_frame_fps,
             video_frame_dedup=video_frame_dedup,
             video_ocr_batch_size=video_ocr_batch_size,

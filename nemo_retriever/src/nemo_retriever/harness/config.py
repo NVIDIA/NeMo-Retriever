@@ -66,6 +66,8 @@ class HarnessConfig:
     segment_audio: bool = False
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
+    video_extract_audio: bool = True
+    video_extract_frames: bool = True
     video_frame_fps: float = 1.0
     video_frame_dedup: bool = True
     video_av_fuse: bool = True
@@ -293,6 +295,8 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_SEGMENT_AUDIO": ("segment_audio", _parse_bool),
         "HARNESS_AUDIO_SPLIT_TYPE": ("audio_split_type", str),
         "HARNESS_AUDIO_SPLIT_INTERVAL": ("audio_split_interval", _parse_number),
+        "HARNESS_VIDEO_EXTRACT_AUDIO": ("video_extract_audio", _parse_bool),
+        "HARNESS_VIDEO_EXTRACT_FRAMES": ("video_extract_frames", _parse_bool),
         "HARNESS_VIDEO_FRAME_FPS": ("video_frame_fps", _parse_number),
         "HARNESS_VIDEO_FRAME_DEDUP": ("video_frame_dedup", _parse_bool),
         "HARNESS_VIDEO_AV_FUSE": ("video_av_fuse", _parse_bool),

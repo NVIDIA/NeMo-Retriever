@@ -505,6 +505,8 @@ def _build_command(
         cmd += ["--audio-split-type", cfg.audio_split_type]
         cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
     if cfg.input_type == "video":
+        cmd += ["--video-extract-audio" if cfg.video_extract_audio else "--no-video-extract-audio"]
+        cmd += ["--video-extract-frames" if cfg.video_extract_frames else "--no-video-extract-frames"]
         cmd += ["--video-frame-fps", str(cfg.video_frame_fps)]
         cmd += ["--video-frame-dedup" if cfg.video_frame_dedup else "--no-video-frame-dedup"]
         cmd += ["--video-av-fuse" if cfg.video_av_fuse else "--no-video-av-fuse"]

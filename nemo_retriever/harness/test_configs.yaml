@@ -273,6 +273,8 @@ datasets:
     segment_audio: true
     audio_split_type: time
     audio_split_interval: 36000
+    video_extract_audio: true
+    video_extract_frames: true
     video_frame_fps: 0.5
     video_frame_dedup: true
     video_av_fuse: true

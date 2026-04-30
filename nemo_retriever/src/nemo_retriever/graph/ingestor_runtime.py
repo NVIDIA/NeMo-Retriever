@@ -551,21 +551,30 @@ def build_graph(
     # single ``MediaChunkActor → ASRActor`` graph and we'd lose frame OCR.
     has_video_branch = video_frame_params is not None
     if has_video_branch:
-        graph = (
-            Graph()
-            >> VideoSplitActor(
-                audio_chunk_params=audio_chunk_params,
-                video_frame_params=video_frame_params,
-            )
-            >> ASRActor(params=asr_params)
-            >> VideoFrameOCRActor(
+        # Each stream's actor is appended only when that stream is enabled.
+        # This skips the eager Parakeet load when audio is off and avoids
+        # empty Ray Data MapBatches stages cluttering the dashboard.
+        audio_enabled = audio_chunk_params is not None and getattr(audio_chunk_params, "enabled", True)
+        frames_enabled = getattr(video_frame_params, "enabled", True)
+        fuse_enabled = (
+            audio_enabled and frames_enabled and av_fuse_params is not None and getattr(av_fuse_params, "enabled", True)
+        )
+
+        graph = Graph() >> VideoSplitActor(
+            audio_chunk_params=audio_chunk_params,
+            video_frame_params=video_frame_params,
+        )
+        if audio_enabled:
+            graph = graph >> ASRActor(params=asr_params)
+        if frames_enabled:
+            graph = graph >> VideoFrameOCRActor(
                 params=video_ocr_params,
                 ocr_invoke_url=getattr(video_ocr_params, "ocr_invoke_url", None)
                 or getattr(extract_params, "ocr_invoke_url", None),
                 api_key=getattr(video_ocr_params, "api_key", None) or getattr(extract_params, "api_key", None),
             )
-            >> AudioVisualFuser(params=av_fuse_params)
-        )
+        if fuse_enabled:
+            graph = graph >> AudioVisualFuser(params=av_fuse_params)
     elif _should_build_audio_graph(
         extract_params=extract_params,
         asr_params=asr_params,

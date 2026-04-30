@@ -78,21 +78,23 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
             if not path_str.strip():
                 continue
 
-            try:
-                chunk_rows = _chunk_one(path_str, self._audio_chunk_params, self._interface)
-            except Exception as exc:
-                logger.exception("Audio chunking failed for %s: %s", path_str, exc)
-                chunk_rows = []
-            for chunk_row in chunk_rows:
-                chunk_row["_content_type"] = "audio"
-                rows.append(chunk_row)
+            if self._audio_chunk_params.enabled:
+                try:
+                    chunk_rows = _chunk_one(path_str, self._audio_chunk_params, self._interface)
+                except Exception as exc:
+                    logger.exception("Audio chunking failed for %s: %s", path_str, exc)
+                    chunk_rows = []
+                for chunk_row in chunk_rows:
+                    chunk_row["_content_type"] = "audio"
+                    rows.append(chunk_row)
 
-            try:
-                frame_rows = _extract_one(path_str, self._video_frame_params, self._interface)
-            except Exception as exc:
-                logger.exception("Frame extraction failed for %s: %s", path_str, exc)
-                frame_rows = []
-            rows.extend(frame_rows)
+            if self._video_frame_params.enabled:
+                try:
+                    frame_rows = _extract_one(path_str, self._video_frame_params, self._interface)
+                except Exception as exc:
+                    logger.exception("Frame extraction failed for %s: %s", path_str, exc)
+                    frame_rows = []
+                rows.extend(frame_rows)
 
         if not rows:
             return pd.DataFrame()
