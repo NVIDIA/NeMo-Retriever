@@ -42,11 +42,13 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 1. Create [your NGC personal key](api-keys.md) with the scopes required for `nvcr.io` image pulls and NGC API access. Configure it for the cluster using the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (for example `ngcImagePullSecret` / `ngcApiSecret` on `helm upgrade --install`, or pre-created secrets with username `$oauthtoken`).
 
-2. For convenience when using clients or scripts that read credentials from disk, store [your NGC key](api-keys.md) in an environment variable file (`.env`). Create a `.env` file in your working directory and add the following line. Replace `<your-ngc-key>` with your actual NGC key.
+2. **Optional — local tooling only.** Helm-managed pods get NGC credentials from chart secrets (step 1), not from a file on your laptop. If you also run **Python clients, CLIs, or other scripts on your machine** (outside the cluster) that load `NGC_API_KEY` from disk, create a `.env` in that working directory:
 
     ```ini
     NGC_API_KEY=<your-ngc-key>
     ```
+
+    Skip this step if you only operate the cluster through Helm and do not run such local processes.
 
 3. Deploy or upgrade NeMo Retriever Library with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM.
 
