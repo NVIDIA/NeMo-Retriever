@@ -208,12 +208,9 @@ class VideoFrameTextDedupParams(_ParamsModel):
 
 
 class AudioVisualFuseParams(_ParamsModel):
-    """Params for fusing audio utterances with concurrent video frame OCR text."""
+    """Toggle for :class:`~nemo_retriever.video.AudioVisualFuser`."""
 
     enabled: bool = True
-    audio_label: str = "[AUDIO] "
-    visual_label: str = "[VISUAL] "
-    frame_separator: str = " | "
 
 
 class LanceDbParams(_ParamsModel):

@@ -6,14 +6,14 @@
 AudioVisualFuser: emit per-utterance ``audio_visual`` rows that combine
 audio transcript text with concurrent video frame OCR text.
 
-Designed to boost retrieval recall on questions whose answer requires
-both audio and visual modalities (``answer_modality="Audio + Visual"``
-in the eval ground truth). For each ASR utterance row, we find frame
-OCR rows whose timestamps fall within the utterance's wall-clock
-window and emit one fused row that the embedder can index together.
+Each ASR utterance is paired with the single concurrent frame whose
+window is most centred on the utterance (tiebreak: longer OCR), and the
+fused text is rendered as ``"<audio>. <visual>"``. The source audio row
+is dropped whenever a fused row was produced for its window so retrieval
+doesn't see two near-identical embeddings (audio-only and audio+visual)
+for the same utterance; audio with no concurrent frames is preserved.
 
-The fuser is *additive* — the input audio and frame rows are preserved
-in the output so single-modality queries still hit them.
+Set :attr:`AudioVisualFuseParams.enabled` to ``False`` to skip fusion.
 """
 
 from __future__ import annotations
@@ -26,10 +26,16 @@ import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.ocr.shared import concat_with_passthrough
 from nemo_retriever.params import AudioVisualFuseParams
 from nemo_retriever.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)
+
+#: Hard cap on the visual portion of a fused row — keeps a long slide-OCR
+#: blob from dominating the embedding over the (typically much shorter)
+#: audio transcript.
+FRAME_TEXT_MAX_CHARS: int = 200
 
 
 def _row_content_type(row: Any) -> str:
@@ -54,14 +60,27 @@ def _row_segment_window(row: Any) -> tuple[float, float] | None:
     return start, end
 
 
+def _keep_audio(row: Any, fused_window_keys: set[tuple[str, float, float]]) -> bool:
+    """Drop audio rows whose window already produced a fused row; keep everything else."""
+    if _row_content_type(row) != _CT.AUDIO:
+        return True
+    window = _row_segment_window(row)
+    if window is None:
+        return True
+    source = getattr(row, "source_path", None)
+    if not isinstance(source, str):
+        return True
+    return (source, float(window[0]), float(window[1])) not in fused_window_keys
+
+
 @designer_component(
     name="Audio-Visual Fuser",
     category="Video",
     compute="cpu",
-    description="Fuses audio utterances with concurrent video frame OCR text",
+    description="Fuses audio utterances with the most-representative concurrent video frame OCR text",
 )
 class AudioVisualFuser(AbstractOperator, CPUOperator):
-    """Append fused audio+visual rows to a DataFrame of audio + frame rows.
+    """Replace audio rows with fused audio+visual rows where frames overlap.
 
     Self-join semantics: needs *all* rows for a given source (audio
     utterances + frame OCR) to be co-located in a single batch. The
@@ -104,14 +123,10 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             f_start, f_end = window
             frames_by_source.setdefault(source, []).append((float(f_start), float(f_end), text.strip()))
 
-        for entries in frames_by_source.values():
-            entries.sort(key=lambda t: t[0])
-
         if not frames_by_source:
             return batch_df
 
         fused_rows: List[Dict[str, Any]] = []
-        sep = self._params.frame_separator
         for row in batch_df.itertuples(index=False):
             if _row_content_type(row) != _CT.AUDIO:
                 continue
@@ -129,9 +144,25 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             # Window-overlap: a frame fuses when its visibility window
             # intersects the utterance window. Handles narrow per-frame windows
             # (single frame) and wide merged windows (text-dedup output) alike.
-            concurrent = [text for f_start, f_end, text in frame_entries if max(u_start, f_start) <= min(u_end, f_end)]
-            if not concurrent:
+            concurrent_entries = [
+                (f_start, f_end, text)
+                for f_start, f_end, text in frame_entries
+                if max(u_start, f_start) <= min(u_end, f_end)
+            ]
+            if not concurrent_entries:
                 continue
+
+            # Pick the frame whose midpoint is closest to the utterance
+            # midpoint; tiebreak by longer OCR (favours slides that actually
+            # carry content vs. near-blank ones).
+            u_mid = (u_start + u_end) / 2.0
+            best = min(
+                concurrent_entries,
+                key=lambda fe: (abs((fe[0] + fe[1]) / 2.0 - u_mid), -len(fe[2])),
+            )
+            visual_text = best[2]
+            if len(visual_text) > FRAME_TEXT_MAX_CHARS:
+                visual_text = visual_text[:FRAME_TEXT_MAX_CHARS].rstrip()
 
             row_dict = row._asdict() if hasattr(row, "_asdict") else dict(zip(batch_df.columns, row))
             metadata = dict(row_dict.get("metadata") or {})
@@ -141,12 +172,10 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
                     "segment_end_seconds": float(u_end),
                     "modality": _CT.AUDIO_VISUAL,
                     "_content_type": _CT.AUDIO_VISUAL,
-                    "fused_frame_count": len(concurrent),
+                    "fused_concurrent_total": len(concurrent_entries),
                 }
             )
-            fused_text = (
-                f"{self._params.audio_label}{audio_text.strip()}" f"\n{self._params.visual_label}{sep.join(concurrent)}"
-            )
+            fused_text = f"{audio_text.strip()}. {visual_text}".strip()
             fused_row = dict(row_dict)
             fused_row["text"] = fused_text
             fused_row["metadata"] = metadata
@@ -157,18 +186,19 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             return batch_df
 
         fused_df = pd.DataFrame(fused_rows)
-        # Make sure both frames carry the union of columns so the LanceDB sink
-        # sees ``_content_type`` (top-level) on every fused row, even if the
-        # incoming batch lacks that column.
-        for col in batch_df.columns:
-            if col not in fused_df.columns:
-                fused_df[col] = None
-        for col in fused_df.columns:
-            if col not in batch_df.columns:
-                batch_df = batch_df.copy()
-                batch_df[col] = None
-        fused_df = fused_df[batch_df.columns.tolist()]
-        return pd.concat([batch_df, fused_df], ignore_index=True, sort=False)
+
+        fused_window_keys = {
+            (
+                str(row["source_path"] or ""),
+                float(row["metadata"]["segment_start_seconds"]),
+                float(row["metadata"]["segment_end_seconds"]),
+            )
+            for row in fused_rows
+        }
+        keep_mask = [_keep_audio(row, fused_window_keys) for row in batch_df.itertuples(index=False)]
+        upstream_df = batch_df.iloc[keep_mask].reset_index(drop=True)
+
+        return concat_with_passthrough(fused_df, upstream_df)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

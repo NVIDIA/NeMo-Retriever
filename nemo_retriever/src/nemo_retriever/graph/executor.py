@@ -296,13 +296,13 @@ class RayDataExecutor(AbstractExecutor):
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
 
-            # Operators that perform a self-join (e.g. AudioVisualFuser) need
-            # the entire dataset in one batch, otherwise rows from different
-            # source files (or different content types) end up in different
-            # batches and the join silently produces nothing.
-            if getattr(node.operator_class, "REQUIRES_GLOBAL_BATCH", False):
+            # Self-join operators (AudioVisualFuser, VideoFrameTextDedup) need
+            # the entire dataset in one batch — see the repartition site below
+            # for the actual single-block enforcement.
+            requires_global_batch = bool(getattr(node.operator_class, "REQUIRES_GLOBAL_BATCH", False))
+            if requires_global_batch:
                 batch_size = None
-                target_num_rows_per_block = int(1e12)
+                target_num_rows_per_block = None
 
             # When no explicit num_gpus override is given, auto-detect from the
             # GPUOperator mixin using actual cluster GPU availability.
@@ -353,7 +353,11 @@ class RayDataExecutor(AbstractExecutor):
             else:
                 num_gpus = self._default_num_gpus
 
-            if target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
+            if requires_global_batch:
+                # ``num_blocks=1`` is exact; ``target_num_rows_per_block`` is a
+                # streaming best-effort cap that can leave joins missing rows.
+                ds = ds.repartition(num_blocks=1)
+            elif target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
                 ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
 
             # Pass the operator class directly to map_batches with
