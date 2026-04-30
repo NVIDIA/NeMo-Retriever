@@ -38,6 +38,25 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _canonical_dependency_name(name: str) -> str:
+    return re.sub(r"[-_.]", "-", name.strip()).lower()
+
+
+def _dependency_name(requirement: str) -> str | None:
+    m = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9_.-]*)", requirement)
+    if not m:
+        return None
+    return _canonical_dependency_name(m.group(1))
+
+
+def _public_distribution_version(version: str) -> str:
+    return version.strip().split("+", 1)[0]
+
+
+def _runtime_dependency_specifier(version: str) -> str:
+    return f"~={_public_distribution_version(version)}"
+
+
 def _nightly_suffix() -> str:
     """Return the numeric part after ``.dev`` in the nightly PEP 440 version.
 
@@ -190,6 +209,93 @@ def _patch_hatch_build_force_platform_wheel(project_dir: Path) -> bool:
     return True
 
 
+def _project_table_bounds(text: str) -> tuple[int, int] | None:
+    m = re.search(r"(?m)^\[project\]\s*(?:#.*)?$", text)
+    if not m:
+        return None
+
+    for next_table in re.finditer(r"(?m)^\[([^\]]+)\]\s*(?:#.*)?$", text[m.end() :]):
+        table_name = next_table.group(1).strip()
+        if table_name != "project" and not table_name.startswith("project."):
+            return m.end(), m.end() + next_table.start()
+    return m.end(), len(text)
+
+
+def _set_requirement_specifier(requirement: str, specifier: str) -> str:
+    marker = ""
+    base = requirement
+    if ";" in requirement:
+        base, marker_part = requirement.split(";", 1)
+        marker = ";" + marker_part
+
+    m = re.match(r"(\s*[A-Za-z0-9][A-Za-z0-9_.-]*)(\s*\[[^\]]+\])?", base)
+    if not m:
+        return requirement
+    return f"{m.group(1)}{m.group(2) or ''}{specifier}{marker}"
+
+
+def _patch_pyproject_runtime_dependency_pins(project_dir: Path, pins: dict[str, str]) -> bool:
+    """
+    Pin selected [project].dependencies entries to the installed version's minor family.
+
+    This intentionally patches runtime metadata only. Build-system or hatch hook
+    dependencies can remain broad because they do not describe the installed wheel's
+    runtime compatibility.
+    """
+    if not pins:
+        return False
+
+    pyproject = project_dir / "pyproject.toml"
+    if not pyproject.exists():
+        raise RuntimeError(f"Cannot pin runtime dependencies: {pyproject} not found")
+
+    normalized_specifiers = {
+        _canonical_dependency_name(package): _runtime_dependency_specifier(version) for package, version in pins.items()
+    }
+    text = _read_text(pyproject)
+    bounds = _project_table_bounds(text)
+    if bounds is None:
+        raise RuntimeError("Cannot pin runtime dependencies: [project] table not found in pyproject.toml")
+
+    project_start, project_end = bounds
+    project_text = text[project_start:project_end]
+    deps_match = re.search(r"(?ms)^(\s*dependencies\s*=\s*\[)(.*?)(^\s*\])", project_text)
+    if not deps_match:
+        raise RuntimeError("Cannot pin runtime dependencies: [project].dependencies not found in pyproject.toml")
+
+    found: set[str] = set()
+
+    def replace_dependency(m: re.Match[str]) -> str:
+        requirement = m.group("requirement")
+        dep_name = _dependency_name(requirement)
+        if dep_name not in normalized_specifiers:
+            return m.group(0)
+        found.add(dep_name)
+        pinned = _set_requirement_specifier(requirement, normalized_specifiers[dep_name])
+        return f"{m.group('quote')}{pinned}{m.group('quote')}"
+
+    deps_body = deps_match.group(2)
+    patched_body = re.sub(
+        r"(?P<quote>['\"])(?P<requirement>[^'\"]+)(?P=quote)",
+        replace_dependency,
+        deps_body,
+    )
+
+    missing = sorted(set(normalized_specifiers) - found)
+    if missing:
+        raise RuntimeError("No matching [project].dependencies entries found for runtime pin(s): " + ", ".join(missing))
+
+    if patched_body == deps_body:
+        return False
+
+    patched_project_text = project_text[: deps_match.start(2)] + patched_body + project_text[deps_match.end(2) :]
+    patched_text = text[:project_start] + patched_project_text + text[project_end:]
+    _write_text(pyproject, patched_text)
+    for package in sorted(found):
+        print(f"Patched pyproject.toml runtime dependency: {package}{normalized_specifiers[package]}")
+    return True
+
+
 def _patch_setup_cfg_version(repo_dir: Path) -> bool:
     setup_cfg = repo_dir / "setup.cfg"
     if not setup_cfg.exists():
@@ -280,6 +386,33 @@ def _pip_install(py: Path, packages: list[str], *, cwd: Path, env: dict[str, str
     _run([str(py), "-m", "pip", "install", "--upgrade", *packages], cwd=cwd, env=env)
 
 
+def _installed_distribution_public_version(
+    py: Path,
+    package: str,
+    *,
+    cwd: Path,
+    env: dict[str, str],
+) -> str:
+    script = "import importlib.metadata as md, sys; print(md.version(sys.argv[1]))"
+    cmd = [str(py), "-c", script, package]
+    print(f"+ {' '.join(cmd)}", flush=True)
+    result = subprocess.run(
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        if result.stdout:
+            sys.stdout.write(result.stdout)
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+        raise RuntimeError(f"Unable to read installed distribution version for {package!r}")
+    return _public_distribution_version(result.stdout.strip())
+
+
 def _build(
     project_dir: Path,
     out_dir: Path,
@@ -288,6 +421,7 @@ def _build(
     no_isolation: bool,
     venv_system_site_packages: bool,
     venv_pip_install: list[str],
+    pin_runtime_dependencies: list[str],
 ) -> None:
     venv_dir = Path(os.environ.get("ORCH_VENV_DIR", ".venv-build"))
     py = _ensure_venv(venv_dir, system_site_packages=venv_system_site_packages)
@@ -305,6 +439,13 @@ def _build(
 
     _pip_install(py, ["build"], cwd=project_dir, env=env)
     _pip_install(py, venv_pip_install, cwd=project_dir, env=env)
+
+    if pin_runtime_dependencies:
+        pins = {
+            package: _installed_distribution_public_version(py, package, cwd=project_dir, env=env)
+            for package in pin_runtime_dependencies
+        }
+        _patch_pyproject_runtime_dependency_pins(project_dir, pins)
 
     cmd = [str(py), "-m", "build", "--sdist", "--wheel"]
     if no_isolation:
@@ -443,6 +584,13 @@ def main() -> int:
         default=[],
         help="Extra packages to pip install into the build venv before building (repeatable)",
     )
+    ap.add_argument(
+        "--pin-runtime-dependency",
+        action="append",
+        default=[],
+        help="Constrain this [project].dependencies package to the installed build-venv version's minor family "
+        "before building (repeatable; useful for ABI-coupled deps like torch)",
+    )
     ap.add_argument("--upload", action="store_true", help="Upload built dists via twine")
     ap.add_argument("--repository-url", default="https://test.pypi.org/legacy/", help="Twine repository URL")
     ap.add_argument("--token-env", default="TEST_PYPI_API_TOKEN", help="Env var containing API token")
@@ -510,6 +658,7 @@ def main() -> int:
         no_isolation=args.build_no_isolation,
         venv_system_site_packages=args.venv_system_site_packages,
         venv_pip_install=args.venv_pip_install,
+        pin_runtime_dependencies=args.pin_runtime_dependency,
     )
     print(f"Artifacts in: {out_dir}")
 
