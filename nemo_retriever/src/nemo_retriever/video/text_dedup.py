@@ -29,6 +29,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.params import VideoFrameTextDedupParams
+from nemo_retriever.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ class VideoFrameTextDedup(AbstractOperator, CPUOperator):
             return batch_df
         if "_content_type" not in batch_df.columns:
             return batch_df
-        is_frame = batch_df["_content_type"].astype(str) == "video_frame"
+        is_frame = batch_df["_content_type"].astype(str) == _CT.VIDEO_FRAME
         if not is_frame.any():
             return batch_df
 
@@ -125,7 +126,6 @@ class VideoFrameTextDedup(AbstractOperator, CPUOperator):
         if mergable.empty:
             return batch_df
 
-        # Add helper sort columns; cleaned up in _merge_run.
         mergable["__seg_start"] = mergable.apply(_seg_start, axis=1)
         mergable["__seg_end"] = mergable.apply(_seg_end, axis=1)
 
@@ -133,9 +133,6 @@ class VideoFrameTextDedup(AbstractOperator, CPUOperator):
         merged_rows: List[Dict[str, Any]] = []
         for (_source, _text), group in mergable.groupby(["source_path", "text"], sort=False):
             group = group.sort_values("__seg_start").reset_index(drop=True)
-            # Convert "max dropped frames" → seconds using the group's fps:
-            # at fps=0.5 (frame interval=2s), 2 dropped frames → 4s gap; at
-            # fps=1.0 → 2s; etc. Independent of fps, the rule is the same.
             fps = _group_fps(group)
             max_gap = float(max_dropped) / fps
             run_start = float(group.iloc[0]["__seg_start"])

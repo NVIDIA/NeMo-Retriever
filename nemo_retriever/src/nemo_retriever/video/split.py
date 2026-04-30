@@ -32,6 +32,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.params import AudioChunkParams, VideoFrameParams
+from nemo_retriever.video import _content_types as _CT
 from nemo_retriever.video.frame_actor import _extract_one, dedup_video_frames
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
                     logger.exception("Audio chunking failed for %s: %s", path_str, exc)
                     chunk_rows = []
                 for chunk_row in chunk_rows:
-                    chunk_row["_content_type"] = "audio"
+                    chunk_row["_content_type"] = _CT.AUDIO
                     rows.append(chunk_row)
 
             if self._video_frame_params.enabled:
@@ -100,7 +101,7 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
             return pd.DataFrame()
         out = pd.DataFrame(rows)
         if self._video_frame_params.dedup and "_content_type" in out.columns:
-            frame_mask = out["_content_type"] == "video_frame"
+            frame_mask = out["_content_type"] == _CT.VIDEO_FRAME
             if frame_mask.any():
                 deduped_frames = dedup_video_frames(
                     out[frame_mask].reset_index(drop=True),

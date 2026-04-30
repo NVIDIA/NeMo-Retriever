@@ -16,8 +16,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import base64
 import io
+import logging
 import time
 import traceback
+
+_logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
@@ -423,18 +426,14 @@ def ocr_b64_to_text(
                     max_pool_workers=int(retry_params.remote_max_pool_workers),
                 )
         except Exception:
-            import logging
-
-            logging.getLogger(__name__).exception("Remote OCR call failed")
+            _logger.exception("Remote OCR call failed")
             return out
         for resp, dst in zip(response_items, valid_idx):
             try:
                 preds = _extract_remote_ocr_item(resp)
                 out[dst] = ocr_response_to_text(preds)
             except Exception:
-                import logging
-
-                logging.getLogger(__name__).warning("Failed to parse OCR response for index %d", dst)
+                _logger.warning("Failed to parse OCR response for index %d", dst)
                 out[dst] = ""
         return out
 
@@ -444,9 +443,7 @@ def ocr_b64_to_text(
             preds = model.invoke(b64.encode("utf-8"), merge_level=merge_level)
             out[dst] = ocr_response_to_text(preds)
         except Exception:
-            import logging
-
-            logging.getLogger(__name__).exception("Local OCR failed on image at index %d", dst)
+            _logger.exception("Local OCR failed on image at index %d", dst)
             out[dst] = ""
     return out
 
@@ -459,10 +456,12 @@ def split_ocrable_rows(batch_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFra
     of ``""``/``video_frame``. Audio rows from the video pipeline (which
     have ``_content_type='audio'``) are passed through unchanged.
     """
+    from nemo_retriever.video import _content_types as _CT
+
     if "_content_type" not in batch_df.columns:
         return batch_df.copy(), pd.DataFrame()
     ct = batch_df["_content_type"].astype(str).fillna("")
-    ocr_mask = ct.isin(["", "video_frame"])
+    ocr_mask = ct.isin(["", _CT.VIDEO_FRAME])
     return (
         batch_df[ocr_mask].reset_index(drop=True),
         batch_df[~ocr_mask].reset_index(drop=True),

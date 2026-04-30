@@ -25,6 +25,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.params import VideoFrameParams
+from nemo_retriever.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +135,8 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
                 "frame_timestamp_seconds": float(timestamp),
                 "segment_start_seconds": max(0.0, float(timestamp) - half_window),
                 "segment_end_seconds": float(timestamp) + half_window,
-                "modality": "video_frame",
-                "_content_type": "video_frame",
+                "modality": _CT.VIDEO_FRAME,
+                "_content_type": _CT.VIDEO_FRAME,
             }
             rows.append(
                 {
@@ -145,7 +146,7 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
                     "page_number": idx,
                     "metadata": metadata,
                     "bytes": frame_bytes,
-                    "_content_type": "video_frame",
+                    "_content_type": _CT.VIDEO_FRAME,
                 }
             )
         return rows
@@ -154,30 +155,25 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
 def _dhash(image_b64: str, hash_size: int = 8) -> Optional[int]:
     """Difference-hash of a base64-encoded PNG, packed into a 64-bit integer.
 
-    dhash is a perceptual hash: resize to ``(hash_size+1) x hash_size``
-    grayscale, then compare each pixel to its right neighbour and pack the
-    results as bits. Two frames with similar overall brightness layout end
-    up with hashes that are close in Hamming distance, even if individual
-    pixel values differ from encoder noise. Returns ``None`` if decoding
-    fails so the caller can fall back to keeping the row.
+    Resize to ``(hash_size+1) x hash_size`` grayscale, compare each pixel to
+    its right neighbour, pack the results as bits. Two frames with similar
+    overall brightness layout end up close in Hamming distance, even if
+    individual pixel values differ from encoder noise. Returns ``None`` if
+    decoding fails so the caller can fall back to keeping the row.
     """
     try:
-        from PIL import Image  # local import to avoid hard dep at module load
+        import numpy as np
+        from PIL import Image
     except Exception:  # pragma: no cover
         return None
     try:
         raw = base64.b64decode(image_b64)
         img = Image.open(io.BytesIO(raw)).convert("L").resize((hash_size + 1, hash_size), Image.LANCZOS)
-        px = list(img.getdata())
+        arr = np.asarray(img, dtype=np.int16)
     except Exception:
         return None
-    bits = 0
-    for r in range(hash_size):
-        for c in range(hash_size):
-            i = r * (hash_size + 1) + c
-            if px[i] > px[i + 1]:
-                bits |= 1 << (r * hash_size + c)
-    return bits
+    diff = arr[:, :-1] > arr[:, 1:]  # (hash_size, hash_size) bool
+    return int.from_bytes(np.packbits(diff).tobytes(), "big")
 
 
 def _hamming(a: int, b: int) -> int:
@@ -256,19 +252,21 @@ def dedup_video_frames(
                 and (row_start - active_end) <= max_gap
             )
             if can_merge:
-                # Extend the kept run's window through this frame.
-                kept = output_rows[active_idx]
-                kept_md = dict(kept.get("metadata") or {})
+                # Extend the kept run's window through this frame; mutate
+                # the kept metadata in place rather than copying it each merge.
+                kept_md = output_rows[active_idx]["metadata"]
                 if row_end > float(kept_md.get("segment_end_seconds") or 0.0):
                     kept_md["segment_end_seconds"] = row_end
                     start = float(kept_md.get("segment_start_seconds") or 0.0)
                     kept_md["frame_timestamp_seconds"] = (start + row_end) / 2.0
                 kept_md["dedup_merged_count"] = int(kept_md.get("dedup_merged_count", 1)) + 1
-                kept["metadata"] = kept_md
                 active_end = row_end
             else:
-                # Either no active run, hash too different, gap too large, or unhashable —
-                # start a new run rooted at this frame.
+                # Detach metadata into a fresh dict so subsequent in-place mutations
+                # don't leak back into the source DataFrame's row.
+                md = row_dict.get("metadata")
+                if isinstance(md, dict):
+                    row_dict["metadata"] = dict(md)
                 output_rows.append(row_dict)
                 active_idx = len(output_rows) - 1
                 active_end = row_end

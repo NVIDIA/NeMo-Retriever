@@ -27,6 +27,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.params import AudioVisualFuseParams
+from nemo_retriever.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
         # rows with wide windows still fuse with utterances inside that window.
         frames_by_source: Dict[str, List[tuple[float, float, str]]] = {}
         for row in batch_df.itertuples(index=False):
-            if _row_content_type(row) != "video_frame":
+            if _row_content_type(row) != _CT.VIDEO_FRAME:
                 continue
             window = _row_segment_window(row)
             text = getattr(row, "text", None)
@@ -112,7 +113,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
         fused_rows: List[Dict[str, Any]] = []
         sep = self._params.frame_separator
         for row in batch_df.itertuples(index=False):
-            if _row_content_type(row) != "audio":
+            if _row_content_type(row) != _CT.AUDIO:
                 continue
             window = _row_segment_window(row)
             if window is None:
@@ -138,8 +139,8 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
                 {
                     "segment_start_seconds": float(u_start),
                     "segment_end_seconds": float(u_end),
-                    "modality": "audio_visual",
-                    "_content_type": "audio_visual",
+                    "modality": _CT.AUDIO_VISUAL,
+                    "_content_type": _CT.AUDIO_VISUAL,
                     "fused_frame_count": len(concurrent),
                 }
             )
@@ -149,7 +150,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             fused_row = dict(row_dict)
             fused_row["text"] = fused_text
             fused_row["metadata"] = metadata
-            fused_row["_content_type"] = "audio_visual"
+            fused_row["_content_type"] = _CT.AUDIO_VISUAL
             fused_rows.append(fused_row)
 
         if not fused_rows:
