@@ -27,21 +27,7 @@ logger = logging.getLogger(__name__)
 # Larger numbers tend to confuse the LLM and increase latency.
 MAX_CALCULATION_CANDIDATES = 15
 
-# k for each get_candidates_information call (qnv, qwv, per-entity).
-CANDIDATES_K = 10
 
-# Per-attempt batch size when pulling semantic candidates. We keep this modest
-# to balance recall with response time and to leave room for deduping.
-ATTR_CANDIDATE_BATCH_SIZE = 6
-
-# Maximum number of batch pulls before we give up looking for fresh attributes;
-# empirically, three rounds either fill the quota or show the backend is stuck on duplicates.
-ATTR_CANDIDATE_MAX_ATTEMPTS = 3
-
-# Budget for entity-specific candidate searches. This limits how many candidates we fetch
-# per entity when ensuring entity coverage. Distributed evenly across entities (at least 1 per entity).
-# This prevents over-fetching when there are many entities while ensuring each gets coverage.
-ENTITY_CANDIDATE_BUDGET = 4
 
 
 def get_llm_client() -> ChatNVIDIA:
@@ -188,14 +174,23 @@ def _vector_distance_value(distance: object | None) -> float:
         return float("inf")
 
 
-def _hits_to_semantic_rows(hits: list[dict], _allowed_labels: set[str], k: int) -> list[dict]:
-    """Turn raw LanceDB hits into candidate dicts.
+LANCEDB_FETCH_LIMIT = 100
+PER_LABEL_LIMIT = 10
 
-    Each row uses ``text`` as the candidate string. ``id`` / ``label`` are taken from
-    metadata (minimal parse) for ``expand_info`` / Neo4j enrichment only.
 
-    ``score`` is the raw vector ``_distance`` from Lance (lower is better; see sorts below).
+def _hits_to_semantic_rows(
+    hits: list[dict],
+    label_filter: set[str] | None = None,
+    per_label_k: int = PER_LABEL_LIMIT,
+) -> list[dict]:
+    """Turn raw LanceDB hits into candidate dicts, filtering by label in Python.
+
+    Hits are already sorted by vector distance (from LanceDB). For each allowed
+    label, at most *per_label_k* rows are kept (best-first).
+
+    ``score`` is the raw vector ``_distance`` from Lance (lower is better).
     """
+    label_counts: dict[str, int] = {}
     rows: list[dict] = []
     for hit in hits:
         meta = _parse_lancedb_row_metadata(hit)
@@ -203,6 +198,13 @@ def _hits_to_semantic_rows(hits: list[dict], _allowed_labels: set[str], k: int) 
         if cid is None:
             continue
         lab = meta.get("label") if meta.get("label") is not None else hit.get("label")
+        lab_str = str(lab) if lab is not None else ""
+        if label_filter and lab_str not in label_filter:
+            continue
+        cnt = label_counts.get(lab_str, 0)
+        if cnt >= per_label_k:
+            continue
+        label_counts[lab_str] = cnt + 1
         score = _vector_distance_value(hit.get("_distance"))
         rows.append(
             {
@@ -212,57 +214,49 @@ def _hits_to_semantic_rows(hits: list[dict], _allowed_labels: set[str], k: int) 
                 "score": score,
             }
         )
-        if len(rows) >= int(k):
-            break
-    return rows[: int(k)]
+    return rows
 
 
 def search_lancedb_semantic_index(
     retriever: "Retriever",
     entity: str,
-    k: int = 30,
     label_filter: list[str] | None = None,
+    per_label_k: int = PER_LABEL_LIMIT,
 ) -> list[dict]:
     """
-    Vector search over LanceDB via the injected :class:`~nemo_retriever.retriever.Retriever`
-    (same stack as ``generate_sql.get_sql_tool_response_top_k``).
+    Vector search over LanceDB via the injected :class:`~nemo_retriever.retriever.Retriever`.
 
-    The retriever's ``lancedb_uri`` / ``lancedb_table`` / ``embedder`` / embedding
-    endpoint and credentials are fully decided at retriever construction time;
-    this function does not read any environment variables.
+    Always fetches ``LANCEDB_FETCH_LIMIT`` rows from LanceDB, then filters by
+    *label_filter* in Python, keeping at most *per_label_k* per label.
     """
-    allowed_labels = {str(x) for x in (label_filter or []) if x is not None}
-    limit = max(1, int(k))
+    allowed_labels = {str(x) for x in (label_filter or []) if x is not None} or None
 
-    retriever.top_k = limit
+    retriever.top_k = LANCEDB_FETCH_LIMIT
 
     hits = retriever.query(entity)
 
-    return _hits_to_semantic_rows(hits, allowed_labels, limit)
+    return _hits_to_semantic_rows(hits, label_filter=allowed_labels, per_label_k=per_label_k)
 
 
 def get_candidates_information(
     retriever: "Retriever",
     entity: str,
-    k: int = 5,
-    list_of_semantic: list | None = [Labels.CUSTOM_ANALYSIS, Labels.COLUMN],
+    list_of_semantic: list | None = None,
 ):
     """
     Vector search over LanceDB, then merge graph properties from ``expand_info``.
 
-    Matches the call shape used by ``extract_candidates``:
-    ``get_candidates_information(retriever, text, k=..., list_of_semantic=[...])``.
+    Fetches ``LANCEDB_FETCH_LIMIT`` rows from LanceDB, filters to
+    *list_of_semantic* labels in Python (max ``PER_LABEL_LIMIT`` per label),
+    then enriches each hit with Neo4j graph properties.
     """
-    labels = list_of_semantic
-    results: list[dict] = []
-
-    nodes_results = search_lancedb_semantic_index(
-        retriever,
-        entity,
-        k=k,
-        label_filter=labels,
+    results: list[dict] = list(
+        search_lancedb_semantic_index(
+            retriever,
+            entity,
+            label_filter=list_of_semantic,
+        )
     )
-    results.extend(nodes_results)
 
     ids_and_labels = [{"label": x["label"], "id": x["id"]} for x in results]
     props_by_id = expand_info(ids_and_labels)
@@ -309,14 +303,19 @@ def extract_candidates(
     query_with_values: str = "",
 ) -> tuple[list[dict], list[dict]]:
     """
-    One semantic search per string: ``query_no_values``, ``query_with_values`` (if distinct),
-    and each entity name. For each string, pull custom analyses and columns via
-    ``get_candidates_information``. Merge streams, dedupe by (label, id) keeping the
-    lowest vector distance (``score``), sort ascending by distance, cap at ``MAX_CALCULATION_CANDIDATES`` per stream.
+    One semantic search per pull string (``query_no_values``, ``query_with_values``
+    if distinct, and each entity name). Each search fetches both custom-analysis
+    and column candidates in a single LanceDB call, then splits by label in Python.
+
+    Merge streams, dedupe by (label, id) keeping the lowest vector distance
+    (``score``), sort ascending by distance, cap at ``MAX_CALCULATION_CANDIDATES``
+    per stream.
 
     Returns:
         ``(custom_analysis_candidates, column_candidates)``
     """
+    target_labels = [Labels.CUSTOM_ANALYSIS, Labels.COLUMN]
+
     qnv = (query_no_values or "").strip()
     pulls: list[str] = []
     if qnv:
@@ -330,24 +329,17 @@ def extract_candidates(
     combined_custom: list[dict] = []
     combined_columns: list[dict] = []
     for text in pulls:
-        combined_custom.extend(
-            get_candidates_information(
-                retriever,
-                text,
-                k=CANDIDATES_K,
-                list_of_semantic=[Labels.CUSTOM_ANALYSIS],
-            )
-            or []
-        )
-        combined_columns.extend(
-            get_candidates_information(
-                retriever,
-                text,
-                k=CANDIDATES_K,
-                list_of_semantic=[Labels.COLUMN],
-            )
-            or []
-        )
+        all_hits = get_candidates_information(
+            retriever,
+            text,
+            list_of_semantic=target_labels,
+        ) or []
+        for hit in all_hits:
+            lab = str(hit.get("label") or "")
+            if lab == Labels.CUSTOM_ANALYSIS:
+                combined_custom.append(hit)
+            elif lab == Labels.COLUMN:
+                combined_columns.append(hit)
 
     out_custom = _dedupe_best_score_sort_cap(combined_custom)
     out_columns = _dedupe_best_score_sort_cap(combined_columns)
@@ -818,8 +810,8 @@ def get_relevant_tables(
         raw_rows = search_lancedb_semantic_index(
             retriever,
             initial_question,
-            k=k,
             label_filter=[Labels.TABLE],
+            per_label_k=k,
         )
     except Exception:
         logger.exception("get_relevant_tables: LanceDB search failed")
