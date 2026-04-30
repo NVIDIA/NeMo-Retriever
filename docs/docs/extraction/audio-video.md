@@ -34,7 +34,7 @@ This pipeline enables users to retrieve speech files at the segment level.
 
 ## Run the NIM locally (Helm)
 
-Use the following procedure to run the NIM on your own infrastructure. **Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)**—not Docker Compose.
+Use the following procedure to run the NIM on your own infrastructure. **Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)**.
 
 !!! important
 
