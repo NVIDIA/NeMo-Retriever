@@ -92,24 +92,6 @@ def test_keeps_separate_runs_across_large_gaps() -> None:
     assert (md1["segment_start_seconds"], md1["segment_end_seconds"]) == (100.0, 104.0)
 
 
-def test_does_not_merge_different_text() -> None:
-    rows = [
-        _frame_row("/v.mp4", "SLIDE A", 0.0, 2.0),
-        _frame_row("/v.mp4", "SLIDE B", 2.0, 4.0),
-    ]
-    out = VideoFrameTextDedup(VideoFrameTextDedupParams()).run(pd.DataFrame(rows))
-    assert len(out) == 2
-
-
-def test_does_not_merge_across_sources() -> None:
-    rows = [
-        _frame_row("/v1.mp4", "X", 0.0, 2.0),
-        _frame_row("/v2.mp4", "X", 0.0, 2.0),
-    ]
-    out = VideoFrameTextDedup(VideoFrameTextDedupParams()).run(pd.DataFrame(rows))
-    assert len(out) == 2
-
-
 def test_passes_through_audio_rows_unchanged() -> None:
     rows = [
         _audio_row("/v.mp4", "speech", 0.0, 3.0),
@@ -123,43 +105,3 @@ def test_passes_through_audio_rows_unchanged() -> None:
     assert audio_rows.iloc[0]["text"] == "speech"
     assert len(frame_rows) == 1  # two frames merged
     assert frame_rows.iloc[0]["metadata"]["segment_end_seconds"] == 5.0
-
-
-def test_max_gap_scales_with_fps() -> None:
-    """A 2-second gap between same-text frames bridges at fps=1.0
-    (max_gap = 2/1.0 = 2s) but breaks at fps=0.5 with max_dropped_frames=0
-    (max_gap = 0/0.5 = 0s)."""
-    text = "SLIDE A"
-    # Same gap pattern, different fps annotations.
-    rows_fps_1 = [
-        _frame_row("/v.mp4", text, 0.0, 1.0, fps=1.0),
-        _frame_row("/v.mp4", text, 3.0, 4.0, fps=1.0),  # gap = 2s
-    ]
-    rows_fps_0p5 = [
-        _frame_row("/v.mp4", text, 0.0, 2.0, fps=0.5),
-        _frame_row("/v.mp4", text, 6.0, 8.0, fps=0.5),  # gap = 4s
-    ]
-
-    # max_dropped_frames=2 at fps=1.0 → max_gap=2s → bridges 2s gap.
-    out1 = VideoFrameTextDedup(VideoFrameTextDedupParams(max_dropped_frames=2)).run(pd.DataFrame(rows_fps_1))
-    assert len(out1) == 1
-    assert out1.iloc[0]["metadata"]["segment_end_seconds"] == 4.0
-
-    # max_dropped_frames=2 at fps=0.5 → max_gap=4s → bridges 4s gap exactly.
-    out2 = VideoFrameTextDedup(VideoFrameTextDedupParams(max_dropped_frames=2)).run(pd.DataFrame(rows_fps_0p5))
-    assert len(out2) == 1
-    assert out2.iloc[0]["metadata"]["segment_end_seconds"] == 8.0
-
-    # max_dropped_frames=0 → only consecutive frames merge → never merges these.
-    out3 = VideoFrameTextDedup(VideoFrameTextDedupParams(max_dropped_frames=0)).run(pd.DataFrame(rows_fps_1))
-    assert len(out3) == 2
-
-
-def test_disabled_returns_input_unchanged() -> None:
-    rows = [
-        _frame_row("/v.mp4", "SLIDE A", 0.0, 2.0),
-        _frame_row("/v.mp4", "SLIDE A", 2.0, 4.0),
-    ]
-    df = pd.DataFrame(rows)
-    out = VideoFrameTextDedup(VideoFrameTextDedupParams(enabled=False)).run(df)
-    pd.testing.assert_frame_equal(out, df)

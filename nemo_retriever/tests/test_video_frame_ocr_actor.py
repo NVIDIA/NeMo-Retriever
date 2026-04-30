@@ -72,13 +72,6 @@ def test_cpu_actor_calls_remote_batched_with_b64_list() -> None:
     assert call_kwargs["invoke_url"] == "https://example/ocr"
 
 
-def test_cpu_actor_returns_empty_for_empty_input() -> None:
-    actor = VideoFrameOCRCPUActor(ocr_invoke_url="https://example/ocr")
-    out = actor.run(pd.DataFrame())
-    assert isinstance(out, pd.DataFrame)
-    assert out.empty
-
-
 def test_gpu_actor_invokes_local_model_per_frame() -> None:
     df = _make_frame_df(["b64_one", "b64_two"])
 

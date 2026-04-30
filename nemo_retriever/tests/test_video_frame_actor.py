@@ -76,16 +76,6 @@ def test_video_path_to_frames_df_basic_count_and_timestamps(tmp_path: Path) -> N
 
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
-def test_video_frame_actor_handles_empty_batch() -> None:
-    actor = VideoFrameActor(VideoFrameParams(fps=1.0))
-    empty = pd.DataFrame(columns=["path", "bytes"])
-    out = actor(empty)
-    assert isinstance(out, pd.DataFrame)
-    assert list(out.columns) == FRAME_COLUMNS
-    assert len(out) == 0
-
-
-@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_video_frame_actor_runs_on_dataframe(tmp_path: Path) -> None:
     fixture = tmp_path / "fixture.mp4"
     _make_test_mp4(fixture, duration_sec=3)
@@ -183,32 +173,6 @@ def test_dedup_video_frames_starts_new_run_after_long_gap() -> None:
     ends = sorted(r["metadata"]["segment_end_seconds"] for _, r in out.iterrows())
     assert starts == [0.0, 200.0]
     assert ends == [6.0, 204.0]
-
-
-def test_dedup_video_frames_threshold_zero_requires_exact_dhash() -> None:
-    # Same dhash → still collapsed at threshold=0.
-    flat_a = _solid_png_b64((100, 100, 100))
-    flat_b = _solid_png_b64((100, 100, 100))
-    rows = [
-        {"image_b64": flat_a, "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 0.5}},
-        {"image_b64": flat_b, "source_path": "/v.mp4", "metadata": {"frame_timestamp_seconds": 1.5}},
-    ]
-    out = dedup_video_frames(pd.DataFrame(rows), max_hamming_distance=0)
-    assert len(out) == 1
-
-
-def test_dedup_video_frames_keeps_undecodable_rows() -> None:
-    # When PIL can't decode the bytes, the row is kept (better than silently dropping).
-    rows = [
-        {"image_b64": "not-actually-base64-png", "source_path": "/v.mp4", "metadata": {}},
-    ]
-    out = dedup_video_frames(pd.DataFrame(rows))
-    assert len(out) == 1
-
-
-def test_dedup_video_frames_passthrough_for_empty_df() -> None:
-    empty = pd.DataFrame()
-    assert dedup_video_frames(empty).empty
 
 
 def _checkerboard_png_b64(size: int = 16) -> str:

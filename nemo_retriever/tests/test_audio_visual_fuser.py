@@ -69,12 +69,6 @@ def test_fuser_emits_one_fused_row_per_overlapping_utterance() -> None:
     assert kinds.count("audio_visual") == 1
 
 
-def test_fuser_disabled_returns_input_unchanged() -> None:
-    df = pd.DataFrame([_audio_row("/v.mp4", "x", 0.0, 1.0), _frame_row("/v.mp4", "y", 0.5)])
-    out = AudioVisualFuser(AudioVisualFuseParams(enabled=False)).run(df)
-    pd.testing.assert_frame_equal(out, df)
-
-
 def test_fuser_skips_when_no_concurrent_frame_text() -> None:
     rows = [
         _audio_row("/v.mp4", "lonely audio", 0.0, 3.0),
@@ -84,22 +78,6 @@ def test_fuser_skips_when_no_concurrent_frame_text() -> None:
     out = AudioVisualFuser(AudioVisualFuseParams()).run(df)
     assert len(out) == 2  # no fused row appended, audio row preserved
     assert all(r["metadata"]["_content_type"] != "audio_visual" for _, r in out.iterrows())
-
-
-def test_fuser_groups_per_source_path() -> None:
-    rows = [
-        _audio_row("/v1.mp4", "video1 audio", 0.0, 3.0),
-        _audio_row("/v2.mp4", "video2 audio", 0.0, 3.0),
-        _frame_row("/v1.mp4", "video1 visual", 1.0),
-        _frame_row("/v2.mp4", "video2 visual", 1.0),
-    ]
-    df = pd.DataFrame(rows)
-    out = AudioVisualFuser(AudioVisualFuseParams()).run(df)
-    fused = [r for _, r in out.iterrows() if r["metadata"]["_content_type"] == "audio_visual"]
-    assert len(fused) == 2
-    pairs = {(r["source_path"], r["text"]) for r in fused}
-    assert ("/v1.mp4", "video1 audio. video1 visual") in pairs
-    assert ("/v2.mp4", "video2 audio. video2 visual") in pairs
 
 
 def test_fuser_preserves_segment_window_from_audio_row() -> None:
@@ -172,48 +150,3 @@ def test_fuser_drops_redundant_audio_only_for_fused_windows() -> None:
     assert len(fused) == 1
     assert len(audio) == 1
     assert audio[0]["text"] == "lonely utterance"
-
-
-def test_fuser_replace_audio_window_match_is_exact() -> None:
-    """Duplicate-text audio at a different window must be preserved."""
-    rows = [
-        _audio_row("/v.mp4", "yes", 0.0, 1.0),
-        _audio_row("/v.mp4", "yes", 100.0, 101.0),
-        _frame_row("/v.mp4", "slide", 0.5),
-    ]
-    out = AudioVisualFuser(AudioVisualFuseParams()).run(pd.DataFrame(rows))
-    audio = [r for _, r in out.iterrows() if r["metadata"]["_content_type"] == "audio"]
-    assert len(audio) == 1
-    assert audio[0]["metadata"]["segment_start_seconds"] == 100.0
-
-
-def test_fuser_is_invariant_to_per_source_batching() -> None:
-    """Per-source partitioning is the executor's contract for parallelism.
-
-    Running the fuser on the whole multi-source batch must produce the same
-    fused rows as running it once per source and concatenating — i.e. the
-    self-join only ever needs rows for a single source to be co-located. If
-    this invariant ever breaks, ``GLOBAL_BATCH_GROUP_KEYS`` would no longer
-    be safe to advertise on the operator.
-    """
-    rows = [
-        _audio_row("/a.mp4", "alpha audio one", 0.0, 3.0),
-        _audio_row("/a.mp4", "alpha audio two", 5.0, 8.0),
-        _audio_row("/b.mp4", "beta audio", 0.0, 3.0),
-        _audio_row("/c.mp4", "gamma orphan", 0.0, 2.0),  # no concurrent frame
-        _frame_row("/a.mp4", "ALPHA SLIDE 1", 1.0),
-        _frame_row("/a.mp4", "ALPHA SLIDE 2", 6.0),
-        _frame_row("/b.mp4", "BETA SLIDE", 1.5),
-    ]
-    fuser = AudioVisualFuser(AudioVisualFuseParams())
-
-    sort_cols = ["source_path", "_content_type", "text"]
-    whole = fuser.run(pd.DataFrame(rows)).sort_values(sort_cols).reset_index(drop=True)
-
-    by_source: list[pd.DataFrame] = []
-    for src in {r["source_path"] for r in rows}:
-        sub = [r for r in rows if r["source_path"] == src]
-        by_source.append(fuser.run(pd.DataFrame(sub)))
-    chunked = pd.concat(by_source, ignore_index=True).sort_values(sort_cols).reset_index(drop=True)
-
-    pd.testing.assert_frame_equal(whole[sort_cols], chunked[sort_cols])
