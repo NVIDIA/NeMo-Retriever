@@ -8,7 +8,7 @@ If you use NeMo Retriever Library in a publication, please use citations in the 
 @Manual{,
   title = {NeMo Retriever Library: A scalable framework for document content and metadata extraction},
   author = {{NVIDIA Corporation}},
-  year = {2024},
+  year = {2026},
   url = {https://github.com/NVIDIA/NeMo-Retriever},
 }
 ```

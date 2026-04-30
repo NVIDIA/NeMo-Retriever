@@ -250,6 +250,8 @@ ensures that failures are managed consistently, optionally raising exceptions or
       pass
   ```
 
+By default, `skip_processing_if_failed=True`. If the `IngestControlMessage` is already marked failed (`cm_failed` in metadata), the wrapped function is not called and the message is returned (or passed to `forward_func` if set)—so downstream stages do not re-process a failed message. Set `skip_processing_if_failed=False` when a stage must run even after a prior failure.
+
 #### filter_by_task decorator
 
 Defined in `src/nv_ingest/framework/util/flow_control/filter_by_task.py`.
@@ -277,20 +279,6 @@ function is provided.
   directly, provide `forward_func`:
   ```python
   @filter_by_task(required_tasks=["task1", "task2"], forward_func=other_function)
-  def process_message(message):
-      pass
-  ```
-
-#### `cm_skip_processing_if_failed` -> `morpheus/utils/control_message_utils.py`
-
-The `cm_skip_processing_if_failed` decorator skips the processing of a `ControlMessage` if it has already failed. This
-ensures that no further processing is attempted on a failed message, maintaining the integrity of the pipeline.
-
-**Usage:**
-
-- To skip processing if the message has failed:
-  ```python
-  @cm_skip_processing_if_failed
   def process_message(message):
       pass
   ```
