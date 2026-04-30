@@ -160,7 +160,6 @@ class VideoFrameParams(_ParamsModel):
     fps: float = 1.0
     max_frames: Optional[int] = None
     dedup: bool = True
-    dedup_iou_threshold: float = 0.95
 
 
 class VideoOCRParams(_ParamsModel):

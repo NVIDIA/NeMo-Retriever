@@ -345,6 +345,192 @@ def _blocks_to_text(blocks: List[Dict[str, Any]]) -> str:
     return " ".join(b["text"] for b in blocks if b.get("text"))
 
 
+def ocr_response_to_text(preds: Any) -> str:
+    """Extract joined OCR text from a Nemotron OCR response, returning ``""``
+    when no text is detected.
+
+    Wraps :func:`_parse_ocr_result` + :func:`_blocks_to_text` but suppresses
+    ``_parse_ocr_result``'s last-resort stringify fallback (which dumps the
+    raw response repr when no shape matches) — that fallback produces noise
+    rows for callers like the video frame OCR actor where many frames have
+    no on-screen text and we need an empty-string sentinel to drop them.
+    """
+    blocks = _parse_ocr_result(preds)
+    if not blocks:
+        return ""
+    if len(blocks) == 1:
+        only = blocks[0]
+        if only.get("sort_x", 0.0) == 0.0 and only.get("sort_y", 0.0) == 0.0:
+            text = (only.get("text") or "").strip()
+            if text.startswith("[") or text.startswith("{"):
+                # Stringified Python repr — treat as no text detected.
+                return ""
+    return _blocks_to_text(blocks)
+
+
+def ocr_b64_to_text(
+    image_b64_list: Sequence[str],
+    *,
+    model: Any = None,
+    invoke_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    nim_client: Optional[NIMClient] = None,
+    merge_level: str = "paragraph",
+    batch_size: int = 8,
+    timeout_s: float = 120.0,
+    retry: Optional[RemoteRetryParams] = None,
+) -> List[str]:
+    """Run Nemotron OCR v1 on a list of base64 PNG images; return one text per input.
+
+    Routes to remote NIM when ``invoke_url`` is set (uses ``nim_client`` if
+    provided, otherwise spins up a fresh batched call), or to a local
+    ``NemotronOCRV1`` model when ``model`` is provided. Empty/non-string
+    inputs map to ``""``; per-image parse failures are logged and also map
+    to ``""`` so the output preserves input order and length.
+    """
+    n = len(image_b64_list)
+    if n == 0:
+        return []
+
+    use_remote = bool((invoke_url or "").strip())
+    if not use_remote and model is None:
+        raise ValueError("ocr_b64_to_text requires either invoke_url or a local model.")
+
+    valid_idx = [i for i, b in enumerate(image_b64_list) if isinstance(b, str) and b]
+    valid_b64 = [image_b64_list[i] for i in valid_idx]
+    out = [""] * n
+    if not valid_b64:
+        return out
+
+    retry_params = retry or RemoteRetryParams()
+
+    if use_remote:
+        try:
+            invoke_kw = dict(
+                invoke_url=invoke_url,
+                image_b64_list=valid_b64,
+                api_key=api_key,
+                timeout_s=float(timeout_s),
+                max_batch_size=int(batch_size),
+                max_retries=int(retry_params.remote_max_retries),
+                max_429_retries=int(retry_params.remote_max_429_retries),
+            )
+            if nim_client is not None:
+                response_items = nim_client.invoke_image_inference_batches(**invoke_kw)
+            else:
+                response_items = invoke_image_inference_batches(
+                    **invoke_kw,
+                    max_pool_workers=int(retry_params.remote_max_pool_workers),
+                )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception("Remote OCR call failed")
+            return out
+        for resp, dst in zip(response_items, valid_idx):
+            try:
+                preds = _extract_remote_ocr_item(resp)
+                out[dst] = ocr_response_to_text(preds)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).warning("Failed to parse OCR response for index %d", dst)
+                out[dst] = ""
+        return out
+
+    # Local model path.
+    for b64, dst in zip(valid_b64, valid_idx):
+        try:
+            preds = model.invoke(b64.encode("utf-8"), merge_level=merge_level)
+            out[dst] = ocr_response_to_text(preds)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception("Local OCR failed on image at index %d", dst)
+            out[dst] = ""
+    return out
+
+
+def split_ocrable_rows(batch_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Partition rows into OCR-able rows and passthrough rows.
+
+    A batch is OCR-able when it carries no ``_content_type`` discriminator
+    (audio-free pipelines like PDF / image) or when ``_content_type`` is one
+    of ``""``/``video_frame``. Audio rows from the video pipeline (which
+    have ``_content_type='audio'``) are passed through unchanged.
+    """
+    if "_content_type" not in batch_df.columns:
+        return batch_df.copy(), pd.DataFrame()
+    ct = batch_df["_content_type"].astype(str).fillna("")
+    ocr_mask = ct.isin(["", "video_frame"])
+    return (
+        batch_df[ocr_mask].reset_index(drop=True),
+        batch_df[~ocr_mask].reset_index(drop=True),
+    )
+
+
+def concat_with_passthrough(processed: pd.DataFrame, passthrough: pd.DataFrame) -> pd.DataFrame:
+    """Concat the OCR-stage output with passthrough rows, harmonising columns."""
+    if passthrough is None or passthrough.empty:
+        return processed
+    if processed is None or processed.empty:
+        return passthrough
+    for col in processed.columns:
+        if col not in passthrough.columns:
+            passthrough = passthrough.assign(**{col: None})
+    for col in passthrough.columns:
+        if col not in processed.columns:
+            processed = processed.assign(**{col: None})
+    return pd.concat([processed[passthrough.columns.tolist()], passthrough], ignore_index=True, sort=False)
+
+
+def is_full_image_batch(batch_df: pd.DataFrame) -> bool:
+    """True when the batch carries top-level ``image_b64`` and no usable
+    ``page_elements_v3`` — i.e. the input came from frame extraction
+    (or any other producer that hands raw images straight to OCR)."""
+    if "image_b64" not in batch_df.columns:
+        return False
+    pe = batch_df.get("page_elements_v3")
+    if pe is None:
+        return True
+    return not pe.notna().any()
+
+
+def full_image_ocr_df(
+    batch_df: pd.DataFrame,
+    *,
+    model: Any = None,
+    invoke_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    nim_client: Optional[NIMClient] = None,
+    merge_level: str = "paragraph",
+    batch_size: int = 8,
+    timeout_s: float = 120.0,
+    retry: Optional[RemoteRetryParams] = None,
+) -> pd.DataFrame:
+    """Run full-image OCR on a DataFrame whose rows carry top-level ``image_b64``.
+
+    Writes ``text`` and drops rows whose OCR result is empty (so frames with
+    no on-screen text don't pollute the embedder).
+    """
+    if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
+        return pd.DataFrame()
+    out = batch_df.copy()
+    b64s = [b if isinstance(b, str) else "" for b in out.get("image_b64", [])]
+    out["text"] = ocr_b64_to_text(
+        b64s,
+        model=model,
+        invoke_url=invoke_url,
+        api_key=api_key,
+        nim_client=nim_client,
+        merge_level=merge_level,
+        batch_size=batch_size,
+        timeout_s=timeout_s,
+        retry=retry,
+    )
+    return out[out["text"].astype(bool)].reset_index(drop=True)
+
+
 def _blocks_to_pseudo_markdown(
     blocks: List[Dict[str, Any]],
     crop_hw: Tuple[int, int] = (0, 0),
