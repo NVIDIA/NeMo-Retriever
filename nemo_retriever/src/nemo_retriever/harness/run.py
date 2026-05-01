@@ -831,8 +831,6 @@ def _run_single(
 
 _GRAPH_RUNNER_SCRIPT = """\
 import json, sys, os, traceback, time
-from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 
 graph_code_file = sys.argv[1]
 result_file = sys.argv[2]
@@ -858,6 +856,8 @@ try:
             return 0
 
     import ray
+    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")
