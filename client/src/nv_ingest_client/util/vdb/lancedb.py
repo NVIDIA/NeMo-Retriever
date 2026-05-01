@@ -132,33 +132,47 @@ def _get_text_for_element(element):
         return metadata.get("content")
 
 
-def create_lancedb_results(results, *, expected_dim: int = _DEFAULT_VECTOR_DIM) -> list:
+def create_lancedb_results(
+    results,
+    *,
+    expected_dim: int | None = _DEFAULT_VECTOR_DIM,
+) -> tuple[list, dict[str, int]]:
     """Transform NV-Ingest pipeline results into LanceDB ingestible rows.
 
-    Extracts the appropriate searchable text per ``document_type`` and validates
-    that each row's embedding is shaped consistently with the LanceDB
-    fixed-size-list schema before forwarding it to the writer. Rows whose
-    embedding is missing, of the wrong type, or of the wrong length are
-    dropped and counted; per-row reasons are emitted at ``DEBUG`` and a single
-    structured ``WARNING`` summary is emitted at the end of the call when any
-    drops occurred.
+    Extracts the appropriate searchable text per ``document_type`` and, when
+    ``expected_dim`` is set, validates that each row's embedding is shaped
+    consistently with the LanceDB fixed-size-list schema before forwarding it
+    to the writer. Rows whose embedding is missing, of the wrong type, or of
+    the wrong length are dropped and counted; per-row reasons are emitted at
+    ``DEBUG`` and a single structured ``WARNING`` summary is emitted at the
+    end of the call when any drops occurred.
+
+    Passing ``expected_dim=None`` disables the length check entirely. Callers
+    that prefer to defer to LanceDB's ``on_bad_vectors`` policy on the writer
+    side (e.g. ``LanceDB(on_bad_vectors="error")``) should use this mode so
+    bad rows reach LanceDB rather than being silently dropped at the wrapper.
 
     Args:
         results: Iterable of pipeline output result lists, where each element
             is a per-document list of NV-Ingest record dicts.
-        expected_dim: Required vector length. Embeddings whose ``len()`` does
-            not match this value are dropped. Defaults to
-            :data:`_DEFAULT_VECTOR_DIM`.
+        expected_dim: Required vector length, or ``None`` to skip the length
+            check. Defaults to :data:`_DEFAULT_VECTOR_DIM`.
 
     Returns:
-        List of dicts shaped for LanceDB ingestion, each containing
-        ``vector``, ``text``, ``metadata`` (JSON), and ``source`` (JSON).
+        ``(rows, counts)`` where ``rows`` is the list of dicts shaped for
+        LanceDB ingestion (``vector``, ``text``, ``metadata``, ``source``)
+        and ``counts`` is a dict containing ``accepted``,
+        ``dropped_no_embedding``, ``dropped_bad_length``, and
+        ``dropped_no_text`` keys.
     """
     lancedb_rows: list = []
     accepted = 0
     dropped_no_embedding = 0
     dropped_bad_length = 0
     dropped_no_text = 0
+
+    enforce_length = expected_dim is not None
+    expected_dim_int = int(expected_dim) if enforce_length else None
 
     for result in results:
         for element in result:
@@ -170,13 +184,13 @@ def create_lancedb_results(results, *, expected_dim: int = _DEFAULT_VECTOR_DIM) 
                 dropped_no_embedding += 1
                 continue
 
-            if not isinstance(embedding, (list, tuple)) or len(embedding) != int(expected_dim):
+            if enforce_length and (not isinstance(embedding, (list, tuple)) or len(embedding) != expected_dim_int):
                 dropped_bad_length += 1
                 got_len: Any = len(embedding) if hasattr(embedding, "__len__") else "n/a"
                 logger.debug(
                     "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
                     got_len,
-                    int(expected_dim),
+                    expected_dim_int,
                     doc_type,
                 )
                 continue
@@ -202,18 +216,26 @@ def create_lancedb_results(results, *, expected_dim: int = _DEFAULT_VECTOR_DIM) 
             )
             accepted += 1
 
+    counts: dict[str, int] = {
+        "accepted": accepted,
+        "dropped_no_embedding": dropped_no_embedding,
+        "dropped_bad_length": dropped_bad_length,
+        "dropped_no_text": dropped_no_text,
+    }
+
     if dropped_no_embedding or dropped_bad_length or dropped_no_text:
+        expected_dim_repr = expected_dim_int if enforce_length else "None"
         logger.warning(
             "create_lancedb_results: accepted=%d dropped_no_embedding=%d "
-            "dropped_bad_length=%d dropped_no_text=%d expected_dim=%d",
+            "dropped_bad_length=%d dropped_no_text=%d expected_dim=%s",
             accepted,
             dropped_no_embedding,
             dropped_bad_length,
             dropped_no_text,
-            int(expected_dim),
+            expected_dim_repr,
         )
 
-    return lancedb_rows
+    return lancedb_rows, counts
 
 
 class LanceDB(VDB):
@@ -221,7 +243,7 @@ class LanceDB(VDB):
 
     def __init__(
         self,
-        uri=None,
+        uri: str | None = None,
         overwrite: bool = True,
         table_name: str = "nv-ingest",
         index_type: str = "IVF_HNSW_SQ",
@@ -257,16 +279,24 @@ class LanceDB(VDB):
         """Create a LanceDB table and populate it with transformed records.
 
         Validates per-row vector shape (when ``validate_vector_length`` is set
-        on the instance) and forwards LanceDB's ``on_bad_vectors`` policy as
-        defense-in-depth so that any rows escaping the row-builder check are
-        still handled by the LanceDB writer instead of aborting the run.
+        on the instance and ``on_bad_vectors`` is not ``"error"``) and forwards
+        LanceDB's ``on_bad_vectors`` policy as defense-in-depth so that any
+        rows escaping the row-builder check are still handled by the LanceDB
+        writer instead of aborting the run. When ``on_bad_vectors == "error"``
+        the wrapper deliberately skips its own length check so that LanceDB
+        itself raises on the bad row, matching the documented strict-fail
+        semantics of that policy.
         """
         connect_start = time.perf_counter()
         db = lancedb.connect(uri=self.uri)
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
 
-        expected_dim = self.vector_dim if self.validate_vector_length else _DEFAULT_VECTOR_DIM
-        results = create_lancedb_results(records, expected_dim=expected_dim)
+        if self.validate_vector_length and self.on_bad_vectors != "error":
+            expected_dim: int | None = self.vector_dim
+        else:
+            expected_dim = None
+
+        results, counts = create_lancedb_results(records, expected_dim=expected_dim)
         schema = pa.schema(
             [
                 pa.field("vector", pa.list_(pa.float32(), self.vector_dim)),
@@ -288,7 +318,7 @@ class LanceDB(VDB):
         _record_timing(
             "lancedb.create_table",
             time.perf_counter() - create_start,
-            {"rows": len(results)},
+            {"rows": len(results), **counts},
         )
         return table
 
