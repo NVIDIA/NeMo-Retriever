@@ -43,7 +43,7 @@ For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/
 ### Self-Hosted Deployments
 
 For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
-For more information, refer to [Generate Your NGC Keys](api-keys.md).
+For more information, refer to [Authentication and API keys](api-keys.md).
 
 For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md).
 

@@ -27,20 +27,13 @@ b. Change the directory to the cloned repo by running the following code.
    
     `cd NeMo-Retriever`.
 
-c. [Generate API keys](api-keys.md) and authenticate with NGC with the `docker login` command.
+c. [Generate API keys](api-keys.md) for your deployment: create an NGC personal key with the scopes listed there, then supply it to the cluster through the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (`helm upgrade` flags such as `ngcImagePullSecret` / `ngcApiSecret`, Helm repo login with username `$oauthtoken`, or your organization’s equivalent secrets).
 
-    ```shell
-    # This is required to access pre-built containers and NIM microservices
-    $ docker login nvcr.io
-    Username: $oauthtoken
-    Password: <Your Key>
-    ```
-   
-d. Create a .env file that contains your NVIDIA Build API key.
+d. If tools on this machine read keys from a `.env` file, add the NGC-scoped variables below (see note — not the same as `NVIDIA_API_KEY` for build.nvidia.com).
 
     !!! note
 
-        If you use an NGC personal key, then you should provide the same value for all keys, but you must specify each environment variable individually. In the past, you could create an API key. If you have an API key, you can still use that. For more information, refer to [Generate Your NGC Keys](api-keys.md) and [Environment Configuration Variables](environment-config.md).
+        If you use an NGC personal key for cluster access, supply the same NGC personal key value for each of the NGC-scoped variables listed below (`NGC_API_KEY`, `NIM_NGC_API_KEY`), specifying each variable individually. The `NVIDIA_API_KEY` for hosted build.nvidia.com inference is a separate credential — see [Authentication and API keys](api-keys.md). If you have a legacy NGC API key, you can still use it for the NGC-scoped variables. Refer to [Environment variables](environment-config.md) for details.
 
     ```
     # Container images must access resources from NGC.
