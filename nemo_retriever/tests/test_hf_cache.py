@@ -41,3 +41,11 @@ def test_collect_hf_runtime_env_preserves_explicit_offline(monkeypatch):
     env = collect_hf_runtime_env()
 
     assert env["HF_HUB_OFFLINE"] == "1"
+
+
+def test_collect_hf_runtime_env_preserves_explicit_empty_values(monkeypatch):
+    monkeypatch.setenv("NO_PROXY", "")
+
+    env = collect_hf_runtime_env()
+
+    assert env["NO_PROXY"] == ""

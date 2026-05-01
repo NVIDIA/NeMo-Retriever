@@ -38,7 +38,6 @@ from nemo_retriever.harness.config import (
 )
 from nemo_retriever.harness.parsers import StreamMetrics
 from nemo_retriever.harness.recall_adapters import prepare_recall_query_file
-from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 from nemo_retriever.utils.input_files import resolve_input_files
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -832,6 +831,7 @@ def _run_single(
 
 _GRAPH_RUNNER_SCRIPT = """\
 import json, sys, os, traceback, time
+from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 
 graph_code_file = sys.argv[1]
 result_file = sys.argv[2]

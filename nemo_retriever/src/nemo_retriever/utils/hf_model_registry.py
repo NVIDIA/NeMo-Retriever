@@ -34,6 +34,7 @@ HF_MODEL_REVISIONS: dict[str, str] = {
     "nvidia/llama-nemotron-rerank-1b-v2": "062ffaa1e3d24a8a50bd6a7ac7b8e54103e1f01d",
     "nvidia/llama-nemotron-rerank-vl-1b-v2": "edc083f4b3a433d65287cbca916759c9f88fa887",
     "nvidia/nemotron-ocr-v1": "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb",
+    "nvidia/nemotron-ocr-v2": "86cacb0467fa4f7ce54342fdb250825e0d928ae7",
     "nvidia/nemotron-page-elements-v3": "df62dbb631502575ac4d43b44d700b1674ab1d56",
     "nvidia/nemotron-table-structure-v1": "9350162faa1110320af62699105780b0c87b73ad",
     "nvidia/nemotron-graphic-elements-v1": "4a76546bb1bb4cbab3401361c91cf01706321805",
@@ -117,3 +118,9 @@ def install_pinned_hf_hub_download(module: Any) -> None:
     """Patch an upstream module-level ``hf_hub_download`` to use registry pins."""
     if hasattr(module, "hf_hub_download"):
         module.hf_hub_download = hf_hub_download_with_pinned_revision
+    else:
+        logger.warning(
+            "install_pinned_hf_hub_download: module %r has no 'hf_hub_download' attribute; "
+            "revision pinning was NOT applied.",
+            getattr(module, "__name__", module),
+        )

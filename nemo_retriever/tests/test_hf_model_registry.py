@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from nemo_retriever.utils import hf_model_registry as registry
@@ -11,17 +13,13 @@ from nemo_retriever.utils import hf_model_registry as registry
 
 def test_extraction_hf_repos_have_pinned_revisions():
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v1"] == "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb"
+    assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v2"] == "86cacb0467fa4f7ce54342fdb250825e0d928ae7"
+    assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-page-elements-v3"] == "df62dbb631502575ac4d43b44d700b1674ab1d56"
     assert (
-        registry.HF_MODEL_REVISIONS["nvidia/nemotron-page-elements-v3"]
-        == "df62dbb631502575ac4d43b44d700b1674ab1d56"
+        registry.HF_MODEL_REVISIONS["nvidia/nemotron-table-structure-v1"] == "9350162faa1110320af62699105780b0c87b73ad"
     )
     assert (
-        registry.HF_MODEL_REVISIONS["nvidia/nemotron-table-structure-v1"]
-        == "9350162faa1110320af62699105780b0c87b73ad"
-    )
-    assert (
-        registry.HF_MODEL_REVISIONS["nvidia/nemotron-graphic-elements-v1"]
-        == "4a76546bb1bb4cbab3401361c91cf01706321805"
+        registry.HF_MODEL_REVISIONS["nvidia/nemotron-graphic-elements-v1"] == "4a76546bb1bb4cbab3401361c91cf01706321805"
     )
 
 
@@ -94,3 +92,12 @@ def test_hf_hub_download_with_pinned_revision_adds_startup_context(monkeypatch):
     assert "checkpoints/det_model.pt" in message
     assert "HF_HUB_OFFLINE=0" in message
     assert "HF token is unset" in message
+
+
+def test_install_pinned_hf_hub_download_warns_when_module_lacks_downloader(caplog):
+    module = SimpleNamespace(__name__="upstream_without_downloader")
+
+    registry.install_pinned_hf_hub_download(module)
+
+    assert "revision pinning was NOT applied" in caplog.text
+    assert "upstream_without_downloader" in caplog.text

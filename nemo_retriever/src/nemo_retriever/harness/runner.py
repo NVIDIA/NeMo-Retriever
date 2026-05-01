@@ -24,8 +24,6 @@ from typing import Any
 
 import typer
 
-from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-
 logger = logging.getLogger(__name__)
 
 
@@ -423,6 +421,7 @@ with open(sys.argv[2], "w") as f:
 
 _GRAPH_WRAPPER_SCRIPT = """\
 import json, sys, os, traceback, time
+from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 
 graph_code_file = sys.argv[1]
 result_file = sys.argv[2]

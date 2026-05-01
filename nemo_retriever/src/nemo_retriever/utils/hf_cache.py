@@ -61,7 +61,7 @@ def collect_hf_runtime_env(
         if key in env_vars:
             continue
         value = os.environ.get(key)
-        if value:
+        if value is not None:
             env_vars[key] = value
 
     env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", default_hf_hub_offline)
