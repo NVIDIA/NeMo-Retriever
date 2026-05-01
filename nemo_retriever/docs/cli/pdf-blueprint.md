@@ -76,9 +76,10 @@ current pinned versions):
 pip install "nemo-retriever==26.3.0" \
     nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0 \
     lancedb \
-    minio \
     tritonclient
 ```
+
+The sample `retriever pipeline run` command above uses local paths for images and intermediates only. Add `minio` if you extend the notebook to S3-compatible `store` / `fsspec` URIs (for example `s3://…` for `--store-images-uri`), where optional nv-ingest client code paths import the MinIO SDK.
 
 ## Parity notes
 
