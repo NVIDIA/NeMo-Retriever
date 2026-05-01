@@ -8,8 +8,10 @@ NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/N
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
-| **LanceDB** | [LanceDB](https://lancedb.com/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/lancedb.py) — use `vdb_op="lancedb"` (recommended default). |
+| **LanceDB** | [LanceDB](https://lancedb.com/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
 | **OpenSearch** | [OpenSearch](https://opensearch.org/) | [`opensearch.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/opensearch.py) — reference operator; wire your own `OpenSearch` instance as `vdb` and see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb). |
+
+On nv-ingest-client `Ingestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; see [Data Upload](vdbs.md).
 
 For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` subclasses, construct the client class and pass it as the graph operator’s `vdb` argument.
 
