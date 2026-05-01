@@ -117,6 +117,8 @@ def hf_hub_download_with_pinned_revision(*args: Any, **kwargs: Any) -> str:
 def install_pinned_hf_hub_download(module: Any) -> None:
     """Patch an upstream module-level ``hf_hub_download`` to use registry pins."""
     if hasattr(module, "hf_hub_download"):
+        # TODO: Move this pinning into the extraction package nightly build/publish
+        # once those packages expose revision-aware downloads natively.
         module.hf_hub_download = hf_hub_download_with_pinned_revision
     else:
         logger.warning(
