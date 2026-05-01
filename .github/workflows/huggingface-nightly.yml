@@ -242,6 +242,7 @@ jobs:
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "nemotron-ocr" \
+            --nightly-base-version "1.0.2" \
             --hatch-force-platform-wheel \
             --auditwheel-repair \
             --auditwheel-exclude libtorch_cpu.so \
