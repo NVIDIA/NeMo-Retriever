@@ -115,7 +115,6 @@ nav:
       - "NimClient and custom NIM endpoints": extraction/nimclient.md
   - "10. Integrations & ecosystem":
       - "Framework integrations": extraction/integrations-langchain-llamaindex-haystack.md
-      - "Vector database partners": extraction/vector-db-partners.md
       - "Starter kits": extraction/notebooks.md
   - "11. Evaluation & benchmarks":
       - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
@@ -178,6 +177,7 @@ plugins:
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/vdbs.md
         extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md
+        extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
   - site-urls
 
 markdown_extensions:
