@@ -1,21 +1,23 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+"""Batch LanceDB writes, index creation, and JSON-dir ingestion (canonical under ``vdb``)."""
 
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple  # noqa: F401
 from datetime import timedelta
-
-from nemo_retriever.vdb.lancedb import LanceDB
-from nemo_retriever.vector_store.lancedb_utils import lancedb_schema, update_metadata_with_content_type
-import pandas as pd
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
 
 import lancedb
+import pandas as pd
+
+from nemo_retriever.vdb.lancedb import LanceDB
+from nemo_retriever.vdb.lancedb_schema import lancedb_schema, update_metadata_with_content_type
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +27,7 @@ class LanceDBConfig:
     """
     Minimal config for writing embeddings into LanceDB.
 
-    This module is intentionally lightweight: it can be used by the text-embedding
-    stage (`nemo_retriever.text_embed.stage`) and by the vector-store CLI (`nemo_retriever.vector_store.stage`).
+    Used by the text-embedding stage and by the vector-store CLI.
     """
 
     uri: str = "lancedb"
@@ -64,7 +65,6 @@ def _read_text_embeddings_json_df(path: Path) -> pd.DataFrame:
         recs = obj.get("df_records")
         if isinstance(recs, list):
             return pd.DataFrame([r for r in recs if isinstance(r, dict)])
-        # Fall back to a single record.
         return pd.DataFrame([obj])
 
     if isinstance(obj, list):
@@ -74,51 +74,11 @@ def _read_text_embeddings_json_df(path: Path) -> pd.DataFrame:
 
 
 def _iter_text_embeddings_json_files(input_dir: Path, *, recursive: bool) -> List[Path]:
-    """
-    Return sorted list of `*.text_embeddings.json` files.
-
-    The stage5 default naming is: `<input>.text_embeddings.json` (where `<input>` is
-    typically a stage4 output filename).
-    """
     if recursive:
         files = list(input_dir.rglob("*.text_embeddings.json"))
     else:
         files = list(input_dir.glob("*.text_embeddings.json"))
     return sorted([p for p in files if p.is_file()])
-
-
-def _safe_str(x: Any) -> str:
-    return "" if x is None else str(x)
-
-
-def _extract_source_path_and_id(meta: Dict[str, Any]) -> Tuple[str, str]:
-    """
-    Extract a stable source path/id from metadata.
-
-    Prefers:
-      - metadata.source_metadata.source_id
-      - metadata.source_metadata.source_name
-      - metadata.custom_content.path
-    """
-    source = meta.get("source_metadata") if isinstance(meta.get("source_metadata"), dict) else {}
-    source_id = source.get("source_id") or ""
-    source_name = source.get("source_name") or ""
-
-    custom = meta.get("custom_content") if isinstance(meta.get("custom_content"), dict) else {}
-    custom_path = custom.get("path") or custom.get("input_pdf") or custom.get("pdf_path") or ""
-
-    path = _safe_str(custom_path or source_id or source_name)
-    sid = _safe_str(source_id or path or source_name)
-    return path, sid
-
-
-def _extract_page_number(meta: Dict[str, Any]) -> int:
-    cm = meta.get("content_metadata") if isinstance(meta.get("content_metadata"), dict) else {}
-    page = cm.get("hierarchy", {}).get("page", -1)
-    try:
-        return int(page)
-    except Exception:
-        return -1
 
 
 def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -145,18 +105,15 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         if embedding is None:
             continue
 
-        # Normalize embedding to list[float]
         if not isinstance(embedding, list):
             try:
                 embedding = list(embedding)  # type: ignore[arg-type]
             except Exception:
                 continue
-        meta.pop("embedding", None)  # Remove embedding from metadata to save space in LanceDB.
+        meta.pop("embedding", None)
         update_metadata_with_content_type(meta, content_type=row.get("_content_type"))
-        # path, source_id = _extract_source_path_and_id(meta)
         path = row.get("path", "")
         source_id = meta.get("source_path", path)
-        # page_number = _extract_page_number(meta)
         page_number = row.get("page_number", -1)
         p = Path(path) if path else None
         filename = p.name if p is not None else ""
@@ -247,9 +204,9 @@ def write_embeddings_to_lancedb(df_with_embeddings: pd.DataFrame, *, cfg: LanceD
     """
     Write embeddings found in `df_with_embeddings.metadata.embedding` to LanceDB.
 
-    This is used programmatically by `nemo_retriever.text_embed.stage.embed_text_from_primitives_df(...)`.
+    Used by `nemo_retriever.text_embed.stage.embed_text_from_primitives_df(...)`.
     """
-    rows = _build_lancedb_rows_from_df(df_with_embeddings)
+    rows = _build_lancedb_rows_from_df(df_with_embeddings.to_dict("records"))
     _write_rows_to_lancedb(rows, cfg=cfg)
 
 
@@ -260,9 +217,7 @@ def write_text_embeddings_dir_to_lancedb(
     recursive: bool = False,
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """
-    Read `*.text_embeddings.json` files from `input_dir` and upload their embeddings to LanceDB.
-    """
+    """Read `*.text_embeddings.json` files from `input_dir` and upload their embeddings to LanceDB."""
     input_dir = Path(input_dir)
     files = _iter_text_embeddings_json_files(input_dir, recursive=bool(recursive))
     if limit is not None:
@@ -272,9 +227,9 @@ def write_text_embeddings_dir_to_lancedb(
     skipped = 0
     failed = 0
 
-    lancedb = LanceDB(uri=cfg.uri, table_name=cfg.table_name, overwrite=cfg.overwrite)
+    ldb = LanceDB(uri=cfg.uri, table_name=cfg.table_name, overwrite=cfg.overwrite)
 
-    results = []
+    results: List[List[Dict[str, Any]]] = []
 
     for p in files:
         df = _read_text_embeddings_json_df(p)
@@ -292,7 +247,7 @@ def write_text_embeddings_dir_to_lancedb(
             "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
         }
 
-    lancedb.run(results)
+    ldb.run(results)
 
     return {
         "input_dir": str(input_dir),
@@ -300,34 +255,30 @@ def write_text_embeddings_dir_to_lancedb(
         "processed": processed,
         "skipped": skipped,
         "failed": failed,
-        # "rows_written": len(all_rows),
         "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
     }
 
 
 def handle_lancedb(
-    rows: Path,
+    rows: List[Dict[str, Any]],
     uri: str,
     table_name: str,
     hybrid: bool = False,
     mode: str = "overwrite",
 ) -> Dict[str, Any]:
-    """
-        Handle LanceDB writing for a pipeline run.
+    """Write flattened extraction rows into LanceDB and build indices.
 
-        This is used by the ingestion pipeline after the embedding stage.
-
-        Reads `*.text_embeddings.json` files from `input_dir`, extracts embeddings, and uploads to LanceDB.
-    )
+    ``mode`` is accepted for API compatibility; writes use ``overwrite`` semantics
+    via :class:`LanceDBConfig` when creating the table.
     """
-    lancedb_config = LanceDBConfig(
-        uri=uri, table_name=table_name, hybrid=hybrid
-    )  # Use the same LanceDB config for writing and recall.
+    _ = mode
+    lancedb_config = LanceDBConfig(uri=uri, table_name=table_name, hybrid=hybrid)
     db = lancedb.connect(uri=lancedb_config.uri)
     cleaned_rows = _build_lancedb_rows_from_df(rows)
     if not cleaned_rows:
         logger.warning("No embedding rows to write; skipping LanceDB index creation.")
         return {}
     _write_rows_to_lancedb(cleaned_rows, cfg=lancedb_config)
-    table = db.open_table(lancedb_config.table_name)  # Ensure table is open and metadata is updated before proceeding.
+    table = db.open_table(lancedb_config.table_name)
     create_lancedb_index(table, cfg=lancedb_config)
+    return {"rows_written": len(cleaned_rows)}
