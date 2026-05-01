@@ -53,7 +53,23 @@ def collect_hf_runtime_env(
     default_hf_hub_offline: str = "0",
     extra_keys: Iterable[str] = (),
 ) -> dict[str, str]:
-    """Collect HF-related environment variables to forward to Ray workers."""
+    """Collect HF-related environment variables to forward to Ray workers.
+
+    Parameters
+    ----------
+    default_hf_hub_offline:
+        Value to emit for ``HF_HUB_OFFLINE`` when it is not set in the parent
+        process environment.  The default keeps online Hub checks enabled.
+    extra_keys:
+        Additional environment variable names to forward if they are set.
+        Duplicates of built-in keys are ignored after their first occurrence.
+
+    Returns
+    -------
+    dict[str, str]
+        Environment variables for Ray ``runtime_env["env_vars"]``.  Explicitly
+        blank environment values are preserved.
+    """
     env_vars: dict[str, str] = {}
     for key in (*HF_RUNTIME_ENV_KEYS, *tuple(extra_keys)):
         if key in env_vars:
@@ -62,5 +78,7 @@ def collect_hf_runtime_env(
         if value is not None:
             env_vars[key] = value
 
+    # HF_HUB_OFFLINE is emitted explicitly so every Ray worker gets a default;
+    # passing it through extra_keys is intentionally overridden here.
     env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", default_hf_hub_offline)
     return env_vars

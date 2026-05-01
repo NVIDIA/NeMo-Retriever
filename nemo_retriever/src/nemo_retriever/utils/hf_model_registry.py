@@ -93,7 +93,29 @@ def _hf_download_error_context(repo_id: Any, revision: Any, filename: Any) -> st
 
 
 def hf_hub_download_with_pinned_revision(*args: Any, **kwargs: Any) -> str:
-    """Call ``hf_hub_download`` with a registry revision when one is known."""
+    """Call ``hf_hub_download`` with a registry revision when one is known.
+
+    Parameters
+    ----------
+    *args:
+        Positional arguments forwarded to ``huggingface_hub.hf_hub_download``.
+        When present, the first positional argument is treated as ``repo_id``.
+    **kwargs:
+        Keyword arguments forwarded to ``huggingface_hub.hf_hub_download``.
+        If ``repo_id`` has a registered pin and ``revision`` is omitted, this
+        helper adds the pinned revision before downloading.
+
+    Returns
+    -------
+    str
+        The local path returned by ``huggingface_hub.hf_hub_download``.
+
+    Raises
+    ------
+    RuntimeError
+        If Hugging Face Hub raises while resolving the asset; the original
+        exception is chained with startup-focused context.
+    """
     repo_id = kwargs.get("repo_id")
     if repo_id is None and args:
         repo_id = args[0]
@@ -115,7 +137,20 @@ def hf_hub_download_with_pinned_revision(*args: Any, **kwargs: Any) -> str:
 
 
 def install_pinned_hf_hub_download(module: Any) -> None:
-    """Patch an upstream module-level ``hf_hub_download`` to use registry pins."""
+    """Patch an upstream module-level ``hf_hub_download`` to use registry pins.
+
+    Parameters
+    ----------
+    module:
+        Imported upstream module object expected to expose a top-level
+        ``hf_hub_download`` function.  If the attribute is absent, the helper
+        logs a warning and leaves the module unchanged.
+
+    Returns
+    -------
+    None
+        The module is mutated in place when patching succeeds.
+    """
     if hasattr(module, "hf_hub_download"):
         # TODO: Move this pinning into the extraction package nightly build/publish
         # once those packages expose revision-aware downloads natively.
