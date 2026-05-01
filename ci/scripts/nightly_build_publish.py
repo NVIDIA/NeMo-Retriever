@@ -118,7 +118,11 @@ def _pep440_nightly(base_version: str, suffix: str) -> str:
     return f"{base}.dev{suffix}"
 
 
-def _patch_pyproject_version(repo_dir: Path) -> bool:
+def _patch_pyproject_version(
+    repo_dir: Path,
+    *,
+    nightly_base_version: str | None = None,
+) -> bool:
     pyproject = repo_dir / "pyproject.toml"
     if not pyproject.exists():
         return False
@@ -130,7 +134,10 @@ def _patch_pyproject_version(repo_dir: Path) -> bool:
         return False
 
     old_version = m.group(1)
-    new_version = _pep440_nightly(old_version, _nightly_suffix())
+    new_version = _pep440_nightly(
+        nightly_base_version or old_version,
+        _nightly_suffix(),
+    )
     if new_version == old_version:
         return False
 
@@ -296,7 +303,11 @@ def _patch_pyproject_runtime_dependency_pins(project_dir: Path, pins: dict[str, 
     return True
 
 
-def _patch_setup_cfg_version(repo_dir: Path) -> bool:
+def _patch_setup_cfg_version(
+    repo_dir: Path,
+    *,
+    nightly_base_version: str | None = None,
+) -> bool:
     setup_cfg = repo_dir / "setup.cfg"
     if not setup_cfg.exists():
         return False
@@ -308,7 +319,10 @@ def _patch_setup_cfg_version(repo_dir: Path) -> bool:
         return False
 
     old_version = m.group(1).strip().strip('"').strip("'")
-    new_version = _pep440_nightly(old_version, _nightly_suffix())
+    new_version = _pep440_nightly(
+        nightly_base_version or old_version,
+        _nightly_suffix(),
+    )
     if new_version == old_version:
         return False
 
@@ -558,6 +572,12 @@ def main() -> int:
         help="If the Python project lives in a subdirectory, build from there (e.g. 'nemotron-ocr')",
     )
     ap.add_argument(
+        "--nightly-base-version",
+        default=None,
+        help="Override the source project version used before appending .dev<suffix> "
+        "(e.g. build 1.0.2.devYYYYMMDD from a source tree still declaring 1.0.0).",
+    )
+    ap.add_argument(
         "--build-env",
         action="append",
         default=[],
@@ -640,7 +660,13 @@ def main() -> int:
             args.project_subdir = detected
             print(f"Auto-detected project subdir: {args.project_subdir}")
     project_dir = repo_dir / args.project_subdir if args.project_subdir else repo_dir
-    patched = _patch_pyproject_version(project_dir) or _patch_setup_cfg_version(project_dir)
+    patched = _patch_pyproject_version(
+        project_dir,
+        nightly_base_version=args.nightly_base_version,
+    ) or _patch_setup_cfg_version(
+        project_dir,
+        nightly_base_version=args.nightly_base_version,
+    )
     if not patched:
         print("No static version field found to patch (continuing).")
 

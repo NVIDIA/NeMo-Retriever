@@ -1,6 +1,6 @@
 # Vector database partners
 
-NeMo Retriever Library integrates with vector databases used for RAG collections. Documentation here focuses on LanceDB as used in the library, and on NVIDIA cuVS where it applies to indexing. Refer to [Vector databases](vdbs.md) and [Chunking and splitting](chunking.md).
+NeMo Retriever Library integrates with vector databases used for RAG collections. The documentation here focuses on LanceDB as used in the library, and on NVIDIA cuVS where it applies to indexing. Refer to [Vector databases](vdbs.md) and [Chunking and splitting](chunking.md) for more information.
 
 ## Backends with `VDB` implementations (retriever adapters)
 

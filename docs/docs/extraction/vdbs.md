@@ -99,7 +99,7 @@ You can ingest to other data stores by using the `Ingestor.vdb_upload` method;
 however, you must configure other data stores and connections yourself.
 NeMo Retriever Library does not provide connections to other data sources.
 
-For external vector databases that already ship a client `VDB` implementation (and how those plug into NeMo Retriever graph operators), see [Vector database partners](vector-db-partners.md).
+For external vector databases that already ship a client `VDB` implementation (and how those plug into NeMo Retriever Library graph operators), see [Vector database partners](vector-db-partners.md).
 
 !!! important
 
