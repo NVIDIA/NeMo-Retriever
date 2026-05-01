@@ -41,7 +41,6 @@ from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
-
 # Define file type mappings
 PDF_EXTENSIONS = {".pdf", ".docx", ".pptx"}
 TEXT_EXTENSIONS = {".txt"}
@@ -292,6 +291,8 @@ class _MultiTypeExtractBase(AbstractOperator):
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
+            if extract_params.ocr_invoke_url:
+                table_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
