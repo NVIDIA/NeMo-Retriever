@@ -132,7 +132,7 @@ def _get_text_for_element(element):
         return metadata.get("content")
 
 
-def create_lancedb_results(
+def _create_lancedb_results(
     results,
     *,
     expected_dim: int | None = _DEFAULT_VECTOR_DIM,
@@ -226,7 +226,7 @@ def create_lancedb_results(
     if dropped_no_embedding or dropped_bad_length or dropped_no_text:
         expected_dim_repr = expected_dim_int if enforce_length else "None"
         logger.warning(
-            "create_lancedb_results: accepted=%d dropped_no_embedding=%d "
+            "_create_lancedb_results: accepted=%d dropped_no_embedding=%d "
             "dropped_bad_length=%d dropped_no_text=%d expected_dim=%s",
             accepted,
             dropped_no_embedding,
@@ -296,7 +296,7 @@ class LanceDB(VDB):
         else:
             expected_dim = None
 
-        results, counts = create_lancedb_results(records, expected_dim=expected_dim)
+        results, counts = _create_lancedb_results(records, expected_dim=expected_dim)
         schema = pa.schema(
             [
                 pa.field("vector", pa.list_(pa.float32(), self.vector_dim)),

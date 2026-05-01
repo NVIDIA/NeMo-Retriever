@@ -48,9 +48,9 @@ def make_sample_results():
 
 
 def test_create_lancedb_results_filters_and_transforms():
-    """Test that create_lancedb_results correctly filters and transforms records."""
+    """Test that _create_lancedb_results correctly filters and transforms records."""
     results = make_sample_results()
-    out, _counts = lancedb_mod.create_lancedb_results(results, expected_dim=2)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=2)
     assert isinstance(out, list)
     assert len(out) == 2
     assert out[0]["vector"] == [0.1, 0.2]
@@ -138,14 +138,14 @@ def test_init_default_uri_and_overwrite():
 
 
 def test_create_lancedb_results_empty_list():
-    """Test create_lancedb_results with empty input."""
+    """Test _create_lancedb_results with empty input."""
     results = []
-    out, _counts = lancedb_mod.create_lancedb_results(results)
+    out, _counts = lancedb_mod._create_lancedb_results(results)
     assert out == []
 
 
 def test_create_lancedb_results_all_none_embeddings():
-    """Test create_lancedb_results when all embeddings are None."""
+    """Test _create_lancedb_results when all embeddings are None."""
     results = [
         [
             {
@@ -159,12 +159,12 @@ def test_create_lancedb_results_all_none_embeddings():
             },
         ]
     ]
-    out, _counts = lancedb_mod.create_lancedb_results(results, expected_dim=1)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=1)
     assert out == []
 
 
 def test_create_lancedb_results_mixed_embeddings():
-    """Test create_lancedb_results retains only rows whose embedding length matches expected_dim."""
+    """Test _create_lancedb_results retains only rows whose embedding length matches expected_dim."""
     results = [
         [
             {
@@ -196,7 +196,7 @@ def test_create_lancedb_results_mixed_embeddings():
             },
         ]
     ]
-    out, _counts = lancedb_mod.create_lancedb_results(results, expected_dim=2)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=2)
     assert len(out) == 2
     assert out[0]["text"] == "keep"
     assert out[1]["text"] == "keep2"
@@ -366,7 +366,7 @@ def test_create_lancedb_results_missing_content_metadata_graceful():
             }
         ]
     ]
-    out, _counts = lancedb_mod.create_lancedb_results(results, expected_dim=1)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=1)
     assert len(out) == 1
     assert out[0]["metadata"] == "{}"
     assert out[0]["text"] == "text with missing content_metadata"
@@ -525,11 +525,11 @@ def test_create_lancedb_results_drops_variable_length_vectors(caplog):
     ]
 
     with caplog.at_level(logging.WARNING, logger="nv_ingest_client.util.vdb.lancedb"):
-        out, _counts = lancedb_mod.create_lancedb_results(results, expected_dim=expected_dim)
+        out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=expected_dim)
 
     assert [row["text"] for row in out] == ["good_a", "good_b"]
     summary_records = [
-        r for r in caplog.records if r.levelno == logging.WARNING and "create_lancedb_results" in r.getMessage()
+        r for r in caplog.records if r.levelno == logging.WARNING and "_create_lancedb_results" in r.getMessage()
     ]
     assert len(summary_records) == 1
     summary = summary_records[0].getMessage()
@@ -540,14 +540,14 @@ def test_create_lancedb_results_drops_variable_length_vectors(caplog):
 
 
 def test_create_lancedb_results_respects_expected_dim():
-    """create_lancedb_results filters strictly by the caller-specified expected_dim."""
+    """_create_lancedb_results filters strictly by the caller-specified expected_dim."""
     results = [
         [
             _embedding_record([0.0] * 128, page=1, content="dim_128"),
             _embedding_record([0.0] * 256, page=2, content="dim_256_should_drop"),
         ]
     ]
-    out, _counts = lancedb_mod.create_lancedb_results(results, expected_dim=128)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=128)
     assert len(out) == 1
     assert out[0]["text"] == "dim_128"
     assert len(out[0]["vector"]) == 128
@@ -652,7 +652,7 @@ def test_create_lancedb_results_skips_length_check_when_expected_dim_none():
         ]
     ]
 
-    out, counts = lancedb_mod.create_lancedb_results(results, expected_dim=None)
+    out, counts = lancedb_mod._create_lancedb_results(results, expected_dim=None)
 
     assert [row["text"] for row in out] == ["dim_4", "dim_2", "dim_0"]
     assert counts["accepted"] == 3
@@ -677,13 +677,13 @@ def test_create_index_skips_row_builder_filter_when_on_bad_vectors_error(monkeyp
 
     captured_kwargs: dict = {}
 
-    real_create_lancedb_results = lancedb_mod.create_lancedb_results
+    real_create_lancedb_results = lancedb_mod._create_lancedb_results
 
     def spy(records, **kwargs):
         captured_kwargs.update(kwargs)
         return real_create_lancedb_results(records, **kwargs)
 
-    monkeypatch.setattr(lancedb_mod, "create_lancedb_results", spy)
+    monkeypatch.setattr(lancedb_mod, "_create_lancedb_results", spy)
 
     results = [
         [
