@@ -8,23 +8,23 @@ Before you begin using [NeMo Retriever Library](overview.md), ensure that you ha
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU. 
 The core pipeline models (for document type inputs) include the following:
 
-- [llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) — Embedding model for converting text chunks into vectors. NVIDIA NIM: [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html).
-- [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) — Detects and classifies images on a page as a table, chart or infographic. NVIDIA NIM: [NVIDIA NIM for Object Detection — NeMo Retriever Page Elements v3](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#nemo-retriever-page-elements-v3).
-- [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format. NVIDIA NIM: [NVIDIA NIM for Object Detection — NeMo Retriever Table Structure v1](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#nemo-retriever-table-structure-v1).
-- [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) — Image OCR model to detect and extract text from images. NVIDIA NIM: [NVIDIA NIM for Image OCR (NeMo Retriever OCR)](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/overview.html) (see the [Image OCR support matrix](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html) for the currently published NIM model IDs).
+- [llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html) — Embedding model for converting text chunks into vectors.
+- [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) [NIM](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#nemo-retriever-page-elements-v3) — Detects and classifies images on a page as a table, chart or infographic.
+- [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) [NIM](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#nemo-retriever-table-structure-v1) — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format.
+- [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) [NIM](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/overview.html) — Image OCR model to detect and extract text from images. See the [Image OCR support matrix](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html) for the currently published NIM model IDs.
 
 Advanced features (for example, for audio/video) require additional GPU support and disk space. 
 This includes the following:
 
-- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) for transcript extraction from [audio and video](audio-video.md). NVIDIA NIM: [Parakeet CTC (en-US) ASR](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html).
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) - for maximally accurate table extraction. NVIDIA NIM: [Query the Nemotron-Parse-v1.2 API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/api.html).
-- [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) for image captioning of unstructured (not charts, tables, infographics) images. NVIDIA NIM: [Query the Nemotron Nano 12B v2 VL API](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-nano-12b-v2-vl/api.html).
+- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) — for transcript extraction from [audio and video](audio-video.md).
+- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-parse/api.html) — for maximally accurate table extraction.
+- [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) [NIM](https://docs.nvidia.com/nim/vision-language-models/latest/examples/nemotron-nano-12b-v2-vl/api.html) — for image captioning of unstructured (not charts, tables, infographics) images.
     
     !!! note
     
         While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
-- [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) for improved retrieval accuracy. NVIDIA NIM: [NeMo Retriever Text Reranking NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html).
+- [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — for improved retrieval accuracy.
 
 ## HuggingFace Model Storage Requirements:
 
