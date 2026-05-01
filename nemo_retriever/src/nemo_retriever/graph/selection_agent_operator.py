@@ -479,6 +479,15 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                             raw_doc_ids = json.loads(raw_doc_ids)
                         except json.JSONDecodeError:
                             raw_doc_ids = []
+                    if isinstance(raw_doc_ids, dict):
+                        raw_doc_ids = list(raw_doc_ids.values())
+                    if not isinstance(raw_doc_ids, list):
+                        raw_doc_ids = []
+                    raw_doc_ids = [
+                        str(item) for elem in raw_doc_ids
+                        for item in (elem if isinstance(elem, list) else [elem])
+                        if item is not None
+                    ]
                     doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
                     if not doc_ids and raw_doc_ids:
                         logger.warning(
