@@ -15,6 +15,7 @@ import pandas as pd
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
     gather_local_resources,
@@ -245,10 +246,7 @@ class RayDataExecutor(AbstractExecutor):
                 "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
                 "PYTHONPATH": pypath,
             }
-            for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
-                if os.environ.get(_fwd_key):
-                    ray_env_vars[_fwd_key] = os.environ[_fwd_key]
-            ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+            ray_env_vars.update(collect_hf_runtime_env())
             os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
             runtime_env = {"env_vars": ray_env_vars}
             ray.init(

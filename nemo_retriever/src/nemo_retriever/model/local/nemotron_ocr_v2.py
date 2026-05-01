@@ -12,6 +12,7 @@ from pathlib import Path  # noqa: F401
 import numpy as np
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.hf_model_registry import install_pinned_hf_hub_download
 from ..model import BaseModel, RunMode
 
 from PIL import Image
@@ -36,7 +37,10 @@ class NemotronOCRV2(BaseModel):
     ) -> None:
         super().__init__()
         configure_global_hf_cache_base()
-        from nemotron_ocr.inference.pipeline_v2 import NemotronOCRV2 as _NemotronOCRV2  # local-only import
+        from nemotron_ocr.inference import pipeline_v2 as _nemotron_ocr_pipeline_v2  # local-only import
+
+        install_pinned_hf_hub_download(_nemotron_ocr_pipeline_v2)
+        _NemotronOCRV2 = _nemotron_ocr_pipeline_v2.NemotronOCRV2
 
         if model_dir:
             self._model = _NemotronOCRV2(model_dir=model_dir)

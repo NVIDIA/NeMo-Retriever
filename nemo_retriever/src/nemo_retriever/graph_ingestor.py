@@ -33,7 +33,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
-from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
 from nemo_retriever.ingestor import ingestor
 from nemo_retriever.params import (
     ASRParams,
@@ -47,7 +46,9 @@ from nemo_retriever.params import (
     TextChunkParams,
     WebhookParams,
 )
+from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
 
 
 def _resolve_api_key(params: Any) -> Any:
@@ -294,10 +295,7 @@ class GraphIngestor(ingestor):
                     "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
                     "PYTHONPATH": pypath,
                 }
-                for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
-                    if os.environ.get(_fwd_key):
-                        ray_env_vars[_fwd_key] = os.environ[_fwd_key]
-                ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+                ray_env_vars.update(collect_hf_runtime_env())
                 os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
                 runtime_env = {"env_vars": ray_env_vars}
                 ray.init(
