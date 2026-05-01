@@ -36,7 +36,7 @@ This combination of file format, index strategy, and in-process runtime supports
 
 ## Upload to LanceDB
 
-LanceDB uses the `LanceDB` operator class from the client library. You can configure it via the Python API or via the test harness.
+LanceDB uses the `LanceDB` operator class from the client library. You can configure it via the Python API.
 
 ### Programmatic API (Python)
 
@@ -59,26 +59,7 @@ vdb.run(results)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
-When using the `Ingestor` with `vdb_upload`, omitting `vdb_op` in Python still selects the legacy `"milvus"` operator—use `vdb_op="lancedb"` (or a `LanceDB` instance) for LanceDB.
-
-### Test harness configuration
-
-In `tools/harness/test_configs.yaml`:
-
-```yaml
-active:
-  vdb_backend: lancedb
-  hybrid: false          # Set true to enable hybrid retrieval (FTS + vector)
-```
-
-Or via environment variables:
-
-```bash
-# Enable LanceDB hybrid search
-HYBRID=true uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
-```
-
-
+When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB.
 
 ## Hybrid search (LanceDB)
 
@@ -95,7 +76,7 @@ Hybrid search improves recall by approximately +0.5% to +3.5% over vector-only r
 
 Hybrid search latency is typically 28–57 ms/query (vs. 31–37 ms/query for vector-only). The one-time FTS index build adds approximately 6.5 seconds for a 76K-row dataset.
 
-Enable hybrid search by setting `hybrid=True` when creating the LanceDB operator or via the harness/config (e.g. `HYBRID=true`).
+Enable hybrid search by setting `hybrid=True` when creating the LanceDB operator.
 
 
 
@@ -117,6 +98,8 @@ Enable hybrid search by setting `hybrid=True` when creating the LanceDB operator
 You can ingest to other data stores by using the `Ingestor.vdb_upload` method;
 however, you must configure other data stores and connections yourself.
 NeMo Retriever Library does not provide connections to other data sources.
+
+For external vector databases that already ship a client `VDB` implementation (and how those plug into NeMo Retriever graph operators), see [Vector database partners](vector-db-partners.md).
 
 !!! important
 

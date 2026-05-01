@@ -75,10 +75,9 @@ current pinned versions):
 ```bash
 pip install "nemo-retriever==26.3.0" \
     nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0 \
-    pymilvus[bulk_writer,model] \
+    lancedb \
     minio \
-    tritonclient \
-    langchain_milvus
+    tritonclient
 ```
 
 ## Parity notes
