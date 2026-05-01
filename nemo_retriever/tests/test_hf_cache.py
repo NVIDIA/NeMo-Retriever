@@ -19,6 +19,7 @@ def test_collect_hf_runtime_env_defaults_to_online(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/certs/ca.pem")
     monkeypatch.setenv("NVIDIA_API_KEY", "nv-secret")
+    monkeypatch.setenv("NGC_API_KEY", "ngc-secret")
 
     env = collect_hf_runtime_env()
 
@@ -32,7 +33,8 @@ def test_collect_hf_runtime_env_defaults_to_online(monkeypatch):
     assert env["HF_ENDPOINT"] == "https://hf.example"
     assert env["HTTPS_PROXY"] == "http://proxy.example:8080"
     assert env["REQUESTS_CA_BUNDLE"] == "/certs/ca.pem"
-    assert env["NVIDIA_API_KEY"] == "nv-secret"
+    assert "NVIDIA_API_KEY" not in env
+    assert "NGC_API_KEY" not in env
 
 
 def test_collect_hf_runtime_env_preserves_explicit_offline(monkeypatch):

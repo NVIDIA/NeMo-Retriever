@@ -47,7 +47,7 @@ from nemo_retriever.params import (
     WebhookParams,
 )
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env, resolve_remote_api_key
 from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
 
 
@@ -296,6 +296,7 @@ class GraphIngestor(ingestor):
                     "PYTHONPATH": pypath,
                 }
                 ray_env_vars.update(collect_hf_runtime_env())
+                ray_env_vars.update(collect_remote_auth_runtime_env())
                 os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
                 runtime_env = {"env_vars": ray_env_vars}
                 ray.init(

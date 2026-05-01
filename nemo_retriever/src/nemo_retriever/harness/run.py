@@ -832,6 +832,7 @@ def _run_single(
 _GRAPH_RUNNER_SCRIPT = """\
 import json, sys, os, traceback, time
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 
 graph_code_file = sys.argv[1]
 result_file = sys.argv[2]
@@ -872,6 +873,7 @@ try:
         "PYTHONPATH": pypath,
     }
     ray_env_vars.update(collect_hf_runtime_env())
+    ray_env_vars.update(collect_remote_auth_runtime_env())
     runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:

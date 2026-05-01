@@ -28,8 +28,6 @@ HF_RUNTIME_ENV_KEYS: tuple[str, ...] = (
     "REQUESTS_CA_BUNDLE",
     "CURL_CA_BUNDLE",
     "SSL_CERT_FILE",
-    "NVIDIA_API_KEY",
-    "NGC_API_KEY",
 )
 
 
