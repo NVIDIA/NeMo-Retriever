@@ -33,6 +33,7 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
         inference_batch_size: int = 8,
+        load_ocr_v2: bool = False,
     ) -> None:
         super().__init__()
         self._graphic_elements_invoke_url = (graphic_elements_invoke_url or "").strip()
@@ -55,6 +56,10 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
 
         if self._ocr_invoke_url:
             self._ocr_model = None
+        elif load_ocr_v2:
+            from nemo_retriever.model.local import NemotronOCRV2
+
+            self._ocr_model = NemotronOCRV2()
         else:
             from nemo_retriever.model.local import NemotronOCRV1
 

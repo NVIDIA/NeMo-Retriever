@@ -366,6 +366,43 @@ class TestOCRActor:
 
 
 # ---------------------------------------------------------------------------
+# 6b. OCRV2Actor
+# ---------------------------------------------------------------------------
+class TestOCRV2Actor:
+    def _make(self):
+        from nemo_retriever.ocr.ocr import OCRV2Actor
+
+        return OCRV2Actor(ocr_invoke_url="http://fake")
+
+    def test_inherits(self):
+        from nemo_retriever.ocr.ocr import OCRV2Actor
+
+        assert issubclass(OCRV2Actor, AbstractOperator)
+
+    def test_preprocess_passthrough(self):
+        actor = self._make()
+        df = pd.DataFrame({"page_image": ["x"]})
+        pd.testing.assert_frame_equal(actor.preprocess(df), df)
+
+    @patch("nemo_retriever.ocr.cpu_ocrv2.ocr_page_elements")
+    def test_process(self, mock_fn):
+        expected = pd.DataFrame({"ocr": ["res"]})
+        mock_fn.return_value = expected
+        actor = self._make()
+        result = actor.process(pd.DataFrame({"page_image": ["x"]}))
+        mock_fn.assert_called_once()
+        pd.testing.assert_frame_equal(result, expected)
+
+    @patch("nemo_retriever.ocr.cpu_ocrv2.ocr_page_elements", side_effect=RuntimeError("boom"))
+    def test_call_error_handling(self, mock_fn):
+        actor = self._make()
+        df = pd.DataFrame({"page_image": ["x"]})
+        result = actor(df)
+        assert isinstance(result, pd.DataFrame)
+        assert "ocr" in result.columns
+
+
+# ---------------------------------------------------------------------------
 # 7. NemotronParseActor
 # ---------------------------------------------------------------------------
 class TestNemotronParseActor:

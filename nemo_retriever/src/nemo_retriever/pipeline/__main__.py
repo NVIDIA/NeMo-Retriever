@@ -212,6 +212,7 @@ def _build_extract_params(
     extract_remote_api_key: Optional[str],
     page_elements_invoke_url: Optional[str],
     ocr_invoke_url: Optional[str],
+    ocr_version: str,
     graphic_elements_invoke_url: Optional[str],
     table_structure_invoke_url: Optional[str],
     pdf_split_batch_size: int,
@@ -277,6 +278,7 @@ def _build_extract_params(
                 "api_key": extract_remote_api_key,
                 "page_elements_invoke_url": page_elements_invoke_url,
                 "ocr_invoke_url": ocr_invoke_url,
+                "ocr_version": ocr_version,
                 "graphic_elements_invoke_url": graphic_elements_invoke_url,
                 "table_structure_invoke_url": table_structure_invoke_url,
                 "use_graphic_elements": use_graphic_elements,
@@ -663,6 +665,12 @@ def run(
         None, "--page-elements-invoke-url", rich_help_panel=_PANEL_REMOTE
     ),
     ocr_invoke_url: Optional[str] = typer.Option(None, "--ocr-invoke-url", rich_help_panel=_PANEL_REMOTE),
+    ocr_version: str = typer.Option(
+        "v2",
+        "--ocr-version",
+        help="OCR engine: 'v2' (default, multilingual, higher throughput) or 'v1' (legacy, English-only).",
+        rich_help_panel=_PANEL_REMOTE,
+    ),
     graphic_elements_invoke_url: Optional[str] = typer.Option(
         None, "--graphic-elements-invoke-url", rich_help_panel=_PANEL_REMOTE
     ),
@@ -978,6 +986,7 @@ def run(
             extract_remote_api_key=extract_remote_api_key,
             page_elements_invoke_url=page_elements_invoke_url,
             ocr_invoke_url=ocr_invoke_url,
+            ocr_version=ocr_version,
             graphic_elements_invoke_url=graphic_elements_invoke_url,
             table_structure_invoke_url=table_structure_invoke_url,
             pdf_split_batch_size=pdf_split_batch_size,
