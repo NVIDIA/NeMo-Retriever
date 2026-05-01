@@ -1383,16 +1383,14 @@ class Ingestor:
             If True, the saved result files will be deleted from disk after a successful
             upload. This requires `save_to_disk()` to be active. Defaults to True
         kwargs : dict
-            Parameters specific to the VdbUploadTask. If ``vdb_op`` is omitted, it
-            defaults to ``"lancedb"``. Pass ``vdb_op="milvus"`` explicitly when you
-            require the legacy Milvus client operator.
+            Parameters specific to the VdbUploadTask.
 
         Returns
         -------
         Ingestor
             Returns self for chaining.
         """
-        vdb_op = kwargs.pop("vdb_op", "lancedb")
+        vdb_op = kwargs.pop("vdb_op", "milvus")
         if isinstance(vdb_op, str):
             op_cls = get_vdb_op_cls(vdb_op)
             vdb_op = op_cls(**kwargs)
