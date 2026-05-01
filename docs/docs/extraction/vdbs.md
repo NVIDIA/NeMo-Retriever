@@ -49,13 +49,13 @@ vdb = LanceDB(
     uri="./lancedb_data",    # Path to LanceDB database directory
     table_name="nemo-retriever",  # Table name
     index_type="IVF_HNSW_SQ",  # Index type (default)
-    hybrid=False,            # Enable hybrid search (BM25 FTS + vector)
+    hybrid=False,            # True = also build FTS for hybrid (see Hybrid search below)
 )
 
 # Ingest
 vdb.run(results)
 
-# Retrieve
+# Dense-only retrieve (use lancedb_hybrid_retrieval when hybrid=True; see below)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
@@ -84,9 +84,25 @@ Hybrid search improves recall by approximately +0.5% to +3.5% over vector-only r
 
 Hybrid search latency is typically 28–57 ms/query (vs. 31–37 ms/query for vector-only). The one-time FTS index build adds approximately 6.5 seconds for a 76K-row dataset.
 
-Enable hybrid search by setting `hybrid=True` when creating the LanceDB operator.
+Enable hybrid **ingest** by setting `hybrid=True` when creating the `LanceDB` operator so `vdb.run(results)` builds the BM25-friendly FTS index alongside vectors.
 
+!!! note "Hybrid queries use `lancedb_hybrid_retrieval`, not `LanceDB.retrieval()`"
 
+    `LanceDB.retrieval()` only supports dense vector search. If the operator was created with `hybrid=True`, calling `vdb.retrieval(...)` raises `NotImplementedError` (“hybrid retrieval with precomputed vectors is not implemented yet”). For hybrid (dense + BM25 + RRF) **queries**, use **`lancedb_hybrid_retrieval()`** from the same module, with the same `table_path` / `table_name` as the `LanceDB` instance:
+
+    ```python
+    from nv_ingest_client.util.vdb.lancedb import LanceDB, lancedb_hybrid_retrieval
+
+    vdb = LanceDB(uri="./lancedb_data", table_name="nemo-retriever", hybrid=True)
+    vdb.run(results)
+
+    docs = lancedb_hybrid_retrieval(
+        queries,
+        table_path="./lancedb_data",
+        table_name="nemo-retriever",
+        top_k=10,
+    )
+    ```
 
 ## LanceDB deployment characteristics
 
