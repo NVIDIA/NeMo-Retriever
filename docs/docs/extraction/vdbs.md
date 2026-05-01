@@ -61,7 +61,15 @@ docs = vdb.retrieval(queries, top_k=10)
 
 When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB. If you omit `vdb_op`, nv-ingest-client still defaults the string argument to `"milvus"` for backward compatibility, which is not the LanceDB operator—always pass `vdb_op="lancedb"` when you intend LanceDB.
 
-## Hybrid search (LanceDB)
+## Semantic and hybrid retrieval {#semantic-and-hybrid-retrieval}
+
+**Semantic retrieval** uses dense embeddings to find content that is similar in meaning to a query. **Hybrid retrieval** combines dense vectors with sparse or lexical signals (for example, BM25-style full-text) and fuses ranked lists for better recall on keyword-heavy queries.
+
+In NeMo Retriever Library, the default vector path is LanceDB; configuring dense search, BM25, and reciprocal rank fusion (RRF) on the LanceDB operator is covered in [Hybrid search (LanceDB)](#hybrid-search-lancedb) below. For broader pipeline and search patterns, see [Concepts](concepts.md). For hybrid-related environment variables where documented, see [Environment variables](environment-config.md). For filtering results at query time, see [Custom metadata and filtering](custom-metadata.md).
+
+**Evaluation** — For evaluation and metrics, see [Evaluate on your data](evaluate-on-your-data.md).
+
+## Hybrid search (LanceDB) {#hybrid-search-lancedb}
 
 LanceDB supports **hybrid retrieval**, combining dense vector similarity with BM25 full-text search. Results are fused using Reciprocal Rank Fusion (RRF) reranking.
 

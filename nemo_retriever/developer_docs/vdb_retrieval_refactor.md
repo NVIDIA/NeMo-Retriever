@@ -316,5 +316,4 @@ path.
 Some non-embedded client backends can show slower uploads for this local
 deployment when they rely on object-store bulk import plus collection
 load/refresh for datasets above the streaming threshold. That behavior is
-backend-specific and outside this PR's scope unless upload performance for a
-given backend is explicitly reopened.
+backend-specific.

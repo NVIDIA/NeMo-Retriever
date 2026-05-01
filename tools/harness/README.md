@@ -2,6 +2,10 @@
 
 A configurable, dataset-agnostic testing framework for end-to-end validation of nv-ingest pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
 
+## Unsupported Developer Docs
+
+Anything under [`nemo_retriever/developer_docs/`](../../nemo_retriever/developer_docs/) is **internal developer documentation**, not a supported or stable part of NeMo Retriever Library. It may cover experiments, refactors, or one-off workflows and can change or be removed without notice—do not treat it as a public API or product guarantee. For an index of those notes, see [`nemo_retriever/developer_docs/README.md`](../../nemo_retriever/developer_docs/README.md).
+
 ## Quick Start
 
 ### Prerequisites
