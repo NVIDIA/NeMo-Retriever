@@ -116,23 +116,22 @@ def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> 
 
     assert isinstance(out, pd.DataFrame)
     content_types = out["metadata"].apply(lambda md: md.get("_content_type")).tolist()
-    # The baked-in fuser drops audio rows whose windows match a fused row;
-    # both utterances here have concurrent frames so only frame + audio_visual
-    # rows appear in the output.
-    assert "video_frame" in content_types
+    # The baked-in fuser drops audio rows whose windows match a fused row
+    # AND drops every ``video_frame`` row from the output (paired frames
+    # are folded into the audio_visual rows; orphan frames are net-noise).
+    # Both utterances here have concurrent frames so only audio_visual
+    # rows appear.
+    assert "video_frame" not in content_types
     assert "audio_visual" in content_types
 
-    # All frame OCR rows have non-empty text
-    frame_rows = out[out["metadata"].apply(lambda md: md.get("_content_type") == "video_frame")]
-    assert len(frame_rows) == 5
-    assert all(t.startswith("frame_text_") for t in frame_rows["text"])
-
     # Each scene row covers an audio utterance and pairs it with the most
-    # representative concurrent frame in label-free "<audio>. <visual>" format.
+    # representative concurrent frame in labelled "[AUDIO] <a> | [VISUAL] <v>"
+    # format.
     scene_rows = out[out["metadata"].apply(lambda md: md.get("_content_type") == "audio_visual")]
     assert len(scene_rows) == 2
     for _, row in scene_rows.iterrows():
         text = row["text"]
-        assert text.startswith(("first utterance.", "second utterance."))
+        assert text.startswith(("[AUDIO] first utterance |", "[AUDIO] second utterance |"))
+        assert " | [VISUAL] " in text
         md = row["metadata"]
         assert md["segment_end_seconds"] > md["segment_start_seconds"]

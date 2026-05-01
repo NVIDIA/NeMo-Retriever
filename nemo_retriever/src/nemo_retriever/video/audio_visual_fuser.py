@@ -8,10 +8,14 @@ audio transcript text with concurrent video frame OCR text.
 
 Each ASR utterance is paired with the single concurrent frame whose
 window is most centred on the utterance (tiebreak: longer OCR), and the
-fused text is rendered as ``"<audio>. <visual>"``. The source audio row
-is dropped whenever a fused row was produced for its window so retrieval
-doesn't see two near-identical embeddings (audio-only and audio+visual)
-for the same utterance; audio with no concurrent frames is preserved.
+fused text is rendered as ``"[AUDIO] <audio> | [VISUAL] <visual>"`` with
+the visual portion capped at :data:`FRAME_TEXT_MAX_CHARS`. The source
+audio row is dropped whenever a fused row was produced for its window
+so retrieval doesn't see two near-identical embeddings (audio-only and
+audio+visual) for the same utterance; audio rows whose window has no
+concurrent frame are preserved. ``video_frame`` rows are consumed by
+the fusion and not passed through downstream — every visual moment that
+mattered is already represented inside an ``audio_visual`` row.
 
 Set :attr:`AudioVisualFuseParams.enabled` to ``False`` to skip fusion.
 """
@@ -32,10 +36,12 @@ from nemo_retriever.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)
 
-#: Hard cap on the visual portion of a fused row — keeps a long slide-OCR
-#: blob from dominating the embedding over the (typically much shorter)
-#: audio transcript.
-FRAME_TEXT_MAX_CHARS: int = 200
+#: Cap on the visual portion of a fused row — keeps a long slide-OCR blob
+#: from dominating the embedding over the (typically much shorter) audio
+#: transcript. The value (100) was selected empirically from a cap-sweep
+#: against the video_retrieval_pipeline benchmark, where it maximised
+#: recall@5 across 25/50/75/100/125/150/200.
+FRAME_TEXT_MAX_CHARS: int = 100
 
 
 def _row_content_type(row: Any) -> str:
@@ -60,9 +66,12 @@ def _row_segment_window(row: Any) -> tuple[float, float] | None:
     return start, end
 
 
-def _keep_audio(row: Any, fused_window_keys: set[tuple[str, float, float]]) -> bool:
-    """Drop audio rows whose window already produced a fused row; keep everything else."""
-    if _row_content_type(row) != _CT.AUDIO:
+def _keep_upstream(row: Any, fused_window_keys: set[tuple[str, float, float]]) -> bool:
+    """Drop ``video_frame`` rows and audio rows whose window already fused."""
+    kind = _row_content_type(row)
+    if kind == _CT.VIDEO_FRAME:
+        return False
+    if kind != _CT.AUDIO:
         return True
     window = _row_segment_window(row)
     if window is None:
@@ -71,6 +80,11 @@ def _keep_audio(row: Any, fused_window_keys: set[tuple[str, float, float]]) -> b
     if not isinstance(source, str):
         return True
     return (source, float(window[0]), float(window[1])) not in fused_window_keys
+
+
+def _filter_upstream(batch_df: pd.DataFrame, fused_window_keys: set[tuple[str, float, float]]) -> pd.DataFrame:
+    mask = [_keep_upstream(row, fused_window_keys) for row in batch_df.itertuples(index=False)]
+    return batch_df[mask].reset_index(drop=True)
 
 
 @designer_component(
@@ -126,7 +140,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             frames_by_source.setdefault(source, []).append((float(f_start), float(f_end), text.strip()))
 
         if not frames_by_source:
-            return batch_df
+            return _filter_upstream(batch_df, set())
 
         fused_rows: List[Dict[str, Any]] = []
         for row in batch_df.itertuples(index=False):
@@ -177,7 +191,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
                     "fused_concurrent_total": len(concurrent_entries),
                 }
             )
-            fused_text = f"{audio_text.strip()}. {visual_text}".strip()
+            fused_text = f"[AUDIO] {audio_text.strip()} | [VISUAL] {visual_text}".strip()
             fused_row = dict(row_dict)
             fused_row["text"] = fused_text
             fused_row["metadata"] = metadata
@@ -185,9 +199,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             fused_rows.append(fused_row)
 
         if not fused_rows:
-            return batch_df
-
-        fused_df = pd.DataFrame(fused_rows)
+            return _filter_upstream(batch_df, set())
 
         fused_window_keys = {
             (
@@ -197,10 +209,10 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             )
             for row in fused_rows
         }
-        keep_mask = [_keep_audio(row, fused_window_keys) for row in batch_df.itertuples(index=False)]
-        upstream_df = batch_df.iloc[keep_mask].reset_index(drop=True)
-
-        return concat_with_passthrough(fused_df, upstream_df)
+        return concat_with_passthrough(
+            pd.DataFrame(fused_rows),
+            _filter_upstream(batch_df, fused_window_keys),
+        )
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

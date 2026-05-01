@@ -8,8 +8,9 @@ The fuser's behaviour is fixed (no per-call knobs beyond ``enabled``):
   * one fused row per audio utterance with at least one concurrent frame,
   * visual side = the single most-centred concurrent frame (tiebreak: longer OCR),
   * visual capped at ``FRAME_TEXT_MAX_CHARS`` characters,
-  * fused text rendered as ``"<audio>. <visual>"`` (no labels),
-  * source audio rows whose window produced a fused row are dropped.
+  * fused text rendered as ``"[AUDIO] <audio> | [VISUAL] <visual>"``,
+  * source audio rows whose window produced a fused row are dropped,
+  * ``video_frame`` rows are not passed through downstream.
 """
 
 from __future__ import annotations
@@ -58,14 +59,16 @@ def test_fuser_emits_one_fused_row_per_overlapping_utterance() -> None:
     fused = [r for _, r in out.iterrows() if r["metadata"]["_content_type"] == "audio_visual"]
     assert len(fused) == 1
     text = fused[0]["text"]
-    assert text.startswith("hello world.")
+    assert text.startswith("[AUDIO] hello world | [VISUAL] ")
     # Top-level _content_type set so the LanceDB sink picks it up.
     assert fused[0]["_content_type"] == "audio_visual"
     # Audio row whose window produced the fused row is dropped; the orphan
-    # audio utterance (no concurrent frame) and the orphan frame are preserved.
+    # audio utterance (no concurrent frame) is preserved. All ``video_frame``
+    # rows are dropped — paired ones are folded into the fused row, orphan
+    # ones were shown to be net-noise in retrieval.
     kinds = [r["metadata"]["_content_type"] for _, r in out.iterrows()]
     assert kinds.count("audio") == 1  # only the second utterance
-    assert kinds.count("video_frame") == 3
+    assert kinds.count("video_frame") == 0
     assert kinds.count("audio_visual") == 1
 
 
@@ -76,8 +79,10 @@ def test_fuser_skips_when_no_concurrent_frame_text() -> None:
     ]
     df = pd.DataFrame(rows)
     out = AudioVisualFuser(AudioVisualFuseParams()).run(df)
-    assert len(out) == 2  # no fused row appended, audio row preserved
-    assert all(r["metadata"]["_content_type"] != "audio_visual" for _, r in out.iterrows())
+    # No fused row is appended (no overlap), the audio row is preserved,
+    # and the orphan ``video_frame`` row is dropped.
+    kinds = [r["metadata"]["_content_type"] for _, r in out.iterrows()]
+    assert kinds == ["audio"]
 
 
 def test_fuser_preserves_segment_window_from_audio_row() -> None:
@@ -133,7 +138,7 @@ def test_fuser_truncates_long_visual() -> None:
     fused = [r for _, r in out.iterrows() if r["metadata"]["_content_type"] == "audio_visual"]
     assert len(fused) == 1
     text = fused[0]["text"]
-    visual = text.split(". ", 1)[1]
+    visual = text.split(" | [VISUAL] ", 1)[1]
     assert len(visual) <= FRAME_TEXT_MAX_CHARS
 
 
