@@ -26,7 +26,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         *,
         table_structure_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
-        load_ocr_v2: bool = False,
+        load_ocr_v2: bool = True,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,

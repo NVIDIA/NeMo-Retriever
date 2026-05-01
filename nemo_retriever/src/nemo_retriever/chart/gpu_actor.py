@@ -33,7 +33,7 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
         inference_batch_size: int = 8,
-        load_ocr_v2: bool = False,
+        load_ocr_v2: bool = True,
     ) -> None:
         super().__init__()
         self._graphic_elements_invoke_url = (graphic_elements_invoke_url or "").strip()
