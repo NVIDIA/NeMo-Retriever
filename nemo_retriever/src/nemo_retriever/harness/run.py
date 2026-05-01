@@ -446,8 +446,13 @@ def _build_command(
         run_id,
         "--detection-summary-file",
         str(detection_summary_file),
-        "--lancedb-uri",
-        _resolve_lancedb_uri(cfg, artifact_dir),
+        "--vdb-kwargs-json",
+        json.dumps(
+            {
+                "uri": _resolve_lancedb_uri(cfg, artifact_dir),
+                "hybrid": bool(cfg.hybrid),
+            }
+        ),
     ]
 
     if cfg.evaluation_mode == "beir":
@@ -524,8 +529,6 @@ def _build_command(
         env_extra["NVIDIA_API_KEY"] = cfg.api_key
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
-    if cfg.hybrid:
-        cmd += ["--hybrid"]
 
     resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
     if resolved_store_uri is not None:

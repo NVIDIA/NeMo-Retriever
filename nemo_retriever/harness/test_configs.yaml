@@ -267,17 +267,15 @@ datasets:
     embed_granularity: element
 
   video_retrieval:
-    #path: /datasets/nv-ingest/video_retrieval_data
-    #query_csv: /datasets/nv-ingest/video_retrieval_eval_gt.csv
-    path: /home/edwardk/data/video_test
-    query_csv: /home/edwardk/data/video_retrieval_eval_gt.csv
+    path: /datasets/nv-ingest/video_retrieval_data
+    query_csv: /datasets/nv-ingest/video_retrieval_eval_gt.csv
     input_type: video
     segment_audio: true
     audio_split_type: time
     audio_split_interval: 36000
     video_extract_audio: true
     video_extract_frames: true
-    video_frame_fps: 0.1
+    video_frame_fps: 0.05
     video_av_fuse: true
     recall_required: true
     recall_match_mode: audio_segment
