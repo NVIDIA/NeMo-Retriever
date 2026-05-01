@@ -59,7 +59,7 @@ vdb.run(results)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
-When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB.
+When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB. If you omit `vdb_op`, the client library uses its built-in default backend (not LanceDB); always set `vdb_op` explicitly when you want LanceDB.
 
 ## Hybrid search (LanceDB)
 
