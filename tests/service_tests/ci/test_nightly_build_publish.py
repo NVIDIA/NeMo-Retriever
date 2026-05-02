@@ -13,6 +13,46 @@ import pytest
 from ci.scripts import nightly_build_publish as nightly
 
 
+def test_patch_pyproject_version_can_override_nightly_base_version(tmp_path, monkeypatch):
+    monkeypatch.setenv("NIGHTLY_DATE_SUFFIX", "20260501010101")
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        textwrap.dedent(
+            """
+            [project]
+            name = "nemotron-ocr"
+            version = "1.0.0"
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    assert nightly._patch_pyproject_version(tmp_path, nightly_base_version="1.0.2")
+
+    patched = pyproject.read_text(encoding="utf-8")
+    assert 'version = "1.0.2.dev20260501010101"' in patched
+
+
+def test_patch_setup_cfg_version_can_override_nightly_base_version(tmp_path, monkeypatch):
+    monkeypatch.setenv("NIGHTLY_DATE_SUFFIX", "20260501010101")
+    setup_cfg = tmp_path / "setup.cfg"
+    setup_cfg.write_text(
+        textwrap.dedent(
+            """
+            [metadata]
+            name = nemotron-ocr
+            version = 1.0.0
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    assert nightly._patch_setup_cfg_version(tmp_path, nightly_base_version="1.0.2")
+
+    patched = setup_cfg.read_text(encoding="utf-8")
+    assert "version = 1.0.2.dev20260501010101" in patched
+
+
 def test_patch_pyproject_runtime_dependency_pins_only_project_dependencies(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
