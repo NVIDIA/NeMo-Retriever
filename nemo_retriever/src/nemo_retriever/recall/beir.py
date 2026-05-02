@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BEIR_KS: tuple[int, ...] = (1, 3, 5, 10)
 VALID_BEIR_LOADERS: frozenset[str] = frozenset(
-    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "vidore_hf"}
+    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 )
 VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
     {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -28,6 +28,7 @@ BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_annotations.csv"
 BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.csv"
 EARNINGS_ANNOTATIONS_PATH = REPO_ROOT / "data" / "earnings_consulting_multimodal.csv"
 FINANCEBENCH_ANNOTATIONS_PATH = REPO_ROOT / "data" / "financebench_train.json"
+JP20_ANNOTATIONS_PATH = REPO_ROOT / "data" / "jp20_query_gt.csv"
 _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "caption": "image",
     "chart": "chart",
@@ -195,6 +196,8 @@ def _resolve_annotations_csv_path(dataset_name: str, *, loader_name: str) -> Pat
         return BO10K_ANNOTATIONS_PATH
     if loader_name == "earnings_csv" and dataset_str.lower() == "earnings":
         return EARNINGS_ANNOTATIONS_PATH
+    if loader_name == "jp20_csv" and dataset_str.lower() == "jp20":
+        return JP20_ANNOTATIONS_PATH
     raise ValueError(
         f"{loader_name} expects dataset_name='{dataset_str.lower()}' or a path to a CSV file, got {dataset_name!r}"
     )
@@ -336,73 +339,25 @@ def _load_financebench_json_dataset(*, dataset_name: str, doc_id_field: str) -> 
     )
 
 
-_LANG_ALIASES: dict[str, set[str]] = {
-    "en": {"en", "eng", "english"},
-    "fr": {"fr", "fra", "fre", "french", "français", "francais"},
-    "de": {"de", "deu", "ger", "german", "deutsch"},
-    "es": {"es", "spa", "spanish", "español", "espanol"},
-    "it": {"it", "ita", "italian", "italiano"},
-    "pt": {"pt", "por", "portuguese", "português", "portugues"},
-    "zh": {"zh", "zho", "chi", "chinese"},
-    "ja": {"ja", "jpn", "japanese"},
-    "ko": {"ko", "kor", "korean"},
-    "ar": {"ar", "ara", "arabic"},
-    "ru": {"ru", "rus", "russian"},
-    "nl": {"nl", "nld", "dut", "dutch"},
-    "pl": {"pl", "pol", "polish"},
-    "sv": {"sv", "swe", "swedish"},
-    "tr": {"tr", "tur", "turkish"},
-    "hi": {"hi", "hin", "hindi"},
-}
-
-
-def _languages_match(filter_lang: str, row_lang: str) -> bool:
-    """Fuzzy language matching that accepts ISO codes and full names."""
-    a = filter_lang.strip().lower()
-    b = row_lang.strip().lower()
-    if a == b:
-        return True
-    for aliases in _LANG_ALIASES.values():
-        if a in aliases and b in aliases:
-            return True
-    return False
-
-
 def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = None) -> tuple[list[str], list[str]]:
     """Normalize iterable rows into ordered ``(query_ids, queries)``."""
     normalized_language = str(query_language).strip().lower() if query_language is not None else None
     query_ids: list[str] = []
     queries: list[str] = []
-    total_rows = 0
-    skipped_empty = 0
-    skipped_language = 0
 
     for idx, row in enumerate(rows):
-        total_rows += 1
         query_text = _row_get(row, "query")
         if not isinstance(query_text, str) or not query_text.strip():
-            skipped_empty += 1
             continue
 
         if normalized_language is not None:
             row_language = str(_row_get(row, "language", "") or "").strip().lower()
-            if not _languages_match(normalized_language, row_language):
-                skipped_language += 1
+            if row_language != normalized_language:
                 continue
 
         query_id = _row_get(row, "query_id", idx)
         query_ids.append(str(query_id))
         queries.append(query_text)
-
-    if not query_ids:
-        logger.warning(
-            "build_queries_by_id returned 0 queries: total_rows=%d, "
-            "skipped_empty=%d, skipped_language=%d (filter=%r)",
-            total_rows,
-            skipped_empty,
-            skipped_language,
-            query_language,
-        )
 
     return query_ids, queries
 
@@ -442,7 +397,7 @@ def load_beir_dataset(
 ) -> BeirDataset:
     """Load a BEIR-style dataset for evaluation."""
     loader_name = str(loader).strip().lower()
-    if loader_name in {"bo767_csv", "bo10k_csv", "earnings_csv"}:
+    if loader_name in {"bo767_csv", "bo10k_csv", "earnings_csv", "jp20_csv"}:
         return _load_annotations_csv_dataset(
             dataset_name=dataset_name,
             doc_id_field=str(doc_id_field),
@@ -461,33 +416,12 @@ def load_beir_dataset(
     except ImportError as exc:  # pragma: no cover - exercised in runtime environments
         raise ImportError("BEIR-style ViDoRe evaluation requires the 'datasets' package.") from exc
 
-    ds_repo = f"vidore/{dataset_name}"
-    try:
-        queries_rows = load_dataset(ds_repo, "queries", split=split)
-    except Exception as exc:
-        logger.debug("load_dataset config='queries' failed (%s); retrying with data_dir", exc)
-        queries_rows = load_dataset(ds_repo, data_dir="queries", split=split)
-    try:
-        qrels_rows = load_dataset(ds_repo, "qrels", split=split)
-    except Exception as exc:
-        logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
-        qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
-
-    logger.info(
-        "Loaded BEIR dataset %s split=%s: %d query rows, %d qrel rows",
-        ds_repo,
-        split,
-        len(queries_rows),
-        len(qrels_rows),
-    )
+    queries_rows = load_dataset(f"vidore/{dataset_name}", data_dir="queries", split=split)
+    qrels_rows = load_dataset(f"vidore/{dataset_name}", data_dir="qrels", split=split)
 
     query_ids, queries = build_queries_by_id(queries_rows, query_language=query_language)
     if not query_ids:
-        raise ValueError(
-            f"No queries loaded for dataset={dataset_name!r} split={split!r} "
-            f"query_language={query_language!r}. "
-            f"Loaded {len(queries_rows)} raw rows from HuggingFace."
-        )
+        raise ValueError(f"No queries loaded for dataset={dataset_name!r} split={split!r}")
 
     allowed_query_ids = set(query_ids)
     qrels = build_qrels_by_query_id(qrels_rows, allowed_query_ids=allowed_query_ids)

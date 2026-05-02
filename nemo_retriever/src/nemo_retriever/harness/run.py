@@ -9,10 +9,8 @@ from importlib import metadata
 import json
 import os
 import pty
-import re
 import select
 import shlex
-import shutil
 import socket
 import subprocess
 import sys
@@ -36,38 +34,29 @@ from nemo_retriever.harness.config import (
     load_harness_config,
     load_nightly_config,
 )
-from nemo_retriever.harness.parsers import StreamMetrics
-from nemo_retriever.harness.recall_adapters import prepare_recall_query_file
 from nemo_retriever.utils.input_files import resolve_input_files
 
-ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
-
-def _collect_gpu_metadata() -> tuple[int | None, str | None, str | None]:
-    """Return ``(gpu_count, cuda_driver_version, gpu_name)``."""
+def _collect_gpu_metadata() -> tuple[int | None, str | None]:
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
             check=False,
             capture_output=True,
             text=True,
         )
     except OSError:
-        return None, None, None
+        return None, None
 
     output_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     combined_output = f"{result.stdout}\n{result.stderr}"
     if "No devices were found" in combined_output:
-        return 0, None, None
+        return 0, None
     if result.returncode != 0:
-        return None, None, None
+        return None, None
     if not output_lines:
-        return 0, None, None
-
-    parts = [p.strip() for p in output_lines[0].split(",", 1)]
-    gpu_name = parts[0] if parts else None
-    driver = parts[1].strip() if len(parts) > 1 else None
-    return len(output_lines), driver, gpu_name
+        return 0, None
+    return len(output_lines), output_lines[0]
 
 
 def _collect_run_metadata() -> dict[str, Any]:
@@ -87,81 +76,14 @@ def _collect_run_metadata() -> dict[str, Any]:
     except metadata.PackageNotFoundError:
         ray_version = "unknown"
 
-    gpu_count, cuda_driver, gpu_type = _collect_gpu_metadata()
-
-    try:
-        import psutil
-
-        memory_gb = round(psutil.virtual_memory().total / (1024**3), 1)
-    except Exception:
-        memory_gb = None
-
-    ray_dashboard_url: str | None = None
-    try:
-        import ray
-
-        if ray.is_initialized():
-            ctx = ray.get_runtime_context()
-            ray_dashboard_url = getattr(ctx, "dashboard_url", None) or None
-            if not ray_dashboard_url:
-                ray_dashboard_url = os.environ.get("RAY_DASHBOARD_URL") or None
-    except Exception:
-        pass
-
+    gpu_count, cuda_driver = _collect_gpu_metadata()
     return {
         "host": host,
         "gpu_count": gpu_count,
-        "gpu_type": gpu_type,
         "cuda_driver": cuda_driver,
         "ray_version": ray_version,
         "python_version": python_version,
-        "cpu_count": os.cpu_count(),
-        "memory_gb": memory_gb,
-        "ray_dashboard_url": ray_dashboard_url,
     }
-
-
-def _get_routable_ip() -> str:
-    """Return this machine's routable IP address (not 127.0.0.1).
-
-    Opens a UDP socket to a public DNS address (no data is sent) so the OS
-    selects the correct outbound interface.  Falls back to hostname resolution.
-    """
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-    except Exception:
-        pass
-    try:
-        return socket.gethostbyname(socket.gethostname())
-    except Exception:
-        return "127.0.0.1"
-
-
-def _resolve_localhost(host: str) -> str:
-    """Replace loopback addresses with the machine's routable IP."""
-    if host.lower() in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
-        return _get_routable_ip()
-    return host
-
-
-def _derive_ray_dashboard_url(ray_address: str) -> str | None:
-    """Best-effort derivation of the Ray dashboard URL from a cluster address.
-
-    Ray dashboard defaults to port 8265 on the head node.  We attempt to
-    extract the hostname from common address formats (``ray://host:port``,
-    ``host:port``, or ``auto``) and build the dashboard URL.
-    """
-    addr = ray_address.strip()
-    if addr.lower() == "auto":
-        return f"http://{_get_routable_ip()}:8265"
-    addr = re.sub(r"^ray://", "", addr, flags=re.IGNORECASE)
-    host = addr.split(":")[0] if ":" in addr else addr
-    if not host:
-        return None
-    host = _resolve_localhost(host)
-    return f"http://{host}:8265"
 
 
 def _normalize_tags(tags: list[str] | None) -> list[str]:
@@ -288,11 +210,9 @@ def _resolve_summary_metrics(
     cfg: HarnessConfig,
     metrics_payload: dict[str, Any],
     runtime_summary: dict[str, Any] | None,
-    subprocess_elapsed_secs: float | None = None,
 ) -> dict[str, Any]:
     summary_metrics: dict[str, Any] = {
         "pages": metrics_payload.get("pages"),
-        "files": metrics_payload.get("files"),
         "ingest_secs": metrics_payload.get("ingest_secs"),
         "pages_per_sec_ingest": metrics_payload.get("pages_per_sec_ingest"),
         "recall_5": metrics_payload.get("recall_5"),
@@ -311,15 +231,6 @@ def _resolve_summary_metrics(
             except (TypeError, ValueError):
                 summary_metrics["pages"] = None
 
-    # Fallback: count input files from the dataset directory.
-    if summary_metrics["files"] is None:
-        try:
-            input_files = resolve_input_files(Path(cfg.dataset_dir), cfg.input_type)
-            if input_files:
-                summary_metrics["files"] = len(input_files)
-        except Exception:
-            pass
-
     if summary_metrics["pages"] is None and cfg.input_type == "pdf":
         total_pages = 0
         counted_any = False
@@ -331,11 +242,6 @@ def _resolve_summary_metrics(
             total_pages += page_count
         if counted_any:
             summary_metrics["pages"] = total_pages
-
-    # Use subprocess wall-clock time as fallback when the stream parser
-    # couldn't extract the ingest time (e.g. print_run_summary was skipped).
-    if summary_metrics["ingest_secs"] is None and subprocess_elapsed_secs is not None and subprocess_elapsed_secs > 0:
-        summary_metrics["ingest_secs"] = subprocess_elapsed_secs
 
     if summary_metrics["pages_per_sec_ingest"] is None:
         pages = summary_metrics.get("pages")
@@ -373,14 +279,13 @@ def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
     return str(p)
 
 
-def _build_command(
-    cfg: HarnessConfig, artifact_dir: Path, run_id: str
-) -> tuple[list[str], Path, Path, Path | None, dict[str, str]]:
+def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if cfg.write_detection_file:
         detection_summary_file = artifact_dir / "detection_summary.json"
     else:
+        # Keep detection summary out of top-level artifacts unless explicitly requested.
         detection_summary_file = runtime_dir / ".detection_summary.json"
     effective_query_csv: Path | None = None
 
@@ -452,7 +357,10 @@ def _build_command(
 
     if cfg.evaluation_mode == "beir":
         beir_dataset_name = cfg.beir_dataset_name or cfg.dataset_label
-        if cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv", "financebench_json"} and cfg.query_csv:
+        if (
+            cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv", "financebench_json", "jp20_csv"}
+            and cfg.query_csv
+        ):
             beir_dataset_name = str(Path(cfg.query_csv).resolve())
         cmd += [
             "--beir-loader",
@@ -469,11 +377,13 @@ def _build_command(
         for k in cfg.beir_ks:
             cmd += ["--beir-k", str(int(k))]
     else:
-        effective_query_csv = prepare_recall_query_file(
-            query_csv=Path(cfg.query_csv) if cfg.query_csv else None,
-            recall_adapter=cfg.recall_adapter,
-            output_dir=runtime_dir,
-        )
+        if cfg.input_type != "audio":
+            raise ValueError("Legacy recall evaluation is only supported for audio input")
+        if cfg.recall_match_mode != "audio_segment" or cfg.recall_adapter != "none":
+            raise ValueError("Audio recall evaluation requires recall_match_mode=audio_segment and recall_adapter=none")
+        if not cfg.query_csv:
+            raise ValueError("Audio recall evaluation requires query_csv")
+        effective_query_csv = Path(cfg.query_csv)
         cmd += [
             "--query-csv",
             str(effective_query_csv),
@@ -484,21 +394,6 @@ def _build_command(
             "--no-recall-details",
         ]
 
-    if cfg.api_key:
-        cmd += ["--api-key", cfg.api_key]
-    if cfg.page_elements_invoke_url:
-        cmd += ["--page-elements-invoke-url", cfg.page_elements_invoke_url]
-    if cfg.ocr_invoke_url:
-        cmd += ["--ocr-invoke-url", cfg.ocr_invoke_url]
-    if cfg.graphic_elements_invoke_url:
-        cmd += ["--graphic-elements-invoke-url", cfg.graphic_elements_invoke_url]
-    if cfg.table_structure_invoke_url:
-        cmd += ["--table-structure-invoke-url", cfg.table_structure_invoke_url]
-    if cfg.embed_invoke_url:
-        cmd += ["--embed-invoke-url", cfg.embed_invoke_url]
-    if cfg.caption_invoke_url:
-        cmd += ["--caption-invoke-url", cfg.caption_invoke_url]
-
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
     if cfg.input_type == "audio":
         cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
@@ -508,9 +403,6 @@ def _build_command(
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
         cmd += ["--structured-elements-modality", cfg.embed_modality]
-    env_extra: dict[str, str] = {}
-    if cfg.api_key:
-        env_extra["NVIDIA_API_KEY"] = cfg.api_key
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
     if cfg.hybrid:
@@ -523,7 +415,7 @@ def _build_command(
             cmd += ["--store-text"]
         cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
 
-    return cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra
+    return cmd, runtime_dir, detection_summary_file, effective_query_csv
 
 
 def _evaluate_run_outcome(
@@ -538,92 +430,9 @@ def _evaluate_run_outcome(
         return process_rc, reason, False
     if evaluation_mode == "beir" and not (evaluation_metrics or {}):
         return 97, "missing_beir_metrics", False
-    if evaluation_mode == "recall" and recall_required and not recall_metrics and not (evaluation_metrics or {}):
+    if evaluation_mode == "recall" and recall_required and not recall_metrics:
         return 98, "missing_recall_metrics", False
     return 0, "", True
-
-
-_FAIL_SEPARATOR = "\u2500" * 72
-
-
-def _print_failure_report(
-    result: dict[str, Any],
-    command_text: str,
-    artifact_dir: Path,
-    tail_lines: list[str],
-) -> None:
-    """Pretty-print a detailed failure report so the root cause is easy to find."""
-    reason = result.get("failure_reason") or "unknown"
-    rc = result.get("return_code", "?")
-    cfg = result.get("test_config", {})
-    meta = result.get("run_metadata", {})
-
-    RED = "\033[91m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    YELLOW = "\033[93m"
-    CYAN = "\033[96m"
-    RESET = "\033[0m"
-
-    lines: list[str] = []
-    lines.append("")
-    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
-    lines.append(f"{RED}{BOLD}  RUN FAILED  {RESET}")
-    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
-    lines.append("")
-
-    lines.append(f"  {BOLD}Failure Reason :{RESET}  {RED}{reason}{RESET}")
-    lines.append(f"  {BOLD}Return Code    :{RESET}  {rc}")
-    lines.append("")
-
-    lines.append(f"  {CYAN}{BOLD}Test Configuration{RESET}")
-    lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Dataset        :  {cfg.get('dataset_label', '\u2014')}")
-    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', '\u2014')}")
-    lines.append(f"  Preset         :  {cfg.get('preset', '\u2014')}")
-    lines.append(f"  Input Type     :  {cfg.get('input_type', '\u2014')}")
-    lines.append(f"  Recall Required:  {cfg.get('recall_required', False)}")
-    lines.append(f"  Hybrid         :  {cfg.get('hybrid', False)}")
-    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', '\u2014')}")
-    lines.append("")
-
-    lines.append(f"  {CYAN}{BOLD}Host Information{RESET}")
-    lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Hostname       :  {meta.get('host', '\u2014')}")
-    lines.append(f"  GPU            :  {meta.get('gpu_type', '\u2014')} (x{meta.get('gpu_count', '?')})")
-    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', '\u2014')}")
-    lines.append(f"  Python         :  {meta.get('python_version', '\u2014')}")
-    lines.append(f"  CPU / Memory   :  {meta.get('cpu_count', '?')} cores / {meta.get('memory_gb', '?')} GB")
-    lines.append("")
-
-    lines.append(f"  {CYAN}{BOLD}Artifacts{RESET}")
-    lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Artifact Dir   :  {artifact_dir.resolve()}")
-    lines.append(f"  Results JSON   :  {artifact_dir.resolve() / 'results.json'}")
-    lines.append(f"  Command File   :  {artifact_dir.resolve() / 'command.txt'}")
-    lines.append("")
-
-    lines.append(f"  {CYAN}{BOLD}Command{RESET}")
-    lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    # Wrap long commands for readability
-    if len(command_text) > 120:
-        lines.append(f"  {DIM}{command_text[:120]}...{RESET}")
-        lines.append(f"  {DIM}(full command in {artifact_dir.resolve() / 'command.txt'}){RESET}")
-    else:
-        lines.append(f"  {DIM}{command_text}{RESET}")
-    lines.append("")
-
-    if tail_lines:
-        lines.append(f"  {YELLOW}{BOLD}Last {len(tail_lines)} Lines of Output{RESET}")
-        lines.append(f"  {DIM}{'-' * 40}{RESET}")
-        for tl in tail_lines:
-            lines.append(f"  {DIM}|{RESET} {tl}")
-        lines.append("")
-
-    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
-    lines.append("")
-
-    typer.echo("\n".join(lines), err=True)
 
 
 def _read_json_if_exists(path: Path) -> dict[str, Any] | None:
@@ -638,29 +447,19 @@ def _read_json_if_exists(path: Path) -> dict[str, Any] | None:
     return data
 
 
-def _consume_parseable_output(metrics: StreamMetrics, parse_buffer: str) -> str:
-    while "\n" in parse_buffer:
-        line, parse_buffer = parse_buffer.split("\n", 1)
-        cleaned = ANSI_ESCAPE_RE.sub("", line)
-        metrics.consume(cleaned + "\n")
-    return parse_buffer
-
-
-def _run_subprocess_with_tty(cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+def _run_subprocess_with_tty(cmd: list[str]) -> int:
     """
     Run command in a pseudo-terminal so Ray renders rich progress while still
     streaming child process output to the current terminal.
     """
     master_fd, slave_fd = pty.openpty()
     try:
-        env = {**os.environ, **(env_extra or {})} if env_extra else None
         proc = subprocess.Popen(
             cmd,
             stdin=None,
             stdout=slave_fd,
             stderr=slave_fd,
             close_fds=True,
-            env=env,
         )
     finally:
         os.close(slave_fd)
@@ -693,40 +492,16 @@ def _run_subprocess_with_tty(cmd: list[str], env_extra: dict[str, str] | None = 
         os.close(master_fd)
 
 
-def _run_single(
-    cfg: HarnessConfig,
-    artifact_dir: Path,
-    run_id: str,
-    tags: list[str] | None = None,
-    skip_local_history: bool = False,
-) -> dict[str, Any]:
-    cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra = _build_command(cfg, artifact_dir, run_id)
-
-    lancedb_path = Path(_resolve_lancedb_uri(cfg, artifact_dir))
-    if lancedb_path.is_dir():
-        typer.echo(f"Removing stale LanceDB directory: {lancedb_path}")
-        shutil.rmtree(lancedb_path)
-    lancedb_path.mkdir(parents=True, exist_ok=True)
-
+def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[str] | None = None) -> dict[str, Any]:
+    cmd, runtime_dir, detection_summary_file, effective_query_csv = _build_command(cfg, artifact_dir, run_id)
     command_text = " ".join(shlex.quote(token) for token in cmd)
     (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
 
     typer.echo(f"\n=== Running {run_id} ===")
     typer.echo(command_text)
 
-    process_rc = _run_subprocess_with_tty(cmd, env_extra=env_extra)
+    process_rc = _run_subprocess_with_tty(cmd)
     run_metadata = _collect_run_metadata()
-
-    ray_addr = cfg.ray_address
-    if ray_addr and ray_addr.lower() != "local":
-        run_metadata["ray_cluster_mode"] = "existing"
-        if not run_metadata.get("ray_dashboard_url"):
-            dashboard = _derive_ray_dashboard_url(ray_addr)
-            if dashboard:
-                run_metadata["ray_dashboard_url"] = dashboard
-    else:
-        run_metadata["ray_cluster_mode"] = "local"
-
     runtime_summary_path = runtime_dir / f"{run_id}.runtime.summary.json"
     runtime_summary = _read_json_if_exists(runtime_summary_path)
     detection_summary = _read_json_if_exists(detection_summary_file)
@@ -783,13 +558,6 @@ def _run_single(
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
             "use_heuristics": cfg.use_heuristics,
-            "api_key": "(set)" if cfg.api_key else None,
-            "page_elements_invoke_url": cfg.page_elements_invoke_url,
-            "ocr_invoke_url": cfg.ocr_invoke_url,
-            "graphic_elements_invoke_url": cfg.graphic_elements_invoke_url,
-            "table_structure_invoke_url": cfg.table_structure_invoke_url,
-            "embed_invoke_url": cfg.embed_invoke_url,
-            "caption_invoke_url": cfg.caption_invoke_url,
             "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
             "store_text": cfg.store_text,
             "strip_base64": cfg.strip_base64,
@@ -814,327 +582,6 @@ def _run_single(
         result_payload["tags"] = list(tags)
 
     write_json(artifact_dir / "results.json", result_payload)
-
-    if not skip_local_history:
-        try:
-            from nemo_retriever.harness.history import record_run as _record_history
-
-            _record_history(result_payload, artifact_dir)
-        except Exception:
-            pass
-
-    if failure_reason:
-        _print_failure_report(result_payload, command_text, artifact_dir, [])
-
-    return result_payload
-
-
-_GRAPH_RUNNER_SCRIPT = """\
-import json, sys, os, traceback, time
-
-graph_code_file = sys.argv[1]
-result_file = sys.argv[2]
-ray_address = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "__none__" else None
-
-def _root_cause(exc):
-    seen = set()
-    while exc.__cause__ is not None and id(exc.__cause__) not in seen:
-        seen.add(id(exc))
-        exc = exc.__cause__
-    return exc
-
-try:
-    import subprocess as _sp
-    def _detect_gpu_count():
-        try:
-            out = _sp.check_output(
-                ["nvidia-smi", "--query-gpu=index", "--format=csv,noheader"],
-                text=True, timeout=10,
-            )
-            return len([l for l in out.strip().splitlines() if l.strip()])
-        except Exception:
-            return 0
-
-    import ray
-
-    effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
-    is_local = effective_ray in ("auto", "local", None, "")
-
-    ray.shutdown()
-
-    venv = os.path.dirname(os.path.dirname(sys.executable))
-    venv_bin = os.path.join(venv, "bin")
-    pypath = os.pathsep.join(p for p in sys.path if p)
-    ray_env_vars: dict[str, str] = {
-        "VIRTUAL_ENV": venv,
-        "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
-        "PYTHONPATH": pypath,
-    }
-    for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
-        if os.environ.get(_fwd_key):
-            ray_env_vars[_fwd_key] = os.environ[_fwd_key]
-    ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
-    runtime_env = {"env_vars": ray_env_vars}
-
-    if is_local:
-        os.environ.pop("RAY_ADDRESS", None)
-        detected_gpus = _detect_gpu_count()
-        print(f"[ray] Starting fresh local cluster ({detected_gpus} GPU(s) detected)")
-
-        try:
-            ray.init(
-                num_gpus=detected_gpus if detected_gpus > 0 else None,
-                runtime_env=runtime_env,
-            )
-        except ValueError as _ve:
-            if "existing cluster" in str(_ve):
-                print("[ray] Detected running Ray cluster — stopping it to start a fresh one")
-                try:
-                    import subprocess as __sp
-                    __sp.run(["ray", "stop", "--force"], capture_output=True, timeout=30)
-                except Exception:
-                    pass
-                ray.shutdown()
-                try:
-                    ray.init(
-                        num_gpus=detected_gpus if detected_gpus > 0 else None,
-                        runtime_env=runtime_env,
-                    )
-                except ValueError:
-                    print("[ray] Still cannot start fresh cluster — connecting to existing one instead")
-                    ray.init(runtime_env=runtime_env)
-            else:
-                raise
-    else:
-        print(f"[ray] Connecting to cluster: {effective_ray}")
-        ray.init(address=effective_ray, runtime_env=runtime_env)
-
-    print(f"[ray] Cluster resources: {ray.cluster_resources()}")
-
-    with open(graph_code_file) as f:
-        code = f.read()
-
-    ns = {"__name__": "__graph_runner__", "__file__": graph_code_file}
-
-    wall_start = time.perf_counter()
-    exec(compile(code, graph_code_file, "exec"), ns)
-
-    result_ds = ns.get("result")
-    graph = ns.get("graph")
-    _requested_plan = ns.get("requested_plan")
-    row_count = 0
-
-    ray_stats_str = None
-
-    if result_ds is not None:
-        elapsed = round(time.perf_counter() - wall_start, 2)
-        try:
-            import ray.data as _rd
-            if isinstance(result_ds, _rd.Dataset):
-                row_count = result_ds.count()
-                print(f"Pipeline complete: {row_count} rows in {elapsed}s")
-                try:
-                    ray_stats_str = result_ds.stats()
-                    print(f"\\n=== Ray Data Execution Stats ===\\n{ray_stats_str}")
-                except Exception:
-                    pass
-            else:
-                print(f"Pipeline complete in {elapsed}s (result type: {type(result_ds).__name__})")
-        except Exception:
-            elapsed = round(time.perf_counter() - wall_start, 2)
-            print(f"Pipeline complete in {elapsed}s")
-        result = {
-            "success": True, "return_code": 0, "rows": row_count,
-            "elapsed_secs": elapsed,
-        }
-    elif graph is not None:
-        outputs = graph.execute(None)
-        elapsed = round(time.perf_counter() - wall_start, 2)
-        print(f"Graph.execute complete: {len(outputs)} output(s) in {elapsed}s")
-        result = {
-            "success": True, "return_code": 0, "outputs": len(outputs),
-            "elapsed_secs": elapsed,
-        }
-    else:
-        raise RuntimeError("Generated code did not produce a 'result' (Ray Data) or 'graph' variable")
-
-    if _requested_plan is not None:
-        result["requested_plan"] = _requested_plan
-    if ray_stats_str is not None:
-        result["ray_stats"] = ray_stats_str
-
-except Exception as exc:
-    full_tb = traceback.format_exc()
-    print(full_tb, file=sys.stderr)
-    print(full_tb)
-    root = _root_cause(exc)
-    root_msg = f"{type(root).__name__}: {root}"
-    failure_lines = [root_msg]
-    if len(full_tb) <= 4000:
-        failure_lines.append(full_tb)
-    else:
-        failure_lines.append(full_tb[-4000:])
-    result = {
-        "success": False, "failure_reason": root_msg,
-        "error_detail": "\\n".join(failure_lines), "return_code": 1,
-    }
-
-with open(result_file, "w") as f:
-    json.dump(result, f)
-"""
-
-
-def _run_graph_pipeline(
-    cfg: HarnessConfig,
-    graph_code: str,
-    artifact_dir: Path,
-    run_id: str,
-    tags: list[str] | None = None,
-    skip_local_history: bool = False,
-) -> dict[str, Any]:
-    """Execute a Designer graph pipeline and collect metrics."""
-    import time as _time
-
-    runtime_dir = artifact_dir / "runtime_metrics"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-
-    code_file = artifact_dir / "graph_pipeline.py"
-    runner_file = artifact_dir / "graph_runner.py"
-    result_file = runtime_dir / f"{run_id}.graph_result.json"
-    code_file.write_text(graph_code, encoding="utf-8")
-    runner_file.write_text(_GRAPH_RUNNER_SCRIPT, encoding="utf-8")
-
-    ray_addr = cfg.ray_address or "__none__"
-    cmd = [sys.executable, str(runner_file), str(code_file), str(result_file), ray_addr]
-
-    command_text = " ".join(shlex.quote(token) for token in cmd)
-    (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
-
-    typer.echo(f"\n=== Running graph pipeline: {run_id} ===")
-    typer.echo(command_text)
-
-    env = os.environ.copy()
-
-    metrics = StreamMetrics()
-    _wall_start = _time.perf_counter()
-
-    master_fd, slave_fd = pty.openpty()
-    parse_buffer = ""
-    try:
-        proc = subprocess.Popen(cmd, stdin=None, stdout=slave_fd, stderr=slave_fd, close_fds=True, env=env)
-    finally:
-        os.close(slave_fd)
-
-    try:
-        while True:
-            read_fds, _, _ = select.select([master_fd], [], [], 0.1)
-            if master_fd not in read_fds:
-                if proc.poll() is not None:
-                    break
-                continue
-            try:
-                chunk = os.read(master_fd, 4096)
-            except OSError as exc:
-                if exc.errno == errno.EIO:
-                    break
-                raise
-            if not chunk:
-                break
-            text = chunk.decode("utf-8", errors="replace")
-            sys.stdout.write(text)
-            sys.stdout.flush()
-            parse_buffer += text.replace("\r", "\n")
-            parse_buffer = _consume_parseable_output(metrics, parse_buffer)
-        if parse_buffer:
-            cleaned_tail = ANSI_ESCAPE_RE.sub("", parse_buffer)
-            metrics.consume(cleaned_tail)
-        process_rc = proc.wait()
-    finally:
-        os.close(master_fd)
-
-    subprocess_elapsed_secs = round(_time.perf_counter() - _wall_start, 2)
-    run_metadata = _collect_run_metadata()
-
-    if ray_addr and ray_addr not in ("__none__", "local"):
-        run_metadata["ray_cluster_mode"] = "existing"
-        if not run_metadata.get("ray_dashboard_url"):
-            dashboard = _derive_ray_dashboard_url(ray_addr)
-            if dashboard:
-                run_metadata["ray_dashboard_url"] = dashboard
-    else:
-        run_metadata["ray_cluster_mode"] = "local"
-
-    graph_result = _read_json_if_exists(result_file) or {}
-    rows = graph_result.get("rows", 0)
-    elapsed_secs = graph_result.get("elapsed_secs", subprocess_elapsed_secs)
-
-    success = graph_result.get("success", process_rc == 0)
-    effective_rc = graph_result.get("return_code", process_rc)
-    failure_reason = graph_result.get("failure_reason")
-
-    pm_files = metrics.files
-    pm_pages = rows or metrics.pages
-    pm_ingest_secs = elapsed_secs or metrics.ingest_secs
-    pm_pps = None
-    if pm_pages and pm_ingest_secs and pm_ingest_secs > 0:
-        pm_pps = round(pm_pages / pm_ingest_secs, 2)
-
-    metrics_payload = {
-        "files": pm_files,
-        "pages": pm_pages,
-        "ingest_secs": pm_ingest_secs,
-        "pages_per_sec_ingest": pm_pps,
-        "rows_processed": rows,
-        "rows_per_sec_ingest": round(rows / elapsed_secs, 2) if rows and elapsed_secs else None,
-    }
-    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, None, subprocess_elapsed_secs)
-
-    result_payload: dict[str, Any] = {
-        "timestamp": now_timestr(),
-        "latest_commit": last_commit(),
-        "success": success,
-        "return_code": effective_rc,
-        "failure_reason": failure_reason or None,
-        "error_detail": graph_result.get("error_detail"),
-        "test_config": {
-            "dataset_label": cfg.dataset_label,
-            "dataset_dir": cfg.dataset_dir,
-            "preset": cfg.preset,
-            "input_type": "graph",
-            "ray_address": cfg.ray_address,
-            "graph_pipeline": True,
-        },
-        "metrics": metrics_payload,
-        "summary_metrics": summary_metrics,
-        "run_metadata": run_metadata,
-        "runtime_summary": None,
-        "detection_summary": None,
-        "artifacts": {
-            "command_file": str((artifact_dir / "command.txt").resolve()),
-            "runtime_metrics_dir": str(runtime_dir.resolve()),
-            "graph_code_file": str(code_file.resolve()),
-        },
-    }
-    if graph_result.get("requested_plan"):
-        result_payload["requested_plan"] = graph_result["requested_plan"]
-    if graph_result.get("ray_stats"):
-        result_payload["ray_stats"] = graph_result["ray_stats"]
-    if tags:
-        result_payload["tags"] = list(tags)
-
-    write_json(artifact_dir / "results.json", result_payload)
-
-    if not skip_local_history:
-        try:
-            from nemo_retriever.harness.history import record_run as _record_history
-
-            _record_history(result_payload, artifact_dir)
-        except Exception:
-            pass
-
-    if failure_reason:
-        _print_failure_report(result_payload, command_text, artifact_dir, metrics.tail_lines)
-
     return result_payload
 
 
@@ -1149,24 +596,12 @@ def _run_entry(
     cli_overrides: list[str] | None = None,
     recall_required: bool | None = None,
     tags: list[str] | None = None,
-    skip_local_history: bool = False,
-    graph_code: str | None = None,
 ) -> dict[str, Any]:
-    graph_overrides: dict[str, Any] | None = None
-    if graph_code:
-        graph_overrides = {
-            "query_csv": None,
-            "recall_required": False,
-            "evaluation_mode": "recall",
-        }
-        if sweep_overrides:
-            graph_overrides.update(sweep_overrides)
-
     cfg = load_harness_config(
         config_file=config_file,
         dataset=dataset,
         preset=preset,
-        sweep_overrides=graph_overrides if graph_code else sweep_overrides,
+        sweep_overrides=sweep_overrides,
         cli_overrides=cli_overrides,
         cli_recall_required=recall_required,
     )

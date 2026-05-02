@@ -32,6 +32,8 @@ def _write_harness_config(path: Path, dataset_dir: Path, query_csv: Path) -> Non
                 f"    query_csv: {query_csv}",
                 "    input_type: pdf",
                 "    recall_required: true",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
             ]
         ),
         encoding="utf-8",
@@ -117,6 +119,9 @@ def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: 
                 "active:",
                 f"  dataset_dir: {dataset_dir}",
                 "  preset: base",
+                "  input_type: audio",
+                "  evaluation_mode: recall",
+                "  recall_match_mode: audio_segment",
                 "  recall_required: true",
                 "presets:",
                 "  base: {}",
@@ -195,7 +200,7 @@ def test_load_nightly_config_rejects_invalid_metric_keys(tmp_path: Path) -> None
         load_nightly_config(str(runs_path))
 
 
-def test_load_harness_config_supports_recall_adapter_and_match_mode(tmp_path: Path) -> None:
+def test_load_harness_config_rejects_document_recall_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -213,17 +218,18 @@ def test_load_harness_config_supports_recall_adapter_and_match_mode(tmp_path: Pa
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
+                "    input_type: pdf",
+                "    evaluation_mode: recall",
                 "    recall_required: true",
-                "    recall_adapter: page_plus_one",
+                "    recall_adapter: none",
                 "    recall_match_mode: pdf_page",
             ]
         ),
         encoding="utf-8",
     )
 
-    cfg = load_harness_config(config_file=str(cfg_path))
-    assert cfg.recall_adapter == "page_plus_one"
-    assert cfg.recall_match_mode == "pdf_page"
+    with pytest.raises(ValueError, match="evaluation_mode=recall is only supported"):
+        load_harness_config(config_file=str(cfg_path))
 
 
 def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> None:
@@ -248,6 +254,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
                 "    input_type: audio",
+                "    evaluation_mode: recall",
                 "    segment_audio: true",
                 "    audio_split_type: time",
                 "    audio_split_interval: 30",
@@ -288,7 +295,9 @@ def test_load_harness_config_supports_multimodal_embedding_options(tmp_path: Pat
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    embed_modality: text",
                 "    embed_granularity: element",
                 "    extract_page_as_image: false",
@@ -383,7 +392,9 @@ def test_load_harness_config_resolves_relative_query_csv_from_config_dir(
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 "    query_csv: query.csv",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
             ]
         ),
         encoding="utf-8",
@@ -423,7 +434,10 @@ def test_load_harness_config_falls_back_to_repo_root_for_query_csv(
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 "    query_csv: data/financebench_train.json",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: financebench_json",
+                "    beir_doc_id_field: pdf_basename",
             ]
         ),
         encoding="utf-8",
@@ -469,6 +483,9 @@ def test_load_harness_config_rejects_invalid_recall_adapter(tmp_path: Path) -> N
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
+                "    input_type: audio",
+                "    evaluation_mode: recall",
+                "    recall_match_mode: audio_segment",
                 "    recall_required: true",
                 "    recall_adapter: unknown_adapter",
             ]
@@ -525,7 +542,9 @@ def test_load_harness_config_rejects_invalid_embed_modality(tmp_path: Path) -> N
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    embed_modality: invalid",
             ]
         ),
@@ -554,7 +573,9 @@ def test_load_harness_config_rejects_image_text_alias(tmp_path: Path) -> None:
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    embed_modality: image_text",
             ]
         ),
@@ -583,7 +604,9 @@ def test_load_harness_config_rejects_removed_image_elements_modality_key(tmp_pat
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    image_elements_modality: text_image",
             ]
         ),
@@ -638,6 +661,30 @@ def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.Mo
     assert cfg.recall_required is False
     assert cfg.evaluation_mode == "beir"
     assert cfg.beir_loader == "bo767_csv"
+    assert cfg.beir_doc_id_field == "pdf_page"
+
+
+def test_load_harness_config_supports_jp20_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_exists = Path.exists
+    expected_dataset_dir = Path("/datasets/nv-ingest/jp20").resolve()
+    expected_query_csv = (harness_config.REPO_ROOT / "data" / "jp20_query_gt.csv").resolve()
+
+    def _fake_exists(path_self: Path) -> bool:
+        if path_self == expected_dataset_dir:
+            return True
+        if path_self == expected_query_csv:
+            return True
+        return real_exists(path_self)
+
+    monkeypatch.setattr(harness_config.Path, "exists", _fake_exists)
+
+    cfg = load_harness_config(dataset="jp20", preset="single_gpu")
+
+    assert cfg.dataset_dir == str(expected_dataset_dir)
+    assert cfg.query_csv == str(expected_query_csv)
+    assert cfg.recall_required is False
+    assert cfg.evaluation_mode == "beir"
+    assert cfg.beir_loader == "jp20_csv"
     assert cfg.beir_doc_id_field == "pdf_page"
 
 
@@ -707,7 +754,9 @@ def test_load_harness_config_supports_store_options(tmp_path: Path) -> None:
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    store_images_uri: stored_images",
                 "    store_text: true",
                 "    strip_base64: false",

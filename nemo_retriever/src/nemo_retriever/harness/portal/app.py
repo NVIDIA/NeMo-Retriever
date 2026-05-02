@@ -381,9 +381,9 @@ class DatasetCreateRequest(BaseModel):
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = False
-    recall_match_mode: str = "pdf_page"
+    recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
-    evaluation_mode: str = "recall"
+    evaluation_mode: str = "beir"
     beir_loader: str | None = None
     beir_dataset_name: str | None = None
     beir_split: str = "test"

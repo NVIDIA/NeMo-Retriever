@@ -45,10 +45,8 @@ class RecallEvaluatorActor:
         query_csv: Annotated[str, Param(label="Query CSV", placeholder="/path/to/query_gt.csv")] = "",
         embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
         recall_required: Annotated[bool, Param(label="Recall Required")] = True,
-        match_mode: Annotated[str, Param(label="Match Mode", choices=["pdf_page", "pdf_only"])] = "pdf_page",
-        recall_adapter: Annotated[
-            str, Param(label="Recall Adapter", choices=["none", "page_plus_one", "financebench_json"])
-        ] = "none",
+        match_mode: Annotated[str, Param(label="Match Mode", choices=["audio_segment"])] = "audio_segment",
+        recall_adapter: Annotated[str, Param(label="Recall Adapter", choices=["none"])] = "none",
         ks: Annotated[str, Param(label="K Values", placeholder="1,3,5,10")] = "1,3,5,10",
         hybrid: Annotated[bool, Param(label="Hybrid Search")] = False,
         beir_loader: Annotated[str, Param(label="BEIR Loader", choices=["vidore_hf"])] = "vidore_hf",
@@ -122,6 +120,9 @@ class RecallEvaluatorActor:
             evaluation_total_time = time.perf_counter() - eval_start
             evaluation_query_count = len(beir_dataset.query_ids)
         else:
+            if self.match_mode != "audio_segment" or self.recall_adapter != "none":
+                raise ValueError("Legacy recall evaluation is only supported for audio_segment runs")
+
             from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
 
             query_csv_path = Path(self.query_csv)

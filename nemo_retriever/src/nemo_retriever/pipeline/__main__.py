@@ -567,7 +567,10 @@ def _run_evaluation(
         beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
         return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
 
-    # Default: recall eval against a query CSV.
+    if recall_match_mode != "audio_segment":
+        raise ValueError("Legacy recall evaluation is only supported for audio_segment matching")
+
+    # Legacy recall is retained for audio segment evaluation only.
     query_csv_path = Path(query_csv)
     if not query_csv_path.exists():
         logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv_path)
@@ -830,7 +833,7 @@ def run(
         path_type=Path,
         rich_help_panel=_PANEL_EVAL,
     ),
-    recall_match_mode: str = typer.Option("pdf_page", "--recall-match-mode", rich_help_panel=_PANEL_EVAL),
+    recall_match_mode: str = typer.Option("audio_segment", "--recall-match-mode", rich_help_panel=_PANEL_EVAL),
     recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details", rich_help_panel=_PANEL_EVAL),
     local_query_embed_backend: str = typer.Option(
         "hf",
@@ -904,14 +907,15 @@ def run(
     try:
         if run_mode not in {"batch", "inprocess"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
-        if recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
-            raise ValueError(f"Unsupported --recall-match-mode: {recall_match_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
-        if evaluation_mode == "beir":
-            raise ValueError("--evaluation-mode=beir is not available through the generic VDB pipeline path yet.")
+        if evaluation_mode == "recall":
+            if input_type != "audio":
+                raise ValueError("--evaluation-mode=recall is only supported with --input-type=audio")
+            if recall_match_mode != "audio_segment":
+                raise ValueError("--evaluation-mode=recall requires --recall-match-mode=audio_segment")
         if evaluation_mode == "qa" and eval_config is None:
             raise typer.BadParameter(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "

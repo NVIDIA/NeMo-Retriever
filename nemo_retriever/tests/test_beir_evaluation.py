@@ -145,6 +145,29 @@ def test_load_beir_dataset_supports_earnings_csv_pdf_page(tmp_path: Path) -> Non
     }
 
 
+def test_load_beir_dataset_supports_jp20_csv_pdf_page(tmp_path: Path) -> None:
+    annotations = tmp_path / "jp20_query_gt.csv"
+    annotations.write_text(
+        "\n".join(
+            [
+                "query,pdf,page,pdf_page",
+                "What is doc a?,1001,0,1001_1",
+                "What is doc b?,1002.pdf,4,1002_5",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_beir_dataset("jp20_csv", dataset_name=str(annotations), doc_id_field="pdf_page")
+
+    assert dataset.query_ids == ["0", "1"]
+    assert dataset.queries == ["What is doc a?", "What is doc b?"]
+    assert dataset.qrels == {
+        "0": {"1001_1": 1},
+        "1": {"1002_5": 1},
+    }
+
+
 def test_load_beir_dataset_supports_financebench_json_pdf_basename(tmp_path: Path) -> None:
     annotations = tmp_path / "financebench_train.json"
     annotations.write_text(
