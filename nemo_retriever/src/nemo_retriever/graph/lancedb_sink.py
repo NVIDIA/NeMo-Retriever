@@ -4,7 +4,7 @@
 """LanceDB Writer — Designer component that writes Ray Data batches to LanceDB.
 
 Reuses the existing schema and row-building logic from
-``nemo_retriever.ingest_modes.lancedb_utils`` so the table layout is
+``nemo_retriever.vector_store.lancedb_utils`` so the table layout is
 consistent with all other ingest paths.
 """
 
@@ -48,7 +48,7 @@ class LanceDBWriterActor:
         text_column: Annotated[str, Param(label="Text Column")] = "text",
         include_text: Annotated[bool, Param(label="Include Text")] = True,
     ) -> None:
-        from nemo_retriever.ingest_modes.lancedb_utils import lancedb_schema
+        from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
         import lancedb as _ldb
 
         self._uri = str(Path(uri).expanduser().resolve())
@@ -77,7 +77,7 @@ class LanceDBWriterActor:
         )
 
     def __call__(self, batch_df: Any) -> Any:
-        from nemo_retriever.ingest_modes.lancedb_utils import build_lancedb_rows
+        from nemo_retriever.vector_store.lancedb_utils import build_lancedb_rows
 
         rows = build_lancedb_rows(
             batch_df,

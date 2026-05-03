@@ -29,13 +29,13 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "nemo_retriever" / "tabular-d
 from duckdb_connector import DuckDB  # noqa: E402
 
 from nemo_retriever.graph import Graph
+from nemo_retriever.graph.lancedb_sink import LanceDBWriterActor
 from nemo_retriever.graph.tabular_schema_extract_operator import TabularSchemaExtractOp
 from nemo_retriever.graph.tabular_fetch_embeddings_operator import TabularFetchEmbeddingsOp
 from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload
-from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 from nemo_retriever.params import (
     EmbedParams,
     TabularExtractParams,
@@ -100,11 +100,14 @@ def run_ingest() -> None:
 
     if result_df is not None and not result_df.empty:
         lancedb_kwargs = VDB_PARAMS.vdb_kwargs
-        handle_lancedb(
-            result_df.to_dict(orient="records"),
+        writer = LanceDBWriterActor(
             uri=lancedb_kwargs["lancedb_uri"],
             table_name=lancedb_kwargs["table_name"],
+            overwrite=lancedb_kwargs.get("overwrite", True),
+            create_index=lancedb_kwargs.get("create_index", True),
         )
+        writer(result_df)
+        writer.finalize()
         print("Tabular ingest result:", len(result_df), "rows written to LanceDB")
     else:
         print("Tabular ingest result: no rows produced")

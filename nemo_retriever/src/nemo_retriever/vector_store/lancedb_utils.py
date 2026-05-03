@@ -137,17 +137,17 @@ def build_lancedb_row(
     pdf_page = f"{pdf_basename}_{page_number}" if (pdf_basename and page_number >= 0) else ""
     source_id = path or filename or pdf_basename
 
-    metadata_obj: Dict[str, Any] = {"page_number": int(page_number) if page_number is not None else -1}
+    orig_meta = getattr(row, "metadata", None)
+    if isinstance(orig_meta, dict):
+        metadata_obj: Dict[str, Any] = {k: v for k, v in orig_meta.items() if k != "embedding"}
+    else:
+        metadata_obj = {}
+
+    metadata_obj["page_number"] = int(page_number) if page_number is not None else -1
     if pdf_page:
         metadata_obj["pdf_page"] = pdf_page
     metadata_obj.update(_build_detection_metadata(row))
     update_metadata_with_content_type(metadata_obj, content_type=getattr(row, "_content_type", None))
-
-    orig_meta = getattr(row, "metadata", None)
-    if isinstance(orig_meta, dict):
-        for key in ("chunk_index", "chunk_count"):
-            if key in orig_meta:
-                metadata_obj[key] = orig_meta[key]
 
     source_obj: Dict[str, Any] = {"source_id": str(path)}
     row_out: Dict[str, Any] = {
