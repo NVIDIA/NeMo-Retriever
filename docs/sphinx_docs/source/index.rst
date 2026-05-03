@@ -46,11 +46,9 @@ Ingestor link to see descriptions of the available tasks)
     import time
     from nv_ingest_client.client import NvIngestClient
 
-    # gpu_cagra accelerated indexing is not available in milvus-lite
-    # Provide a filename for milvus_uri to use milvus-lite
-    milvus_uri = "milvus.db"
-    collection_name = "test"
-    sparse = False
+    # LanceDB: local database directory and table name for embedded vector storage
+    lancedb_uri = "./lancedb_data"
+    table_name = "test"
 
     # do content extraction from files                                
     ingestor = (
@@ -67,11 +65,10 @@ Ingestor link to see descriptions of the available tasks)
             text_depth="page"
         ).embed()
         .vdb_upload(
-            collection_name=collection_name,
-            milvus_uri=milvus_uri,
-            sparse=sparse,
-            # for llama-3.2 embedder, use 1024 for e5-v5
-            dense_dim=2048
+            vdb_op="lancedb",
+            uri=lancedb_uri,
+            table_name=table_name,
+            hybrid=False,
         )
     )
 
@@ -97,23 +94,21 @@ To inspect the results, use :func:`~nv_ingest_client.util.process_json_files.ing
     # results blob is directly inspectable
     print(ingest_json_results_to_blob(results[0]))
 
-To query the ingested results from the milvus database, use :func:`~nv_ingest_client.util.vdb.milvus.nvingest_retrieval`
+To query the ingested LanceDB table, use :func:`~nv_ingest_client.util.vdb.lancedb.lancedb_retrieval`
 
 .. code-block:: python
 
-    from nv_ingest_client.util.milvus import nvingest_retrieval
+    from nv_ingest_client.util.vdb.lancedb import lancedb_retrieval
 
-    milvus_uri = "milvus.db"
-    collection_name = "test"
-    sparse=False
+    table_path = "./lancedb_data"
+    table_name = "test"
 
     queries = ["Which animal is responsible for the typos?"]
 
-    retrieved_docs = nvingest_retrieval(
+    retrieved_docs = lancedb_retrieval(
         queries,
-        collection_name,
-        milvus_uri=milvus_uri,
-        hybrid=sparse,
+        table_path=table_path,
+        table_name=table_name,
         top_k=1,
     )
 

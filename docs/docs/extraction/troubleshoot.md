@@ -31,7 +31,7 @@ This error occurs when the maximum number of processes available to a single use
 To resolve the issue, set or raise the maximum number of processes (`-u`) by using the [ulimit](https://ss64.com/bash/ulimit.html) command.
 Before you change the `-u` setting, consider the following:
 
-- Apply the `-u` setting directly to the user (or the Docker container environment) that runs your ingest service.
+- Apply the `-u` setting directly to the user (or the environment of the pod or process) that runs your ingest service.
 - For `-u` we recommend 10,000 as a baseline, but you might need to raise or lower it based on your actual usage and system configuration.
 
 ```bash
@@ -47,7 +47,7 @@ This happens because, by default, NeMo Retriever Library stores the results from
 If the total size of the results exceeds the available memory, the process fails.
 
 To resolve this issue, use the `save_to_disk` method. 
-For details, refer to [Working with Large Datasets: Saving to Disk](python-api-reference.md#work-with-large-datasets-save-to-disk).
+For details, refer to [Working with Large Datasets: Saving to Disk](nemo-retriever-api-reference.md).
 
 
 
@@ -80,7 +80,7 @@ This error occurs when the open file descriptor limit for your service user acco
 To resolve the issue, set or raise the maximum number of open file descriptors (`-n`) by using the [ulimit](https://ss64.com/bash/ulimit.html) command.
 Before you change the `-n` setting, consider the following:
 
-- Apply the `-n` setting directly to the user (or the Docker container environment) that runs your ingest service.
+- Apply the `-n` setting directly to the user (or the environment of the pod or process) that runs your ingest service.
 - For `-n` we recommend 10,000 as a baseline, but you might need to raise or lower it based on your actual usage and system configuration.
 
 ```bash
@@ -127,5 +127,5 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Support Matrix](support-matrix.md)
 - [Prerequisites](prerequisites.md)
 - [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
-- [Deploy With Docker Compose (Self-Hosted)](quickstart-guide.md)
+- [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)

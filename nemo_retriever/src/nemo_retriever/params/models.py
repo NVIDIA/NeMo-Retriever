@@ -296,7 +296,7 @@ class EmbedParams(_ParamsModel):
     embed_output_column: str = "text_embeddings_1b_v2"
     embed_inference_batch_size: int = 16
 
-    local_ingest_backend: str = (
+    local_ingest_embed_backend: str = (
         "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
     )
     dimensions: Optional[int] = None
@@ -308,13 +308,17 @@ class EmbedParams(_ParamsModel):
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
     fused_tuning: FusedTuningParams = Field(default_factory=FusedTuningParams)
 
-    @field_validator("local_ingest_backend", mode="before")
+    @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod
-    def _validate_local_ingest_backend(cls, v: str) -> str:
-        val = str(v).strip().lower()
-        if val not in ("vllm", "hf"):
-            raise ValueError(f"local_ingest_backend must be 'vllm' or 'hf', got {v!r}")
-        return val
+    def _validate_local_ingest_embed_backend(cls, v: str) -> str:
+        from nemo_retriever.model import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+
+        return normalize_backend(
+            str(v) if v is not None else None,
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            field_name="local_ingest_embed_backend",
+            default="vllm",
+        )
 
     @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
     @classmethod
@@ -343,8 +347,8 @@ class EmbedParams(_ParamsModel):
 
 
 class VdbUploadParams(_ParamsModel):
-    purge_results_after_upload: bool = True
-    lancedb: LanceDbParams = Field(default_factory=LanceDbParams)
+    vdb_op: str = "lancedb"
+    vdb_kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
 class StoreParams(_ParamsModel):

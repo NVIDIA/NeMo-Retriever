@@ -91,7 +91,7 @@ The following is the metadata for tables within documents.
 
 ## Metadata Schema Documentation
 
-The following is a detailed explanation of the `MetadataSchema` and its constituent sub-schemas used within the NVIDIA Ingest Framework. This schema defines the structure for metadata associated with ingested content.
+The following is a detailed explanation of the `MetadataSchema` and its constituent sub-schemas used within NeMo Retriever Library ingestion. This schema defines the structure for metadata associated with ingested content.
 
 ### MetadataSchema
 

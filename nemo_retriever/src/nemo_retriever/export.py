@@ -139,8 +139,8 @@ def query_lancedb(
     from nemo_retriever.retriever import Retriever
 
     retriever = Retriever(
-        lancedb_uri=lancedb_uri,
-        lancedb_table=lancedb_table,
+        vdb="lancedb",
+        vdb_kwargs={"uri": lancedb_uri, "table_name": lancedb_table},
         embedder=embedder,
         top_k=top_k,
         reranker=False,

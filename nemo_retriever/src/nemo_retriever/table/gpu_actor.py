@@ -25,6 +25,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         self,
         *,
         table_structure_invoke_url: Optional[str] = None,
+        ocr_invoke_url: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
@@ -35,6 +36,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
     ) -> None:
         super().__init__()
         self._table_structure_invoke_url = (table_structure_invoke_url or invoke_url or "").strip()
+        self._ocr_invoke_url = (ocr_invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._table_output_format = table_output_format

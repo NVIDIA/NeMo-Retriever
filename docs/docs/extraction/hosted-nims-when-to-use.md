@@ -11,4 +11,4 @@ Consider hosted NIMs when:
 For more information, refer to the following pages:
 
 - [NVIDIA NIM catalog](https://build.nvidia.com/)
-- [Compare deployment options](choose-your-path.md)
+- [Deployment options](deployment-options.md#when-to-use-nvidia-hosted-nims)

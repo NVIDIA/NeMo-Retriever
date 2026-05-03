@@ -362,4 +362,4 @@ class RayDataExecutor(AbstractExecutor):
                 **overrides,
             )
 
-        return ds.materialize()
+        return ds.to_pandas()

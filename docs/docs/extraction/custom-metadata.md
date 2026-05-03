@@ -4,7 +4,7 @@ You can upload custom metadata for documents during ingestion.
 By uploading custom metadata you can attach additional information to documents, 
 and use it for filtering results during retrieval operations. 
 For example, you can add author metadata to your documents, and filter by author when you retrieve results. 
-To create filters, you use [Milvus Filtering Expressions](https://milvus.io/docs/boolean.md).
+To create filters at query time, use predicates supported by [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) against your table schema (custom fields are serialized into the `metadata` column with your ingested chunks). For a worked example, see the repository notebook linked at the end of this page.
 
 Use this documentation to use custom metadata to filter search results when you work with [NeMo Retriever Library](overview.md).
 
@@ -56,17 +56,17 @@ meta_df.to_csv(file_path)
 ### Example: Add Custom Metadata During Ingestion
 
 The following example adds custom metadata during ingestion. 
-For more information about the `Ingestor` class, refer to [Use the Python API](python-api-reference.md).
+For more information about the `Ingestor` class, refer to [Use the Python API](nemo-retriever-api-reference.md).
 For more information about the `vdb_upload` method, refer to [Upload Data](vdbs.md).
 
 ```python
 from nv_ingest_client.client import Ingestor
 
-hostname="localhost"
-collection_name = "nemo_retriever_collection"
-sparse = True
+hostname = "localhost"
+table_name = "nemo_retriever_collection"
+lancedb_uri = "./lancedb_data"
 
-ingestor = ( 
+ingestor = (
     Ingestor(message_client_hostname=hostname)
         .files(["data/woods_frost.pdf", "data/multimodal_test.pdf"])
         .extract(
@@ -78,20 +78,17 @@ ingestor = (
         )
         .embed()
         .vdb_upload(
-            collection_name=collection_name, 
-            milvus_uri=f"http://{hostname}:19530", 
-            sparse=sparse, 
-            minio_endpoint=f"{hostname}:9000", 
+            vdb_op="lancedb",
+            uri=lancedb_uri,
+            table_name=table_name,
+            hybrid=False,
             dense_dim=2048,
-            meta_dataframe=file_path, 
-            meta_source_field="source", 
-            meta_fields=["category", "department", "timestamp"]
         )
 )
 results = ingestor.ingest_async().result()
 ```
 
-
+Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb), so category, department, and timestamp are present on the chunks LanceDB indexes.
 
 ## Best Practices
 
@@ -108,66 +105,62 @@ The following are the best practices when you work with custom metadata:
 
 ## Use Custom Metadata to Filter Results During Retrieval
 
-You can use custom metadata to filter documents during retrieval operations. 
-Use filter expressions that follow the Milvus boolean expression syntax. 
-For more information, refer to [Filtering Explained](https://milvus.io/docs/boolean.md).
+You can use custom metadata to filter documents during retrieval operations.
+For **predicate pushdown**, use [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) on an opened table (see the native query sketch below). The **`lancedb_retrieval` helper does not accept a server-side filter**: it always returns up to `top_k` hits from the index, so any list comprehension over those hits is **application-side only**—raise `top_k` if your matches might sit outside the first `top_k` neighbors, or use a native `table.search(...).where(...)` query instead.
 
 
-### Example Filter Expressions
+### Example filter ideas
 
-The following example filters results by category.
-
-```python
-filter_expr = 'content_metadata["category"] == "technical"'
-```
-
-The following example filters results by time range.
-
-```python
-filter_expr = 'content_metadata["timestamp"] >= "2024-03-01T00:00:00" and content_metadata["timestamp"] <= "2025-12-31T00:00:00"'
-```
-
-The following example filters by category and uses multiple logical operators.
-
-```python
-filter_expr = '(content_metadata["department"] == "engineering" and content_metadata["priority"] == "high") or content_metadata["category"] == "critical"'
-```
-
+Typical keys to filter on include `category`, `department`, `priority`, and `timestamp` (use comparable ISO-8601 strings for time ranges). Encode predicates in LanceDB SQL against your table columns (often the serialized `metadata` string), or inspect `hit["entity"]["content_metadata"]` after search as in the `lancedb_retrieval` example below.
 
 ### Example: Use a Filter Expression in Search
 
-After ingestion is complete, and documents are uploaded to the database with metadata, 
-you can use the `content_metadata` field to filter search results.
+After ingestion is complete, and documents are uploaded to LanceDB with metadata,
+you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
 
-The following example uses a filter expression to narrow results by department.
+**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB SQL](https://lancedb.github.io/lancedb/sql/).
 
 ```python
-from nv_ingest_client.util.milvus import nvingest_retrieval
+import lancedb
 
-hostname="localhost"
-collection_name = "nemo_retriever_collection"
-sparse = True
+# Pseudocode sketch — replace YOUR_VECTOR and YOUR_PREDICATE with real values.
+db = lancedb.connect("./lancedb_data")
+table = db.open_table("nemo_retriever_collection")
+# table.search(YOUR_VECTOR, vector_column_name="vector").where(YOUR_PREDICATE).limit(10).to_list()
+```
+
+**`lancedb_retrieval` + post-filter:** the helper only returns `top_k` rows with no `where` argument; filtering in Python is for illustration and does **not** change what the database evaluates.
+
+```python
+from nv_ingest_client.util.vdb.lancedb import lancedb_retrieval
+
+hostname = "localhost"
+table_name = "nemo_retriever_collection"
+lancedb_uri = "./lancedb_data"
 top_k = 5
-model_name="nvidia/llama-3.2-nv-embedqa-1b-v2"
-
-filter_expr = 'content_metadata["department"] == "Engineering"'
+model_name = "nvidia/llama-3.2-nv-embedqa-1b-v2"
 
 queries = ["this is expensive"]
 q_results = []
 for que in queries:
-    q_results.append(
-        nvingest_retrieval(
-            [que], 
-            collection_name, 
-            milvus_uri=f"http://{hostname}:19530", 
-            embedding_endpoint=f"http://{hostname}:8012/v1",  
-            hybrid=sparse, 
-            top_k=top_k, 
-            model_name=model_name, 
-            gpu_search=False, 
-            _filter=filter_expr
-        )
+    batch = lancedb_retrieval(
+        [que],
+        table_path=lancedb_uri,
+        table_name=table_name,
+        embedding_endpoint=f"http://{hostname}:8012/v1",
+        top_k=top_k,
+        model_name=model_name,
     )
+    # Application-side only: fewer than top_k hits if Engineering rows are not in this batch
+    filtered = [
+        hit
+        for hit in batch[0]
+        if hit.get("entity", {})
+        .get("content_metadata", {})
+        .get("department")
+        == "Engineering"
+    ]
+    q_results.append(filtered)
 
 print(f"{q_results}")
 ```

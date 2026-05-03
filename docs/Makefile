@@ -64,11 +64,14 @@ mkdocs:
 	@echo "📚 Building MkDocs site..."
 	mkdocs build
 
-# NeMo Retriever Library (NRL) staging site: flat 13-section nav (see mkdocs.nrl-github-pages.yml).
+# NeMo Retriever Library (NRL) site: same MkDocs config as GitHub Pages CI
+# (.github/workflows/nrl-docs-github-pages.yml). Prereqs from repo root:
+#   pip install -r docs/requirements.txt && pip install -e ./nemo_retriever
+# Output: site/ under this directory (i.e. docs/site/).
 .PHONY: nrl-github-pages
 nrl-github-pages:
-	@echo "📚 Building NRL GitHub Pages MkDocs site (strict)..."
-	mkdocs build -f mkdocs.nrl-github-pages.yml --strict
+	@echo "📚 Building NRL MkDocs site (mkdocs.yml, strict) — output: $(CURDIR)/site ..."
+	DISABLE_MKDOCS_2_WARNING=true mkdocs build -f mkdocs.yml --strict
 
 # Full docs pipeline
 .PHONY: docs

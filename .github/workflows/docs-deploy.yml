@@ -1,8 +1,8 @@
-# Full documentation pipeline in Docker (Sphinx + OpenAPI + default MkDocs), then
-# NRL-only MkDocs (`make docs-ci`: mkdocs.nrl-github-pages.yml --strict). Does NOT publish to GitHub Pages.
+# Full documentation pipeline in Docker (Sphinx + OpenAPI + MkDocs), then `make mkdocs`
+# (docs/mkdocs.yml --strict). CI only — uploads a downloadable artifact; does NOT publish to GitHub Pages.
 #
 # Public documentation at https://nvidia.github.io/NeMo-Retriever/ is deployed only by
-# nrl-docs-github-pages.yml (NeMo Retriever Library MkDocs: mkdocs.nrl-github-pages.yml).
+# nrl-docs-github-pages.yml (docs/mkdocs.yml — 13-section NRL TOC).
 name: Documentation build (full pipeline, CI only)
 
 on:
@@ -15,21 +15,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: docs-full-docker-ci
+  group: docs-docker-full-pipeline
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build documentation (Docker)
+    name: Build Documentation
     runs-on: linux-large-disk
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx
 
-      - name: Build documentation Docker image
+      - name: Build Documentation Docker Image
         run: |
           docker build \
             --target docs \
@@ -37,23 +37,32 @@ jobs:
             -t nv-ingest-docs:latest \
             .
 
-      - name: Run documentation build container (full docs + NRL MkDocs strict)
+      - name: Run Documentation Build Container
         run: |
           CONTAINER_ID=$(docker run -d nv-ingest-docs:latest)
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
       - name: Wait for documentation generation
         run: |
-          EXIT_CODE=$(docker wait $CONTAINER_ID)
-          docker logs $CONTAINER_ID
+          EXIT_CODE=$(docker wait "$CONTAINER_ID")
+          docker logs "$CONTAINER_ID"
           if [ "$EXIT_CODE" != "0" ]; then
             echo "Error: docs build failed with exit code $EXIT_CODE"
             exit 1
           fi
 
       - name: Copy generated docs from container
-        run: docker cp $CONTAINER_ID:/workspace/docs/site ./generated-site
+        run: docker cp "$CONTAINER_ID:/workspace/docs/site" ./generated-site
 
       - name: Clean up container
         if: always()
-        run: docker rm -f $CONTAINER_ID
+        run: |
+          if [ -n "${CONTAINER_ID:-}" ]; then
+            docker rm -f "$CONTAINER_ID"
+          fi
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-docs-site
+          path: ./generated-site

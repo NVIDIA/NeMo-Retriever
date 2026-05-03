@@ -29,20 +29,16 @@ from __future__ import annotations
 from nemo_retriever.audio import asr_params_from_env
 from nemo_retriever.graph_ingestor import GraphIngestor
 from nemo_retriever.pipeline import __main__ as _pipeline_main
-from nemo_retriever.vector_store.lancedb_store import handle_lancedb
 
 # Typer app and supporting hooks (same as :mod:`nemo_retriever.pipeline.__main__`).
 app = _pipeline_main.app
-_ensure_lancedb_table = _pipeline_main._ensure_lancedb_table
 _resolve_file_patterns = _pipeline_main._resolve_file_patterns
 
 __all__ = [
     "GraphIngestor",
-    "_ensure_lancedb_table",
     "_resolve_file_patterns",
     "app",
     "asr_params_from_env",
-    "handle_lancedb",
 ]
 
 if __name__ == "__main__":

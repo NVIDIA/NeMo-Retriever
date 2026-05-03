@@ -1,23 +1,23 @@
-# Deploy With Docker Compose (Self-Hosted) for NeMo Retriever Library
+# Self-hosted NeMo Retriever Library (Helm)
 
 !!! note
 
     This documentation describes NeMo Retriever Library.
 
 
-This guide helps you get started using [NeMo Retriever Library](overview.md) in self-hosted mode.
+This guide helps you get started using [NeMo Retriever Library](overview.md) in self-hosted mode on Kubernetes.
 
 
-## Step 1: Start Containers
+## Step 1: Deploy on Kubernetes
 
-Use the provided [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) to start all needed services with a few commands.
+Install and upgrade NeMo Retriever extraction with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md). The chart pulls NIM and microservice images from NGC; first startup can take significant time while models load.
 
 !!! warning
 
     NIM containers on their first startup can take 10-15 minutes to pull and fully load models.
 
 
-If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
+For a comparison of deployment modes, see [Deployment options](deployment-options.md). For tunable service settings, see [Environment variables](environment-config.md).
 
 a. Git clone the repo:
 
@@ -27,20 +27,13 @@ b. Change the directory to the cloned repo by running the following code.
    
     `cd NeMo-Retriever`.
 
-c. [Generate API keys](api-keys.md) and authenticate with NGC with the `docker login` command.
+c. [Generate API keys](api-keys.md) for your deployment: create an NGC personal key with the scopes listed there, then supply it to the cluster through the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (`helm upgrade` flags such as `ngcImagePullSecret` / `ngcApiSecret`, Helm repo login with username `$oauthtoken`, or your organization’s equivalent secrets).
 
-    ```shell
-    # This is required to access pre-built containers and NIM microservices
-    $ docker login nvcr.io
-    Username: $oauthtoken
-    Password: <Your Key>
-    ```
-   
-d. Create a .env file that contains your NVIDIA Build API key.
+d. If tools on this machine read keys from a `.env` file, add the NGC-scoped variables below (see note — not the same as `NVIDIA_API_KEY` for build.nvidia.com).
 
     !!! note
 
-        If you use an NGC personal key, then you should provide the same value for all keys, but you must specify each environment variable individually. In the past, you could create an API key. If you have an API key, you can still use that. For more information, refer to [Generate Your NGC Keys](api-keys.md) and [Environment Configuration Variables](environment-config.md).
+        If you use an NGC personal key for cluster access, supply the same NGC personal key value for each of the NGC-scoped variables listed below (`NGC_API_KEY`, `NIM_NGC_API_KEY`), specifying each variable individually. The `NVIDIA_API_KEY` for hosted build.nvidia.com inference is a separate credential — see [Authentication and API keys](api-keys.md). If you have a legacy NGC API key, you can still use it for the NGC-scoped variables. Refer to [Environment variables](environment-config.md) for details.
 
     ```
     # Container images must access resources from NGC.
@@ -49,27 +42,25 @@ d. Create a .env file that contains your NVIDIA Build API key.
     NIM_NGC_API_KEY=<key to download model files after containers start>
     ```
    
-e. Make sure that NVIDIA is set as your default container runtime before you run the docker compose command by running the following code.
+e. Ensure your GPU nodes meet the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) and driver requirements from the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
-    `sudo nvidia-ctk runtime configure --runtime=docker --set-as-default`
+f. Install or upgrade the release. The documented path uses LanceDB as the vector database (embedded, in-process). For more information about optional components (audio, nemotron-parse, VLM captioning), refer to [Profile Information](#profile-information) and [Data Upload](vdbs.md).
 
-f. Start core services. By default, the pipeline uses **LanceDB** as the vector database (embedded, in-process); no extra Docker profile is required. If you want to use **Milvus** instead, start with the retrieval profile. This example uses the retrieval profile to run Milvus. For more information about other profiles, refer to [Profile Information](#profile-information).
+    Follow the `helm upgrade --install` flow in the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md), including NGC authentication and any `--set` values your cluster requires.
 
-    `docker compose --profile retrieval up`
+    !!! tip "LanceDB"
 
-    !!! tip "LanceDB (default)"
-
-        To use the default LanceDB backend, you can run `docker compose up` without `--profile retrieval`. LanceDB runs in-process and does not require Milvus, etcd, or MinIO. For details, refer to [Data Upload](vdbs.md).
+        LanceDB runs in-process alongside your client; you do not deploy separate vector-database containers for this path. For details, refer to [Data Upload](vdbs.md).
 
     !!! tip
 
-        By default, we have [configured log levels to be verbose](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml). It's possible to observe service startup proceeding. You will notice a lot of log messages. Disable verbose logging by configuring `NIM_TRITON_LOG_VERBOSE=0` for each NIM in [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml).
+        If logs are too noisy during bring-up, set `NIM_TRITON_LOG_VERBOSE=0` (or equivalent) on the relevant NIM workloads in your Helm values, then roll out the change.
 
     !!! tip
 
-        The default configuration might not fit on a single GPU for some hardware targets. Use a [docker compose override file](#docker-compose-override-files) to reduce VRAM usage. Override files typically lower per-service memory allocation, batch sizes, or concurrency, trading peak throughput for making the full pipeline runnable on the available GPU.
+        The default chart values might not fit on a single GPU for some hardware targets. Use chart overrides (for example files under [`helm/overrides/`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/helm/overrides)) or custom `values.yaml` fragments to lower per-service memory, batch sizes, or concurrency. See [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
-g. When core services have fully started, `nvidia-smi` should show processes like the following:
+g. When core services have fully started, `nvidia-smi` on a GPU node should show NIM / Triton processes similar to the following:
 
     ```
     # If it's taking > 1m for `nvidia-smi` to return, the bus will likely be busy setting up the models.
@@ -78,7 +69,6 @@ g. When core services have fully started, `nvidia-smi` should show processes lik
     |  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
     |        ID   ID                                                             Usage      |
     |=======================================================================================|
-    |    0   N/A  N/A     80461      C   milvus                                     1438MiB |
     |    0   N/A  N/A     83791      C   tritonserver                               2492MiB |
     |    0   N/A  N/A     85605      C   tritonserver                               1896MiB |
     |    0   N/A  N/A     85889      C   tritonserver                               2824MiB |
@@ -87,28 +77,19 @@ g. When core services have fully started, `nvidia-smi` should show processes lik
     +---------------------------------------------------------------------------------------+
     ```
 
-h. Run the command `docker ps`. You should see output similar to the following. Confirm that the status of the containers is `Up`.
+h. Run `kubectl get pods -n <your-namespace>`. You should see pods reach `Running` / `Ready` similar to the following (names vary by release):
 
-    ```
-    CONTAINER ID  IMAGE                                            COMMAND                 CREATED         STATUS                  PORTS            NAMES
-    1b885f37c991  nvcr.io/nvidia/nemo-microservices/...            "/usr/bin/tini -- /w…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:7670...  nemo-retriever-ms-runtime-1
-    14ef31ed7f49  milvusdb/milvus:v2.5.3-gpu                       "/tini -- bash -c 's…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9091...  milvus-standalone
-    dceaf36cc5df  otel/opentelemetry-collector-contrib:...         "/otelcol-contrib --…"  7 minutes ago   Up 7 minutes            0.0.0.0:4317...  nemo-retriever-otel-collector-1
-    5bd0b48eb71b  nvcr.io/nim/nvidia/nemoretriever-graphic-ele...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8003...  nemo-retriever-graphic-elements-1
-    daf878669036  nvcr.io/nim/nvidia/nemoretriever-ocr-v1:1.2.1    "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8009...  nemo-retriever-ocr-1
-    216bdf11c566  nvcr.io/nim/nvidia/nemoretriever-page-elements-v3:1.7.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8000...  nemo-retriever-page-elements-1
-    aee9580b0b9a  nvcr.io/nim/nvidia/llama-3.2-nv-embedqa-1b-v2:1.10.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8012...  nemo-retriever-embedding-1
-    178a92bf6f7f  nvcr.io/nim/nvidia/nemoretriever-table-struc...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8006...  nemo-retriever-table-structure-1
-    7ddbf7690036  openzipkin/zipkin                                "start-zipkin"          7 minutes ago   Up 7 minutes (healthy)  9410/tcp...      nemo-retriever-zipkin-1
-    b73bbe0c202d  minio/minio:RELEASE.2023-03-20T20-16-18Z         "/usr/bin/docker-ent…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9000...  minio
-    97fa798dbe4f  prom/prometheus:latest                           "/bin/prometheus --w…"  7 minutes ago   Up 7 minutes            0.0.0.0:9090...  nemo-retriever-prometheus-1
-    f17cb556b086  grafana/grafana                                  "/run.sh"               7 minutes ago   Up 7 minutes            0.0.0.0:3000...  grafana-service
-    3403c5a0e7be  redis/redis-stack                                "/entrypoint.sh"        7 minutes ago   Up 7 minutes            0.0.0.0:6379...  nemo-retriever-redis-1
+    ```text
+    NAME                                          READY   STATUS    RESTARTS   AGE
+    nemo-retriever-ms-runtime-xxxxxxxxxx-xxxxx    1/1     Running   0          7m
+    nemoretriever-embedding-xxxxxxxxxx-xxxxx      1/1     Running   0          7m
+    nemoretriever-page-elements-xxxxxxxxxx-xxxxx  1/1     Running   0          7m
+    redis-master-0                                1/1     Running   0          7m
     ```
 
 ## Step 2: Ingest Documents
 
-You can submit jobs programmatically in Python or using the [CLI](cli-reference.md).
+You can submit jobs programmatically in Python or using the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 !!! important "Python version"
 
@@ -152,11 +133,12 @@ ingestor = (
         text_depth="page"
     ).embed()
     .vdb_upload(
-        collection_name="test",
-        sparse=False,
+        vdb_op="lancedb",
+        uri="./lancedb_data",
+        table_name="test",
+        hybrid=False,
         # for llama-3.2 embedder, use 1024 for e5-v5
         dense_dim=2048,
-        # milvus_uri="http://milvus:19530"  # When running from within a container, the URI to the Milvus service is specified using the internal Docker network.
     )
 )
 
@@ -182,14 +164,14 @@ if failures:
 
 !!! note
 
-    For advanced visual parsing in self-hosted mode, uncomment `extract_method="nemotron_parse"` in the previous code. For more information, refer to [Advanced Visual Parsing](nemotron-parse.md).
+    For advanced visual parsing in self-hosted mode, uncomment `extract_method="nemotron_parse"` in the previous code. For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 
 The output looks similar to the following.
 
 ```
 Starting ingestion..
-1 records to insert to milvus
+Indexed records into LanceDB
 logged 8 records
 Total time: 5.479151725769043 seconds
 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost   Chart 1 - Hammer - Powerdrill - Bluetooth speaker - Minifridge - Premium desk fan Dollars $- - $20.00 - $40.00 - $60.00 - $80.00 - $100.00 - $120.00 - $140.00 - $160.00 Cost
@@ -320,8 +302,6 @@ INFO:retriever_client.processing:caption_ext: Avg: 0.55 ms, Median: 0.55 ms, Tot
 INFO:retriever_client.processing:caption_ext_channel_in: Avg: 0.51 ms, Median: 0.51 ms, Total Time: 0.51 ms, Total % of Trace Computation: 0.01%
 INFO:retriever_client.processing:embed_text: Avg: 1.21 ms, Median: 1.21 ms, Total Time: 1.21 ms, Total % of Trace Computation: 0.03%
 INFO:retriever_client.processing:embed_text_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
-INFO:retriever_client.processing:store_embedding_minio: Avg: 0.32 ms, Median: 0.32 ms, Total Time: 0.32 ms, Total % of Trace Computation: 0.01%
-INFO:retriever_client.processing:store_embedding_minio_channel_in: Avg: 1.18 ms, Median: 1.18 ms, Total Time: 1.18 ms, Total % of Trace Computation: 0.03%
 INFO:retriever_client.processing:message_broker_task_sink_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
 INFO:retriever_client.processing:No unresolved time detected. Trace times account for the entire elapsed duration.
 INFO:retriever_client.processing:Processed 1 files in 2.34 seconds.
@@ -391,81 +371,46 @@ python src/util/image_viewer.py --file_path ./processed_docs/image/multimodal_te
 
 ## Profile Information
 
-The values that you specify in the `--profile` option of your `docker compose up` command are explained in the following table. 
-You can specify multiple `--profile` options.
+The following table maps **logical capability bundles** (optional NIM and storage stacks) to what you enable in **Helm values** when deploying NeMo Retriever extraction. Enable the rows you need for your workload; exact value paths depend on chart version—use the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) as the source of truth.
 
-| Profile               | Type     | Description                                                       | 
+| Capability            | Type     | Description                                                       | 
 |-----------------------|----------|-------------------------------------------------------------------| 
-| `retrieval`           | Core     | Enables the embedding NIM and (optional) GPU-accelerated Milvus. Omit this profile to use the default LanceDB backend.           | 
-| `audio`               | Advanced | Use the [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) ASR NIM (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) for processing audio files. For more information, refer to [Audio Processing](audio-video.md). | 
-| `nemotron-parse`      | Advanced | Use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), which adds state-of-the-art text and table extraction. For more information, refer to [Advanced Visual Parsing](nemotron-parse.md). | 
-| `vlm`                 | Advanced | Use [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning of unstructured images and infographics. This profile enables the `caption` method in the Python API to generate text descriptions of visual content. For more information, refer to [Use Multimodal Embedding](embedding.md) and [Extract Captions from Images](python-api-reference.md#extract-captions-from-images). | 
+| `retrieval`           | Core     | Embedding NIM for passage and query embeddings; pair with LanceDB in your client configuration for vector storage. | 
+| `audio`               | Advanced | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) ASR NIM for audio files. See [Audio Processing](audio-video.md). | 
+| `nemotron-parse`      | Advanced | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) for higher-accuracy text and table extraction. |
+| `vlm`                 | Advanced | [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning. Enables the `caption` API. See [Use Multimodal Embedding](embedding.md) and [Extract Captions from Images](nemo-retriever-api-reference.md). | 
 
-### Example: Using the VLM Profile for Infographic Captioning
+### Example: VLM captioning for infographics
 
 Infographics often combine text, charts, and diagrams into complex visuals. Vision-language model (VLM) captioning generates natural language descriptions that capture this complexity, making the content searchable and more accessible for downstream applications.
 
-To use VLM captioning for infographics, start NeMo Retriever Library with both the `retrieval` and `vlm` profiles by running the following code.
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  --profile retrieval \
-  --profile vlm up
-```
+Enable the VLM / captioning NIM and the retrieval (embedding) stack your values require in your Helm values, then upgrade the release. Refer to the chart README and [embedding](embedding.md) for the environment variables that select the multimodal embedding and caption stack.
 
-## Air-Gapped Deployment (Docker Compose)
+## Air-gapped deployment (Kubernetes)
 
-When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
+When deploying without internet or NGC registry access from the cluster, follow [Air-Gapped Deployment (Kubernetes)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) in the Helm chart documentation and the [NVIDIA NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html): mirror images to your registry, load secrets, then install or upgrade the chart with those private references. Keep the same image tags and values between staging and production so configuration stays consistent.
 
-1. On a machine with network access: Clone the repo, authenticate with NGC (`docker login nvcr.io`), and pull all images used by your chosen profile (for example, `docker compose --profile retrieval pull`).
-2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)).
-3. Transfer the image archives and your `docker-compose.yaml` (and `.env` if used) to the air-gapped system.
-4. On the air-gapped machine: Load the images (`docker load -i <archive>`) and start the stack with the same profile (for example, `docker compose --profile retrieval up`).
+## Helm values and GPU-specific overrides
 
-Ensure the same image tags and `docker-compose.yaml` version are used in both environments so that service configuration stays consistent.
+Default chart settings might exceed VRAM on a single GPU for some hardware targets. Use **values fragments** or the checked-in examples under [`helm/overrides/`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/helm/overrides) (for example A10G, A100 40GB, L40S) to lower per-service memory, batch sizes, or concurrency. Merge the override file with `-f` when you run `helm upgrade`, or maintain a single consolidated `values.yaml` per environment.
 
-## Docker Compose override files
+| Example override asset (repo) | GPU target |
+|--------------------------------|------------|
+| `helm/overrides/values-a10g.yaml` | NVIDIA A10G |
+| `helm/overrides/values-a100-40gb.yaml` | NVIDIA A100-SXM4-40GB |
+| `helm/overrides/values-l40s.yaml` | NVIDIA L40S |
 
-The default [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml) might exceed VRAM on a single GPU for some hardware. Override files reduce per-service memory, batch sizes, or concurrency so the full pipeline can run on the available GPU. To use an override, pass a second `-f` file after the base compose file; Docker Compose merges them and the override takes precedence.
+For RTX Pro 6000 Server Edition and other GPUs with limited VRAM, start from the override that best matches your GPU memory, then tune further.
 
-| Override file | GPU target |
-|---------------|------------|
-| `docker-compose.a10g.yaml` | NVIDIA A10G |
-| `docker-compose.a100-40gb.yaml` | NVIDIA A100-SXM4-40GB |
-| `docker-compose.l40s.yaml` | NVIDIA L40S |
-
-For RTX Pro 6000 Server Edition and other GPUs with limited VRAM, use the override that best matches your GPU memory (for example, `docker-compose.l40s.yaml` or `docker-compose.a10g.yaml`).
-
-For the VLM profile and infographic captioning, see the example under [Profile Information](#profile-information) (add `-f docker-compose.<override>.yaml` as needed when using an override file).
-
-### Example with A100 40GB
-
-The following example uses an override file for an A100 40GB GPU.
+### Example: merge a GPU override with `helm upgrade`
 
 ```shell
-docker compose \
-  -f docker-compose.yaml \
-  -f docker-compose.a100-40gb.yaml \
-  --profile retrieval up
+helm upgrade --install nemo-retriever <chart-or-tgz> -n "${NAMESPACE}" \
+  -f my-base-values.yaml \
+  -f helm/overrides/values-a100-40gb.yaml
 ```
 
-### Example with A10G
-
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  -f docker-compose.a10g.yaml \
-  --profile retrieval up
-```
-
-### Example with L40S
-
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  -f docker-compose.l40s.yaml \
-  --profile retrieval up
-```
+Use the same pattern for other override files, substituting the path that matches your GPU.
 
 
 ## Specify MIG slices for NIM models

@@ -387,6 +387,8 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
             model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
             device=self._kwargs.get("device") or None,
             hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+            backend=str(self._kwargs.get("local_reranker_backend", "vllm")),
+            gpu_memory_utilization=float(self._kwargs.get("reranker_gpu_memory_utilization", 0.5)),
         )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

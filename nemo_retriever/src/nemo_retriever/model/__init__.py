@@ -147,6 +147,20 @@ def create_local_embedder(
 
 
 _LOCAL_QUERY_BACKENDS = frozenset({"hf", "vllm"})
+_LOCAL_RERANKER_BACKENDS = frozenset({"hf", "vllm"})
+_LOCAL_INGEST_EMBED_BACKENDS = frozenset({"hf", "vllm"})
+
+
+def normalize_backend(value: str | None, valid: frozenset[str], *, field_name: str, default: str) -> str:
+    """Normalize *value* (strip + lowercase) and validate against *valid*.
+
+    Raises ``ValueError`` referencing *field_name* on invalid input.
+    Falsy *value* is replaced by *default* before validation.
+    """
+    v = (value or default).strip().lower()
+    if v not in valid:
+        raise ValueError(f"{field_name} must be one of {sorted(valid)}; got {value!r}")
+    return v
 
 
 def create_local_query_embedder(
@@ -168,9 +182,7 @@ def create_local_query_embedder(
     - ``backend="hf"``: HuggingFace for both VL and non-VL models.
     - ``backend="vllm"``: vLLM for both VL and non-VL models.
     """
-    b = (backend or "hf").strip().lower()
-    if b not in _LOCAL_QUERY_BACKENDS:
-        raise ValueError(f"backend must be one of {sorted(_LOCAL_QUERY_BACKENDS)}, got {backend!r}")
+    b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="hf")
 
     return create_local_embedder(
         model_name,
@@ -190,14 +202,40 @@ def create_local_reranker(
     *,
     device: str | None = None,
     hf_cache_dir: str | None = None,
+    backend: str = "vllm",
+    gpu_memory_utilization: float = 0.5,
 ) -> "BaseModel":
     """Create the appropriate local reranker model (VL or text-only).
 
-    Dispatches to ``NemotronRerankVLV2`` when *model_name* matches a VL
-    reranker ID, otherwise returns the text-only ``NemotronRerankV2``.
+    Dispatches to ``NemotronRerankVLV2VLLM`` (default) or
+    ``NemotronRerankVLV2`` when *model_name* matches a VL reranker ID,
+    depending on *backend*.  Otherwise returns the text-only
+    ``NemotronRerankV2``.
+
+    Parameters
+    ----------
+    backend:
+        ``"vllm"`` (default) uses vLLM's pooling runner for the VL
+        reranker.  ``"hf"`` uses HuggingFace
+        ``AutoModelForSequenceClassification``.  Only affects VL reranker
+        dispatch; the text-only reranker always uses HuggingFace.
+    gpu_memory_utilization:
+        Fraction of GPU memory for the vLLM engine (only used when
+        *backend* is ``"vllm"``).
     """
+    b = normalize_backend(backend, _LOCAL_RERANKER_BACKENDS, field_name="backend", default="vllm")
     if is_vl_rerank_model(model_name):
-        from nemo_retriever.model.local.nemotron_rerank_vl_v2 import NemotronRerankVLV2
+        if b == "vllm":
+            from nemo_retriever.model.local.nemotron_rerank_vl_v2 import NemotronRerankVLV2VLLM
+
+            return NemotronRerankVLV2VLLM(
+                model_name=model_name,
+                device=device,
+                hf_cache_dir=hf_cache_dir,
+                gpu_memory_utilization=gpu_memory_utilization,
+            )
+
+        from nemo_retriever.model.local.nemotron_rerank_vl_v2_hf import NemotronRerankVLV2
 
         return NemotronRerankVLV2(
             model_name=model_name,
