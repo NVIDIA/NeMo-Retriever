@@ -26,6 +26,12 @@ Examples::
     retriever pipeline run /data/pdfs \\
         --vdb-op <operator-key> \\
         --vdb-kwargs-json '<operator kwargs JSON object>'
+
+    # Sidecar metadata (merged into each chunk's content_metadata, same triplet as nv-ingest-client)
+    retriever pipeline run /data/pdfs \\
+        --meta-dataframe ./meta.csv \\
+        --meta-source-field source \\
+        --meta-fields meta_a,meta_b
 """
 
 from __future__ import annotations
@@ -814,6 +820,34 @@ def run(
         help="JSON object forwarded as constructor kwargs to the selected VDB operator.",
         rich_help_panel=_PANEL_VDB,
     ),
+    meta_dataframe: Optional[Path] = typer.Option(
+        None,
+        "--meta-dataframe",
+        help="CSV/JSON/Parquet sidecar metadata (requires --meta-source-field and --meta-fields).",
+        path_type=Path,
+        exists=True,
+        dir_okay=False,
+        file_okay=True,
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_source_field: Optional[str] = typer.Option(
+        None,
+        "--meta-source-field",
+        help="Column in the metadata file that matches document path (same as nv-ingest-client).",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_fields: Optional[str] = typer.Option(
+        None,
+        "--meta-fields",
+        help="Comma-separated metadata columns to copy onto each chunk's content_metadata.",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_join_key: str = typer.Option(
+        "auto",
+        "--meta-join-key",
+        help="Document match key: auto (try source_id then source_name), source_id, or source_name.",
+        rich_help_panel=_PANEL_VDB,
+    ),
     save_intermediate: Optional[Path] = typer.Option(
         None,
         "--save-intermediate",
@@ -931,6 +965,26 @@ def run(
 
         resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
         resolved_vdb_kwargs = _parse_vdb_kwargs_json(vdb_kwargs_json)
+
+        _sidecar_n = sum(1 for x in (meta_dataframe, meta_source_field, meta_fields) if x is not None)
+        if _sidecar_n not in (0, 3):
+            raise typer.BadParameter(
+                "Sidecar metadata: pass all of --meta-dataframe, --meta-source-field, and --meta-fields, or omit all."
+            )
+        if _sidecar_n == 3:
+            assert meta_dataframe is not None and meta_source_field is not None and meta_fields is not None
+            cols = [c.strip() for c in meta_fields.split(",") if c.strip()]
+            if not cols:
+                raise typer.BadParameter("--meta-fields must list at least one column name.")
+            if meta_join_key not in ("auto", "source_id", "source_name"):
+                raise typer.BadParameter("--meta-join-key must be one of: auto, source_id, source_name.")
+            resolved_vdb_kwargs = {
+                **resolved_vdb_kwargs,
+                "meta_dataframe": str(meta_dataframe.expanduser().resolve()),
+                "meta_source_field": meta_source_field.strip(),
+                "meta_fields": cols,
+                "meta_join_key": meta_join_key,
+            }
 
         remote_api_key = resolve_remote_api_key(api_key)
         extract_remote_api_key = remote_api_key
