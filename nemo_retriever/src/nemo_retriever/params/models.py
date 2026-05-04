@@ -288,6 +288,7 @@ class ExtractParams(_ParamsModel):
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
+    ocr_version: Literal["v1", "v2"] = "v2"
 
     # Service endpoints
     invoke_url: Optional[str] = None

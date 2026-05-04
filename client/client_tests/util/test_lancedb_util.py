@@ -1,3 +1,4 @@
+import logging
 import types
 from unittest.mock import Mock
 
@@ -47,9 +48,9 @@ def make_sample_results():
 
 
 def test_create_lancedb_results_filters_and_transforms():
-    """Test that create_lancedb_results correctly filters and transforms records."""
+    """Test that _create_lancedb_results correctly filters and transforms records."""
     results = make_sample_results()
-    out = lancedb_mod.create_lancedb_results(results)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=2)
     assert isinstance(out, list)
     assert len(out) == 2
     assert out[0]["vector"] == [0.1, 0.2]
@@ -67,7 +68,7 @@ def test_create_index_uses_lancedb_and_pa_schema(monkeypatch):
     monkeypatch.setattr(lancedb_mod, "pa", Mock(schema=Mock(return_value="schema")))
 
     sample = make_sample_results()
-    table = lancedb_mod.LanceDB().create_index(records=sample)
+    table = lancedb_mod.LanceDB(vector_dim=2).create_index(records=sample)
 
     fake_db.create_table.assert_called()
     assert table is fake_table
@@ -137,14 +138,14 @@ def test_init_default_uri_and_overwrite():
 
 
 def test_create_lancedb_results_empty_list():
-    """Test create_lancedb_results with empty input."""
+    """Test _create_lancedb_results with empty input."""
     results = []
-    out = lancedb_mod.create_lancedb_results(results)
+    out, _counts = lancedb_mod._create_lancedb_results(results)
     assert out == []
 
 
 def test_create_lancedb_results_all_none_embeddings():
-    """Test create_lancedb_results when all embeddings are None."""
+    """Test _create_lancedb_results when all embeddings are None."""
     results = [
         [
             {
@@ -158,18 +159,18 @@ def test_create_lancedb_results_all_none_embeddings():
             },
         ]
     ]
-    out = lancedb_mod.create_lancedb_results(results)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=1)
     assert out == []
 
 
 def test_create_lancedb_results_mixed_embeddings():
-    """Test create_lancedb_results with mixed None and valid embeddings."""
+    """Test _create_lancedb_results retains only rows whose embedding length matches expected_dim."""
     results = [
         [
             {
                 "document_type": "text",
                 "metadata": {
-                    "embedding": [0.1],
+                    "embedding": [0.1, 0.2],
                     "content": "keep",
                     "content_metadata": {"page_number": 1},
                     "source_metadata": {"source_id": "s1"},
@@ -179,7 +180,7 @@ def test_create_lancedb_results_mixed_embeddings():
                 "document_type": "text",
                 "metadata": {
                     "embedding": None,
-                    "content": "skip",
+                    "content": "skip-no-embedding",
                     "content_metadata": {"page_number": 2},
                     "source_metadata": {"source_id": "s1"},
                 },
@@ -187,7 +188,7 @@ def test_create_lancedb_results_mixed_embeddings():
             {
                 "document_type": "text",
                 "metadata": {
-                    "embedding": [0.2, 0.3],
+                    "embedding": [0.3, 0.4],
                     "content": "keep2",
                     "content_metadata": {"page_number": 3},
                     "source_metadata": {"source_id": "s2"},
@@ -195,7 +196,7 @@ def test_create_lancedb_results_mixed_embeddings():
             },
         ]
     ]
-    out = lancedb_mod.create_lancedb_results(results)
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=2)
     assert len(out) == 2
     assert out[0]["text"] == "keep"
     assert out[1]["text"] == "keep2"
@@ -210,11 +211,10 @@ def test_create_index_uses_uri_from_instance(monkeypatch):
     monkeypatch.setattr(lancedb_mod, "lancedb", Mock(connect=Mock(return_value=fake_db)))
     monkeypatch.setattr(lancedb_mod, "pa", Mock(schema=Mock(return_value="schema")))
 
-    ldb = lancedb_mod.LanceDB(uri="my_custom_uri")
+    ldb = lancedb_mod.LanceDB(uri="my_custom_uri", vector_dim=2)
     sample = make_sample_results()
     ldb.create_index(records=sample)
 
-    # Verify lancedb.connect was called with the custom uri
     lancedb_mod.lancedb.connect.assert_called_once_with(uri="my_custom_uri")
 
 
@@ -227,11 +227,10 @@ def test_create_index_uses_table_name_kwarg(monkeypatch):
     monkeypatch.setattr(lancedb_mod, "lancedb", Mock(connect=Mock(return_value=fake_db)))
     monkeypatch.setattr(lancedb_mod, "pa", Mock(schema=Mock(return_value="schema")))
 
-    ldb = lancedb_mod.LanceDB()
+    ldb = lancedb_mod.LanceDB(vector_dim=2)
     sample = make_sample_results()
     ldb.create_index(records=sample, table_name="custom_table")
 
-    # Verify create_table was called with custom_table
     call_args = fake_db.create_table.call_args
     assert call_args[0][0] == "custom_table"
 
@@ -245,17 +244,15 @@ def test_create_index_uses_overwrite_mode(monkeypatch):
     monkeypatch.setattr(lancedb_mod, "lancedb", Mock(connect=Mock(return_value=fake_db)))
     monkeypatch.setattr(lancedb_mod, "pa", Mock(schema=Mock(return_value="schema")))
 
-    # Test with overwrite=False (should use "append" mode)
-    ldb = lancedb_mod.LanceDB(overwrite=False)
+    ldb = lancedb_mod.LanceDB(overwrite=False, vector_dim=2)
     sample = make_sample_results()
     ldb.create_index(records=sample)
 
     call_kwargs = fake_db.create_table.call_args[1]
     assert call_kwargs["mode"] == "append"
 
-    # Reset and test with overwrite=True (should use "overwrite" mode)
     fake_db.reset_mock()
-    ldb2 = lancedb_mod.LanceDB(overwrite=True)
+    ldb2 = lancedb_mod.LanceDB(overwrite=True, vector_dim=2)
     ldb2.create_index(records=sample)
 
     call_kwargs = fake_db.create_table.call_args[1]
@@ -364,14 +361,12 @@ def test_create_lancedb_results_missing_content_metadata_graceful():
                 "metadata": {
                     "embedding": [0.1],
                     "content": "text with missing content_metadata",
-                    # Missing content_metadata - should use empty dict default
                     "source_metadata": {"source_id": "s1"},
                 },
             }
         ]
     ]
-    out = lancedb_mod.create_lancedb_results(results)
-    # Should still produce output with JSON-serialized empty metadata.
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=1)
     assert len(out) == 1
     assert out[0]["metadata"] == "{}"
     assert out[0]["text"] == "text with missing content_metadata"
@@ -492,3 +487,257 @@ def test_get_text_for_element_missing_metadata():
     }
     result = lancedb_mod._get_text_for_element(element)
     assert result is None
+
+
+# ============ Regression tests for variable-length vector handling ============
+
+
+def _embedding_record(embedding, page: int = 1, content: str = "row"):
+    """Build a minimal NV-Ingest pipeline record for variable-length-vector tests."""
+    return {
+        "document_type": "text",
+        "metadata": {
+            "embedding": embedding,
+            "content": content,
+            "content_metadata": {"page_number": page},
+            "source_metadata": {"source_id": f"s{page}"},
+        },
+    }
+
+
+def test_create_lancedb_results_drops_variable_length_vectors(caplog):
+    """Mixed-length embeddings: only rows whose length matches expected_dim survive,
+    and a single structured WARNING summary is emitted listing the drop counts.
+
+    This guards against the regression where a small fraction of empty/short
+    embeddings caused LanceDB's strict fixed-size schema to abort the entire
+    write at the end of a long ingestion run.
+    """
+    expected_dim = 4
+    results = [
+        [
+            _embedding_record([0.1, 0.2, 0.3, 0.4], page=1, content="good_a"),
+            _embedding_record([], page=2, content="empty_should_drop"),
+            _embedding_record([0.1, 0.2], page=3, content="short_should_drop"),
+            _embedding_record(None, page=4, content="none_should_drop"),
+            _embedding_record([0.5, 0.6, 0.7, 0.8], page=5, content="good_b"),
+        ]
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="nv_ingest_client.util.vdb.lancedb"):
+        out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=expected_dim)
+
+    assert [row["text"] for row in out] == ["good_a", "good_b"]
+    summary_records = [
+        r for r in caplog.records if r.levelno == logging.WARNING and "_create_lancedb_results" in r.getMessage()
+    ]
+    assert len(summary_records) == 1
+    summary = summary_records[0].getMessage()
+    assert "accepted=2" in summary
+    assert "dropped_no_embedding=1" in summary
+    assert "dropped_bad_length=2" in summary
+    assert f"expected_dim={expected_dim}" in summary
+
+
+def test_create_lancedb_results_respects_expected_dim():
+    """_create_lancedb_results filters strictly by the caller-specified expected_dim."""
+    results = [
+        [
+            _embedding_record([0.0] * 128, page=1, content="dim_128"),
+            _embedding_record([0.0] * 256, page=2, content="dim_256_should_drop"),
+        ]
+    ]
+    out, _counts = lancedb_mod._create_lancedb_results(results, expected_dim=128)
+    assert len(out) == 1
+    assert out[0]["text"] == "dim_128"
+    assert len(out[0]["vector"]) == 128
+
+
+def test_lancedb_init_validates_on_bad_vectors():
+    """LanceDB.__init__ rejects unknown on_bad_vectors policies and non-positive vector_dim."""
+    import pytest
+
+    with pytest.raises(ValueError, match="on_bad_vectors must be one of"):
+        lancedb_mod.LanceDB(on_bad_vectors="bogus")
+
+    with pytest.raises(ValueError, match="vector_dim must be positive"):
+        lancedb_mod.LanceDB(vector_dim=0)
+
+    with pytest.raises(ValueError, match="vector_dim must be positive"):
+        lancedb_mod.LanceDB(vector_dim=-5)
+
+    ldb = lancedb_mod.LanceDB(on_bad_vectors="DROP")
+    assert ldb.on_bad_vectors == "drop"
+    ldb_fill = lancedb_mod.LanceDB(on_bad_vectors=" Fill ", fill_value=1.5)
+    assert ldb_fill.on_bad_vectors == "fill"
+    assert ldb_fill.fill_value == 1.5
+
+
+def test_create_index_passes_on_bad_vectors_to_lancedb(monkeypatch):
+    """create_index forwards on_bad_vectors (and fill_value when applicable) to db.create_table."""
+    fake_db = Mock()
+    fake_table = Mock()
+    fake_db.create_table = Mock(return_value=fake_table)
+
+    monkeypatch.setattr(lancedb_mod, "lancedb", Mock(connect=Mock(return_value=fake_db)))
+    monkeypatch.setattr(lancedb_mod, "pa", Mock(schema=Mock(return_value="schema")))
+
+    sample = make_sample_results()
+
+    ldb_default = lancedb_mod.LanceDB(vector_dim=2)
+    ldb_default.create_index(records=sample)
+    default_kwargs = fake_db.create_table.call_args.kwargs
+    assert default_kwargs["on_bad_vectors"] == "drop"
+    assert "fill_value" not in default_kwargs
+
+    fake_db.create_table.reset_mock()
+
+    ldb_fill = lancedb_mod.LanceDB(vector_dim=2, on_bad_vectors="fill", fill_value=0.0)
+    ldb_fill.create_index(records=sample)
+    fill_kwargs = fake_db.create_table.call_args.kwargs
+    assert fill_kwargs["on_bad_vectors"] == "fill"
+    assert fill_kwargs["fill_value"] == 0.0
+
+    fake_db.create_table.reset_mock()
+
+    ldb_null = lancedb_mod.LanceDB(vector_dim=2, on_bad_vectors="null")
+    ldb_null.create_index(records=sample)
+    null_kwargs = fake_db.create_table.call_args.kwargs
+    assert null_kwargs["on_bad_vectors"] == "null"
+    assert "fill_value" not in null_kwargs
+
+
+def test_create_index_uses_configured_vector_dim_in_schema(monkeypatch):
+    """The vector field declared on the LanceDB schema reflects the configured vector_dim."""
+    fake_db = Mock()
+    fake_table = Mock()
+    fake_db.create_table = Mock(return_value=fake_table)
+
+    captured_dims = []
+
+    def fake_list_(_dtype, dim):
+        captured_dims.append(dim)
+        return ("fixed_size_list", dim)
+
+    fake_pa = Mock(
+        schema=Mock(return_value="schema"),
+        list_=Mock(side_effect=fake_list_),
+        float32=Mock(return_value="float32"),
+        string=Mock(return_value="string"),
+        field=Mock(side_effect=lambda name, dtype: (name, dtype)),
+    )
+
+    monkeypatch.setattr(lancedb_mod, "lancedb", Mock(connect=Mock(return_value=fake_db)))
+    monkeypatch.setattr(lancedb_mod, "pa", fake_pa)
+
+    ldb = lancedb_mod.LanceDB(vector_dim=512)
+    ldb.create_index(records=[])
+
+    assert 512 in captured_dims
+
+
+def test_create_lancedb_results_skips_length_check_when_expected_dim_none():
+    """``expected_dim=None`` disables the length check; mixed-length rows all pass through.
+
+    Defers length policy entirely to the writer side (LanceDB's
+    ``on_bad_vectors``), which is required for ``on_bad_vectors="error"`` to
+    actually surface a LanceDB error instead of silently dropping rows here.
+    """
+    results = [
+        [
+            _embedding_record([0.1, 0.2, 0.3, 0.4], page=1, content="dim_4"),
+            _embedding_record([0.1, 0.2], page=2, content="dim_2"),
+            _embedding_record([], page=3, content="dim_0"),
+            _embedding_record(None, page=4, content="none_still_dropped"),
+        ]
+    ]
+
+    out, counts = lancedb_mod._create_lancedb_results(results, expected_dim=None)
+
+    assert [row["text"] for row in out] == ["dim_4", "dim_2", "dim_0"]
+    assert counts["accepted"] == 3
+    assert counts["dropped_bad_length"] == 0
+    assert counts["dropped_no_embedding"] == 1
+    assert counts["dropped_no_text"] == 0
+
+
+def test_create_index_skips_row_builder_filter_when_on_bad_vectors_error(monkeypatch):
+    """``on_bad_vectors="error"`` must forward ``expected_dim=None`` so LanceDB itself raises.
+
+    Otherwise the row-builder filter would silently drop the bad row before
+    LanceDB ever sees it, contradicting the documented strict-fail semantics
+    of the ``"error"`` policy.
+    """
+    fake_db = Mock()
+    fake_table = Mock()
+    fake_db.create_table = Mock(return_value=fake_table)
+
+    monkeypatch.setattr(lancedb_mod, "lancedb", Mock(connect=Mock(return_value=fake_db)))
+    monkeypatch.setattr(lancedb_mod, "pa", Mock(schema=Mock(return_value="schema")))
+
+    captured_kwargs: dict = {}
+
+    real_create_lancedb_results = lancedb_mod._create_lancedb_results
+
+    def spy(records, **kwargs):
+        captured_kwargs.update(kwargs)
+        return real_create_lancedb_results(records, **kwargs)
+
+    monkeypatch.setattr(lancedb_mod, "_create_lancedb_results", spy)
+
+    results = [
+        [
+            _embedding_record([0.1, 0.2, 0.3, 0.4], page=1, content="ok"),
+            _embedding_record([0.1, 0.2], page=2, content="bad_length"),
+        ]
+    ]
+
+    ldb = lancedb_mod.LanceDB(vector_dim=4, on_bad_vectors="error")
+    ldb.create_index(records=results)
+
+    assert captured_kwargs.get("expected_dim") is None
+    forwarded_data = fake_db.create_table.call_args.kwargs["data"]
+    assert [row["text"] for row in forwarded_data] == ["ok", "bad_length"]
+    assert fake_db.create_table.call_args.kwargs["on_bad_vectors"] == "error"
+
+
+def test_create_index_records_drop_counts_via_record_timing(monkeypatch):
+    """Drop counts ride along on the existing ``_record_timing`` sidecar for ``lancedb.create_table``.
+
+    Surfaces accepted/dropped tallies as first-class telemetry without
+    introducing a new metrics dependency.
+    """
+    fake_db = Mock()
+    fake_table = Mock()
+    fake_db.create_table = Mock(return_value=fake_table)
+
+    monkeypatch.setattr(lancedb_mod, "lancedb", Mock(connect=Mock(return_value=fake_db)))
+    monkeypatch.setattr(lancedb_mod, "pa", Mock(schema=Mock(return_value="schema")))
+
+    timings: list[tuple[str, dict]] = []
+
+    def fake_record_timing(name, _duration, extra=None):
+        timings.append((name, dict(extra) if extra else {}))
+
+    monkeypatch.setattr(lancedb_mod, "_record_timing", fake_record_timing)
+
+    results = [
+        [
+            _embedding_record([0.1, 0.2, 0.3, 0.4], page=1, content="ok_a"),
+            _embedding_record([0.1, 0.2], page=2, content="bad_length"),
+            _embedding_record(None, page=3, content="no_embedding"),
+            _embedding_record([0.5, 0.6, 0.7, 0.8], page=4, content="ok_b"),
+        ]
+    ]
+
+    ldb = lancedb_mod.LanceDB(vector_dim=4)
+    ldb.create_index(records=results)
+
+    create_table_events = [extra for name, extra in timings if name == "lancedb.create_table"]
+    assert len(create_table_events) == 1
+    extra = create_table_events[0]
+    assert extra["rows"] == 2
+    assert extra["accepted"] == 2
+    assert extra["dropped_bad_length"] == 1
+    assert extra["dropped_no_embedding"] == 1
+    assert extra["dropped_no_text"] == 0

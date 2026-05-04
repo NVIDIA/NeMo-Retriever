@@ -36,7 +36,16 @@ class NemotronOCRV2(BaseModel):
     ) -> None:
         super().__init__()
         configure_global_hf_cache_base()
-        from nemotron_ocr.inference.pipeline_v2 import NemotronOCRV2 as _NemotronOCRV2  # local-only import
+        try:
+            from nemotron_ocr.inference.pipeline_v2 import NemotronOCRV2 as _NemotronOCRV2
+        except ImportError as exc:
+            raise ImportError(
+                "Local Nemotron OCR v2 requires the `nemotron_ocr` package. "
+                "Install via: git clone https://huggingface.co/nvidia/nemotron-ocr-v2 && "
+                "cd nemotron-ocr-v2 && pip install --no-build-isolation -v . "
+                "Alternatively, run with --ocr-invoke-url pointed at a v2 endpoint, "
+                "or pass --ocr-version v1 to use the legacy local model."
+            ) from exc
 
         if model_dir:
             self._model = _NemotronOCRV2(model_dir=model_dir)
