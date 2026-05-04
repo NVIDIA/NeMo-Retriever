@@ -4,4 +4,4 @@ Embeddings turn extracted text and multimodal content into vectors for semantic 
 
 For multimodal or VLM embeddings, refer to [Multimodal embeddings (VLM)](embedding.md).
 
-After embedding, content is stored in a vector database; refer to [Vector databases](vdbs.md). RAG-style collections are created and populated through your pipeline configuration and harness runs. For details, refer to [Evaluate on your data](evaluate-on-your-data.md) and the [data store](vdbs.md) documentation for your backend.
+After embedding, content is stored in a vector database; refer to [Vector databases](vdbs.md). RAG-style collections are created and populated through your pipeline configuration. For details, refer to [Evaluate on your data](evaluate-on-your-data.md) and the [data store](vdbs.md) documentation for your backend.

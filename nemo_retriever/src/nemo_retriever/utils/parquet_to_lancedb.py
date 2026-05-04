@@ -19,7 +19,7 @@ import logging
 from pathlib import Path
 
 from nemo_retriever.io.dataframe import read_extraction_parquet
-from nemo_retriever.vector_store.lancedb_store import handle_lancedb
+from nemo_retriever.vdb.lancedb_bulk import handle_lancedb
 
 logger = logging.getLogger(__name__)
 

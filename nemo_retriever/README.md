@@ -141,7 +141,7 @@ constructor used in [Run a recall query](#run-a-recall-query) below. With the
 and embedding. For a realistic retrieval corpus, see
 [QA evaluation -- Step 1](./src/nemo_retriever/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever).
 
-**No local GPU?** Set `NVIDIA_API_KEY` and route extraction and embedding
+**No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (see [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
 
 ```bash
@@ -153,10 +153,16 @@ python -m nemo_retriever.examples.graph_pipeline \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
   --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1 \
+  --ocr-version v1 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
+
+> **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Use
+> `--ocr-version v1` to opt into the legacy OCR engine. The remote-inference
+> example above pins `--ocr-version v1` because a hosted v2 endpoint is not yet
+> available on `ai.api.nvidia.com`.
 
 When you use the remote embedder, pair the `Retriever` with the matching
 `embedder=` + `embedding_endpoint=` overrides shown in
@@ -479,7 +485,7 @@ ingestor = ingestor.files(documents).extract(method="nemotron_parse")
 
 ## Run with remote inference, no local GPU required:
 
-For build.nvidia.com hosted inference, make sure you have NVIDIA_API_KEY set as an environment variable. 
+For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (see [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)). 
 
 ```python
 ingestor = (

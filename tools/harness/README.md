@@ -2,6 +2,10 @@
 
 A configurable, dataset-agnostic testing framework for end-to-end validation of nv-ingest pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
 
+## Unsupported Developer Docs
+
+Anything under [`nemo_retriever/developer_docs/`](../../nemo_retriever/developer_docs/) is **internal developer documentation**, not a supported or stable part of NeMo Retriever Library. It may cover experiments, refactors, or one-off workflows and can change or be removed without notice—do not treat it as a public API or product guarantee. For an index of those notes, see [`nemo_retriever/developer_docs/README.md`](../../nemo_retriever/developer_docs/README.md).
+
 ## Quick Start
 
 ### Prerequisites
@@ -15,7 +19,7 @@ A configurable, dataset-agnostic testing framework for end-to-end validation of 
 # Navigate to the harness directory
 cd tools/harness/
 
-# Install the harness (includes nv-ingest packages, milvus-lite, pypdfium2, and nemotron-* model packages)
+# Install the harness (includes nv-ingest packages, pypdfium2, and nemotron-* model packages)
 uv pip install -e .
 ```
 
@@ -213,7 +217,7 @@ EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dat
 #### Storage Options
 - `spill_dir` (string): Temporary processing directory
 - `artifacts_dir` (string): Test output directory (auto-generated if null)
-- `collection_name` (string): Milvus collection name (auto-generated as `{test_name}_multimodal` if null, deterministic - no timestamp)
+- `collection_name` (string): Vector collection name (auto-generated as `{test_name}_multimodal` if null, deterministic - no timestamp)
 
 ### Valid Configuration Values
 
@@ -370,7 +374,7 @@ Recall testing evaluates retrieval accuracy against ground truth query sets. Two
 
 **`recall`** - Recall-only evaluation against existing collections:
 - Skips ingestion (assumes collections already exist)
-- Loads existing collections from Milvus
+- Loads existing vector database collections
 - Evaluates recall using multimodal queries (all datasets are multimodal-only)
 - Supports reranker comparison (no reranker, with reranker, or reranker-only)
 
@@ -983,10 +987,10 @@ This provides:
   - `segment_results()` - Result categorization by type
   - `kv_event_log()` - Structured logging
   - `run_cmd()` - Command execution helpers
-- `milvus.py` - Milvus/vector database utilities
-  - `milvus_chunks()` - Vector database statistics
-  - `load_collection()` - Load Milvus collection
-  - `unload_collection()` - Unload Milvus collection
+- Vector database utilities module under `nv_ingest_harness/utils/`
+  - Collection statistics helpers for benchmark workflows
+  - `load_collection()` - Load a remote vector collection
+  - `unload_collection()` - Unload a remote vector collection
 - `pdfium.py` - PDF utilities
   - `pdf_page_count()` - Dataset page counting
   - `pdf_page_count_glob()` - Glob-based PDF page counting

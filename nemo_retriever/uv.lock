@@ -2404,7 +2404,7 @@ requires-dist = [
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "stores"], marker = "extra == 'all'" },
     { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
-    { name = "nemotron-ocr", marker = "sys_platform == 'linux' and extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
+    { name = "nemotron-ocr", marker = "sys_platform == 'linux' and extra == 'local'", specifier = ">=1.0.2.dev0,<1.0.2a0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "neo4j", marker = "extra == 'stores'", specifier = ">=5.0" },
@@ -2468,7 +2468,7 @@ wheels = [
 
 [[package]]
 name = "nemotron-ocr"
-version = "1.0.0.dev20260428042913"
+version = "1.0.2.dev20260501161212"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
     { name = "huggingface-hub", marker = "sys_platform == 'linux'" },
@@ -2479,10 +2479,10 @@ dependencies = [
     { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
     { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/be/31/6b7501a406a3011800b96d2afb0b35e834fe3b777f95fed143ade8278f4a/nemotron_ocr-1.0.0.dev20260428042913.tar.gz", hash = "sha256:3ddf6c4404fff6e1e305057cba246193295dcb63d0a31c5d70b50346cbcc8fe0", size = 153218, upload-time = "2026-04-28T04:39:28.007Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/6b/66/91c14964e71b4996d637e2f7b5fb8a1d6667a8ae89bc342c0355e37c6f1e/nemotron_ocr-1.0.2.dev20260501161212.tar.gz", hash = "sha256:2d589546b168e8526eb3ee3c05c22112b972180d65e1204783b92cc7116655c4", size = 153233, upload-time = "2026-05-01T16:22:41.113Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/24/cd/1d308fdd79130b8d7ac6727fa63ac36f949b543aae12164ecb1f018aceeb/nemotron_ocr-1.0.0.dev20260428042913-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:4483e8be710743579109cc1cd0b978fb1559d4c79e7ba73633fd46e8484db778", size = 36094416, upload-time = "2026-04-28T04:39:25.165Z" },
-    { url = "https://test-files.pythonhosted.org/packages/c3/6a/02382daa23f544adfb7b0e63426aed3d1b0e066f704b66bf07bbd6621657/nemotron_ocr-1.0.0.dev20260428042913-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:c4d0b8b71d20721d9b4cd847ff5c4f8984de3821a159730c9e58ec1f523a63ef", size = 36800011, upload-time = "2026-04-28T04:41:23.502Z" },
+    { url = "https://test-files.pythonhosted.org/packages/cd/26/75b37338788e039981781cec51edb56ed88809c807e50023cb0a2b5d953f/nemotron_ocr-1.0.2.dev20260501161212-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:f2b25279a9b1fb889aee0d673417f7dc12e66af4da527667eda557a7f76b7850", size = 36094403, upload-time = "2026-05-01T16:22:38.714Z" },
+    { url = "https://test-files.pythonhosted.org/packages/47/00/158545e4fd6168add3c244237b6ac5016ceb4f6e197f05586d9f696938f9/nemotron_ocr-1.0.2.dev20260501161212-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:384189507ab46e3e33c31cc973e580af3c0de3640e6ca6b3971b040233fd2f21", size = 36800021, upload-time = "2026-05-01T16:23:56.626Z" },
 ]
 
 [[package]]

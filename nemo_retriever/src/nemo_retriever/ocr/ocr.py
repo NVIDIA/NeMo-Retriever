@@ -118,6 +118,22 @@ class OCRV2Actor(ArchetypeOperator):
         super().__init__(**ocr_kwargs)
 
 
+def resolve_ocr_archetype(extract_params: Any) -> type:
+    """Pick the OCR archetype class based on ExtractParams.ocr_version.
+
+    Default is v2 (OCRV2Actor). Pass ocr_version="v1" on ExtractParams
+    to fall back to the legacy English-only OCRActor.
+
+    Args:
+        extract_params: An object exposing an ``ocr_version`` attribute.
+            When the attribute is missing, v2 is assumed.
+
+    Returns:
+        The OCR archetype class (``OCRActor`` for v1, ``OCRV2Actor`` for v2).
+    """
+    return OCRActor if getattr(extract_params, "ocr_version", "v2") == "v1" else OCRV2Actor
+
+
 def __getattr__(name: str):
     if name == "OCRCPUActor":
         from nemo_retriever.ocr.cpu_ocr import OCRCPUActor

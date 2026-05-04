@@ -16,7 +16,7 @@ Output is typically a **JSON dictionary** listing extracted objects (text region
 
 ## Embeddings and retrieval
 
-Optionally, the library can compute **embeddings** for extracted content and store vectors in a database such as [LanceDB](https://lancedb.com/) or [Milvus](https://milvus.io/) for downstream **semantic or hybrid search** in your application.
+Optionally, the library can compute **embeddings** for extracted content and store vectors in [LanceDB](https://lancedb.com/) for downstream semantic or hybrid search in your application.
 
 ## Deployment modes
 

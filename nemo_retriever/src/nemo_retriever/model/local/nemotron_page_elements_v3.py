@@ -8,9 +8,11 @@ from torch import nn
 import torch
 import numpy as np
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.hf_model_registry import install_pinned_hf_hub_download
 from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import HuggingFaceModel, RunMode
 
+import nemotron_page_elements_v3.model as _page_elements_model
 from nemotron_page_elements_v3.model import define_model as define_model_page_elements
 from nemotron_page_elements_v3.model import resize_pad as resize_pad_page_elements
 from nemotron_page_elements_v3.utils import postprocess_preds_page_element as postprocess_preds_page_element
@@ -32,6 +34,7 @@ class NemotronPageElementsV3(HuggingFaceModel):
     def __init__(self) -> None:
         super().__init__(self.model_name)
         configure_global_hf_cache_base()
+        install_pinned_hf_hub_download(_page_elements_model)
         self._model = define_model_page_elements(self.model_name)
         self._page_elements_input_shape = (1024, 1024)
 

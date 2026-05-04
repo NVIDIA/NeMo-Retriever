@@ -34,30 +34,23 @@ This pipeline enables users to retrieve speech files at the segment level.
 
 ## Run the NIM locally (Helm)
 
-Use the following procedure to run the NIM on your own infrastructure.
+Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
 !!! important
 
     The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Pin the workload to that GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
 
-1. To access the required container images, log in to the NVIDIA Container Registry (nvcr.io). Use [your NGC key](api-keys.md) as the password. Run the following command in your terminal.
+1. Create [your NGC personal key](api-keys.md) with the scopes required for `nvcr.io` image pulls and NGC API access. Configure it for the cluster using the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (for example `ngcImagePullSecret` / `ngcApiSecret` on `helm upgrade --install`, or pre-created secrets with username `$oauthtoken`).
 
-    - Replace `<your-ngc-key>` with your actual NGC API key.
-    - The username is always `$oauthtoken`.
-
-    ```shell
-    $ docker login nvcr.io
-    Username: $oauthtoken
-    Password: <your-ngc-key>
-    ```
-
-2. For convenience and security, store [your NGC key](api-keys.md) in an environment variable file (`.env`). This enables services to access it without needing to enter the key manually each time. Create a .env file in your working directory and add the following line. Replace `<your-ngc-key>` with your actual NGC key.
+2. **Optional — local tooling only.** Helm-managed pods get NGC credentials from chart secrets (step 1), not from a file on your laptop. If you also run **Python clients, CLIs, or other scripts on your machine** (outside the cluster) that load `NGC_API_KEY` from disk, create a `.env` in that working directory:
 
     ```ini
     NGC_API_KEY=<your-ngc-key>
     ```
 
-3. Deploy or upgrade NeMo Retriever extraction with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM and any dependencies (for example, retrieval or Milvus) that match how you call the library.
+    Skip this step if you only operate the cluster through Helm and do not run such local processes.
+
+3. Deploy or upgrade NeMo Retriever Library with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM.
 
 4. After the services are running, you can interact with the pipeline by using Python.
 
@@ -79,7 +72,8 @@ Use the following procedure to run the NIM on your own infrastructure.
         )
     )
     ```
-To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either self-hosted on your cluster or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
+
+    To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (either self-hosted on your cluster or remotely via NVCF) but has no effect when using the local Hugging Face Parakeet model.
 
     !!! tip
 

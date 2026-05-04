@@ -112,7 +112,7 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 
 def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
-    """Adapt LanceDB/Milvus client hit shapes to Retriever hits."""
+    """Adapt LanceDB client hit shapes to Retriever hits."""
     entity = hit.get("entity") if isinstance(hit.get("entity"), dict) else hit
 
     source = _mapping(entity.get("source") or hit.get("source") or entity.get("source_metadata"))
