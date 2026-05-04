@@ -597,6 +597,7 @@ def build_graph(
                     or getattr(extract_params, "request_timeout_s", None)
                     or 120.0
                 ),
+                ocr_version=getattr(extract_params, "ocr_version", "v2"),
             )
         if text_dedup_enabled:
             graph = graph >> VideoFrameTextDedup(params=video_text_dedup_params)

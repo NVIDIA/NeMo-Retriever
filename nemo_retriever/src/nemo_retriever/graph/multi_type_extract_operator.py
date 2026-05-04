@@ -293,6 +293,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             "api_key": ep.ocr_api_key or ep.api_key,
             "inference_batch_size": int(ep.inference_batch_size),
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
+            "ocr_version": getattr(ep, "ocr_version", "v2"),
         }
 
     def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
@@ -304,8 +305,9 @@ class _MultiTypeExtractBase(AbstractOperator):
 
         Branch B: ``VideoFrameActor`` extracts frames at
         ``video_frame_params.fps``; optional content-hash dedup; then
-        ``VideoFrameOCRActor`` (Nemotron OCR v1) runs full-frame OCR
-        directly — no page-elements detection. Emits per-frame rows.
+        ``VideoFrameOCRActor`` (Nemotron OCR — v2 by default, v1 when
+        ``extract_params.ocr_version="v1"``) runs full-frame OCR directly
+        — no page-elements detection. Emits per-frame rows.
 
         Branch C: ``AudioVisualFuser`` self-joins audio rows against
         concurrent frame OCR rows and appends fused per-utterance rows
