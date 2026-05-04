@@ -155,6 +155,31 @@ class TestNemotronRerankV2Properties:
         obj = self._make_instance("my-org/my-reranker")
         assert obj.model_name == "my-org/my-reranker"
 
+    def test_default_model_loads_with_pinned_revision(self):
+        from nemo_retriever.model.local import nemotron_rerank_v2 as mod
+
+        with (
+            patch.object(mod, "configure_global_hf_cache_base"),
+            patch.object(mod, "get_hf_revision", return_value="pinned-sha"),
+            patch("torch.cuda.is_available", return_value=False),
+            patch("transformers.AutoTokenizer") as MockTok,
+            patch("transformers.AutoModelForSequenceClassification") as MockModel,
+        ):
+            tok = MockTok.from_pretrained.return_value
+            tok.pad_token = "pad"
+            tok.eos_token_id = 0
+            mdl = MockModel.from_pretrained.return_value
+            mdl.eval.return_value = mdl
+            mdl.to.return_value = mdl
+            mdl.config.pad_token_id = 1
+
+            mod.NemotronRerankV2()
+
+        MockTok.from_pretrained.assert_called_once()
+        MockModel.from_pretrained.assert_called_once()
+        assert MockTok.from_pretrained.call_args.kwargs["revision"] == "pinned-sha"
+        assert MockModel.from_pretrained.call_args.kwargs["revision"] == "pinned-sha"
+
     def test_device_defaults_to_cpu_when_no_cuda(self):
         obj = self._make_instance()
         assert obj._device == "cpu"
