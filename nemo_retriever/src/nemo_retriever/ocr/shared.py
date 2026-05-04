@@ -337,7 +337,10 @@ def _parse_ocr_result(preds: Any) -> List[Dict[str, Any]]:
         except Exception:
             s = ""
         if s and s.lower() not in {"none", "null", "[]", "{}"}:
-            blocks.append({"text": s, "sort_y": 0.0, "sort_x": 0.0})
+            # ``_fallback`` lets ``ocr_response_to_text`` suppress this row
+            # without false-positives on legitimate OCR text that happens to
+            # start with ``[`` or ``{``.
+            blocks.append({"text": s, "sort_y": 0.0, "sort_x": 0.0, "_fallback": True})
 
     return blocks
 
@@ -361,13 +364,8 @@ def ocr_response_to_text(preds: Any) -> str:
     blocks = _parse_ocr_result(preds)
     if not blocks:
         return ""
-    if len(blocks) == 1:
-        only = blocks[0]
-        if only.get("sort_x", 0.0) == 0.0 and only.get("sort_y", 0.0) == 0.0:
-            text = (only.get("text") or "").strip()
-            if text.startswith("[") or text.startswith("{"):
-                # Stringified Python repr — treat as no text detected.
-                return ""
+    if len(blocks) == 1 and blocks[0].get("_fallback"):
+        return ""
     return _blocks_to_text(blocks)
 
 
