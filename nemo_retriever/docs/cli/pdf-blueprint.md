@@ -80,6 +80,6 @@ print(tbl.to_pandas().head())
   Note that `retriever online submit` is currently a stub.
 - LanceDB and local `--store-images-uri` / `--save-intermediate` paths do not
   use MinIO. The optional `nv-ingest-client[minio]` extra exists for legacy
-  **Milvus** bulk-upload helpers in the client
+  Milvus bulk-upload helpers in the client
   (`client/src/nv_ingest_client/util/vdb/milvus.py`), not for
   the LanceDB vector path—skip it for this in-process blueprint.
