@@ -347,9 +347,48 @@ class EmbedParams(_ParamsModel):
         return self
 
 
+MetaJoinKey = Literal["auto", "source_id", "source_name"]
+
+
 class VdbUploadParams(_ParamsModel):
+    """Post-graph vector DB upload configuration.
+
+    Sidecar metadata (``meta_*``) matches ``nv_ingest_client`` / ``metadata_and_filtered_search.ipynb``:
+    all three fields must be set together to merge columns into each chunk's ``content_metadata``.
+    """
+
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = Field(default_factory=dict)
+    meta_dataframe: Optional[Any] = None
+    """Path to csv/json/parquet or an in-memory :class:`pandas.DataFrame`."""
+    meta_source_field: Optional[str] = None
+    meta_fields: Optional[list[str]] = None
+    meta_join_key: MetaJoinKey = "auto"
+    """How to match rows to documents: ``source_id`` (full path), ``source_name`` (basename), or ``auto`` (try both)."""
+
+    @model_validator(mode="after")
+    def _validate_sidecar_triplet(self) -> "VdbUploadParams":
+        trio = (self.meta_dataframe, self.meta_source_field, self.meta_fields)
+        if all(x is None for x in trio):
+            return self
+        if any(x is None for x in trio):
+            raise ValueError(
+                "meta_dataframe, meta_source_field, and meta_fields must all be set together "
+                "when attaching sidecar metadata."
+            )
+        if not self.meta_fields:
+            raise ValueError("meta_fields must be a non-empty list when sidecar metadata is enabled.")
+        return self
+
+    def to_ingest_operator_kwargs(self) -> dict[str, Any]:
+        """Flatten into kwargs for :class:`~nemo_retriever.vdb.IngestVdbOperator`."""
+        out = dict(self.vdb_kwargs or {})
+        if self.meta_dataframe is not None:
+            out["meta_dataframe"] = self.meta_dataframe
+            out["meta_source_field"] = self.meta_source_field
+            out["meta_fields"] = list(self.meta_fields or [])
+            out["meta_join_key"] = self.meta_join_key
+        return out
 
 
 class StoreParams(_ParamsModel):

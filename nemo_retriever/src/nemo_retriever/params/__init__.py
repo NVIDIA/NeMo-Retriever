@@ -30,6 +30,7 @@ from .models import StoreParams
 from .models import TabularExtractParams
 from .models import TableParams
 from .models import TextChunkParams
+from .models import MetaJoinKey
 from .models import VdbUploadParams
 from .models import WebhookParams
 
@@ -62,6 +63,7 @@ __all__ = [
     "TabularExtractParams",
     "TableParams",
     "TextChunkParams",
+    "MetaJoinKey",
     "VdbUploadParams",
     "WebhookParams",
 ]
