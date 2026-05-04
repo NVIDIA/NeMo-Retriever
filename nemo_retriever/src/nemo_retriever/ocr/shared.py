@@ -448,20 +448,23 @@ def ocr_b64_to_text(
     return out
 
 
-def split_ocrable_rows(batch_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def split_ocrable_rows(
+    batch_df: pd.DataFrame,
+    ocrable_content_types: Sequence[str] = ("",),
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Partition rows into OCR-able rows and passthrough rows.
 
-    A batch is OCR-able when it carries no ``_content_type`` discriminator
-    (audio-free pipelines like PDF / image) or when ``_content_type`` is one
-    of ``""``/``video_frame``. Audio rows from the video pipeline (which
-    have ``_content_type='audio'``) are passed through unchanged.
+    Rows whose ``_content_type`` is in ``ocrable_content_types`` are treated
+    as OCR-able; all others are passed through unchanged. Batches with no
+    ``_content_type`` column at all (audio-free pipelines like PDF / image)
+    are fully OCR-able. The default accepts only the empty discriminator;
+    pipelines that mix OCR-able and non-OCR-able rows (e.g. video, which
+    interleaves ``video_frame`` and ``audio``) pass their own sentinel set.
     """
-    from nemo_retriever.video import _content_types as _CT
-
     if "_content_type" not in batch_df.columns:
         return batch_df.copy(), pd.DataFrame()
     ct = batch_df["_content_type"].astype(str).fillna("")
-    ocr_mask = ct.isin(["", _CT.VIDEO_FRAME])
+    ocr_mask = ct.isin(list(ocrable_content_types))
     return (
         batch_df[ocr_mask].reset_index(drop=True),
         batch_df[~ocr_mask].reset_index(drop=True),

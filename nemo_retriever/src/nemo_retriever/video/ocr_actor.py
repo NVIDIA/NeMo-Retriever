@@ -38,6 +38,9 @@ from nemo_retriever.ocr.shared import (
     split_ocrable_rows,
 )
 from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.video import _content_types as _CT
+
+_OCRABLE_CONTENT_TYPES = ("", _CT.VIDEO_FRAME)
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,7 @@ class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
     def process(self, batch_df: Any, **kwargs: Any) -> Any:
         if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
             return pd.DataFrame()
-        ocr_df, passthrough = split_ocrable_rows(batch_df)
+        ocr_df, passthrough = split_ocrable_rows(batch_df, _OCRABLE_CONTENT_TYPES)
         if ocr_df.empty:
             return passthrough
         self._ensure_model()
@@ -103,7 +106,7 @@ class VideoFrameOCRCPUActor(AbstractOperator, CPUOperator):
     def process(self, batch_df: Any, **kwargs: Any) -> Any:
         if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
             return pd.DataFrame()
-        ocr_df, passthrough = split_ocrable_rows(batch_df)
+        ocr_df, passthrough = split_ocrable_rows(batch_df, _OCRABLE_CONTENT_TYPES)
         if ocr_df.empty:
             return passthrough
         out = full_image_ocr_df(
