@@ -34,6 +34,7 @@ from nemo_retriever.params import PdfSplitParams
 from nemo_retriever.params import AudioVisualFuseParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VideoFrameParams
+from nemo_retriever.params import VideoFrameTextDedupParams
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
@@ -43,6 +44,7 @@ from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.video import AudioVisualFuser
 from nemo_retriever.video import VideoFrameActor
 from nemo_retriever.video import VideoFrameOCRActor
+from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
@@ -127,6 +129,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         asr_params: ASRParams | None = None,
         caption_params: CaptionParams | None = None,
         video_frame_params: VideoFrameParams | None = None,
+        video_text_dedup_params: VideoFrameTextDedupParams | None = None,
         av_fuse_params: AudioVisualFuseParams | None = None,
         **kwargs: Any,
     ) -> None:
@@ -139,6 +142,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         self.asr_params = asr_params or ASRParams()
         self.caption_params = caption_params
         self.video_frame_params = video_frame_params or VideoFrameParams()
+        self.video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
         self.av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         self._resolved_resources = None
 
@@ -303,9 +307,12 @@ class _MultiTypeExtractBase(AbstractOperator):
         the video stream). Emits per-utterance audio rows.
 
         Branch B: ``VideoFrameActor`` extracts frames at
-        ``video_frame_params.fps``; optional content-hash dedup; then
+        ``video_frame_params.fps``; optional content-hash dedup;
         ``VideoFrameOCRActor`` (Nemotron OCR v1) runs full-frame OCR
-        directly — no page-elements detection. Emits per-frame rows.
+        directly — no page-elements detection; ``VideoFrameTextDedup``
+        then collapses time-adjacent runs of identical OCR text per
+        ``source_path`` (mirrors the Ray graph in ``build_graph``).
+        Emits per-frame rows.
 
         Branch C: ``AudioVisualFuser`` self-joins audio rows against
         concurrent frame OCR rows and appends fused per-utterance rows
@@ -317,13 +324,15 @@ class _MultiTypeExtractBase(AbstractOperator):
         audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
         audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
 
-        # Branch B: frame extraction → optional dedup → full-frame OCR
+        # Branch B: frame extraction → optional dedup → full-frame OCR → text dedup
         frame_df = VideoFrameActor(params=self.video_frame_params).run(batch_df)
         if self.video_frame_params.dedup and isinstance(frame_df, pd.DataFrame) and not frame_df.empty:
             frame_df = dedup_video_frames(frame_df)
         if isinstance(frame_df, pd.DataFrame) and not frame_df.empty:
             ocr_kwargs = self._video_ocr_kwargs()
             frame_out = self._instantiate_resolved(VideoFrameOCRActor, **ocr_kwargs).run(frame_df)
+            if self.video_text_dedup_params.enabled and isinstance(frame_out, pd.DataFrame) and not frame_out.empty:
+                frame_out = VideoFrameTextDedup(params=self.video_text_dedup_params).run(frame_out)
         else:
             frame_out = pd.DataFrame()
 
@@ -462,6 +471,7 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         asr_params: ASRParams | None = None,
         caption_params: CaptionParams | None = None,
         video_frame_params: VideoFrameParams | None = None,
+        video_text_dedup_params: VideoFrameTextDedupParams | None = None,
         av_fuse_params: AudioVisualFuseParams | None = None,
         **kwargs: Any,
     ) -> None:
@@ -474,6 +484,7 @@ class MultiTypeExtractOperator(ArchetypeOperator):
             asr_params=asr_params,
             caption_params=caption_params,
             video_frame_params=video_frame_params,
+            video_text_dedup_params=video_text_dedup_params,
             av_fuse_params=av_fuse_params,
             **kwargs,
         )
@@ -485,4 +496,5 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         self.asr_params = asr_params
         self.caption_params = caption_params
         self.video_frame_params = video_frame_params
+        self.video_text_dedup_params = video_text_dedup_params
         self.av_fuse_params = av_fuse_params
