@@ -102,7 +102,7 @@ nav:
       - "Multimodal embeddings (VLM)": extraction/embedding.md
       - Vector databases:
           - "Data upload (LanceDB)": extraction/vdbs.md
-          - "Vector database partners": extraction/vdbs.md#vector-database-partners
+          - "Vector database partners": extraction/vdbs.md
       - "Chunking and splitting": extraction/chunking.md
   - "7. Retrieval & ranking":
       - "Custom metadata and filtering": extraction/custom-metadata.md
