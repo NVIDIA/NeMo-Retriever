@@ -15,7 +15,7 @@ from nv_ingest_api.internal.transform.embed_text import transform_create_text_em
 
 from nemo_retriever.io.dataframe import validate_primitives_dataframe
 from nemo_retriever.text_embed.shared import _to_bool
-from nemo_retriever.vector_store.lancedb_store import LanceDBConfig, write_embeddings_to_lancedb
+from nemo_retriever.vdb.lancedb_bulk import LanceDBConfig, write_embeddings_to_lancedb
 
 logger = logging.getLogger(__name__)
 

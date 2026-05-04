@@ -2,8 +2,8 @@ import ast
 import json
 from types import SimpleNamespace
 
-from nemo_retriever.vector_store.lancedb_store import _build_lancedb_rows_from_df
-from nemo_retriever.vector_store.lancedb_utils import build_lancedb_row
+from nemo_retriever.vdb.lancedb_bulk import _build_lancedb_rows_from_df
+from nemo_retriever.vdb.lancedb_schema import build_lancedb_row
 
 
 def test_build_lancedb_row_persists_normalized_content_type() -> None:
