@@ -36,23 +36,6 @@ nimOperator:
       - name: TRITON_OTEL_RATE
         value: "1"
 
-  graphic_elements:
-    env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
-        value: "1"
-      - name: NIM_TRITON_RATE_LIMIT
-        value: "3"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "1"
-      - name: NIM_TRITON_DATA_MAX_BATCH_SIZE
-        value: "1"
-      - name: NIM_TRITON_CUDA_MEMORY_POOL_MB
-        value: "2048"
-      - name: OMP_NUM_THREADS
-        value: "1"
-
   table_structure:
     env:
       - name: NIM_HTTP_API_PORT

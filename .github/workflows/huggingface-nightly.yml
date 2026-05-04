@@ -49,9 +49,6 @@ jobs:
           - id: nemotron-table-structure-v1
             url: https://huggingface.co/nvidia/nemotron-table-structure-v1
             project_subdir: ""
-          - id: nemotron-graphic-elements-v1
-            url: https://huggingface.co/nvidia/nemotron-graphic-elements-v1
-            project_subdir: ""
           - id: llama-nemotron-embed-1b-v2
             url: https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2
             # Repo layout matches nemotron-ocr-v1: Python project is nested under a same-named subdir.

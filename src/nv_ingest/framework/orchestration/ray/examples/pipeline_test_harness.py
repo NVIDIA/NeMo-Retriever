@@ -12,7 +12,6 @@ from typing import Dict, Any
 # Import our new pipeline class.
 from nv_ingest.framework.orchestration.ray.primitives.ray_pipeline import RayPipeline
 from nv_ingest.framework.orchestration.ray.stages.extractors.audio_extractor import AudioExtractorStage
-from nv_ingest.framework.orchestration.ray.stages.extractors.chart_extractor import ChartExtractorStage
 from nv_ingest.framework.orchestration.ray.stages.extractors.docx_extractor import DocxExtractorStage
 from nv_ingest.framework.orchestration.ray.stages.extractors.image_extractor import ImageExtractorStage
 from nv_ingest.framework.orchestration.ray.stages.extractors.pdf_extractor import PDFExtractorStage
@@ -38,7 +37,6 @@ from nv_ingest.framework.orchestration.ray.stages.transforms.text_embed import T
 from nv_ingest.framework.orchestration.ray.stages.transforms.text_splitter import TextSplitterStage
 from nv_ingest.framework.schemas.framework_metadata_injector_schema import MetadataInjectorSchema
 from nv_ingest_api.internal.schemas.extract.extract_audio_schema import AudioExtractorSchema
-from nv_ingest_api.internal.schemas.extract.extract_chart_schema import ChartExtractorSchema
 from nv_ingest_api.internal.schemas.extract.extract_docx_schema import DocxExtractorSchema
 from nv_ingest_api.internal.schemas.extract.extract_image_schema import ImageExtractorSchema
 from nv_ingest_api.internal.schemas.extract.extract_pdf_schema import PDFExtractorSchema
@@ -144,9 +142,6 @@ if __name__ == "__main__":
     os.environ["YOLOX_INFER_PROTOCOL"] = "grpc"
     os.environ["YOLOX_TABLE_STRUCTURE_GRPC_ENDPOINT"] = "127.0.0.1:8007"
     os.environ["YOLOX_TABLE_STRUCTURE_INFER_PROTOCOL"] = "grpc"
-    os.environ["YOLOX_GRAPHIC_ELEMENTS_GRPC_ENDPOINT"] = "127.0.0.1:8004"
-    os.environ["YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT"] = "http://localhost:8003/v1/infer"
-    os.environ["YOLOX_GRAPHIC_ELEMENTS_INFER_PROTOCOL"] = "http"
     os.environ["OCR_GRPC_ENDPOINT"] = "localhost:8010"
     os.environ["OCR_INFER_PROTOCOL"] = "grpc"
     os.environ["OCR_MODEL_NAME"] = "paddle"
@@ -164,12 +159,6 @@ if __name__ == "__main__":
         yolox_table_structure_auth,
         yolox_table_structure_protocol,
     ) = get_nim_service("yolox_table_structure")
-    (
-        yolox_graphic_elements_grpc,
-        yolox_graphic_elements_http,
-        yolox_graphic_elements_auth,
-        yolox_graphic_elements_protocol,
-    ) = get_nim_service("yolox_graphic_elements")
     nemotron_parse_grpc, nemotron_parse_http, nemotron_parse_auth, nemotron_parse_protocol = get_nim_service(
         "nemotron_parse"
     )
@@ -195,15 +184,6 @@ if __name__ == "__main__":
         "docx_extraction_config": {
             "yolox_endpoints": (yolox_grpc, yolox_http),
             "yolox_infer_protocol": yolox_protocol,
-            "auth_token": yolox_auth,
-        }
-    }
-    chart_extractor_config = {
-        "endpoint_config": {
-            "yolox_endpoints": (yolox_graphic_elements_grpc, yolox_graphic_elements_http),
-            "yolox_infer_protocol": yolox_graphic_elements_protocol,
-            "ocr_endpoints": (ocr_grpc, ocr_http),
-            "ocr_infer_protocol": ocr_protocol,
             "auth_token": yolox_auth,
         }
     }
@@ -291,13 +271,6 @@ if __name__ == "__main__":
         max_replicas=8,
     )
     pipeline.add_stage(
-        name="chart_extractor",
-        stage_actor=ChartExtractorStage,
-        config=ChartExtractorSchema(**chart_extractor_config),
-        min_replicas=0,
-        max_replicas=8,
-    )
-    pipeline.add_stage(
         name="text_embedding",
         stage_actor=TextEmbeddingTransformStage,
         config=TextEmbeddingSchema(**text_embedding_config),
@@ -368,8 +341,7 @@ if __name__ == "__main__":
     pipeline.make_edge("image_extractor", "table_extractor", queue_size=16)
 
     ###### Primitive Extractors ########
-    pipeline.make_edge("table_extractor", "chart_extractor", queue_size=16)
-    pipeline.make_edge("chart_extractor", "image_filter", queue_size=16)
+    pipeline.make_edge("table_extractor", "image_filter", queue_size=16)
 
     ###### Primitive Mutators ########
     pipeline.make_edge("image_filter", "image_dedup", queue_size=16)

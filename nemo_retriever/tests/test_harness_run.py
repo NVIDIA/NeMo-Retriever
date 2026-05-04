@@ -808,7 +808,6 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "api_key": None,
             "page_elements_invoke_url": None,
             "ocr_invoke_url": None,
-            "graphic_elements_invoke_url": None,
             "table_structure_invoke_url": None,
             "embed_invoke_url": None,
             "caption_invoke_url": None,

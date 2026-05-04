@@ -148,10 +148,6 @@ services:
   page-elements:
     environment:
       - NIM_TRITON_MAX_BATCH_SIZE=1
-  
-  graphic-elements:
-    environment:
-      - NIM_TRITON_MAX_BATCH_SIZE=1
 ```
 
 Docker Compose automatically merges the base file with the override file, with the override taking precedence.

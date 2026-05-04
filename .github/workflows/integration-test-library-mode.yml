@@ -37,7 +37,6 @@ jobs:
       # NIM endpoint URLs — edit these directly to point at different deployments
       PAGE_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
       OCR_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1"
-      GRAPHIC_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
       TABLE_STRUCTURE_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
       EMBED_INVOKE_URL: "https://integrate.api.nvidia.com/v1"
       EMBED_MODEL_NAME: "nvidia/llama-nemotron-embed-1b-v2"
@@ -72,8 +71,6 @@ jobs:
             --api-key "${{ secrets.NVIDIA_BUILD_API_KEY }}" \
             --page-elements-invoke-url "$PAGE_ELEMENTS_INVOKE_URL" \
             --ocr-invoke-url "$OCR_INVOKE_URL" \
-            --use-graphic-elements \
-            --graphic-elements-invoke-url "$GRAPHIC_ELEMENTS_INVOKE_URL" \
             --use-table-structure \
             --table-structure-invoke-url "$TABLE_STRUCTURE_INVOKE_URL" \
             --embed-invoke-url "$EMBED_INVOKE_URL" \

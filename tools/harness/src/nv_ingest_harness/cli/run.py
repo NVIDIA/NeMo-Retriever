@@ -22,7 +22,6 @@ CASES = [
     "e2e_recall",
     "page_elements",
     "table_structure",
-    "graphic_elements",
     "ocr",
 ]
 

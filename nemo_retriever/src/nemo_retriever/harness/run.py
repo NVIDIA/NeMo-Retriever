@@ -490,8 +490,6 @@ def _build_command(
         cmd += ["--page-elements-invoke-url", cfg.page_elements_invoke_url]
     if cfg.ocr_invoke_url:
         cmd += ["--ocr-invoke-url", cfg.ocr_invoke_url]
-    if cfg.graphic_elements_invoke_url:
-        cmd += ["--graphic-elements-invoke-url", cfg.graphic_elements_invoke_url]
     if cfg.table_structure_invoke_url:
         cmd += ["--table-structure-invoke-url", cfg.table_structure_invoke_url]
     if cfg.embed_invoke_url:
@@ -786,7 +784,6 @@ def _run_single(
             "api_key": "(set)" if cfg.api_key else None,
             "page_elements_invoke_url": cfg.page_elements_invoke_url,
             "ocr_invoke_url": cfg.ocr_invoke_url,
-            "graphic_elements_invoke_url": cfg.graphic_elements_invoke_url,
             "table_structure_invoke_url": cfg.table_structure_invoke_url,
             "embed_invoke_url": cfg.embed_invoke_url,
             "caption_invoke_url": cfg.caption_invoke_url,

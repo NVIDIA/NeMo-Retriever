@@ -23,10 +23,7 @@ import numpy as np
 import pandas as pd
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
-from nemo_retriever.utils.table_and_chart import (
-    join_graphic_elements_and_ocr_output,
-    join_table_structure_and_ocr_output,
-)
+from nemo_retriever.utils.table_and_chart import join_table_structure_and_ocr_output
 
 try:
     from PIL import Image
@@ -414,36 +411,6 @@ def _bboxes_close(a: Sequence[float], b: Sequence[float], tol: float = 1e-4) -> 
     return all(abs(float(a[i]) - float(b[i])) < tol for i in range(4))
 
 
-def _find_ge_detections_for_bbox(
-    row: Any,
-    chart_bbox: Sequence[float],
-) -> Optional[List[Dict[str, Any]]]:
-    """Find graphic element detections for a chart bbox.
-
-    Reads the ``graphic_elements_v1`` column from *row* and returns the
-    detections list for the region whose ``bbox_xyxy_norm`` matches
-    *chart_bbox*, or ``None`` if no match is found.
-    """
-    ge_col = getattr(row, "graphic_elements_v1", None)
-    if not isinstance(ge_col, dict):
-        return None
-    regions = ge_col.get("regions")
-    if not isinstance(regions, list):
-        return None
-
-    for region in regions:
-        if not isinstance(region, dict):
-            continue
-        region_bbox = region.get("bbox_xyxy_norm")
-        if not isinstance(region_bbox, (list, tuple)) or len(region_bbox) != 4:
-            continue
-        if _bboxes_close(chart_bbox, region_bbox):
-            dets = region.get("detections")
-            if isinstance(dets, list) and dets:
-                return dets
-    return None
-
-
 def _find_ts_detections_for_bbox(
     row: Any,
     table_bbox: Sequence[float],
@@ -500,7 +467,6 @@ def ocr_page_elements(
     extract_tables: bool = False,
     extract_charts: bool = False,
     extract_infographics: bool = False,
-    use_graphic_elements: bool = False,
     use_table_structure: bool = False,
     inference_batch_size: int = 8,
     remote_retry: RemoteRetryParams | None = None,
@@ -629,23 +595,6 @@ def ocr_page_elements(
                     for i, (label_name, bbox) in enumerate(crop_meta):
                         preds = _extract_remote_ocr_item(response_items[i])
 
-                        if label_name == "chart" and use_graphic_elements:
-                            ge_dets = _find_ge_detections_for_bbox(row, bbox)
-                            if ge_dets:
-                                # Decode crop dimensions from the b64 PNG for graphic element joining.
-                                crop_hw = (0, 0)
-                                try:
-                                    _raw = base64.b64decode(crop_b64s[i])
-                                    with Image.open(io.BytesIO(_raw)) as _cim:
-                                        _cw, _ch = _cim.size
-                                        crop_hw = (_ch, _cw)
-                                except Exception:
-                                    pass
-                                text = join_graphic_elements_and_ocr_output(ge_dets, preds, crop_hw)
-                                if text:
-                                    chart_items.append({"bbox_xyxy_norm": bbox, "text": text})
-                                    continue
-
                         blocks = _parse_ocr_result(preds)
                         if label_name == "table":
                             crop_hw_table: Tuple[int, int] = (0, 0)
@@ -697,13 +646,6 @@ def ocr_page_elements(
                 def _append_local_result(
                     label_name: str, bbox: List[float], preds: Any, crop_hw: Tuple[int, int] = (0, 0)
                 ) -> None:
-                    if label_name == "chart" and use_graphic_elements:
-                        ge_dets = _find_ge_detections_for_bbox(row, bbox)
-                        if ge_dets:
-                            text = join_graphic_elements_and_ocr_output(ge_dets, preds, crop_hw)
-                            if text:
-                                chart_items.append({"bbox_xyxy_norm": bbox, "text": text})
-                                return
                     blocks = _parse_ocr_result(preds)
                     if label_name == "table":
                         text = ""

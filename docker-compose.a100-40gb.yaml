@@ -8,11 +8,6 @@ services:
       - NIM_TRITON_MAX_BATCH_SIZE=1
       - NIM_TRITON_DATA_MAX_BATCH_SIZE=1
 
-  graphic-elements:
-    environment:
-      - NIM_TRITON_MAX_BATCH_SIZE=1
-      - NIM_TRITON_DATA_MAX_BATCH_SIZE=1
-
   table-structure:
     environment:
       - NIM_TRITON_MAX_BATCH_SIZE=1

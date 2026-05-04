@@ -20,15 +20,6 @@ nemotron-page-elements-v3:
       nvidia.com/gpu: 0
       nvidia.com/mig-1g.10gb: 1
 
-nemotron-graphic-elements-v1:
-  resources:
-    limits:
-      nvidia.com/gpu: 0
-      nvidia.com/mig-1g.10gb: 1
-    requests:
-      nvidia.com/gpu: 0
-      nvidia.com/mig-1g.10gb: 1
-
 nemotron-table-structure-v1:
   resources:
     limits:

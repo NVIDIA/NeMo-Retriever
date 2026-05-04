@@ -675,7 +675,6 @@ class TestMultiTypeExtractOperator:
                 extract_tables=True,
                 use_table_structure=True,
                 extract_charts=True,
-                use_graphic_elements=True,
                 extract_infographics=True,
             ),
         )
@@ -687,7 +686,6 @@ class TestMultiTypeExtractOperator:
         assert [name for name, _resources in calls] == [
             "PageElementDetectionActor",
             "TableStructureActor",
-            "GraphicElementsActor",
             "OCRV2Actor",
         ]
         assert len({id(resources) for _name, resources in calls}) == 1

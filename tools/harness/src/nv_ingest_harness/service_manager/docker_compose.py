@@ -64,7 +64,6 @@ class DockerComposeManager(ServiceManager):
     _INGESTION_SERVICES = (
         "nv-ingest-ms-runtime",
         "page-elements",
-        "graphic-elements",
         "table-structure",
         "ocr",
     )

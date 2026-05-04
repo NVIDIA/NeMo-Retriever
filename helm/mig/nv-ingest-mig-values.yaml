@@ -12,15 +12,6 @@ nimOperator:
         nvidia.com/gpu: "0"
         nvidia.com/mig-1g.10gb: 1
 
-  graphic_elements:
-    resources:
-      limits:
-        nvidia.com/gpu: "0"
-        nvidia.com/mig-1g.10gb: 1
-      requests:
-        nvidia.com/gpu: "0"
-        nvidia.com/mig-1g.10gb: 1
-
   table_structure:
     resources:
       limits:

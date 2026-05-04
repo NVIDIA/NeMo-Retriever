@@ -9,7 +9,7 @@ Covers all three call sites where the OCR engine is selected:
 * The Ray graph builder (build_graph) for page-elements OCR.
 * The override block (batch_tuning_to_node_overrides) keyed by actor name.
 * The in-process pipeline (multi_type_extract_operator), which forwards
-  ``load_ocr_v2`` into TableStructureActor and GraphicElementsActor.
+  ``load_ocr_v2`` into TableStructureActor.
 """
 
 from __future__ import annotations
@@ -131,7 +131,6 @@ def test_table_structure_actor_receives_load_ocr_v2_kwarg(monkeypatch) -> None:
             extract_tables=True,
             use_table_structure=True,
             extract_charts=True,
-            use_graphic_elements=True,
             extract_infographics=True,
         ),
     )
@@ -139,7 +138,5 @@ def test_table_structure_actor_receives_load_ocr_v2_kwarg(monkeypatch) -> None:
     op._run_detection_pipeline(pd.DataFrame({"page_image": ["x"]}))
 
     table_kwargs = next(kwargs for name, kwargs in captured_kwargs if name == "TableStructureActor")
-    graphic_kwargs = next(kwargs for name, kwargs in captured_kwargs if name == "GraphicElementsActor")
 
     assert table_kwargs.get("load_ocr_v2") is True
-    assert graphic_kwargs.get("load_ocr_v2") is True

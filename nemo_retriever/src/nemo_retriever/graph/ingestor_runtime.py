@@ -14,7 +14,6 @@ from typing import Any
 from nemo_retriever.caption.caption import CaptionActor
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
-from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.dedup.dedup import dedup_images
 from nemo_retriever.graph import Graph, StoreOperator, UDFOperator, WebhookNotifyOperator
 from nemo_retriever.graph.content_transforms import (
@@ -250,28 +249,6 @@ def batch_tuning_to_node_overrides(
                 plan.table_structure_gpus_per_actor if plan else None,
             )
 
-        # --- Graphic Elements ---
-        graphic_elements_invoke_url = _positive(getattr(extract_params, "graphic_elements_invoke_url", None))
-        ge_bs = plan.graphic_elements_batch_size if plan else None
-        _set(GraphicElementsActor.__name__, "batch_size", ge_bs)
-        if ge_bs:
-            overrides.setdefault(GraphicElementsActor.__name__, {})["target_num_rows_per_block"] = ge_bs
-        ge_concurrency: int = 0
-        if graphic_elements_invoke_url:
-            ge_concurrency = (plan.graphic_elements_initial_actors if plan else None) or 2
-        else:
-            ge_concurrency = (plan.graphic_elements_initial_actors if plan else None) or 0
-        _set(GraphicElementsActor.__name__, "concurrency", ge_concurrency or None)
-        _set(GraphicElementsActor.__name__, "num_cpus", 1)
-        if effective_allow_no_gpu:
-            _force_cpu_only(GraphicElementsActor.__name__)
-        elif not graphic_elements_invoke_url:
-            _set(
-                GraphicElementsActor.__name__,
-                "num_gpus",
-                plan.graphic_elements_gpus_per_actor if plan else None,
-            )
-
         np_bs = _positive(
             getattr(extract_tuning, "nemotron_parse_batch_size", None) if extract_tuning is not None else None
         ) or (plan.nemotron_parse_batch_size if plan else None)
@@ -320,7 +297,6 @@ def batch_tuning_to_node_overrides(
                 + ocr_concurrency * ocr_cpus
                 + embed_concurrency * embed_cpus
                 + ts_concurrency * 1
-                + ge_concurrency * 1
             )
             pdf_extract_tasks = min(
                 pdf_extract_tasks,
@@ -615,11 +591,10 @@ def build_graph(
                 ocr_kwargs["extract_text"] = True
             if extract_params.extract_tables:
                 ocr_kwargs["extract_tables"] = True
-            if extract_params.extract_charts and not extract_params.use_graphic_elements:
+            if extract_params.extract_charts:
                 ocr_kwargs["extract_charts"] = True
             if extract_params.extract_infographics:
                 ocr_kwargs["extract_infographics"] = True
-            ocr_kwargs["use_graphic_elements"] = extract_params.use_graphic_elements
             ocr_kwargs["use_table_structure"] = extract_params.use_table_structure
             if extract_params.ocr_invoke_url:
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
@@ -644,26 +619,14 @@ def build_graph(
                 table_kwargs["table_output_format"] = extract_params.table_output_format
             table_kwargs["load_ocr_v2"] = load_ocr_v2
 
-            graphic_kwargs: dict[str, Any] = {}
-            if extract_params.graphic_elements_invoke_url:
-                graphic_kwargs["graphic_elements_invoke_url"] = extract_params.graphic_elements_invoke_url
-            if extract_params.ocr_invoke_url:
-                graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
-            if extract_params.api_key:
-                graphic_kwargs["api_key"] = extract_params.api_key
-            graphic_kwargs["load_ocr_v2"] = load_ocr_v2
-
             _rr = _nim_remote_http_kwargs(extract_params)
             detect_kwargs.update(_rr)
             ocr_kwargs.update(_rr)
             table_kwargs.update(_rr)
-            graphic_kwargs.update(_rr)
 
             graph = graph >> PDFExtractionActor(**extract_kwargs) >> PageElementDetectionActor(**detect_kwargs)
             if extract_params.use_table_structure and extract_params.extract_tables:
                 graph = graph >> TableStructureActor(**table_kwargs)
-            if extract_params.use_graphic_elements and extract_params.extract_charts:
-                graph = graph >> GraphicElementsActor(**graphic_kwargs)
 
             needs_ocr = any(
                 bool(ocr_kwargs.get(key))

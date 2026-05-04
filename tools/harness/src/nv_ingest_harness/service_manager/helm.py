@@ -953,8 +953,6 @@ done
         # main deploy uses release name (e.g. nv-ingest); set at runtime
         "nemotron-page-elements-v3",
         "nemoretriever-page-elements-v3",
-        "nemotron-graphic-elements-v1",
-        "nemoretriever-graphic-elements-v1",
         "nemotron-table-structure-v1",
         "nemoretriever-table-structure-v1",
         "nemotron-ocr-v1",

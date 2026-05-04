@@ -124,9 +124,6 @@ tmpDirSize: 50Gi
 ## @param envVars.YOLOX_GRPC_ENDPOINT [default: "nemotron-page-elements-v3:8001"] gRPC endpoint for YOLOX page elements
 ## @param envVars.YOLOX_HTTP_ENDPOINT [default: "http://nemotron-page-elements-v3:8000/v1/infer"] HTTP endpoint for YOLOX page elements
 ## @param envVars.YOLOX_INFER_PROTOCOL [default: "grpc"] Protocol for YOLOX page elements
-## @param envVars.YOLOX_GRAPHIC_ELEMENTS_GRPC_ENDPOINT [default: "nemotron-graphic-elements-v1:8001"] gRPC endpoint for YOLOX graphic elements
-## @param envVars.YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT [default: "http://nemotron-graphic-elements-v1:8000/v1/infer"] HTTP endpoint for YOLOX graphic elements
-## @param envVars.YOLOX_GRAPHIC_ELEMENTS_INFER_PROTOCOL [default: "grpc"] Protocol for YOLOX graphic elements
 ## @param envVars.YOLOX_TABLE_STRUCTURE_GRPC_ENDPOINT [default: "nemotron-table-structure-v1:8001"] gRPC endpoint for YOLOX table structure
 ## @param envVars.YOLOX_TABLE_STRUCTURE_HTTP_ENDPOINT [default: "http://nemotron-table-structure-v1:8000/v1/infer"] HTTP endpoint for YOLOX table structure
 ## @param envVars.YOLOX_TABLE_STRUCTURE_INFER_PROTOCOL [default: "grpc"] Protocol for YOLOX table structure
@@ -181,10 +178,6 @@ envVars:
   YOLOX_GRPC_ENDPOINT: nemotron-page-elements-v3:8001
   YOLOX_HTTP_ENDPOINT: http://nemotron-page-elements-v3:8000/v1/infer
   YOLOX_INFER_PROTOCOL: grpc
-
-  YOLOX_GRAPHIC_ELEMENTS_GRPC_ENDPOINT: nemotron-graphic-elements-v1:8001
-  YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT: http://nemotron-graphic-elements-v1:8000/v1/infer
-  YOLOX_GRAPHIC_ELEMENTS_INFER_PROTOCOL: grpc
 
   YOLOX_TABLE_STRUCTURE_GRPC_ENDPOINT: nemotron-table-structure-v1:8001
   YOLOX_TABLE_STRUCTURE_HTTP_ENDPOINT: http://nemotron-table-structure-v1:8000/v1/infer
@@ -692,52 +685,6 @@ nimOperator:
       - name: TRITON_OTEL_URL
         value: "http://otel-collector:4318/v1/traces"
       - name: TRITON_OTEL_RATE
-        value: "1"
-
-  ## @param graphic_elements [object] Configuration for Graphic Elements NIM
-  ## @param graphic_elements.enabled [bool] Enable the Graphic Elements NIM service
-  ## @param graphic_elements.image.* [various] Image configuration for the NIM
-  ## @param graphic_elements.authSecret [string] Authentication secret name
-  ## @param graphic_elements.storage.* [various] Storage/PVC configuration for the NIM
-  ## @param graphic_elements.replicas [int] Number of replicas to deploy
-  ## @param graphic_elements.resources [object] Resource requests/limits for the deployment
-  ## @param graphic_elements.expose.service.* [object] Service port configuration
-  ## @param graphic_elements.env [array] Additional environment variables for the container
-  graphic_elements:
-    enabled: true
-    image:
-      repository: nvcr.io/nim/nvidia/nemotron-graphic-elements-v1
-      tag: 1.8.0
-      pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
-    storage:
-      pvc:
-        create: true
-        size: "25Gi"
-        volumeAccessMode: "ReadWriteOnce"
-    replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
-    expose:
-      service:
-        type: ClusterIP
-        port: 8000
-        grpcPort: 8001
-    env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
-        value: "1"
-      - name: NIM_TRITON_RATE_LIMIT
-        value: "3"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CUDA_MEMORY_POOL_MB
-        value: "2048"
-      - name: OMP_NUM_THREADS
         value: "1"
 
   ## @param table_structure [object] Configuration for Table Structure NIM

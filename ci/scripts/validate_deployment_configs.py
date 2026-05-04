@@ -47,7 +47,6 @@ class ConfigDiff:
 # Most services are under nimOperator, but nv-ingest-ms-runtime is at the top level
 SERVICE_MAPPING = {
     "page-elements": "page_elements",
-    "graphic-elements": "graphic_elements",
     "table-structure": "table_structure",
     "ocr": "ocr",
     "embedding": "embedqa",
@@ -86,8 +85,6 @@ IGNORED_ENV_VARS = {
     # Service endpoint DNS names differ between Helm (full names) and Compose (short names)
     "YOLOX_GRPC_ENDPOINT",
     "YOLOX_HTTP_ENDPOINT",
-    "YOLOX_GRAPHIC_ELEMENTS_GRPC_ENDPOINT",
-    "YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT",
     "YOLOX_TABLE_STRUCTURE_GRPC_ENDPOINT",
     "YOLOX_TABLE_STRUCTURE_HTTP_ENDPOINT",
     "OCR_GRPC_ENDPOINT",

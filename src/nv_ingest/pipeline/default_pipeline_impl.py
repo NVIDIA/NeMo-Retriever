@@ -275,33 +275,6 @@ stages:
         memory_per_replica_mb: 10000
         limit: 6
 
-  - name: "chart_extractor"
-    type: "stage"
-    phase: 1  # EXTRACTION
-    actor: "nv_ingest.framework.orchestration.ray.stages.extractors.chart_extractor:ChartExtractorStage"
-    config:
-      endpoint_config:
-        yolox_endpoints: [
-          $YOLOX_GRAPHIC_ELEMENTS_GRPC_ENDPOINT|"graphic-elements:8001",
-          $YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT|""
-        ]
-        yolox_infer_protocol: $YOLOX_GRAPHIC_ELEMENTS_INFER_PROTOCOL|grpc
-        ocr_endpoints: [
-          $OCR_GRPC_ENDPOINT|"ocr:8001",
-          $OCR_HTTP_ENDPOINT|""
-        ]
-        ocr_infer_protocol: $OCR_INFER_PROTOCOL|grpc
-        auth_token: $NGC_API_KEY|$NVIDIA_API_KEY
-    replicas:
-      min_replicas: 0
-      max_replicas:
-        strategy: "memory_thresholding"
-        memory_per_replica_mb: 10000
-      static_replicas:
-        strategy: "memory_static_global_percent"
-        memory_per_replica_mb: 10000
-        limit: 6
-
   # Post-processing / Mutators
   - name: "image_filter"
     type: "stage"
@@ -497,9 +470,6 @@ edges:
     to: "table_extractor"
     queue_size: 4
   - from: "table_extractor"
-    to: "chart_extractor"
-    queue_size: 4
-  - from: "chart_extractor"
     to: "ocr_extractor"
     queue_size: 8
   - from: "ocr_extractor"

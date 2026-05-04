@@ -206,14 +206,12 @@ def _build_extract_params(
     extract_charts: bool,
     extract_infographics: bool,
     extract_page_as_image: bool,
-    use_graphic_elements: bool,
     use_table_structure: bool,
     table_output_format: Optional[str],
     extract_remote_api_key: Optional[str],
     page_elements_invoke_url: Optional[str],
     ocr_invoke_url: Optional[str],
     ocr_version: str,
-    graphic_elements_invoke_url: Optional[str],
     table_structure_invoke_url: Optional[str],
     pdf_split_batch_size: int,
     pdf_extract_batch_size: Optional[int],
@@ -279,9 +277,7 @@ def _build_extract_params(
                 "page_elements_invoke_url": page_elements_invoke_url,
                 "ocr_invoke_url": ocr_invoke_url,
                 "ocr_version": ocr_version,
-                "graphic_elements_invoke_url": graphic_elements_invoke_url,
                 "table_structure_invoke_url": table_structure_invoke_url,
-                "use_graphic_elements": use_graphic_elements,
                 "use_table_structure": use_table_structure,
                 "table_output_format": table_output_format,
                 "inference_batch_size": page_elements_batch_size or None,
@@ -651,7 +647,6 @@ def run(
         "--extract-page-as-image/--no-extract-page-as-image",
         rich_help_panel=_PANEL_EXTRACT,
     ),
-    use_graphic_elements: bool = typer.Option(False, "--use-graphic-elements", rich_help_panel=_PANEL_EXTRACT),
     use_table_structure: bool = typer.Option(False, "--use-table-structure", rich_help_panel=_PANEL_EXTRACT),
     table_output_format: Optional[str] = typer.Option(None, "--table-output-format", rich_help_panel=_PANEL_EXTRACT),
     # --- Remote NIM endpoints --------------------------------------------
@@ -670,9 +665,6 @@ def run(
         "--ocr-version",
         help="OCR engine: 'v2' (default, multilingual, higher throughput) or 'v1' (legacy, English-only).",
         rich_help_panel=_PANEL_REMOTE,
-    ),
-    graphic_elements_invoke_url: Optional[str] = typer.Option(
-        None, "--graphic-elements-invoke-url", rich_help_panel=_PANEL_REMOTE
     ),
     table_structure_invoke_url: Optional[str] = typer.Option(
         None, "--table-structure-invoke-url", rich_help_panel=_PANEL_REMOTE
@@ -945,7 +937,6 @@ def run(
                 (
                     page_elements_invoke_url,
                     ocr_invoke_url,
-                    graphic_elements_invoke_url,
                     table_structure_invoke_url,
                     embed_invoke_url,
                 )
@@ -980,14 +971,12 @@ def run(
             extract_charts=extract_charts,
             extract_infographics=extract_infographics,
             extract_page_as_image=extract_page_as_image,
-            use_graphic_elements=use_graphic_elements,
             use_table_structure=use_table_structure,
             table_output_format=table_output_format,
             extract_remote_api_key=extract_remote_api_key,
             page_elements_invoke_url=page_elements_invoke_url,
             ocr_invoke_url=ocr_invoke_url,
             ocr_version=ocr_version,
-            graphic_elements_invoke_url=graphic_elements_invoke_url,
             table_structure_invoke_url=table_structure_invoke_url,
             pdf_split_batch_size=pdf_split_batch_size,
             pdf_extract_batch_size=pdf_extract_batch_size,

@@ -4,6 +4,5 @@
 --index-url https://test.pypi.org/simple/
 
 nemotron-page-elements-v3>=0.dev0
-nemotron-graphic-elements-v1>=0.dev0
 nemotron-table-structure-v1>=0.dev0
 nemotron-ocr>=1.0.2.dev0,<1.0.2a0

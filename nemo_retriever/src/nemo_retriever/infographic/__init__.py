@@ -12,14 +12,12 @@ This stage enriches existing STRUCTURED/infographic primitives by populating
 from .infographic_detection import (
     InfographicDetectionActor,
     InfographicDetectionCPUActor,
-    InfographicDetectionGPUActor,
     detect_infographic_elements_v1,
 )
 
 __all__ = [
     "InfographicDetectionActor",
     "InfographicDetectionCPUActor",
-    "InfographicDetectionGPUActor",
     "detect_infographic_elements_v1",
 ]
 

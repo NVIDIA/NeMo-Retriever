@@ -23,7 +23,6 @@ app = typer.Typer(
         "Stage 999: Post-mortem analysis viewer for per-page artifacts.\n\n"
         "Reads bo767_query_gt.csv (query -> pdf_page) and loads page images + adjacent stage sidecars:\n"
         "  - <image>.+page_elements_v3.json\n"
-        "  - <image>.+graphic_elements_v1.json\n"
         "  - <image>.+table_structure_v1.json\n"
         "  - <image>.+nemotron_ocr_v1.json\n"
         "  - <image_stem>.pdfium_text.txt\n"
@@ -262,7 +261,6 @@ def _paths_for_image(img_path: Path) -> Dict[str, Path]:
         "img_overlay": img_path.with_name(img_path.name + ".page_element_detections.png"),
         "pdfium_text": img_path.with_suffix(".pdfium_text.txt"),
         "stage2": img_path.with_name(img_path.name + ".page_elements_v3.json"),
-        "stage3": img_path.with_name(img_path.name + ".graphic_elements_v1.json"),
         "stage4": img_path.with_name(img_path.name + ".table_structure_v1.json"),
         "stage5": img_path.with_name(img_path.name + ".nemotron_ocr_v1.json"),
         # Stage6 writes this (see stage6_embeddings.py): <image>.+embedder-input.txt
@@ -355,7 +353,6 @@ def _format_summary_for_page(img_path: Path, row: QueryRow) -> Dict[str, Any]:
     pdfium_text = _read_text_best_effort(paths["pdfium_text"]) if paths["pdfium_text"].exists() else ""
 
     s2_raw = _read_json_best_effort(paths["stage2"]) if paths["stage2"].exists() else None
-    s3_raw = _read_json_best_effort(paths["stage3"]) if paths["stage3"].exists() else None
     s4_raw = _read_json_best_effort(paths["stage4"]) if paths["stage4"].exists() else None
     s5_raw = _read_json_best_effort(paths["stage5"]) if paths["stage5"].exists() else None
 
@@ -364,12 +361,10 @@ def _format_summary_for_page(img_path: Path, row: QueryRow) -> Dict[str, Any]:
         "paths": paths,
         "pdfium_text": pdfium_text,
         "stage2": _count_stage2(s2_raw),
-        "stage3": _count_regions_model(s3_raw),
         "stage4": _count_regions_model(s4_raw),
         "stage5": _count_stage5_ocr(s5_raw),
         "raw": {
             "stage2": s2_raw,
-            "stage3": s3_raw,
             "stage4": s4_raw,
             "stage5": s5_raw,
         },
@@ -386,8 +381,8 @@ def _compute_global_metrics(examples: Sequence[ResolvedExample]) -> Dict[str, An
     totals = {
         "unique_pages": int(len(uniq_imgs)),
         "missing_images": int(sum(1 for ex in examples if ex.image_path is None)),
-        "present": {"stage2": 0, "stage3": 0, "stage4": 0, "stage5": 0, "pdfium_text": 0, "overlay": 0},
-        "counts": {"stage2_detections": 0, "stage3_detections": 0, "stage4_detections": 0, "stage5_regions": 0},
+        "present": {"stage2": 0, "stage4": 0, "stage5": 0, "pdfium_text": 0, "overlay": 0},
+        "counts": {"stage2_detections": 0, "stage4_detections": 0, "stage5_regions": 0},
     }
 
     # Add recall metrics if available
@@ -413,14 +408,6 @@ def _compute_global_metrics(examples: Sequence[ResolvedExample]) -> Dict[str, An
             dets = (s2 or {}).get("detections") if isinstance(s2, dict) else None
             if isinstance(dets, list):
                 totals["counts"]["stage2_detections"] += int(len(dets))
-        if paths["stage3"].exists():
-            totals["present"]["stage3"] += 1
-            s3 = _read_json_best_effort(paths["stage3"])
-            regions = (s3 or {}).get("regions") if isinstance(s3, dict) else None
-            if isinstance(regions, list):
-                for r in regions:
-                    if isinstance(r, dict) and isinstance(r.get("detections"), list):
-                        totals["counts"]["stage3_detections"] += int(len(r["detections"]))
         if paths["stage4"].exists():
             totals["present"]["stage4"] += 1
             s4 = _read_json_best_effort(paths["stage4"])
@@ -550,14 +537,12 @@ def _export_report_pdf(
 
         # Metrics summary
         s2 = summary["stage2"]
-        s3 = summary["stage3"]
         s4 = summary["stage4"]
         s5 = summary["stage5"]
         metrics_lines = [
             "Model / stage presence & counts:",
             f"- pdfium_text: {'present' if bool(summary['pdfium_text']) else 'missing/empty'} (file: {'yes' if paths['pdfium_text'].exists() else 'no'})",
             f"- stage2 page_elements_v3: present={s2.get('present')} dets={s2.get('num_detections', 0)} timing_s={s2.get('timing_s')}",
-            f"- stage3 graphic_elements_v1: present={s3.get('present')} regions={s3.get('num_regions', 0)} dets={s3.get('num_detections', 0)} timing_s={s3.get('timing_s')}",
             f"- stage4 table_structure_v1: present={s4.get('present')} regions={s4.get('num_regions', 0)} dets={s4.get('num_detections', 0)} timing_s={s4.get('timing_s')}",
             f"- stage5 nemotron_ocr_v1: present={s5.get('present')} regions={s5.get('num_regions', 0)} nonempty={s5.get('num_nonempty', 0)}",
             "",
@@ -672,7 +657,7 @@ def _gather_results_zip(
         for img_path, row in page_items:
             paths = _paths_for_image(img_path)
             files: List[Tuple[str, Path]] = []
-            for k in ("img", "img_overlay", "pdfium_text", "stage2", "stage3", "stage4", "stage5", "embedder_input"):
+            for k in ("img", "img_overlay", "pdfium_text", "stage2", "stage4", "stage5", "embedder_input"):
                 p = paths.get(k)
                 if isinstance(p, Path) and p.exists():
                     files.append((k, p))
@@ -723,7 +708,6 @@ def _run_headless(*, examples: Sequence[ResolvedExample], global_metrics: Dict[s
     present = global_metrics.get("present", {})
     metrics_table.add_row("", "")  # separator
     metrics_table.add_row("Stage 2 (page_elements_v3)", str(present.get("stage2", 0)))
-    metrics_table.add_row("Stage 3 (graphic_elements_v1)", str(present.get("stage3", 0)))
     metrics_table.add_row("Stage 4 (table_structure_v1)", str(present.get("stage4", 0)))
     metrics_table.add_row("Stage 5 (nemotron_ocr_v1)", str(present.get("stage5", 0)))
     metrics_table.add_row("PDFium Text Files", str(present.get("pdfium_text", 0)))
@@ -733,7 +717,6 @@ def _run_headless(*, examples: Sequence[ResolvedExample], global_metrics: Dict[s
     if counts:
         metrics_table.add_row("", "")  # separator
         metrics_table.add_row("Stage 2 Detections", str(counts.get("stage2_detections", 0)))
-        metrics_table.add_row("Stage 3 Detections", str(counts.get("stage3_detections", 0)))
         metrics_table.add_row("Stage 4 Detections", str(counts.get("stage4_detections", 0)))
         metrics_table.add_row("Stage 5 Regions", str(counts.get("stage5_regions", 0)))
 
@@ -796,8 +779,6 @@ def _run_headless(*, examples: Sequence[ResolvedExample], global_metrics: Dict[s
             stages = []
             if paths["stage2"].exists():
                 stages.append("2")
-            if paths["stage3"].exists():
-                stages.append("3")
             if paths["stage4"].exists():
                 stages.append("4")
             if paths["stage5"].exists():
@@ -854,16 +835,12 @@ def _run_headless(*, examples: Sequence[ResolvedExample], global_metrics: Dict[s
             details_lines.append("")
 
             s2 = summary["stage2"]
-            s3 = summary["stage3"]
             s4 = summary["stage4"]
             s5 = summary["stage5"]
 
             details_lines.append("[bold]Stage Presence:[/bold]")
             details_lines.append(
                 f"  • Stage 2: {'✓' if s2.get('present') else '✗'} ({s2.get('num_detections', 0)} detections)"
-            )
-            details_lines.append(
-                f"  • Stage 3: {'✓' if s3.get('present') else '✗'} ({s3.get('num_regions', 0)} regions, {s3.get('num_detections', 0)} detections)"
             )
             details_lines.append(
                 f"  • Stage 4: {'✓' if s4.get('present') else '✗'} ({s4.get('num_regions', 0)} regions, {s4.get('num_detections', 0)} detections)"
@@ -973,7 +950,6 @@ def _run_web_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str
                     _read_text_best_effort(paths["embedder_input"]) if paths["embedder_input"].exists() else ""
                 ),
                 "stage2": summary["stage2"],
-                "stage3": summary["stage3"],
                 "stage4": summary["stage4"],
                 "stage5": summary["stage5"],
                 "raw": summary["raw"],
@@ -1302,7 +1278,6 @@ def _run_web_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str
                 <div class="metric-item"><span>Total Rows:</span><strong>${allExamples.length}</strong></div>
                 <div class="metric-item"><span>Unique Pages:</span><strong>${metrics.unique_pages}</strong></div>
                 <div class="metric-item"><span>Stage 2:</span><strong>${present.stage2 || 0}</strong></div>
-                <div class="metric-item"><span>Stage 3:</span><strong>${present.stage3 || 0}</strong></div>
                 <div class="metric-item"><span>Stage 4:</span><strong>${present.stage4 || 0}</strong></div>
                 <div class="metric-item"><span>Stage 5:</span><strong>${present.stage5 || 0}</strong></div>
             `;
@@ -1422,7 +1397,6 @@ def _run_web_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str
             `;
 
             const s2 = data.stage2 || {};
-            const s3 = data.stage3 || {};
             const s4 = data.stage4 || {};
             const s5 = data.stage5 || {};
 
@@ -1447,12 +1421,6 @@ def _run_web_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str
                     ${s2.present ? '✓' : '✗'}
                     ${s2.num_detections || 0} detections
                     ${s2.timing_s ? ` (${s2.timing_s.toFixed(2)}s)` : ''}<br>
-
-                    <strong>Stage 3 (graphic_elements_v1):</strong>
-                    ${s3.present ? '✓' : '✗'}
-                    ${s3.num_regions || 0} regions,
-                    ${s3.num_detections || 0} detections
-                    ${s3.timing_s ? ` (${s3.timing_s.toFixed(2)}s)` : ''}<br>
 
                     <strong>Stage 4 (table_structure_v1):</strong>
                     ${s4.present ? '✓' : '✗'}
@@ -1722,7 +1690,7 @@ def _run_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str, An
     gm = global_metrics
     gm_text = (
         f"unique_pages={gm.get('unique_pages')} missing_images={gm.get('missing_images')}\n"
-        f"present: s2={gm.get('present', {}).get('stage2')} s3={gm.get('present', {}).get('stage3')} "
+        f"present: s2={gm.get('present', {}).get('stage2')} "
         f"s4={gm.get('present', {}).get('stage4')} s5={gm.get('present', {}).get('stage5')} "
         f"pdfium={gm.get('present', {}).get('pdfium_text')} overlay={gm.get('present', {}).get('overlay')}"
     )
@@ -1863,7 +1831,6 @@ def _run_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str, An
         lines.append("")
 
         s2 = summary["stage2"]
-        s3 = summary["stage3"]
         s4 = summary["stage4"]
         s5 = summary["stage5"]
         lines.append("Model / stage summary:")
@@ -1872,9 +1839,6 @@ def _run_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str, An
         )
         if s2.get("by_label"):
             lines.append("  label counts: " + ", ".join([f"{k}={v}" for k, v in list(s2["by_label"].items())[:12]]))
-        lines.append(
-            f"- stage3 graphic_elements_v1: present={s3.get('present')} regions={s3.get('num_regions', 0)} dets={s3.get('num_detections', 0)} timing_s={s3.get('timing_s')}"
-        )
         lines.append(
             f"- stage4 table_structure_v1: present={s4.get('present')} regions={s4.get('num_regions', 0)} dets={s4.get('num_detections', 0)} timing_s={s4.get('timing_s')}"
         )
@@ -2037,7 +2001,6 @@ def _run_ui(*, examples: Sequence[ResolvedExample], global_metrics: Dict[str, An
         raw_blob = "\n\n".join(
             [
                 f"## stage2: {paths['stage2']} (exists={paths['stage2'].exists()})\n{_pretty_json(raw.get('stage2'))}",
-                f"## stage3: {paths['stage3']} (exists={paths['stage3'].exists()})\n{_pretty_json(raw.get('stage3'))}",
                 f"## stage4: {paths['stage4']} (exists={paths['stage4'].exists()})\n{_pretty_json(raw.get('stage4'))}",
                 f"## stage5: {paths['stage5']} (exists={paths['stage5'].exists()})\n{_pretty_json(raw.get('stage5'))}",
             ]
