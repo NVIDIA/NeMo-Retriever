@@ -53,7 +53,8 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
     Ray Data map_batches callable: DataFrame with path -> DataFrame of frame rows.
 
     Each output row has:
-      - ``path``: frame PNG path
+      - ``path``: original video path (frames are not persisted on disk;
+        ``image_b64`` / ``bytes`` carry the pixels)
       - ``source_path``: original video path
       - ``image_b64``: base64-encoded PNG (the ``VideoFrameOCRActor`` reads this)
       - ``bytes``: raw PNG bytes (kept for compatibility with Ray Data binary readers)
@@ -140,7 +141,10 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
             }
             rows.append(
                 {
-                    "path": frame_path,
+                    # frame_path lives inside ``tmpdir`` which is deleted on
+                    # return; consumers read ``image_b64`` / ``bytes``, not
+                    # the file. Publish the source video instead of a stale ref.
+                    "path": source_path,
                     "source_path": source_path,
                     "image_b64": image_b64,
                     "page_number": idx,
