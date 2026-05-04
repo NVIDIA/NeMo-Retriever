@@ -352,7 +352,7 @@ class ServiceIngestor(ingestor):
     # ------------------------------------------------------------------
 
     def ingest(self, params: Any = None, **kwargs: Any) -> ServiceIngestResult:
-        """Block until every page of every input file is processed.
+        """Block until every document has finished processing on the server.
 
         Returns
         -------
@@ -368,15 +368,68 @@ class ServiceIngestor(ingestor):
           service mode (use the YAML config / CLI flags on the server
           instead).
         - This method internally calls :meth:`ingest_stream` and collects
-          every yielded ``page_result`` event.
+          results from ``job_complete`` events (which contain full document
+          results fetched from the server).
         """
         del params, kwargs
         result = ServiceIngestResult()
         t0 = time.monotonic()
 
+        event_counts: dict[str, int] = {}
         for evt in self.ingest_stream():
             event_type = evt.get("event")
-            if event_type == "page_result":
+            event_counts[event_type] = event_counts.get(event_type, 0) + 1
+            if event_type == "job_started":
+                print(
+                    f"[DEBUG] job_started: job_id={evt.get('job_id', '')[:8]}, "
+                    f"filename={evt.get('filename')}, total_pages={evt.get('total_pages')}"
+                )
+            if event_type == "job_complete":
+                job_results = evt.get("results")
+                job_id_short = (evt.get("job_id") or "")[:8]
+                if job_results and isinstance(job_results, dict):
+                    input_pages = job_results.get("pages", [])
+                    total_output_rows = sum(len(p.get("pages", [])) for p in input_pages)
+                    print(
+                        f"[DEBUG] job_complete {job_id_short}: "
+                        f"filename={job_results.get('filename')}, "
+                        f"status={job_results.get('status')}, "
+                        f"input_pages={len(input_pages)}, "
+                        f"output_rows={total_output_rows}, "
+                        f"pages_completed={job_results.get('pages_completed')}"
+                    )
+                    for input_page in input_pages:
+                        doc_id = input_page.get("document_id", "")
+                        page_num = input_page.get("page_number", 0)
+                        status = input_page.get("status", "")
+                        for output_row in input_page.get("pages", []):
+                            result.append(
+                                {
+                                    "job_id": evt.get("job_id"),
+                                    "document_id": doc_id,
+                                    "source_file": job_results.get("filename"),
+                                    "page_number": page_num,
+                                    "content": output_row.get("content", {}),
+                                }
+                            )
+                        if status == "failed":
+                            result.failures.append(
+                                {
+                                    "job_id": evt.get("job_id"),
+                                    "source_file": job_results.get("filename"),
+                                    "page_number": page_num,
+                                    "error": f"page processing failed (status={status})",
+                                }
+                            )
+                else:
+                    print(
+                        f"[DEBUG] job_complete {job_id_short}: "
+                        f"results is None or not a dict! "
+                        f"results_type={type(job_results)}, "
+                        f"has_error={evt.get('error', 'no')}, "
+                        f"synthetic={evt.get('synthetic', False)}"
+                    )
+            elif event_type == "page_result":
                 for page in evt.get("pages", []):
                     result.append(
                         {
@@ -416,6 +469,8 @@ class ServiceIngestor(ingestor):
                 self._poll_remaining_results(result)
                 break
 
+        print(f"[DEBUG] Stream finished. Event counts: {event_counts}")
+        print(f"[DEBUG] Total result rows collected: {len(result)}, failures: {len(result.failures)}")
         result.job_ids = list(self._job_ids)
         result.elapsed_s = time.monotonic() - t0
         self._last_run_elapsed_s = result.elapsed_s

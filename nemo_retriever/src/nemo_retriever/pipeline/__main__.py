@@ -1141,9 +1141,11 @@ def run(
             # stripped from SSE results to keep payloads small.  Client-side
             # VDB upload is therefore skipped.
             logger.info(
-                "Service-mode ingestion complete (%d results from %d input(s)). " "VDB writes are handled server-side.",
+                "Service-mode ingestion complete (%d results from %d input(s), %.1fs). "
+                "VDB writes are handled server-side.",
                 len(ingest_local_results),
                 num_rows,
+                ingestion_only_total_time,
             )
             uploadable_vdb_records = len(ingest_local_results)
             vdb_upload_time = 0.0
@@ -1186,7 +1188,7 @@ def run(
                 collect_detection_summary_from_df(result_df),
             )
 
-        if uploadable_vdb_records == 0:
+        if uploadable_vdb_records == 0 and run_mode != "service":
             if run_mode == "batch":
                 import ray
 

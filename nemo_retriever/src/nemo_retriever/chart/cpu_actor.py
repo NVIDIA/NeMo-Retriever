@@ -35,6 +35,7 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
         *,
         graphic_elements_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
+        load_ocr_v2: bool = True,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
