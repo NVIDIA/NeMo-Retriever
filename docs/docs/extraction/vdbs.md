@@ -31,7 +31,7 @@ It does not store the embeddings for images.
     To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md).
 
 NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](nemo-retriever-api-reference.md).
-Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.3.0/nemo_retriever/docs/cli).
+Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 
 
@@ -149,12 +149,12 @@ NeMo Retriever Library integrates with vector databases used for RAG collections
 
 ### Backends with `VDB` implementations (retriever adapters) {#vdb-backends-implementations}
 
-NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/nemo_retriever/src/nemo_retriever/vdb/operators.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/nemo_retriever/src/nemo_retriever/vdb/operators.py) wrap concrete classes that implement the [`nv_ingest_client.util.vdb.VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The following external vector databases have implementations in the client library you can pass as `vdb` / configure via `vdb_op` where supported:
+NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/vdb/operators.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/vdb/operators.py) wrap concrete classes that implement the [`nv_ingest_client.util.vdb.VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The following external vector databases have implementations in the client library you can pass as `vdb` / configure via `vdb_op` where supported:
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
-| **LanceDB** | [LanceDB](https://lancedb.com/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/client/src/nv_ingest_client/util/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
-| **OpenSearch** | [OpenSearch](https://opensearch.org/) | [`opensearch.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/client/src/nv_ingest_client/util/vdb/opensearch.py) — reference operator; wire your own `OpenSearch` instance as `vdb` and see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/examples/building_vdb_operator.ipynb). |
+| **LanceDB** | [LanceDB](https://lancedb.com/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
+| **OpenSearch** | [OpenSearch](https://opensearch.org/) | [`opensearch.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/opensearch.py) — reference operator; wire your own `OpenSearch` instance as `vdb` and see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb). |
 
 On nv-ingest-client `Ingestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; see [Upload to LanceDB](#upload-to-lancedb).
 
@@ -169,7 +169,7 @@ For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` 
 
     NVIDIA documents and validates the first-party LanceDB operator for this library. If you integrate a different vector store, you are responsible for testing and maintaining that integration.
 
-To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/examples/building_vdb_operator.ipynb).
+To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
 
 
 
