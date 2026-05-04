@@ -1096,23 +1096,6 @@ _AVAILABLE_MODELS = [
         "output_classes": ["cell", "row", "column"],
     },
     {
-        "id": "graphic_elements_v1",
-        "name": "Nemotron Graphic Elements v1",
-        "type": "object-detection",
-        "category": "Document AI",
-        "description": "Detects chart elements: axis titles/labels, legends, markers, value labels.",
-        "input_type": "image",
-        "output_classes": [
-            "chart_title",
-            "x_axis_title",
-            "y_axis_title",
-            "legend_title",
-            "legend_label",
-            "marker_label",
-            "value_label",
-        ],
-    },
-    {
         "id": "nvidia/NVIDIA-Nemotron-Parse-v1.2",
         "name": "Nemotron Parse v1.2",
         "type": "document-parser",
@@ -1389,22 +1372,6 @@ async def test_detect_model(req: DetectTestRequest):
 
             model = NemotronTableStructureV1()
             label_names = ["cell", "merged_cell", "row", "column"]
-        elif req.model_id == "graphic_elements_v1":
-            from nemo_retriever.model.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
-
-            model = NemotronGraphicElementsV1()
-            label_names = [
-                "chart_title",
-                "x_axis_title",
-                "y_axis_title",
-                "x_tick_label",
-                "y_tick_label",
-                "legend_title",
-                "legend_label",
-                "marker_label",
-                "value_label",
-                "other_label",
-            ]
         else:
             raise HTTPException(status_code=400, detail=f"Unknown detection model: {req.model_id}")
 

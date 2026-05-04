@@ -14,7 +14,6 @@ pixel-coordinate representations expected by the core joining routines.
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple  # noqa: F401
 
 import numpy as np
@@ -25,42 +24,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Core algorithms ported from nv-ingest
 # ---------------------------------------------------------------------------
-
-
-def match_bboxes(
-    yolox_box: np.ndarray,
-    ocr_boxes: np.ndarray,
-    already_matched: Optional[list] = None,
-    delta: float = 2.0,
-) -> np.ndarray:
-    """Union-based IoU matching for chart graphic elements."""
-    x0_1, y0_1, x1_1, y1_1 = yolox_box
-    x0_2, y0_2, x1_2, y1_2 = (
-        ocr_boxes[:, 0],
-        ocr_boxes[:, 1],
-        ocr_boxes[:, 2],
-        ocr_boxes[:, 3],
-    )
-
-    inter_y0 = np.maximum(y0_1, y0_2)
-    inter_y1 = np.minimum(y1_1, y1_2)
-    inter_x0 = np.maximum(x0_1, x0_2)
-    inter_x1 = np.minimum(x1_1, x1_2)
-    inter_area = np.maximum(0, inter_y1 - inter_y0) * np.maximum(0, inter_x1 - inter_x0)
-
-    area_1 = (y1_1 - y0_1) * (x1_1 - x0_1)
-    area_2 = (y1_2 - y0_2) * (x1_2 - x0_2)
-    union_area = area_1 + area_2 - inter_area
-
-    ious = inter_area / union_area
-    max_iou = np.max(ious)
-    if max_iou <= 0.01:
-        return []
-
-    matches = np.where(ious > (max_iou / delta))[0]
-    if already_matched is not None:
-        matches = np.array([m for m in matches if m not in already_matched])
-    return matches
 
 
 def assign_boxes(
@@ -98,89 +61,6 @@ def assign_boxes(
     n = len(np.where(ious >= (max_iou / delta))[0])
     matches = np.argsort(-ious)[:n]
     return matches
-
-
-def _join_yolox_graphic_elements_and_ocr_output(
-    yolox_output: Dict[str, list],
-    ocr_boxes: np.ndarray,
-    ocr_txts: list,
-) -> Dict[str, str]:
-    """Match graphic-element detections to OCR text via IoU."""
-    KEPT_CLASSES = [
-        "chart_title",
-        "x_title",
-        "y_title",
-        "xlabel",
-        "ylabel",
-        "other",
-        "legend_label",
-        "legend_title",
-        "mark_label",
-        "value_label",
-    ]
-
-    ocr_txts = np.array(ocr_txts)
-    ocr_boxes = np.array(ocr_boxes)
-
-    if ocr_txts.size == 0 or ocr_boxes.size == 0:
-        return {}
-
-    # Convert quadrilateral (N,4,2) → xyxy (N,4).
-    ocr_boxes = np.array(
-        [
-            ocr_boxes[:, :, 0].min(-1),
-            ocr_boxes[:, :, 1].min(-1),
-            ocr_boxes[:, :, 0].max(-1),
-            ocr_boxes[:, :, 1].max(-1),
-        ]
-    ).T
-
-    already_matched: list = []
-    results: Dict[str, str] = {}
-
-    for k in KEPT_CLASSES:
-        if not len(yolox_output.get(k, [])):
-            continue
-
-        texts = []
-        for yolox_box in yolox_output[k]:
-            yolox_box = yolox_box[:4]
-            ocr_ids = match_bboxes(yolox_box, ocr_boxes, already_matched=already_matched, delta=4)
-            if len(ocr_ids) > 0:
-                text = " ".join(ocr_txts[ocr_ids].tolist())
-                texts.append(text)
-
-        processed_texts = []
-        for t in texts:
-            t = re.sub(r"\s+", " ", t)
-            t = re.sub(r"\.+", ".", t)
-            processed_texts.append(t)
-
-        if "title" in k:
-            processed_texts = " ".join(processed_texts)
-        else:
-            processed_texts = " - ".join(processed_texts)
-
-        results[k] = processed_texts
-
-    return results
-
-
-def process_yolox_graphic_elements(yolox_text_dict: Dict[str, str]) -> str:
-    """Concatenate chart text by semantic region."""
-    chart_content = ""
-    chart_content += yolox_text_dict.get("chart_title", "")
-    chart_content += " " + yolox_text_dict.get("caption", "")
-    chart_content += " " + yolox_text_dict.get("x_title", "")
-    chart_content += " " + yolox_text_dict.get("xlabel", "")
-    chart_content += " " + yolox_text_dict.get("y_title", "")
-    chart_content += " " + yolox_text_dict.get("ylabel", "")
-    chart_content += " " + yolox_text_dict.get("legend_label", "")
-    chart_content += " " + yolox_text_dict.get("legend_title", "")
-    chart_content += " " + yolox_text_dict.get("mark_label", "")
-    chart_content += " " + yolox_text_dict.get("value_label", "")
-    chart_content += " " + yolox_text_dict.get("other", "")
-    return chart_content.strip()
 
 
 def _join_yolox_table_structure_and_ocr_output(
@@ -563,46 +443,6 @@ def join_table_structure_and_ocr_output(
 
     quad_boxes, texts = _ocr_items_to_pixel_quad_boxes(ocr_items, crop_hw)
     return _join_yolox_table_structure_and_ocr_output(cell_preds, quad_boxes, texts)
-
-
-def join_graphic_elements_and_ocr_output(
-    ge_dets: List[Dict[str, Any]],
-    ocr_preds: Any,
-    crop_hw: Tuple[int, int],
-) -> str:
-    """Adapter: convert retriever graphic-elements detections + OCR items,
-    then call the core joining + concatenation functions.
-
-    Parameters
-    ----------
-    ge_dets : list[dict]
-        From ``_prediction_to_detections()`` with chart-element label_names
-        and ``bbox_xyxy_norm`` in [0, 1].
-    ocr_preds : list | dict
-        Raw OCR output from ``NemotronOCRV1.invoke()``.
-    crop_hw : (int, int)
-        ``(H, W)`` of the crop image.
-    """
-    ocr_items = _normalize_ocr_items(ocr_preds)
-    if not ocr_items:
-        return ""
-
-    class_boxes = _structure_dets_to_class_boxes(ge_dets, crop_hw)
-    if not class_boxes:
-        return ""
-
-    # Convert class_boxes values from (N,4) arrays to list-of-arrays (one per detection).
-    yolox_output: Dict[str, list] = {}
-    for k, arr in class_boxes.items():
-        yolox_output[k] = [arr[i] for i in range(arr.shape[0])]
-
-    quad_boxes, texts = _ocr_items_to_pixel_quad_boxes(ocr_items, crop_hw)
-
-    matched = _join_yolox_graphic_elements_and_ocr_output(yolox_output, quad_boxes, texts)
-    if not matched:
-        return ""
-
-    return process_yolox_graphic_elements(matched)
 
 
 def reorder_ocr_for_infographic(

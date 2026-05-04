@@ -163,7 +163,6 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
             page_elements_invoke_url="http://page.example/v1",
             ocr_invoke_url="http://ocr.example/v1",
             table_structure_invoke_url="http://table.example/v1",
-            graphic_elements_invoke_url="http://graphic.example/v1",
             ocr_version=ocr_version,
         ),
         embed_params=EmbedParams(
@@ -176,7 +175,6 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
 
     assert classes["PageElementDetectionActor"].__name__ == "PageElementDetectionCPUActor"
     assert classes["TableStructureActor"].__name__ == "TableStructureCPUActor"
-    assert classes["GraphicElementsActor"].__name__ == "GraphicElementsCPUActor"
     assert classes[expected_node_name].__name__ == expected_cpu_class_name
     assert classes["_BatchEmbedActor"].__name__ == "_BatchEmbedCPUActor"
     assert issubclass(classes["PageElementDetectionActor"], CPUOperator)

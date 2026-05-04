@@ -82,7 +82,6 @@ local = [
   "timm==1.0.22",
   "albumentations==2.0.8",
   "nemotron-page-elements-v3>=0.dev0",
-  "nemotron-graphic-elements-v1>=0.dev0",
   "nemotron-table-structure-v1>=0.dev0",
   # Stay on the 1.0.2 OCR dev train and exclude older PyPI finals.
   "nemotron-ocr>=1.0.2.dev0,<1.0.2a0; sys_platform == 'linux'",
@@ -150,7 +149,6 @@ version = {attr = "nemo_retriever.version.get_build_version"}
 nv-ingest-api = { path = "../api/", editable = true }
 nv-ingest-client = { path = "../client/", editable = true }
 nemotron-page-elements-v3 = { index = "test-pypi" }
-nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
 # On Linux, resolve torch/torchvision from the CUDA wheel index.

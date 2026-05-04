@@ -37,7 +37,6 @@ HF_MODEL_REVISIONS: dict[str, str] = {
     "nvidia/nemotron-ocr-v2": "86cacb0467fa4f7ce54342fdb250825e0d928ae7",
     "nvidia/nemotron-page-elements-v3": "df62dbb631502575ac4d43b44d700b1674ab1d56",
     "nvidia/nemotron-table-structure-v1": "9350162faa1110320af62699105780b0c87b73ad",
-    "nvidia/nemotron-graphic-elements-v1": "4a76546bb1bb4cbab3401361c91cf01706321805",
 }
 
 

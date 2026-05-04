@@ -2235,7 +2235,6 @@ all = [
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
     { name = "litellm" },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "sys_platform == 'linux'" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2277,7 +2276,6 @@ local = [
     { name = "einops" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "sys_platform == 'linux'" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2331,7 +2329,6 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40.0" },
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "stores"], marker = "extra == 'all'" },
-    { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-ocr", marker = "sys_platform == 'linux' and extra == 'local'", specifier = ">=1.0.2.dev0,<1.0.2a0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
@@ -2374,25 +2371,6 @@ requires-dist = [
     { name = "vllm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local'", url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl" },
 ]
 provides-extras = ["local", "multimedia", "stores", "benchmarks", "llm", "dev", "all"]
-
-[[package]]
-name = "nemotron-graphic-elements-v1"
-version = "1.0.0.dev20260306"
-source = { registry = "https://test.pypi.org/simple/" }
-dependencies = [
-    { name = "huggingface-hub" },
-    { name = "matplotlib" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
-    { name = "pandas" },
-    { name = "pillow" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
-    { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-sdist = { url = "https://test-files.pythonhosted.org/packages/24/73/1a9fbe480faf81bf18748601617c7b99d5921042bf0b960e7813efc27346/nemotron_graphic_elements_v1-1.0.0.dev20260306.tar.gz", hash = "sha256:d363e4f99966bf75c779092dd25a5db4c5797e05ffaf596e9103ecd6b245fca7", size = 33625, upload-time = "2026-03-06T03:59:56.004Z" }
-wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/e7/fd/12f81adf24839162770fdb8a0dc49dba27964d71282ed95d3c5a45709986/nemotron_graphic_elements_v1-1.0.0.dev20260306-py3-none-any.whl", hash = "sha256:220f0177bc2f7cb23a65911c94204665dee209fc1ddf32784791cd4ac7de3017", size = 27075, upload-time = "2026-03-06T03:59:54.481Z" },
-]
 
 [[package]]
 name = "nemotron-ocr"

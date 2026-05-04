@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 """
-Infographic detection (Nemotron Graphic Elements v1).
+Infographic detection.
 
 This prioritizes `infographics` crops when present and uses
 infographic-specific output column defaults.
@@ -21,7 +21,6 @@ import traceback
 import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import RemoteRetryParams
@@ -280,7 +279,7 @@ def detect_infographic_elements_v1(
         remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
-    Run Nemotron Graphic Elements v1 on an infographic image source.
+    Run infographic-element detection on an infographic image source.
 
     Input:
       - pandas.DataFrame in/out
@@ -467,7 +466,7 @@ def detect_infographic_elements_v1_from_page_elements_v3(
         remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 3)),
     )
     """
-    Run Nemotron Graphic Elements v1 only on cropped infographic/title regions.
+    Run infographic-element detection only on cropped infographic/title regions.
 
     Gate per page if any of `allowed_page_element_labels` has count > 0 in
     `page_elements_v3_counts_by_label`, then crop `page_image.image_b64` to each
@@ -755,63 +754,9 @@ def detect_infographic_elements_v1_from_page_elements_v3(
 @designer_component(
     name="Infographic Detection",
     category="Detection & OCR",
-    compute="gpu",
+    compute="cpu",
     description="Detects and extracts infographic content from documents",
 )
-class InfographicDetectionGPUActor(AbstractOperator, GPUOperator):
-    """
-    Ray-friendly callable that initializes Nemotron Graphic Elements v1 once.
-    """
-
-    def __init__(self, **detect_kwargs: Any) -> None:
-        super().__init__(**detect_kwargs)
-        self.detect_kwargs = dict(detect_kwargs)
-        invoke_url = str(
-            self.detect_kwargs.get("infographic_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
-        ).strip()
-        if invoke_url:
-            raise ValueError(
-                "InfographicDetectionGPUActor does not support remote endpoint execution. "
-                "Use InfographicDetectionCPUActor instead."
-            )
-        from nemo_retriever.model.local import NemotronGraphicElementsV1
-
-        self._model = NemotronGraphicElementsV1()
-
-    def preprocess(self, data: Any, **kwargs: Any) -> Any:
-        return data
-
-    def process(self, batch_df: Any, **override_kwargs: Any) -> Any:
-        if isinstance(batch_df, pd.DataFrame) and (
-            "page_elements_v3" in batch_df.columns or "page_elements_v3_counts_by_label" in batch_df.columns
-        ):
-            return detect_infographic_elements_v1_from_page_elements_v3(
-                batch_df,
-                model=self._model,
-                **self.detect_kwargs,
-                **override_kwargs,
-            )
-        return detect_infographic_elements_v1(batch_df, model=self._model, **self.detect_kwargs, **override_kwargs)
-
-    def postprocess(self, data: Any, **kwargs: Any) -> Any:
-        return data
-
-    def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
-        try:
-            return self.run(batch_df, **override_kwargs)
-        except BaseException as e:
-            if isinstance(batch_df, pd.DataFrame):
-                out = batch_df.copy()
-                payload = _error_payload(stage="actor_call", exc=e)
-                out["infographic_elements_v1"] = [
-                    {"regions": [], "timing": None, "error": payload.get("error")} for _ in range(len(out.index))
-                ]
-                out["infographic_elements_v1_num_detections"] = [0 for _ in range(len(out.index))]
-                out["infographic_elements_v1_counts_by_label"] = [{} for _ in range(len(out.index))]
-                return out
-            return [{"infographic_elements_v1": _error_payload(stage="actor_call", exc=e)}]
-
-
 class InfographicDetectionCPUActor(AbstractOperator, CPUOperator):
     """CPU-only infographic detection actor that delegates to a remote endpoint."""
 
@@ -869,12 +814,11 @@ class InfographicDetectionCPUActor(AbstractOperator, CPUOperator):
 
 class InfographicDetectionActor(ArchetypeOperator):
     _cpu_variant_class = InfographicDetectionCPUActor
-    _gpu_variant_class = InfographicDetectionGPUActor
+    _gpu_variant_class = InfographicDetectionCPUActor
 
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
-        kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("infographic_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return True
 
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
