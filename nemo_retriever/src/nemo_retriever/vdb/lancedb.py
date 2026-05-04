@@ -95,7 +95,9 @@ def _record_timing(event: str, duration_s: float, extra: dict | None = None):
     }
     if extra:
         payload.update(extra)
-    os.makedirs(os.path.dirname(timing_path), exist_ok=True)
+    timing_dir = os.path.dirname(timing_path)
+    if timing_dir:
+        os.makedirs(timing_dir, exist_ok=True)
     with open(timing_path, "a") as f:
         f.write(json.dumps(payload) + "\n")
 
