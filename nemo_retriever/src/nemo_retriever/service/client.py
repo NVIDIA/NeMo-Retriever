@@ -5,9 +5,9 @@
 """Async CLI client for submitting documents to the retriever service.
 
 Key features:
-- Client-side PDF splitting using pypdfium2 (each page uploaded individually)
+- Whole-document upload (server-side PDF splitting via POST /v1/ingest/job)
 - Job-level tracking (one job per input file)
-- Single SSE connection opened IN PARALLEL with uploads so no events are missed
+- SSE streaming or polling to wait for full job completion
 - Rich live progress bars and metrics table
 - Per-page failure tracking with error messages printed at exit
 """
@@ -21,7 +21,6 @@ import time
 from pathlib import Path
 from contextlib import nullcontext
 from typing import Any, AsyncIterator, Awaitable, Callable
-from uuid import uuid4
 
 import httpx
 from rich.bar import Bar
@@ -60,11 +59,6 @@ _SSE_MAX_OVERFLOWS = 5
 console = Console()
 
 
-def _split_pdf(file_bytes: bytes) -> list[bytes]:
-    """Split a PDF into single-page PDFs using pypdfium2."""
-    from nemo_retriever.pdf.split import _split_pdf_to_single_page_bytes
-
-    return _split_pdf_to_single_page_bytes(file_bytes)
 
 
 # ------------------------------------------------------------------
@@ -347,70 +341,48 @@ class RetrieverServiceClient:
         self._capacity_event.set()
 
     # ------------------------------------------------------------------
-    # PDF splitting
+    # Whole-document upload
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _prepare_file(file_path: Path) -> list[tuple[bytes, int, int]]:
-        """Return ``(page_bytes, page_number, total_pages)`` tuples.
-
-        PDFs are split into individual pages; non-PDFs become a single page.
-        """
-        raw = file_path.read_bytes()
-        if file_path.suffix.lower() == ".pdf":
-            pages = _split_pdf(raw)
-            return [(p, idx + 1, len(pages)) for idx, p in enumerate(pages)]
-        return [(raw, 1, 1)]
-
-    # ------------------------------------------------------------------
-    # Upload
-    # ------------------------------------------------------------------
-
-    async def _upload_page(
+    async def _upload_document(
         self,
         client: httpx.AsyncClient,
-        page_bytes: bytes,
-        filename: str,
-        job_id: str,
-        page_number: int,
-        total_pages: int,
+        file_path: Path,
         tracker: _JobTracker | None = None,
     ) -> dict[str, Any]:
-        """Upload a single page, retrying on 503."""
+        """Upload a full document to /v1/ingest/job, retrying on 503.
+
+        The server splits PDFs into pages internally. Returns the JSON
+        response including ``job_id``, ``total_pages``, etc.
+        """
         async with self._semaphore:
             backoff = _DEFAULT_RETRY_AFTER
             was_busy = False
             transport_attempts = 0
+            file_bytes = file_path.read_bytes()
+            filename = file_path.name
 
             while True:
-                meta = {
-                    "filename": filename,
-                    "job_id": job_id,
-                    "page_number": page_number,
-                    "total_pages": total_pages,
-                }
-                page_filename = f"{Path(filename).stem}_p{page_number}{Path(filename).suffix}"
-                files = {"file": (page_filename, page_bytes)}
+                meta = {"filename": filename}
+                files = {"file": (filename, file_bytes)}
                 data = {"metadata": json.dumps(meta)}
                 try:
-                    resp = await client.post(f"{self._base_url}/v1/ingest", files=files, data=data)
+                    resp = await client.post(f"{self._base_url}/v1/ingest/job", files=files, data=data)
                 except _TRANSIENT_HTTPX_ERRORS as exc:
                     transport_attempts += 1
                     if transport_attempts > _UPLOAD_TRANSIENT_RETRIES:
                         logger.warning(
-                            "[job %s] upload of %s page %d failed after %d attempts: %s",
-                            job_id[:8],
+                            "Upload of %s failed after %d attempts: %s",
                             filename,
-                            page_number,
                             transport_attempts,
                             exc.__class__.__name__,
                         )
                         raise
                     delay = min(_RETRY_BASE_DELAY * (2 ** (transport_attempts - 1)), _MAX_BACKOFF)
                     logger.debug(
-                        "[job %s] transient %s on upload (attempt %d/%d), sleeping %.1fs",
-                        job_id[:8],
+                        "Transient %s on upload of %s (attempt %d/%d), sleeping %.1fs",
                         exc.__class__.__name__,
+                        filename,
                         transport_attempts,
                         _UPLOAD_TRANSIENT_RETRIES,
                         delay,
@@ -420,13 +392,11 @@ class RetrieverServiceClient:
 
                 if resp.status_code != 503:
                     if was_busy and tracker is not None:
-                        tracker.mark_not_busy(job_id)
+                        job_id = resp.json().get("job_id", "")
+                        if job_id:
+                            tracker.mark_not_busy(job_id)
                     resp.raise_for_status()
                     return resp.json()
-
-                if tracker is not None:
-                    tracker.mark_busy(job_id)
-                    was_busy = True
 
                 retry_after = float(resp.headers.get("Retry-After", backoff))
                 self._capacity_event.clear()
@@ -892,23 +862,21 @@ class RetrieverServiceClient:
         on_file_submitted: Callable[[str, int], Any] | None = None,
         show_progress: bool = True,
     ) -> list[dict[str, Any]]:
-        """Split PDFs, upload pages, and track progress.
+        """Upload whole documents and track progress until all jobs complete.
 
-        File splitting runs in a background thread and feeds pages into an
-        upload pipeline as they become ready, so uploads begin immediately
-        after the first file is split — not after *all* files are split.
-
-        The SSE stream is opened **in parallel** with uploads so that
-        server-side events are captured from the very first page processed.
+        Each file is uploaded as a whole document to ``POST /v1/ingest/job``;
+        the server performs PDF splitting internally. The client then waits
+        for every job to finish (via SSE or polling) and returns the full
+        results for each document.
 
         Parameters
         ----------
         on_page_result
-            Optional async callback invoked with a page-content dict each time
-            a page finishes processing on the server.
+            Optional async callback invoked with the full document result
+            dict when a job completes on the server.
         on_file_submitted
             Optional callback invoked with ``(filename, total_pages)`` each
-            time a file is split and its pages are queued for upload.
+            time a file is uploaded and accepted by the server.
         show_progress
             When ``True`` (default), show a Rich live progress display and
             print summary tables at the end.  Set to ``False`` for
@@ -918,53 +886,12 @@ class RetrieverServiceClient:
         display = _LiveDisplay(tracker)
 
         job_plans: list[dict[str, Any]] = []
-        upload_queue: asyncio.Queue[tuple[bytes, str, str, int, int] | None] = asyncio.Queue()
         job_ids: list[str] = []
-
-        loop = asyncio.get_running_loop()
-
-        async def _split_files() -> None:
-            """Split files one at a time, feeding pages into the upload queue."""
-            for fpath in files:
-                pages = await loop.run_in_executor(None, self._prepare_file, fpath)
-                job_id = str(uuid4())
-                total_pages = len(pages)
-                tracker.register_job(job_id, fpath.name, total_pages)
-                display.add_job(job_id, fpath.name, total_pages)
-                if on_file_submitted is not None:
-                    on_file_submitted(fpath.name, total_pages)
-                job_plans.append(
-                    {
-                        "job_id": job_id,
-                        "filename": fpath.name,
-                        "pages": pages,
-                        "total_pages": total_pages,
-                    }
-                )
-                job_ids.append(job_id)
-                for page_bytes, page_num, total in pages:
-                    await upload_queue.put((page_bytes, fpath.name, job_id, page_num, total))
-            await upload_queue.put(None)
 
         pool_limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
         timeout = httpx.Timeout(600.0, connect=30.0)
 
         processing_t0 = time.monotonic()
-
-        emitted_doc_ids: set[str] = set()
-
-        if on_page_result is not None:
-            _original_cb = on_page_result
-
-            async def _tracked_cb(content: dict[str, Any]) -> None:
-                doc_id = content.get("_document_id", "")
-                if doc_id:
-                    emitted_doc_ids.add(doc_id)
-                await _original_cb(content)
-
-            _effective_cb: Callable[[dict[str, Any]], Awaitable[None]] | None = _tracked_cb
-        else:
-            _effective_cb = None
 
         async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
             live_ctx = Live(display.build_renderable(), refresh_per_second=4) if show_progress else nullcontext()
@@ -982,41 +909,24 @@ class RetrieverServiceClient:
                 try:
                     uploads_done = asyncio.Event()
 
-                    async def _upload_worker() -> None:
-                        """Pull pages from the queue and upload them concurrently."""
-                        pending: set[asyncio.Task[Any]] = set()
-                        while True:
-                            item = await upload_queue.get()
-                            if item is None:
-                                break
-                            page_bytes, filename, job_id, page_num, total = item
-                            task = asyncio.create_task(
-                                self._upload_page(
-                                    client,
-                                    page_bytes,
-                                    filename,
-                                    job_id,
-                                    page_num,
-                                    total,
-                                    tracker=tracker,
-                                )
+                    async def _upload_all() -> None:
+                        for fpath in files:
+                            resp_json = await self._upload_document(client, fpath, tracker=tracker)
+                            job_id = resp_json["job_id"]
+                            total_pages = resp_json.get("total_pages", 1)
+                            tracker.register_job(job_id, fpath.name, total_pages)
+                            display.add_job(job_id, fpath.name, total_pages)
+                            if on_file_submitted is not None:
+                                on_file_submitted(fpath.name, total_pages)
+                            job_plans.append(
+                                {
+                                    "job_id": job_id,
+                                    "filename": fpath.name,
+                                    "total_pages": total_pages,
+                                }
                             )
-                            pending.add(task)
-                            task.add_done_callback(pending.discard)
-                            while len(pending) >= self._max_concurrency:
-                                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                        if pending:
-                            await asyncio.gather(*pending, return_exceptions=True)
-                        for plan in job_plans:
-                            if plan["job_id"] in tracker.jobs:
-                                j = tracker.jobs[plan["job_id"]]
-                                if j["status"] in ("uploading", "server_busy"):
-                                    j["status"] = "processing"
-                                    j["busy_pages"] = 0
+                            job_ids.append(job_id)
                         uploads_done.set()
-
-                    async def _split_and_upload() -> None:
-                        await asyncio.gather(_split_files(), _upload_worker())
 
                     if use_sse:
                         await asyncio.gather(
@@ -1025,18 +935,16 @@ class RetrieverServiceClient:
                                 job_ids,
                                 tracker,
                                 uploads_done,
-                                on_page_result=_effective_cb,
                             ),
-                            _split_and_upload(),
+                            _upload_all(),
                         )
                     else:
-                        await _split_and_upload()
+                        await _upload_all()
                         await self._poll_all_jobs(
                             client,
                             job_ids,
                             tracker,
                             poll_interval,
-                            on_page_result=_effective_cb,
                         )
 
                 finally:
@@ -1049,33 +957,23 @@ class RetrieverServiceClient:
                     if show_progress and live is not None:
                         live.update(display.build_renderable())
 
-            if on_page_result is not None:
-                for plan in job_plans:
-                    await self._reconcile_job_results(
-                        client,
-                        plan["job_id"],
-                        emitted_doc_ids,
-                        on_page_result,
-                    )
-
         processing_elapsed = time.monotonic() - processing_t0
 
         final_results: list[dict[str, Any]] = []
         text_previews: dict[str, str] = {}
 
-        if on_page_result is None:
-            async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
-                for plan in job_plans:
-                    try:
-                        resp = await client.get(f"{self._base_url}/v1/ingest/job/{plan['job_id']}")
-                        resp.raise_for_status()
-                        final_results.append(resp.json())
-                    except Exception as exc:
-                        logger.error("Failed to fetch final status for job %s: %s", plan["job_id"][:8], exc)
+        async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
+            for plan in job_plans:
+                try:
+                    resp = await client.get(f"{self._base_url}/v1/ingest/job/{plan['job_id']}/results")
+                    resp.raise_for_status()
+                    final_results.append(resp.json())
+                except Exception as exc:
+                    logger.error("Failed to fetch final results for job %s: %s", plan["job_id"][:8], exc)
 
-                if show_progress:
-                    await self._fetch_failed_pages(client, tracker)
-                    text_previews = await self._fetch_text_previews(client)
+            if show_progress:
+                await self._fetch_failed_pages(client, tracker)
+                text_previews = await self._fetch_text_previews(client)
 
         if show_progress:
             _print_failure_summary(tracker)
@@ -1086,124 +984,93 @@ class RetrieverServiceClient:
         return final_results
 
     # ------------------------------------------------------------------
-    # Streaming entry point — yields per-page results as they arrive
+    # Streaming entry point — yields per-document results
     # ------------------------------------------------------------------
 
     async def aingest_documents_stream(
         self,
         files: list[Path],
     ) -> AsyncIterator[dict[str, Any]]:
-        """Async generator: split + upload files, yield page results as they land.
+        """Async generator: upload whole files, yield full document results.
 
-        Each yielded dict is one of:
+        Each file is uploaded as a whole document to ``POST /v1/ingest/job``
+        (server handles PDF splitting internally). The generator yields
+        events as they arrive:
 
-        * ``{"event": "page_result", "job_id": ..., "source_file": ...,
-            "page_number": <input page>, "document_id": ..., "pages": [<output rows>], ...}``
-        * ``{"event": "page_failed", "job_id": ..., "source_file": ...,
-            "page_number": ..., "error": ...}``
+        * ``{"event": "job_started", "job_id": ..., "filename": ..., "total_pages": ...}``
+        * ``{"event": "page_result", "job_id": ..., "source_file": ..., ...}``
+        * ``{"event": "page_failed", "job_id": ..., ...}``
         * ``{"event": "metrics_update", ...}``
-        * ``{"event": "job_complete", "job_id": ..., "filename": ...}``
+        * ``{"event": "job_complete", "job_id": ..., "filename": ..., "results": {...}}``
 
-        The generator terminates when every job has completed, failed, or
-        the SSE connection has terminated with ``stream_overflow``.
+        When a ``job_complete`` event is received, the client fetches the
+        full results from ``GET /v1/ingest/job/{job_id}/results`` and
+        includes them in the event under the ``results`` key.
+
+        The generator terminates when every job has completed or failed.
 
         Unlike :meth:`ingest_documents` this method does not render any UI;
         it is the building block used by the high-level ``ServiceIngestor``.
         """
-        upload_queue: asyncio.Queue[tuple[bytes, str, str, int, int] | None] = asyncio.Queue()
         result_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
-        # Pre-generate job_ids for all files so the SSE subscription can
-        # be opened IMMEDIATELY (before splitting/uploading begins).  This
-        # eliminates the window where page_result events are published with
-        # no subscriber listening.
-        job_ids: list[str] = [str(uuid4()) for _ in files]
-        file_job_map: list[tuple[Path, str]] = list(zip(files, job_ids))
-        splits_done = asyncio.Event()
-        loop = asyncio.get_running_loop()
-
-        async def _split_files() -> None:
-            try:
-                for fpath, job_id in file_job_map:
-                    pages = await loop.run_in_executor(None, self._prepare_file, fpath)
-                    await result_queue.put(
-                        {
-                            "event": "job_started",
-                            "job_id": job_id,
-                            "filename": fpath.name,
-                            "total_pages": len(pages),
-                        }
-                    )
-                    for page_bytes, page_num, total in pages:
-                        await upload_queue.put((page_bytes, fpath.name, job_id, page_num, total))
-                await upload_queue.put(None)
-            finally:
-                splits_done.set()
+        job_ids: list[str] = []
 
         pool_limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
         timeout = httpx.Timeout(600.0, connect=30.0)
 
         async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
             uploads_done = asyncio.Event()
-            stream_done = asyncio.Event()
 
-            async def _upload_worker() -> None:
-                pending: set[asyncio.Task[Any]] = set()
-                while True:
-                    item = await upload_queue.get()
-                    if item is None:
-                        break
-                    page_bytes, filename, job_id, page_num, total = item
-                    task = asyncio.create_task(self._upload_page(client, page_bytes, filename, job_id, page_num, total))
-                    pending.add(task)
-                    task.add_done_callback(pending.discard)
-                    while len(pending) >= self._max_concurrency:
-                        _done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                if pending:
-                    await asyncio.gather(*pending, return_exceptions=True)
-                uploads_done.set()
+            async def _upload_all() -> None:
+                """Upload each file as a whole document."""
+                try:
+                    for fpath in files:
+                        resp_json = await self._upload_document(client, fpath)
+                        job_id = resp_json["job_id"]
+                        total_pages = resp_json.get("total_pages", 1)
+                        job_ids.append(job_id)
+                        await result_queue.put(
+                            {
+                                "event": "job_started",
+                                "job_id": job_id,
+                                "filename": fpath.name,
+                                "total_pages": total_pages,
+                            }
+                        )
+                finally:
+                    uploads_done.set()
 
-            async def _stream_consumer() -> None:
-                """Open the SSE stream with include_content=True and route events.
+            async def _poll_for_completion() -> None:
+                """Wait for all uploads to finish, then poll each job until complete.
 
-                Reconnects with ``Last-Event-ID`` on transient transport
-                failures so a single dropped TCP connection (common on
-                Kubernetes NodePort / kube-proxy paths under burst load)
-                does not silently truncate the result stream.
-
-                If ``pending_jobs`` hasn't shrunk for 120s, polls the REST
-                API to detect silently-completed jobs and removes them.
+                When a job reaches a terminal state, fetches full results from
+                the REST API and emits a ``job_complete`` event with the
+                ``results`` payload.
                 """
-                _STALE_TIMEOUT = 120.0
+                await uploads_done.wait()
 
                 if not job_ids:
                     return
 
                 pending_jobs = set(job_ids)
-                url = f"{self._base_url}/v1/ingest/stream/jobs"
-                last_seq = 0
-                transport_attempts = 0
-                overflow_count = 0
-                terminal = False
-                last_progress_time = time.monotonic()
+                poll_interval = 2.0
 
-                async def _check_stale_jobs() -> None:
-                    """Poll REST API for each pending job and resolve terminal ones.
+                async def _fetch_job_results(jid: str) -> dict[str, Any] | None:
+                    try:
+                        r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}/results")
+                        r.raise_for_status()
+                        return r.json()
+                    except Exception as exc:
+                        logger.warning("Failed to fetch results for job %s: %s", jid[:8], exc)
+                        return None
 
-                    A 404 means the server never received any pages for the job
-                    (e.g. all uploads failed with 4xx). Treat it as terminal so the
-                    client doesn't hang forever.
-                    """
-                    nonlocal last_progress_time
-                    resolved_any = False
+                while pending_jobs:
+                    await asyncio.sleep(poll_interval)
                     for jid in list(pending_jobs):
                         try:
                             r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}")
                             if r.status_code == 404:
-                                logger.warning(
-                                    "[job %s] server returned 404 — job was never created "
-                                    "(uploads likely failed); discarding",
-                                    jid[:8],
-                                )
+                                logger.warning("[job %s] server returned 404 — discarding", jid[:8])
                                 pending_jobs.discard(jid)
                                 await result_queue.put(
                                     {
@@ -1213,150 +1080,27 @@ class RetrieverServiceClient:
                                         "error": "job unknown to server (upload failed)",
                                     }
                                 )
-                                resolved_any = True
                                 continue
                             r.raise_for_status()
                             body = r.json()
                             status = body.get("status", "")
                             if status in ("complete", "failed"):
                                 pending_jobs.discard(jid)
-                                await result_queue.put(
-                                    {"event": "job_complete", "job_id": jid, "synthetic": True}
-                                )
-                                resolved_any = True
-                        except Exception:
-                            pass
-                    if resolved_any:
-                        last_progress_time = time.monotonic()
-
-                try:
-                    while not terminal and (pending_jobs or not uploads_done.is_set()):
-                        headers = dict(self._auth_headers)
-                        if last_seq > 0:
-                            headers["Last-Event-ID"] = str(last_seq)
-                        try:
-                            async with client.stream(
-                                "POST",
-                                url,
-                                json={"job_ids": list(job_ids), "include_content": True},
-                                headers=headers,
-                            ) as resp:
-                                resp.raise_for_status()
-                                transport_attempts = 0
-                                buffer = ""
-                                stream_iter = resp.aiter_text().__aiter__()
-                                reconnect_requested = False
-                                while pending_jobs or not uploads_done.is_set():
-                                    try:
-                                        chunk = await asyncio.wait_for(stream_iter.__anext__(), timeout=5.0)
-                                    except asyncio.TimeoutError:
-                                        if (
-                                            pending_jobs
-                                            and uploads_done.is_set()
-                                            and (time.monotonic() - last_progress_time) >= _STALE_TIMEOUT
-                                        ):
-                                            await _check_stale_jobs()
-                                        continue
-                                    except StopAsyncIteration:
-                                        break
-                                    buffer += chunk
-                                    while "\n\n" in buffer:
-                                        raw_event, buffer = buffer.split("\n\n", 1)
-                                        event = _parse_sse_event(raw_event)
-                                        if event is None:
-                                            continue
-                                        seq = event.get("seq")
-                                        if isinstance(seq, int) and seq > last_seq:
-                                            last_seq = seq
-                                        event_type = event.get("event", "message")
-
-                                        if event_type == "page_result":
-                                            await result_queue.put(event)
-                                        elif event_type == "metrics_update":
-                                            await result_queue.put(event)
-                                        elif event_type == "status_change" and event.get("status") == "failed":
-                                            await result_queue.put({**event, "event": "page_failed"})
-                                            pending_jobs.discard(event.get("job_id"))
-                                            last_progress_time = time.monotonic()
-                                        elif event_type == "job_complete":
-                                            await result_queue.put(event)
-                                            pending_jobs.discard(event.get("job_id"))
-                                            last_progress_time = time.monotonic()
-                                        elif event_type == "stream_overflow":
-                                            # Recoverable: server's subscriber
-                                            # queue saturated.  Reconnect with
-                                            # Last-Event-ID and resume from
-                                            # the replay buffer.  Only after
-                                            # repeated overflows do we give
-                                            # up — at that point the consumer
-                                            # genuinely cannot keep up and the
-                                            # caller needs to know.
-                                            overflow_count += 1
-                                            await result_queue.put(event)
-                                            logger.info(
-                                                "SSE stream_overflow #%d — reconnecting with " "Last-Event-ID=%d",
-                                                overflow_count,
-                                                last_seq,
-                                            )
-                                            if overflow_count > _SSE_MAX_OVERFLOWS:
-                                                await result_queue.put(
-                                                    {
-                                                        "event": "stream_error",
-                                                        "error": (
-                                                            f"server emitted stream_overflow "
-                                                            f"{overflow_count} times; consumer is "
-                                                            "persistently too slow"
-                                                        ),
-                                                    }
-                                                )
-                                                terminal = True
-                                            else:
-                                                reconnect_requested = True
-                                            break
-                                        elif event_type == "session_complete":
-                                            pending_jobs.clear()
-                                            terminal = True
-                                            break
-                                    if reconnect_requested or terminal:
-                                        break
-                            if reconnect_requested and not terminal:
-                                # brief backoff so the new subscription
-                                # doesn't race the worker pool drainage
-                                await asyncio.sleep(_RETRY_BASE_DELAY)
-                                continue
-                        except _TRANSIENT_HTTPX_ERRORS as exc:
-                            transport_attempts += 1
-                            if transport_attempts > _SSE_TRANSIENT_RETRIES:
+                                results = await _fetch_job_results(jid)
                                 await result_queue.put(
                                     {
-                                        "event": "stream_error",
-                                        "error": (
-                                            f"{type(exc).__name__}: gave up after "
-                                            f"{transport_attempts} reconnect attempts"
-                                        ),
+                                        "event": "job_complete",
+                                        "job_id": jid,
+                                        "results": results,
                                     }
                                 )
-                                break
-                            delay = min(_RETRY_BASE_DELAY * (2 ** (transport_attempts - 1)), _MAX_BACKOFF)
-                            logger.debug(
-                                "SSE %s — reconnecting (attempt %d/%d) after %.1fs (last_seq=%d)",
-                                exc.__class__.__name__,
-                                transport_attempts,
-                                _SSE_TRANSIENT_RETRIES,
-                                delay,
-                                last_seq,
-                            )
-                            await asyncio.sleep(delay)
-                            continue
-                except Exception as exc:
-                    await result_queue.put({"event": "stream_error", "error": f"{type(exc).__name__}: {exc}"})
-                finally:
-                    stream_done.set()
-                    await result_queue.put(None)
+                        except Exception as exc:
+                            logger.debug("[job %s] poll error: %s", jid[:8], exc)
 
-            split_task = asyncio.create_task(_split_files())
-            upload_task = asyncio.create_task(_upload_worker())
-            stream_task = asyncio.create_task(_stream_consumer())
+                await result_queue.put(None)
+
+            upload_task = asyncio.create_task(_upload_all())
+            poll_task = asyncio.create_task(_poll_for_completion())
 
             try:
                 while True:
@@ -1365,10 +1109,10 @@ class RetrieverServiceClient:
                         break
                     yield item
             finally:
-                for t in (split_task, upload_task, stream_task):
+                for t in (upload_task, poll_task):
                     if not t.done():
                         t.cancel()
-                await asyncio.gather(split_task, upload_task, stream_task, return_exceptions=True)
+                await asyncio.gather(upload_task, poll_task, return_exceptions=True)
 
 
 # ------------------------------------------------------------------

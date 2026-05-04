@@ -55,27 +55,42 @@ class LanceDBWriteOperator(AbstractOperator, CPUOperator):
         self._table: Any = None
 
     def _ensure_connected(self, vector_dim: int) -> None:
-        """Lazily connect to LanceDB and create-or-open the table."""
+        """Lazily connect to LanceDB and create-or-open the table.
+
+        If the existing table's schema doesn't match the expected schema,
+        drop and recreate it to avoid field-mismatch errors from stale data.
+        """
         if self._db is not None:
             return
 
         import lancedb as _ldb
+        from nemo_retriever.vdb.lancedb_schema import lancedb_schema
 
         ldb_path = Path(self._uri)
         ldb_path.mkdir(parents=True, exist_ok=True)
 
         self._db = _ldb.connect(uri=self._uri)
+        expected_schema = lancedb_schema(vector_dim)
+        expected_fields = {f.name for f in expected_schema}
 
         try:
-            self._table = self._db.open_table(self._table_name)
+            table = self._db.open_table(self._table_name)
+            existing_fields = {f.name for f in table.schema}
+            if not expected_fields.issubset(existing_fields):
+                missing = expected_fields - existing_fields
+                logger.warning(
+                    "LanceDB table %r schema mismatch (missing: %s) — recreating",
+                    self._table_name,
+                    missing,
+                )
+                self._db.drop_table(self._table_name)
+                raise KeyError("schema mismatch")
+            self._table = table
             logger.debug("Opened existing LanceDB table %r at %s", self._table_name, self._uri)
         except Exception:
-            from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
-
-            schema = lancedb_schema(vector_dim)
             self._table = self._db.create_table(
                 self._table_name,
-                schema=schema,
+                schema=expected_schema,
                 mode="create",
             )
             logger.info("Created LanceDB table %r at %s (dim=%d)", self._table_name, self._uri, vector_dim)
@@ -84,7 +99,7 @@ class LanceDBWriteOperator(AbstractOperator, CPUOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        from nemo_retriever.vector_store.lancedb_utils import build_lancedb_rows, infer_vector_dim
+        from nemo_retriever.vdb.lancedb_schema import build_lancedb_rows, infer_vector_dim
 
         rows = build_lancedb_rows(
             data,

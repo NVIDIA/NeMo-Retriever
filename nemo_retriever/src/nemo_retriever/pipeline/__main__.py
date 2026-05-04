@@ -1133,28 +1133,41 @@ def run(
         ingest_start = time.perf_counter()
         raw_result = ingestor.ingest()
         ingestion_only_total_time = time.perf_counter() - ingest_start
-        print(f"raw_result: {raw_result}")
-        print(f"raw_result type: {type(raw_result)}")
         ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
-        uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
-        if uploadable_vdb_records == 0:
-            logger.warning(
-                "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
-                evaluation_mode,
+
+        if run_mode == "service":
+            print(f"Service mode complete: {len(ingest_local_results)} total pages received from server")
+            logger.info(
+                "Service mode: VDB write handled server-side. "
+                "%d result rows received from %d input units in %.1fs.",
+                len(ingest_local_results),
+                num_rows,
+                time.perf_counter() - ingest_start,
             )
             vdb_upload_time = 0.0
+
+        if run_mode != "service":
+            uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+            if uploadable_vdb_records == 0:
+                logger.warning(
+                    "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
+                    evaluation_mode,
+                )
+                vdb_upload_time = 0.0
+            else:
+                logger.info(
+                    "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
+                    len(ingest_local_results),
+                    uploadable_vdb_records,
+                    resolved_vdb_op,
+                )
+                vdb_upload_time = _upload_vdb_records(
+                    ingest_local_results,
+                    vdb_op=resolved_vdb_op,
+                    vdb_kwargs=resolved_vdb_kwargs,
+                )
         else:
-            logger.info(
-                "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
-                len(ingest_local_results),
-                uploadable_vdb_records,
-                resolved_vdb_op,
-            )
-            vdb_upload_time = _upload_vdb_records(
-                ingest_local_results,
-                vdb_op=resolved_vdb_op,
-                vdb_kwargs=resolved_vdb_kwargs,
-            )
+            uploadable_vdb_records = len(ingest_local_results)
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()
@@ -1174,7 +1187,7 @@ def run(
                 collect_detection_summary_from_df(result_df),
             )
 
-        if uploadable_vdb_records == 0:
+        if uploadable_vdb_records == 0 and run_mode != "service":
             if run_mode == "batch":
                 import ray
 

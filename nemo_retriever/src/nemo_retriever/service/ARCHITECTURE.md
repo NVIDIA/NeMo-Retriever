@@ -521,13 +521,13 @@ The embedding NIM call and LanceDB search are blocking I/O operations. Running t
 
 `RetrieverServiceClient` is a full-featured async client that:
 
-1. **Splits PDFs** client-side using pypdfium2 (each page uploaded individually)
-2. **Uploads pages concurrently** (configurable concurrency, default 8)
+1. **Uploads whole documents** to `POST /v1/ingest/job` — the server splits PDFs internally
+2. **Uploads concurrently** (configurable concurrency, default 8)
 3. **Opens SSE in parallel** with uploads — no events are missed
 4. **Handles back-pressure** — retries on 503 with exponential backoff, respects `Retry-After` header
 5. **Reconnects on transport failure** — TCP resets (common on Kubernetes NodePort) trigger automatic reconnection with `Last-Event-ID`
 6. **Rich live display** — compact progress bars, active job table, detection metrics
-7. **Streaming generator** — `aingest_documents_stream()` yields per-page results as they arrive
+7. **Streaming generator** — `aingest_documents_stream()` yields per-document results when each job completes (full results fetched from `GET /v1/ingest/job/{job_id}/results`)
 
 The CLI command `retriever service ingest` wraps this client:
 

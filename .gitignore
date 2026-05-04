@@ -270,3 +270,5 @@ nemo_retriever/private_scripts/
 # Benchmark data files (downloaded by setup scripts)
 nemo_retriever/tabular-dev-tools/benchmarks/**/*.sql
 nemo_retriever/tabular-dev-tools/benchmarks/**/*.json
+
+spool/
