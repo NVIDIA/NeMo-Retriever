@@ -320,9 +320,15 @@ class _MultiTypeExtractBase(AbstractOperator):
         ``av_fuse_params.enabled`` is False or when neither branch
         produced rows.
         """
-        # Branch A: audio-from-video → ASR (existing behavior)
-        audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
-        audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
+        # Branch A: audio-from-video → ASR. Skipped when the caller disables
+        # audio (visual-only recall benchmarks); mirrors ``build_graph``'s
+        # ``audio_enabled`` gate.
+        audio_enabled = self.audio_chunk_params.enabled
+        if audio_enabled:
+            audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
+            audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
+        else:
+            audio_out = pd.DataFrame()
 
         # Branch B: frame extraction → optional dedup → full-frame OCR → text dedup
         frame_df = VideoFrameActor(params=self.video_frame_params).run(batch_df)
@@ -342,8 +348,9 @@ class _MultiTypeExtractBase(AbstractOperator):
             return pd.DataFrame()
         combined = pd.concat(non_empty, ignore_index=True, sort=False)
 
-        # Branch C: fused audio+visual rows
-        if self.av_fuse_params.enabled:
+        # Branch C: fused audio+visual rows. Requires audio to have run —
+        # the fuser drops all video_frame rows when no audio is present.
+        if audio_enabled and self.av_fuse_params.enabled:
             combined = AudioVisualFuser(params=self.av_fuse_params).run(combined)
         return combined
 
