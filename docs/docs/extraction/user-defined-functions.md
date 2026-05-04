@@ -3,7 +3,7 @@
 User-Defined Functions (UDFs) allow you to inject custom processing logic into the [NeMo Retriever Library](overview.md) pipeline at specific stages. 
 This guide covers how to write, validate, and submit UDFs using both the CLI and the Python client interface.
 
-The library also implements ingestion as a composable **operator graph** under [`nemo_retriever.graph`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph), including [`UDFOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/custom_operator.py) for wrapping plain Python functions as graph stages. That API is documented in the [graph package README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md). This page focuses on **ingest pipeline UDFs**—functions you register with `target_stage` / `.udf()` that receive an `IngestControlMessage`—not on building graphs with `UDFOperator` directly.
+The library also implements ingestion as a composable **operator graph** under [`nemo_retriever.graph`](https://github.com/NVIDIA/NeMo-Retriever/tree/release/26.1.2/nemo_retriever/src/nemo_retriever/graph), including [`UDFOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.1.2/nemo_retriever/src/nemo_retriever/graph/custom_operator.py) for wrapping plain Python functions as graph stages. That API is documented in the [graph package README](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.1.2/nemo_retriever/src/nemo_retriever/graph/README.md). This page focuses on **ingest pipeline UDFs**—functions you register with `target_stage` / `.udf()` that receive an `IngestControlMessage`—not on building graphs with `UDFOperator` directly.
 
 ## Quickstart
 
@@ -938,6 +938,6 @@ def debug_udf(control_message: IngestControlMessage) -> IngestControlMessage:
 ## Related Topics
 
 - [NeMo Retriever UDF examples](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.1.2/examples/udfs/README.md)
-- [Operator graph source (`nemo_retriever.graph`)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph) — graph execution, operators, and `UDFOperator` (see [README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md))
+- [Operator graph source (`nemo_retriever.graph`)](https://github.com/NVIDIA/NeMo-Retriever/tree/release/26.1.2/nemo_retriever/src/nemo_retriever/graph) — graph execution, operators, and `UDFOperator` (see [README](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.1.2/nemo_retriever/src/nemo_retriever/graph/README.md))
 - [User-Defined Stages for NeMo Retriever Library](user-defined-stages.md)
 - [NimClient Usage](nimclient.md)
