@@ -42,6 +42,8 @@ def populate_tabular_data(data, num_workers, dialect):
 
     database = data["database_name"]
     logger.info(f"Started parsing db {database}.")
+
+    all_schemas = {}
     all_schemas = populate_db(tables_df, columns_df, database, num_workers)
 
     if "fks" in data:

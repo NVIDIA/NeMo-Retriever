@@ -4,8 +4,13 @@
 
 import os
 import json
+import logging
 
-# Load .env from current working directory so LLM_API_KEY, LLM_INVOKE_URL are set (run from repo root)
+from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_llm_client
+
+logger = logging.getLogger(__name__)
+
+# Load .env from current working directory so NVIDIA_API_KEY, BASE_URL are set (run from repo root)
 try:
     from dotenv import load_dotenv
 
@@ -13,19 +18,7 @@ try:
 except ImportError:
     pass
 
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
-
 os.environ.setdefault("PYDEVD_WARN_EVALUATION_TIMEOUT", "60")
-
-
-def _make_llm() -> ChatNVIDIA:
-    # Prefer LLM_API_KEY; fall back to NVIDIA_API_KEY (used by LangChain NVIDIA docs)
-    api_key = os.environ.get("LLM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
-    return ChatNVIDIA(
-        base_url=os.environ.get("LLM_INVOKE_URL"),
-        api_key=api_key,
-        model=os.environ.get("LLM_MODEL", "meta/llama-3.1-70b-instruct"),
-    )
 
 
 def _read_sql_string_literal(text: str, start: int) -> tuple[str, int] | None:
@@ -249,7 +242,10 @@ def _dict_to_sql_result(d: dict | None) -> dict:
 
 
 def get_sql_tool_response_top_k(
-    question: str, embedding_api_key: str = "", embedding_http_endpoint: str = "", top_k: int = 15
+    question: str,
+    embedding_api_key: str = "",
+    embedding_http_endpoint="",
+    top_k: int = 15,
 ) -> dict:
     """Retrieve top_k tables from LanceDB, then generate SQL via LLM (JSON schema + markdown fallbacks).
 
@@ -288,11 +284,15 @@ def get_sql_tool_response_top_k(
         'Example: {"response": "We use table X to", "sql_code": "SELECT ... FROM x;", "thought": "The query joins"}'
     )
 
-    llm = _make_llm()
     result_dict = None
+    try:
+        llm_client = get_llm_client()
+    except ValueError as e:
+        logger.error("Failed to initialize LLM client: %s", e)
+        return _dict_to_sql_result(None)
 
-    # 1) Invoke with structured output. On parse failure, extract raw output from exception.
-    structured_llm = llm.with_structured_output(CALC_FINAL_RESPONSE_JSON_SCHEMA)
+    # Invoke with structured output. On parse failure, extract raw output from exception.
+    structured_llm = llm_client.with_structured_output(CALC_FINAL_RESPONSE_JSON_SCHEMA)
     try:
         result = structured_llm.invoke(prompt)
         if isinstance(result, dict) and (result.get("sql_code") or result.get("response")):
@@ -305,7 +305,7 @@ def get_sql_tool_response_top_k(
                 content = content.split("For troubleshooting")[0].strip()
             result_dict = _parse_sql_response_content(content) or _parse_markdown_explanation_sql_thought(content)
         if result_dict is None:
-            response = llm.invoke(prompt)
+            response = llm_client.invoke(prompt)
             content = response.content if hasattr(response, "content") else str(response)
             result_dict = _parse_sql_response_content(content) or _parse_markdown_explanation_sql_thought(content)
 

@@ -4,13 +4,16 @@
 
 
 class Labels:
-    SQL = "Sql"
-    COLUMN = "Column"
-    TABLE = "Table"
-    SCHEMA = "Schema"
     DB = "Database"
+    SCHEMA = "Schema"
+    TABLE = "Table"
+    COLUMN = "Column"
+    SQL = "Sql"
+    CUSTOM_ANALYSIS = "CustomAnalysis"
+
     LIST_OF_ALL = [
         DB,
+        CUSTOM_ANALYSIS,
         SCHEMA,
         TABLE,
         COLUMN,
@@ -24,6 +27,7 @@ class Edges:
     JOIN = "JOIN"
     UNION = "UNION"
     SQL = "SQL"
+    ANALYSIS_OF = "ANALYSIS_OF"
 
 
 class Props:

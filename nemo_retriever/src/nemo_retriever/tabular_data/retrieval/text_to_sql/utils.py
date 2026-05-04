@@ -1,0 +1,852 @@
+from __future__ import annotations
+
+import ast
+import json
+import logging
+import os
+import re
+import time
+from itertools import groupby
+from typing import TYPE_CHECKING
+import pandas as pd
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
+
+if TYPE_CHECKING:
+    from nemo_retriever.retriever import Retriever
+from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
+from nemo_retriever.tabular_data.ingestion.model.schema import Schema
+from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
+
+logger = logging.getLogger(__name__)
+
+# ==================== CONSTANTS ====================
+
+# Hard ceiling on how many candidate snippets we want to reason over for a single question.
+# Larger numbers tend to confuse the LLM and increase latency.
+MAX_CALCULATION_CANDIDATES = 15
+
+
+def get_llm_client() -> ChatNVIDIA:
+    return ChatNVIDIA(
+        base_url=os.environ.get("BASE_URL"),
+        api_key=os.environ.get("NVIDIA_API_KEY"),
+        model=os.environ.get("MODEL_NAME", "nvidia/nemotron-3-nano-30b-a3b"),
+    )
+
+
+def clean_results(raw_candidates: list[dict]) -> list[dict]:
+    """
+    Normalize raw semantic hits: require id, dedupe by (label, id), preserve order.
+    """
+    out: list[dict] = []
+    seen: set[tuple[str | None, str]] = set()
+    for c in raw_candidates or []:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("id")
+        if cid is None:
+            continue
+        key = (c.get("label"), str(cid))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+
+queries_for_columns_params = {
+    "wildcard_names": ["Wildcard", "QualifiedWildcard"],
+    "sql_subgraph_rel": "<SQL",
+    "sql_subgraph_labels": ">sql|-table",
+    "sql_type": Labels.SQL,
+}
+queries_for_columns_params_keys = ", ".join([f"{key}:${key}" for key in queries_for_columns_params.keys()])
+
+
+def expand_info(ids_and_labels):
+    """Fetch Neo4j properties per (label, id). Column nodes merge parent table into ``relevant_tables``."""
+    items: list[dict] = []
+    for x in ids_and_labels or []:
+        if not isinstance(x, dict):
+            continue
+        if x.get("id") is None:
+            continue
+        if str(x.get("label") or "").strip() == "":
+            continue
+        items.append({"id": x["id"], "label": x["label"]})
+
+    results = {}
+
+    allowed_labels = set(Labels.LIST_OF_ALL)
+    for label, ids in groupby(
+        sorted(items, key=lambda d: str(d.get("label") or "").strip()),
+        key=lambda d: str(d.get("label") or "").strip(),
+    ):
+        label_id_pairs_for_current_label = list(ids)
+        if not label:
+            continue
+        if label not in allowed_labels:
+            logger.warning("Skipping unknown label %r in expand_info", label)
+            continue
+        query = f"""UNWIND $label_id_pairs as label_id
+                    MATCH (n:{label} {{id: label_id.id}})
+                    CALL apoc.case([
+                        n:{Labels.CUSTOM_ANALYSIS},
+                            'MATCH(n)-[:{Edges.ANALYSIS_OF}]->(sql:{Labels.SQL})
+                            WITH n, collect(distinct {{sql_code: sql.sql_full_query}}) as sql
+                            RETURN apoc.map.setKey(properties(n), "sql", sql) as item',
+                        n:{Labels.COLUMN},
+                            'MATCH(n)<-[:{Edges.CONTAINS}]-(parent)
+                            WITH n, parent,
+                                 [(parent)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
+                                  {{name: c.name, data_type: toString(coalesce(c.data_type, ""))}}] AS column_list
+                            WITH n, parent, column_list,
+                                 apoc.map.merge(
+                                     properties(parent),
+                                     {{label: coalesce(parent.label,
+                                      toLower(head(labels(parent))), "{Labels.TABLE}"),
+                                      columns: column_list}}
+                                 ) AS t0
+                            RETURN apoc.map.merge(
+                                     apoc.map.setPairs(properties(n),[
+                                         ["table_name", parent.name],
+                                         ["table_type", parent.type],
+                                         ["parent_id", parent.id]
+                                     ]),
+                                     {{relevant_tables: [t0]}}
+                                 ) as item'
+                        ],
+                        'with n RETURN n{{ .*}} as item ',
+                        {{n:n, sql_type: $sql_type, {queries_for_columns_params_keys} }}
+                        )
+                    YIELD value as response
+                    WITH collect(response.item) as all_items
+                    RETURN apoc.map.groupBy(all_items,'id') as ids_to_props
+                    """
+        params = {
+            "sql_type": Labels.SQL,
+            "label_id_pairs": label_id_pairs_for_current_label,
+        }
+        params.update(queries_for_columns_params)
+        result = get_neo4j_conn().query_read(
+            query=query,
+            parameters=params,
+        )
+        if len(result) > 0:
+            results = results | result[0]["ids_to_props"]
+
+    return results
+
+
+def _parse_lancedb_row_metadata(hit: dict) -> dict:
+    """Normalize LanceDB hit ``metadata`` (dict or JSON string) to a flat dict."""
+    raw = hit.get("metadata")
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            # Ingestion sometimes stores Python repr (single-quoted keys) — not valid JSON.
+            try:
+                ev = ast.literal_eval(raw)
+                if isinstance(ev, dict):
+                    return ev
+            except (ValueError, SyntaxError, TypeError):
+                pass
+            return {}
+    return {}
+
+
+def _vector_distance_value(distance: object | None) -> float:
+    """LanceDB dense search ``_distance`` (L2); lower is better. Missing → +inf for sorting."""
+    if distance is None:
+        return float("inf")
+    try:
+        return float(distance)
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+LANCEDB_FETCH_LIMIT = 100
+PER_LABEL_LIMIT = 10
+
+
+def _hits_to_semantic_rows(
+    hits: list[dict],
+    label_filter: set[str] | None = None,
+    per_label_k: int = PER_LABEL_LIMIT,
+) -> list[dict]:
+    """Turn raw LanceDB hits into candidate dicts, filtering by label in Python.
+
+    Hits are already sorted by vector distance (from LanceDB). For each allowed
+    label, at most *per_label_k* rows are kept (best-first).
+
+    ``score`` is the raw vector ``_distance`` from Lance (lower is better).
+    """
+    label_counts: dict[str, int] = {}
+    rows: list[dict] = []
+    for hit in hits:
+        meta = _parse_lancedb_row_metadata(hit)
+        cid = meta.get("id")
+        if cid is None:
+            continue
+        lab = meta.get("label") if meta.get("label") is not None else hit.get("label")
+        lab_str = str(lab) if lab is not None else ""
+        if label_filter and lab_str not in label_filter:
+            continue
+        cnt = label_counts.get(lab_str, 0)
+        if cnt >= per_label_k:
+            continue
+        label_counts[lab_str] = cnt + 1
+        score = _vector_distance_value(hit.get("_distance"))
+        rows.append(
+            {
+                "text": (hit.get("text") or "").strip(),
+                "id": cid,
+                "label": lab,
+                "score": score,
+            }
+        )
+    return rows
+
+
+def search_lancedb_semantic_index(
+    retriever: "Retriever",
+    entity: str,
+    label_filter: list[str] | None = None,
+    per_label_k: int = PER_LABEL_LIMIT,
+) -> list[dict]:
+    """
+    Vector search over LanceDB via the injected :class:`~nemo_retriever.retriever.Retriever`.
+
+    Always fetches ``LANCEDB_FETCH_LIMIT`` rows from LanceDB, then filters by
+    *label_filter* in Python, keeping at most *per_label_k* per label.
+    """
+    allowed_labels = {str(x) for x in (label_filter or []) if x is not None} or None
+
+    retriever.top_k = LANCEDB_FETCH_LIMIT
+
+    hits = retriever.query(entity)
+
+    return _hits_to_semantic_rows(hits, label_filter=allowed_labels, per_label_k=per_label_k)
+
+
+def get_candidates_information(
+    retriever: "Retriever",
+    entity: str,
+    list_of_semantic: list | None = None,
+):
+    """
+    Vector search over LanceDB, then merge graph properties from ``expand_info``.
+
+    Fetches ``LANCEDB_FETCH_LIMIT`` rows from LanceDB, filters to
+    *list_of_semantic* labels in Python (max ``PER_LABEL_LIMIT`` per label),
+    then enriches each hit with Neo4j graph properties.
+    """
+    results: list[dict] = list(
+        search_lancedb_semantic_index(
+            retriever,
+            entity,
+            label_filter=list_of_semantic,
+        )
+    )
+
+    ids_and_labels = [{"label": x["label"], "id": x["id"]} for x in results]
+    props_by_id = expand_info(ids_and_labels)
+    for c in results:
+        cid = c.get("id")
+        if cid is None:
+            continue
+        extra = props_by_id.get(cid) or props_by_id.get(str(cid))
+        if isinstance(extra, dict):
+            c.update(extra)
+            rel_tabs = c.get("relevant_tables")
+            if isinstance(rel_tabs, list):
+                c["relevant_tables"] = [_normalize_table_to_relevant_shape(t) for t in rel_tabs if isinstance(t, dict)]
+
+    results.sort(key=lambda item: float(item.get("score") if item.get("score") is not None else float("inf")))
+    return results
+
+
+def _dedupe_best_score_sort_cap(combined: list[dict]) -> list[dict]:
+    """Deduplicate by (label, id), keep lowest ``score`` (L2 distance), sort ascending, cap."""
+    best_by_key: dict[tuple[str | None, str], dict] = {}
+    for c in combined:
+        cid = c.get("id")
+        if cid is None:
+            continue
+        key = (c.get("label"), str(cid))
+        dist = c.get("score")
+        score = float(dist) if dist is not None else float("inf")
+        prev = best_by_key.get(key)
+        prev_d = prev.get("score") if prev is not None else None
+        prev_score = float(prev_d) if prev_d is not None else float("inf")
+        if prev is None or score < prev_score:
+            best_by_key[key] = c
+
+    unique = list(best_by_key.values())
+    unique.sort(key=lambda x: float(x.get("score")) if x.get("score") is not None else float("inf"))
+    return unique[:MAX_CALCULATION_CANDIDATES]
+
+
+def extract_candidates(
+    retriever: "Retriever",
+    entities: list[str],
+    query_no_values: str,
+    query_with_values: str = "",
+) -> tuple[list[dict], list[dict]]:
+    """
+    One semantic search per pull string (``query_no_values``, ``query_with_values``
+    if distinct, and each entity name). Each search fetches both custom-analysis
+    and column candidates in a single LanceDB call, then splits by label in Python.
+
+    Merge streams, dedupe by (label, id) keeping the lowest vector distance
+    (``score``), sort ascending by distance, cap at ``MAX_CALCULATION_CANDIDATES``
+    per stream.
+
+    Returns:
+        ``(custom_analysis_candidates, column_candidates)``
+    """
+    target_labels = [Labels.CUSTOM_ANALYSIS, Labels.COLUMN]
+
+    qnv = (query_no_values or "").strip()
+    pulls: list[str] = []
+    if qnv:
+        pulls.append(qnv)
+    if (qwv := (query_with_values or "").strip()) and qwv != qnv:
+        pulls.append(qwv)
+    for ent in entities or []:
+        if t := (ent or "").strip():
+            pulls.append(t)
+
+    combined_custom: list[dict] = []
+    combined_columns: list[dict] = []
+    for text in pulls:
+        all_hits = (
+            get_candidates_information(
+                retriever,
+                text,
+                list_of_semantic=target_labels,
+            )
+            or []
+        )
+        for hit in all_hits:
+            lab = str(hit.get("label") or "")
+            if lab == Labels.CUSTOM_ANALYSIS:
+                combined_custom.append(hit)
+            elif lab == Labels.COLUMN:
+                combined_columns.append(hit)
+
+    out_custom = _dedupe_best_score_sort_cap(combined_custom)
+    out_columns = _dedupe_best_score_sort_cap(combined_columns)
+
+    logger.info(
+        f"extract_candidates: {len(out_custom)} custom_analysis, {len(out_columns)} column "
+        f"(max {MAX_CALCULATION_CANDIDATES} each), {len(pulls)} pulls"
+    )
+
+    return out_custom, out_columns
+
+
+def get_custom_analyses_ids(items):
+    """Filter custom analyses by classification flag and return their IDs."""
+    if not items:
+        return []
+
+    def _get(obj, key, default=None):
+        """Safe getter for both Pydantic-style objects and plain dicts."""
+        if hasattr(obj, key):
+            return getattr(obj, key, default)
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return default
+
+    classified_ids_and_labels = []
+    for item in items:
+        is_relevant = bool(_get(item, "classification", False))
+        if not is_relevant:
+            continue
+        item_id = _get(item, "id")
+        item_label = _get(item, "label")
+        if item_id and item_label:
+            classified_ids_and_labels.append({"id": item_id, "label": item_label})
+
+    return classified_ids_and_labels
+
+
+def extract_entities_with_id_name_label(data):
+    result = {}
+
+    def recurse(obj):
+        if isinstance(obj, dict):
+            # Main entity case: id + name + (type or label)
+            if "id" in obj and "name" in obj and ("type" in obj or "label" in obj):
+
+                final_label = obj["label"]
+
+                result[obj["id"]] = (
+                    obj["name"],
+                    final_label,
+                    obj.get("parent_id"),
+                )
+
+            # explicitly capture table inside column
+            if "table" in obj and isinstance(obj["table"], dict):
+                table = obj["table"]
+                if "id" in table and "name" in table:
+                    result[table["id"]] = (table["name"], "table", None)
+
+            # Continue recursion
+            for value in obj.values():
+                recurse(value)
+
+        elif isinstance(obj, list):
+            for item in obj:
+                recurse(item)
+
+    recurse(data)
+    return result
+
+
+_ALLOWED_NODE_LABELS = frozenset(Labels.LIST_OF_ALL)
+
+
+def get_node_properties_by_id(id, label: str | list[str]):
+    labels_list = label if isinstance(label, list) else [label]
+    for lbl in labels_list:
+        if lbl not in _ALLOWED_NODE_LABELS:
+            logger.warning("Rejecting unknown label %r in get_node_properties_by_id", lbl)
+            return None
+    label_filter = "|".join(labels_list)
+    query = f"""
+        MATCH(n:{label_filter}{{id:$id}})
+        RETURN apoc.map.setKey(properties(n),"label", labels(n)[0]) as props
+    """
+
+    props = get_neo4j_conn().query_read_only(query, parameters={"id": id})
+    if len(props) == 0:
+        return None
+    else:
+        return props[0]["props"]
+
+
+def get_item_by_id(item_id, label):
+    result = get_node_properties_by_id(item_id, label)
+    if result:
+        return result
+    else:
+        logger.error(f"The required item with id : {item_id} is not found in graph. ERROR.")
+        return None
+
+
+def highlight_entity(items_present: dict, text: str) -> str:
+    """
+    Processes [[[entity]]] patterns in the text.
+
+    Supported formats:
+    - [[[name/id]]]
+    - [[[label/id|display_name]]]
+
+    Replaces valid ones with hyperlinks using `prepare_link`.
+    Falls back to bolding just the entity name if invalid or not found.
+    """
+
+    def replace_entity(match):
+        raw = match.group(1)
+        cleaned = re.sub(r"\s*/\s*", "/", raw.strip())  # Remove whitespace around slash
+
+        # Handle display name (e.g., [[[label/id|display_name]]])
+        if "|" in cleaned:
+            entity_part, display_name = cleaned.split("|", 1)
+            display_name = display_name.strip()
+        else:
+            entity_part, display_name = cleaned, None
+
+        # Now parse entity part → name/ID
+        if "/" in entity_part:
+            name_or_label, eid = entity_part.split("/", 1)
+            name_or_label = name_or_label.strip()
+            eid = eid.strip()
+
+            # Lookup by ID
+            entity = items_present.get(eid)
+            if entity and (
+                entity[0].lower() == name_or_label.lower()
+                or (display_name and entity[0].lower() == display_name.lower())
+            ):
+                shown_name = display_name or name_or_label
+                return f"<{prepare_link(shown_name, eid, entity[1], entity[2])}>"
+            elif entity:
+                logger.warning(
+                    "ASSUMPTION: the name in link is not found correctly by llm, take it by id from candidates"
+                )
+                return f"<{prepare_link(entity[0], eid, entity[1], entity[2])}>"
+
+            # no entity in candidates
+            try:
+                item = get_item_by_id(eid, name_or_label)
+            except Exception:
+                logger.error("Something not ok with id, error raised")
+                return f"*{display_name or name_or_label}*"
+
+            if item:
+                return f"<{prepare_link(item['name'], eid, name_or_label)}>"
+            else:
+                logger.warning(f"Entity ID mismatch or not found: {name_or_label}/{eid}")
+                return f"*{display_name or name_or_label}*"
+        else:
+            logger.warning(f"No ID found in entity: {cleaned}")
+            return f"*{cleaned}*"
+
+    return re.sub(r"\[\[\[(.*?)\]\]\]", replace_entity, text)
+
+
+def format_response(candidates, response):
+    final_response_formatted = response.replace("%%%", "```").replace("**", "*")
+    final_response_formatted = re.sub(r"(\\+n|\n)", "\n ", final_response_formatted)
+    all_entities_present = extract_entities_with_id_name_label(candidates)
+
+    try:
+        final_response_highlighted = highlight_entity(all_entities_present, final_response_formatted)
+    except Exception:
+        return final_response_formatted
+    return final_response_highlighted
+
+
+def _parse_table_text(text: str) -> dict:
+    """Parse db_name, schema_name, table_name, and columns from LanceDB-style table text."""
+    parsed: dict = {}
+    try:
+        if not isinstance(text, str):
+            return parsed
+
+        db_match = re.search(r"db_name:\s*([^,]+)", text)
+        if db_match:
+            parsed["db_name"] = db_match.group(1).strip()
+
+        schema_match = re.search(r"schema_name:\s*([^,]+)", text)
+        if schema_match:
+            parsed["schema_name"] = schema_match.group(1).strip()
+
+        table_match = re.search(r"table_name:\s*([^,]+)", text)
+        if table_match:
+            parsed["table_name"] = table_match.group(1).strip()
+
+        columns_match = re.search(r"columns:\s*(.+)$", text)
+        if columns_match:
+            columns_str = columns_match.group(1).strip()
+            column_pattern = r"\{name:\s*([^,}]+)(?:,\s*data_type:\s*([^,}]+))?(?:,\s*description:\s*([^}]+))?\}"
+            columns = []
+            for match in re.finditer(column_pattern, columns_str):
+                column = {
+                    "name": match.group(1).strip(),
+                }
+                if match.group(2):
+                    column["data_type"] = match.group(2).strip()
+                if match.group(3):
+                    desc = match.group(3).strip()
+                    if desc != "null":
+                        column["description"] = desc
+                columns.append(column)
+            if columns:
+                parsed["columns"] = columns
+    except Exception:
+        pass
+
+    return parsed
+
+
+def get_schemas_from_graph_by_ids(
+    relevant_schemas_ids: list | None = None,
+) -> list[dict[str, str]]:
+    schema_ids = relevant_schemas_ids or []
+    query = f"""
+    MATCH (db:{Labels.DB})-[:{Edges.CONTAINS}]->(schema:{Labels.SCHEMA})
+          -[:{Edges.CONTAINS}]->(table:{Labels.TABLE})
+          -[:{Edges.CONTAINS}]->(column:{Labels.COLUMN})
+    WHERE size($relevant_schemas_ids) = 0
+       OR schema.id IN $relevant_schemas_ids
+    RETURN collect({{
+        column_name:  column.name,
+        table_name:   table.name,
+        db_name:      db.name,
+        table_schema: schema.name,
+        data_type:    column.data_type
+    }}) AS data
+    """
+    result = get_neo4j_conn().query_read(query, {"relevant_schemas_ids": schema_ids})
+    if len(result) > 0:
+        return result[0]["data"]
+    return []
+
+
+def get_all_schemas_ids():
+    query = f"""MATCH(s:{Labels.SCHEMA}) RETURN s.id as schema_id"""
+    result = pd.DataFrame(
+        get_neo4j_conn().query_read(
+            query=query,
+            parameters=None,
+        )
+    )
+    return result["schema_id"].tolist()
+
+
+def get_schemas_by_ids(relevant_schemas_ids: list = None):
+    before_get_all = time.time()
+    data_array = get_schemas_from_graph_by_ids(relevant_schemas_ids)
+    logger.info(f"time took to get all data from graph: {time.time() - before_get_all}")
+    data_df = pd.DataFrame(data_array)
+    dbs = list(data_df["db_name"].unique())
+
+    schemas = data_df[["db_name", "table_schema"]]
+    schemas = schemas.drop_duplicates().to_dict(orient="records")
+
+    all_schemas = {}
+    schema_dfs = {}
+    dbs_nodes = {}
+    for db_name in dbs:
+        db_node = Neo4jNode(name=db_name, label=Labels.DB, props={"name": db_name})
+        dbs_nodes[db_name] = db_node
+
+    tables_df = data_df[["db_name", "table_schema", "table_name"]]
+    tables_df = tables_df.drop_duplicates()
+
+    unique_schemas = data_df.table_schema.unique()
+    for table_schema in unique_schemas:
+        schema_tables_df = tables_df.loc[tables_df["table_schema"] == table_schema]
+        schema_dfs[table_schema] = {"tables": schema_tables_df.to_dict(orient="records")}
+
+    for table_schema in unique_schemas:
+        columns_df = data_df.loc[data_df["table_schema"] == table_schema]
+        schema_dfs[table_schema]["columns"] = columns_df.to_dict(orient="records")
+
+    before_modify_all = time.time()
+    for schema in schemas:
+        table_schema: str = schema.get("table_schema")
+        if not table_schema:
+            continue
+
+        schema_db_name: str = schema["db_name"]
+        schema_db_node = dbs_nodes[schema_db_name]
+        tables_df = pd.DataFrame(schema_dfs[table_schema]["tables"])
+        columns_df = pd.DataFrame(schema_dfs[table_schema]["columns"])
+
+        all_schemas[table_schema.lower()] = Schema(
+            schema_db_node,
+            tables_df,
+            columns_df,
+            table_schema,
+            is_creation_mode=False,
+        )
+    logger.info(f"total time it took to create all schemas nodes: {time.time() - before_modify_all}")
+    logger.info(f"total time for get_schemas_by_ids(): {time.time() - before_get_all}")
+    return all_schemas
+
+
+def build_custom_analyses_section(items, candidates):
+    """Build a markdown section listing custom analyses that were used."""
+    if not items:
+        return ""
+
+    # Normalize to attribute access via getattr (fallback to dict.get)
+    def _get(obj, key, default=None):
+        return getattr(obj, key, obj.get(key, default) if isinstance(obj, dict) else default)
+
+    # Map candidate id -> candidate object
+    by_id = {_get(c, "id"): c for c in candidates if _get(c, "id")}
+
+    matched_lines = []
+    for item in items:
+        cid = _get(item, "id")
+        candidate = by_id.get(cid)
+        if not candidate:  # skip if candidate not found
+            continue
+
+        name = _get(candidate, "name", "<unknown name>")
+        relevant = _get(item, "classification", False)
+        if relevant:
+            matched_lines.append(f"- [[[{name}/{cid}]]]")
+
+    # Only add header if there are matched items
+    if not matched_lines:
+        return ""
+
+    return "\n\n**Semantic items used**:\n" + "\n".join(matched_lines)
+
+
+def _normalize_table_to_relevant_shape(table: dict) -> dict:
+    """Build the same per-table dict shape as :func:`get_relevant_tables` returns."""
+    text = str(table.get("table_info") or table.get("text") or "")
+    parsed = _parse_table_text(text)
+    name = str(table.get("name") or "").strip()
+    if not name:
+        name = str(parsed.get("table_name") or "").strip()
+    entry: dict = {
+        "name": name,
+        "label": str(table.get("label") or Labels.TABLE),
+        "id": str(table.get("id") or ""),
+        "table_info": text,
+        **parsed,
+    }
+    if table.get("db_name") and not entry.get("db_name"):
+        entry["db_name"] = table["db_name"]
+    if table.get("schema_name") and not entry.get("schema_name"):
+        entry["schema_name"] = table["schema_name"]
+    if table.get("columns") and not entry.get("columns"):
+        entry["columns"] = table["columns"]
+    if table.get("pk") is not None:
+        entry["primary_key"] = table["pk"]
+    if not isinstance(entry.get("columns"), list):
+        entry["columns"] = []
+    return entry
+
+
+def _merge_two_relevant_table_dicts(a: dict, b: dict) -> dict:
+    """Merge two table dicts with the same ``id`` (e.g. Neo4j vs Lance); prefer non-empty / richer fields."""
+    out = dict(a)
+    for k, v in b.items():
+        if v is None:
+            continue
+        if k == "columns":
+            ca = out.get("columns") if isinstance(out.get("columns"), list) else []
+            cb = v if isinstance(v, list) else []
+            if len(cb) > len(ca):
+                out["columns"] = cb
+            elif not ca and cb:
+                out["columns"] = cb
+            continue
+        if k in ("table_info", "text"):
+            sa = str(out.get(k) or "").strip()
+            sb = str(v).strip()
+            if len(sb) > len(sa):
+                out[k] = v
+            elif not sa and sb:
+                out[k] = v
+            continue
+        if k == "primary_key":
+            if not out.get(k) and v:
+                out[k] = v
+            continue
+        cur = out.get(k)
+        if cur in (None, "") or (isinstance(cur, list) and len(cur) == 0):
+            if v not in (None, ""):
+                out[k] = v
+    return out
+
+
+def dedupe_merge_relevant_tables(tables: list[dict]) -> list[dict]:
+    """Return one dict per table ``id``, merging sparse and rich rows so ``table_info`` / ``columns`` are filled."""
+    by_id: dict[str, list[dict]] = {}
+    for t in tables:
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get("id") or "").strip()
+        if not tid:
+            continue
+        by_id.setdefault(tid, []).append(t)
+
+    merged: list[dict] = []
+    for tid in sorted(by_id.keys()):
+        group = by_id[tid]
+        acc = dict(group[0])
+        for other in group[1:]:
+            acc = _merge_two_relevant_table_dicts(acc, other)
+        merged.append(_normalize_table_to_relevant_shape(acc))
+    return merged
+
+
+def get_relevant_tables_from_candidates(
+    candidates: list[dict],
+) -> list[dict]:
+    """
+    Extract relevant tables from flat candidate dicts.
+
+    Reads ``relevant_tables`` on each candidate (when present), deduplicates by table id,
+    then removes ``relevant_tables`` from each candidate in place.
+
+    Returns:
+        List of normalized table dicts — same shape as :func:`get_relevant_tables`
+        (``name``, ``label``, ``id``, ``table_info``, parsed fields, optional ``primary_key``).
+    """
+    table_by_id: dict[str, dict] = {}
+
+    for cand in candidates:
+        if not isinstance(cand, dict):
+            continue
+        rel = cand.get("relevant_tables")
+        if not rel:
+            continue
+        for table in rel:
+            if not isinstance(table, dict):
+                continue
+            tid = table.get("id")
+            if tid is None:
+                continue
+            tid_s = str(tid)
+            if tid_s not in table_by_id:
+                table_by_id[tid_s] = table
+
+    for cand in candidates:
+        if isinstance(cand, dict) and "relevant_tables" in cand:
+            cand.pop("relevant_tables", None)
+
+    if not table_by_id:
+        return []
+
+    return [_normalize_table_to_relevant_shape(table_by_id[tid]) for tid in table_by_id]
+
+
+def get_relevant_tables(
+    retriever: "Retriever",
+    initial_question,
+    k=15,
+) -> list[dict]:
+    """Semantic search over the same LanceDB index as candidate retrieval, label ``table`` only."""
+    try:
+        raw_rows = search_lancedb_semantic_index(
+            retriever,
+            initial_question,
+            label_filter=[Labels.TABLE],
+            per_label_k=k,
+        )
+    except Exception:
+        logger.exception("get_relevant_tables: LanceDB search failed")
+        raw_rows = []
+
+    relevant_tables_list = []
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("text") or "")
+        name = row.get("name")
+        tid = row.get("id")
+        lab = row.get("label") or Labels.TABLE
+        if name is None and tid is None:
+            continue
+        entry = _normalize_table_to_relevant_shape(
+            {
+                "name": name,
+                "label": lab,
+                "id": tid,
+                "text": text,
+                "pk": row.get("pk"),
+            }
+        )
+        relevant_tables_list.append(entry)
+
+    return relevant_tables_list
+
+
+def prepare_link(name: str, id: str, label: Labels, parent_id: str = None) -> str:
+    match label:
+        case label if label in [Labels.CUSTOM_ANALYSIS]:
+            return f"{label}/{id}|{name}"
+        case Labels.COLUMN:
+            return f"data/{parent_id}?searchId={id}|{name}"
+        case _:
+            return f"data/{id}|{name}"

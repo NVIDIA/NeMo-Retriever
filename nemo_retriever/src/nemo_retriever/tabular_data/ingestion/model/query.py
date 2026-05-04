@@ -14,7 +14,6 @@ class Query:
         sql_text,
         ltimestamp,
         count,
-        dialect=None,
     ):
         self.id = id
         self.tables: list = []

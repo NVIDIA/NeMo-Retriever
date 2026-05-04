@@ -114,6 +114,7 @@ stores = [
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
+  "langgraph>=1.1.0",
 ]
 
 # BEIR benchmarking and evaluation tools (not needed for production use).
