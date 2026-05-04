@@ -28,6 +28,7 @@ Highlights for the 26.03 release include:
 - The project now uses UV as the primary environment and package manager instead of Conda, resulting in faster installs and simpler dependency handling  
 - Default Redis TTL increased from 1–2 hours to 48 hours so long-running jobs (e.g., VLM captioning) don’t expire before completion  
 - NeMo Retriever Library currently does not support image captioning via VLM; this feature will be added in the next release
+- Documentation: multimodal extraction is covered on one page with an in-page table of contents and redirects from the former per-topic URLs
 
 ## Release Notes for Previous Versions
 
