@@ -49,6 +49,35 @@ class TableMatch:
 
 
 @dataclass
+class JoinPair:
+    """A single join condition between two resolved columns.
+
+    Both table references are resolved through the alias map to their
+    real (non-CTE, non-alias) qualified table names.
+    """
+
+    left_table: str
+    left_column: str
+    right_table: str
+    right_column: str
+    operator: str = "="
+
+
+@dataclass
+class UnionPair:
+    """Two columns aligned at the same position in a UNION/UNION ALL.
+
+    Represents the semantic equivalence implied by positional alignment
+    in set operations (UNION, UNION ALL, INTERSECT, EXCEPT).
+    """
+
+    left_table: str
+    left_column: str
+    right_table: str
+    right_column: str
+
+
+@dataclass
 class ExtractionResult:
     """Container for the full output of :func:`extract_tables_and_columns`.
 
@@ -59,10 +88,18 @@ class ExtractionResult:
     ast_node_count:
         Total number of nodes in the sqlglot AST.  Cheap structural
         fingerprint used to pre-filter duplicate candidates.
+    joins:
+        Equi-join column pairs extracted from explicit ``JOIN … ON``
+        and ``JOIN … USING`` clauses, with aliases fully resolved.
+    unions:
+        Column pairs aligned at the same position in UNION/UNION ALL
+        set operations, with aliases fully resolved.
     """
 
     tables: dict[str, TableMatch] = field(default_factory=dict)
     ast_node_count: int = 0
+    joins: list[JoinPair] = field(default_factory=list)
+    unions: list[UnionPair] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +153,320 @@ def _build_schema_dict(all_schemas: dict) -> dict[str, dict[str, str]]:
             col = str(row["column_name"]).lower()
             schema.setdefault(tbl, {})[col] = "TEXT"
     return schema
+
+
+_BINARY_CMP = (exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.NEQ)
+
+_OP_SYMBOL: dict[type, str] = {
+    exp.EQ: "=",
+    exp.GT: ">",
+    exp.GTE: ">=",
+    exp.LT: "<",
+    exp.LTE: "<=",
+    exp.NEQ: "!=",
+}
+
+
+def _unwrap_column(node: exp.Expression) -> exp.Column | None:
+    """Return the single ``Column`` inside *node*, unwrapping functions/casts.
+
+    When *node* contains zero or more than one ``Column`` the reference is
+    ambiguous (e.g. ``col_a + col_b``), so ``None`` is returned.
+    """
+    if isinstance(node, exp.Column):
+        return node
+    cols = list(node.find_all(exp.Column))
+    return cols[0] if len(cols) == 1 else None
+
+
+def _build_derived_col_map(
+    qualified: exp.Expression,
+    alias_map: dict[str, str],
+    source_table_names: set[str],
+    cte_names: set[str],
+) -> dict[str, dict[str, tuple[str, str]]]:
+    """Map derived-table/CTE aliases to their output columns' real source.
+
+    For ``(SELECT order_items.order_id, ... FROM order_items) AS d``, produces:
+    ``{"d": {"order_id": ("order_items", "order_id"), ...}}``
+
+    Also handles CTEs:
+    ``WITH stats AS (SELECT customer_id FROM orders) ... JOIN stats s``
+    produces ``{"stats": {"customer_id": ("orders", "customer_id")}}``
+    and registers any outer-query aliases (``"s"``) pointing to the same map.
+
+    Only maps columns that are direct references (not wrapped in functions
+    or aggregations).  Computed columns like ``SUM(price) AS total`` are
+    excluded — they don't represent real table columns.
+    """
+    derived: dict[str, dict[str, tuple[str, str]]] = {}
+
+    def _map_select(inner_select: exp.Select) -> dict[str, tuple[str, str]]:
+        """Extract pass-through column mappings from a SELECT list."""
+        col_map: dict[str, tuple[str, str]] = {}
+        for expr in inner_select.expressions:
+            if isinstance(expr, exp.Alias):
+                output_name = expr.alias.lower()
+                source_expr = expr.this
+            else:
+                source_expr = expr
+                output_name = None
+            # Only bare column references pass; functions/aggregations
+            # (SUM, COUNT, CONCAT, etc.) are excluded — they don't
+            # represent real table columns.
+            if not isinstance(source_expr, exp.Column):
+                continue
+            if output_name is None:
+                output_name = source_expr.name.lower() if source_expr.name else None
+            if not output_name:
+                continue
+            # Resolve through alias_map to get the real table name
+            tbl_ref = source_expr.table.lower() if source_expr.table else None
+            real_table = alias_map.get(tbl_ref) if tbl_ref else None
+            if real_table and real_table in source_table_names:
+                col_map[output_name] = (real_table, source_expr.name.lower())
+        return col_map
+
+    # Inline derived tables: (SELECT ...) AS d
+    for subq in qualified.find_all(exp.Subquery):
+        alias = subq.alias.lower() if subq.alias else None
+        if not alias:
+            continue
+        inner_select = subq.find(exp.Select)
+        if not inner_select:
+            continue
+        col_map = _map_select(inner_select)
+        if col_map:
+            derived[alias] = col_map
+
+    # CTEs: WITH cte_name AS (SELECT ...)
+    for cte in qualified.find_all(exp.CTE):
+        cte_name = cte.alias.lower() if cte.alias else None
+        if not cte_name:
+            continue
+        inner_select = cte.this if isinstance(cte.this, exp.Select) else cte.this.find(exp.Select)
+        if not inner_select:
+            continue
+        col_map = _map_select(inner_select)
+        if col_map:
+            derived[cte_name] = col_map
+
+    # Register outer-query aliases that reference CTEs (e.g. JOIN stats AS s → "s")
+    for table in qualified.find_all(exp.Table):
+        name = table.name.lower()
+        if name in cte_names and table.alias:
+            tbl_alias = table.alias.lower()
+            if name in derived and tbl_alias != name:
+                derived[tbl_alias] = derived[name]
+
+    return derived
+
+
+def _extract_join_pairs(
+    qualified: exp.Expression,
+    alias_map: dict[str, str],
+    source_table_names: set[str],
+    cte_names: set[str],
+) -> list[JoinPair]:
+    """Extract join column pairs from the (post-qualify) AST.
+
+    After ``qualify()``, ``USING`` clauses are rewritten into ``ON``, so
+    walking ``JOIN … ON`` covers both syntaxes.  Falls back to raw
+    ``USING`` args when ``ON`` is absent (``qualify()`` failed or the
+    dialect preserved ``USING``).
+
+    Handled condition types:
+
+    * Binary comparisons (``=``, ``>``, ``>=``, ``<``, ``<=``, ``!=``)
+    * ``BETWEEN … AND …``
+    * Function-wrapped / cast-wrapped columns (e.g. ``LOWER(t.col)``)
+    * Columns referencing derived tables / CTEs (traced back to source real table)
+    """
+    derived_map = _build_derived_col_map(qualified, alias_map, source_table_names, cte_names)
+    pairs: list[JoinPair] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def _resolve_col(col: exp.Column) -> tuple[str | None, str]:
+        """Resolve a column to (real_table, col_name), using derived_map as fallback."""
+        col_name = col.name.lower()
+        tbl_ref = col.table.lower() if col.table else None
+        real_table = alias_map.get(tbl_ref) if tbl_ref else None
+        if real_table and real_table in source_table_names:
+            return real_table, col_name
+        if tbl_ref and tbl_ref in derived_map:
+            entry = derived_map[tbl_ref].get(col_name)
+            if entry:
+                return entry
+        return None, col_name
+
+    def _try_add(lc: exp.Column, rc: exp.Column, op: str = "=") -> None:
+        """Resolve aliases and append a canonically-ordered, deduplicated ``JoinPair``."""
+        lt, l_col = _resolve_col(lc)
+        rt, r_col = _resolve_col(rc)
+        if not lt or not rt:
+            return
+        if lt == rt and l_col == r_col:
+            return
+        if (lt, l_col) > (rt, r_col):
+            lt, l_col, rt, r_col = rt, r_col, lt, l_col
+        key = (lt, l_col, rt, r_col)
+        if key not in seen:
+            seen.add(key)
+            pairs.append(
+                JoinPair(
+                    left_table=lt,
+                    left_column=l_col,
+                    right_table=rt,
+                    right_column=r_col,
+                    operator=op,
+                )
+            )
+
+    for select_node in qualified.find_all(exp.Select):
+        from_clause = select_node.args.get("from_")
+        join_nodes = select_node.args.get("joins") or []
+        if not join_nodes:
+            continue
+
+        chain: list[str] = []
+        if from_clause:
+            ft = from_clause.this
+            if isinstance(ft, exp.Table):
+                resolved = alias_map.get((ft.alias or ft.name).lower())
+                if resolved:
+                    chain.append(resolved)
+
+        for join_node in join_nodes:
+            right_ast = join_node.this
+            right_resolved = None
+            if isinstance(right_ast, exp.Table):
+                right_resolved = alias_map.get((right_ast.alias or right_ast.name).lower())
+
+            on_expr = join_node.args.get("on")
+            if on_expr:
+                for cmp in on_expr.find_all(*_BINARY_CMP):
+                    lc = _unwrap_column(cmp.left)
+                    rc = _unwrap_column(cmp.right)
+                    if lc and rc:
+                        _try_add(lc, rc, _OP_SYMBOL.get(type(cmp), "="))
+
+                for between in on_expr.find_all(exp.Between):
+                    main_c = _unwrap_column(between.this)
+                    low_arg = between.args.get("low")
+                    high_arg = between.args.get("high")
+                    low_c = _unwrap_column(low_arg) if low_arg else None
+                    high_c = _unwrap_column(high_arg) if high_arg else None
+                    if main_c and low_c:
+                        _try_add(main_c, low_c, "BETWEEN")
+                    if main_c and high_c:
+                        _try_add(main_c, high_c, "BETWEEN")
+            else:
+                using_cols = join_node.args.get("using") or []
+                if using_cols and chain and right_resolved:
+                    left_table = chain[-1]
+                    for col_ident in using_cols:
+                        col_name = col_ident.name.lower()
+                        if left_table in source_table_names and right_resolved in source_table_names:
+                            lt, lc, rt, rc = left_table, col_name, right_resolved, col_name
+                            if (lt, lc) > (rt, rc):
+                                lt, lc, rt, rc = rt, rc, lt, lc
+                            key = (lt, lc, rt, rc)
+                            if key not in seen:
+                                seen.add(key)
+                                pairs.append(
+                                    JoinPair(
+                                        left_table=lt,
+                                        left_column=lc,
+                                        right_table=rt,
+                                        right_column=rc,
+                                    )
+                                )
+
+            if right_resolved:
+                chain.append(right_resolved)
+
+    return pairs
+
+
+def _extract_union_pairs(
+    qualified: exp.Expression,
+    alias_map: dict[str, str],
+    source_table_names: set[str],
+) -> list[UnionPair]:
+    """Extract positionally-aligned column pairs from UNION/UNION ALL/INTERSECT/EXCEPT.
+
+    For each set operation, columns at the same SELECT-list position across
+    all branches are paired.  Only direct column references are included;
+    computed expressions (functions, aggregations) are skipped.
+    """
+
+    def _flatten_union(node: exp.Expression) -> list[exp.Select]:
+        """Recursively collect all SELECT branches from nested set operations."""
+        if isinstance(node, exp.Select):
+            return [node]
+        if isinstance(node, (exp.Union, exp.Intersect, exp.Except)):
+            return _flatten_union(node.left) + _flatten_union(node.right)
+        return []
+
+    def _resolve_select_col(
+        expr: exp.Expression,
+    ) -> tuple[str | None, str | None]:
+        """Resolve a SELECT-list expression to (real_table, col_name) or (None, None)."""
+        if isinstance(expr, exp.Alias):
+            source_expr = expr.this
+        else:
+            source_expr = expr
+        if not isinstance(source_expr, exp.Column):
+            return None, None
+        col_name = source_expr.name.lower()
+        tbl_ref = source_expr.table.lower() if source_expr.table else None
+        real_table = alias_map.get(tbl_ref) if tbl_ref else None
+        if real_table and real_table in source_table_names:
+            return real_table, col_name
+        return None, None
+
+    pairs: list[UnionPair] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    for union_node in qualified.find_all(exp.Union, exp.Intersect, exp.Except):
+        # Only process from the top-level set-op to avoid double-counting
+        # nested unions (the flatten call handles recursion).
+        if isinstance(union_node.parent, (exp.Union, exp.Intersect, exp.Except)):
+            continue
+
+        branches = _flatten_union(union_node)
+        if len(branches) < 2:
+            continue
+
+        # Resolve each branch's SELECT list to (table, col) tuples
+        resolved_branches: list[list[tuple[str | None, str | None]]] = []
+        for branch in branches:
+            resolved_branches.append([_resolve_select_col(expr) for expr in branch.expressions])
+
+        # Pair columns across branches at each position
+        n_cols = min(len(b) for b in resolved_branches)
+        for pos in range(n_cols):
+            resolved_at_pos = [
+                (tbl, col)
+                for b in resolved_branches
+                if (tbl := b[pos][0]) is not None and (col := b[pos][1]) is not None
+            ]
+            # Create pairs between all distinct resolved columns at this position
+            for i in range(len(resolved_at_pos)):
+                for j in range(i + 1, len(resolved_at_pos)):
+                    lt, lc = resolved_at_pos[i]
+                    rt, rc = resolved_at_pos[j]
+                    if lt == rt and lc == rc:
+                        continue
+                    # Canonical order
+                    if (lt, lc) > (rt, rc):
+                        lt, lc, rt, rc = rt, rc, lt, lc
+                    key = (lt, lc, rt, rc)
+                    if key not in seen:
+                        seen.add(key)
+                        pairs.append(UnionPair(left_table=lt, left_column=lc, right_table=rt, right_column=rc))
+
+    return pairs
 
 
 # ---------------------------------------------------------------------------
@@ -298,9 +649,11 @@ def extract_tables_and_columns(
                 tbl_n = str(row["table_name"]).lower()
                 # Try the qualified name first (schema.table); fall back to bare
                 # table name for SQL that doesn't prefix tables with a schema.
-                qualified = f"{skey}.{tbl_n}"
+                qualified_name = f"{skey}.{tbl_n}"
                 matched = (
-                    qualified if qualified in source_table_names else (tbl_n if tbl_n in source_table_names else None)
+                    qualified_name
+                    if qualified_name in source_table_names
+                    else (tbl_n if tbl_n in source_table_names else None)
                 )
                 if matched and matched not in col_to_tables.get(col_n, []):
                     col_to_tables.setdefault(col_n, []).append(matched)
@@ -317,8 +670,13 @@ def extract_tables_and_columns(
                     result[tbl].columns.add(col_name)
             # else: ambiguous — omit rather than guess.
 
+    join_pairs = _extract_join_pairs(qualified, alias_map, source_table_names, cte_names)
+    union_pairs = _extract_union_pairs(qualified, alias_map, source_table_names)
+
     # Drop real-table entries that ended up with no columns attributed.
     return ExtractionResult(
         tables={k: v for k, v in result.items() if v.columns},
         ast_node_count=ast_node_count,
+        joins=join_pairs,
+        unions=union_pairs,
     )

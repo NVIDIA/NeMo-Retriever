@@ -46,8 +46,8 @@ def prepare_edge(edge):
 
     check_properties_compatibility_with_neo4j(node_from, node_to, edge[2])
 
-    if e_label == Edges.JOIN:
-        edge_identity_props = {Edges.JOIN: edge_props[Props.JOIN]}
+    if e_label in (Edges.JOIN, Edges.UNION):
+        edge_identity_props = {}
     elif "child_idx" in edge_props and edge_props["child_idx"] is not None:
         edge_identity_props = {"child_idx": edge_props["child_idx"]}
     else:
@@ -115,12 +115,12 @@ def add_edges(edges_data):
             with v1, v2, data, data.edge_identity_props as e_identity_props
             call apoc.merge.relationship.eager(v1, data.edge_label, e_identity_props, {}, v2)
             YIELD rel
-            with rel,
+            with rel, data,
             case
-              when not rel.source_sql_id is null and rel.join_sql_id is null
-                then {source_sql_id: apoc.coll.toSet(rel.source_sql_id + data.edge_props.source_sql_id)}
-              when rel.source_sql_id is null and not rel.join_sql_id is null
-                then {join_sql_id: apoc.coll.toSet(rel.join_sql_id + data.edge_props.join_sql_id), join: rel.join}
+              when data.edge_props.join_refs is not null
+                then {join_refs: coalesce(rel.join_refs, []) + data.edge_props.join_refs}
+              when data.edge_props.union_refs is not null
+                then {union_refs: coalesce(rel.union_refs, []) + data.edge_props.union_refs}
               else data.edge_props
             end as props
             SET rel = props

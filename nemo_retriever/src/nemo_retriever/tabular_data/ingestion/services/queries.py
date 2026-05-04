@@ -52,9 +52,13 @@ def parse_query_slim(sql_text: str, query_obj: Query, dialect: str, schemas: dic
     )
 
     query_obj.ast_node_count = extraction.ast_node_count
+    query_obj.join_count = len(extraction.joins)
+    query_obj.union_count = len(extraction.unions)
 
     if not extraction.tables:
         return False
+
+    resolved_schemas: dict[str, object] = {}
 
     for table_key, match in extraction.tables.items():
         bare_name = table_key.split(".")[-1]
@@ -69,6 +73,8 @@ def parse_query_slim(sql_text: str, query_obj: Query, dialect: str, schemas: dic
         if schema is None:
             logger.debug("Table %r not found in any schema – skipping.", bare_name)
             continue
+
+        resolved_schemas[table_key] = schema
 
         try:
             table_node = schema.get_table_node(bare_name)
@@ -87,6 +93,71 @@ def parse_query_slim(sql_text: str, query_obj: Query, dialect: str, schemas: dic
                     query_obj.edges.append((query_obj.sql_node, col_node, edge_props))
             except Exception:
                 continue
+
+    sql_id = str(query_obj.id)
+    for jp in extraction.joins:
+        left_schema = resolved_schemas.get(jp.left_table)
+        right_schema = resolved_schemas.get(jp.right_table)
+        if left_schema is None or right_schema is None:
+            continue
+        left_bare = jp.left_table.split(".")[-1]
+        right_bare = jp.right_table.split(".")[-1]
+        try:
+            left_table_node = left_schema.get_table_node(left_bare)
+            right_table_node = right_schema.get_table_node(right_bare)
+            if not left_schema.is_column_in_table(
+                left_table_node, jp.left_column
+            ) or not right_schema.is_column_in_table(right_table_node, jp.right_column):
+                continue
+            left_col_node = left_schema.get_column_node(jp.left_column, left_bare)
+            right_col_node = right_schema.get_column_node(jp.right_column, right_bare)
+            condition = f"{left_bare}.{jp.left_column} {jp.operator} {right_bare}.{jp.right_column}"
+            join_edge_props = {
+                Props.JOIN: True,
+                "join_refs": [f"{sql_id}|{condition}"],
+            }
+            query_obj.edges.append((left_col_node, right_col_node, join_edge_props))
+        except Exception:
+            logger.debug(
+                "Failed to create JOIN edge: %s.%s → %s.%s",
+                left_bare,
+                jp.left_column,
+                right_bare,
+                jp.right_column,
+            )
+            continue
+
+    for up in extraction.unions:
+        left_schema = resolved_schemas.get(up.left_table)
+        right_schema = resolved_schemas.get(up.right_table)
+        if left_schema is None or right_schema is None:
+            continue
+        left_bare = up.left_table.split(".")[-1]
+        right_bare = up.right_table.split(".")[-1]
+        try:
+            left_table_node = left_schema.get_table_node(left_bare)
+            right_table_node = right_schema.get_table_node(right_bare)
+            if not left_schema.is_column_in_table(
+                left_table_node, up.left_column
+            ) or not right_schema.is_column_in_table(right_table_node, up.right_column):
+                continue
+            left_col_node = left_schema.get_column_node(up.left_column, left_bare)
+            right_col_node = right_schema.get_column_node(up.right_column, right_bare)
+            condition = f"{left_bare}.{up.left_column} | {right_bare}.{up.right_column}"
+            union_edge_props = {
+                Props.UNION: True,
+                "union_refs": [f"{sql_id}|{condition}"],
+            }
+            query_obj.edges.append((left_col_node, right_col_node, union_edge_props))
+        except Exception:
+            logger.debug(
+                "Failed to create UNION edge: %s.%s → %s.%s",
+                left_bare,
+                up.left_column,
+                right_bare,
+                up.right_column,
+            )
+            continue
 
     return bool(query_obj.get_tables_ids())
 
@@ -112,6 +183,8 @@ def parse_query_single(
     if not is_parsed:
         return None
     query_obj.sql_node.add_property("nodes_count", query_obj.get_nodes_counter())
+    query_obj.sql_node.add_property("join_count", query_obj.get_join_count())
+    query_obj.sql_node.add_property("union_count", query_obj.get_union_count())
     return query_obj
 
 
@@ -144,6 +217,8 @@ def _try_merge_with_graph(
         col_ids=query_obj.get_column_ids(),
         nodes_count=query_obj.get_nodes_counter(),
         sqls_tbls_df=sqls_tbls_df,
+        join_count=query_obj.get_join_count(),
+        union_count=query_obj.get_union_count(),
     )
     for _, cand in candidates.iterrows():
         cand_sql = cand.get("sql_full_query", "")
@@ -183,6 +258,8 @@ def _try_merge_in_memory(
     tbl_key = frozenset(query_obj.get_tables_ids())
     col_set = frozenset(query_obj.get_column_ids())
     nodes_count = query_obj.get_nodes_counter()
+    join_count = query_obj.get_join_count()
+    union_count = query_obj.get_union_count()
 
     new_norm = norm_cache.get(query_obj.id)
     if new_norm is None:
@@ -194,6 +271,10 @@ def _try_merge_in_memory(
     for qid in table_index.get(tbl_key, []):
         existing_q = parsed_queries[qid]
         if existing_q.get_nodes_counter() != nodes_count:
+            continue
+        if existing_q.get_join_count() != join_count:
+            continue
+        if existing_q.get_union_count() != union_count:
             continue
         if frozenset(existing_q.get_column_ids()) != col_set:
             continue
@@ -289,6 +370,8 @@ def parse_queries_df(
                 continue
 
             query_obj.sql_node.add_property("nodes_count", query_obj.get_nodes_counter())
+            query_obj.sql_node.add_property("join_count", query_obj.get_join_count())
+            query_obj.sql_node.add_property("union_count", query_obj.get_union_count())
             parsed_queries[query_obj.id] = query_obj
             tbl_key = frozenset(query_obj.get_tables_ids())
             table_index[tbl_key].append(query_obj.id)
