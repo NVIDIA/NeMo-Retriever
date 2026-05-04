@@ -87,6 +87,12 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
                     chunk_rows = []
                 for chunk_row in chunk_rows:
                     chunk_row["_content_type"] = _CT.AUDIO
+                    # Stamp into ``metadata`` too — ``AudioVisualFuser`` reads
+                    # the row via ``itertuples``, which renames ``_``-prefixed
+                    # columns to positional names so the top-level field is
+                    # invisible. Mirrors what ``_extract_one`` does for frames.
+                    if isinstance(chunk_row.get("metadata"), dict):
+                        chunk_row["metadata"]["_content_type"] = _CT.AUDIO
                     rows.append(chunk_row)
 
             if self._video_frame_params.enabled:
