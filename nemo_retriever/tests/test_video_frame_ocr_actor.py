@@ -108,35 +108,3 @@ def test_gpu_actor_drops_empty_text_rows() -> None:
     assert len(out) == 1
     assert out["text"].iloc[0] == "alpha"
     assert out["page_number"].iloc[0] == 0
-
-
-def test_gpu_actor_default_loads_nemotron_ocr_v2(monkeypatch) -> None:
-    """No flag → GPU actor must lazy-load NemotronOCRV2, not v1.
-
-    Pins the v2-default switch (commit 8f6ab501) for the video frame OCR
-    surface, which doesn't go through ``resolve_ocr_archetype``.
-    """
-    loaded: list[str] = []
-
-    class _FakeV2:
-        def __init__(self, *a: object, **kw: object) -> None:
-            loaded.append("v2")
-
-    class _FakeV1:
-        def __init__(self, *a: object, **kw: object) -> None:
-            loaded.append("v1")
-
-    import nemo_retriever.model.local as local_models
-
-    monkeypatch.setattr(local_models, "NemotronOCRV2", _FakeV2, raising=False)
-    monkeypatch.setattr(local_models, "NemotronOCRV1", _FakeV1, raising=False)
-
-    actor = VideoFrameOCRGPUActor()
-    actor._ensure_model()
-    assert loaded == ["v2"]
-
-
-def test_cpu_actor_default_endpoint_is_v2() -> None:
-    """No flag → CPU actor must point at the v2 NIM endpoint by default."""
-    actor = VideoFrameOCRCPUActor()
-    assert actor._invoke_url == "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"

@@ -7,17 +7,16 @@ VideoFrameOCRActor: full-frame OCR for video frames.
 
 Thin wrapper around the shared :func:`ocr_b64_to_text` helper in
 :mod:`nemo_retriever.ocr.shared`. The CPU/GPU variants only own the
-model lifecycle (NIM client init, lazy Nemotron OCR load — v2 by
-default, v1 when ``ocr_version="v1"``); the batch-shape handling and
-OCR call are reused from the page-elements OCR pipeline so response
-parsing, the empty-text fallback fix, and selective passthrough live
-in exactly one place.
+model lifecycle (NIM client init, lazy ``NemotronOCRV1`` load); the
+batch-shape handling and OCR call are reused from the page-elements
+OCR pipeline so response parsing, the empty-text fallback fix, and
+selective passthrough live in exactly one place.
 
 Configuration is read from loose kwargs (mirroring :class:`OCRActor`):
 ``ocr_invoke_url`` / ``invoke_url``, ``api_key``, ``inference_batch_size``,
-``merge_level``, ``request_timeout_s``, ``ocr_version``, plus the
-standard remote-retry knobs. Callers typically pass these straight from
-:class:`ExtractParams` so the user only configures OCR once.
+``merge_level``, ``request_timeout_s``, plus the standard remote-retry
+knobs. Callers typically pass these straight from :class:`ExtractParams`
+so the user only configures OCR once.
 """
 
 from __future__ import annotations
@@ -43,11 +42,6 @@ from nemo_retriever.video import _content_types as _CT
 
 _OCRABLE_CONTENT_TYPES = ("", _CT.VIDEO_FRAME)
 
-_OCR_DEFAULT_INVOKE_URLS = {
-    "v1": "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1",
-    "v2": "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2",
-}
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,30 +50,19 @@ def _ocr_invoke_url(ocr_kwargs: dict[str, Any]) -> str | None:
     return str(raw).strip() if raw else None
 
 
-def _ocr_version(ocr_kwargs: dict[str, Any]) -> str:
-    """Resolve the requested OCR model version, defaulting to v2."""
-    return "v1" if ocr_kwargs.get("ocr_version") == "v1" else "v2"
-
-
 class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
-    """Local Nemotron OCR (v2 by default, v1 on opt-in) on full video frames."""
+    """Local Nemotron OCR v1 on full video frames (one frame per ``invoke()`` call)."""
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
         self._merge_level = str(ocr_kwargs.get("merge_level", "paragraph"))
-        self._ocr_version = _ocr_version(ocr_kwargs)
         self._model = None  # lazily loaded on first call
 
     def _ensure_model(self) -> None:
         if self._model is None:
-            if self._ocr_version == "v1":
-                from nemo_retriever.model.local import NemotronOCRV1
+            from nemo_retriever.model.local import NemotronOCRV1
 
-                self._model = NemotronOCRV1()
-            else:
-                from nemo_retriever.model.local import NemotronOCRV2
-
-                self._model = NemotronOCRV2()
+            self._model = NemotronOCRV1()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -99,19 +82,13 @@ class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
 
 
 class VideoFrameOCRCPUActor(AbstractOperator, CPUOperator):
-    """Remote Nemotron OCR (NIM) on full video frames, batched per call.
+    """Remote Nemotron OCR v1 (NIM) on full video frames, batched per call."""
 
-    Defaults to the v2 endpoint; pass ``ocr_version="v1"`` to fall back to the
-    legacy English-only NIM. Any explicit ``ocr_invoke_url`` / ``invoke_url``
-    wins over the version-derived default.
-    """
-
-    DEFAULT_INVOKE_URL = _OCR_DEFAULT_INVOKE_URLS["v2"]
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
-        version_default = _OCR_DEFAULT_INVOKE_URLS[_ocr_version(ocr_kwargs)]
-        self._invoke_url = (_ocr_invoke_url(ocr_kwargs) or version_default).strip()
+        self._invoke_url = (_ocr_invoke_url(ocr_kwargs) or self.DEFAULT_INVOKE_URL).strip()
         self._api_key = ocr_kwargs.get("api_key")
         self._batch_size = int(ocr_kwargs.get("inference_batch_size") or ocr_kwargs.get("batch_size") or 8)
         self._merge_level = str(ocr_kwargs.get("merge_level", "paragraph"))
@@ -152,15 +129,14 @@ class VideoFrameOCRCPUActor(AbstractOperator, CPUOperator):
     name="Video Frame OCR",
     category="Video",
     compute="gpu",
-    description="Runs Nemotron OCR (v2 default, v1 on opt-in) directly on full video frames",
+    description="Runs Nemotron OCR v1 directly on full video frames",
 )
 class VideoFrameOCRActor(ArchetypeOperator):
     """Graph-facing archetype that resolves to GPU or CPU variant.
 
     Routes to the CPU (NIM) variant when ``ocr_invoke_url`` (or
     ``invoke_url``) is provided; otherwise loads the local Nemotron OCR
-    model on GPU. ``ocr_version`` (default ``"v2"``) selects the model
-    version for both the local load and the default NIM endpoint.
+    model on GPU.
     """
 
     @classmethod
