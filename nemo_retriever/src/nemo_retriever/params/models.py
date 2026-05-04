@@ -511,16 +511,6 @@ class DedupParams(_ParamsModel):
     iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
 
 
-class InfographicParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    allowed_page_element_labels: Sequence[str] = ("infographic", "title")
-    output_column: str = "infographic_elements_v1"
-    num_detections_column: str = "infographic_elements_v1_num_detections"
-    counts_by_label_column: str = "infographic_elements_v1_counts_by_label"
-
-
 # ---------------------------------------------------------------------------
 # Structured (database) ingestion params
 # ---------------------------------------------------------------------------

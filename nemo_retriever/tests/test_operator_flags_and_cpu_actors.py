@@ -60,7 +60,6 @@ class TestCPUOperatorFlag:
         from nemo_retriever.graph.content_operators import ExplodeContentActor
         from nemo_retriever.audio.asr_actor import ASRCPUActor
         from nemo_retriever.caption.caption import CaptionCPUActor
-        from nemo_retriever.infographic.infographic_detection import InfographicDetectionCPUActor
         from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
 
         assert issubclass(DocToPdfConversionCPUActor, CPUOperator)
@@ -73,7 +72,6 @@ class TestCPUOperatorFlag:
         assert issubclass(ExplodeContentActor, CPUOperator)
         assert issubclass(ASRCPUActor, CPUOperator)
         assert issubclass(CaptionCPUActor, CPUOperator)
-        assert issubclass(InfographicDetectionCPUActor, CPUOperator)
         assert issubclass(NemotronRerankCPUActor, CPUOperator)
 
     def test_cpu_operators_are_not_gpu(self):
@@ -101,7 +99,6 @@ class TestCPUOperatorFlag:
         from nemo_retriever.audio.asr_actor import ASRActor
         from nemo_retriever.audio.chunk_actor import MediaChunkActor
         from nemo_retriever.caption.caption import CaptionActor
-        from nemo_retriever.infographic.infographic_detection import InfographicDetectionActor
         from nemo_retriever.rerank.rerank import NemotronRerankActor
         from nemo_retriever.text_embed.text_embed import TextEmbedActor
         from nemo_retriever.pdf.split import PDFSplitActor
@@ -111,7 +108,6 @@ class TestCPUOperatorFlag:
         assert issubclass(ASRActor, AbstractOperator)
         assert issubclass(MediaChunkActor, AbstractOperator)
         assert issubclass(CaptionActor, AbstractOperator)
-        assert issubclass(InfographicDetectionActor, AbstractOperator)
         assert issubclass(NemotronRerankActor, AbstractOperator)
         assert issubclass(PDFSplitActor, AbstractOperator)
         assert issubclass(PageElementDetectionActor, AbstractOperator)

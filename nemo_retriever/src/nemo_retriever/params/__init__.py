@@ -13,7 +13,6 @@ from .models import ExtractParams
 from .models import FusedTuningParams
 from .models import GpuAllocationParams
 from .models import HtmlChunkParams
-from .models import InfographicParams
 from .models import IngestExecuteParams
 from .models import IngestorCreateParams
 from .models import LanceDbParams
@@ -45,7 +44,6 @@ __all__ = [
     "FusedTuningParams",
     "GpuAllocationParams",
     "HtmlChunkParams",
-    "InfographicParams",
     "IngestExecuteParams",
     "IngestorCreateParams",
     "LanceDbParams",
