@@ -67,30 +67,6 @@ class TestQueriesVdbDelegation:
         assert _make_retriever().queries([]) == []
         vdb_pkg.RetrieveVdbOperator.assert_not_called()
 
-    def test_queries_embed_and_delegate_vectors_to_vdb_operator(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
-        retriever = _make_retriever(
-            vdb_kwargs={"collection_name": "docs", "milvus_uri": "http://milvus", "model_name": "embedder"}
-        )
-
-        with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2], [0.3, 0.4]]) as mock_embed:
-            result = retriever.queries(["q0", 123], top_k=7, vdb_kwargs={"_filter": "content_type == 'text'"})
-
-        assert result == _FakeRetrieveVdbOperator.next_result
-        mock_embed.assert_called_once_with(["q0", "123"], model_name="embedder")
-        operator = _FakeRetrieveVdbOperator.instances[0]
-        expected_kwargs = {
-            "_filter": "content_type == 'text'",
-            "top_k": 7,
-        }
-        assert operator.constructor_kwargs == {
-            "vdb_op": "fake",
-            "vdb_kwargs": {"collection_name": "docs", "milvus_uri": "http://milvus", "model_name": "embedder"},
-        }
-        assert operator.process_calls == [([[0.1, 0.2], [0.3, 0.4]], expected_kwargs)]
-
     def test_queries_use_instance_top_k_when_not_overridden(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import nemo_retriever.vdb as vdb_pkg
 

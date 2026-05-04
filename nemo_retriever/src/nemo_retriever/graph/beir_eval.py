@@ -29,11 +29,12 @@ logger = logging.getLogger(__name__)
     component_type="pipeline_evaluator",
 )
 class BEIREvaluatorActor:
-    """Evaluation node placed after a LanceDB Writer in the Designer pipeline.
+    """Designer BEIR evaluation node against an existing LanceDB table.
 
-    Pre-configured for BEIR mode.  After evaluation, calls
-    ``print_run_summary`` to emit the same structured output that the
-    batch pipeline produces.
+    Assumes vectors were already written (for example via
+    :class:`~nemo_retriever.vdb.operators.IngestVdbOperator` or the ``retriever
+    pipeline`` upload path). After evaluation, calls ``print_run_summary`` like
+    the batch pipeline.
     """
 
     def __init__(
