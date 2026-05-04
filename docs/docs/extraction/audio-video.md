@@ -22,7 +22,7 @@ to transcribe speech to text, which is then embedded by using the NeMo Retriever
 
 !!! important
 
-    Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). For the full list of requirements, refer to [Support Matrix](support-matrix.md).
+    Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](prerequisites-support-matrix.md#model-hardware-requirements). For the full list of requirements, refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements).
 
 This pipeline enables users to retrieve speech files at the segment level.
 
@@ -38,7 +38,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 !!! important
 
-    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Pin the workload to that GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
+    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](prerequisites-support-matrix.md#model-hardware-requirements). Pin the workload to that GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
 
 1. Create [your NGC personal key](api-keys.md) with the scopes required for `nvcr.io` image pulls and NGC API access. Configure it for the cluster using the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (for example `ngcImagePullSecret` / `ngcApiSecret` on `helm upgrade --install`, or pre-created secrets with username `$oauthtoken`).
 
@@ -119,6 +119,6 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
 
 ## Related Topics
 
-- [Support Matrix](support-matrix.md)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
 - [Use the Python API](nemo-retriever-api-reference.md)

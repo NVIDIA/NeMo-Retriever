@@ -8,13 +8,13 @@ Use the sections below to pick documentation and deployment options that match y
 
 ### I want to run locally or embed the library
 
-1. [Prerequisites](prerequisites.md) and [Support matrix](support-matrix.md)
+1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 2. [Deploy (Library mode)](quickstart-library-mode.md)
 3. [Use the Python API](nemo-retriever-api-reference.md) or [Use the CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli)
 
 ### I want a Kubernetes / Helm deployment
 
-1. [Prerequisites](prerequisites.md)
+1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 2. [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 3. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
@@ -32,7 +32,7 @@ Use the sections below to pick documentation and deployment options that match y
 
 1. [Evaluation and performance](evaluate-on-your-data.md)
 2. [Telemetry](telemetry.md)
-3. [Throughput is dataset-dependent](throughput-is-dataset-dependent.md)
+3. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
 4. [Evaluate on your data](evaluate-on-your-data.md)
 
 ## When to use NVIDIA-hosted NIMs
@@ -62,4 +62,4 @@ Consider self-hosting when:
 **Related**
 
 - [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
-- [Support matrix](support-matrix.md)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)

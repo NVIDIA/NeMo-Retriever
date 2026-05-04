@@ -42,8 +42,7 @@ NeMo Retriever Library supports the following file types:
 
 ## Related Topics
 
-- [Prerequisites](prerequisites.md)
-- [Support Matrix](support-matrix.md)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deploy As a Library](quickstart-library-mode.md)
 - [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
