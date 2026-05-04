@@ -100,6 +100,8 @@ nav:
   - "6. Embedding, indexing & storage":
       - "Embedding NIMs and models": extraction/embedding-nims-models.md
       - "Multimodal embeddings (VLM)": extraction/embedding.md
+      # Nav targets must be real paths (no `#…` fragments). Both entries open vdbs.md; use the
+      # in-page TOC / "Vector database partners" heading for deep links.
       - Vector databases:
           - "Data upload (LanceDB)": extraction/vdbs.md
           - "Vector database partners": extraction/vdbs.md
