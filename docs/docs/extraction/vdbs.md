@@ -31,7 +31,7 @@ It does not store the embeddings for images.
     To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md).
 
 NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](nemo-retriever-api-reference.md).
-Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.3.0/nemo_retriever/docs/cli).
 
 
 
@@ -68,9 +68,11 @@ vdb = LanceDB(
 # Ingest
 vdb.run(results)
 
-# Dense-only retrieve (use lancedb_hybrid_retrieval when hybrid=True; see below)
+# Dense-only retrieve when hybrid=False (default)
 docs = vdb.retrieval(queries, top_k=10)
 ```
+
+With `hybrid=False`, `vdb.retrieval()` runs dense vector search. With **`hybrid=True`**, `vdb.run(results)` also builds the BM25/FTS index for hybrid ingest, but **`LanceDB.retrieval()` does not implement hybrid queries** and raises `NotImplementedError` if the operator was created with `hybrid=True`. For hybrid (dense + BM25 + RRF) **queries**, import and call **`lancedb_hybrid_retrieval()`** from `nv_ingest_client.util.vdb.lancedb` (same `table_path` / `table_name` as the `LanceDB` instance)—see [Hybrid search (LanceDB)](#hybrid-search-lancedb).
 
 When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB. If you omit `vdb_op`, nv-ingest-client still defaults the string argument to `"milvus"` for backward compatibility, which is not the LanceDB operator—always pass `vdb_op="lancedb"` when you intend LanceDB.
 
@@ -78,9 +80,14 @@ When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `Lance
 
 **Semantic retrieval** uses dense embeddings to find content that is similar in meaning to a query. **Hybrid retrieval** combines dense vectors with sparse or lexical signals (for example, BM25-style full-text) and fuses ranked lists for better recall on keyword-heavy queries.
 
-In NeMo Retriever Library, the default vector path is LanceDB; configuring dense search, BM25, and reciprocal rank fusion (RRF) on the LanceDB operator is covered in [Hybrid search (LanceDB)](#hybrid-search-lancedb) below. For broader pipeline and search patterns, see [Concepts](concepts.md). For hybrid-related environment variables where documented, see [Environment variables](environment-config.md). For filtering results at query time, see [Custom metadata and filtering](custom-metadata.md).
+In NeMo Retriever Library, the default vector path is LanceDB. Use these resources together with the sections on this page:
 
-**Evaluation** — For evaluation and metrics, see [Evaluate on your data](evaluate-on-your-data.md).
+- [Hybrid search (LanceDB)](#hybrid-search-lancedb) for LanceDB hybrid mode (dense vectors, BM25, and RRF) and query APIs
+- [Concepts](concepts.md) for broader pipeline and search patterns
+- [Environment variables](environment-config.md) for hybrid-related flags where documented
+- [Custom metadata and filtering](custom-metadata.md) for query-time filtering
+
+**Evaluation** — For evaluation and metrics, refer to [Evaluate on your data](evaluate-on-your-data.md).
 
 ## Hybrid search (LanceDB) {#hybrid-search-lancedb}
 
@@ -142,12 +149,12 @@ NeMo Retriever Library integrates with vector databases used for RAG collections
 
 ### Backends with `VDB` implementations (retriever adapters) {#vdb-backends-implementations}
 
-NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/vdb/operators.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/vdb/operators.py) wrap concrete classes that implement the [`nv_ingest_client.util.vdb.VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The following external vector databases have implementations in the client library you can pass as `vdb` / configure via `vdb_op` where supported:
+NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/nemo_retriever/src/nemo_retriever/vdb/operators.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/nemo_retriever/src/nemo_retriever/vdb/operators.py) wrap concrete classes that implement the [`nv_ingest_client.util.vdb.VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The following external vector databases have implementations in the client library you can pass as `vdb` / configure via `vdb_op` where supported:
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
-| **LanceDB** | [LanceDB](https://lancedb.com/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
-| **OpenSearch** | [OpenSearch](https://opensearch.org/) | [`opensearch.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/opensearch.py) — reference operator; wire your own `OpenSearch` instance as `vdb` and see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb). |
+| **LanceDB** | [LanceDB](https://lancedb.com/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/client/src/nv_ingest_client/util/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
+| **OpenSearch** | [OpenSearch](https://opensearch.org/) | [`opensearch.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/client/src/nv_ingest_client/util/vdb/opensearch.py) — reference operator; wire your own `OpenSearch` instance as `vdb` and see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/examples/building_vdb_operator.ipynb). |
 
 On nv-ingest-client `Ingestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; see [Upload to LanceDB](#upload-to-lancedb).
 
@@ -162,7 +169,7 @@ For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` 
 
     NVIDIA documents and validates the first-party LanceDB operator for this library. If you integrate a different vector store, you are responsible for testing and maintaining that integration.
 
-To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
+To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/examples/building_vdb_operator.ipynb).
 
 
 

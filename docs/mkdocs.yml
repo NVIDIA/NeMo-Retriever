@@ -79,8 +79,7 @@ nav:
       - Release notes: extraction/releasenotes.md
   - "2. Get started":
       - About this section: extraction/getting-started-about.md
-      - Prerequisites: extraction/prerequisites.md
-      - "Hardware and support matrix": extraction/support-matrix.md
+      - "Pre-Requisites & Support Matrix": extraction/prerequisites-support-matrix.md
       - "Quickstart: NeMo Retriever Library": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
       - "Authentication and API keys": extraction/api-keys.md
   - "3. Deployment options": extraction/deployment-options.md
@@ -101,7 +100,9 @@ nav:
   - "6. Embedding, indexing & storage":
       - "Embedding NIMs and models": extraction/embedding-nims-models.md
       - "Multimodal embeddings (VLM)": extraction/embedding.md
-      - Vector databases: extraction/vdbs.md
+      - Vector databases:
+          - "Data upload (LanceDB)": extraction/vdbs.md
+          - "Vector database partners": extraction/vdbs.md#vector-database-partners
       - "Chunking and splitting": extraction/chunking.md
   - "7. Retrieval & ranking":
       - "Custom metadata and filtering": extraction/custom-metadata.md
@@ -176,8 +177,10 @@ plugins:
         extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/vdbs.md
-        extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md
+        extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md#semantic-and-hybrid-retrieval
         extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
+        extraction/prerequisites.md: extraction/prerequisites-support-matrix.md
+        extraction/support-matrix.md: extraction/prerequisites-support-matrix.md
   - site-urls
 
 markdown_extensions:

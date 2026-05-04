@@ -1,7 +1,54 @@
-# Support Matrix for NeMo Retriever Library
+# Pre-Requisites & Support Matrix
 
-Before you begin using [NeMo Retriever Library](overview.md), ensure that you have the hardware for your use case.
+Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance in this page.
 
+## Software Requirements
+
+- Linux operating systems (Ubuntu 22.04 or later recommended)
+- [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
+- [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
+- [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
+
+!!! note
+
+    When you use UV, create the environment with Python 3.12 — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
+
+## Hardware Requirements
+
+The full ingestion pipeline is designed to consume significant CPU and memory resources to achieve maximal parallelism. 
+Resource usage scales up to the limits of your deployed system.
+
+For per-feature GPU memory, disk, and co-residency rules, refer to [Model hardware requirements](#model-hardware-requirements) below.
+
+
+### Recommended Production Deployment Specifications
+
+- **System Memory**: At least 256 GB RAM
+- **CPU Cores**: At least 32 CPU cores
+- **GPU**: NVIDIA GPU with at least 24 GB VRAM (e.g., A100, H100, L40S, or equivalent)
+
+!!! note
+
+    Using less powerful systems or lower resource limits is still viable, but performance will suffer.
+
+### Resource Consumption Notes
+
+- The pipeline performs runtime allocation of parallel resources based on system configuration
+- Memory usage can reach up to the full system capacity for large document processing
+- CPU utilization scales with the number of concurrent processing tasks
+- GPU is required for inference using HuggingFace models or NIMs
+- GPU is NOT required for build.nvidia.com hosted inference
+
+### Scaling Considerations
+
+For production deployments processing large volumes of documents, consider:
+- Higher memory configurations for processing large PDF files or image collections
+- Additional CPU cores for improved parallel processing
+- Multiple GPUs for distributed processing workloads
+
+### Environment Requirements
+
+Ensure your deployment environment meets these specifications before running the full pipeline. Resource-constrained environments may experience performance degradation.
 
 ## Core and Advanced Pipeline Features
 
@@ -56,7 +103,9 @@ and run only the embedder, reranker, and your vector database.
 
 ## Related Topics
 
-- [Prerequisites](prerequisites.md)
+- [Troubleshooting](troubleshoot.md)
 - [Release Notes](releasenotes.md)
+- [Deploy As a Python Library](quickstart-library-mode.md)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [NVIDIA NIM for Vision Language Models Support Matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html)
 - [NVIDIA Speech NIM Microservices](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html)

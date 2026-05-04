@@ -1,9 +1,10 @@
 # PDF Blueprint — `retriever` CLI Replacement
 
-This page is the `retriever`-CLI counterpart to the CLI cell in
-`nv-ingest/deploy/pdf-blueprint.ipynb`. For installation and pinned
-dependencies, use the [NeMo Retriever Library quick start](../../README.md);
-everything below assumes `retriever` is already installed and configured.
+This page mirrors the `retriever` CLI usage for the CLI cell in
+`nv-ingest/deploy/pdf-blueprint.ipynb`. Installation, pinned versions, and
+optional extras are documented only in the library quick start — start with
+[**Setup your environment**](../../README.md#setup-your-environment). The
+sections below assume `retriever` is already installed and configured.
 
 ## Original blueprint cell
 
@@ -68,20 +69,6 @@ tbl = db.open_table("nv-ingest")
 print(tbl.to_pandas().head())
 ```
 
-## Migrating the blueprint `pip install` cell
-
-The blueprint notebook pins `nv-ingest-client` and related packages. For
-`retriever`, follow the install and environment steps in
-[**Quick Start for NeMo Retriever Library**](../../README.md) (including
-[**Setup your environment**](../../README.md#setup-your-environment) for
-pinned versions and optional extras such as `[local]`). This page assumes that
-setup is already done and only documents the CLI usage above.
-
-The sample `retriever pipeline run` command above uses local paths for images
-and intermediates only. Add `minio` if you extend the notebook to S3-compatible
-`store` / `fsspec` URIs (for example `s3://…` for `--store-images-uri`), where
-optional nv-ingest client code paths import the MinIO SDK.
-
 ## Parity notes
 
 - `client_host=host.docker.internal` / `client_port=7670` are irrelevant here:
@@ -91,3 +78,8 @@ optional nv-ingest client code paths import the MinIO SDK.
   exercise the REST API), replace the CLI cell with a `retriever online serve`
   container plus `retriever online stream-pdf` for per-page NDJSON output.
   Note that `retriever online submit` is currently a stub.
+- LanceDB and local `--store-images-uri` / `--save-intermediate` paths do not
+  use MinIO. The optional `nv-ingest-client[minio]` extra exists for legacy
+  **Milvus** bulk-upload helpers in the client
+  (`client/src/nv_ingest_client/util/vdb/milvus.py`), not for
+  the LanceDB vector path—skip it for this in-process blueprint.
