@@ -26,6 +26,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         *,
         table_structure_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
+        load_ocr_v2: bool = True,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
@@ -55,6 +56,10 @@ class TableStructureActor(AbstractOperator, GPUOperator):
 
         if self._ocr_invoke_url:
             self._ocr_model = None
+        elif load_ocr_v2:
+            from nemo_retriever.model.local import NemotronOCRV2
+
+            self._ocr_model = NemotronOCRV2()
         else:
             from nemo_retriever.model.local import NemotronOCRV1
 

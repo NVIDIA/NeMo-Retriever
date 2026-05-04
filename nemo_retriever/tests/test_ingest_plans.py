@@ -5,7 +5,7 @@ from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
 from nemo_retriever.graph.pipeline_graph import Graph
-from nemo_retriever.ocr.ocr import OCRActor
+from nemo_retriever.ocr.ocr import OCRActor, OCRV2Actor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
@@ -100,7 +100,16 @@ def test_build_graph_accepts_execution_plan() -> None:
     assert names == ["MultiTypeExtractOperator", "TextChunkActor", "_BatchEmbedActor"]
 
 
-def test_build_graph_keeps_archetype_operator_classes() -> None:
+@pytest.mark.parametrize(
+    "ocr_version, expected_actor_class, expected_actor_name",
+    [
+        ("v2", OCRV2Actor, "OCRV2Actor"),
+        ("v1", OCRActor, "OCRActor"),
+    ],
+)
+def test_build_graph_keeps_archetype_operator_classes(
+    ocr_version: str, expected_actor_class: type, expected_actor_name: str
+) -> None:
     graph = build_graph(
         extract_params=ExtractParams(
             method="ocr",
@@ -108,6 +117,7 @@ def test_build_graph_keeps_archetype_operator_classes() -> None:
             extract_tables=False,
             extract_charts=False,
             extract_infographics=False,
+            ocr_version=ocr_version,
         ),
         embed_params=EmbedParams(
             model_name="nvidia/llama-nemotron-embed-1b-v2", embed_invoke_url="http://embed.example/v1"
@@ -121,19 +131,28 @@ def test_build_graph_keeps_archetype_operator_classes() -> None:
         "PDFSplitActor",
         "PDFExtractionActor",
         "PageElementDetectionActor",
-        "OCRActor",
+        expected_actor_name,
         "UDFOperator",
         "_BatchEmbedActor",
     ]
     assert nodes[3].operator_class is PageElementDetectionActor
-    assert nodes[4].operator_class is OCRActor
+    assert nodes[4].operator_class is expected_actor_class
     assert nodes[-1].operator_class is _BatchEmbedActor
     assert issubclass(nodes[3].operator_class, ArchetypeOperator)
     assert issubclass(nodes[4].operator_class, ArchetypeOperator)
     assert issubclass(nodes[-1].operator_class, ArchetypeOperator)
 
 
-def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants() -> None:
+@pytest.mark.parametrize(
+    "ocr_version, expected_node_name, expected_cpu_class_name",
+    [
+        ("v2", "OCRV2Actor", "OCRV2CPUActor"),
+        ("v1", "OCRActor", "OCRCPUActor"),
+    ],
+)
+def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
+    ocr_version: str, expected_node_name: str, expected_cpu_class_name: str
+) -> None:
     graph = build_graph(
         extract_params=ExtractParams(
             method="ocr",
@@ -145,6 +164,7 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants() -> Non
             ocr_invoke_url="http://ocr.example/v1",
             table_structure_invoke_url="http://table.example/v1",
             graphic_elements_invoke_url="http://graphic.example/v1",
+            ocr_version=ocr_version,
         ),
         embed_params=EmbedParams(
             model_name="nvidia/llama-nemotron-embed-1b-v2", embed_invoke_url="http://embed.example/v1"
@@ -157,14 +177,23 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants() -> Non
     assert classes["PageElementDetectionActor"].__name__ == "PageElementDetectionCPUActor"
     assert classes["TableStructureActor"].__name__ == "TableStructureCPUActor"
     assert classes["GraphicElementsActor"].__name__ == "GraphicElementsCPUActor"
-    assert classes["OCRActor"].__name__ == "OCRCPUActor"
+    assert classes[expected_node_name].__name__ == expected_cpu_class_name
     assert classes["_BatchEmbedActor"].__name__ == "_BatchEmbedCPUActor"
     assert issubclass(classes["PageElementDetectionActor"], CPUOperator)
-    assert issubclass(classes["OCRActor"], CPUOperator)
+    assert issubclass(classes[expected_node_name], CPUOperator)
     assert issubclass(classes["_BatchEmbedActor"], CPUOperator)
 
 
-def test_build_graph_resolves_local_nodes_to_gpu_variants_when_gpus_available() -> None:
+@pytest.mark.parametrize(
+    "ocr_version, expected_node_name, expected_archetype_class",
+    [
+        ("v2", "OCRV2Actor", OCRV2Actor),
+        ("v1", "OCRActor", OCRActor),
+    ],
+)
+def test_build_graph_resolves_local_nodes_to_gpu_variants_when_gpus_available(
+    ocr_version: str, expected_node_name: str, expected_archetype_class: type
+) -> None:
     graph = build_graph(
         extract_params=ExtractParams(
             method="ocr",
@@ -172,6 +201,7 @@ def test_build_graph_resolves_local_nodes_to_gpu_variants_when_gpus_available() 
             extract_tables=False,
             extract_charts=False,
             extract_infographics=False,
+            ocr_version=ocr_version,
         ),
         embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
     )
@@ -180,20 +210,28 @@ def test_build_graph_resolves_local_nodes_to_gpu_variants_when_gpus_available() 
     classes = {node.name: node.operator_class for node in _linear_nodes(resolved)}
 
     assert classes["PageElementDetectionActor"] is not PageElementDetectionActor
-    assert classes["OCRActor"] is not OCRActor
+    assert classes[expected_node_name] is not expected_archetype_class
     assert classes["_BatchEmbedActor"] is not _BatchEmbedActor
     assert issubclass(classes["PageElementDetectionActor"], GPUOperator)
-    assert issubclass(classes["OCRActor"], GPUOperator)
+    assert issubclass(classes[expected_node_name], GPUOperator)
     assert issubclass(classes["_BatchEmbedActor"], GPUOperator)
 
 
-def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus() -> None:
+@pytest.mark.parametrize(
+    "ocr_version, expected_actor_name",
+    [
+        ("v2", "OCRV2Actor"),
+        ("v1", "OCRActor"),
+    ],
+)
+def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus(ocr_version: str, expected_actor_name: str) -> None:
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=16, gpu_count=0),
         available_resources=Resources(cpu_count=16, gpu_count=0),
     )
     extract_params = ExtractParams(
         method="ocr",
+        ocr_version=ocr_version,
         batch_tuning=BatchTuningParams(
             gpu_page_elements=0.5,
             gpu_ocr=0.5,
@@ -218,11 +256,11 @@ def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus() -> None:
     )
 
     assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.0
-    assert overrides["OCRActor"]["num_gpus"] == 0.0
+    assert overrides[expected_actor_name]["num_gpus"] == 0.0
     assert overrides["PageElementDetectionActor"]["num_gpus"] == 0.0
     assert overrides["NemotronParseActor"]["num_gpus"] == 0.0
     assert overrides["_BatchEmbedActor"]["concurrency"] == 5
-    assert overrides["OCRActor"]["concurrency"] == 4
+    assert overrides[expected_actor_name]["concurrency"] == 4
     assert overrides["PageElementDetectionActor"]["concurrency"] == 3
     assert overrides["NemotronParseActor"]["concurrency"] == 2
 
@@ -302,7 +340,7 @@ def test_build_inprocess_graph_accepts_execution_plan() -> None:
         "PDFSplitActor",
         "PDFExtractionActor",
         "PageElementDetectionActor",
-        "OCRActor",
+        "OCRV2Actor",
         "TextChunkActor",
         "CaptionActor",
         "UDFOperator",

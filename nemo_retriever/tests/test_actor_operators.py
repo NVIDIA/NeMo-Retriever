@@ -215,6 +215,40 @@ class TestGraphicElementsActor:
 
 
 # ---------------------------------------------------------------------------
+# 4b. GraphicElementsActor (GPU variant) default OCR tests
+# ---------------------------------------------------------------------------
+class TestGraphicElementsGPUActor:
+    @patch("nemo_retriever.model.local.NemotronOCRV1")
+    @patch("nemo_retriever.model.local.NemotronOCRV2")
+    @patch("nemo_retriever.model.local.NemotronGraphicElementsV1")
+    def test_init_with_no_kwargs_defaults_to_local_ocr_v2(self, mock_graphic, mock_ocr_v2, mock_ocr_v1):
+        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GPUActor
+
+        actor = GPUActor()
+
+        assert actor._graphic_elements_invoke_url == ""
+        assert actor._ocr_invoke_url == ""
+        mock_graphic.assert_called_once_with()
+        mock_ocr_v2.assert_called_once_with()
+        mock_ocr_v1.assert_not_called()
+        assert actor._nim_client is None
+
+    @patch("nemo_retriever.model.local.NemotronOCRV1")
+    @patch("nemo_retriever.model.local.NemotronOCRV2")
+    @patch("nemo_retriever.model.local.NemotronGraphicElementsV1")
+    def test_init_can_explicitly_use_local_ocr_v1(self, mock_graphic, mock_ocr_v2, mock_ocr_v1):
+        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GPUActor
+
+        actor = GPUActor(load_ocr_v2=False)
+
+        assert actor._ocr_invoke_url == ""
+        mock_graphic.assert_called_once_with()
+        mock_ocr_v1.assert_called_once_with()
+        mock_ocr_v2.assert_not_called()
+        assert actor._nim_client is None
+
+
+# ---------------------------------------------------------------------------
 # 5. TableStructureActor
 # ---------------------------------------------------------------------------
 class TestTableStructureActor:
@@ -266,8 +300,9 @@ class TestTableStructureGPUActor:
     """
 
     @patch("nemo_retriever.model.local.NemotronOCRV1")
+    @patch("nemo_retriever.model.local.NemotronOCRV2")
     @patch("nemo_retriever.model.local.NemotronTableStructureV1")
-    def test_init_with_no_kwargs_loads_local_models(self, mock_ts, mock_ocr):
+    def test_init_with_no_kwargs_defaults_to_local_ocr_v2(self, mock_ts, mock_ocr_v2, mock_ocr_v1):
         from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
 
         actor = GPUActor()
@@ -275,7 +310,22 @@ class TestTableStructureGPUActor:
         assert actor._table_structure_invoke_url == ""
         assert actor._ocr_invoke_url == ""
         mock_ts.assert_called_once_with()
-        mock_ocr.assert_called_once_with()
+        mock_ocr_v2.assert_called_once_with()
+        mock_ocr_v1.assert_not_called()
+        assert actor._nim_client is None
+
+    @patch("nemo_retriever.model.local.NemotronOCRV1")
+    @patch("nemo_retriever.model.local.NemotronOCRV2")
+    @patch("nemo_retriever.model.local.NemotronTableStructureV1")
+    def test_init_can_explicitly_use_local_ocr_v1(self, mock_ts, mock_ocr_v2, mock_ocr_v1):
+        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+
+        actor = GPUActor(load_ocr_v2=False)
+
+        assert actor._ocr_invoke_url == ""
+        mock_ts.assert_called_once_with()
+        mock_ocr_v1.assert_called_once_with()
+        mock_ocr_v2.assert_not_called()
         assert actor._nim_client is None
 
     @patch("nemo_retriever.model.local.NemotronOCRV1")
@@ -316,7 +366,7 @@ class TestTableStructureGPUActor:
         assert actor._ocr_invoke_url == "http://ocr.example/v1"
 
     def test_init_treats_none_ocr_invoke_url_as_empty(self):
-        with patch("nemo_retriever.model.local.NemotronOCRV1") as mock_ocr:
+        with patch("nemo_retriever.model.local.NemotronOCRV2") as mock_ocr:
             from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
 
             actor = GPUActor(
@@ -357,6 +407,43 @@ class TestOCRActor:
         pd.testing.assert_frame_equal(result, expected)
 
     @patch("nemo_retriever.ocr.cpu_ocr.ocr_page_elements", side_effect=RuntimeError("boom"))
+    def test_call_error_handling(self, mock_fn):
+        actor = self._make()
+        df = pd.DataFrame({"page_image": ["x"]})
+        result = actor(df)
+        assert isinstance(result, pd.DataFrame)
+        assert "ocr" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# 6b. OCRV2Actor
+# ---------------------------------------------------------------------------
+class TestOCRV2Actor:
+    def _make(self):
+        from nemo_retriever.ocr.ocr import OCRV2Actor
+
+        return OCRV2Actor(ocr_invoke_url="http://fake")
+
+    def test_inherits(self):
+        from nemo_retriever.ocr.ocr import OCRV2Actor
+
+        assert issubclass(OCRV2Actor, AbstractOperator)
+
+    def test_preprocess_passthrough(self):
+        actor = self._make()
+        df = pd.DataFrame({"page_image": ["x"]})
+        pd.testing.assert_frame_equal(actor.preprocess(df), df)
+
+    @patch("nemo_retriever.ocr.cpu_ocrv2.ocr_page_elements")
+    def test_process(self, mock_fn):
+        expected = pd.DataFrame({"ocr": ["res"]})
+        mock_fn.return_value = expected
+        actor = self._make()
+        result = actor.process(pd.DataFrame({"page_image": ["x"]}))
+        mock_fn.assert_called_once()
+        pd.testing.assert_frame_equal(result, expected)
+
+    @patch("nemo_retriever.ocr.cpu_ocrv2.ocr_page_elements", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
