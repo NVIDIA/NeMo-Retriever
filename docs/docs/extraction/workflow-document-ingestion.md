@@ -23,4 +23,4 @@ After ingestion, configure **[chunking](chunking.md)** and your **[vector databa
 - [Vector databases](vdbs.md)
 - [Multimodal embeddings (VLM)](embedding.md) when your workload needs image+text vectors
 
-**Next:** [Semantic and hybrid retrieval](semantic-hybrid-retrieval.md) when serving queries (see also [Evaluate on your data](evaluate-on-your-data.md) for reranking and quality checks).
+**Next:** [Semantic and hybrid retrieval](vdbs.md#semantic-and-hybrid-retrieval) when serving queries (see also [Evaluate on your data](evaluate-on-your-data.md) for reranking and quality checks).

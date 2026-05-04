@@ -10,10 +10,10 @@ backends without turning Retriever into a new retrieval framework.
 The intended mental model is:
 
 > Old Retriever, but the LanceDB-only search/write assumptions become VDB
-> operator boundaries that can support LanceDB and Milvus.
+> operator boundaries that can support LanceDB and other client `VDB` backends.
 
 The immediate target is graph pipeline recall over embedded document chunks
-stored in LanceDB or Milvus. The implementation should stay small, reviewable,
+stored in LanceDB (or another configured client `VDB`). The implementation should stay small, reviewable,
 and centered on the graph pipeline path.
 
 ## Why This Exists
@@ -185,14 +185,14 @@ There are two separate conversion concerns that should not be confused:
    - required while `VDB.run(records)` is the upload contract
 2. **Retrieval normalization**
    - backend/client hits -> Retriever hit dictionaries
-   - required while LanceDB and Milvus return different hit shapes
+   - required while different client VDB backends can return different hit shapes
 
 The upload conversion can be aggressively trimmed if we only support canonical
 graph output rows. It does not need to support every historical input shape.
 
-The retrieval normalization can also be narrowed, but PyMilvus `Hit.to_dict()`
-handling must survive somewhere. Without that conversion, Milvus recall can
-silently become zero because the hits are mapping-like but not plain dicts.
+The retrieval normalization can also be narrowed, but any legacy client
+`Hit.to_dict()`-style handling must survive where a backend returns mapping-like
+hits instead of plain dicts, so recall does not silently drop to zero.
 
 ## Out of Scope
 
@@ -228,14 +228,14 @@ The implementation should converge on:
 
 ## Validation
 
-The PR is considered behaviorally sound when both LanceDB and Milvus can run the
-same graph pipeline recall flow:
+The PR is considered behaviorally sound when graph pipeline recall runs end-to-end
+against LanceDB (upload, retrieve, score):
 
 ```text
 ingest jp20
   -> upload 3147 embedded records
   -> retrieve 115 query-csv queries
-  -> recall@1/5/10 matches between LanceDB and Milvus
+  -> recall@1/5/10 within expected tolerances for the dataset
 ```
 
 Two embedding modes were validated:
@@ -271,7 +271,6 @@ that was a hosted-model name mismatch, not an embedding concurrency issue.
 Artifacts:
 
 - `nemo_retriever/artifacts/jp20_vdb_e2e_lancedb_vector_in_retrieval/`
-- `nemo_retriever/artifacts/jp20_vdb_e2e_milvus_vector_in_retrieval/`
 
 Results:
 
@@ -282,13 +281,6 @@ LanceDB:
   queries:        115
   recall@1/5/10: 0.6261 / 0.9043 / 0.9391
   total_secs:     84.26
-
-Milvus:
-  rows collected: 3154
-  rows uploaded:  3147
-  queries:        115
-  recall@1/5/10: 0.6261 / 0.9043 / 0.9391
-  total_secs:     234.60
 ```
 
 ### Hosted Embedding Endpoint JP20
@@ -296,7 +288,6 @@ Milvus:
 Artifacts:
 
 - `nemo_retriever/artifacts/jp20_vdb_e2e_lancedb_remote_1b_embed_retrieval_20260428_1922/`
-- `nemo_retriever/artifacts/jp20_vdb_e2e_milvus_remote_1b_embed_retrieval_20260428_1929/`
 - `nemo_retriever/artifacts/jp20_vdb_e2e_lancedb_remote_1b_embed_default_embed_flags_20260428_1936/`
 
 Results:
@@ -308,13 +299,6 @@ LanceDB, conservative embed tuning:
   queries:        115
   recall@1/5/10: 0.6261 / 0.8783 / 0.9391
   total_secs:     121.79
-
-Milvus, conservative embed tuning:
-  rows collected: 3154
-  rows uploaded:  3147
-  queries:        115
-  recall@1/5/10: 0.6261 / 0.8870 / 0.9391
-  total_secs:     154.05
 
 LanceDB, default embed tuning:
   rows collected: 3154
@@ -329,8 +313,7 @@ The default-tuning LanceDB run used no `--embed-actors` or
 confirmed that explicit hosted model alignment is sufficient for the endpoint
 path.
 
-Milvus upload is expected to be slower for this local deployment because the
-current client backend uses MinIO-backed bulk import plus collection load/refresh
-for datasets above the streaming threshold. That behavior is backend-specific
-and outside this PR's scope unless Milvus upload performance is explicitly
-reopened.
+Some non-embedded client backends can show slower uploads for this local
+deployment when they rely on object-store bulk import plus collection
+load/refresh for datasets above the streaming threshold. That behavior is
+backend-specific.

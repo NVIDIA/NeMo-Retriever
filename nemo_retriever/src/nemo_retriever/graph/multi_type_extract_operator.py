@@ -23,7 +23,7 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph.operator_resolution import resolve_operator_class
-from nemo_retriever.ocr.ocr import OCRActor
+from nemo_retriever.ocr.ocr import resolve_ocr_archetype
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
@@ -40,7 +40,6 @@ from nemo_retriever.txt.ray_data import TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
-
 
 # Define file type mappings
 PDF_EXTENSIONS = {".pdf", ".docx", ".pptx"}
@@ -275,6 +274,7 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_detection_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
         tuning = getattr(extract_params, "batch_tuning", None)
+        load_ocr_v2 = getattr(extract_params, "ocr_version", "v2") == "v2"
 
         detect_kwargs: dict[str, Any] = {}
         if extract_params.page_elements_invoke_url:
@@ -289,9 +289,11 @@ class _MultiTypeExtractBase(AbstractOperator):
         batch_df = self._instantiate_resolved(PageElementDetectionActor, **detect_kwargs).run(batch_df)
 
         if extract_params.use_table_structure and extract_params.extract_tables:
-            table_kwargs: dict[str, Any] = {}
+            table_kwargs: dict[str, Any] = {"load_ocr_v2": load_ocr_v2}
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
+            if extract_params.ocr_invoke_url:
+                table_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
@@ -299,7 +301,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             batch_df = self._instantiate_resolved(TableStructureActor, **table_kwargs).run(batch_df)
 
         if extract_params.use_graphic_elements and extract_params.extract_charts:
-            graphic_kwargs: dict[str, Any] = {}
+            graphic_kwargs: dict[str, Any] = {"load_ocr_v2": load_ocr_v2}
             if extract_params.graphic_elements_invoke_url:
                 graphic_kwargs["graphic_elements_invoke_url"] = extract_params.graphic_elements_invoke_url
             if extract_params.ocr_invoke_url:
@@ -330,7 +332,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         if any(
             ocr_kwargs.get(key) for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
         ):
-            batch_df = self._instantiate_resolved(OCRActor, **ocr_kwargs).run(batch_df)
+            ocr_archetype = resolve_ocr_archetype(extract_params)
+            batch_df = self._instantiate_resolved(ocr_archetype, **ocr_kwargs).run(batch_df)
 
         return batch_df
 
