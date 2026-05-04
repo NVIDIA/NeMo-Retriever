@@ -3,7 +3,7 @@
 This page mirrors the `retriever` CLI usage for the CLI cell in
 `nv-ingest/deploy/pdf-blueprint.ipynb`. Installation, pinned versions, and
 optional extras are documented only in the library quick start — start with
-[**Setup your environment**](../../README.md#setup-your-environment). The
+[Setup your environment](../../README.md#setup-your-environment). The
 sections below assume `retriever` is already installed and configured.
 
 ## Original blueprint cell
