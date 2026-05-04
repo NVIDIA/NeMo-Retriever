@@ -11,12 +11,7 @@ def get_vdb_op_cls(vdb_op: str):
     Returns the class if found, else raises ValueError.
     """
 
-    available_vdb_ops = ["milvus", "lancedb"]
-
-    if vdb_op == "milvus":
-        from nemo_retriever.vdb.milvus import Milvus
-
-        return Milvus
+    available_vdb_ops = ["lancedb"]
 
     if vdb_op == "lancedb":
         from nemo_retriever.vdb.lancedb import LanceDB

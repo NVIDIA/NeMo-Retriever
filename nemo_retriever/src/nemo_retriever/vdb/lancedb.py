@@ -106,7 +106,6 @@ def _get_text_for_element(element):
     """
     Extract searchable text from an element based on document_type.
 
-    Matches Milvus behavior: for images, use caption/OCR text instead of raw content.
     This prevents base64-encoded images from being stored in the text field.
     """
     doc_type = element.get("document_type")

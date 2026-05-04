@@ -5,22 +5,17 @@ from abc import ABC, abstractmethod
 
 This module defines the `VDB` abstract base class which specifies the
 interface that custom vector-database operators must implement to integrate
-with NV-Ingest.
-
-The implementation details and an example OpenSearch operator are described
-in the `examples/building_vdb_operator.ipynb` notebook in this repository, and a
-production-ready OpenSearch implementation is available at
-`client/src/nv_ingest_client/util/vdb/opensearch.py`.
+with Nemo Retriever.
 
 Design goals:
 - Provide a small, well-documented interface that supports common vector
     database operations: index creation, batch ingestion, nearest-neighbor
     retrieval, and a simple `run` orchestration entry-point used by the
-    NV-Ingest pipeline.
+    Nemo Retriever pipeline.
 - Keep the API flexible by accepting `**kwargs` on methods so implementers can
     pass database-specific options without changing the interface.
 
-Typical implementation notes (inferred from the example OpenSearch operator):
+Typical implementation notes:
 - Constructor accepts connection and index configuration parameters such as
     `host`, `port`, `index_name`, `dense_dim` and feature toggles for content
     types (e.g. `enable_text`, `enable_images`).
@@ -46,7 +41,7 @@ class VDB(ABC):
 
     Example (high level):
 
-            class OpenSearch(VDB):
+            class VDBOperator(VDB):
                     def __init__(self, **kwargs):
                             # parse kwargs, initialize client, call super().__init__(**kwargs)
                             ...
@@ -73,7 +68,7 @@ class VDB(ABC):
     - index_name (str): base index name used by the operator
     - dense_dim (int): dimensionality of stored dense embeddings
     - enable_text/enable_images/... (bool): content-type toggles used when
-        extracting text from NV-Ingest records before indexing
+        extracting text from records before indexing
 
     The concrete operator may accept additional parameters (username,
     password, ssl options, client-specific flags). Passing these via
