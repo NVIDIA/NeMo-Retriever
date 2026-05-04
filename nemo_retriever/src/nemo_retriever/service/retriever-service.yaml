@@ -1,0 +1,131 @@
+# Retriever Service Mode — default configuration
+#
+# Discovery precedence:
+#   1. Explicit --config /path/to/retriever-service.yaml
+#   2. ./retriever-service.yaml  (current working directory)
+#   3. Bundled default shipped with the nemo-retriever package
+#
+# Every value below can also be overridden from the CLI:
+#   retriever service start --port 9000 --log-level DEBUG
+
+server:
+  host: "0.0.0.0"
+  port: 7670
+
+logging:
+  level: "INFO"
+  file: "retriever-service.log"
+  format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+database:
+  # Path to the SQLite database file.  Relative paths are resolved from cwd.
+  path: "retriever-service.db"
+
+processing:
+  # Number of worker processes.  Each process builds its own isolated
+  # operator chain and runs pipelines independently — no thread-safety
+  # concerns.  With remote NIM endpoints the chains are lightweight HTTP
+  # clients so 16 workers is a sensible default.  For local GPU models,
+  # lower this to match available VRAM (e.g. 1-2).
+  num_workers: 64
+  # Pages are batched before being sent to the GraphPipeline.  Larger
+  # batches improve GPU/NIM throughput but increase per-page latency.
+  batch_size: 16
+  # Maximum seconds to wait for a full batch before dispatching a
+  # partial one.  Keeps latency low for small jobs.
+  batch_timeout_s: 2.0
+
+# Remote NIM microservice endpoints.  When set, the pipeline calls these
+# HTTP endpoints instead of loading GPU models locally.  All four must
+# be provided for a fully remote configuration.
+#
+# Multiple endpoints per model:  Provide a comma-separated list of URLs
+# to spread load across replicas.  On startup, endpoints are distributed
+# round-robin across worker processes so each worker targets exactly one
+# URL, balancing traffic evenly.
+#   Example: "http://host1:8000/v1/infer,http://host2:8000/v1/infer"
+nim_endpoints:
+  page_elements_invoke_url: http://localhost:8000/v1/infer,http://localhost:8100/v1/infer
+  graphic_elements_invoke_url: http://localhost:8003/v1/infer,http://localhost:8103/v1/infer
+  table_structure_invoke_url: http://localhost:8006/v1/infer,http://localhost:8106/v1/infer
+  ocr_invoke_url: http://localhost:8009/v1/infer,http://localhost:8109/v1/infer
+  embed_invoke_url: http://localhost:8012/v1/embeddings,http://localhost:8112/v1/embeddings
+  # NVIDIA API key (or NIM auth token).  Also reads $NVIDIA_API_KEY env var.
+  api_key: null
+
+resources:
+  # Hard memory cap in MiB.  null = no limit.
+  max_memory_mb: null
+  # CPU core affinity.  null = all cores.
+  max_cpu_cores: null
+  # GPU device IDs (e.g. ["0", "1"]).  Empty list = all visible GPUs.
+  gpu_devices: []
+
+# Optional bearer-token authentication.  When api_token is set, every
+# request must carry "Authorization: Bearer <token>" (or whatever
+# header_name is configured).  Paths in bypass_paths are exempt — useful
+# for Kubernetes liveness probes hitting /v1/health.
+auth:
+  api_token: null
+  header_name: "Authorization"
+  bypass_paths:
+    - "/v1/health"
+    - "/docs"
+    - "/openapi.json"
+    - "/redoc"
+
+# Graceful-shutdown tunables.  On SIGTERM the service stops accepting new
+# uploads, then waits up to drain.timeout_s for in-flight batches to
+# finish before tearing down the worker pool.
+drain:
+  timeout_s: 60.0
+
+# Durable spool of accepted-but-not-yet-processed page bytes.  When
+# enabled, every accepted page is written to disk (atomic fsync) BEFORE
+# the ingest endpoint returns 202.  On startup the service scans the
+# spool and re-enqueues any non-terminal documents — pod crashes, OOM
+# kills, and rolling upgrades no longer lose accepted work.
+#
+# DISABLE only if you cannot tolerate the per-page write cost AND can
+# accept the data-loss risk.
+spool:
+  enabled: true
+  # Defaults to <database.path's directory>/spool when null.
+  path: null
+  # How often the background sweeper unlinks files for documents that
+  # have reached a terminal state.
+  cleanup_interval_s: 60.0
+  cleanup_batch_size: 1000
+
+# LanceDB vector store settings.  The ingest pipeline writes embeddings
+# to this table after every batch; the /v1/query endpoint reads from it.
+# Both sides MUST point at the same URI + table for query to work.
+#
+# Override lancedb_uri for local development — the container default
+# (/var/lib/nemo-retriever/lancedb) won't exist on the host.
+vector_store:
+  lancedb_uri: "/home/local/jdyer/Development/NeMo-Retriever/lancedb"
+  lancedb_table: "nv-ingest"
+  top_k: 10
+  vector_column_name: "vector"
+  nprobes: 16
+  refine_factor: 10
+  embedding_model: "nvidia/llama-nemotron-embed-1b-v2"
+
+# SSE event-bus back-pressure policy.
+#
+# - drop_low_priority (default): silently shed metrics_update /
+#   page_complete / document_complete events to preserve terminal
+#   events.  Lowest latency, never blocks workers, but accepts that
+#   *some* events may be dropped under sustained overload.
+# - backpressure: publisher awaits Queue.put with publish_timeout_s.
+#   Slow consumers back-pressure the worker pool, eventually 503-ing
+#   ingest with Retry-After.  No events dropped until the timeout
+#   expires.
+# - block: same as backpressure but waits forever.  Use only when the
+#   caller can tolerate unbounded latency to guarantee zero loss.
+event_bus:
+  overflow_policy: "drop_low_priority"
+  queue_maxsize: 8192
+  replay_buffer_size: 1024
+  publish_timeout_s: 30.0

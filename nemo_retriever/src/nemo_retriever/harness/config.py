@@ -15,7 +15,7 @@ NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
-VALID_RUN_MODES = {"batch", "inprocess"}
+VALID_RUN_MODES = {"batch", "inprocess", "service"}
 VALID_EVALUATION_MODES = {"recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
 VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "vidore_hf"}
@@ -89,6 +89,9 @@ class HarnessConfig:
     store_text: bool = False
     strip_base64: bool = True
 
+    service_url: str | None = None
+    service_max_concurrency: int = 8
+
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
     graphic_elements_invoke_url: str | None = None
@@ -126,6 +129,13 @@ class HarnessConfig:
 
         if self.run_mode not in VALID_RUN_MODES:
             errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
+
+        if self.run_mode == "service":
+            if not self.service_url:
+                errors.append("service_url is required when run_mode='service'")
+            if self.service_max_concurrency < 1:
+                errors.append("service_max_concurrency must be >= 1")
+            return errors
 
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
@@ -308,6 +318,8 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
         "HARNESS_STORE_TEXT": ("store_text", _parse_bool),
         "HARNESS_STRIP_BASE64": ("strip_base64", _parse_bool),
+        "HARNESS_SERVICE_URL": ("service_url", str),
+        "HARNESS_SERVICE_MAX_CONCURRENCY": ("service_max_concurrency", _parse_number),
         "HARNESS_API_KEY": ("api_key", str),
         "HARNESS_PAGE_ELEMENTS_INVOKE_URL": ("page_elements_invoke_url", str),
         "HARNESS_OCR_INVOKE_URL": ("ocr_invoke_url", str),

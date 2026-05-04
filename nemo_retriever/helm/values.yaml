@@ -1,0 +1,481 @@
+# =============================================================================
+# nemo-retriever Helm chart — default values
+# =============================================================================
+#
+# This chart deploys the "service" run mode of nemo-retriever and, optionally,
+# the five NIM microservices it orchestrates against. See README.md for a full
+# walkthrough of every knob below.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Naming overrides
+# -----------------------------------------------------------------------------
+# nameOverride replaces the chart name (`nemo-retriever`) in resource names.
+# fullnameOverride entirely replaces the generated `<release>-<chart>` prefix.
+nameOverride: ""
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Pull secrets
+# -----------------------------------------------------------------------------
+# Image pull secrets applied to every Pod the chart creates (service + NIMs).
+# Either reference pre-existing secrets by name OR let the chart create one
+# from a docker-config JSON via `imagePullSecret.create`.
+imagePullSecrets: []
+#  - name: ngc-pull-secret
+
+imagePullSecret:
+  # When true, render a Secret of type kubernetes.io/dockerconfigjson with
+  # the contents below. The created Secret is automatically appended to
+  # `imagePullSecrets` for every Pod.
+  create: false
+  name: "ngc-pull-secret"
+  # Either supply `dockerconfigjson` (full ~/.docker/config.json contents,
+  # base64-encoded) OR the convenience trio (registry + username + password).
+  registry: "nvcr.io"
+  username: "$oauthtoken"
+  password: ""
+  dockerconfigjson: ""
+
+# =============================================================================
+# Service (the FastAPI nemo-retriever ingest server)
+# =============================================================================
+service:
+  image:
+    # Default points at the staging image published to NGC. Override
+    # `repository` / `tag` to pin a different build, e.g. one produced by:
+    #   docker build -f nemo_retriever/Dockerfile --target service \
+    #       -t <your-registry>/nemo-retriever-service:<tag> .
+    repository: localhost:32000/nemo-retriever-service
+    tag: "latest"
+    pullPolicy: Always
+
+  # Number of pod replicas. Must stay at 1 while persistence is SQLite-backed
+  # (RWO PVC + single writer). Bumping this requires switching to a shared
+  # database (Postgres support is on the roadmap).
+  replicas: 1
+
+  # Pod-level scheduling controls.
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+  terminationGracePeriodSeconds: 60
+
+  podSecurityContext:
+    runAsNonRoot: false
+  securityContext: {}
+
+  serviceAccount:
+    # When `create` is true, a ServiceAccount named after the release is
+    # created and bound to the Deployment. Set `create: false` and supply
+    # `name` to bind to an existing one.
+    create: true
+    name: ""
+    annotations: {}
+
+  # Container resource requests/limits. Tune `processing.numWorkers` below in
+  # tandem; each worker process consumes RAM proportional to typical batch
+  # size.
+  resources:
+    requests:
+      cpu: "16"
+      memory: "16Gi"
+    limits:
+      cpu: "96"
+      memory: "96Gi"
+
+  # GPU is *not* required for service mode (the pipeline calls remote NIM
+  # endpoints over HTTP). Leave `gpu.enabled` false unless you intentionally
+  # want to schedule onto a GPU node for some custom workload.
+  gpu:
+    enabled: false
+    count: 0
+    productClass: ""
+
+  # Liveness, readiness, and startup probes. The service does not expose a
+  # dedicated /healthz endpoint, so we use FastAPI's auto-generated
+  # /openapi.json (always cheap and JSON) for HTTP probes. Disable / replace
+  # via the `enabled` and `httpGet` overrides if you prefer TCP socket probes.
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /openapi.json
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 6
+
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /openapi.json
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+  startupProbe:
+    enabled: true
+    httpGet:
+      path: /openapi.json
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 60
+
+  # Extra env vars (after the chart-managed ones). Use `envFrom` to pull
+  # whole Secrets/ConfigMaps in.
+  env: []
+  #  - name: PYTHONFAULTHANDLER
+  #    value: "1"
+  envFrom: []
+
+  # Extra arbitrary volumes / mounts (e.g. for shipping CA bundles).
+  extraVolumes: []
+  extraVolumeMounts: []
+
+# =============================================================================
+# Kubernetes Service (network)
+# =============================================================================
+networkService:
+  type: ClusterIP
+  port: 7670
+  # Optional: override the targetPort name. Should match container port name.
+  targetPort: http
+  annotations: {}
+  labels: {}
+  # NodePort assignment (only used when type=NodePort).
+  nodePort: ""
+
+# =============================================================================
+# retriever-service.yaml configuration
+# =============================================================================
+# Everything in `serviceConfig` is rendered into a ConfigMap and mounted as
+# /etc/nemo-retriever/retriever-service.yaml inside the container, replacing
+# the bundled default that ships in the image.
+#
+# When `nims.enabled` is true the chart auto-injects the in-cluster NIM URLs
+# below into `serviceConfig.nim_endpoints.*` — any explicit value here is
+# preserved as an override.
+serviceConfig:
+  server:
+    host: "0.0.0.0"
+    port: 7670
+
+  logging:
+    level: "INFO"
+    # Path is rooted at the persistence volume so logs survive pod restarts.
+    file: "/var/lib/nemo-retriever/retriever-service.log"
+    format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+  database:
+    # Path is rooted at the persistence volume; do not change unless you also
+    # adjust `persistence.mountPath`.
+    path: "/var/lib/nemo-retriever/retriever-service.db"
+
+  processing:
+    # Worker processes per pod. With remote NIM endpoints these are
+    # lightweight HTTP clients, so the upstream default is 64. Match this
+    # to the requested CPU on the pod (rough rule of thumb: 8-16 workers per
+    # core).
+    numWorkers: 16
+    batchSize: 16
+    batchTimeoutS: 2.0
+
+  # External NIM endpoints. Used as-is when `nims.enabled` is false. When
+  # `nims.enabled` is true these are *overridden* by the in-cluster
+  # service URLs of the deployed NIMs (unless explicitly set here).
+  nimEndpoints:
+    pageElementsInvokeUrl: ""
+    graphicElementsInvokeUrl: ""
+    tableStructureInvokeUrl: ""
+    ocrInvokeUrl: ""
+    embedInvokeUrl: ""
+
+  resources:
+    maxMemoryMb: null
+    maxCpuCores: null
+    gpuDevices: []
+
+  # ---------------------------------------------------------------------------
+  # Durable spool of accepted-but-not-yet-processed page bytes.
+  #
+  # When `enabled: true` (the default), every accepted page is fsync'd to
+  # disk on the persistence volume BEFORE the ingest endpoint returns 202.
+  # On startup, the service scans the spool and re-enqueues any documents
+  # that didn't reach a terminal state — pod crashes, OOM kills, and
+  # rolling upgrades no longer lose accepted work.
+  #
+  # `path` defaults to <database.path's directory>/spool when null, so
+  # the spool sits on the same persistent volume as the SQLite DB.
+  # ---------------------------------------------------------------------------
+  spool:
+    enabled: true
+    path: null
+    cleanupIntervalS: 60.0
+    cleanupBatchSize: 1000
+
+  # ---------------------------------------------------------------------------
+  # SSE event-bus back-pressure policy.
+  #
+  # - drop_low_priority (default): silently shed metrics_update /
+  #   page_complete / document_complete when subscribers fall behind, so
+  #   terminal events are always delivered.  Lowest latency.
+  # - backpressure: publisher awaits Queue.put with `publishTimeoutS`,
+  #   back-pressuring the worker pool, eventually 503-ing ingest.  Pick
+  #   this when you cannot tolerate ANY dropped events under load.
+  # - block: same as backpressure but waits forever.  Zero loss at the
+  #   cost of unbounded latency.
+  # ---------------------------------------------------------------------------
+  eventBus:
+    overflowPolicy: "drop_low_priority"
+    queueMaxsize: 8192
+    replayBufferSize: 1024
+    publishTimeoutS: 30.0
+
+  # ---------------------------------------------------------------------------
+  # Embedded LanceDB vector store.
+  #
+  # When the embedding NIM is configured, each worker writes extraction +
+  # embedding results to this LanceDB instance.  The URI should point at
+  # the shared LanceDB PVC mount (lancedb.mountPath, default /lancedb).
+  # The /v1/query endpoint reads from the same URI + table.
+  # ---------------------------------------------------------------------------
+  vectorStore:
+    lancedbUri: "/lancedb"
+    lancedbTable: "nv-ingest"
+    topK: 10
+    vectorColumnName: "vector"
+    nprobes: 16
+    refineFactor: 10
+    embeddingModel: "nvidia/llama-nemotron-embed-1b-v2"
+
+# =============================================================================
+# NIM API key (for external NIM endpoints, e.g. build.nvidia.com)
+# =============================================================================
+nimApiKey:
+  # When `value` is non-empty AND `existingSecret` is empty, the chart
+  # creates a Secret with the supplied value and wires NVIDIA_API_KEY into
+  # the service container.
+  value: ""
+  existingSecret: ""
+  existingSecretKey: "NVIDIA_API_KEY"
+
+# =============================================================================
+# LanceDB shared volume
+# =============================================================================
+# A PVC mounted at `mountPath` on every service replica for the embedded
+# LanceDB vector store.  Use ReadWriteMany when running more than one
+# replica so all pods can read/write concurrently.
+lancedb:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  mountPath: /lancedb
+  annotations: {}
+
+# =============================================================================
+# Persistence (SQLite database + log file)
+# =============================================================================
+# A single ReadWriteOnce PVC mounted at `mountPath`. SQLite's WAL mode is
+# enabled in-process, but cross-pod replication is NOT possible — keep
+# `service.replicas` at 1 until a shared DB lands.
+persistence:
+  enabled: true
+  # When `existingClaim` is set the chart will skip PVC creation and mount
+  # the named claim instead. Useful for promotion across releases.
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi
+  mountPath: /var/lib/nemo-retriever
+  annotations: {}
+
+# =============================================================================
+# Ingress (off by default)
+# =============================================================================
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  #   nginx.ingress.kubernetes.io/proxy-body-size: "200m"
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+  hosts:
+    - host: nemo-retriever.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: nemo-retriever-tls
+  #    hosts:
+  #      - nemo-retriever.example.com
+
+# =============================================================================
+# HorizontalPodAutoscaler (off by default)
+# =============================================================================
+# WARNING: While persistence is SQLite, scaling beyond 1 replica is unsafe
+# (PVC is RWO + single writer). Keep maxReplicas=1 until the shared DB
+# backend is in place. The template is included now so the scaffolding is
+# ready when that day comes.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: ""
+  behavior: {}
+
+# =============================================================================
+# Prometheus integration (off by default)
+# =============================================================================
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: 10s
+  path: /metrics
+  labels: {}
+  relabelings: []
+  metricRelabelings: []
+
+# =============================================================================
+# NIMs (toggleable sub-stack)
+# =============================================================================
+# When `nims.enabled` is true, the chart deploys all five NIMs as
+# Deployments + ClusterIP Services and wires their in-cluster URLs into the
+# retriever-service config. When false, the chart deploys nothing GPU-shaped
+# and uses `serviceConfig.nimEndpoints.*` (or `nimApiKey.value`) instead.
+#
+# Each NIM is independently togglable via its own `enabled` flag.
+nims:
+  enabled: false
+
+  # Image pull secrets specific to the NIM sub-stack (in addition to the
+  # global `imagePullSecrets`).
+  imagePullSecrets: []
+
+  # Default values inherited by every NIM unless overridden. Per-NIM blocks
+  # below can override any of these keys.
+  defaults:
+    replicas: 1
+    port: 8000
+    shmSize: "16Gi"
+    resources:
+      requests:
+        cpu: "1"
+        memory: "8Gi"
+      limits:
+        cpu: "8"
+        memory: "32Gi"
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    podAnnotations: {}
+    # Common NIM env. NGC_API_KEY is sourced from the NGC pull secret value
+    # by default; override or extend via `env` per NIM.
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: NIM_ENABLE_OTEL
+        value: "0"
+    envFrom: []
+    livenessProbe:
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 6
+    readinessProbe:
+      httpGet:
+        path: /v1/health/ready
+        port: http
+      initialDelaySeconds: 60
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 12
+    startupProbe:
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 60
+    # Persistent volume for the NIM model cache (avoids re-downloading on
+    # every pod restart). Disable per-NIM by setting `cache.enabled: false`.
+    cache:
+      enabled: true
+      mountPath: /opt/nim/.cache
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 100Gi
+
+  # NGC API key used by every NIM at startup. If `existingSecret` is empty
+  # the chart creates a Secret with `value`. NGC_API_KEY is then exposed to
+  # every NIM container.
+  ngcApiKey:
+    value: ""
+    existingSecret: ""
+    existingSecretKey: "NGC_API_KEY"
+
+  # ---------------------------------------------------------------------------
+  # The five NIMs. Each block is merged on top of `nims.defaults`. Setting
+  # `enabled: false` removes that NIM entirely (and the chart will fall back
+  # to `serviceConfig.nimEndpoints.*` for that endpoint, which must then be
+  # populated by the operator).
+  # ---------------------------------------------------------------------------
+  pageElements:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-page-elements-v3
+      tag: "1.8.0"
+      pullPolicy: IfNotPresent
+    # The retriever-service config field this NIM populates.
+    invokePath: /v1/infer
+
+  graphicElements:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-graphic-elements-v1
+      tag: "1.8.0"
+      pullPolicy: IfNotPresent
+    invokePath: /v1/infer
+
+  tableStructure:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-table-structure-v1
+      tag: "1.8.0"
+      pullPolicy: IfNotPresent
+    invokePath: /v1/infer
+
+  ocr:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-ocr-v1
+      tag: "1.3.0"
+      pullPolicy: IfNotPresent
+    invokePath: /v1/infer
+
+  embed:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2
+      tag: "1.13.0"
+      pullPolicy: IfNotPresent
+    invokePath: /v1/embeddings

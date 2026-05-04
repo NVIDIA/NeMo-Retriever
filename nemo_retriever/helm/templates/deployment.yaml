@@ -1,0 +1,152 @@
+{{- $svc := .Values.service -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemo-retriever.fullname" . }}
+  labels:
+    {{- include "nemo-retriever.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ $svc.replicas }}
+  {{- end }}
+  # SQLite + RWO PVC enforce a single writer. Keep the strategy as Recreate
+  # so we never have two pods sharing the volume during a rolling update.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nemo-retriever.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-retriever.selectorLabels" . | nindent 8 }}
+        {{- with $svc.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Force a pod roll whenever the rendered config changes so the
+        # service picks up new settings without a manual rollout.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with $svc.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nemo-retriever.serviceAccountName" . }}
+      {{- include "nemo-retriever.imagePullSecrets" . | nindent 6 }}
+      {{- with $svc.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $svc.terminationGracePeriodSeconds }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: nemo-retriever
+          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          {{- with $svc.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # The service config path matches NEMO_RETRIEVER_SERVICE_CONFIG
+          # baked into the image, so no extra arg parsing is needed.
+          args:
+            - retriever
+            - service
+            - start
+            - --config
+            - /etc/nemo-retriever/retriever-service.yaml
+          ports:
+            - name: http
+              containerPort: {{ .Values.serviceConfig.server.port }}
+              protocol: TCP
+          env:
+            - name: NEMO_RETRIEVER_SERVICE_CONFIG
+              value: /etc/nemo-retriever/retriever-service.yaml
+            {{- if or .Values.nimApiKey.value .Values.nimApiKey.existingSecret }}
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-retriever.nimApiKeySecretName" . }}
+                  key: {{ .Values.nimApiKey.existingSecretKey }}
+            {{- end }}
+            {{- with $svc.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $svc.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- $resources := deepCopy $svc.resources }}
+            {{- if $svc.gpu.enabled }}
+            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $svc.gpu.count -}}
+            {{- end }}
+            {{- toYaml $resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nemo-retriever
+              readOnly: true
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+            {{- if .Values.lancedb.enabled }}
+            - name: lancedb
+              mountPath: {{ .Values.lancedb.mountPath }}
+            {{- end }}
+            # /tmp is writable so uploaded files can be staged briefly even
+            # when the rest of the rootfs is read-only.
+            - name: tmp
+              mountPath: /tmp
+            {{- with $svc.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if $svc.startupProbe.enabled }}
+          startupProbe:
+            {{- omit $svc.startupProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if $svc.livenessProbe.enabled }}
+          livenessProbe:
+            {{- omit $svc.livenessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if $svc.readinessProbe.enabled }}
+          readinessProbe:
+            {{- omit $svc.readinessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "nemo-retriever.configMapName" . }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "nemo-retriever.pvcName" . }}
+        {{- end }}
+        {{- if .Values.lancedb.enabled }}
+        - name: lancedb
+          persistentVolumeClaim:
+            claimName: {{ include "nemo-retriever.lancedbPvcName" . }}
+        {{- end }}
+        {{- with $svc.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

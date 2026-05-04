@@ -19,6 +19,10 @@ function TriggerModal({ onClose, onTriggered }) {
   const [defaultRef, setDefaultRef] = useState("");
   const [nsysProfile, setNsysProfile] = useState(false);
 
+  const [serviceUrl, setServiceUrl] = useState("");
+  const [serviceMaxConcurrency, setServiceMaxConcurrency] = useState(8);
+  const [defaultServiceUrl, setDefaultServiceUrl] = useState("");
+
   useEffect(() => {
     fetch("/api/config").then(r=>r.json()).then(cfg => {
       setDatasets(cfg.datasets || []);
@@ -34,6 +38,10 @@ function TriggerModal({ onClose, onTriggered }) {
     }).catch(()=>{});
     fetch("/api/portal-settings").then(r=>r.json()).then(s => {
       setDefaultRef(s.run_code_ref || "");
+      if (s.service_url) {
+        setDefaultServiceUrl(s.service_url);
+        setServiceUrl(s.service_url);
+      }
     }).catch(()=>{});
     fetch("/api/settings/git-info").then(r=>r.json()).then(info => {
       if (info.available) setRemoteBranches(info.remote_branches || []);
@@ -56,6 +64,11 @@ function TriggerModal({ onClose, onTriggered }) {
       };
       if (pipelineMode === "graph") {
         payload.graph_id = parseInt(graphId, 10);
+      }
+      if (pipelineMode === "service") {
+        payload.run_mode = "service";
+        payload.service_url = serviceUrl.trim();
+        payload.service_max_concurrency = serviceMaxConcurrency;
       }
       if (gitMode === "branch" && gitRef.trim()) {
         payload.git_ref = gitRef.trim();
@@ -117,9 +130,15 @@ function TriggerModal({ onClose, onTriggered }) {
                   style={modeBtn("graph")} disabled={graphs.length===0}>
                   Graph Pipeline
                 </button>
+                <button type="button" onClick={()=>setPipelineMode("service")} className="btn btn-sm" style={modeBtn("service")}>
+                  Service
+                </button>
               </div>
               {graphs.length === 0 && pipelineMode === "preset" && (
                 <div style={hintStyle}>No saved graphs available. Create one in the Designer view to enable graph pipeline runs.</div>
+              )}
+              {pipelineMode === "service" && (
+                <div style={hintStyle}>Uploads documents to a running retriever service and measures ingestion throughput. No GPU or Ray cluster needed on the runner.</div>
               )}
             </div>
 
@@ -146,6 +165,27 @@ function TriggerModal({ onClose, onTriggered }) {
                     <span>The graph pipeline replaces the batch_pipeline preset. Recall/BEIR evaluation runs against the dataset's query CSV after graph execution.</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {pipelineMode === "service" && (
+              <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+                <div>
+                  <label style={labelStyle}>Service URL</label>
+                  <input className="input" style={{width:'100%'}} value={serviceUrl}
+                    onChange={e=>setServiceUrl(e.target.value)}
+                    placeholder="http://localhost:7670" />
+                  {defaultServiceUrl && serviceUrl === defaultServiceUrl && (
+                    <div style={hintStyle}>Using default from portal settings.</div>
+                  )}
+                </div>
+                <div>
+                  <label style={labelStyle}>Max Concurrency</label>
+                  <input className="input" type="number" min="1" max="64" style={{width:'120px'}}
+                    value={serviceMaxConcurrency}
+                    onChange={e=>setServiceMaxConcurrency(parseInt(e.target.value,10)||8)} />
+                  <div style={hintStyle}>Maximum concurrent page uploads to the service.</div>
+                </div>
               </div>
             )}
 
@@ -267,8 +307,8 @@ function TriggerModal({ onClose, onTriggered }) {
           </div>
           <div className="modal-foot">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={submitting||!dataset||(pipelineMode==='graph'&&!graphId)} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
-              {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : (pipelineMode==='graph' ? 'Run Graph Pipeline' : 'Start Run')}
+            <button type="submit" disabled={submitting||!dataset||(pipelineMode==='graph'&&!graphId)||(pipelineMode==='service'&&!serviceUrl.trim())} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : (pipelineMode==='graph' ? 'Run Graph Pipeline' : pipelineMode==='service' ? 'Run Service Ingest' : 'Start Run')}
             </button>
           </div>
         </form>

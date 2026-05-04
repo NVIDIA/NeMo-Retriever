@@ -2,4 +2,4 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Adapter layer for external entry surfaces (CLI/service/integrations)."""
+"""Adapter layer for external entry surfaces (CLI/integrations)."""

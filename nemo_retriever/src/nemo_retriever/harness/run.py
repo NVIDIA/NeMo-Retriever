@@ -1138,6 +1138,164 @@ def _run_graph_pipeline(
     return result_payload
 
 
+def _run_service_mode(
+    cfg: HarnessConfig,
+    artifact_dir: Path,
+    run_id: str,
+    tags: list[str] | None = None,
+    skip_local_history: bool = False,
+) -> dict[str, Any]:
+    """Execute a harness run against a running retriever service.
+
+    Uses ServiceIngestor to upload documents and collect throughput metrics.
+    No Ray cluster or GPU is needed on the runner side.
+    """
+    import time as _time
+
+    from nemo_retriever.service_ingestor import ServiceIngestor
+
+    runtime_dir = artifact_dir / "runtime_metrics"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    input_files = resolve_input_files(Path(cfg.dataset_dir), cfg.input_type)
+    if not input_files:
+        return {
+            "timestamp": now_timestr(),
+            "success": False,
+            "return_code": 1,
+            "failure_reason": f"No {cfg.input_type} files found in {cfg.dataset_dir}",
+            "test_config": {"dataset_label": cfg.dataset_label, "run_mode": "service"},
+        }
+
+    typer.echo(f"\n=== Running service-mode ingestion: {run_id} ===")
+    typer.echo(f"  Service URL     : {cfg.service_url}")
+    typer.echo(f"  Dataset         : {cfg.dataset_dir}")
+    typer.echo(f"  Files           : {len(input_files)}")
+    typer.echo(f"  Max concurrency : {cfg.service_max_concurrency}")
+
+    ingestor = ServiceIngestor(
+        base_url=cfg.service_url,
+        documents=[str(f) for f in input_files],
+        max_concurrency=cfg.service_max_concurrency,
+        api_token=cfg.api_key,
+    )
+
+    wall_start = _time.perf_counter()
+    try:
+        result_obj = ingestor.ingest()
+    except Exception as exc:
+        elapsed = _time.perf_counter() - wall_start
+        tb_str = "".join(__import__("traceback").format_exception(type(exc), exc, exc.__traceback__))
+        result_payload: dict[str, Any] = {
+            "timestamp": now_timestr(),
+            "latest_commit": last_commit(),
+            "success": False,
+            "return_code": 1,
+            "failure_reason": f"{type(exc).__name__}: {exc}",
+            "error_detail": tb_str,
+            "test_config": {
+                "dataset_label": cfg.dataset_label,
+                "dataset_dir": cfg.dataset_dir,
+                "preset": cfg.preset,
+                "run_mode": "service",
+                "service_url": cfg.service_url,
+                "service_max_concurrency": cfg.service_max_concurrency,
+                "input_type": cfg.input_type,
+            },
+            "metrics": {"ingest_secs": round(elapsed, 2)},
+            "summary_metrics": {"ingest_secs": round(elapsed, 2)},
+            "run_metadata": _collect_run_metadata(),
+        }
+        if tags:
+            result_payload["tags"] = list(tags)
+        write_json(artifact_dir / "results.json", result_payload)
+        return result_payload
+
+    elapsed = result_obj.elapsed_s
+    pages_processed = len(result_obj)
+    pages_failed = len(result_obj.failures)
+    total_pages = pages_processed + pages_failed
+
+    pps = round(total_pages / elapsed, 2) if elapsed and elapsed > 0 else None
+
+    metrics_payload: dict[str, Any] = {
+        "files": len(input_files),
+        "pages": total_pages,
+        "pages_processed": pages_processed,
+        "pages_failed": pages_failed,
+        "ingest_secs": round(elapsed, 2),
+        "pages_per_sec_ingest": pps,
+    }
+
+    if result_obj.metrics:
+        for model, vals in result_obj.metrics.items():
+            metrics_payload[f"model_{model}_invocations"] = vals.get("invocations", 0)
+            metrics_payload[f"model_{model}_detections"] = vals.get("detections", 0)
+
+    summary_metrics: dict[str, Any] = {
+        "pages": total_pages,
+        "files": len(input_files),
+        "ingest_secs": round(elapsed, 2),
+        "pages_per_sec_ingest": pps,
+    }
+
+    success = pages_failed == 0
+    failure_reason = f"{pages_failed} page(s) failed during service ingestion" if pages_failed > 0 else None
+
+    run_metadata = _collect_run_metadata()
+    run_metadata["ray_cluster_mode"] = "none (service mode)"
+
+    result_payload = {
+        "timestamp": now_timestr(),
+        "latest_commit": last_commit(),
+        "success": success,
+        "return_code": 0 if success else 1,
+        "failure_reason": failure_reason,
+        "test_config": {
+            "dataset_label": cfg.dataset_label,
+            "dataset_dir": cfg.dataset_dir,
+            "preset": cfg.preset,
+            "run_mode": "service",
+            "service_url": cfg.service_url,
+            "service_max_concurrency": cfg.service_max_concurrency,
+            "input_type": cfg.input_type,
+            "api_key": "(set)" if cfg.api_key else None,
+        },
+        "metrics": metrics_payload,
+        "summary_metrics": summary_metrics,
+        "run_metadata": run_metadata,
+        "runtime_summary": None,
+        "detection_summary": None,
+        "service_job_ids": result_obj.job_ids,
+        "artifacts": {
+            "runtime_metrics_dir": str(runtime_dir.resolve()),
+        },
+    }
+    if result_obj.failures:
+        result_payload["failures"] = result_obj.failures
+    if tags:
+        result_payload["tags"] = list(tags)
+
+    write_json(artifact_dir / "results.json", result_payload)
+
+    if not skip_local_history:
+        try:
+            from nemo_retriever.harness.history import record_run as _record_history
+
+            _record_history(result_payload, artifact_dir)
+        except Exception:
+            pass
+
+    typer.echo(
+        f"\n  Service ingestion complete: {total_pages} pages in {elapsed:.1f}s "
+        f"({pps:.2f} pages/sec)"
+    )
+    if pages_failed:
+        typer.echo(f"  WARNING: {pages_failed} page(s) failed")
+
+    return result_payload
+
+
 def _run_entry(
     *,
     run_name: str | None,
@@ -1180,7 +1338,14 @@ def _run_entry(
 
     resolved_run_name = run_name or cfg.dataset_label
     normalized_tags = _normalize_tags(tags)
-    result = _run_single(cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags)
+
+    if cfg.run_mode == "service":
+        result = _run_service_mode(
+            cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags, skip_local_history=skip_local_history
+        )
+    else:
+        result = _run_single(cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags)
+
     result["run_name"] = resolved_run_name
     result["artifact_dir"] = str(artifact_dir.resolve())
     return result

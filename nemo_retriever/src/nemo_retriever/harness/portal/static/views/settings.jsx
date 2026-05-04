@@ -20,6 +20,9 @@ function SettingsView() {
   const [slackTestBusy, setSlackTestBusy] = useState(false);
   const [slackTestResult, setSlackTestResult] = useState(null);
   const [slackTestError, setSlackTestError] = useState("");
+  const [serviceUrlInput, setServiceUrlInput] = useState("");
+  const [savingServiceUrl, setSavingServiceUrl] = useState(false);
+  const [serviceUrlSaved, setServiceUrlSaved] = useState(false);
 
   async function fetchPortalSettings() {
     try {
@@ -29,6 +32,7 @@ function SettingsView() {
       setRunCodeRefInput(data.run_code_ref || "upstream/main");
       setSlackWebhookInput(data.slack_webhook_url || "");
       setPortalBaseUrlInput(data.portal_base_url || "http://localhost:8100");
+      setServiceUrlInput(data.service_url || "");
     } catch (err) {
       console.error("Failed to fetch portal settings:", err);
     }
@@ -52,6 +56,27 @@ function SettingsView() {
       console.error("Failed to save run code ref:", err);
     } finally {
       setSavingRunCodeRef(false);
+    }
+  }
+
+  async function saveServiceUrl() {
+    setSavingServiceUrl(true);
+    setServiceUrlSaved(false);
+    try {
+      const res = await fetch("/api/portal-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service_url: serviceUrlInput.trim() }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      const data = await res.json();
+      setPortalSettings(data);
+      setServiceUrlSaved(true);
+      setTimeout(() => setServiceUrlSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save service URL:", err);
+    } finally {
+      setSavingServiceUrl(false);
     }
   }
 
@@ -367,6 +392,31 @@ function SettingsView() {
             </div>
           );
         })()}
+      </div>
+
+      {/* Service URL */}
+      <div className="card" style={{padding:'24px',marginBottom:'20px'}}>
+        <div className="section-title" style={{marginBottom:'6px'}}>Retriever Service URL</div>
+        <div style={{fontSize:'12px',color:'var(--nv-text-dim)',lineHeight:'1.6',marginBottom:'16px'}}>
+          Default URL for the retriever service when triggering <strong>Service</strong> mode runs. Runners will upload documents to this endpoint for processing.
+        </div>
+        <div style={{display:'flex',gap:'10px',alignItems:'flex-end'}}>
+          <div style={{flex:1}}>
+            <input className="input" style={{width:'100%'}} value={serviceUrlInput}
+              onChange={e => setServiceUrlInput(e.target.value)}
+              placeholder="http://localhost:7670" />
+          </div>
+          <button className="btn btn-primary" onClick={saveServiceUrl}
+            disabled={savingServiceUrl || serviceUrlInput.trim() === (portalSettings.service_url || "")}
+            style={{whiteSpace:'nowrap'}}>
+            {savingServiceUrl ? <><span className="spinner" style={{marginRight:'6px'}}></span>Saving…</> : "Save"}
+          </button>
+        </div>
+        {serviceUrlSaved && (
+          <div style={{marginTop:'10px',fontSize:'12px',color:'var(--nv-green)',display:'flex',alignItems:'center',gap:'6px'}}>
+            <IconCheck /> Saved. New service-mode trigger runs will use this URL by default.
+          </div>
+        )}
       </div>
 
       {/* Deploy & Update Section */}

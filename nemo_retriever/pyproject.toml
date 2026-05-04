@@ -40,6 +40,7 @@ dependencies = [
   "fastapi>=0.114.0",
   "uvicorn[standard]>=0.30.0",
   "python-multipart>=0.0.9",
+  "prometheus-fastapi-instrumentator>=7.0,<8",
   # MCP server for AI agent integration
   "fastmcp>=2.0.0",
   # HTTP clients
@@ -181,3 +182,4 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "nemo_retriever.harness.portal" = ["static/**/*"]
+"nemo_retriever.service" = ["retriever-service.yaml"]

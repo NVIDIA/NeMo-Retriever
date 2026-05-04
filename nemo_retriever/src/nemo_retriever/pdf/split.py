@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import traceback
 
 import pandas as pd
+from nemo_retriever.nim.error_reporter import report_error
 from nemo_retriever.params import PdfSplitParams
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
@@ -135,10 +136,14 @@ def split_pdf_batch(pdf_batch: Any, params: PdfSplitParams | None = None) -> pd.
     start_page = split_params.start_page
     end_page = split_params.end_page
 
+    _EXPLICIT_COLS = frozenset(("bytes", "path", "page_number", "metadata", "source_id"))
+
     out_rows: List[Dict[str, Any]] = []
     for _, row in pdf_batch.iterrows():
         pdf_path = row["path"] if "path" in pdf_batch.columns else None
         pdf_bytes = row["bytes"] if "bytes" in pdf_batch.columns else None
+
+        extra = {k: v for k, v in row.to_dict().items() if k not in _EXPLICIT_COLS}
 
         try:
             if not isinstance(pdf_bytes, (bytes, bytearray, memoryview)):
@@ -151,24 +156,25 @@ def split_pdf_batch(pdf_batch: Any, params: PdfSplitParams | None = None) -> pd.
                 continue
 
             for page_idx in range(start_idx, end_idx + 1):
-                out_rows.append(
-                    {
-                        "bytes": pages[page_idx],
-                        "path": pdf_path,
-                        "page_number": page_idx + 1,
-                        "metadata": {"source_path": pdf_path},
-                        "source_id": f"{pdf_path}_{page_idx + 1}",
-                    }
-                )
+                out_row: Dict[str, Any] = {
+                    "bytes": pages[page_idx],
+                    "path": pdf_path,
+                    "page_number": page_idx + 1,
+                    "metadata": {"source_path": pdf_path},
+                    "source_id": f"{pdf_path}_{page_idx + 1}",
+                }
+                out_row.update(extra)
+                out_rows.append(out_row)
         except BaseException as e:
-            out_rows.append(
-                _error_record(
-                    source_path=str(pdf_path) if pdf_path is not None else None,
-                    stage="split_pdf",
-                    exc=e,
-                    page_number=0,
-                )
+            report_error("pdf_split", e)
+            err = _error_record(
+                source_path=str(pdf_path) if pdf_path is not None else None,
+                stage="split_pdf",
+                exc=e,
+                page_number=0,
             )
+            err.update(extra)
+            out_rows.append(err)
 
     return pd.DataFrame(out_rows)
 

@@ -1,0 +1,73 @@
+{{/*
+Renders retriever-service.yaml from .Values.serviceConfig and mounts it at
+/etc/nemo-retriever/retriever-service.yaml inside the service container.
+
+NIM endpoint URLs are resolved at template time via nim.endpointURL: if the
+user supplied an explicit URL in serviceConfig.nimEndpoints we use it,
+otherwise we auto-wire the in-cluster URL of the matching NIM Deployment
+(when nims.enabled).
+*/}}
+{{- $ctx := . -}}
+{{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "pageElements" "shortName" "page-elements" "configKey" "pageElementsInvokeUrl") -}}
+{{- $graphicElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "graphicElements" "shortName" "graphic-elements" "configKey" "graphicElementsInvokeUrl") -}}
+{{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "tableStructure" "shortName" "table-structure" "configKey" "tableStructureInvokeUrl") -}}
+{{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "shortName" "ocr" "configKey" "ocrInvokeUrl") -}}
+{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "embed" "shortName" "embed" "configKey" "embedInvokeUrl") -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nemo-retriever.configMapName" . }}
+  labels:
+    {{- include "nemo-retriever.labels" . | nindent 4 }}
+data:
+  retriever-service.yaml: |
+    server:
+      host: {{ .Values.serviceConfig.server.host | quote }}
+      port: {{ .Values.serviceConfig.server.port }}
+
+    logging:
+      level: {{ .Values.serviceConfig.logging.level | quote }}
+      file: {{ .Values.serviceConfig.logging.file | quote }}
+      format: {{ .Values.serviceConfig.logging.format | quote }}
+
+    database:
+      path: {{ .Values.serviceConfig.database.path | quote }}
+
+    processing:
+      num_workers: {{ .Values.serviceConfig.processing.numWorkers }}
+      batch_size: {{ .Values.serviceConfig.processing.batchSize }}
+      batch_timeout_s: {{ .Values.serviceConfig.processing.batchTimeoutS }}
+
+    nim_endpoints:
+      page_elements_invoke_url: {{ $pageElementsURL | quote }}
+      graphic_elements_invoke_url: {{ $graphicElementsURL | quote }}
+      table_structure_invoke_url: {{ $tableStructureURL | quote }}
+      ocr_invoke_url: {{ $ocrURL | quote }}
+      embed_invoke_url: {{ $embedURL | quote }}
+      api_key: null
+
+    resources:
+      max_memory_mb: {{ .Values.serviceConfig.resources.maxMemoryMb | default "null" }}
+      max_cpu_cores: {{ .Values.serviceConfig.resources.maxCpuCores | default "null" }}
+      gpu_devices: {{ toJson .Values.serviceConfig.resources.gpuDevices }}
+
+    spool:
+      enabled: {{ .Values.serviceConfig.spool.enabled }}
+      path: {{ if .Values.serviceConfig.spool.path }}{{ .Values.serviceConfig.spool.path | quote }}{{ else }}null{{ end }}
+      cleanup_interval_s: {{ .Values.serviceConfig.spool.cleanupIntervalS }}
+      cleanup_batch_size: {{ .Values.serviceConfig.spool.cleanupBatchSize }}
+
+    event_bus:
+      overflow_policy: {{ .Values.serviceConfig.eventBus.overflowPolicy | quote }}
+      queue_maxsize: {{ .Values.serviceConfig.eventBus.queueMaxsize }}
+      replay_buffer_size: {{ .Values.serviceConfig.eventBus.replayBufferSize }}
+      publish_timeout_s: {{ .Values.serviceConfig.eventBus.publishTimeoutS }}
+
+    vector_store:
+      lancedb_uri: {{ .Values.serviceConfig.vectorStore.lancedbUri | quote }}
+      lancedb_table: {{ .Values.serviceConfig.vectorStore.lancedbTable | quote }}
+      top_k: {{ .Values.serviceConfig.vectorStore.topK }}
+      vector_column_name: {{ .Values.serviceConfig.vectorStore.vectorColumnName | quote }}
+      nprobes: {{ .Values.serviceConfig.vectorStore.nprobes }}
+      refine_factor: {{ .Values.serviceConfig.vectorStore.refineFactor }}
+      embedding_model: {{ .Values.serviceConfig.vectorStore.embeddingModel | quote }}

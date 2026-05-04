@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import time
 import urllib.parse
@@ -12,6 +13,31 @@ from typing import Optional
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class ProbeResult:
+    """Outcome of a single NIM endpoint probe."""
+
+    url: str
+    name: str
+    prefix: str
+    status: str  # "ok", "unreachable", "timeout", "error"
+    detail: str = ""
+
+
+_probe_results: list[ProbeResult] = []
+
+
+def drain_probe_results() -> list[ProbeResult]:
+    """Pop and return all collected probe results since last drain.
+
+    Designed to be called once per worker process after operator-chain
+    initialisation so the caller can persist failures to the event log.
+    """
+    results = list(_probe_results)
+    _probe_results.clear()
+    return results
 
 
 def probe_endpoint(
@@ -56,6 +82,7 @@ def probe_endpoint(
             elapsed_ms,
         )
         if resp.ok:
+            _probe_results.append(ProbeResult(url=health_url, name=name, prefix=prefix, status="ok"))
             return
     except requests.ConnectionError:
         logger.warning(
@@ -65,6 +92,16 @@ def probe_endpoint(
             name,
             health_url,
         )
+        _probe_results.append(
+            ProbeResult(
+                url=health_url,
+                name=name,
+                prefix=prefix,
+                status="unreachable",
+                detail=f"{name} endpoint {health_url} is UNREACHABLE (connection refused). "
+                "Processing will stall until this endpoint becomes available.",
+            )
+        )
         return
     except requests.Timeout:
         logger.warning(
@@ -73,6 +110,16 @@ def probe_endpoint(
             name,
             health_url,
             timeout,
+        )
+        _probe_results.append(
+            ProbeResult(
+                url=health_url,
+                name=name,
+                prefix=prefix,
+                status="timeout",
+                detail=f"{name} endpoint {health_url} timed out after {timeout:.1f}s. "
+                "The endpoint may be overloaded or not ready.",
+            )
         )
         return
     except Exception as exc:
@@ -120,6 +167,15 @@ def probe_endpoint(
             name,
             target,
         )
+        _probe_results.append(
+            ProbeResult(
+                url=target,
+                name=name,
+                prefix=prefix,
+                status="unreachable",
+                detail=f"{name} endpoint {target} is UNREACHABLE (connection refused).",
+            )
+        )
     except requests.Timeout:
         logger.warning(
             "%s: %s endpoint %s timed out after %.1fs.",
@@ -127,6 +183,15 @@ def probe_endpoint(
             name,
             target,
             timeout,
+        )
+        _probe_results.append(
+            ProbeResult(
+                url=target,
+                name=name,
+                prefix=prefix,
+                status="timeout",
+                detail=f"{name} endpoint {target} timed out after {timeout:.1f}s.",
+            )
         )
     except Exception as exc:
         logger.debug("%s: %s endpoint probe %s failed: %s", prefix, name, target, exc)

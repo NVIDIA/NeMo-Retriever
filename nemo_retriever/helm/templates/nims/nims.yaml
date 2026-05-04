@@ -1,0 +1,15 @@
+{{/*
+Render the five NIM bundles by iterating a static list. Each NIM block is
+independently togglable via .Values.nims.<key>.enabled, and the entire
+sub-stack is gated by .Values.nims.enabled.
+*/}}
+{{- $nimList := list
+  (dict "key" "pageElements"    "shortName" "page-elements")
+  (dict "key" "graphicElements" "shortName" "graphic-elements")
+  (dict "key" "tableStructure"  "shortName" "table-structure")
+  (dict "key" "ocr"             "shortName" "ocr")
+  (dict "key" "embed"           "shortName" "embed")
+-}}
+{{- range $nim := $nimList }}
+{{ include "nemo-retriever.nim.bundle" (dict "context" $ "key" $nim.key "shortName" $nim.shortName) }}
+{{- end }}

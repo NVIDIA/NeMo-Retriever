@@ -1,0 +1,786 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Multi-GPU variant of docker-compose.yaml.
+#
+# Spins up one replica of each NIM service per GPU.  GPU 0 keeps the
+# original host ports; GPU 1 adds +100 to every port.  Add more GPUs
+# by duplicating the gpu1 blocks with +200, +300, etc.
+#
+# Corresponding retriever-service.yaml for the core NIM pipeline:
+#
+#   nim_endpoints:
+#     page_elements_invoke_url: "http://localhost:8000/v1/infer,http://localhost:8100/v1/infer"
+#     graphic_elements_invoke_url: "http://localhost:8003/v1/infer,http://localhost:8103/v1/infer"
+#     table_structure_invoke_url: "http://localhost:8006/v1/infer,http://localhost:8106/v1/infer"
+#     ocr_invoke_url: "http://localhost:8009/v1/infer,http://localhost:8109/v1/infer"
+#     embed_invoke_url: "http://localhost:8012/v1/embeddings,http://localhost:8112/v1/embeddings"
+
+services:
+  redis:
+    image: "redis/redis-stack"
+    ports:
+      - "6379:6379"
+
+  # ===================================================================
+  # Page Elements — GPU 0
+  # ===================================================================
+  page-elements-gpu0:
+    image: ${YOLOX_IMAGE:-nvcr.io/nim/nvidia/nemotron-page-elements-v3}:${YOLOX_TAG:-1.8.0}
+    shm_size: 16gb
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${PAGE_ELEMENTS_BATCH_SIZE:-32}
+      - NIM_TRITON_CPU_THREADS_PRE_PROCESSOR=${PAGE_ELEMENTS_CPU_THREADS_PRE_PROCESSOR:-2}
+      - NIM_TRITON_CPU_THREADS_POST_PROCESSOR=${PAGE_ELEMENTS_CPU_THREADS_POST_PROCESSOR:-1}
+      - OMP_NUM_THREADS=2
+      - NIM_ENABLE_OTEL=0
+      - NIM_OTEL_SERVICE_NAME=page-elements-gpu0
+      - NIM_OTEL_TRACES_EXPORTER=otlp
+      - NIM_OTEL_METRICS_EXPORTER=console
+      - NIM_OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - TRITON_OTEL_URL=http://otel-collector:4318/v1/traces
+      - TRITON_OTEL_RATE=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # Page Elements — GPU 1
+  page-elements-gpu1:
+    image: ${YOLOX_IMAGE:-nvcr.io/nim/nvidia/nemotron-page-elements-v3}:${YOLOX_TAG:-1.8.0}
+    shm_size: 16gb
+    ports:
+      - "8100:8000"
+      - "8101:8001"
+      - "8102:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${PAGE_ELEMENTS_BATCH_SIZE:-32}
+      - NIM_TRITON_CPU_THREADS_PRE_PROCESSOR=${PAGE_ELEMENTS_CPU_THREADS_PRE_PROCESSOR:-2}
+      - NIM_TRITON_CPU_THREADS_POST_PROCESSOR=${PAGE_ELEMENTS_CPU_THREADS_POST_PROCESSOR:-1}
+      - OMP_NUM_THREADS=2
+      - NIM_ENABLE_OTEL=0
+      - NIM_OTEL_SERVICE_NAME=page-elements-gpu1
+      - NIM_OTEL_TRACES_EXPORTER=otlp
+      - NIM_OTEL_METRICS_EXPORTER=console
+      - NIM_OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - TRITON_OTEL_URL=http://otel-collector:4318/v1/traces
+      - TRITON_OTEL_RATE=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # ===================================================================
+  # Graphic Elements — GPU 0
+  # ===================================================================
+  graphic-elements-gpu0:
+    image: ${YOLOX_GRAPHIC_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-graphic-elements-v1}:${YOLOX_GRAPHIC_ELEMENTS_TAG:-1.8.0}
+    shm_size: 16gb
+    ports:
+      - "8003:8000"
+      - "8004:8001"
+      - "8005:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NIM_TRITON_RATE_LIMIT=3
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${GRAPHIC_ELEMENTS_BATCH_SIZE:-32}
+      - NIM_TRITON_CUDA_MEMORY_POOL_MB=${GRAPHIC_ELEMENTS_CUDA_MEMORY_POOL_MB:-2048}
+      - OMP_NUM_THREADS=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # Graphic Elements — GPU 1
+  graphic-elements-gpu1:
+    image: ${YOLOX_GRAPHIC_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-graphic-elements-v1}:${YOLOX_GRAPHIC_ELEMENTS_TAG:-1.8.0}
+    shm_size: 16gb
+    ports:
+      - "8103:8000"
+      - "8104:8001"
+      - "8105:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NIM_TRITON_RATE_LIMIT=3
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${GRAPHIC_ELEMENTS_BATCH_SIZE:-32}
+      - NIM_TRITON_CUDA_MEMORY_POOL_MB=${GRAPHIC_ELEMENTS_CUDA_MEMORY_POOL_MB:-2048}
+      - OMP_NUM_THREADS=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # ===================================================================
+  # Table Structure — GPU 0
+  # ===================================================================
+  table-structure-gpu0:
+    image: ${YOLOX_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-table-structure-v1}:${YOLOX_TABLE_STRUCTURE_TAG:-1.8.0}
+    shm_size: 16gb
+    ports:
+      - "8006:8000"
+      - "8007:8001"
+      - "8008:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NIM_TRITON_RATE_LIMIT=3
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${TABLE_STRUCTURE_BATCH_SIZE:-32}
+      - NIM_TRITON_CUDA_MEMORY_POOL_MB=${TABLE_STRUCTURE_CUDA_MEMORY_POOL_MB:-2048}
+      - OMP_NUM_THREADS=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # Table Structure — GPU 1
+  table-structure-gpu1:
+    image: ${YOLOX_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-table-structure-v1}:${YOLOX_TABLE_STRUCTURE_TAG:-1.8.0}
+    shm_size: 16gb
+    ports:
+      - "8106:8000"
+      - "8107:8001"
+      - "8108:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NIM_TRITON_RATE_LIMIT=3
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${TABLE_STRUCTURE_BATCH_SIZE:-32}
+      - NIM_TRITON_CUDA_MEMORY_POOL_MB=${TABLE_STRUCTURE_CUDA_MEMORY_POOL_MB:-2048}
+      - OMP_NUM_THREADS=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # ===================================================================
+  # OCR — GPU 0
+  # ===================================================================
+  ocr-gpu0:
+    image: ${OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v1}:${OCR_TAG:-1.3.0}
+    shm_size: 16gb
+    ports:
+      - "8009:8000"
+      - "8010:8001"
+      - "8011:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - OMP_NUM_THREADS=${OCR_OMP_NUM_THREADS:-8}
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${OCR_BATCH_SIZE:-32}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # OCR — GPU 1
+  ocr-gpu1:
+    image: ${OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v1}:${OCR_TAG:-1.3.0}
+    shm_size: 16gb
+    ports:
+      - "8109:8000"
+      - "8110:8001"
+      - "8111:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - OMP_NUM_THREADS=${OCR_OMP_NUM_THREADS:-8}
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NIM_TRITON_MAX_BATCH_SIZE=${OCR_BATCH_SIZE:-32}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # ===================================================================
+  # Embedding — GPU 0
+  # ===================================================================
+  embedding-gpu0:
+    image: ${EMBEDDING_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2}:${EMBEDDING_TAG:-1.13.0}
+    shm_size: 16gb
+    ports:
+      - "8012:8000"
+      - "8013:8001"
+      - "8014:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - OMP_NUM_THREADS=1
+      - NIM_TRITON_PERFORMANCE_MODE=throughput
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # Embedding — GPU 1
+  embedding-gpu1:
+    image: ${EMBEDDING_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2}:${EMBEDDING_TAG:-1.13.0}
+    shm_size: 16gb
+    ports:
+      - "8112:8000"
+      - "8113:8001"
+      - "8114:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - OMP_NUM_THREADS=1
+      - NIM_TRITON_PERFORMANCE_MODE=throughput
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+
+  # ===================================================================
+  # Reranker — GPU 0
+  # ===================================================================
+  reranker-gpu0:
+    image: ${RERANKER_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2}:${RERANKER_TAG:-1.10.0}
+    shm_size: 16gb
+    ports:
+      - "8015:8000"
+      - "8016:8001"
+      - "8017:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - reranker
+
+  # Reranker — GPU 1
+  reranker-gpu1:
+    image: ${RERANKER_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2}:${RERANKER_TAG:-1.10.0}
+    shm_size: 16gb
+    ports:
+      - "8115:8000"
+      - "8116:8001"
+      - "8117:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - reranker
+
+  # ===================================================================
+  # Nemotron Parse — GPU 0
+  # ===================================================================
+  nemotron-parse-gpu0:
+    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NEMOTRON_PARSE_TAG:-1.7.0-variant}
+    shm_size: 16gb
+    ports:
+      - "8018:8000"
+      - "8019:8001"
+      - "8020:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - nemotron-parse
+
+  # Nemotron Parse — GPU 1
+  nemotron-parse-gpu1:
+    image: ${NEMOTRON_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NEMOTRON_PARSE_TAG:-1.7.0-variant}
+    shm_size: 16gb
+    ports:
+      - "8118:8000"
+      - "8119:8001"
+      - "8120:8002"
+    expose:
+      - "8000"
+      - "8001"
+      - "8002"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - nemotron-parse
+
+  # ===================================================================
+  # VLM — GPU 0
+  # ===================================================================
+  vlm-gpu0:
+    image: ${VLM_IMAGE:-nvcr.io/nim/nvidia/nemotron-nano-12b-v2-vl}:${VLM_TAG:-1.5.0}
+    shm_size: 16gb
+    ports:
+      - "8021:8000"
+    expose:
+      - "8000"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - vlm
+
+  # VLM — GPU 1
+  vlm-gpu1:
+    image: ${VLM_IMAGE:-nvcr.io/nim/nvidia/nemotron-nano-12b-v2-vl}:${VLM_TAG:-1.5.0}
+    shm_size: 16gb
+    ports:
+      - "8121:8000"
+    expose:
+      - "8000"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - vlm
+
+  # ===================================================================
+  # Audio (ASR) — GPU 0
+  # ===================================================================
+  audio-gpu0:
+    image: ${AUDIO_IMAGE:-nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us}:${AUDIO_TAG:-1.5.0}
+    shm_size: 2gb
+    ports:
+      - "8022:50051"
+      - "8023:9000"
+    expose:
+      - "50051"
+      - "9000"
+    ulimits:
+      nofile: 2048
+    environment:
+      - NIM_TAGS_SELECTOR=name=parakeet-1-1b-ctc-en-us,mode=ofl
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - audio
+
+  # Audio (ASR) — GPU 1
+  audio-gpu1:
+    image: ${AUDIO_IMAGE:-nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us}:${AUDIO_TAG:-1.5.0}
+    shm_size: 2gb
+    ports:
+      - "8122:50051"
+      - "8123:9000"
+    expose:
+      - "50051"
+      - "9000"
+    ulimits:
+      nofile: 2048
+    environment:
+      - NIM_TAGS_SELECTOR=name=parakeet-1-1b-ctc-en-us,mode=ofl
+      - NIM_TRITON_LOG_VERBOSE=1
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - audio
+
+  # ===================================================================
+  # Non-GPU infrastructure services (unchanged from docker-compose.yaml)
+  # ===================================================================
+
+  nv-ingest-ms-runtime:
+    image: nvcr.io/nvidia/nemo-microservices/nv-ingest:26.1.2
+    shm_size: 40gb
+    build:
+      context: ${NV_INGEST_ROOT:-.}
+      dockerfile: "./Dockerfile"
+      target: runtime
+      args:
+        DOWNLOAD_LLAMA_TOKENIZER: ${DOWNLOAD_LLAMA_TOKENIZER:-False}
+        HF_ACCESS_TOKEN: ${HF_ACCESS_TOKEN:-hfaccesstoken}
+        MODEL_PREDOWNLOAD_PATH: ${MODEL_PREDOWNLOAD_PATH:-/workspace/models/}
+    volumes:
+      - ${DATASET_ROOT:-./data}:/workspace/data
+    ports:
+      - "7670:7670"
+      - "8265:8265"
+    cap_add:
+      - sys_nice
+    environment:
+      - ARROW_DEFAULT_MEMORY_POOL=system
+      - OMP_NUM_THREADS=1
+      - AUDIO_GRPC_ENDPOINT=audio-gpu0:50051
+      - AUDIO_INFER_PROTOCOL=grpc
+      - CUDA_VISIBLE_DEVICES=-1
+      - MAX_INGEST_PROCESS_WORKERS=${MAX_INGEST_PROCESS_WORKERS:-32}
+      - EMBEDDING_NIM_ENDPOINT=${EMBEDDING_NIM_ENDPOINT:-http://embedding-gpu0:8000/v1}
+      - EMBEDDING_NIM_MODEL_NAME=${EMBEDDING_NIM_MODEL_NAME:-nvidia/llama-nemotron-embed-1b-v2}
+      - INGEST_LOG_LEVEL=DEFAULT
+      - INGEST_RAY_LOG_LEVEL=DEVELOPMENT
+      - INGEST_DYNAMIC_MEMORY_THRESHOLD=0.80
+      - INGEST_DISABLE_DYNAMIC_SCALING=${INGEST_DISABLE_DYNAMIC_SCALING:-true}
+      - RAY_num_grpc_threads=1
+      - RAY_num_server_call_thread=1
+      - RAY_worker_num_grpc_internal_threads=1
+      - NEMOTRON_PARSE_HTTP_ENDPOINT=http://nemotron-parse-gpu0:8000/v1/chat/completions
+      - NEMOTRON_PARSE_INFER_PROTOCOL=http
+      - NEMOTRON_PARSE_MODEL_NAME=${NEMOTRON_PARSE_MODEL_NAME:-nvidia/nemotron-parse-v1.2}
+      - NGC_API_KEY=${NGC_API_KEY:-ngcapikey}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NV_INGEST_MAX_UTIL=${NV_INGEST_MAX_UTIL:-32}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OCR_GRPC_ENDPOINT=ocr-gpu0:8001
+      - OCR_HTTP_ENDPOINT=http://ocr-gpu0:8000/v1/infer
+      - OCR_INFER_PROTOCOL=grpc
+      - OCR_MODEL_NAME=${OCR_MODEL_NAME:-pipeline}
+      - PDF_SPLIT_PAGE_COUNT=${PDF_SPLIT_PAGE_COUNT:-32}
+      - REDIS_INGEST_TASK_QUEUE=ingest_task_queue
+      - YOLOX_PAGE_IMAGE_FORMAT=JPEG
+      - YOLOX_GRPC_ENDPOINT=page-elements-gpu0:8001
+      - YOLOX_HTTP_ENDPOINT=http://page-elements-gpu0:8000/v1/infer
+      - YOLOX_INFER_PROTOCOL=grpc
+      - YOLOX_GRAPHIC_ELEMENTS_GRPC_ENDPOINT=graphic-elements-gpu0:8001
+      - YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT=http://graphic-elements-gpu0:8000/v1/infer
+      - YOLOX_GRAPHIC_ELEMENTS_INFER_PROTOCOL=grpc
+      - YOLOX_TABLE_STRUCTURE_GRPC_ENDPOINT=table-structure-gpu0:8001
+      - YOLOX_TABLE_STRUCTURE_HTTP_ENDPOINT=http://table-structure-gpu0:8000/v1/infer
+      - YOLOX_TABLE_STRUCTURE_INFER_PROTOCOL=grpc
+      - VLM_CAPTION_ENDPOINT=http://vlm-gpu0:8000/v1/chat/completions
+      - VLM_CAPTION_MODEL_NAME=nvidia/nemotron-nano-12b-v2-vl
+      - MODEL_PREDOWNLOAD_PATH=${MODEL_PREDOWNLOAD_PATH:-/workspace/models/}
+      - IMAGE_STORAGE_URI=${IMAGE_STORAGE_URI:-s3://nv-ingest/artifacts/store/images}
+      - IMAGE_STORAGE_PUBLIC_BASE_URL=${IMAGE_STORAGE_PUBLIC_BASE_URL:-}
+      - COMPONENTS_TO_READY_CHECK=ALL
+      - MESSAGE_CLIENT_HOST=redis
+      - MESSAGE_CLIENT_PORT=6379
+      - MESSAGE_CLIENT_TYPE=redis
+      - MINIO_BUCKET=${MINIO_BUCKET:-nv-ingest}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+    healthcheck:
+      test: curl --fail http://nv-ingest-ms-runtime:7670/v1/health/ready || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.140.0
+    hostname: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "9988:9988"
+      - "8889:8889"
+      - "13133:13133"
+      - "9411"
+      - "4317:4317"
+      - "4318:4318"
+      - "55680:55679"
+    depends_on:
+      - zipkin
+
+  zipkin:
+    image: openzipkin/zipkin
+    environment:
+      JAVA_OPTS: "-Xms4g -Xmx8g -XX:+ExitOnOutOfMemoryError"
+    ports:
+      - "9411:9411"
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --web.console.templates=/etc/prometheus/consoles
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --storage.tsdb.retention.time=1h
+      - --config.file=/etc/prometheus/prometheus-config.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --web.route-prefix=/
+      - --enable-feature=exemplar-storage
+      - --enable-feature=otlp-write-receiver
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus-config.yaml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    container_name: grafana-service
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+
+  etcd:
+    restart: always
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ./.volumes/etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - retrieval
+
+  minio:
+    restart: always
+    container_name: minio
+    hostname: minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    volumes:
+      - ./.volumes/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - retrieval
+
+  milvus:
+    restart: always
+    image: milvusdb/milvus:v2.5.3-gpu
+    command: [ "bash", "-c", "sed -i 's/bucketName: a-bucket/bucketName: ${MINIO_BUCKET:-nv-ingest}/' /milvus/configs/milvus.yaml && milvus run standalone" ]
+    hostname: milvus
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ./.volumes/milvus:/var/lib/milvus
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    expose:
+      - "19530"
+      - "9091"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    depends_on:
+      - "etcd"
+      - "minio"
+    profiles:
+      - retrieval
+
+  attu:
+    restart: always
+    container_name: milvus-attu
+    image: zilliz/attu:v2.5.3
+    hostname: attu
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "3001:3000"
+    depends_on:
+      - "milvus"
+    profiles:
+      - retrieval
+
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: ${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-neo4jpassword}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-neo4jpassword}", "RETURN 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    profiles:
+      - graph
+
+volumes:
+  neo4j_data:

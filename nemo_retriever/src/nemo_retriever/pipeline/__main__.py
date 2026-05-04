@@ -18,6 +18,11 @@ Examples::
         --run-mode inprocess \\
         --ocr-invoke-url http://localhost:9000/v1
 
+    # Service mode (delegate to a running retriever service)
+    retriever pipeline run /data/pdfs \\
+        --run-mode service \\
+        --service-url http://localhost:7670
+
     # Save extraction Parquet for full-page markdown (page index / export)
     retriever pipeline run /data/pdfs \\
         --save-intermediate /path/to/extracted_parquet_dir
@@ -75,6 +80,7 @@ _PANEL_RAY = "Ray / Batch Tuning"
 _PANEL_VDB = "VDB and Outputs"
 _PANEL_EVAL = "Evaluation (Recall / BEIR)"
 _PANEL_OBS = "Observability"
+_PANEL_SERVICE = "Service Mode"
 
 
 # ---------------------------------------------------------------------------
@@ -385,8 +391,31 @@ def _build_ingestor(
     segment_audio: bool,
     audio_split_type: str,
     audio_split_interval: int,
-) -> GraphIngestor:
-    """Construct a :class:`GraphIngestor` with all requested stages attached."""
+    service_url: str = "http://localhost:7670",
+    service_concurrency: int = 8,
+    service_api_token: Optional[str] = None,
+) -> Any:
+    """Construct an ingestor with all requested stages attached.
+
+    For ``run_mode='service'`` returns a :class:`ServiceIngestor` backed by a
+    remote retriever service; otherwise returns a :class:`GraphIngestor` for
+    local ``batch`` or ``inprocess`` execution.
+    """
+
+    if run_mode == "service":
+        from nemo_retriever.service_ingestor import ServiceIngestor
+
+        resolved_files: list[str] = []
+        for pattern in file_patterns:
+            resolved_files.extend(sorted(_glob.glob(pattern, recursive=True)))
+        if not resolved_files:
+            raise typer.BadParameter("No files matched the input patterns for service mode.")
+
+        return ServiceIngestor(
+            base_url=service_url,
+            max_concurrency=service_concurrency,
+            api_token=service_api_token,
+        ).files(resolved_files)
 
     node_overrides: dict[str, dict[str, Any]] = {}
     if caption_gpus_per_actor is not None:
@@ -453,11 +482,18 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
     """Materialize the graph result into a list of records + DataFrame.
 
     Ingest may return a ``pandas.DataFrame`` (in-process or after
-    ``ray.data.Dataset.to_pandas()`` in the executor) or a ``ray.data.Dataset``;
-    normalize via ``.to_pandas()`` when the result is not already a DataFrame.
+    ``ray.data.Dataset.to_pandas()`` in the executor), a ``ray.data.Dataset``,
+    or a :class:`~nemo_retriever.service_ingestor.ServiceIngestResult` (service
+    mode); normalize to a consistent ``(records, DataFrame, secs, units)`` tuple.
 
     Returns ``(records, result_df, ray_download_secs, num_input_units)``.
     """
+
+    if run_mode == "service":
+        records = list(result)
+        result_df = pd.DataFrame(records) if records else pd.DataFrame()
+        num_units = len({r.get("source_file", "") for r in records}) if records else 0
+        return records, result_df, 0.0, num_units
 
     if isinstance(result, pd.DataFrame):
         result_df = result
@@ -618,7 +654,10 @@ def run(
     run_mode: str = typer.Option(
         "batch",
         "--run-mode",
-        help="Execution mode: 'batch' (Ray Data) or 'inprocess' (pandas, no Ray).",
+        help=(
+            "Execution mode: 'batch' (Ray Data), 'inprocess' (pandas, no Ray), "
+            "or 'service' (remote retriever service)."
+        ),
         rich_help_panel=_PANEL_IO,
     ),
     input_type: str = typer.Option(
@@ -801,6 +840,31 @@ def run(
     audio_match_tolerance_secs: float = typer.Option(
         2.0, "--audio-match-tolerance-secs", min=0.0, rich_help_panel=_PANEL_AUDIO
     ),
+    # --- Service mode ---------------------------------------------------
+    service_url: str = typer.Option(
+        "http://localhost:7670",
+        "--service-url",
+        help="Base URL of the retriever service (used only when --run-mode=service).",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
+    service_concurrency: int = typer.Option(
+        8,
+        "--service-concurrency",
+        min=1,
+        help="Maximum concurrent page uploads to the service (used only when --run-mode=service).",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
+    service_api_token: Optional[str] = typer.Option(
+        None,
+        "--service-api-token",
+        help=(
+            "Bearer token for authenticating with the retriever service "
+            "(used only when --run-mode=service). "
+            "Falls back to $NEMO_RETRIEVER_API_TOKEN."
+        ),
+        envvar="NEMO_RETRIEVER_API_TOKEN",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
     # --- VDB / outputs --------------------------------------------------
     vdb_op: str = typer.Option(
         DEFAULT_VDB_OP,
@@ -910,7 +974,7 @@ def run(
     _ = ctx
     log_handle, original_stdout, original_stderr = _configure_logging(log_file, debug=bool(debug))
     try:
-        if run_mode not in {"batch", "inprocess"}:
+        if run_mode not in {"batch", "inprocess", "service"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
         if recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
             raise ValueError(f"Unsupported --recall-match-mode: {recall_match_mode!r}")
@@ -1059,6 +1123,9 @@ def run(
             segment_audio=segment_audio,
             audio_split_type=audio_split_type,
             audio_split_interval=audio_split_interval,
+            service_url=service_url,
+            service_concurrency=service_concurrency,
+            service_api_token=service_api_token,
         )
 
         # --- Execute ---------------------------------------------------
@@ -1067,25 +1134,41 @@ def run(
         raw_result = ingestor.ingest()
         ingestion_only_total_time = time.perf_counter() - ingest_start
         ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
-        uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
-        if uploadable_vdb_records == 0:
-            logger.warning(
-                "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
-                evaluation_mode,
+
+        if run_mode == "service":
+            # The service writes embeddings to LanceDB server-side during
+            # processing (via LanceDBWriteOperator); embedding vectors are
+            # stripped from SSE results to keep payloads small.  Client-side
+            # VDB upload is therefore skipped.
+            logger.info(
+                "Service-mode ingestion complete (%d results from %d input(s), %.1fs). "
+                "VDB writes are handled server-side.",
+                len(ingest_local_results),
+                num_rows,
+                ingestion_only_total_time,
             )
+            uploadable_vdb_records = len(ingest_local_results)
             vdb_upload_time = 0.0
         else:
-            logger.info(
-                "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
-                len(ingest_local_results),
-                uploadable_vdb_records,
-                resolved_vdb_op,
-            )
-            vdb_upload_time = _upload_vdb_records(
-                ingest_local_results,
-                vdb_op=resolved_vdb_op,
-                vdb_kwargs=resolved_vdb_kwargs,
-            )
+            uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+            if uploadable_vdb_records == 0:
+                logger.warning(
+                    "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
+                    evaluation_mode,
+                )
+                vdb_upload_time = 0.0
+            else:
+                logger.info(
+                    "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
+                    len(ingest_local_results),
+                    uploadable_vdb_records,
+                    resolved_vdb_op,
+                )
+                vdb_upload_time = _upload_vdb_records(
+                    ingest_local_results,
+                    vdb_op=resolved_vdb_op,
+                    vdb_kwargs=resolved_vdb_kwargs,
+                )
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()
@@ -1105,7 +1188,7 @@ def run(
                 collect_detection_summary_from_df(result_df),
             )
 
-        if uploadable_vdb_records == 0:
+        if uploadable_vdb_records == 0 and run_mode != "service":
             if run_mode == "batch":
                 import ray
 

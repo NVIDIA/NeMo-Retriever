@@ -35,6 +35,7 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
         *,
         table_structure_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
+        load_ocr_v2: bool = True,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
@@ -120,6 +121,8 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
                 n = len(out.index)
                 out["table"] = [[] for _ in range(n)]
                 out["table_structure_ocr_v1"] = [payload for _ in range(n)]
+                out["table_structure_v1_num_detections"] = [0 for _ in range(n)]
+                out["table_structure_v1_counts_by_label"] = [{} for _ in range(n)]
                 return out
             return [
                 {

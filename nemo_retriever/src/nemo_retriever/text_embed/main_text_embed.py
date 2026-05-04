@@ -256,6 +256,26 @@ def _multimodal_callable_runner(
 # Remote embeddings (OpenAI-compatible HTTP) + Local callable runner
 # ------------------------------------------------------------------------------
 
+_embed_rr_idx = 0
+
+
+def _pick_embed_endpoint(csv_url: str) -> str:
+    """Round-robin select one URL from a comma-separated NIM endpoint string.
+
+    The service config allows comma-separated endpoints for load-balancing
+    (e.g. ``http://host1:8012/v1/embeddings,http://host2:8112/v1/embeddings``).
+    Each call rotates to the next endpoint.
+    """
+    global _embed_rr_idx
+    urls = [u.strip() for u in csv_url.split(",") if u.strip()]
+    if not urls:
+        return csv_url
+    if len(urls) == 1:
+        return urls[0]
+    chosen = urls[_embed_rr_idx % len(urls)]
+    _embed_rr_idx += 1
+    return chosen
+
 
 def _normalize_embeddings_endpoint(endpoint_url: str) -> str:
     """
@@ -287,7 +307,7 @@ def _http_embed_openai_compat(
     except Exception as e:  # pragma: no cover
         raise RuntimeError("Remote embedding requested but `httpx` is not installed.") from e
 
-    url = _normalize_embeddings_endpoint(endpoint_url)
+    url = _normalize_embeddings_endpoint(_pick_embed_endpoint(endpoint_url))
     headers: Dict[str, str] = {"accept": "application/json", "content-type": "application/json"}
     token = (api_key or "").strip()
     if token:

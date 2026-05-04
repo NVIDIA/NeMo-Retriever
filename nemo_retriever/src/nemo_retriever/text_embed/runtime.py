@@ -13,6 +13,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+from nemo_retriever.nim.error_reporter import report_error
 from nemo_retriever.model import resolve_embed_model
 from nemo_retriever.params.models import IMAGE_MODALITIES
 from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
@@ -167,10 +168,14 @@ def embed_text_main_text_embed(
         except Exception as _cache_exc:  # noqa: BLE001
             logger.debug("torch.cuda.empty_cache() failed during error cleanup: %s", _cache_exc)
         logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
+        report_error("embed", exc)
         out_df = batch_df.copy()
         out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)
         out_df[embedding_dim_column] = 0
         out_df[has_embedding_column] = False
+        n = len(out_df)
+        out_df["embedding_v1_num_detections"] = [0] * n
+        out_df["embedding_v1_counts_by_label"] = [{} for _ in range(n)]
         for column in ("_image_b64", "_embed_modality"):
             if column in out_df.columns:
                 out_df = out_df.drop(columns=[column])
@@ -193,7 +198,11 @@ def embed_text_main_text_embed(
     else:
         out_df[embedding_dim_column] = [0 for _ in range(len(out_df.index))]
 
-    out_df[has_embedding_column] = [bool(int(dim) > 0) for dim in out_df[embedding_dim_column].tolist()]
+    out_df[has_embedding_column] = [bool(int(d) > 0) for d in out_df[embedding_dim_column].tolist()]
+
+    embedded_flags = out_df[has_embedding_column].tolist()
+    out_df["embedding_v1_num_detections"] = [int(f) for f in embedded_flags]
+    out_df["embedding_v1_counts_by_label"] = [{"embedded": 1} if f else {} for f in embedded_flags]
 
     for column in ("_image_b64", "_embed_modality"):
         if column in out_df.columns:

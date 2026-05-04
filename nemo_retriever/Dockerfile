@@ -7,6 +7,12 @@
 # Run: docker run nemo-retriever  (shell with venv active)
 # Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
 # Run with data:     docker run -v /host/docs:/data nemo-retriever /data
+#
+# Service profile (FastAPI ingest server):
+#   docker build -f nemo_retriever/Dockerfile --target service -t nemo-retriever-service .
+#   docker run --rm -p 7670:7670 \
+#     -v /host/path/to/retriever-service.yaml:/etc/nemo-retriever/retriever-service.yaml:ro \
+#     nemo-retriever-service
 
 ARG BASE_IMG=nvcr.io/nvidia/base/ubuntu
 ARG BASE_IMG_TAG=jammy-20250619
@@ -122,3 +128,36 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
+
+# ---------------------------------------------------------------------------
+# Service profile: run the FastAPI ingest service.
+#
+# Build:  docker build -f nemo_retriever/Dockerfile --target service \
+#             -t nemo-retriever-service .
+#
+# Run with the bundled default config:
+#   docker run --rm -p 7670:7670 nemo-retriever-service
+#
+# Run with a custom config mounted at the well-known path:
+#   docker run --rm -p 7670:7670 \
+#     -v /host/path/to/retriever-service.yaml:/etc/nemo-retriever/retriever-service.yaml:ro \
+#     nemo-retriever-service
+#
+# The container always loads its config from
+#   /etc/nemo-retriever/retriever-service.yaml
+# Bind-mount your file to that exact path to override the bundled default.
+# ---------------------------------------------------------------------------
+FROM install AS service
+
+ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
+
+# Seed the well-known config path with the bundled default so the image is
+# usable out of the box.  At runtime, a host bind-mount at the same path
+# transparently replaces this file.
+RUN mkdir -p /etc/nemo-retriever \
+    && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
+          "${NEMO_RETRIEVER_SERVICE_CONFIG}"
+
+EXPOSE 7670
+
+CMD ["retriever", "service", "start", "--config", "/etc/nemo-retriever/retriever-service.yaml"]

@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
-RunMode = Literal["inprocess", "batch", "fused", "online"]
+RunMode = Literal["inprocess", "batch", "fused", "service"]
 
 # Pass as an api_key value to suppress auto-resolution from environment variables.
 # Example: EmbedParams(api_key=NO_API_KEY)
@@ -103,6 +103,11 @@ class IngestorCreateParams(_ParamsModel):
     debug: bool = False
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
+    api_key: Optional[str] = None
+    # service run mode: maximum number of concurrent page uploads.  Lower
+    # values (e.g. 2-4) reduce burst pressure on Kubernetes NodePort /
+    # kube-proxy paths that otherwise reset connections under heavy load.
+    max_concurrency: Optional[int] = None
 
 
 class IngestExecuteParams(_ParamsModel):
