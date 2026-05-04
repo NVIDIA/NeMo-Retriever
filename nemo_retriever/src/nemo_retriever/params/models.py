@@ -179,7 +179,7 @@ class VideoFrameParams(_ParamsModel):
     """
 
     enabled: bool = True
-    fps: float = 1.0
+    fps: float = Field(default=1.0, gt=0.0)
     max_frames: Optional[int] = None
     dedup: bool = True
     dedup_max_hamming_distance: int = 5
