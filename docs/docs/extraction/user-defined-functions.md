@@ -259,7 +259,7 @@ def enhance_metadata(control_message: IngestControlMessage) -> IngestControlMess
     return control_message
 ```
 
-> **📖 For detailed metadata schema documentation, refer to:** [Content metadata reference](content-metadata.md) and [Metadata and content schema](multimodal-metadata-schema.md).
+> **📖 For detailed metadata schema documentation, refer to:** [Content metadata reference](content-metadata.md) and [Metadata and content schema](multimodal-extraction.md#metadata-and-content-schema).
 
 ### UDF Targeting
 

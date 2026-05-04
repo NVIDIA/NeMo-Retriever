@@ -88,15 +88,7 @@ nav:
       - "Workflow: Audio & Video Ingestion":
           - "Speech and audio extraction": extraction/audio-video.md
           - "OCR of video frames": extraction/workflow-video-ocr.md
-  - "5. Multimodal extraction":
-      - "Supported file types and formats": extraction/supported-file-types.md
-      - "Text and layout extraction": extraction/text-layout-extraction.md
-      - Tables: extraction/extraction-tables.md
-      - "Charts and infographics": extraction/extraction-charts-infographics.md
-      - "OCR and scanned documents": extraction/extraction-ocr-scanned.md
-      - Image captioning: extraction/image-captioning.md
-      - "Metadata and content schema": extraction/multimodal-metadata-schema.md
-      - "Extraction limitations and quality": extraction/throughput-is-dataset-dependent.md
+  - "5. Multimodal extraction": extraction/multimodal-extraction.md
   - "6. Embedding, indexing & storage":
       - "Embedding NIMs and models": extraction/embedding-nims-models.md
       - "Multimodal embeddings (VLM)": extraction/embedding.md
@@ -173,7 +165,15 @@ plugins:
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
         extraction/ngc-api-key.md: extraction/api-keys.md
         extraction/data-store.md: extraction/vdbs.md
-        extraction/nemoretriever-parse.md: extraction/text-layout-extraction.md
+        extraction/nemoretriever-parse.md: extraction/multimodal-extraction.md#text-and-layout-extraction
+        extraction/supported-file-types.md: extraction/multimodal-extraction.md#supported-file-types-and-formats
+        extraction/text-layout-extraction.md: extraction/multimodal-extraction.md#text-and-layout-extraction
+        extraction/extraction-tables.md: extraction/multimodal-extraction.md#tables
+        extraction/extraction-charts-infographics.md: extraction/multimodal-extraction.md#charts-and-infographics
+        extraction/extraction-ocr-scanned.md: extraction/multimodal-extraction.md#ocr-and-scanned-documents
+        extraction/image-captioning.md: extraction/multimodal-extraction.md#image-captioning
+        extraction/multimodal-metadata-schema.md: extraction/multimodal-extraction.md#metadata-and-content-schema
+        extraction/throughput-is-dataset-dependent.md: extraction/multimodal-extraction.md#extraction-limitations-and-quality
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
         extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md

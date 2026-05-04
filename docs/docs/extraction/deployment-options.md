@@ -32,7 +32,7 @@ Use the sections below to pick documentation and deployment options that match y
 
 1. [Evaluation and performance](evaluate-on-your-data.md)
 2. [Telemetry](telemetry.md)
-3. [Throughput is dataset-dependent](throughput-is-dataset-dependent.md)
+3. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
 4. [Evaluate on your data](evaluate-on-your-data.md)
 
 ## When to use NVIDIA-hosted NIMs
