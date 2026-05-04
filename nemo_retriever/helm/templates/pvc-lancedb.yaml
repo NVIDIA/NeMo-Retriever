@@ -1,0 +1,25 @@
+{{- if and .Values.lancedb.enabled (not .Values.lancedb.existingClaim) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemo-retriever.lancedbPvcName" . }}
+  labels:
+    {{- include "nemo-retriever.labels" . | nindent 4 }}
+  {{- with .Values.lancedb.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.lancedb.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.lancedb.size | quote }}
+  {{- if .Values.lancedb.storageClass }}
+  {{- if eq "-" .Values.lancedb.storageClass }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.lancedb.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

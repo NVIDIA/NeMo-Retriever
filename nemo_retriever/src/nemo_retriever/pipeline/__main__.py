@@ -1133,28 +1133,40 @@ def run(
         ingest_start = time.perf_counter()
         raw_result = ingestor.ingest()
         ingestion_only_total_time = time.perf_counter() - ingest_start
-        print(f"raw_result: {raw_result}")
-        print(f"raw_result type: {type(raw_result)}")
         ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
-        uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
-        if uploadable_vdb_records == 0:
-            logger.warning(
-                "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
-                evaluation_mode,
+
+        if run_mode == "service":
+            # The service writes embeddings to LanceDB server-side during
+            # processing (via LanceDBWriteOperator); embedding vectors are
+            # stripped from SSE results to keep payloads small.  Client-side
+            # VDB upload is therefore skipped.
+            logger.info(
+                "Service-mode ingestion complete (%d results from %d input(s)). " "VDB writes are handled server-side.",
+                len(ingest_local_results),
+                num_rows,
             )
+            uploadable_vdb_records = len(ingest_local_results)
             vdb_upload_time = 0.0
         else:
-            logger.info(
-                "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
-                len(ingest_local_results),
-                uploadable_vdb_records,
-                resolved_vdb_op,
-            )
-            vdb_upload_time = _upload_vdb_records(
-                ingest_local_results,
-                vdb_op=resolved_vdb_op,
-                vdb_kwargs=resolved_vdb_kwargs,
-            )
+            uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+            if uploadable_vdb_records == 0:
+                logger.warning(
+                    "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
+                    evaluation_mode,
+                )
+                vdb_upload_time = 0.0
+            else:
+                logger.info(
+                    "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
+                    len(ingest_local_results),
+                    uploadable_vdb_records,
+                    resolved_vdb_op,
+                )
+                vdb_upload_time = _upload_vdb_records(
+                    ingest_local_results,
+                    vdb_op=resolved_vdb_op,
+                    vdb_kwargs=resolved_vdb_kwargs,
+                )
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()

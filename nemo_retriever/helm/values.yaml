@@ -240,6 +240,23 @@ serviceConfig:
     replayBufferSize: 1024
     publishTimeoutS: 30.0
 
+  # ---------------------------------------------------------------------------
+  # Embedded LanceDB vector store.
+  #
+  # When the embedding NIM is configured, each worker writes extraction +
+  # embedding results to this LanceDB instance.  The URI should point at
+  # the shared LanceDB PVC mount (lancedb.mountPath, default /lancedb).
+  # The /v1/query endpoint reads from the same URI + table.
+  # ---------------------------------------------------------------------------
+  vectorStore:
+    lancedbUri: "/lancedb"
+    lancedbTable: "nv-ingest"
+    topK: 10
+    vectorColumnName: "vector"
+    nprobes: 16
+    refineFactor: 10
+    embeddingModel: "nvidia/llama-nemotron-embed-1b-v2"
+
 # =============================================================================
 # NIM API key (for external NIM endpoints, e.g. build.nvidia.com)
 # =============================================================================
@@ -250,6 +267,22 @@ nimApiKey:
   value: ""
   existingSecret: ""
   existingSecretKey: "NVIDIA_API_KEY"
+
+# =============================================================================
+# LanceDB shared volume
+# =============================================================================
+# A PVC mounted at `mountPath` on every service replica for the embedded
+# LanceDB vector store.  Use ReadWriteMany when running more than one
+# replica so all pods can read/write concurrently.
+lancedb:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  mountPath: /lancedb
+  annotations: {}
 
 # =============================================================================
 # Persistence (SQLite database + log file)

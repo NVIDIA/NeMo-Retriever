@@ -108,6 +108,10 @@ spec:
             - name: data
               mountPath: {{ .Values.persistence.mountPath }}
             {{- end }}
+            {{- if .Values.lancedb.enabled }}
+            - name: lancedb
+              mountPath: {{ .Values.lancedb.mountPath }}
+            {{- end }}
             # /tmp is writable so uploaded files can be staged briefly even
             # when the rest of the rootfs is read-only.
             - name: tmp
@@ -137,6 +141,11 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "nemo-retriever.pvcName" . }}
+        {{- end }}
+        {{- if .Values.lancedb.enabled }}
+        - name: lancedb
+          persistentVolumeClaim:
+            claimName: {{ include "nemo-retriever.lancedbPvcName" . }}
         {{- end }}
         {{- with $svc.extraVolumes }}
         {{- toYaml . | nindent 8 }}

@@ -62,3 +62,12 @@ data:
       queue_maxsize: {{ .Values.serviceConfig.eventBus.queueMaxsize }}
       replay_buffer_size: {{ .Values.serviceConfig.eventBus.replayBufferSize }}
       publish_timeout_s: {{ .Values.serviceConfig.eventBus.publishTimeoutS }}
+
+    vector_store:
+      lancedb_uri: {{ .Values.serviceConfig.vectorStore.lancedbUri | quote }}
+      lancedb_table: {{ .Values.serviceConfig.vectorStore.lancedbTable | quote }}
+      top_k: {{ .Values.serviceConfig.vectorStore.topK }}
+      vector_column_name: {{ .Values.serviceConfig.vectorStore.vectorColumnName | quote }}
+      nprobes: {{ .Values.serviceConfig.vectorStore.nprobes }}
+      refine_factor: {{ .Values.serviceConfig.vectorStore.refineFactor }}
+      embedding_model: {{ .Values.serviceConfig.vectorStore.embeddingModel | quote }}
