@@ -24,6 +24,19 @@ def test_build_queries_by_id_filters_language() -> None:
     assert queries == ["what is a qubit?"]
 
 
+def test_build_queries_by_id_filters_language_aliases() -> None:
+    rows = [
+        {"query_id": 1, "query": "bonjour", "language": "Français"},
+        {"query_id": 2, "query": "salut", "language": "french"},
+        {"query_id": 3, "query": "hello", "language": "en"},
+    ]
+
+    query_ids, queries = build_queries_by_id(rows, query_language="fr")
+
+    assert query_ids == ["1", "2"]
+    assert queries == ["bonjour", "salut"]
+
+
 def test_build_qrels_by_query_id_formats_nested_dict() -> None:
     rows = [
         {"query_id": 1, "corpus_id": "doc_a", "score": 1},

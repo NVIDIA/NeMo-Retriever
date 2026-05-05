@@ -11,6 +11,7 @@ import logging
 import math
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+import unicodedata
 
 from nemo_retriever.retriever import Retriever
 
@@ -43,6 +44,17 @@ _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "table": "table",
     "table_caption": "table",
     "text": "text",
+}
+_LANGUAGE_ALIASES: dict[str, str] = {
+    "en": "en",
+    "eng": "en",
+    "english": "en",
+    "fr": "fr",
+    "fra": "fr",
+    "fre": "fr",
+    "francais": "fr",
+    "français": "fr",
+    "french": "fr",
 }
 
 
@@ -164,6 +176,26 @@ def _normalize_element_type(value: Any, *, subtype: Any = None) -> str | None:
         if alias:
             return alias
     return None
+
+
+def _normalize_language(value: Any) -> str:
+    normalized = str(value or "").strip().lower().replace("_", "-")
+    if not normalized:
+        return ""
+
+    # Match common language aliases without requiring datasets to use one
+    # canonical spelling. Strip accents so "français" and "francais" agree.
+    ascii_normalized = "".join(
+        char for char in unicodedata.normalize("NFKD", normalized) if not unicodedata.combining(char)
+    )
+    primary_subtag = ascii_normalized.split("-", 1)[0]
+    return _LANGUAGE_ALIASES.get(ascii_normalized) or _LANGUAGE_ALIASES.get(primary_subtag) or ascii_normalized
+
+
+def _languages_match(requested_language: str, row_language: str) -> bool:
+    requested = _normalize_language(requested_language)
+    row = _normalize_language(row_language)
+    return bool(requested and row and requested == row)
 
 
 def _build_pdf_page_modality(pdf_basename: str, page_number: Any, element_type: str) -> str | None:
@@ -341,7 +373,9 @@ def _load_financebench_json_dataset(*, dataset_name: str, doc_id_field: str) -> 
 
 def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = None) -> tuple[list[str], list[str]]:
     """Normalize iterable rows into ordered ``(query_ids, queries)``."""
-    normalized_language = str(query_language).strip().lower() if query_language is not None else None
+    normalized_language = str(query_language).strip() if query_language is not None else None
+    if not normalized_language:
+        normalized_language = None
     query_ids: list[str] = []
     queries: list[str] = []
 
@@ -352,7 +386,7 @@ def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = Non
 
         if normalized_language is not None:
             row_language = str(_row_get(row, "language", "") or "").strip().lower()
-            if row_language != normalized_language:
+            if not _languages_match(normalized_language, row_language):
                 continue
 
         query_id = _row_get(row, "query_id", idx)
