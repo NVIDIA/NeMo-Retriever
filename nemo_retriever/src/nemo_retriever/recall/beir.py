@@ -378,20 +378,35 @@ def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = Non
         normalized_language = None
     query_ids: list[str] = []
     queries: list[str] = []
+    total_rows = 0
+    skipped_empty = 0
+    skipped_language = 0
 
     for idx, row in enumerate(rows):
+        total_rows += 1
         query_text = _row_get(row, "query")
         if not isinstance(query_text, str) or not query_text.strip():
+            skipped_empty += 1
             continue
 
         if normalized_language is not None:
             row_language = str(_row_get(row, "language", "") or "").strip().lower()
             if not _languages_match(normalized_language, row_language):
+                skipped_language += 1
                 continue
 
         query_id = _row_get(row, "query_id", idx)
         query_ids.append(str(query_id))
         queries.append(query_text)
+
+    if not query_ids:
+        logger.warning(
+            "No BEIR queries loaded from rows: total=%s skipped_empty=%s skipped_language=%s query_language=%r",
+            total_rows,
+            skipped_empty,
+            skipped_language,
+            normalized_language,
+        )
 
     return query_ids, queries
 

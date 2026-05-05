@@ -116,7 +116,7 @@ def test_graph_pipeline_resolves_nested_pdf_directories(tmp_path) -> None:
     assert patterns == [str(dataset_dir / "**" / "*.pdf")]
 
 
-def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, monkeypatch) -> None:
+def test_graph_pipeline_cli_accepts_multimodal_embed_and_page_image_flags(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
@@ -169,7 +169,7 @@ def test_batch_pipeline_accepts_multimodal_embed_and_page_image_flags(tmp_path, 
     assert fake_ingestor.embed_params.embed_granularity == "page"
 
 
-def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypatch) -> None:
+def test_graph_pipeline_cli_routes_audio_input_to_audio_ingestor(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.mp3").write_text("placeholder", encoding="utf-8")
@@ -222,7 +222,7 @@ def test_batch_pipeline_routes_audio_input_to_audio_ingestor(tmp_path, monkeypat
     assert fake_ingestor.audio_asr_params["segment_audio"] is True
 
 
-def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> None:
+def test_graph_pipeline_cli_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
@@ -285,7 +285,7 @@ def test_batch_pipeline_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> 
     assert tuple(captured["cfg"].ks) == (5, 10)
 
 
-def test_batch_pipeline_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:
+def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")

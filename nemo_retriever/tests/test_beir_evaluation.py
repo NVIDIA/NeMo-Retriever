@@ -37,6 +37,23 @@ def test_build_queries_by_id_filters_language_aliases() -> None:
     assert queries == ["bonjour", "salut"]
 
 
+def test_build_queries_by_id_warns_when_all_queries_filtered(caplog) -> None:
+    rows = [
+        {"query_id": 1, "query": "", "language": "en"},
+        {"query_id": 2, "query": "bonjour", "language": "fr"},
+    ]
+
+    with caplog.at_level("WARNING", logger="nemo_retriever.recall.beir"):
+        query_ids, queries = build_queries_by_id(rows, query_language="en")
+
+    assert query_ids == []
+    assert queries == []
+    assert "No BEIR queries loaded from rows" in caplog.text
+    assert "total=2" in caplog.text
+    assert "skipped_empty=1" in caplog.text
+    assert "skipped_language=1" in caplog.text
+
+
 def test_build_qrels_by_query_id_formats_nested_dict() -> None:
     rows = [
         {"query_id": 1, "corpus_id": "doc_a", "score": 1},

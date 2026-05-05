@@ -19,6 +19,16 @@ from nemo_retriever.graph.designer import Param, designer_component
 
 logger = logging.getLogger(__name__)
 
+_BEIR_LOADER_CHOICES = [
+    "vidore_hf",
+    "jp20_csv",
+    "bo767_csv",
+    "bo10k_csv",
+    "earnings_csv",
+    "financebench_json",
+]
+_BEIR_DOC_ID_FIELD_CHOICES = ["pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"]
+
 
 @designer_component(
     name="Recall Evaluator",
@@ -50,7 +60,7 @@ class RecallEvaluatorActor:
         recall_adapter: Annotated[str, Param(label="Recall Adapter", choices=["none"])] = "none",
         ks: Annotated[str, Param(label="K Values", placeholder="1,3,5,10")] = "1,3,5,10",
         hybrid: Annotated[bool, Param(label="Hybrid Search")] = False,
-        beir_loader: Annotated[str, Param(label="BEIR Loader", choices=["vidore_hf"])] = "vidore_hf",
+        beir_loader: Annotated[str, Param(label="BEIR Loader", choices=_BEIR_LOADER_CHOICES)] = "vidore_hf",
         beir_dataset_name: Annotated[
             str, Param(label="BEIR Dataset Name", placeholder="e.g. vidore_v3_computer_science")
         ] = "",
@@ -58,7 +68,7 @@ class RecallEvaluatorActor:
         beir_query_language: Annotated[str, Param(label="Query Language", placeholder="Optional (e.g. en, fr)")] = "",
         beir_doc_id_field: Annotated[
             str,
-            Param(label="Doc ID Field", choices=["pdf_basename", "pdf_page", "source_id", "path"]),
+            Param(label="Doc ID Field", choices=_BEIR_DOC_ID_FIELD_CHOICES),
         ] = "pdf_basename",
     ) -> None:
         self.evaluation_mode = evaluation_mode
