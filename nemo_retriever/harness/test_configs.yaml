@@ -130,7 +130,7 @@ presets:
     gpu_ocr: 0.1
     gpu_embed: 0.25
     hybrid: false
-    embed_modality: image_text
+    embed_modality: text_image
     embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
 
   PE_GE_OCR_VL_IMAGE_TEXT_HYBRID:
@@ -151,7 +151,7 @@ presets:
     gpu_ocr: 0.1
     gpu_embed: 0.25
     hybrid: true
-    embed_modality: image_text
+    embed_modality: text_image
     embed_model_name: nvidia/llama-nemotron-embed-vl-1b-v2
 
   PE_GE_OCR_VL_IMAGE_ONLY_DENSE:

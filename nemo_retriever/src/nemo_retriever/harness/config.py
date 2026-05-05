@@ -88,6 +88,7 @@ class HarnessConfig:
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
     embed_granularity: str = "element"
+    ocr_version: str | None = None
     extract_page_as_image: bool = True
     extract_infographics: bool = False
     write_detection_file: bool = False
@@ -179,6 +180,9 @@ class HarnessConfig:
 
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
+
+        if self.ocr_version is not None and self.ocr_version not in {"v1", "v2"}:
+            errors.append("ocr_version must be one of ['v1', 'v2'] when provided")
 
         _ZERO_ALLOWED_WORKERS = {f for f in TUNING_FIELDS if f.endswith("_workers")} if self.use_heuristics else set()
         for name in TUNING_FIELDS:
@@ -316,6 +320,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
+        "HARNESS_OCR_VERSION": ("ocr_version", str),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),

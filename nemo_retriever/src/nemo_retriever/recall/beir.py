@@ -479,8 +479,17 @@ def load_beir_dataset(
     except ImportError as exc:  # pragma: no cover - exercised in runtime environments
         raise ImportError("BEIR-style ViDoRe evaluation requires the 'datasets' package.") from exc
 
-    queries_rows = load_dataset(f"vidore/{dataset_name}", data_dir="queries", split=split)
-    qrels_rows = load_dataset(f"vidore/{dataset_name}", data_dir="qrels", split=split)
+    ds_repo = f"vidore/{dataset_name}"
+    try:
+        queries_rows = load_dataset(ds_repo, "queries", split=split)
+    except Exception as exc:
+        logger.debug("load_dataset config='queries' failed (%s); retrying with data_dir", exc)
+        queries_rows = load_dataset(ds_repo, data_dir="queries", split=split)
+    try:
+        qrels_rows = load_dataset(ds_repo, "qrels", split=split)
+    except Exception as exc:
+        logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
+        qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
 
     query_ids, queries = build_queries_by_id(queries_rows, query_language=query_language)
     if not query_ids:

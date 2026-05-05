@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from nemo_retriever.recall.beir import (
@@ -306,6 +307,54 @@ def test_compute_beir_metrics_returns_expected_cutoffs() -> None:
     assert metrics["recall@1"] == 0.5
     assert metrics["recall@2"] == 1.0
     assert metrics["ndcg@1"] == 0.5
+
+
+def test_load_beir_dataset_tries_vidore_config_name_before_data_dir(monkeypatch) -> None:
+    calls = []
+
+    def _fake_load_dataset(repo, *args, **kwargs):
+        calls.append((repo, args, kwargs))
+        if args == ("queries",):
+            return [{"query_id": "q1", "query": "What is shown?", "language": "en"}]
+        if args == ("qrels",):
+            return [{"query_id": "q1", "corpus_id": "doc_a", "score": 1}]
+        raise AssertionError("data_dir fallback should not be used")
+
+    monkeypatch.setitem(sys.modules, "datasets", type("Datasets", (), {"load_dataset": _fake_load_dataset}))
+
+    dataset = load_beir_dataset("vidore_hf", dataset_name="vidore_v3_computer_science")
+
+    assert dataset.query_ids == ["q1"]
+    assert dataset.qrels == {"q1": {"doc_a": 1}}
+    assert calls[0] == ("vidore/vidore_v3_computer_science", ("queries",), {"split": "test"})
+    assert calls[1] == ("vidore/vidore_v3_computer_science", ("qrels",), {"split": "test"})
+
+
+def test_load_beir_dataset_falls_back_to_vidore_data_dir(monkeypatch) -> None:
+    calls = []
+
+    def _fake_load_dataset(repo, *args, **kwargs):
+        calls.append((repo, args, kwargs))
+        if args:
+            raise RuntimeError("config-name unavailable")
+        if kwargs.get("data_dir") == "queries":
+            return [{"query_id": "q1", "query": "What is shown?", "language": "en"}]
+        if kwargs.get("data_dir") == "qrels":
+            return [{"query_id": "q1", "corpus_id": "doc_a", "score": 1}]
+        raise AssertionError("unexpected load_dataset call")
+
+    monkeypatch.setitem(sys.modules, "datasets", type("Datasets", (), {"load_dataset": _fake_load_dataset}))
+
+    dataset = load_beir_dataset("vidore_hf", dataset_name="vidore_v3_computer_science")
+
+    assert dataset.query_ids == ["q1"]
+    assert dataset.qrels == {"q1": {"doc_a": 1}}
+    assert calls == [
+        ("vidore/vidore_v3_computer_science", ("queries",), {"split": "test"}),
+        ("vidore/vidore_v3_computer_science", (), {"data_dir": "queries", "split": "test"}),
+        ("vidore/vidore_v3_computer_science", ("qrels",), {"split": "test"}),
+        ("vidore/vidore_v3_computer_science", (), {"data_dir": "qrels", "split": "test"}),
+    ]
 
 
 def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:

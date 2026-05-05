@@ -400,6 +400,8 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             sort_keys=True,
         ),
     ]
+    if cfg.ocr_version:
+        cmd += ["--ocr-version", cfg.ocr_version]
 
     if cfg.evaluation_mode == "beir":
         beir_dataset_name = cfg.beir_dataset_name or cfg.dataset_label
@@ -538,10 +540,9 @@ def _print_failure_report(
     lines.append(f"  {CYAN}{BOLD}Host Information{RESET}")
     lines.append(f"  {DIM}{'-' * 40}{RESET}")
     lines.append(f"  Hostname       :  {meta.get('host', em_dash)}")
-    lines.append(f"  GPU            :  {meta.get('gpu_type', em_dash)} (x{meta.get('gpu_count', '?')})")
+    lines.append(f"  GPU Count      :  {meta.get('gpu_count', em_dash)}")
     lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', em_dash)}")
     lines.append(f"  Python         :  {meta.get('python_version', em_dash)}")
-    lines.append(f"  CPU / Memory   :  {meta.get('cpu_count', '?')} cores / {meta.get('memory_gb', '?')} GB")
     lines.append("")
 
     lines.append(f"  {CYAN}{BOLD}Artifacts{RESET}")

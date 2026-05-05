@@ -54,6 +54,32 @@ def test_evaluate_run_outcome_uses_subprocess_error_code() -> None:
     assert success is False
 
 
+def test_print_failure_report_only_uses_collected_host_metadata(tmp_path: Path, capsys) -> None:
+    artifact_dir = tmp_path / "run"
+    artifact_dir.mkdir()
+    result = {
+        "failure_reason": "missing_beir_metrics",
+        "return_code": 97,
+        "test_config": {"dataset_label": "jp20", "dataset_dir": "/data/jp20", "preset": "PE_GE_OCR_TE_DENSE"},
+        "run_metadata": {
+            "host": "worker-1",
+            "gpu_count": 8,
+            "cuda_driver": "550.54",
+            "python_version": "3.12.8",
+        },
+    }
+
+    harness_run._print_failure_report(result, "retriever harness run --dataset jp20", artifact_dir, [])
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "GPU Count      :  8" in output
+    assert "CUDA Driver    :  550.54" in output
+    assert "Python         :  3.12.8" in output
+    assert "GPU            :" not in output
+    assert "CPU / Memory" not in output
+
+
 def test_create_run_artifact_dir_defaults_to_dataset_label(tmp_path: Path) -> None:
     out = create_run_artifact_dir("jp20", run_name=None, base_dir=str(tmp_path))
     assert out.name.startswith("jp20_")
@@ -156,6 +182,7 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert "text" in cmd
     assert "--embed-granularity" in cmd
     assert "element" in cmd
+    assert "--ocr-version" not in cmd
     assert "--extract-page-as-image" in cmd
     assert "--no-extract-page-as-image" not in cmd
     assert detection_file.parent == runtime_dir
@@ -184,6 +211,30 @@ def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
     cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--run-mode" in cmd
     assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
+
+
+def test_build_command_passes_explicit_ocr_version(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="PE_GE_OCR_TE_DENSE",
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
+        ocr_version="v1",
+    )
+
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--ocr-version" in cmd
+    assert cmd[cmd.index("--ocr-version") + 1] == "v1"
 
 
 def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:

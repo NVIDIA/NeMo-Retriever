@@ -182,6 +182,43 @@ def test_load_nightly_config_parses_slack_defaults(tmp_path: Path) -> None:
     assert "recall_5" in cfg["slack"]["metric_keys"]
 
 
+def test_beir_dense_sweep_config_lists_all_beir_datasets() -> None:
+    cfg = load_nightly_config(str(harness_config.NEMO_RETRIEVER_ROOT / "harness" / "beir_sweep_dense.yaml"))
+    datasets = [run["dataset"] for run in cfg["runs"]]
+    presets_by_dataset = {run["dataset"]: run["preset"] for run in cfg["runs"]}
+
+    assert datasets == [
+        "jp20",
+        "bo767",
+        "bo10k",
+        "earnings",
+        "financebench",
+        "vidore_v3_computer_science",
+        "vidore_v3_energy",
+        "vidore_v3_finance_en",
+        "vidore_v3_finance_fr",
+        "vidore_v3_hr",
+        "vidore_v3_industrial",
+        "vidore_v3_pharmaceuticals",
+        "vidore_v3_physics",
+    ]
+    for dataset in ["jp20", "bo767", "bo10k", "earnings", "financebench"]:
+        assert presets_by_dataset[dataset] == "PE_GE_OCR_TE_DENSE"
+    for dataset in [
+        "vidore_v3_computer_science",
+        "vidore_v3_energy",
+        "vidore_v3_finance_en",
+        "vidore_v3_finance_fr",
+        "vidore_v3_hr",
+        "vidore_v3_industrial",
+        "vidore_v3_pharmaceuticals",
+        "vidore_v3_physics",
+    ]:
+        assert presets_by_dataset[dataset] == "PE_GE_OCR_VL_IMAGE_TEXT_DENSE"
+    assert cfg["slack"]["title"] == "BEIR Dense Dataset Sweep"
+    assert "ndcg_10" in cfg["slack"]["metric_keys"]
+
+
 def test_load_nightly_config_rejects_invalid_metric_keys(tmp_path: Path) -> None:
     runs_path = tmp_path / "nightly.yaml"
     runs_path.write_text(
@@ -552,6 +589,70 @@ def test_load_harness_config_rejects_invalid_embed_modality(tmp_path: Path) -> N
     )
 
     with pytest.raises(ValueError, match="embed_modality must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_supports_optional_ocr_version_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    recall_required: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.ocr_version is None
+
+    cfg = load_harness_config(config_file=str(cfg_path), cli_overrides=["ocr_version=v1"])
+    assert cfg.ocr_version == "v1"
+
+    monkeypatch.setenv("HARNESS_OCR_VERSION", "v2")
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.ocr_version == "v2"
+
+
+def test_load_harness_config_rejects_invalid_ocr_version(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    recall_required: false",
+                "    ocr_version: v3",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ocr_version must be one of"):
         load_harness_config(config_file=str(cfg_path))
 
 
