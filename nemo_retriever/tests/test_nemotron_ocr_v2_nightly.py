@@ -27,9 +27,9 @@ def test_local_extra_depends_on_versioned_ocr_v2_nightly() -> None:
 
 
 def test_local_ocr_v2_wrapper_imports_versioned_module() -> None:
-    source = (
-        PROJECT_ROOT / "src" / "nemo_retriever" / "model" / "local" / "nemotron_ocr_v2.py"
-    ).read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "src" / "nemo_retriever" / "model" / "local" / "nemotron_ocr_v2.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "from nemotron_ocr_v2.inference import pipeline_v2" in source
     assert "from nemotron_ocr.inference import pipeline_v2" not in source
