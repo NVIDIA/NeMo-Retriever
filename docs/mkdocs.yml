@@ -104,7 +104,6 @@ nav:
       - Vector databases: extraction/vdbs.md
       - "Chunking and splitting": extraction/chunking.md
   - "7. Retrieval & ranking":
-      - "Semantic and hybrid retrieval": extraction/semantic-hybrid-retrieval.md
       - "Custom metadata and filtering": extraction/custom-metadata.md
       - "Agentic retrieval (concept)": extraction/agentic-retrieval-concept.md
   - "8. Deployment & operations":
@@ -116,7 +115,6 @@ nav:
       - "NimClient and custom NIM endpoints": extraction/nimclient.md
   - "10. Integrations & ecosystem":
       - "Framework integrations": extraction/integrations-langchain-llamaindex-haystack.md
-      - "Vector database partners": extraction/vector-db-partners.md
       - "Starter kits": extraction/notebooks.md
   - "11. Evaluation & benchmarks":
       - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
@@ -177,7 +175,9 @@ plugins:
         extraction/audio.md: extraction/audio-video.md
         extraction/workflow-agentic-retrieval.md: extraction/agentic-retrieval-concept.md
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
-        extraction/workflow-query-rerank.md: extraction/semantic-hybrid-retrieval.md
+        extraction/workflow-query-rerank.md: extraction/vdbs.md
+        extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md
+        extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
   - site-urls
 
 markdown_extensions:

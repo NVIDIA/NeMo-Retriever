@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared LanceDB row construction, schema, and table helpers."""
+"""LanceDB row construction, schema, and table helpers (canonical copy under ``vdb``)."""
 
 from __future__ import annotations
 

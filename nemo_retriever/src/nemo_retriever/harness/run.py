@@ -9,6 +9,7 @@ from importlib import metadata
 import json
 import os
 import pty
+import re
 import select
 import shlex
 import socket
@@ -34,7 +35,11 @@ from nemo_retriever.harness.config import (
     load_harness_config,
     load_nightly_config,
 )
+from nemo_retriever.harness.parsers import StreamMetrics
 from nemo_retriever.utils.input_files import resolve_input_files
+
+
+ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 def _collect_gpu_metadata() -> tuple[int | None, str | None]:
@@ -84,6 +89,34 @@ def _collect_run_metadata() -> dict[str, Any]:
         "ray_version": ray_version,
         "python_version": python_version,
     }
+
+
+def _get_routable_ip() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
+def _resolve_localhost(host: str) -> str:
+    if host.lower() in {"127.0.0.1", "localhost", "0.0.0.0", "::1"}:
+        return _get_routable_ip()
+    return host
+
+
+def _derive_ray_dashboard_url(ray_address: str) -> str | None:
+    addr = str(ray_address or "").strip()
+    if not addr:
+        return None
+    if addr.lower() == "auto":
+        return f"http://{_get_routable_ip()}:8265"
+    addr = re.sub(r"^ray://", "", addr, flags=re.IGNORECASE)
+    host = addr.split(":", 1)[0]
+    if not host:
+        return None
+    return f"http://{_resolve_localhost(host)}:8265"
 
 
 def _normalize_tags(tags: list[str] | None) -> list[str]:
@@ -210,6 +243,7 @@ def _resolve_summary_metrics(
     cfg: HarnessConfig,
     metrics_payload: dict[str, Any],
     runtime_summary: dict[str, Any] | None,
+    subprocess_elapsed_secs: float | None = None,
 ) -> dict[str, Any]:
     summary_metrics: dict[str, Any] = {
         "pages": metrics_payload.get("pages"),
@@ -246,6 +280,9 @@ def _resolve_summary_metrics(
     if summary_metrics["pages_per_sec_ingest"] is None:
         pages = summary_metrics.get("pages")
         ingest_secs = summary_metrics.get("ingest_secs")
+        if ingest_secs is None and subprocess_elapsed_secs is not None:
+            ingest_secs = subprocess_elapsed_secs
+            summary_metrics["ingest_secs"] = subprocess_elapsed_secs
         if pages is not None and ingest_secs not in {None, 0, 0.0}:
             try:
                 summary_metrics["pages_per_sec_ingest"] = round(float(pages) / float(ingest_secs), 2)
@@ -320,6 +357,8 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             str(cfg.ocr_workers),
             "--ocr-batch-size",
             str(cfg.ocr_batch_size),
+        "--ocr-version",
+        cfg.ocr_version,
             "--embed-actors",
             str(cfg.embed_workers),
             "--embed-batch-size",
@@ -351,8 +390,17 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         run_id,
         "--detection-summary-file",
         str(detection_summary_file),
-        "--lancedb-uri",
-        _resolve_lancedb_uri(cfg, artifact_dir),
+        "--vdb-op",
+        "lancedb",
+        "--vdb-kwargs-json",
+        json.dumps(
+            {
+                "uri": _resolve_lancedb_uri(cfg, artifact_dir),
+                "table_name": "nv-ingest",
+                "hybrid": bool(cfg.hybrid),
+            },
+            sort_keys=True,
+        ),
     ]
 
     if cfg.evaluation_mode == "beir":
@@ -447,6 +495,38 @@ def _read_json_if_exists(path: Path) -> dict[str, Any] | None:
     return data
 
 
+def _consume_parseable_output(metrics: StreamMetrics, parse_buffer: str) -> str:
+    while "\n" in parse_buffer:
+        line, parse_buffer = parse_buffer.split("\n", 1)
+        cleaned = ANSI_ESCAPE_RE.sub("", line)
+        metrics.consume(cleaned + "\n")
+    return parse_buffer
+
+
+_FAIL_SEPARATOR = "\u2500" * 72
+
+
+def _print_failure_report(
+    result: dict[str, Any],
+    command_text: str,
+    artifact_dir: Path,
+    tail_lines: list[str],
+) -> None:
+    reason = result.get("failure_reason") or "unknown"
+    rc = result.get("return_code", "?")
+    typer.echo(f"\n{_FAIL_SEPARATOR}")
+    typer.echo(f"RUN FAILED: return_code={rc} reason={reason}")
+    if result.get("error_detail"):
+        typer.echo(str(result["error_detail"]))
+    if tail_lines:
+        typer.echo("\nRecent output:")
+        for line in tail_lines[-20:]:
+            typer.echo(line)
+    typer.echo(f"Command: {command_text}")
+    typer.echo(f"Artifacts: {artifact_dir}")
+    typer.echo(_FAIL_SEPARATOR)
+
+
 def _run_subprocess_with_tty(cmd: list[str]) -> int:
     """
     Run command in a pseudo-terminal so Ray renders rich progress while still
@@ -492,7 +572,13 @@ def _run_subprocess_with_tty(cmd: list[str]) -> int:
         os.close(master_fd)
 
 
-def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[str] | None = None) -> dict[str, Any]:
+def _run_single(
+    cfg: HarnessConfig,
+    artifact_dir: Path,
+    run_id: str,
+    tags: list[str] | None = None,
+    skip_local_history: bool = False,
+) -> dict[str, Any]:
     cmd, runtime_dir, detection_summary_file, effective_query_csv = _build_command(cfg, artifact_dir, run_id)
     command_text = " ".join(shlex.quote(token) for token in cmd)
     (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
@@ -582,6 +668,327 @@ def _run_single(cfg: HarnessConfig, artifact_dir: Path, run_id: str, tags: list[
         result_payload["tags"] = list(tags)
 
     write_json(artifact_dir / "results.json", result_payload)
+
+    if not skip_local_history:
+        try:
+            from nemo_retriever.harness.history import record_run as _record_history
+
+            _record_history(result_payload, artifact_dir)
+        except Exception:
+            pass
+
+    if failure_reason:
+        _print_failure_report(result_payload, command_text, artifact_dir, [])
+
+    return result_payload
+
+
+_GRAPH_RUNNER_SCRIPT = """\
+import json, sys, os, traceback, time
+
+graph_code_file = sys.argv[1]
+result_file = sys.argv[2]
+ray_address = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "__none__" else None
+
+def _root_cause(exc):
+    seen = set()
+    while exc.__cause__ is not None and id(exc.__cause__) not in seen:
+        seen.add(id(exc))
+        exc = exc.__cause__
+    return exc
+
+try:
+    import subprocess as _sp
+    def _detect_gpu_count():
+        try:
+            out = _sp.check_output(
+                ["nvidia-smi", "--query-gpu=index", "--format=csv,noheader"],
+                text=True, timeout=10,
+            )
+            return len([l for l in out.strip().splitlines() if l.strip()])
+        except Exception:
+            return 0
+
+    import ray
+    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+
+    effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
+    is_local = effective_ray in ("auto", "local", None, "")
+
+    ray.shutdown()
+
+    venv = os.path.dirname(os.path.dirname(sys.executable))
+    venv_bin = os.path.join(venv, "bin")
+    pypath = os.pathsep.join(p for p in sys.path if p)
+    ray_env_vars: dict[str, str] = {
+        "VIRTUAL_ENV": venv,
+        "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+        "PYTHONPATH": pypath,
+    }
+    ray_env_vars.update(collect_hf_runtime_env())
+    ray_env_vars.update(collect_remote_auth_runtime_env())
+    runtime_env = {"env_vars": ray_env_vars}
+
+    if is_local:
+        os.environ.pop("RAY_ADDRESS", None)
+        detected_gpus = _detect_gpu_count()
+        print(f"[ray] Starting fresh local cluster ({detected_gpus} GPU(s) detected)")
+
+        try:
+            ray.init(
+                num_gpus=detected_gpus if detected_gpus > 0 else None,
+                runtime_env=runtime_env,
+            )
+        except ValueError as _ve:
+            if "existing cluster" in str(_ve):
+                print("[ray] Detected running Ray cluster — stopping it to start a fresh one")
+                try:
+                    import subprocess as __sp
+                    __sp.run(["ray", "stop", "--force"], capture_output=True, timeout=30)
+                except Exception:
+                    pass
+                ray.shutdown()
+                try:
+                    ray.init(
+                        num_gpus=detected_gpus if detected_gpus > 0 else None,
+                        runtime_env=runtime_env,
+                    )
+                except ValueError:
+                    print("[ray] Still cannot start fresh cluster — connecting to existing one instead")
+                    ray.init(runtime_env=runtime_env)
+            else:
+                raise
+    else:
+        print(f"[ray] Connecting to cluster: {effective_ray}")
+        ray.init(address=effective_ray, runtime_env=runtime_env)
+
+    print(f"[ray] Cluster resources: {ray.cluster_resources()}")
+
+    with open(graph_code_file) as f:
+        code = f.read()
+
+    ns = {"__name__": "__graph_runner__", "__file__": graph_code_file}
+
+    wall_start = time.perf_counter()
+    exec(compile(code, graph_code_file, "exec"), ns)
+
+    result_ds = ns.get("result")
+    graph = ns.get("graph")
+    _requested_plan = ns.get("requested_plan")
+    row_count = 0
+
+    ray_stats_str = None
+
+    if result_ds is not None:
+        elapsed = round(time.perf_counter() - wall_start, 2)
+        try:
+            import ray.data as _rd
+            if isinstance(result_ds, _rd.Dataset):
+                row_count = result_ds.count()
+                print(f"Pipeline complete: {row_count} rows in {elapsed}s")
+                try:
+                    ray_stats_str = result_ds.stats()
+                    print(f"\\n=== Ray Data Execution Stats ===\\n{ray_stats_str}")
+                except Exception:
+                    pass
+            else:
+                print(f"Pipeline complete in {elapsed}s (result type: {type(result_ds).__name__})")
+        except Exception:
+            elapsed = round(time.perf_counter() - wall_start, 2)
+            print(f"Pipeline complete in {elapsed}s")
+        result = {
+            "success": True, "return_code": 0, "rows": row_count,
+            "elapsed_secs": elapsed,
+        }
+    elif graph is not None:
+        outputs = graph.execute(None)
+        elapsed = round(time.perf_counter() - wall_start, 2)
+        print(f"Graph.execute complete: {len(outputs)} output(s) in {elapsed}s")
+        result = {
+            "success": True, "return_code": 0, "outputs": len(outputs),
+            "elapsed_secs": elapsed,
+        }
+    else:
+        raise RuntimeError("Generated code did not produce a 'result' (Ray Data) or 'graph' variable")
+
+    if _requested_plan is not None:
+        result["requested_plan"] = _requested_plan
+    if ray_stats_str is not None:
+        result["ray_stats"] = ray_stats_str
+
+except Exception as exc:
+    full_tb = traceback.format_exc()
+    print(full_tb, file=sys.stderr)
+    print(full_tb)
+    root = _root_cause(exc)
+    root_msg = f"{type(root).__name__}: {root}"
+    failure_lines = [root_msg]
+    if len(full_tb) <= 4000:
+        failure_lines.append(full_tb)
+    else:
+        failure_lines.append(full_tb[-4000:])
+    result = {
+        "success": False, "failure_reason": root_msg,
+        "error_detail": "\\n".join(failure_lines), "return_code": 1,
+    }
+
+with open(result_file, "w") as f:
+    json.dump(result, f)
+"""
+
+
+def _run_graph_pipeline(
+    cfg: HarnessConfig,
+    graph_code: str,
+    artifact_dir: Path,
+    run_id: str,
+    tags: list[str] | None = None,
+    skip_local_history: bool = False,
+) -> dict[str, Any]:
+    """Execute a Designer graph pipeline and collect metrics."""
+    import time as _time
+
+    runtime_dir = artifact_dir / "runtime_metrics"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    code_file = artifact_dir / "graph_pipeline.py"
+    runner_file = artifact_dir / "graph_runner.py"
+    result_file = runtime_dir / f"{run_id}.graph_result.json"
+    code_file.write_text(graph_code, encoding="utf-8")
+    runner_file.write_text(_GRAPH_RUNNER_SCRIPT, encoding="utf-8")
+
+    ray_addr = cfg.ray_address or "__none__"
+    cmd = [sys.executable, str(runner_file), str(code_file), str(result_file), ray_addr]
+
+    command_text = " ".join(shlex.quote(token) for token in cmd)
+    (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
+
+    typer.echo(f"\n=== Running graph pipeline: {run_id} ===")
+    typer.echo(command_text)
+
+    env = os.environ.copy()
+
+    metrics = StreamMetrics()
+    _wall_start = _time.perf_counter()
+
+    master_fd, slave_fd = pty.openpty()
+    parse_buffer = ""
+    try:
+        proc = subprocess.Popen(cmd, stdin=None, stdout=slave_fd, stderr=slave_fd, close_fds=True, env=env)
+    finally:
+        os.close(slave_fd)
+
+    try:
+        while True:
+            read_fds, _, _ = select.select([master_fd], [], [], 0.1)
+            if master_fd not in read_fds:
+                if proc.poll() is not None:
+                    break
+                continue
+            try:
+                chunk = os.read(master_fd, 4096)
+            except OSError as exc:
+                if exc.errno == errno.EIO:
+                    break
+                raise
+            if not chunk:
+                break
+            text = chunk.decode("utf-8", errors="replace")
+            sys.stdout.write(text)
+            sys.stdout.flush()
+            parse_buffer += text.replace("\r", "\n")
+            parse_buffer = _consume_parseable_output(metrics, parse_buffer)
+        if parse_buffer:
+            cleaned_tail = ANSI_ESCAPE_RE.sub("", parse_buffer)
+            metrics.consume(cleaned_tail)
+        process_rc = proc.wait()
+    finally:
+        os.close(master_fd)
+
+    subprocess_elapsed_secs = round(_time.perf_counter() - _wall_start, 2)
+    run_metadata = _collect_run_metadata()
+
+    if ray_addr and ray_addr not in ("__none__", "local"):
+        run_metadata["ray_cluster_mode"] = "existing"
+        if not run_metadata.get("ray_dashboard_url"):
+            dashboard = _derive_ray_dashboard_url(ray_addr)
+            if dashboard:
+                run_metadata["ray_dashboard_url"] = dashboard
+    else:
+        run_metadata["ray_cluster_mode"] = "local"
+
+    graph_result = _read_json_if_exists(result_file) or {}
+    rows = graph_result.get("rows", 0)
+    elapsed_secs = graph_result.get("elapsed_secs", subprocess_elapsed_secs)
+
+    success = graph_result.get("success", process_rc == 0)
+    effective_rc = graph_result.get("return_code", process_rc)
+    failure_reason = graph_result.get("failure_reason")
+
+    pm_files = metrics.files
+    pm_pages = rows or metrics.pages
+    pm_ingest_secs = elapsed_secs or metrics.ingest_secs
+    pm_pps = None
+    if pm_pages and pm_ingest_secs and pm_ingest_secs > 0:
+        pm_pps = round(pm_pages / pm_ingest_secs, 2)
+
+    metrics_payload = {
+        "files": pm_files,
+        "pages": pm_pages,
+        "ingest_secs": pm_ingest_secs,
+        "pages_per_sec_ingest": pm_pps,
+        "rows_processed": rows,
+        "rows_per_sec_ingest": round(rows / elapsed_secs, 2) if rows and elapsed_secs else None,
+    }
+    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, None, subprocess_elapsed_secs)
+
+    result_payload: dict[str, Any] = {
+        "timestamp": now_timestr(),
+        "latest_commit": last_commit(),
+        "success": success,
+        "return_code": effective_rc,
+        "failure_reason": failure_reason or None,
+        "error_detail": graph_result.get("error_detail"),
+        "test_config": {
+            "dataset_label": cfg.dataset_label,
+            "dataset_dir": cfg.dataset_dir,
+            "preset": cfg.preset,
+            "input_type": "graph",
+            "ray_address": cfg.ray_address,
+            "graph_pipeline": True,
+        },
+        "metrics": metrics_payload,
+        "summary_metrics": summary_metrics,
+        "run_metadata": run_metadata,
+        "runtime_summary": None,
+        "detection_summary": None,
+        "artifacts": {
+            "command_file": str((artifact_dir / "command.txt").resolve()),
+            "runtime_metrics_dir": str(runtime_dir.resolve()),
+            "graph_code_file": str(code_file.resolve()),
+        },
+    }
+    if graph_result.get("requested_plan"):
+        result_payload["requested_plan"] = graph_result["requested_plan"]
+    if graph_result.get("ray_stats"):
+        result_payload["ray_stats"] = graph_result["ray_stats"]
+    if tags:
+        result_payload["tags"] = list(tags)
+
+    write_json(artifact_dir / "results.json", result_payload)
+
+    if not skip_local_history:
+        try:
+            from nemo_retriever.harness.history import record_run as _record_history
+
+            _record_history(result_payload, artifact_dir)
+        except Exception:
+            pass
+
+    if failure_reason:
+        _print_failure_report(result_payload, command_text, artifact_dir, metrics.tail_lines)
+
     return result_payload
 
 
@@ -596,6 +1003,8 @@ def _run_entry(
     cli_overrides: list[str] | None = None,
     recall_required: bool | None = None,
     tags: list[str] | None = None,
+    skip_local_history: bool = False,
+    graph_code: str | None = None,
 ) -> dict[str, Any]:
     cfg = load_harness_config(
         config_file=config_file,
@@ -615,7 +1024,23 @@ def _run_entry(
 
     resolved_run_name = run_name or cfg.dataset_label
     normalized_tags = _normalize_tags(tags)
-    result = _run_single(cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags)
+    if graph_code is not None:
+        result = _run_graph_pipeline(
+            cfg,
+            graph_code,
+            artifact_dir,
+            run_id=resolved_run_name,
+            tags=normalized_tags,
+            skip_local_history=skip_local_history,
+        )
+    else:
+        run_kwargs: dict[str, Any] = {
+            "run_id": resolved_run_name,
+            "tags": normalized_tags,
+        }
+        if skip_local_history:
+            run_kwargs["skip_local_history"] = skip_local_history
+        result = _run_single(cfg, artifact_dir, **run_kwargs)
     result["run_name"] = resolved_run_name
     result["artifact_dir"] = str(artifact_dir.resolve())
     return result

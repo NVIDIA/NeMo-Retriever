@@ -242,6 +242,7 @@ jobs:
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "nemotron-ocr" \
+            --nightly-base-version "1.0.2" \
             --hatch-force-platform-wheel \
             --auditwheel-repair \
             --auditwheel-exclude libtorch_cpu.so \
@@ -255,6 +256,8 @@ jobs:
             --venv-pip-install "setuptools>=68" \
             --venv-pip-install "torch==2.10.0" \
             --venv-pip-install "torchvision==0.25.0" \
+            --pin-runtime-dependency "torch" \
+            --pin-runtime-dependency "torchvision" \
             --build-env "BUILD_CPP_EXTENSION=1" \
             --build-env "BUILD_CPP_FORCE=1" \
             ${arch_env_arg} \

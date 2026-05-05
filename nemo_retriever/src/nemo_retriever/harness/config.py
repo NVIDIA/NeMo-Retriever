@@ -97,6 +97,7 @@ class HarnessConfig:
     page_elements_workers: int = 3
     ocr_workers: int = 3
     ocr_batch_size: int = 16
+    ocr_version: str = "v2"
     embed_workers: int = 3
     embed_batch_size: int = 256
     page_elements_cpus_per_actor: float = 1.0
@@ -168,6 +169,9 @@ class HarnessConfig:
 
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
+
+        if self.ocr_version not in {"v1", "v2"}:
+            errors.append("ocr_version must be one of ['v1', 'v2']")
 
         _ZERO_ALLOWED_WORKERS = {f for f in TUNING_FIELDS if f.endswith("_workers")} if self.use_heuristics else set()
         for name in TUNING_FIELDS:
@@ -297,6 +301,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
+        "HARNESS_OCR_VERSION": ("ocr_version", str),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
         "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),

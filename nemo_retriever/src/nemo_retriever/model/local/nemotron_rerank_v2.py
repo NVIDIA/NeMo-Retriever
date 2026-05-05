@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.hf_model_registry import get_hf_revision
 from ..model import BaseModel, RunMode
 
 
@@ -56,6 +57,9 @@ class NemotronRerankV2(BaseModel):
         kwargs: dict = {"trust_remote_code": True}
         if hf_cache_dir:
             kwargs["cache_dir"] = hf_cache_dir
+        revision = get_hf_revision(model_name, strict=False)
+        if revision is not None:
+            kwargs["revision"] = revision
 
         self._tokenizer = AutoTokenizer.from_pretrained(
             model_name,

@@ -20,7 +20,7 @@ For more advanced scenarios, try one of the following notebooks:
 
 - [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb)
 - [Try Enterprise RAG Blueprint](https://github.com/NVIDIA/NeMo-Retriever/blob/main/deploy/pdf-blueprint.ipynb)
-- [Evaluate bo767 retrieval recall accuracy with NeMo Retriever Library and Milvus](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.ipynb)
+- [Evaluate bo767 retrieval recall accuracy with NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.ipynb)
 - [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb)
 - [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb)
 
