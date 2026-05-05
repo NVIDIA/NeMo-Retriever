@@ -36,6 +36,39 @@ def query_neo4j_tables_for_embedding(database_name: str) -> List[dict]:
     return result[0].get("docs") or []
 
 
+def query_neo4j_columns_for_embedding(database_name: str) -> List[dict]:
+    """Return one doc per ``Column`` node for embedding (distinct from table-level rows)."""
+    neo4j_conn = get_neo4j_conn()
+    query = f"""
+        MATCH (d:{Labels.DB}{{name: $database_name}})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})
+              -[:{Edges.CONTAINS}]->(t:{Labels.TABLE})
+              -[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
+
+        WITH d, s, t, c,
+             CASE
+                 WHEN c.description IS NOT NULL AND trim(toString(c.description)) <> ''
+                 THEN ', column_description: ' + toString(c.description)
+                 ELSE ''
+             END AS column_desc
+
+        RETURN collect({{
+            text:  'db_name: ' + d.name +
+                   ', schema_name: ' + s.name +
+                   ', table_name: ' + t.name +
+                   ', column_name: ' + c.name +
+                   ', data_type: ' + coalesce(toString(c.data_type), '') +
+                   column_desc,
+            name: c.name,
+            label: labels(c)[0],
+            id: c.id
+        }}) AS docs
+    """
+    result = neo4j_conn.query_read(query, parameters={"database_name": database_name})
+    if not result:
+        return []
+    return result[0].get("docs") or []
+
+
 def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
     """Fetch all tabular entity docs from Neo4j and return a DataFrame ready for embedding.
 
@@ -44,7 +77,9 @@ def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
     unstructured pipeline so run_pipeline_tasks_on_df works without changes.
     """
     _empty = pd.DataFrame(columns=["text", "_embed_modality", "path", "page_number", "metadata"])
-    docs = query_neo4j_tables_for_embedding(database_name=database_name)
+    table_docs = query_neo4j_tables_for_embedding(database_name=database_name)
+    column_docs = query_neo4j_columns_for_embedding(database_name=database_name)
+    docs = list(table_docs) + list(column_docs)
     if not docs:
         return _empty
 
@@ -55,6 +90,17 @@ def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
         label = item.get("label", "")
         name = item.get("name", "")
         path = f"neo4j:{node_id}" if node_id is not None else "neo4j:unknown"
+        # Nest tabular identifiers under content_metadata so they survive the
+        # IngestVdbOperator → LanceDB write path (which only persists
+        # content_metadata + source_metadata into the table's metadata column).
+        # Top-level copies are kept for any in-memory consumer of this DataFrame.
+        tabular_fields = {
+            "id": node_id,
+            "label": label,
+            "name": name,
+            "source_path": path,
+            "database_name": database_name,
+        }
         rows.append(
             {
                 "text": text,
@@ -62,11 +108,8 @@ def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
                 "path": path,
                 "page_number": -1,
                 "metadata": {
-                    "id": node_id,
-                    "label": label,
-                    "name": name,
-                    "source_path": path,
-                    "database_name": database_name,
+                    **tabular_fields,
+                    "content_metadata": dict(tabular_fields),
                 },
             }
         )

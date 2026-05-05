@@ -110,10 +110,11 @@ multimedia = [
 # ── Independent extras ───────────────────────────────────────────────────────
 
 # SQL and graph storage backends (lancedb is in core deps).
-stores = [
+tabular = [
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
+  "langgraph>=1.1.0",
 ]
 
 # BEIR benchmarking and evaluation tools (not needed for production use).
@@ -136,7 +137,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[local,multimedia,stores,benchmarks,llm]",
+  "nemo_retriever[local,multimedia,tabular,benchmarks,llm]",
 ]
 
 [project.scripts]
