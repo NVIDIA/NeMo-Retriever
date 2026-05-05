@@ -11,7 +11,6 @@ from typing import Any
 from nemo_retriever.vdb.adt_vdb import VDB
 from nemo_retriever.vdb.factory import get_vdb_op_cls
 
-
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.vdb.records import normalize_retrieval_results, to_client_vdb_records
 
