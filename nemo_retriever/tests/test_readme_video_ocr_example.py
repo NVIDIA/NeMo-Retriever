@@ -2,19 +2,33 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Guard the README video (frame) OCR snippet against drift from the pipeline CLI."""
+"""Keep the README.md \"Video (visual OCR on frames)\" Python snippet in sync with the graph builder."""
 
 from __future__ import annotations
 
-from nemo_retriever.examples.readme_video_ocr import build_video_ocr_ingestor
+from nemo_retriever import create_ingestor
+from nemo_retriever.graph_ingestor import GraphIngestor
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.params import EmbedParams, ExtractParams
 
 
+def _readme_video_ocr_ingestor(frame_globs: list[str], *, run_mode: str = "batch") -> GraphIngestor:
+    """Must match README.md (inline snippet after ffmpeg frame extraction)."""
+    extract_params = ExtractParams(
+        method="ocr",
+        dpi=300,
+        extract_text=True,
+        extract_tables=True,
+        extract_charts=True,
+        extract_infographics=True,
+    )
+    return create_ingestor(run_mode=run_mode).files(frame_globs).extract_image_files(extract_params).embed()
+
+
 def test_readme_video_ocr_example_matches_readme_and_pipeline_image_ocr() -> None:
-    """Same construction as README.md "Video (visual OCR on frames)" and ``--input-type image --method ocr``."""
+    """Same construction as README.md \"Video (visual OCR on frames)\" and ``--input-type image --method ocr``."""
     frame_globs = ["/tmp/video_frames/*.png"]
-    ingestor = build_video_ocr_ingestor(frame_globs, run_mode="inprocess")
+    ingestor = _readme_video_ocr_ingestor(frame_globs, run_mode="inprocess")
 
     assert ingestor._extraction_mode == "image"
     assert ingestor._documents == frame_globs
