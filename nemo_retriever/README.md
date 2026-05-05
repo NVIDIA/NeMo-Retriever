@@ -443,6 +443,63 @@ ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 ```
 
+### Video with `GraphIngestor` (`extract_video`, ASR, OCR on frames, embedding, VDB)
+
+The CLI in `nemo_retriever/pipeline/__main__.py` builds a `GraphIngestor` with `_build_ingestor`, runs `ingestor.ingest()`, then uploads vectors with `_upload_vdb_records`, which wraps `IngestVdbOperator` (same as `--vdb-op` / `--vdb-kwargs-json`). **The operator graph stops at `embed`**—VDB upload is always a **separate** step after materialized rows, not a `.vdb_upload()` node on `GraphIngestor`.
+
+For **video files**:
+
+- **`extract_video`** configures ffmpeg chunking plus **ASR** (`MediaChunkActor` → `ASRActor`), the same media subgraph as `extract_audio` when your tree only exposes that name.
+
+Optional stages between extract and embed—**the same hooks `_build_ingestor` wires when flags are set**—are `.split(...)`, `.dedup(...)`, `.caption(...)`, and `.store(...)`.
+
+```python
+from pathlib import Path
+
+import pandas as pd
+
+from nemo_retriever.audio import asr_params_from_env, AudioChunkParams
+from nemo_retriever.graph_ingestor import GraphIngestor
+from nemo_retriever.model import VL_EMBED_MODEL
+from nemo_retriever.params import (
+    CaptionParams,
+    DedupParams,
+    EmbedParams,
+    ExtractParams,
+    StoreParams,
+    TextChunkParams,
+)
+from nemo_retriever.vdb import IngestVdbOperator
+
+text_chunk_params = TextChunkParams(max_tokens=1024, overlap_tokens=150)
+embed_params = EmbedParams(model_name=VL_EMBED_MODEL)
+
+# --- 1) Speech from video: ASR (via extract_video) + embed (same graph shape as media ingest in ingestor_runtime) ---
+ingestor_video = GraphIngestor(run_mode="inprocess").files([str(Path("/path/to/clip.mp4"))])
+ingestor_video = (
+    ingestor_video.extract_video(
+        params=AudioChunkParams(split_type="size", split_interval=500_000),
+        asr_params=asr_params_from_env(),
+    )
+    # Optional, same as _build_ingestor when enable_text_chunk / enable_dedup / enable_caption / store_images_uri:
+    # .split(text_chunk_params)
+    # .dedup(DedupParams(iou_threshold=0.45))
+    # .caption(CaptionParams(endpoint_url=None, model_name="nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"))
+    # .store(StoreParams(storage_uri="/tmp/citation-assets", store_text=False))
+    .embed(embed_params)
+)
+df_video = ingestor_video.ingest()
+assert isinstance(df_video, pd.DataFrame)
+# --- 2) VDB upload (matches _upload_vdb_records in __main__.py after ingest) ---
+records = df_video.to_dict("records")
+IngestVdbOperator(
+    vdb_op="lancedb",
+    vdb_kwargs={"uri": "lancedb", "table_name": "nv-ingest"},
+)(records)
+```
+
+If your checkout does not yet define `GraphIngestor.extract_video`, use `extract_audio(...)` with the same `AudioChunkParams` and `ASRParams`; the built graph is the same **MediaChunk → ASR → embed** path.
+
 ### Store extracted images and text
 
 Use `.store()` to persist extracted images, tables, charts, and text to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame so downstream stages (embed, VDB upload) can reference them. By default, base64 payloads are stripped after writing to reduce memory pressure.
