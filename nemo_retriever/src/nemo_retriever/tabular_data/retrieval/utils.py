@@ -6,8 +6,11 @@ import logging
 import os
 import re
 import time
+from datetime import date, timedelta
 from itertools import groupby
 from typing import TYPE_CHECKING
+
+import numpy as np
 import pandas as pd
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
@@ -26,6 +29,10 @@ logger = logging.getLogger(__name__)
 # Hard ceiling on how many candidate snippets we want to reason over for a single question.
 # Larger numbers tend to confuse the LLM and increase latency.
 MAX_CALCULATION_CANDIDATES = 15
+
+QUERIES_USAGE_PERCENTILE = "queries_usage_percentile"
+TABLES_USAGE_PERCENTILE = "tables_usage_percentile"
+COLUMNS_USAGE_PERCENTILE = "columns_usage_percentile"
 
 
 def get_llm_client() -> ChatNVIDIA:
@@ -54,7 +61,6 @@ def clean_results(raw_candidates: list[dict]) -> list[dict]:
         seen.add(key)
         out.append(c)
     return out
-
 
 
 def expand_info(ids_and_labels):
@@ -95,8 +101,10 @@ def expand_info(ids_and_labels):
                                  [(parent)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
                                   {{name: c.name,
                                     data_type: toString(coalesce(c.data_type, "")),
-                                    description: CASE WHEN c.description IS NOT NULL AND trim(c.description) <> "" THEN c.description ELSE null END,
-                                    sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0 THEN c.sample_values ELSE null END
+                                    description: CASE WHEN c.description IS NOT NULL AND trim(c.description) <> ""
+                                                      THEN c.description ELSE null END,
+                                    sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
+                                                        THEN c.sample_values ELSE null END
                                   }}] AS column_list
                             WITH n, parent, column_list,
                                  apoc.map.merge(
@@ -728,7 +736,7 @@ def _merge_two_relevant_table_dicts(a: dict, b: dict) -> dict:
             elif not sa and sb:
                 out[k] = v
             continue
-        if k == "primary_key":
+        if k in ("foreign_key", "primary_key"):
             if not out.get(k) and v:
                 out[k] = v
             continue
@@ -850,3 +858,314 @@ def prepare_link(name: str, id: str, label: Labels, parent_id: str = None) -> st
             return f"data/{parent_id}?searchId={id}|{name}"
         case _:
             return f"data/{id}|{name}"
+
+
+# ==================== Deep-Agent helpers ====================
+# These helpers are used by the deep_agent pipeline (FK extraction, query
+# usage percentiles, semantic retriever kwargs). They live here so both
+# text_to_sql and deep_agent can share a single utils module.
+
+
+def store_usage_percentiles(
+    percentiles_type_name: str,
+    usage_percentile_25: int,
+    usage_percentile_75: int,
+):
+    query = """
+            MATCH (n:db)
+            WITH n
+            CALL apoc.create.setProperties(n,
+                [$percentiles_type_name_25, $percentiles_type_name_75],
+                [$usage_percentile_25, $usage_percentile_75])
+            YIELD node
+            RETURN n
+            """
+    get_neo4j_conn().query_write(
+        query=query,
+        parameters={
+            "percentiles_type_name_25": f"{percentiles_type_name}_25",
+            "percentiles_type_name_75": f"{percentiles_type_name}_75",
+            "usage_percentile_25": usage_percentile_25,
+            "usage_percentile_75": usage_percentile_75,
+        },
+    )
+
+
+def get_stored_usage_percentiles(percentiles_type_name: str):
+    query = f"""
+                MATCH (n:db)
+                RETURN n.{f"{percentiles_type_name}_25"} as usage_percentile_25,
+                       n.{f"{percentiles_type_name}_75"} as usage_percentile_75
+                """
+    results = get_neo4j_conn().query_read(
+        query=query,
+        parameters={},
+    )
+    return results
+
+
+def get_count_str_by_month(alias: str):
+    current = date.today().replace(day=1)
+    count_3_month = []
+
+    for i in range(0, 3):
+        count_3_month.append(f"coalesce({alias}.cnt_{current.month}_{current.year}, 0)")
+        prev = current - timedelta(days=1)
+        current = prev.replace(day=1)
+
+    count_str = "+".join(count_3_month)
+    return count_str
+
+
+def init_queries_usage_percentiles():
+    count_string = get_count_str_by_month("n")
+    query_all = f"""match(n:sql{{is_sub_select:FALSE}})
+                     return collect({count_string}) as usages """
+    usages_result = get_neo4j_conn().query_read(query=query_all, parameters={})
+    usages = usages_result[0]["usages"]
+    if len(usages) == 0:
+        return 0, 0
+    usage_percentile_25 = np.percentile(usages, 25)
+    usage_percentile_75 = np.percentile(usages, 75)
+    store_usage_percentiles(QUERIES_USAGE_PERCENTILE, usage_percentile_25, usage_percentile_75)
+    return usage_percentile_25, usage_percentile_75
+
+
+def get_usage_percentiles():
+    stored_percentiles = get_stored_usage_percentiles(QUERIES_USAGE_PERCENTILE)
+    if len(stored_percentiles) == 0 or (stored_percentiles[0]["usage_percentile_25"] is None):
+        usage_percentile_25, usage_percentile_75 = init_queries_usage_percentiles()
+    else:
+        usage_percentile_25 = stored_percentiles[0]["usage_percentile_25"]
+        usage_percentile_75 = stored_percentiles[0]["usage_percentile_75"]
+
+    return usage_percentile_25, usage_percentile_75
+
+
+def get_queries_usage_percentiles(node_str="node"):
+    count_str = get_count_str_by_month(node_str)
+    usage_percentile_25, usage_percentile_75 = get_usage_percentiles()
+    return usage_percentile_25, usage_percentile_75, count_str
+
+
+def _semantic_retriever_init_kwargs(
+    uri: str,
+    table_name: str,
+    top_k: int,
+) -> dict:
+    """Build kwargs for :class:`~nemo_retriever.retriever.Retriever` / ``DeepAgentRetriever``.
+
+    When ``OMNI_SEMANTIC_EMBEDDING_HTTP_ENDPOINT`` (or ``EMBEDDING_HTTP_ENDPOINT``) is set,
+    query embeddings go to that HTTP NIM / OpenAI-compatible API (same pattern as
+    ``EmbedParams.embed_invoke_url`` in tabular ingest) instead of loading the HF model locally.
+    """
+    kwargs: dict = {
+        "lancedb_uri": uri,
+        "lancedb_table": table_name,
+        "top_k": top_k,
+    }
+    http_ep = (os.environ.get("OMNI_SEMANTIC_EMBEDDING_HTTP_ENDPOINT") or "").strip() or (
+        os.environ.get("EMBEDDING_HTTP_ENDPOINT") or ""
+    ).strip()
+    if http_ep:
+        kwargs["embedding_http_endpoint"] = http_ep
+        kwargs["embedding_api_key"] = (os.environ.get("NVIDIA_API_KEY") or "").strip()
+    model = (os.environ.get("OMNI_SEMANTIC_EMBEDDER_MODEL") or "").strip()
+    if model:
+        kwargs["embedder"] = model
+    return kwargs
+
+
+def get_relevant_queries(candidates):
+    """Collect SQL snippets from custom-analysis candidates (deduped, in order)."""
+    snippet_queries = []
+    for candidate in candidates:
+        if candidate.get("label", "") == Labels.CUSTOM_ANALYSIS:
+            analysis_sql = candidate.get("sql", [])
+            if not analysis_sql:
+                continue
+            s_query = analysis_sql[0].get("sql_code", "")
+            if s_query and s_query not in snippet_queries:
+                snippet_queries.append(s_query)
+    return snippet_queries
+
+
+def get_relevant_fks(tables_ids):
+    # Build a connected graph by expanding from target tables through FK relationships
+    query = """
+    // Start with target tables and expand outward to find connected tables
+    WITH $tables_ids as current_ids
+
+    // Level 1: Find tables connected via FK
+    OPTIONAL MATCH (t0:table WHERE t0.id IN current_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t1:table)
+    WITH current_ids, collect(DISTINCT t1.id) as new_ids_1
+    WITH current_ids + new_ids_1 as level_1_ids
+
+    // Level 2
+    OPTIONAL MATCH (t1:table WHERE t1.id IN level_1_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t2:table)
+    WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
+    WITH level_1_ids + new_ids_2 as level_2_ids
+
+    // Level 3
+    OPTIONAL MATCH (t2:table WHERE t2.id IN level_2_ids)
+          -[:schema]->(:column)-[:fk]-(:column)<-[:schema]-(t3:table)
+    WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
+    WITH level_2_ids + new_ids_3 as all_table_ids
+
+    // Get all FK relationships between these tables
+    MATCH (t1:table)-[:schema]->(col1:column)-[:fk]-(col2:column)<-[:schema]-(t2:table)
+    WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
+      AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
+
+    RETURN collect(DISTINCT {
+        table1: t1.schema_name + '.' + t1.name,
+        column1: col1.name,
+        column1_datatype: coalesce(col1.data_type, 'None'),
+        table2: t2.schema_name + '.' + t2.name,
+        column2: col2.name,
+        column2_datatype: coalesce(col2.data_type, 'None')
+    }) as list_of_foreign_keys
+    """
+    results = get_neo4j_conn().query_read(query, {"tables_ids": tables_ids})
+    if len(results) > 0:
+        result_fks = results[0]["list_of_foreign_keys"]
+    else:
+        result_fks = []
+
+    # Build a connected graph by expanding from target tables through FK relationships
+    query = """
+    // Start with target tables and expand outward to find connected tables
+
+    // Level 1: Find tables connected via FK
+    OPTIONAL MATCH (t0:table WHERE t0.id IN $tables_ids)-[:join]-(t1:table)
+    WITH collect(DISTINCT t1.id) as new_ids_1
+    WITH $tables_ids + new_ids_1 as level_1_ids
+
+    // Level 2
+    OPTIONAL MATCH (t1:table WHERE t1.id IN level_1_ids)-[:join]-(t2:table)
+    WITH level_1_ids, collect(DISTINCT t2.id) as new_ids_2
+    WITH level_1_ids + new_ids_2 as level_2_ids
+
+    // Level 3
+    OPTIONAL MATCH (t2:table WHERE t2.id IN level_2_ids)-[:join]-(t3:table)
+    WITH level_2_ids, collect(DISTINCT t3.id) as new_ids_3
+    WITH level_2_ids + new_ids_3 as all_table_ids
+
+    // Get all join relationships between these tables and parse the join property
+    MATCH (t1:table)-[rel:join]-(t2:table)
+    WHERE t1.id IN all_table_ids AND t2.id IN all_table_ids
+      AND t1.id < t2.id  // Avoid duplicates by keeping only one direction
+      AND rel.join IS NOT NULL
+
+    // Parse the join property: split by operators and extract left/right sides
+    WITH t1, t2, rel,
+         trim(apoc.text.split(rel.join, '<=|>=|=|<|>')[0]) as left_side,
+         trim(apoc.text.split(rel.join, '<=|>=|=|<|>')[1]) as right_side
+
+    // Parse left side: SCHEMA.TABLE.COLUMN (handle potential whitespace)
+    WITH t1, t2, rel, left_side, right_side,
+         trim(split(left_side, '.')[0]) as left_schema,
+         trim(split(left_side, '.')[1]) as left_table,
+         trim(split(left_side, '.')[2]) as left_column,
+         trim(split(right_side, '.')[0]) as right_schema,
+         trim(split(right_side, '.')[1]) as right_table,
+         trim(split(right_side, '.')[2]) as right_column
+    WHERE left_schema IS NOT NULL AND left_table IS NOT NULL AND left_column IS NOT NULL
+      AND right_schema IS NOT NULL AND right_table IS NOT NULL AND right_column IS NOT NULL
+
+    // Match the actual column nodes for left side
+    OPTIONAL MATCH (s1:schema{name: left_schema})-[:schema]->
+        (tbl1:table{name: left_table})-[:schema]->(col1:column{name: left_column})
+
+    // Match the actual column nodes for right side
+    OPTIONAL MATCH (s2:schema{name: right_schema})-[:schema]->
+        (tbl2:table{name: right_table})-[:schema]->(col2:column{name: right_column})
+
+    // Return the structured format
+    RETURN collect(DISTINCT {
+        table1: t1.schema_name + '.' + t1.name,
+        column1: coalesce(col1.name, left_column),
+        column1_datatype: coalesce(col1.data_type, 'None'),
+        table2: t2.schema_name + '.' + t2.name,
+        column2: coalesce(col2.name, right_column),
+        column2_datatype: coalesce(col2.data_type, 'None')
+    }) as list_of_foreign_keys
+    """
+    results = get_neo4j_conn().query_read(query, {"tables_ids": tables_ids})
+    if len(results) > 0:
+        result_joins = results[0]["list_of_foreign_keys"]
+    else:
+        result_joins = []
+    results = result_fks + result_joins
+
+    # Convert to JSON strings, use set to remove duplicates, then convert back
+    unique_strings = set(json.dumps(d, sort_keys=True) for d in results)
+    unique_results = [json.loads(s) for s in unique_strings]
+
+    key_order = [
+        "table1",
+        "column1",
+        "column1_datatype",
+        "table2",
+        "column2",
+        "column2_datatype",
+    ]
+    sorted_results = [{key: d[key] for key in key_order} for d in unique_results]
+    return sorted_results
+
+
+def _apply_foreign_key_hints(tables: list[dict], relevant_fks: list) -> None:
+    """Set ``foreign_key`` on tables when name matches FK side (same as ``get_relevant_tables``)."""
+    for table in tables:
+        for fk in relevant_fks:
+            if table["name"] == fk["table1"]:
+                table["foreign_key"] = f"'{table['name']}.{fk['column1']}' = '{fk['table2']}.{fk['column2']}'"
+
+
+def get_relevant_fks_from_candidates_tables(
+    candidates: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """
+    Extract tables and foreign keys from flat candidate dicts.
+
+    Wraps :func:`get_relevant_tables_from_candidates` and additionally fetches
+    FK / join relationships for the resulting tables via :func:`get_relevant_fks`,
+    then applies FK hints in-place.
+
+    Returns:
+        ``(relevant_tables, relevant_fks)``.
+    """
+    relevant_tables = get_relevant_tables_from_candidates(candidates)
+    if not relevant_tables:
+        return [], []
+
+    try:
+        relevant_fks = get_relevant_fks([x["id"] for x in relevant_tables])
+    except Exception:
+        logger.exception("get_relevant_fks failed for candidate tables")
+        relevant_fks = []
+
+    _apply_foreign_key_hints(relevant_tables, relevant_fks)
+    return relevant_tables, relevant_fks
+
+
+def get_relevant_tables_with_fks(
+    retriever: "Retriever",
+    initial_question,
+    k=15,
+) -> tuple[list[dict], list[dict]]:
+    """Like :func:`get_relevant_tables` but also returns FK relationships, with FK hints applied in-place."""
+    relevant_tables_list = get_relevant_tables(retriever, initial_question, k=k)
+
+    relevant_fks: list = []
+    if relevant_tables_list:
+        try:
+            relevant_fks = get_relevant_fks([x["id"] for x in relevant_tables_list])
+        except Exception:
+            logger.exception("get_relevant_fks failed in get_relevant_tables_with_fks")
+            relevant_fks = []
+    _apply_foreign_key_hints(relevant_tables_list, relevant_fks)
+
+    return relevant_tables_list, relevant_fks

@@ -21,14 +21,14 @@ import logging
 from typing import Dict, Any
 
 from langchain_core.messages import AIMessage
-from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     AgentState,
     get_question_for_processing,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_custom_analyses_ids
+from nemo_retriever.tabular_data.retrieval.utils import get_custom_analyses_ids
 
 logger = logging.getLogger(__name__)
 
