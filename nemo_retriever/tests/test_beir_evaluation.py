@@ -37,6 +37,20 @@ def test_build_queries_by_id_filters_language_aliases() -> None:
     assert queries == ["bonjour", "salut"]
 
 
+def test_build_queries_by_id_filters_non_english_language_aliases() -> None:
+    rows = [
+        {"query_id": 1, "query": "guten tag", "language": "german"},
+        {"query_id": 2, "query": "hallo", "language": "Deutsch"},
+        {"query_id": 3, "query": "hola", "language": "español"},
+        {"query_id": 4, "query": "こんにちは", "language": "japanese"},
+    ]
+
+    query_ids, queries = build_queries_by_id(rows, query_language="de")
+
+    assert query_ids == ["1", "2"]
+    assert queries == ["guten tag", "hallo"]
+
+
 def test_build_queries_by_id_warns_when_all_queries_filtered(caplog) -> None:
     rows = [
         {"query_id": 1, "query": "", "language": "en"},

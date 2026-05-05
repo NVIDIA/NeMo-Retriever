@@ -45,16 +45,23 @@ _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "table_caption": "table",
     "text": "text",
 }
-_LANGUAGE_ALIASES: dict[str, str] = {
-    "en": "en",
-    "eng": "en",
-    "english": "en",
-    "fr": "fr",
-    "fra": "fr",
-    "fre": "fr",
-    "francais": "fr",
-    "français": "fr",
-    "french": "fr",
+_LANGUAGE_ALIASES: dict[str, set[str]] = {
+    "en": {"en", "eng", "english"},
+    "fr": {"fr", "fra", "fre", "french", "français", "francais"},
+    "de": {"de", "deu", "ger", "german", "deutsch"},
+    "es": {"es", "spa", "spanish", "español", "espanol"},
+    "it": {"it", "ita", "italian", "italiano"},
+    "pt": {"pt", "por", "portuguese", "português", "portugues"},
+    "zh": {"zh", "zho", "chi", "chinese"},
+    "ja": {"ja", "jpn", "japanese"},
+    "ko": {"ko", "kor", "korean"},
+    "ar": {"ar", "ara", "arabic"},
+    "ru": {"ru", "rus", "russian"},
+    "nl": {"nl", "nld", "dut", "dutch"},
+    "pl": {"pl", "pol", "polish"},
+    "sv": {"sv", "swe", "swedish"},
+    "tr": {"tr", "tur", "turkish"},
+    "hi": {"hi", "hin", "hindi"},
 }
 
 
@@ -178,18 +185,25 @@ def _normalize_element_type(value: Any, *, subtype: Any = None) -> str | None:
     return None
 
 
-def _normalize_language(value: Any) -> str:
+def _normalize_language_token(value: Any) -> str:
     normalized = str(value or "").strip().lower().replace("_", "-")
     if not normalized:
         return ""
 
-    # Match common language aliases without requiring datasets to use one
-    # canonical spelling. Strip accents so "français" and "francais" agree.
-    ascii_normalized = "".join(
-        char for char in unicodedata.normalize("NFKD", normalized) if not unicodedata.combining(char)
-    )
-    primary_subtag = ascii_normalized.split("-", 1)[0]
-    return _LANGUAGE_ALIASES.get(ascii_normalized) or _LANGUAGE_ALIASES.get(primary_subtag) or ascii_normalized
+    return "".join(char for char in unicodedata.normalize("NFKD", normalized) if not unicodedata.combining(char))
+
+
+def _normalize_language(value: Any) -> str:
+    normalized = _normalize_language_token(value)
+    if not normalized:
+        return ""
+
+    primary_subtag = normalized.split("-", 1)[0]
+    for language, aliases in _LANGUAGE_ALIASES.items():
+        normalized_aliases = {_normalize_language_token(alias) for alias in aliases}
+        if normalized in normalized_aliases or primary_subtag in normalized_aliases:
+            return language
+    return normalized
 
 
 def _languages_match(requested_language: str, row_language: str) -> bool:
