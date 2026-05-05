@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "lancedb.fullname" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lancedb
+  template:
+    metadata:
+      labels:
+        app: lancedb
+    spec:
+      containers:
+        - name: lancedb
+          image: "lancedb/lancedb:latest" # Use official OSS image
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "lancedb.fullname" . }}-pvc

@@ -364,41 +364,53 @@ class ServiceIngestor(ingestor):
         Notes
         -----
         - ``params`` and ``kwargs`` are accepted for parity with the base
-          interface but ignored: there are no per-call execution knobs in
-          service mode (use the YAML config / CLI flags on the server
-          instead).
-        - This method internally calls :meth:`ingest_stream` and collects
-          results from ``job_complete`` events (which contain full document
-          results fetched from the server).
+          interface but ignored.
+        - Internally calls :meth:`ingest_stream` and collects results from
+          ``job_complete`` events (which carry full results fetched via REST).
         """
         del params, kwargs
         result = ServiceIngestResult()
         t0 = time.monotonic()
 
-        event_counts: dict[str, int] = {}
+        total_documents = 0
+        documents_completed = 0
+        total_pages = 0
+        pages_completed = 0
+
         for evt in self.ingest_stream():
             event_type = evt.get("event")
-            event_counts[event_type] = event_counts.get(event_type, 0) + 1
+
             if event_type == "job_started":
+                total_documents += 1
+                total_pages += evt.get("total_pages", 0)
                 print(
-                    f"[DEBUG] job_started: job_id={evt.get('job_id', '')[:8]}, "
-                    f"filename={evt.get('filename')}, total_pages={evt.get('total_pages')}"
+                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
+                    f"Documents: {documents_completed}/{total_documents}",
+                    end="",
+                    flush=True,
                 )
-            if event_type == "job_complete":
+
+            elif event_type == "page_complete":
+                pages_completed += 1
+                print(
+                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
+                    f"Documents: {documents_completed}/{total_documents}",
+                    end="",
+                    flush=True,
+                )
+
+            elif event_type == "job_complete":
+                documents_completed += 1
+                print(
+                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
+                    f"Documents: {documents_completed}/{total_documents}",
+                    end="",
+                    flush=True,
+                )
+
                 job_results = evt.get("results")
-                job_id_short = (evt.get("job_id") or "")[:8]
                 if job_results and isinstance(job_results, dict):
-                    input_pages = job_results.get("pages", [])
-                    total_output_rows = sum(len(p.get("pages", [])) for p in input_pages)
-                    print(
-                        f"[DEBUG] job_complete {job_id_short}: "
-                        f"filename={job_results.get('filename')}, "
-                        f"status={job_results.get('status')}, "
-                        f"input_pages={len(input_pages)}, "
-                        f"output_rows={total_output_rows}, "
-                        f"pages_completed={job_results.get('pages_completed')}"
-                    )
-                    for input_page in input_pages:
+                    for input_page in job_results.get("pages", []):
                         doc_id = input_page.get("document_id", "")
                         page_num = input_page.get("page_number", 0)
                         status = input_page.get("status", "")
@@ -421,56 +433,10 @@ class ServiceIngestor(ingestor):
                                     "error": f"page processing failed (status={status})",
                                 }
                             )
-                else:
-                    print(
-                        f"[DEBUG] job_complete {job_id_short}: "
-                        f"results is None or not a dict! "
-                        f"results_type={type(job_results)}, "
-                        f"has_error={evt.get('error', 'no')}, "
-                        f"synthetic={evt.get('synthetic', False)}"
-                    )
-            elif event_type == "page_result":
-                for page in evt.get("pages", []):
-                    result.append(
-                        {
-                            "job_id": evt.get("job_id"),
-                            "document_id": evt.get("document_id"),
-                            "source_file": evt.get("source_file"),
-                            "page_number": evt.get("page_number"),
-                            "content": page,
-                        }
-                    )
-            elif event_type == "page_failed":
-                result.failures.append(
-                    {
-                        "job_id": evt.get("job_id"),
-                        "source_file": evt.get("source_file"),
-                        "page_number": evt.get("page_number"),
-                        "error": evt.get("error", "unknown error"),
-                    }
-                )
-            elif event_type == "metrics_update":
-                model = evt.get("model_name", "unknown")
-                m = result.metrics.setdefault(model, {"invocations": 0, "detections": 0})
-                m["invocations"] += int(evt.get("invocation_count", 0))
-                m["detections"] += int(evt.get("detections_count", 0))
-            elif event_type == "stream_overflow":
-                logger.warning(
-                    "Server SSE stream overflowed (subscriber too slow). "
-                    "Falling back to polling for any remaining results."
-                )
-                self._poll_remaining_results(result)
-                break
-            elif event_type == "stream_error":
-                logger.warning(
-                    "Server SSE stream errored: %s. Falling back to polling.",
-                    evt.get("error"),
-                )
-                self._poll_remaining_results(result)
-                break
 
-        print(f"[DEBUG] Stream finished. Event counts: {event_counts}")
-        print(f"[DEBUG] Total result rows collected: {len(result)}, failures: {len(result.failures)}")
+        if total_documents > 0:
+            print()
+
         result.job_ids = list(self._job_ids)
         result.elapsed_s = time.monotonic() - t0
         self._last_run_elapsed_s = result.elapsed_s
@@ -481,7 +447,7 @@ class ServiceIngestor(ingestor):
     # ------------------------------------------------------------------
 
     def ingest_stream(self) -> Iterator[dict[str, Any]]:
-        """Sync generator yielding one event dict per page as results land.
+        """Sync generator yielding events as jobs are processed.
 
         See :meth:`aingest_stream` for the schema of yielded dicts.
 
@@ -489,8 +455,8 @@ class ServiceIngestor(ingestor):
         can write straightforward synchronous code:
 
         >>> for evt in ingestor.ingest_stream():           # doctest: +SKIP
-        ...     if evt["event"] == "page_result":
-        ...         print(evt["source_file"], evt["page_number"])
+        ...     if evt["event"] == "job_complete":
+        ...         print(evt["results"]["filename"])
         """
         files = self._collect_inputs()
         if not files:
@@ -515,20 +481,14 @@ class ServiceIngestor(ingestor):
     # ------------------------------------------------------------------
 
     async def aingest_stream(self) -> AsyncIterator[dict[str, Any]]:
-        """Async generator yielding one event dict per page as results land.
+        """Async generator yielding events as jobs are processed.
 
         Yields one of:
 
         * ``{"event": "job_started", "job_id": ..., "filename": ..., "total_pages": ...}``
-        * ``{"event": "page_result", "job_id": ..., "source_file": ...,
-              "page_number": <input page>, "document_id": ..., "pages": [<output rows>], ...}``
-        * ``{"event": "page_failed", "job_id": ..., "source_file": ...,
-              "page_number": ..., "error": ...}``
-        * ``{"event": "metrics_update", ...}``
-        * ``{"event": "job_complete", "job_id": ..., "filename": ...}``
-        * ``{"event": "stream_overflow", ...}`` (server lost events; client
-          should fall back to polling)
-        * ``{"event": "stream_error", "error": ...}``
+        * ``{"event": "page_complete", ...}``
+        * ``{"event": "document_complete", ...}``
+        * ``{"event": "job_complete", "job_id": ..., "results": {...}}``
         """
         files = self._collect_inputs()
         if not files:
@@ -675,42 +635,3 @@ class ServiceIngestor(ingestor):
 
         return files
 
-    def _poll_remaining_results(self, result: ServiceIngestResult) -> None:
-        """Backfill any pages we missed via REST after an SSE failure."""
-        if not self._job_ids:
-            return
-
-        seen_pages: set[tuple[str, int]] = {
-            (p["document_id"], p["content"].get("_output_index", 0)) for p in result if p.get("document_id")
-        }
-
-        with httpx.Client(
-            base_url=self._base_url,
-            timeout=self._request_timeout_s,
-            headers=self._auth_headers,
-        ) as client:
-            for jid in self._job_ids:
-                try:
-                    resp = client.get(f"/v1/ingest/job/{jid}/results")
-                    resp.raise_for_status()
-                    body = resp.json()
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Polling fallback failed for job %s: %s", jid[:8], exc)
-                    continue
-
-                for input_page in body.get("pages", []):
-                    doc_id = input_page.get("document_id")
-                    for output_row in input_page.get("pages", []):
-                        marker = (doc_id, output_row.get("page_number", 0))
-                        if marker in seen_pages:
-                            continue
-                        seen_pages.add(marker)
-                        result.append(
-                            {
-                                "job_id": jid,
-                                "document_id": doc_id,
-                                "source_file": body.get("filename"),
-                                "page_number": input_page.get("page_number"),
-                                "content": output_row.get("content", {}),
-                            }
-                        )

@@ -7,9 +7,9 @@
 Key features:
 - Whole-document upload (server-side PDF splitting via POST /v1/ingest/job)
 - Job-level tracking (one job per input file)
-- SSE streaming or polling to wait for full job completion
+- SSE subscription for job_complete events, with polling fallback
+- On job_complete, fetches full results from GET /v1/ingest/job/{id}/results
 - Rich live progress bars and metrics table
-- Per-page failure tracking with error messages printed at exit
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import logging
 import time
 from pathlib import Path
 from contextlib import nullcontext
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any, AsyncIterator, Callable
 
 import httpx
 from rich.bar import Bar
@@ -50,11 +50,6 @@ _TRANSIENT_HTTPX_ERRORS: tuple[type[Exception], ...] = (
 )
 _UPLOAD_TRANSIENT_RETRIES = 5
 _SSE_TRANSIENT_RETRIES = 10
-# Server may send `stream_overflow` if a slow consumer caused its
-# subscription queue to back up.  We treat this as a recoverable hint to
-# reconnect with `Last-Event-ID` and resume from the per-key replay
-# buffer; only after this many overflows do we surface a hard error.
-_SSE_MAX_OVERFLOWS = 5
 
 console = Console()
 
@@ -128,13 +123,6 @@ class _JobTracker:
             if j["status"] in ("uploading", "server_busy"):
                 j["status"] = "processing"
 
-    def page_failed(self, job_id: str, source_file: str, page_number: int, error: str) -> None:
-        if job_id in self.jobs:
-            j = self.jobs[job_id]
-            j["pages_failed"] = j.get("pages_failed", 0) + 1
-            j["pages_completed"] = min(j["pages_completed"] + 1, j["total_pages"])
-        self.failed_pages.append(_FailedPage(source_file, page_number, error))
-
     def set_pages_completed(self, job_id: str, count: int) -> None:
         """Set completed count (from polling); only moves forward."""
         if job_id in self.jobs:
@@ -149,11 +137,6 @@ class _JobTracker:
             j["status"] = status
             j["pages_completed"] = j["total_pages"]
 
-    def update_metrics(self, model_name: str, invocations: int, detections: int) -> None:
-        if model_name not in self.metrics:
-            self.metrics[model_name] = {"invocations": 0, "detections": 0}
-        self.metrics[model_name]["invocations"] += invocations
-        self.metrics[model_name]["detections"] += detections
 
     @property
     def total_pages(self) -> int:
@@ -416,8 +399,6 @@ class RetrieverServiceClient:
         job_ids: list[str],
         tracker: _JobTracker,
         uploads_done: asyncio.Event,
-        *,
-        on_page_result: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         """Open one SSE connection for all jobs and update tracker.
 
@@ -500,8 +481,6 @@ class RetrieverServiceClient:
                                 event,
                                 tracker,
                                 pending,
-                                client=client,
-                                on_page_result=on_page_result,
                             )
 
                     catchup_task.cancel()
@@ -531,9 +510,6 @@ class RetrieverServiceClient:
         event: dict[str, Any],
         tracker: _JobTracker,
         pending: set[str],
-        *,
-        client: httpx.AsyncClient | None = None,
-        on_page_result: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         """Dispatch a single parsed SSE event to the tracker."""
         event_type = event.get("event", "message")
@@ -541,24 +517,6 @@ class RetrieverServiceClient:
 
         if event_type == "page_complete" and jid:
             tracker.page_completed(jid)
-
-        elif event_type == "status_change" and event.get("status") == "failed" and jid:
-            source_file = event.get("source_file", "unknown")
-            page_num = event.get("page_number", 0)
-            error = event.get("error", "unknown error")
-            if source_file != "unknown" and page_num:
-                tracker.page_failed(jid, source_file, page_num, error)
-            else:
-                self.notify_capacity_available()
-                tracker.job_done(jid, "failed")
-                pending.discard(jid)
-
-        elif event_type == "metrics_update":
-            tracker.update_metrics(
-                event.get("model_name", "unknown"),
-                event.get("invocation_count", 0),
-                event.get("detections_count", 0),
-            )
 
         elif event_type == "job_complete" and jid:
             self.notify_capacity_available()
@@ -570,131 +528,6 @@ class RetrieverServiceClient:
 
         elif event_type == "document_complete":
             self.notify_capacity_available()
-            if on_page_result is not None and client is not None:
-                doc_id = event.get("document_id")
-                if doc_id:
-                    await self._fetch_and_emit_page_result(client, doc_id, on_page_result)
-
-    @staticmethod
-    def _aggregate_page_elements(elements: list[dict[str, Any]]) -> dict[str, Any]:
-        """Merge post-explosion content elements into a single page dict.
-
-        After content explosion the server stores one row per detected element
-        (text block, table, chart, …).  This collapses them back into one dict
-        with ``text`` concatenated and rich-content items collected into lists.
-        """
-        text_parts: list[str] = []
-        tables: list[Any] = []
-        charts: list[Any] = []
-        infographics: list[Any] = []
-
-        for elem in elements:
-            t = elem.get("text")
-            if isinstance(t, str) and t.strip():
-                text_parts.append(t.strip())
-            for key, dest in (("table", tables), ("chart", charts), ("infographic", infographics)):
-                val = elem.get(key)
-                if val:
-                    dest.append(val)
-
-        merged: dict[str, Any] = {"text": "\n\n".join(text_parts)}
-        if tables:
-            merged["tables"] = tables
-        if charts:
-            merged["charts"] = charts
-        if infographics:
-            merged["infographics"] = infographics
-        return merged
-
-    async def _fetch_and_emit_page_result(
-        self,
-        client: httpx.AsyncClient,
-        document_id: str,
-        callback: Callable[[dict[str, Any]], Awaitable[None]],
-    ) -> None:
-        """Fetch content for a completed document and invoke the callback once per page."""
-        try:
-            resp = await client.get(f"{self._base_url}/v1/ingest/status/{document_id}")
-            resp.raise_for_status()
-            body = resp.json()
-            source_file = body.get("filename", "")
-            pages = body.get("pages", [])
-            if not pages:
-                return
-
-            elements = [p.get("content", {}) for p in pages]
-            merged = self._aggregate_page_elements(elements)
-            merged["_source_file"] = source_file
-            merged["_page_number"] = pages[0].get("page_number", 0)
-            merged["_document_id"] = document_id
-            await callback(merged)
-        except Exception as exc:
-            logger.warning("Failed to fetch page result for document %s: %s", document_id[:8], exc)
-
-    async def _fetch_job_page_results(
-        self,
-        client: httpx.AsyncClient,
-        job_id: str,
-        callback: Callable[[dict[str, Any]], Awaitable[None]],
-    ) -> None:
-        """Fetch all page results for a completed job (polling fallback).
-
-        Groups per-element rows by ``(_source_file, _page_number)`` and
-        emits one aggregated callback per original page.
-        """
-        try:
-            resp = await client.get(f"{self._base_url}/v1/ingest/job/{job_id}/results")
-            resp.raise_for_status()
-
-            groups: dict[tuple[str, int], list[dict[str, Any]]] = {}
-            doc_ids: dict[tuple[str, int], str] = {}
-            for row in resp.json():
-                key = (row.get("_source_file", ""), row.get("_page_number", 0))
-                groups.setdefault(key, []).append(row)
-                if "_document_id" in row:
-                    doc_ids.setdefault(key, row["_document_id"])
-
-            for (src, pnum), elements in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1])):
-                merged = self._aggregate_page_elements(elements)
-                merged["_source_file"] = src
-                merged["_page_number"] = pnum
-                merged["_document_id"] = doc_ids.get((src, pnum), "")
-                await callback(merged)
-        except Exception as exc:
-            logger.warning("Failed to fetch job results for %s: %s", job_id[:8], exc)
-
-    async def _reconcile_job_results(
-        self,
-        client: httpx.AsyncClient,
-        job_id: str,
-        emitted_doc_ids: set[str],
-        callback: Callable[[dict[str, Any]], Awaitable[None]],
-    ) -> None:
-        """Fetch page results for any documents not already emitted via SSE."""
-        try:
-            resp = await client.get(f"{self._base_url}/v1/ingest/job/{job_id}/results")
-            resp.raise_for_status()
-
-            groups: dict[str, list[dict[str, Any]]] = {}
-            meta: dict[str, tuple[str, int]] = {}
-            for row in resp.json():
-                doc_id = row.get("_document_id", "")
-                if not doc_id or doc_id in emitted_doc_ids:
-                    continue
-                groups.setdefault(doc_id, []).append(row)
-                if doc_id not in meta:
-                    meta[doc_id] = (row.get("_source_file", ""), row.get("_page_number", 0))
-
-            for doc_id, elements in groups.items():
-                src, pnum = meta[doc_id]
-                merged = self._aggregate_page_elements(elements)
-                merged["_source_file"] = src
-                merged["_page_number"] = pnum
-                merged["_document_id"] = doc_id
-                emitted_doc_ids.add(doc_id)
-                await callback(merged)
-        except Exception as exc:
-            logger.warning("Failed to reconcile results for job %s: %s", job_id[:8], exc)
 
     # ------------------------------------------------------------------
     # Polling fallback
@@ -706,8 +539,6 @@ class RetrieverServiceClient:
         job_id: str,
         tracker: _JobTracker,
         poll_interval: float,
-        *,
-        on_page_result: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         consecutive_errors = 0
         while True:
@@ -727,19 +558,10 @@ class RetrieverServiceClient:
 
             tracker.set_pages_completed(job_id, body.get("pages_completed", 0))
 
-            for m in body.get("metrics", []):
-                tracker.update_metrics(
-                    m.get("model_name", "unknown"),
-                    m.get("invocation_count", 0),
-                    m.get("detections_count", 0),
-                )
-
             status = body.get("status", "")
             if status in ("complete", "failed"):
                 self.notify_capacity_available()
                 tracker.job_done(job_id, status)
-                if on_page_result is not None and status == "complete":
-                    await self._fetch_job_page_results(client, job_id, on_page_result)
                 return
             await asyncio.sleep(poll_interval)
 
@@ -749,11 +571,9 @@ class RetrieverServiceClient:
         job_ids: list[str],
         tracker: _JobTracker,
         poll_interval: float,
-        *,
-        on_page_result: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         tasks = [
-            self._poll_job_until_complete(client, jid, tracker, poll_interval, on_page_result=on_page_result)
+            self._poll_job_until_complete(client, jid, tracker, poll_interval)
             for jid in job_ids
         ]
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -858,7 +678,6 @@ class RetrieverServiceClient:
         use_sse: bool = True,
         poll_interval: float = 2.0,
         *,
-        on_page_result: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         on_file_submitted: Callable[[str, int], Any] | None = None,
         show_progress: bool = True,
     ) -> list[dict[str, Any]]:
@@ -871,9 +690,6 @@ class RetrieverServiceClient:
 
         Parameters
         ----------
-        on_page_result
-            Optional async callback invoked with the full document result
-            dict when a job completes on the server.
         on_file_submitted
             Optional callback invoked with ``(filename, total_pages)`` each
             time a file is uploaded and accepted by the server.
@@ -991,35 +807,38 @@ class RetrieverServiceClient:
         self,
         files: list[Path],
     ) -> AsyncIterator[dict[str, Any]]:
-        """Async generator: upload whole files, yield full document results.
+        """Async generator: upload whole files, yield job lifecycle events.
 
         Each file is uploaded as a whole document to ``POST /v1/ingest/job``
-        (server handles PDF splitting internally). The generator yields
-        events as they arrive:
+        (server handles PDF splitting internally). The generator yields:
 
         * ``{"event": "job_started", "job_id": ..., "filename": ..., "total_pages": ...}``
-        * ``{"event": "page_result", "job_id": ..., "source_file": ..., ...}``
-        * ``{"event": "page_failed", "job_id": ..., ...}``
-        * ``{"event": "metrics_update", ...}``
-        * ``{"event": "job_complete", "job_id": ..., "filename": ..., "results": {...}}``
+        * ``{"event": "page_complete", ...}`` (passthrough from SSE)
+        * ``{"event": "document_complete", ...}`` (passthrough from SSE)
+        * ``{"event": "job_complete", "job_id": ..., "results": {...}}``
 
-        When a ``job_complete`` event is received, the client fetches the
-        full results from ``GET /v1/ingest/job/{job_id}/results`` and
-        includes them in the event under the ``results`` key.
+        On ``job_complete``, the client fetches full results from
+        ``GET /v1/ingest/job/{job_id}/results`` and includes them under
+        the ``results`` key.
 
-        The generator terminates when every job has completed or failed.
+        The generator terminates when every job has completed.
 
-        Unlike :meth:`ingest_documents` this method does not render any UI;
-        it is the building block used by the high-level ``ServiceIngestor``.
+        A background watchdog polls any job that hasn't received a
+        ``job_complete`` SSE event within 30 seconds of upload, preventing
+        hangs if the SSE stream misses events.
         """
+        _JOB_IDLE_TIMEOUT_S = 30.0
+
         result_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         job_ids: list[str] = []
+        completed_jobs: set[str] = set()
 
         pool_limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
         timeout = httpx.Timeout(600.0, connect=30.0)
 
         async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
             uploads_done = asyncio.Event()
+            first_job_ready = asyncio.Event()
 
             async def _upload_all() -> None:
                 """Upload each file as a whole document."""
@@ -1029,6 +848,7 @@ class RetrieverServiceClient:
                         job_id = resp_json["job_id"]
                         total_pages = resp_json.get("total_pages", 1)
                         job_ids.append(job_id)
+                        first_job_ready.set()
                         await result_queue.put(
                             {
                                 "event": "job_started",
@@ -1038,69 +858,127 @@ class RetrieverServiceClient:
                             }
                         )
                 finally:
+                    first_job_ready.set()
                     uploads_done.set()
 
-            async def _poll_for_completion() -> None:
-                """Wait for all uploads to finish, then poll each job until complete.
+            async def _fetch_job_results(jid: str) -> dict[str, Any] | None:
+                try:
+                    r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}/results")
+                    r.raise_for_status()
+                    return r.json()
+                except Exception as exc:
+                    logger.warning("Failed to fetch results for job %s: %s", jid[:8], exc)
+                    return None
 
-                When a job reaches a terminal state, fetches full results from
-                the REST API and emits a ``job_complete`` event with the
-                ``results`` payload.
+            async def _emit_job_complete(jid: str) -> None:
+                """Fetch results and emit job_complete if not already done."""
+                if jid in completed_jobs:
+                    return
+                completed_jobs.add(jid)
+                results = await _fetch_job_results(jid)
+                await result_queue.put(
+                    {"event": "job_complete", "job_id": jid, "results": results}
+                )
+
+            async def _consume_sse() -> None:
+                """Subscribe to job-level SSE and forward events.
+
+                Opens SSE as soon as the first job_id is available. If the
+                SSE connection fails, returns silently — the watchdog will
+                pick up any remaining jobs via polling.
                 """
-                await uploads_done.wait()
-
+                await first_job_ready.wait()
                 if not job_ids:
                     return
 
-                pending_jobs = set(job_ids)
-                poll_interval = 2.0
+                sse_url = f"{self._base_url}/v1/ingest/stream/jobs"
 
-                async def _fetch_job_results(jid: str) -> dict[str, Any] | None:
+                for attempt in range(_MAX_RETRIES):
                     try:
-                        r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}/results")
-                        r.raise_for_status()
-                        return r.json()
-                    except Exception as exc:
-                        logger.warning("Failed to fetch results for job %s: %s", jid[:8], exc)
-                        return None
+                        async with client.stream(
+                            "POST",
+                            sse_url,
+                            json={"job_ids": list(job_ids)},
+                        ) as resp:
+                            resp.raise_for_status()
 
-                while pending_jobs:
-                    await asyncio.sleep(poll_interval)
-                    for jid in list(pending_jobs):
+                            buffer = ""
+                            async for chunk in resp.aiter_text():
+                                buffer += chunk
+                                while "\n\n" in buffer:
+                                    raw_event, buffer = buffer.split("\n\n", 1)
+                                    event = _parse_sse_event(raw_event)
+                                    if event is None:
+                                        continue
+
+                                    event_type = event.get("event", "message")
+
+                                    if event_type in ("page_complete", "document_complete"):
+                                        await result_queue.put(event)
+
+                                    elif event_type == "job_complete":
+                                        jid = event.get("job_id")
+                                        if jid:
+                                            await _emit_job_complete(jid)
+
+                                    elif event_type == "session_complete":
+                                        return
+
+                            return
+
+                    except (httpx.ConnectError, httpx.PoolTimeout, httpx.RemoteProtocolError) as exc:
+                        delay = _RETRY_BASE_DELAY * (2**attempt)
+                        if attempt < _MAX_RETRIES - 1:
+                            logger.warning("SSE connection failed (%s), retrying in %.0fs", exc, delay)
+                            await asyncio.sleep(delay)
+                        else:
+                            logger.warning("SSE failed after %d attempts; watchdog will handle remaining jobs", _MAX_RETRIES)
+                            return
+
+            async def _idle_watchdog() -> None:
+                """Poll jobs that haven't completed within the idle timeout.
+
+                Every 5 seconds, checks each uploaded job. If more than
+                _JOB_IDLE_TIMEOUT_S has passed since upload without a
+                job_complete event, polls the server REST API directly.
+                Terminates once all jobs are complete.
+                """
+                await first_job_ready.wait()
+                job_upload_times: dict[str, float] = {}
+
+                while True:
+                    await asyncio.sleep(5.0)
+                    now = asyncio.get_event_loop().time()
+
+                    for jid in list(job_ids):
+                        if jid in completed_jobs:
+                            continue
+                        if jid not in job_upload_times:
+                            job_upload_times[jid] = now
+
+                        elapsed = now - job_upload_times[jid]
+                        if elapsed < _JOB_IDLE_TIMEOUT_S:
+                            continue
+
                         try:
                             r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}")
                             if r.status_code == 404:
-                                logger.warning("[job %s] server returned 404 — discarding", jid[:8])
-                                pending_jobs.discard(jid)
-                                await result_queue.put(
-                                    {
-                                        "event": "job_complete",
-                                        "job_id": jid,
-                                        "synthetic": True,
-                                        "error": "job unknown to server (upload failed)",
-                                    }
-                                )
                                 continue
                             r.raise_for_status()
-                            body = r.json()
-                            status = body.get("status", "")
+                            status = r.json().get("status", "")
                             if status in ("complete", "failed"):
-                                pending_jobs.discard(jid)
-                                results = await _fetch_job_results(jid)
-                                await result_queue.put(
-                                    {
-                                        "event": "job_complete",
-                                        "job_id": jid,
-                                        "results": results,
-                                    }
-                                )
+                                await _emit_job_complete(jid)
                         except Exception as exc:
-                            logger.debug("[job %s] poll error: %s", jid[:8], exc)
+                            logger.debug("[watchdog] poll error for %s: %s", jid[:8], exc)
+
+                    if uploads_done.is_set() and len(completed_jobs) >= len(job_ids):
+                        break
 
                 await result_queue.put(None)
 
             upload_task = asyncio.create_task(_upload_all())
-            poll_task = asyncio.create_task(_poll_for_completion())
+            sse_task = asyncio.create_task(_consume_sse())
+            watchdog_task = asyncio.create_task(_idle_watchdog())
 
             try:
                 while True:
@@ -1109,10 +987,50 @@ class RetrieverServiceClient:
                         break
                     yield item
             finally:
-                for t in (upload_task, poll_task):
+                for t in (upload_task, sse_task, watchdog_task):
                     if not t.done():
                         t.cancel()
-                await asyncio.gather(upload_task, poll_task, return_exceptions=True)
+                await asyncio.gather(upload_task, sse_task, watchdog_task, return_exceptions=True)
+
+    async def _poll_remaining_jobs(
+        self,
+        client: httpx.AsyncClient,
+        pending_jobs: set[str],
+        result_queue: asyncio.Queue[dict[str, Any] | None],
+    ) -> None:
+        """Polling fallback for jobs not resolved via SSE."""
+        poll_interval = 2.0
+
+        async def _fetch_results(jid: str) -> dict[str, Any] | None:
+            try:
+                resp = await client.get(f"{self._base_url}/v1/ingest/job/{jid}/results")
+                resp.raise_for_status()
+                return resp.json()
+            except Exception as exc:
+                logger.warning("Failed to fetch results for job %s: %s", jid[:8], exc)
+                return None
+
+        while pending_jobs:
+            await asyncio.sleep(poll_interval)
+            for jid in list(pending_jobs):
+                try:
+                    r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}")
+                    if r.status_code == 404:
+                        pending_jobs.discard(jid)
+                        await result_queue.put(
+                            {"event": "job_complete", "job_id": jid, "results": None}
+                        )
+                        continue
+                    r.raise_for_status()
+                    status = r.json().get("status", "")
+                    if status in ("complete", "failed"):
+                        pending_jobs.discard(jid)
+                        results = await _fetch_results(jid)
+                        await result_queue.put(
+                            {"event": "job_complete", "job_id": jid, "results": results}
+                        )
+                except Exception as exc:
+                    logger.debug("[job %s] poll error: %s", jid[:8], exc)
 
 
 # ------------------------------------------------------------------

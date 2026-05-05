@@ -25,10 +25,8 @@ that batches writes into one transaction — eliminating WAL lock
 contention across 16+ worker processes.
 
 Embedding vectors, base64 page images, and other large intermediates
-are stripped from both ``content_json`` (SQLite) and SSE payloads via
-``_SERIALIZE_SKIP``.  Embeddings are already persisted in LanceDB by
-the pipeline.  Page result storage in SQLite is optional and controlled
-by ``processing.store_page_results`` (default: off).
+are stripped from ``content_json`` (SQLite) via ``_SERIALIZE_SKIP``.
+Embeddings are already persisted in LanceDB by the pipeline.
 """
 
 from __future__ import annotations
@@ -1629,19 +1627,6 @@ class ProcessingPool:
             page_number=page.get("page_number"),
         )
 
-        self._publish_event(
-            doc_id,
-            {
-                "event": "status_change",
-                "document_id": doc_id,
-                "job_id": job_id,
-                "status": "cancelled",
-                "source_file": page.get("filename", ""),
-                "page_number": page.get("page_number", 0),
-                "reason": "job_cancelled",
-            },
-        )
-
         if job_id:
             self._handle_job_completion(job_id)
 
@@ -1684,30 +1669,6 @@ class ProcessingPool:
         job_id = result.job_id
 
         if result.success:
-            for m in result.metrics:
-                self._publish_event(
-                    doc_id,
-                    {
-                        "event": "metrics_update",
-                        "document_id": doc_id,
-                        "job_id": job_id,
-                        "model_name": m["model_name"],
-                        "invocation_count": m.get("invocation_count", 1),
-                        "detections_count": m.get("detections_count", 0),
-                    },
-                )
-
-            page_result_payload: dict[str, Any] = {
-                "event": "page_result",
-                "document_id": doc_id,
-                "job_id": job_id,
-                "source_file": result.source_file,
-                "page_number": result.page_number,
-                "total_pages": result.total_pages,
-                "pages": result.page_contents,
-            }
-            self._publish_event(doc_id, page_result_payload)
-
             page_complete_payload: dict[str, Any] = {
                 "event": "page_complete",
                 "document_id": doc_id,
@@ -1778,20 +1739,6 @@ class ProcessingPool:
                 completed_at=result.completed_at,
             )
         else:
-            self._publish_event(
-                doc_id,
-                {
-                    "event": "status_change",
-                    "document_id": doc_id,
-                    "job_id": job_id,
-                    "status": "failed",
-                    "source_file": result.source_file,
-                    "page_number": result.page_number,
-                    "error": result.error_message or "unknown error",
-                    "failure_type": result.failure_type or FailureType.UNKNOWN.value,
-                },
-            )
-
             fail_log = PageProcessingLog(
                 id=PageProcessingLog.make_id(result.source_file, result.page_number),
                 document_id=doc_id,

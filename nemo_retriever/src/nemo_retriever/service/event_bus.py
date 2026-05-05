@@ -16,36 +16,24 @@ Each subscription is a **bounded** ``asyncio.Queue`` (default 8192 events).
 ``publish()`` always uses ``put_nowait`` so a slow subscriber can never
 block worker processes from completing batches.
 
-Three layered defenses keep a slow consumer from collapsing the stream:
+Two layered defenses keep a slow consumer from collapsing the stream:
 
 1. **Per-subscription event-type filter.**  A subscription may declare a
    ``frozenset`` of event types it is interested in; events of other types
-   never even hit the queue.  This is the principal mechanism that keeps
-   chatty per-page events (``metrics_update``, ``page_complete``,
-   ``document_complete``) out of job-level subscribers that only care
-   about job-life-cycle events.
+   never even hit the queue.
 
 2. **Priority-drop load shedding.**  When the queue is full, a configurable
-   set of low-priority event types are silently dropped instead of
-   collapsing the stream.  Terminal events (``job_complete``,
-   ``status_change``, ``page_result`` when content is requested) are
-   always preserved.
-
-3. **Stream overflow sentinel.**  If a *high*-priority event arrives on a
-   full queue the subscription is marked overflowed, the queue is drained
-   and a sentinel ``{"event": "stream_overflow"}`` is injected so the SSE
-   generator can emit it to the client.  The client is expected to
-   reconnect with the ``Last-Event-ID`` header to resume from the per-key
-   replay buffer.
+   set of low-priority event types (``page_complete``) are silently dropped.
+   Terminal events (``job_complete``, ``document_complete``) are always
+   preserved.  If a terminal event arrives on a full queue, the queue is
+   drained and a sentinel is injected.
 
 Resumable streams
 -----------------
 Every published event is annotated with a monotonic ``seq`` integer
 (unique within this process) and stored in a fixed-size per-key ring
-buffer (default 1024 events — large enough to cover a typical multi-page
-document so an overflow-triggered reconnect can usually replay every
-missed event).  When a client reconnects with the ``Last-Event-ID``
-header the SSE generator drains the buffer and replays all events with
+buffer (default 1024 events).  When a client reconnects with the
+``Last-Event-ID`` header the SSE generator replays all events with
 ``seq > last_event_id`` before pulling new ones from the queue.
 
 Supports both per-document and multi-document (session) subscriptions so
@@ -83,23 +71,19 @@ _OVERFLOW_EVENT = {"event": "stream_overflow", "reason": "subscriber_too_slow"}
 OverflowPolicy = Literal["drop_low_priority", "backpressure", "block"]
 
 # Event types that are safe to silently drop under back-pressure.  These
-# carry observability/progress information that a recovering client can
-# reconstruct from the REST status endpoints; losing one does not change
-# the final result of a job.  Terminal events (``job_complete``,
-# ``document_complete``, ``status_change``, ``page_result``,
-# ``stream_overflow``, ``session_complete``) are intentionally NOT in
-# this set — they must be preserved or the consumer cannot make forward
-# progress.
+# carry progress information that a recovering client can reconstruct
+# from the REST status endpoints; losing one does not change the final
+# result of a job.  Terminal events (``job_complete``, ``document_complete``)
+# are intentionally NOT in this set.
 _DEFAULT_PRIORITY_DROP: frozenset[str] = frozenset(
     {
-        "metrics_update",
         "page_complete",
     }
 )
 
 # Fraction of queue capacity above which low-priority events are shed
 # proactively, so headroom is always reserved for terminal-class events.
-# At 0.75 a 8192-slot queue starts dropping ``metrics_update`` when more
+# At 0.75 a 8192-slot queue starts dropping ``page_complete`` when more
 # than ~6100 events are already buffered, leaving 2000+ slots free for
 # terminal events even under sustained burst load.
 _PRIORITY_DROP_WATERMARK: float = 0.75
@@ -193,7 +177,7 @@ class _Subscription:
         # 2) Watermark-based proactive shedding.  When the queue is already
         #    crowded, low-priority events are dropped EARLY so that
         #    terminal events arriving later still have room to enqueue.
-        #    Without this guard, a sustained burst of `metrics_update`
+        #    Without this guard, a sustained burst of `page_complete`
         #    events fills the queue right up to the hard cap and then
         #    `job_complete` is the unlucky event that trips overflow.
         is_droppable = event_type in self._priority_drop
@@ -328,7 +312,7 @@ class EventBus:
         priority_drop
             Override the default set of event types that may be silently
             dropped under back-pressure (default:
-            ``{"metrics_update", "page_complete", "document_complete"}``).
+            ``{"page_complete"}``).
         """
         sub = _Subscription(
             maxsize=maxsize or self._default_maxsize,

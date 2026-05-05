@@ -161,7 +161,6 @@ Client                     Service                    Worker Process
   │                          │                              │
   │                          │  10. Publish SSE events      │
   │  SSE: page_complete ◄────│                              │
-  │  SSE: metrics_update ◄───│                              │
   │  SSE: document_complete ◄│                              │
   │  SSE: job_complete ◄─────│                              │
 ```
@@ -350,13 +349,11 @@ A background asyncio task periodically queries terminal documents (complete/fail
 
 The `EventBus` is a per-key fan-out pub/sub system. Keys are `document_id` or `job_id` strings. Events published under a key are delivered to every subscription for that key.
 
-**Backpressure model** (three layered defenses):
+**Backpressure model** (two layered defenses):
 
 1. **Per-subscription event-type filter** — subscribers declare which event types they care about. Filtered events never touch the queue.
 
-2. **Priority-drop load shedding** — when the queue fills past a watermark (75%), low-priority events (`metrics_update`, `page_complete`, `document_complete`) are silently dropped. Terminal events (`job_complete`, `status_change`, `page_result`) are always preserved.
-
-3. **Stream overflow sentinel** — if a terminal event hits a full queue, the subscription is marked overflowed, the queue is drained, and a `stream_overflow` event is injected. The client reconnects with `Last-Event-ID` to resume from the replay buffer.
+2. **Priority-drop load shedding** — when the queue fills past a watermark (75%), low-priority events (`page_complete`) are silently dropped. Terminal events (`job_complete`, `document_complete`) are always preserved. If a terminal event hits a full queue, the subscription is drained and a sentinel is injected.
 
 **Overflow policies** (configurable):
 
@@ -503,7 +500,7 @@ The 202 response is a contract: "your work will not be lost." Without the spool,
 
 ### Why drop-on-overflow instead of blocking?
 
-The default `drop_low_priority` policy ensures the worker callback thread (which publishes SSE events) never blocks. A blocked worker thread back-pressures the `ProcessPoolExecutor`, which cascades to 503s on the ingest endpoint. The dropped events (`metrics_update`, `page_complete`) are reconstructible from REST endpoints, so the client loses observability but not correctness.
+The default `drop_low_priority` policy ensures the worker callback thread (which publishes SSE events) never blocks. A blocked worker thread back-pressures the `ProcessPoolExecutor`, which cascades to 503s on the ingest endpoint. The dropped events (`page_complete`) are reconstructible from REST endpoints, so the client loses observability but not correctness.
 
 ### Why `asyncio.to_thread` for query/rerank?
 
@@ -706,16 +703,14 @@ self._publish_event(
 
 ```python
 _DEFAULT_PRIORITY_DROP: frozenset[str] = frozenset({
-    "metrics_update",
     "page_complete",
-    "document_complete",
     "my_event",  # safe to drop — client can reconstruct from REST
 })
 ```
 
-3. Handle the event in `client.py`'s `_handle_sse_event` and/or `_stream_consumer` if the CLI client needs to react to it.
+3. Handle the event in `client.py`'s `_handle_sse_event` if the CLI client needs to react to it.
 
-**Important:** Terminal events (`job_complete`, `status_change`) must NOT be added to the priority-drop set — they are needed for correctness.
+**Important:** Terminal events (`job_complete`, `document_complete`) must NOT be added to the priority-drop set — they are needed for correctness.
 
 ### Recording a Provenance Event
 

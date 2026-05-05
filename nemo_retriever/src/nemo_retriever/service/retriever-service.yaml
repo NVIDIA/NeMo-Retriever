@@ -114,10 +114,10 @@ vector_store:
 
 # SSE event-bus back-pressure policy.
 #
-# - drop_low_priority (default): silently shed metrics_update /
-#   page_complete / document_complete events to preserve terminal
-#   events.  Lowest latency, never blocks workers, but accepts that
-#   *some* events may be dropped under sustained overload.
+# - drop_low_priority (default): silently shed page_complete events
+#   to preserve terminal events.  Lowest latency, never blocks
+#   workers, but accepts that *some* events may be dropped under
+#   sustained overload.
 # - backpressure: publisher awaits Queue.put with publish_timeout_s.
 #   Slow consumers back-pressure the worker pool, eventually 503-ing
 #   ingest with Retry-After.  No events dropped until the timeout

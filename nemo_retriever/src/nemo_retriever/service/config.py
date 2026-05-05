@@ -144,9 +144,9 @@ class EventBusConfig(BaseModel):
     fills up faster than the SSE consumer can drain it:
 
     - ``drop_low_priority`` (default): silently shed
-      ``metrics_update``/``page_complete``/``document_complete`` events
-      to preserve terminal events.  Lowest latency, no caller blocking,
-      but accepts that *some* events are dropped under load.
+      ``page_complete`` events to preserve terminal events.  Lowest
+      latency, no caller blocking, but accepts that *some* events are
+      dropped under load.
     - ``backpressure``: the publisher awaits ``Queue.put()`` with the
       configured timeout, which back-pressures the worker callback
       thread, which in turn back-pressures the worker pool, which

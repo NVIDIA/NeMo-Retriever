@@ -45,38 +45,28 @@ router = APIRouter(tags=["stream"])
 # ------------------------------------------------------------------
 #
 # Each SSE endpoint declares the set of event types its subscribers
-# actually consume.  The EventBus uses these as a hard filter so chatty
-# per-page events that the endpoint doesn't forward (``metrics_update``,
-# ``page_complete``, ``document_complete``) never even reach the
-# subscriber's queue.  This is the principal mechanism that keeps
-# ``stream_overflow`` from being triggered under normal load.
+# actually consume.  The EventBus uses these as a hard filter so only
+# relevant events reach the subscriber's queue.
 
-# Doc-level (single-document) endpoint — caller wants the whole story
-# for one document, so accept everything.
+# Doc-level (single-document) endpoint — accepts everything.
 _DOC_STREAM_EVENT_TYPES: frozenset[str] | None = None
 
-# Multi-doc / session endpoint — caller needs status transitions and
-# per-page completion + (optionally) per-page content; aggregate metrics
-# don't help a session-level consumer.
+# Multi-doc / session endpoint — page and document completion.
 _SESSION_STREAM_BASE_EVENTS: frozenset[str] = frozenset(
     {
         "page_complete",
         "document_complete",
-        "status_change",
-        "stream_overflow",
+        "job_complete",
     }
 )
 
-# Job-level endpoint — caller is interested in job life-cycle events
-# only (plus optionally the full per-page content payloads when content
-# was requested).  Per-model metrics and per-page progress events are
-# server-side-only details for this endpoint.
+# Job-level endpoint — job lifecycle plus page/document completion
+# for progress tracking.
 _JOB_STREAM_BASE_EVENTS: frozenset[str] = frozenset(
     {
-        "job_started",
         "job_complete",
-        "status_change",
-        "stream_overflow",
+        "page_complete",
+        "document_complete",
     }
 )
 
@@ -86,11 +76,9 @@ _JOB_STREAM_BASE_EVENTS: frozenset[str] = frozenset(
 # ------------------------------------------------------------------
 
 
-def _format_event(event: dict, include_content: bool) -> str | None:
+def _format_event(event: dict) -> str | None:
     """Return the wire-format SSE frame for *event*, or ``None`` to skip."""
     event_type = event.get("event", "message")
-    if event_type == "page_result" and not include_content:
-        return None
     seq = event.get("seq")
     id_line = f"id: {seq}\n" if isinstance(seq, int) else ""
     data = json.dumps(event)
@@ -112,7 +100,6 @@ async def _single_doc_generator(
     document_id: str,
     *,
     after_seq: int = 0,
-    include_content: bool = True,
 ) -> AsyncIterator[str]:
     """Yield SSE frames for a single document until ``document_complete``.
 
@@ -123,7 +110,7 @@ async def _single_doc_generator(
     replayed_max_seq = after_seq
     try:
         for evt in event_bus.replay([document_id], after_seq=after_seq):
-            frame = _format_event(evt, include_content)
+            frame = _format_event(evt)
             if frame is not None:
                 yield frame
             seq = evt.get("seq", 0)
@@ -142,11 +129,11 @@ async def _single_doc_generator(
                 continue
 
             event_type = event.get("event", "message")
-            frame = _format_event(event, include_content)
+            frame = _format_event(event)
             if frame is not None:
                 yield frame
 
-            if event_type in ("document_complete", "stream_overflow"):
+            if event_type == "document_complete":
                 break
     finally:
         event_bus.unsubscribe(document_id, queue)
@@ -157,7 +144,6 @@ async def _multi_doc_generator(
     document_ids: list[str],
     *,
     after_seq: int = 0,
-    include_content: bool = False,
     repository: Repository | None = None,
 ) -> AsyncIterator[str]:
     """Yield SSE frames for *all* listed documents on a single connection.
@@ -165,16 +151,13 @@ async def _multi_doc_generator(
     Uses subscribe-first-then-replay to guarantee no events are lost
     between initial buffering and the live subscription.
     """
-    wanted = set(_SESSION_STREAM_BASE_EVENTS)
-    if include_content:
-        wanted.add("page_result")
-    queue = event_bus.subscribe_many(document_ids, event_types=wanted)
+    queue = event_bus.subscribe_many(document_ids, event_types=set(_SESSION_STREAM_BASE_EVENTS))
     replayed_max_seq = after_seq
     pending = set(document_ids)
     stale_keepalives = 0
     try:
         for evt in event_bus.replay(document_ids, after_seq=after_seq):
-            frame = _format_event(evt, include_content)
+            frame = _format_event(evt)
             if frame is not None:
                 yield frame
             seq = evt.get("seq", 0)
@@ -184,9 +167,6 @@ async def _multi_doc_generator(
             doc_id = evt.get("document_id")
             if event_type == "document_complete" and doc_id in pending:
                 pending.discard(doc_id)
-            elif event_type == "status_change" and evt.get("status") == "failed":
-                if doc_id in pending:
-                    pending.discard(doc_id)
 
         while pending:
             try:
@@ -198,7 +178,7 @@ async def _multi_doc_generator(
                     for doc_id in resolved:
                         pending.discard(doc_id)
                         synth = {"event": "document_complete", "document_id": doc_id, "synthetic": True}
-                        frame = _format_event(synth, include_content)
+                        frame = _format_event(synth)
                         if frame is not None:
                             yield frame
                     if not pending:
@@ -213,22 +193,13 @@ async def _multi_doc_generator(
             stale_keepalives = 0
             event_type = event.get("event", "message")
 
-            if event_type == "stream_overflow":
-                frame = _format_event(event, include_content)
-                if frame is not None:
-                    yield frame
-                break
-
-            frame = _format_event(event, include_content)
+            frame = _format_event(event)
             if frame is not None:
                 yield frame
 
             doc_id = event.get("document_id")
             if event_type == "document_complete" and doc_id in pending:
                 pending.discard(doc_id)
-            elif event_type == "status_change" and event.get("status") == "failed":
-                if doc_id in pending:
-                    pending.discard(doc_id)
 
         yield f"event: session_complete\ndata: {json.dumps({'completed': len(document_ids)})}\n\n"
     finally:
@@ -258,7 +229,6 @@ async def _job_stream_generator(
     job_ids: list[str],
     *,
     after_seq: int = 0,
-    include_content: bool = False,
     repository: Repository | None = None,
 ) -> AsyncIterator[str]:
     """Yield SSE frames for one or more jobs until every job completes.
@@ -268,16 +238,13 @@ async def _job_stream_generator(
     appear in both the replay buffer and the live queue are deduplicated
     by their monotonic ``seq`` number.
     """
-    wanted = set(_JOB_STREAM_BASE_EVENTS)
-    if include_content:
-        wanted.add("page_result")
-    queue = event_bus.subscribe_many(job_ids, event_types=wanted)
+    queue = event_bus.subscribe_many(job_ids, event_types=set(_JOB_STREAM_BASE_EVENTS))
     replayed_max_seq = after_seq
     pending = set(job_ids)
     stale_keepalives = 0
     try:
         for evt in event_bus.replay(job_ids, after_seq=after_seq):
-            frame = _format_event(evt, include_content)
+            frame = _format_event(evt)
             if frame is not None:
                 yield frame
             seq = evt.get("seq", 0)
@@ -287,9 +254,6 @@ async def _job_stream_generator(
             jid = evt.get("job_id")
             if event_type == "job_complete" and jid in pending:
                 pending.discard(jid)
-            elif event_type == "status_change" and evt.get("status") == "failed":
-                if jid in pending:
-                    pending.discard(jid)
 
         while pending:
             try:
@@ -301,7 +265,7 @@ async def _job_stream_generator(
                     for jid in resolved:
                         pending.discard(jid)
                         synth = {"event": "job_complete", "job_id": jid, "synthetic": True}
-                        frame = _format_event(synth, include_content)
+                        frame = _format_event(synth)
                         if frame is not None:
                             yield frame
                     if not pending:
@@ -316,22 +280,13 @@ async def _job_stream_generator(
             stale_keepalives = 0
             event_type = event.get("event", "message")
 
-            if event_type == "stream_overflow":
-                frame = _format_event(event, include_content)
-                if frame is not None:
-                    yield frame
-                break
-
-            frame = _format_event(event, include_content)
+            frame = _format_event(event)
             if frame is not None:
                 yield frame
 
             jid = event.get("job_id")
             if event_type == "job_complete" and jid in pending:
                 pending.discard(jid)
-            elif event_type == "status_change" and event.get("status") == "failed":
-                if jid in pending:
-                    pending.discard(jid)
 
         yield f"event: session_complete\ndata: {json.dumps({'completed': len(job_ids)})}\n\n"
     finally:
@@ -400,10 +355,6 @@ class StreamSessionRequest(BaseModel):
     """Body for the multi-document SSE endpoint."""
 
     document_ids: list[str] = Field(..., min_length=1)
-    include_content: bool = Field(
-        default=False,
-        description="If true, include `page_result` events carrying the full per-page extracted content.",
-    )
 
 
 @router.post(
@@ -427,7 +378,6 @@ async def stream_session_events(
             event_bus,
             body.document_ids,
             after_seq=_parse_last_event_id(last_event_id),
-            include_content=body.include_content,
             repository=repo,
         ),
         media_type="text/event-stream",
@@ -439,10 +389,6 @@ class JobStreamRequest(BaseModel):
     """Body for the job-level SSE endpoint."""
 
     job_ids: list[str] = Field(..., min_length=1)
-    include_content: bool = Field(
-        default=False,
-        description="If true, include `page_result` events carrying the full per-page extracted content.",
-    )
 
 
 @router.post(
@@ -454,11 +400,6 @@ async def stream_job_events(
     body: JobStreamRequest,
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    # Subscribe immediately without validating job existence.
-    # Jobs are created on-the-fly as the first page for each file arrives,
-    # so the SSE stream must be open BEFORE uploads begin to avoid missing
-    # early events.  The EventBus is purely in-memory and doesn't need
-    # the job row to exist.
     event_bus: EventBus = request.app.state.event_bus
     repo: Repository = request.app.state.repository
     return StreamingResponse(
@@ -466,7 +407,6 @@ async def stream_job_events(
             event_bus,
             body.job_ids,
             after_seq=_parse_last_event_id(last_event_id),
-            include_content=body.include_content,
             repository=repo,
         ),
         media_type="text/event-stream",

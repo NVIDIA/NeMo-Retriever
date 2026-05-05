@@ -79,13 +79,12 @@ def _iter_input_files(input_dir: Path) -> list[str]:
 
 
 def _print_progress(counts: Counter, files_total: int, elapsed: float) -> None:
-    pages = counts.get("page_result", 0)
-    failed = counts.get("page_failed", 0)
+    pages_done = counts.get("page_complete", 0)
     started = counts.get("job_started", 0)
     completed = counts.get("job_complete", 0)
-    pps = pages / elapsed if elapsed > 0 else 0.0
+    pps = pages_done / elapsed if elapsed > 0 else 0.0
     print(
-        f"[{elapsed:6.1f}s] jobs {completed}/{started}/{files_total} " f"pages={pages} failed={failed} PPS={pps:6.2f}",
+        f"[{elapsed:6.1f}s] jobs {completed}/{started}/{files_total} " f"pages={pages_done} PPS={pps:6.2f}",
         file=sys.stderr,
         flush=True,
     )
@@ -117,8 +116,6 @@ async def run_ingest(args: argparse.Namespace) -> int:
     )
 
     counts: Counter = Counter()
-    stream_errors: list[str] = []
-    overflow_seen = False
 
     t0 = time.monotonic()
     last_progress = t0
@@ -127,57 +124,31 @@ async def run_ingest(args: argparse.Namespace) -> int:
         etype = event.get("event", "message")
         counts[etype] += 1
 
-        if etype == "stream_error":
-            err = event.get("error", "<unknown>")
-            stream_errors.append(err)
-            print(f"!! stream_error: {err}", file=sys.stderr, flush=True)
-        elif etype == "stream_overflow":
-            overflow_seen = True
-            print(
-                "!! stream_overflow: server lost events (in-memory bus full); "
-                "throughput numbers will be a lower bound",
-                file=sys.stderr,
-                flush=True,
-            )
-        elif etype == "page_failed":
-            print(
-                f"!! page_failed: {event.get('source_file')} p{event.get('page_number')} " f"-- {event.get('error')}",
-                file=sys.stderr,
-                flush=True,
-            )
-
         now = time.monotonic()
         if now - last_progress >= PROGRESS_INTERVAL_S:
             _print_progress(counts, len(files), now - t0)
             last_progress = now
 
     elapsed = time.monotonic() - t0
-    pages = counts.get("page_result", 0)
-    failed = counts.get("page_failed", 0)
-    pps = pages / elapsed if elapsed > 0 else 0.0
+    pages_done = counts.get("page_complete", 0)
+    jobs_done = counts.get("job_complete", 0)
+    pps = pages_done / elapsed if elapsed > 0 else 0.0
 
     print()
     print("=" * 60)
     print("INGEST RESULTS")
     print("=" * 60)
     print(f"Files:    {len(files)}")
-    print(f"Pages:    {pages}  (failed {failed})")
+    print(f"Jobs:     {jobs_done}")
+    print(f"Pages:    {pages_done}")
     print(f"Elapsed:  {elapsed:.2f}s")
     print(f"PPS:      {pps:.2f} pages/sec")
     print()
     print("Event counts:")
     for name in sorted(counts):
         print(f"  {name:<20} {counts[name]}")
-    if stream_errors:
-        print()
-        print(f"Stream errors ({len(stream_errors)}):")
-        for err in stream_errors:
-            print(f"  - {err}")
-    if overflow_seen:
-        print()
-        print("NOTE: server emitted stream_overflow; some events were dropped.")
 
-    return 0 if (pages > 0 and not stream_errors) else 1
+    return 0 if jobs_done > 0 else 1
 
 
 # ======================================================================
