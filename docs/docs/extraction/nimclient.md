@@ -583,5 +583,5 @@ print(f"Formatted input: {formatted}")
 
 ## Related Topics
 
-- [User-Defined Functions for NeMo Retriever Library](user-defined-functions.md)
+- [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md)
 - [User-Defined Stages for NeMo Retriever Library](user-defined-stages.md)

@@ -110,7 +110,7 @@ nav:
       - "Ray and distributed ingest": extraction/ray-logging.md
       - "Telemetry and observability": extraction/telemetry.md
   - "9. Customize & extend":
-      - User-defined functions: extraction/user-defined-functions.md
+      - Extending/Customizing NeMo Retriever Library with custom code: https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md
       - User-defined stages: extraction/user-defined-stages.md
       - "NimClient and custom NIM endpoints": extraction/nimclient.md
   - "10. Integrations & ecosystem":

@@ -36,6 +36,7 @@ def test_pipeline_package_exports_cli_app_and_run() -> None:
         ("pdf", ["nested/doc.pdf"], ["*.pdf"]),
         ("doc", ["deck.pptx", "report.docx"], ["*.docx", "*.pptx"]),
         ("image", ["plot.png"], ["*.png"]),
+        ("video", ["clip.mp4"], ["*.mp4"]),
     ],
 )
 def test_resolve_file_patterns_recurses_directory_inputs(
