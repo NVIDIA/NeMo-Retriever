@@ -30,13 +30,21 @@ from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import HtmlChunkParams
 from nemo_retriever.params import PdfSplitParams
+from nemo_retriever.params import AudioVisualFuseParams
 from nemo_retriever.params import TextChunkParams
+from nemo_retriever.params import VideoFrameParams
+from nemo_retriever.params import VideoFrameTextDedupParams
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.txt.ray_data import TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
+from nemo_retriever.video import AudioVisualFuser
+from nemo_retriever.video import VideoFrameActor
+from nemo_retriever.video import VideoFrameOCRActor
+from nemo_retriever.video import VideoFrameTextDedup
+from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
@@ -46,7 +54,7 @@ TEXT_EXTENSIONS = {".txt"}
 HTML_EXTENSIONS = {".html"}
 AUDIO_EXTENSIONS = {".mp3", ".wav"}
 IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
-VIDEO_EXTENSIONS = {".mp4"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
 
 
 def _has_endpoint(*values: Any) -> bool:
@@ -113,6 +121,9 @@ class _MultiTypeExtractBase(AbstractOperator):
         audio_chunk_params: AudioChunkParams | None = None,
         asr_params: ASRParams | None = None,
         caption_params: CaptionParams | None = None,
+        video_frame_params: VideoFrameParams | None = None,
+        video_text_dedup_params: VideoFrameTextDedupParams | None = None,
+        av_fuse_params: AudioVisualFuseParams | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -123,6 +134,9 @@ class _MultiTypeExtractBase(AbstractOperator):
         self.audio_chunk_params = audio_chunk_params or AudioChunkParams()
         self.asr_params = asr_params or ASRParams()
         self.caption_params = caption_params
+        self.video_frame_params = video_frame_params or VideoFrameParams()
+        self.video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
+        self.av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         self._resolved_resources = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame | dict[str, list[str]]:
@@ -154,8 +168,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             audio_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["audio"])
             outputs.append(ASRActor(params=self.asr_params).run(audio_df))
         if not grouped["video"].empty:
-            video_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["video"])
-            outputs.append(ASRActor(params=self.asr_params).run(video_df))
+            outputs.append(self._run_video_pipeline(grouped["video"]))
 
         non_empty = [df for df in outputs if isinstance(df, pd.DataFrame) and not df.empty]
         if not non_empty:
@@ -263,6 +276,76 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_image_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         batch_df = ImageLoadActor().run(batch_df)
         return self._run_detection_pipeline(batch_df)
+
+    def _video_ocr_kwargs(self) -> dict[str, Any]:
+        """Build OCR kwargs for the video frame branch from ``extract_params``.
+
+        Video OCR shares its endpoint, API key, batch size, and timeout with
+        the PDF/image OCR config — the user only configures OCR once via
+        :class:`ExtractParams`.
+        """
+        ep = self.extract_params
+        return {
+            "ocr_invoke_url": ep.ocr_invoke_url,
+            "api_key": ep.ocr_api_key or ep.api_key,
+            "inference_batch_size": int(ep.inference_batch_size),
+            "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
+        }
+
+    def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+        """Run audio-from-video ASR + frame OCR + (optional) scene fusion.
+
+        Branch A: ``MediaChunkActor`` chunks the video and ``ASRActor``
+        runs ASR on the chunks (audio is implicit — Parakeet reads from
+        the video stream). Emits per-utterance audio rows.
+
+        Branch B: ``VideoFrameActor`` extracts frames at
+        ``video_frame_params.fps``; optional content-hash dedup;
+        ``VideoFrameOCRActor`` (Nemotron OCR v1) runs full-frame OCR
+        directly — no page-elements detection; ``VideoFrameTextDedup``
+        then collapses time-adjacent runs of identical OCR text per
+        ``source_path`` (mirrors the Ray graph in ``build_graph``).
+        Emits per-frame rows.
+
+        Branch C: ``AudioVisualFuser`` self-joins audio rows against
+        concurrent frame OCR rows and appends fused per-utterance rows
+        with text = audio + visible OCR. Skipped when
+        ``av_fuse_params.enabled`` is False or when neither branch
+        produced rows.
+        """
+        # Branch A: audio-from-video → ASR. Skipped when the caller disables
+        # audio (visual-only recall benchmarks); mirrors ``build_graph``'s
+        # ``audio_enabled`` gate.
+        audio_enabled = self.audio_chunk_params.enabled
+        if audio_enabled:
+            audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
+            audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
+        else:
+            audio_out = pd.DataFrame()
+
+        # Branch B: frame extraction → optional dedup → full-frame OCR → text dedup
+        frame_df = VideoFrameActor(params=self.video_frame_params).run(batch_df)
+        if self.video_frame_params.dedup and isinstance(frame_df, pd.DataFrame) and not frame_df.empty:
+            frame_df = dedup_video_frames(frame_df)
+        if isinstance(frame_df, pd.DataFrame) and not frame_df.empty:
+            ocr_kwargs = self._video_ocr_kwargs()
+            frame_out = self._instantiate_resolved(VideoFrameOCRActor, **ocr_kwargs).run(frame_df)
+            if self.video_text_dedup_params.enabled and isinstance(frame_out, pd.DataFrame) and not frame_out.empty:
+                frame_out = VideoFrameTextDedup(params=self.video_text_dedup_params).run(frame_out)
+        else:
+            frame_out = pd.DataFrame()
+
+        # Concat A + B
+        non_empty = [df for df in (audio_out, frame_out) if isinstance(df, pd.DataFrame) and not df.empty]
+        if not non_empty:
+            return pd.DataFrame()
+        combined = pd.concat(non_empty, ignore_index=True, sort=False)
+
+        # Branch C: fused audio+visual rows. Requires audio to have run —
+        # the fuser drops all video_frame rows when no audio is present.
+        if audio_enabled and self.av_fuse_params.enabled:
+            combined = AudioVisualFuser(params=self.av_fuse_params).run(combined)
+        return combined
 
     def _run_detection_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
@@ -376,6 +459,9 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         audio_chunk_params: AudioChunkParams | None = None,
         asr_params: ASRParams | None = None,
         caption_params: CaptionParams | None = None,
+        video_frame_params: VideoFrameParams | None = None,
+        video_text_dedup_params: VideoFrameTextDedupParams | None = None,
+        av_fuse_params: AudioVisualFuseParams | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -386,6 +472,9 @@ class MultiTypeExtractOperator(ArchetypeOperator):
             audio_chunk_params=audio_chunk_params,
             asr_params=asr_params,
             caption_params=caption_params,
+            video_frame_params=video_frame_params,
+            video_text_dedup_params=video_text_dedup_params,
+            av_fuse_params=av_fuse_params,
             **kwargs,
         )
         self.extraction_mode = extraction_mode
@@ -395,3 +484,6 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         self.audio_chunk_params = audio_chunk_params
         self.asr_params = asr_params
         self.caption_params = caption_params
+        self.video_frame_params = video_frame_params
+        self.video_text_dedup_params = video_text_dedup_params
+        self.av_fuse_params = av_fuse_params

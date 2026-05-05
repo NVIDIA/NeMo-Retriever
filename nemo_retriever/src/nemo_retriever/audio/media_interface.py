@@ -276,6 +276,52 @@ class MediaInterface(_LoaderInterface):
                     files.append(str(audio_path))
         return files
 
+    def extract_frames(
+        self,
+        input_path: str,
+        output_dir: str,
+        fps: float = 1.0,
+        max_frames: Optional[int] = None,
+    ) -> List[Tuple[str, float]]:
+        """Extract frames at ``fps`` frames/second; return ``[(png_path, timestamp_s), ...]``.
+
+        Each timestamp is the wall-clock midpoint of the frame's window in the
+        original video: ``frame_index / fps + 0.5 / fps``. This matches the
+        canonical ``segment_start_seconds`` / ``segment_end_seconds`` convention
+        used downstream by the recall scorer.
+
+        Returns an empty list when ffmpeg fails or no frames are produced.
+        """
+        if not _FFMPEG_AVAILABLE or ffmpeg is None:
+            raise RuntimeError("ffmpeg is required for frame extraction; install ffmpeg-python and system ffmpeg.")
+        if fps <= 0:
+            raise ValueError(f"fps must be > 0, got {fps}")
+
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path_file = Path(input_path)
+        file_name = path_file.stem
+        output_pattern = str(out_dir / f"{file_name}_frame_%06d.png")
+
+        try:
+            output_kwargs: dict = {"vf": f"fps={fps}", "q:v": 2}
+            if max_frames is not None and int(max_frames) > 0:
+                output_kwargs["frames:v"] = int(max_frames)
+            stream = ffmpeg.input(str(input_path)).output(output_pattern, **output_kwargs).overwrite_output()
+            _run_ffmpeg(stream, label="extract_frames", input_path=str(input_path))
+        except ffmpeg.Error as e:
+            stderr = e.stderr.decode() if getattr(e, "stderr", None) else ""
+            logger.error("FFmpeg frame extraction error for file %s: %s", input_path, stderr)
+            return []
+
+        produced = sorted(p for p in out_dir.glob(f"{file_name}_frame_*.png") if p.is_file())
+        results: List[Tuple[str, float]] = []
+        midpoint_offset = 0.5 / float(fps)
+        for idx, frame_path in enumerate(produced):
+            timestamp = idx / float(fps) + midpoint_offset
+            results.append((str(frame_path), float(timestamp)))
+        return results
+
     def find_num_splits(
         self,
         file_size: int,

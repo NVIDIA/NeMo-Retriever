@@ -37,6 +37,7 @@ from nemo_retriever.ingestor import ingestor
 from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,
+    AudioVisualFuseParams,
     CaptionParams,
     DedupParams,
     EmbedParams,
@@ -44,6 +45,8 @@ from nemo_retriever.params import (
     HtmlChunkParams,
     StoreParams,
     TextChunkParams,
+    VideoFrameParams,
+    VideoFrameTextDedupParams,
     WebhookParams,
 )
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
@@ -145,6 +148,9 @@ class GraphIngestor(ingestor):
         self._html_params: Any = None
         self._audio_chunk_params: Any = None
         self._asr_params: Any = None
+        self._video_frame_params: Any = None
+        self._video_text_dedup_params: Any = None
+        self._av_fuse_params: Any = None
         self._embed_params: Any = None
         self._split_params: Any = None
         self._caption_params: Any = None
@@ -207,6 +213,42 @@ class GraphIngestor(ingestor):
         self._extraction_mode = "audio"
         self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
         self._asr_params = asr_params or ASRParams()
+        self._record_stage("extract")
+        return self
+
+    def extract_video(
+        self,
+        params: Optional[AudioChunkParams] = None,
+        *,
+        asr_params: Optional[ASRParams] = None,
+        video_frame_params: Optional[VideoFrameParams] = None,
+        video_text_dedup_params: Optional[VideoFrameTextDedupParams] = None,
+        av_fuse_params: Optional[AudioVisualFuseParams] = None,
+        extract_params: Optional[ExtractParams] = None,
+        **kwargs: Any,
+    ) -> "GraphIngestor":
+        """Configure video extraction.
+
+        Sets ``extraction_mode='auto'`` so :class:`MultiTypeExtractOperator`
+        dispatches by file extension; ``.mp4``/``.mov``/``.mkv``
+        files are routed to a combined audio-from-video ASR + frame OCR +
+        scene fusion pipeline.
+
+        Frame OCR config (``ocr_invoke_url``, ``ocr_api_key``,
+        ``inference_batch_size``, ``ocr_request_timeout_s``) is read from
+        :class:`ExtractParams` — the same object the PDF/image pipelines
+        use — so the user only configures OCR once.
+        """
+        self._extraction_mode = "auto"
+        self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
+        self._asr_params = asr_params or ASRParams()
+        self._video_frame_params = video_frame_params or VideoFrameParams()
+        self._video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
+        self._av_fuse_params = av_fuse_params or AudioVisualFuseParams()
+        if extract_params is not None:
+            self._extract_params = _resolve_api_key(extract_params)
+        elif self._extract_params is None:
+            self._extract_params = ExtractParams()
         self._record_stage("extract")
         return self
 
@@ -313,6 +355,9 @@ class GraphIngestor(ingestor):
                 html_params=self._html_params,
                 audio_chunk_params=self._audio_chunk_params,
                 asr_params=self._asr_params,
+                video_frame_params=self._video_frame_params,
+                video_text_dedup_params=self._video_text_dedup_params,
+                av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
                 split_params=self._split_params,
                 caption_params=self._caption_params,
@@ -331,6 +376,7 @@ class GraphIngestor(ingestor):
                 cluster_resources=cluster_resources,
                 allow_no_gpu=effective_allow_no_gpu,
                 caption_params=self._caption_params,
+                video_frame_params=self._video_frame_params,
             )
             merged_overrides: Dict[str, Dict[str, Any]] = {}
             for node_name in set(derived_overrides) | set(self._node_overrides):
@@ -356,6 +402,9 @@ class GraphIngestor(ingestor):
                 html_params=self._html_params,
                 audio_chunk_params=self._audio_chunk_params,
                 asr_params=self._asr_params,
+                video_frame_params=self._video_frame_params,
+                video_text_dedup_params=self._video_text_dedup_params,
+                av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
                 split_params=self._split_params,
                 caption_params=self._caption_params,

@@ -23,6 +23,12 @@ from nemo_retriever.graph.content_transforms import (
 )
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
 from nemo_retriever.text_embed.operators import _BatchEmbedActor
+from nemo_retriever.video import (
+    AudioVisualFuser,
+    VideoFrameOCRActor,
+    VideoFrameTextDedup,
+    VideoSplitActor,
+)
 from nemo_retriever.ocr.ocr import resolve_ocr_archetype
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
@@ -67,6 +73,7 @@ def batch_tuning_to_node_overrides(
     allow_no_gpu: bool | None = None,
     caption_params: Any | None = None,
     caption_gpus_per_actor: float | None = None,
+    video_frame_params: Any | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
 
@@ -307,6 +314,18 @@ def batch_tuning_to_node_overrides(
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
 
+    # VideoSplitActor: one ffmpeg subprocess per input video, ~1-2 CPU cores
+    # per actor during decode. Default Ray Data concurrency=1 serialises every
+    # video, making this stage the wall-clock bottleneck on multi-video inputs.
+    # Scale with available CPUs (one actor per ~4 cores leaves headroom for
+    # downstream ASR/OCR/fuse stages); cap at 8 to avoid disk-I/O contention
+    # on slower storage. With fewer input videos than the cap, Ray Data only
+    # spawns as many actors as there are blocks — so an oversized cap is safe.
+    if video_frame_params is not None and getattr(video_frame_params, "enabled", True):
+        cpus = cluster_resources.total_cpu_count() if cluster_resources is not None else 0
+        if cpus > 0:
+            _set(VideoSplitActor.__name__, "concurrency", max(1, min(cpus // 4, 8)))
+
     return overrides
 
 
@@ -482,6 +501,9 @@ def build_graph(
     caption_params: Any | None = None,
     store_params: Any | None = None,
     webhook_params: Any | None = None,
+    video_frame_params: Any | None = None,
+    video_text_dedup_params: Any | None = None,
+    av_fuse_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
 ) -> Graph:
     """Build a batch graph from explicit params or a shared execution plan."""
@@ -517,7 +539,46 @@ def build_graph(
         stage_order=stage_order,
     )
 
-    if _should_build_audio_graph(
+    # Video ingestion uses a dedicated chain so each stage (fan-out, ASR,
+    # frame OCR, scene fusion) shows up as its own Ray Data MapBatches op.
+    # The audio-only shortcut below would otherwise short-circuit to a
+    # single ``MediaChunkActor → ASRActor`` graph and we'd lose frame OCR.
+    has_video_branch = video_frame_params is not None
+    if has_video_branch:
+        # Each stream's actor is appended only when that stream is enabled.
+        # This skips the eager Parakeet load when audio is off and avoids
+        # empty Ray Data MapBatches stages cluttering the dashboard.
+        audio_enabled = audio_chunk_params is not None and getattr(audio_chunk_params, "enabled", True)
+        frames_enabled = getattr(video_frame_params, "enabled", True)
+        text_dedup_enabled = (
+            frames_enabled and video_text_dedup_params is not None and getattr(video_text_dedup_params, "enabled", True)
+        )
+        fuse_enabled = (
+            audio_enabled and frames_enabled and av_fuse_params is not None and getattr(av_fuse_params, "enabled", True)
+        )
+
+        graph = Graph() >> VideoSplitActor(
+            audio_chunk_params=audio_chunk_params,
+            video_frame_params=video_frame_params,
+        )
+        if audio_enabled:
+            graph = graph >> ASRActor(params=asr_params)
+        if frames_enabled:
+            graph = graph >> VideoFrameOCRActor(
+                ocr_invoke_url=getattr(extract_params, "ocr_invoke_url", None),
+                api_key=getattr(extract_params, "ocr_api_key", None) or getattr(extract_params, "api_key", None),
+                inference_batch_size=int(getattr(extract_params, "inference_batch_size", None) or 8),
+                request_timeout_s=float(
+                    getattr(extract_params, "ocr_request_timeout_s", None)
+                    or getattr(extract_params, "request_timeout_s", None)
+                    or 120.0
+                ),
+            )
+        if text_dedup_enabled:
+            graph = graph >> VideoFrameTextDedup(params=video_text_dedup_params)
+        if fuse_enabled:
+            graph = graph >> AudioVisualFuser(params=av_fuse_params)
+    elif _should_build_audio_graph(
         extract_params=extract_params,
         asr_params=asr_params,
     ):
@@ -531,6 +592,8 @@ def build_graph(
             audio_chunk_params=audio_chunk_params,
             asr_params=asr_params,
             caption_params=caption_params,
+            video_frame_params=video_frame_params,
+            av_fuse_params=av_fuse_params,
         )
     else:
         graph = Graph()
