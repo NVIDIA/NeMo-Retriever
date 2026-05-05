@@ -443,6 +443,25 @@ ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 ```
 
+### Video (visual OCR on frames)
+
+Video files are chunked with ffmpeg and transcribed when you route them through the audio path above. To run the **image OCR pipeline** (page-element detection + Nemotron OCR) on on-screen text, decode the video to raster frames first, then use the same configuration as `retriever pipeline run <dir> --input-type image --method ocr`, which is implemented in `nemo_retriever/pipeline/__main__.py` by `_build_ingestor` when `input_type="image"` together with `_build_extract_params` (defaults shown there for DPI, extraction flags, and remote NIM URLs).
+
+Example: extract one PNG per second, then ingest with the shared helper used in tests:
+
+```bash
+mkdir -p /tmp/video_frames
+ffmpeg -y -i "$INPUT_VIDEO" -vf "fps=1" /tmp/video_frames/frame_%04d.png
+```
+
+```python
+from nemo_retriever.examples.readme_video_ocr import build_video_ocr_ingestor
+
+FRAME_GLOBS = ["/tmp/video_frames/*.png"]
+ingestor = build_video_ocr_ingestor(FRAME_GLOBS, run_mode="batch")
+# ray_dataset_or_df = ingestor.ingest()
+```
+
 ### Store extracted images and text
 
 Use `.store()` to persist extracted images, tables, charts, and text to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame so downstream stages (embed, VDB upload) can reference them. By default, base64 payloads are stripped after writing to reduce memory pressure.
