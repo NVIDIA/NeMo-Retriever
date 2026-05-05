@@ -101,7 +101,11 @@ def expand_info(ids_and_labels):
                             'MATCH(n)<-[:{Edges.CONTAINS}]-(parent)
                             WITH n, parent,
                                  [(parent)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
-                                  {{name: c.name, data_type: toString(coalesce(c.data_type, ""))}}] AS column_list
+                                  {{name: c.name,
+                                    data_type: toString(coalesce(c.data_type, "")),
+                                    description: CASE WHEN c.description IS NOT NULL AND trim(c.description) <> "" THEN c.description ELSE null END,
+                                    sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0 THEN c.sample_values ELSE null END
+                                  }}] AS column_list
                             WITH n, parent, column_list,
                                  apoc.map.merge(
                                      properties(parent),
