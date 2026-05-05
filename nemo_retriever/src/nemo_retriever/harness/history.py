@@ -350,6 +350,14 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+    conn.execute(
+        """
+        UPDATE datasets
+        SET evaluation_mode = 'beir'
+        WHERE evaluation_mode = 'recall'
+          AND input_type != 'audio'
+        """
+    )
     conn.commit()
     return conn
 
