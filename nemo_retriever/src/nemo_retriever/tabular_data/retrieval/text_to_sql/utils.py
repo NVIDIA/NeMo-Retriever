@@ -532,6 +532,10 @@ def _parse_table_text(text: str) -> dict:
         if table_match:
             parsed["table_name"] = table_match.group(1).strip()
 
+        desc_match = re.search(r"table_description:\s*([^,]+)", text)
+        if desc_match:
+            parsed["description"] = desc_match.group(1).strip()
+
         columns_match = re.search(r"columns:\s*(.+)$", text)
         if columns_match:
             columns_str = columns_match.group(1).strip()
@@ -683,6 +687,7 @@ def _normalize_table_to_relevant_shape(table: dict) -> dict:
         name = str(parsed.get("table_name") or "").strip()
     entry: dict = {
         "name": name,
+        "description": table.get("description") if table.get("description") else "",
         "label": str(table.get("label") or Labels.TABLE),
         "id": str(table.get("id") or ""),
         "table_info": text,

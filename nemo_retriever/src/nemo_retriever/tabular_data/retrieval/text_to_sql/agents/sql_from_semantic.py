@@ -62,6 +62,7 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         # Table identifier
         table_name = table.get("name", "UNKNOWN")
         table_label = table.get("label", "")
+        table_description = table.get("description", "")
         table_id = table.get("id", "")
 
         # Database and schema info
@@ -77,6 +78,8 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         table_parts.append(f"TABLE: {full_name}")
         if table_label and table_label != table_name:
             table_parts.append(f"  Label: {table_label}")
+        if table_description:
+            table_parts.append(f"  Description: {table_description}")
         table_parts.append(f"  ID: {table_id}")
 
         # Primary key

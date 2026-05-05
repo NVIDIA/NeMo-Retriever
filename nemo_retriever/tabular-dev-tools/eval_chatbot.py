@@ -256,12 +256,18 @@ CSV_FIELDS = [
 ]
 
 
-def _print_agent_result(qid: Any, question: str, agent_result: Dict[str, Any] | None) -> None:
+def _print_agent_result(
+    qid: Any, question: str, agent_result: Dict[str, Any] | None, expected_sql: str = ""
+) -> None:
     """Pretty-print the agent result to stdout for quick visual inspection."""
     sep = "=" * 80
     print(f"\n{sep}")
     print(f"  Question {qid}: {question}")
     print(sep)
+    if expected_sql:
+        print(f"\n  [expected_sql]")
+        for line in expected_sql.splitlines():
+            print(f"    {line}")
     if not agent_result:
         print("  (no result)")
         print(sep)
@@ -282,8 +288,8 @@ def _print_agent_result(qid: Any, question: str, agent_result: Dict[str, Any] | 
 
 
 def evaluate(input_path: Path, output_path: Path) -> None:
-    questions = [{"question_id": 0, "question": "Show me the details for component 670-14039-0072-TS5", "SQL": ""}]
-    # questions = _load_questions(input_path)
+    # questions = [{"question_id": 0, "question": "Show me the details for component 670-14039-0072-TS5", "SQL": ""}]
+    questions = _load_questions(input_path)
     logger.info("Loaded %d questions from %s", len(questions), input_path)
 
     connector = PostgresDatabase(_conn_string(DATABASE))
@@ -332,7 +338,7 @@ def evaluate(input_path: Path, output_path: Path) -> None:
                     "acronyms": "",
                 }
                 agent_result = get_agent_response(payload)
-                _print_agent_result(qid, question, agent_result)
+                _print_agent_result(qid, question, agent_result, expected_sql)
                 returned_sql = (agent_result or {}).get("sql_code", "") or ""
                 returned_answer = (agent_result or {}).get("response", "") or ""
                 returned_db = (agent_result or {}).get("sql_response_from_db")
