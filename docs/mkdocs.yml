@@ -180,7 +180,7 @@ plugins:
         extraction/prerequisites.md: extraction/prerequisites-support-matrix.md
         extraction/support-matrix.md: extraction/prerequisites-support-matrix.md
         extraction/embedding-nims-models.md: extraction/embedding.md
-        extraction/chunking.md: extraction/concepts.md
+        extraction/chunking.md: extraction/concepts.md#chunking
         extraction/workflow-video-ocr.md: extraction/audio-video.md
   - site-urls
 
@@ -214,7 +214,6 @@ exclude_docs: |
   extraction/releasenotes-nv-ingest.md
   extraction/workflow-agentic-retrieval.md
   extraction/workflow-build-searchable-collection.md
-  extraction/workflow-query-rerank.md
   extraction/performance_guide.md
 
 extra:

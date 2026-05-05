@@ -43,8 +43,8 @@ ingestor = (
     .vdb_upload()
 )
 
-ray_dataset = ingestor.ingest()
-chunks = ray_dataset.get_dataset().take_all()
+dataset = ingestor.ingest()  # ``run_mode='batch'`` → ``ray.data.Dataset``; ``inprocess`` → ``pandas.DataFrame``
+chunks = dataset.take_all()  # ``take_all()`` is a Ray Dataset API; use DataFrame methods in ``inprocess``
 ```
 
 Run the above with your working directory at the repository root (so `data/multimodal_test.pdf` resolves), or adjust `documents` to the absolute path of the test PDF.
