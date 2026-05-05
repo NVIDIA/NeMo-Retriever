@@ -193,9 +193,10 @@ def run_retrieval_agent(
     Args:
         payload: Caller-supplied payload.  Required: ``question``.
         llm: Optional pre-built LLM client.
-        retriever: Optional pre-built ``DeepAgentRetriever`` singleton.  When
-            provided, the same instance is reused for all LanceDB searches in
-            this session — avoids re-initializing the embedder model each call.
+        retriever: Optional pre-built :class:`~nemo_retriever.retriever.Retriever`
+            singleton.  When provided, the same instance is reused for all
+            LanceDB searches in this session — avoids re-initializing the
+            embedder model each call.
         max_retries: Number of agent invocation attempts before giving up.
 
     Returns:
