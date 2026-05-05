@@ -384,8 +384,6 @@ def _build_ingestor(
     caption_top_p: Optional[float],
     caption_max_tokens: int,
     store_images_uri: Optional[str],
-    store_text: bool,
-    strip_base64: bool,
     segment_audio: bool,
     audio_split_type: str,
     audio_split_interval: int,
@@ -469,16 +467,16 @@ def _build_ingestor(
             )
         )
 
+    ingestor = ingestor.embed(embed_params)
+
     if store_images_uri is not None:
         ingestor = ingestor.store(
             StoreParams(
                 storage_uri=store_images_uri,
-                store_text=store_text,
-                strip_base64=strip_base64,
             )
         )
 
-    return ingestor.embed(embed_params)
+    return ingestor
 
 
 def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
@@ -760,18 +758,6 @@ def run(
         None,
         "--store-images-uri",
         help="Store extracted images to this URI.",
-        rich_help_panel=_PANEL_STORE_CHUNK,
-    ),
-    store_text: bool = typer.Option(
-        False,
-        "--store-text/--no-store-text",
-        help="Also store extracted text.",
-        rich_help_panel=_PANEL_STORE_CHUNK,
-    ),
-    strip_base64: bool = typer.Option(
-        True,
-        "--strip-base64/--no-strip-base64",
-        help="Strip base64 after storing.",
         rich_help_panel=_PANEL_STORE_CHUNK,
     ),
     text_chunk: bool = typer.Option(False, "--text-chunk", rich_help_panel=_PANEL_STORE_CHUNK),
@@ -1144,8 +1130,6 @@ def run(
             caption_top_p=caption_top_p,
             caption_max_tokens=caption_max_tokens,
             store_images_uri=store_images_uri,
-            store_text=store_text,
-            strip_base64=strip_base64,
             segment_audio=segment_audio,
             audio_split_type=audio_split_type,
             audio_split_interval=audio_split_interval,

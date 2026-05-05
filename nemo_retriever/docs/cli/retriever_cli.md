@@ -240,13 +240,10 @@ retriever pipeline run ./data/test.pdf \
   --input-type pdf \
   --method pdfium \
   --store-images-uri s3://my-bucket/images \
-  --strip-base64 \
   --save-intermediate ./processed_docs
 ```
 
-**Parity note.** `--strip-base64` removes inline base64 from rows after the
-image has been persisted, so downstream consumers follow `content_url`
-references — analogous to `--save_images_separately` on the old CLI.
+Stored image URIs are persisted in vector DB rows for VL reranking.
 
 ## Where results live
 

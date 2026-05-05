@@ -27,7 +27,6 @@ retriever pipeline run nv-ingest/data/multimodal_test.pdf \
   --method pdfium \
   --extract-text --extract-tables --extract-charts \
   --store-images-uri ./processed_docs/images \
-  --strip-base64 \
   --save-intermediate ./processed_docs
 ```
 
@@ -50,7 +49,6 @@ To keep the notebook self-contained, prefix the shell cell with `!`:
     --method pdfium \
     --extract-text --extract-tables --extract-charts \
     --store-images-uri ./processed_docs/images \
-    --strip-base64 \
     --save-intermediate ./processed_docs
 ```
 

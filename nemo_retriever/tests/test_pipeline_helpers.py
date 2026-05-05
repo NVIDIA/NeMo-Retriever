@@ -5,14 +5,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
 import typer
 
 import nemo_retriever.pipeline as pipeline_pkg
-from nemo_retriever.params import EmbedParams
+import nemo_retriever.pipeline.__main__ as pipeline_main
+from nemo_retriever.params import EmbedParams, ExtractParams, TextChunkParams
 from nemo_retriever.pipeline.__main__ import (
+    _build_ingestor,
     _build_embed_params,
     _collect_results,
     _count_input_units,
@@ -51,6 +54,68 @@ def test_resolve_file_patterns_recurses_directory_inputs(
         path.write_bytes(b"x")
 
     assert _resolve_file_patterns(tmp_path, input_type) == [str(tmp_path / "**" / glob) for glob in expected_globs]
+
+
+class TestBuildIngestor:
+    def test_store_is_attached_after_embed(self, monkeypatch, tmp_path: Path) -> None:
+        calls: list[str] = []
+        captured: dict[str, Any] = {}
+
+        class _FakeIngestor:
+            def __init__(self, **kwargs):
+                captured["init"] = kwargs
+
+            def files(self, file_patterns):
+                calls.append("files")
+                captured["file_patterns"] = file_patterns
+                return self
+
+            def extract(self, params):
+                calls.append("extract")
+                return self
+
+            def embed(self, params):
+                calls.append("embed")
+                captured["embed_params"] = params
+                return self
+
+            def store(self, params):
+                calls.append("store")
+                captured["store_params"] = params
+                return self
+
+        monkeypatch.setattr(pipeline_main, "GraphIngestor", _FakeIngestor)
+
+        _build_ingestor(
+            run_mode="inprocess",
+            ray_address=None,
+            file_patterns=[str(tmp_path / "doc.pdf")],
+            input_type="pdf",
+            extract_params=ExtractParams(method="ocr"),
+            embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
+            text_chunk_params=TextChunkParams(),
+            enable_text_chunk=False,
+            enable_dedup=False,
+            enable_caption=False,
+            dedup_iou_threshold=0.8,
+            caption_invoke_url=None,
+            caption_remote_api_key=None,
+            caption_model_name="nvidia/llama-nemotron-rerank-vl-1b-v2",
+            caption_device=None,
+            caption_context_text_max_chars=0,
+            caption_gpu_memory_utilization=0.5,
+            caption_gpus_per_actor=None,
+            caption_temperature=1.0,
+            caption_top_p=None,
+            caption_max_tokens=1024,
+            store_images_uri=str(tmp_path / "stored"),
+            segment_audio=False,
+            audio_split_type="time",
+            audio_split_interval=30,
+        )
+
+        assert calls == ["files", "extract", "embed", "store"]
+        assert captured["store_params"].storage_uri.endswith("/stored")
 
 
 def test_resolve_file_patterns_returns_existing_file_verbatim(tmp_path: Path) -> None:

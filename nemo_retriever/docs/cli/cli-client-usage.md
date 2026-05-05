@@ -47,7 +47,6 @@ retriever pipeline run "${SAMPLE_PDF0}" \
   --extract-text --extract-tables --extract-charts \
   --dedup --dedup-iou-threshold 0.45 \
   --store-images-uri "${OUTPUT_DIRECTORY_SINGLE}/images" \
-  --strip-base64 \
   --save-intermediate "${OUTPUT_DIRECTORY_SINGLE}"
 ```
 
@@ -89,7 +88,6 @@ retriever pipeline run "${PDF_DIR}" \
   --extract-text --extract-tables --extract-charts \
   --dedup --dedup-iou-threshold 0.45 \
   --store-images-uri "${OUTPUT_DIRECTORY_BATCH}/images" \
-  --strip-base64 \
   --save-intermediate "${OUTPUT_DIRECTORY_BATCH}"
 ```
 
