@@ -15,7 +15,7 @@ from typing import Dict, Any
 from langchain_core.messages import AIMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentState
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
+from nemo_retriever.tabular_data.retrieval.utils import (
     Labels,
     format_response,
     get_custom_analyses_ids,

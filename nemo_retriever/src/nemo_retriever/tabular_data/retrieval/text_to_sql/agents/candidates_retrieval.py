@@ -17,7 +17,7 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     get_question_for_processing,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
+from nemo_retriever.tabular_data.retrieval.utils import (
     Labels,
     clean_results,
     extract_candidates,

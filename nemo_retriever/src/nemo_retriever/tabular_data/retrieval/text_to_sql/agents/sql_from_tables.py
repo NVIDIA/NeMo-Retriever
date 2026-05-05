@@ -21,12 +21,12 @@ from typing import Dict, Any
 
 from langchain_core.messages import AIMessage, SystemMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.sql_from_semantic import format_tables_for_prompt
-from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentState, get_question_for_processing
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import create_sql_general_prompt, create_sql_user_prompt
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_relevant_tables
+from nemo_retriever.tabular_data.retrieval.utils import get_relevant_tables
 
 logger = logging.getLogger(__name__)
 
