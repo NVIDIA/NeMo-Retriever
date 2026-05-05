@@ -55,7 +55,7 @@ def __getattr__(name: str):
 
         return NemotronRerankV2
     if name == "NemotronRerankVLV2":
-        from .nemotron_rerank_vl_v2 import NemotronRerankVLV2
+        from .nemotron_rerank_vl_v2_hf import NemotronRerankVLV2
 
         return NemotronRerankVLV2
     if name == "NemotronVLMCaptioner":

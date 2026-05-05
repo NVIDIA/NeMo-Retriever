@@ -1,9 +1,5 @@
 # Contributing to NeMo Retriever Library
 
-!!! note
-
-    This documentation describes NeMo Retriever Library.
-
 External contributions will be welcome soon, and they are greatly appreciated. For repository policy, coding standards, and the contribution process, refer to **[Contributing to NeMo Retriever](https://github.com/NVIDIA/NeMo-Retriever/blob/main/CONTRIBUTING.md)** on GitHub.
 
 The sections below describe how to configure your machine and Git remotes so you can work on documentation (or code) against **[NVIDIA/NeMo-Retriever](https://github.com/NVIDIA/NeMo-Retriever)** using a fork and a separate publishing clone.

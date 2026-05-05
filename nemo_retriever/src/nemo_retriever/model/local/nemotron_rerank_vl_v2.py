@@ -1,41 +1,63 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Local wrapper for nvidia/llama-nemotron-rerank-vl-1b-v2 VL cross-encoder reranker."""
+"""vLLM-backed local wrapper for nvidia/llama-nemotron-rerank-vl-1b-v2 VL cross-encoder reranker."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any, List, Optional, Sequence
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
 from ..model import BaseModel, RunMode
 
-
 from nemo_retriever.model import VL_RERANK_MODEL
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = VL_RERANK_MODEL
 _DEFAULT_MAX_LENGTH = 10240
 _DEFAULT_BATCH_SIZE = 32
 
+# Worst-case image token budget from processor_config.json:
+# (max_input_tiles + thumbnail) * per_tile_len = (6 + 1) * 256
+_MAX_IMAGE_TOKENS = 1792
+# Conservative overhead for template tokens ("question:", "passage:", whitespace, BOS, etc.)
+_TEMPLATE_OVERHEAD = 20
 
-class NemotronRerankVLV2(BaseModel):
+# Jinja2 chat template for vLLM's ``llm.score()`` API.
+# The model expects ``question:`` / ``passage:`` labels with an optional
+# leading ``<image>`` token when the document contains an image.
+SCORE_TEMPLATE = """\
+{%- set query_msg = (messages | selectattr('role', 'equalto', 'query') | list | first) -%}
+{%- set doc_msg   = (messages | selectattr('role', 'equalto', 'document') | list | first) -%}
+{%- set q = query_msg['content'] -%}
+{%- set d = doc_msg['content'] -%}
+{%- set has_image = ("<image>" in d) -%}
+{%- set d_clean = d | replace("<image>", "") -%}
+{%- set q_clean = q | replace("<image>", "") -%}
+{%- if has_image -%}<image>{{ " " }}{%- endif -%}
+question:{{ q_clean }}{{ " " }}
+{{ " " }}
+{{ " " }}passage:{{ d_clean }}"""
+
+
+class NemotronRerankVLV2VLLM(BaseModel):
     """
-    Local VL cross-encoder reranker wrapping nvidia/llama-nemotron-rerank-vl-1b-v2.
+    vLLM-backed VL cross-encoder reranker wrapping nvidia/llama-nemotron-rerank-vl-1b-v2.
 
-    Scores (query, document, image) triplets and returns raw logits; higher
-    values indicate greater relevance.  When an image is ``None`` for a given
-    document, the model falls back to text-only scoring for that pair.
+    Uses vLLM's pooling runner (``llm.score()``) instead of HuggingFace
+    ``AutoModelForSequenceClassification``.  This provides better throughput
+    through continuous batching and optimised attention kernels.
 
-    Unlike the text-only :class:`NemotronRerankV2` which uses
-    ``AutoTokenizer`` and a manual prompt template, this model uses
-    ``AutoProcessor`` with ``process_queries_documents_crossencoder()``
-    to handle vision token insertion.
+    The public API (``score()``, ``score_pairs()``) is identical to
+    :class:`NemotronRerankVLV2` so callers need not change.
 
     Example::
 
-        reranker = NemotronRerankVLV2()
+        reranker = NemotronRerankVLV2VLLM()
         scores = reranker.score(
             "What is ML?",
             ["Machine learning is…", "Paris is…"],
@@ -48,56 +70,58 @@ class NemotronRerankVLV2(BaseModel):
         model_name: str = _DEFAULT_MODEL,
         device: Optional[str] = None,
         hf_cache_dir: Optional[str] = None,
+        gpu_memory_utilization: float = 0.5,
     ) -> None:
         super().__init__()
-        import torch
-        from transformers import AutoModelForSequenceClassification, AutoProcessor
 
-        configure_global_hf_cache_base()
+        try:
+            from vllm import LLM
+        except ImportError as e:
+            raise ImportError("vLLM reranker backend requires vllm. " 'Install with: pip install "vllm>=0.17"') from e
 
         self._model_name = model_name
-        self._device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
-        kwargs: dict[str, Any] = {"trust_remote_code": True}
-        if hf_cache_dir:
-            kwargs["cache_dir"] = hf_cache_dir
+        configure_global_hf_cache_base(hf_cache_dir)
+
+        if device is not None:
+            logger.warning(
+                "vLLM reranker ignores device=%r; set CUDA_VISIBLE_DEVICES "
+                "before the process starts, or let Ray scope it per actor.",
+                device,
+            )
 
         revision = get_hf_revision(model_name, strict=False)
+
+        engine_kwargs: dict[str, Any] = {}
         if revision:
-            kwargs["revision"] = revision
+            engine_kwargs["revision"] = revision
 
-        self._processor = AutoProcessor.from_pretrained(
-            model_name,
-            use_thumbnail=True,
-            **kwargs,
+        self._llm = LLM(
+            model=model_name,
+            runner="pooling",
+            max_model_len=_DEFAULT_MAX_LENGTH,
+            trust_remote_code=True,
+            dtype="bfloat16",
+            gpu_memory_utilization=gpu_memory_utilization,
+            **engine_kwargs,
         )
-        if hasattr(self._processor, "max_input_tiles"):
-            self._processor.max_input_tiles = 6
-        if hasattr(self._processor, "rerank_max_length"):
-            self._processor.rerank_max_length = 10240
-
-        self._model = (
-            AutoModelForSequenceClassification.from_pretrained(
-                model_name,
-                torch_dtype=torch.bfloat16,
-                **kwargs,
-            )
-            .eval()
-            .to(self._device)
-        )
-
-        if self._model.config.pad_token_id is None:
-            tokenizer = getattr(self._processor, "tokenizer", self._processor)
-            self._model.config.pad_token_id = getattr(tokenizer, "eos_token_id", 0)
+        self._tokenizer = self._llm.get_tokenizer()
 
     def unload(self) -> None:
-        """Release GPU memory held by the model and processor."""
+        """Release GPU memory held by the vLLM engine."""
         import torch
 
-        del self._model
-        del self._processor
+        del self._llm
+        self._llm = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    def _require_loaded(self) -> None:
+        if self._llm is None:
+            raise RuntimeError(
+                "NemotronRerankVLV2VLLM has been unloaded; construct a new "
+                "instance before calling score()/score_pairs()."
+            )
 
     # ------------------------------------------------------------------
     # BaseModel abstract properties
@@ -131,24 +155,56 @@ class NemotronRerankVLV2(BaseModel):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _truncate_doc_text(
+        self,
+        query: str,
+        doc_text: str,
+        has_image: bool = False,
+    ) -> str:
+        """Truncate *doc_text* so the rendered prompt fits within ``max_model_len``.
+
+        Reserves token budget for the query, template overhead, and (when
+        *has_image*) the worst-case image token expansion.
+        """
+        query_token_len = len(self._tokenizer.encode(query, add_special_tokens=False))
+        image_budget = _MAX_IMAGE_TOKENS if has_image else 0
+        doc_budget = _DEFAULT_MAX_LENGTH - query_token_len - _TEMPLATE_OVERHEAD - image_budget
+        if doc_budget <= 0:
+            return ""
+
+        doc_tokens = self._tokenizer.encode(doc_text, add_special_tokens=False)
+        if len(doc_tokens) <= doc_budget:
+            return doc_text
+
+        logger.debug(
+            "Truncating document from %d to %d tokens (image=%s)",
+            len(doc_tokens),
+            doc_budget,
+            has_image,
+        )
+        return self._tokenizer.decode(doc_tokens[:doc_budget])
+
     @staticmethod
-    def _prepare_images(
-        images_b64: Optional[Sequence[Optional[str]]],
-        n: int,
-    ) -> list[Optional[dict[str, str]]]:
-        """Normalise *images_b64* into a list of ``{"base64": ...}`` dicts."""
-        if images_b64 is None:
-            return [None] * n
-        out: list[Optional[dict[str, str]]] = []
-        for img in images_b64:
-            if isinstance(img, str) and img:
-                out.append({"base64": img})
-            else:
-                out.append(None)
-        # Pad to length n if caller passed a shorter list.
-        while len(out) < n:
-            out.append(None)
-        return out
+    def _build_document(text: str, image_b64: Optional[str] = None) -> Any:
+        """Build a vLLM-compatible document representation.
+
+        For text-only documents, returns the plain string.  For multimodal
+        documents (text + image), returns a dict with a ``content`` list in
+        OpenAI-style format that vLLM understands.
+        """
+        if not image_b64:
+            return text
+
+        content: list[dict[str, Any]] = []
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+            }
+        )
+        if text:
+            content.append({"type": "text", "text": text})
+        return {"content": content}
 
     # ------------------------------------------------------------------
     # Public API
@@ -176,46 +232,35 @@ class NemotronRerankVLV2(BaseModel):
             Optional base64-encoded images aligned with *documents*.  Entries
             may be ``None`` for documents without images (text-only fallback).
         max_length:
-            Processor truncation length.
+            Unused (kept for API compatibility).  Document text is
+            automatically truncated to fit ``max_model_len``.
         batch_size:
-            Number of triplets to process per GPU forward pass.
+            Unused (kept for API compatibility). vLLM handles batching
+            internally via continuous batching.
 
         Returns
         -------
         List[float]
             Raw logit scores aligned with *documents* (higher = more relevant).
         """
-        import torch
-
+        self._require_loaded()
         if not documents:
             return []
 
-        image_dicts = self._prepare_images(images_b64, len(documents))
-        all_scores: List[float] = []
+        doc_inputs = []
+        for i, doc in enumerate(documents):
+            img = None
+            if images_b64 is not None and i < len(images_b64):
+                img = images_b64[i]
+            doc = self._truncate_doc_text(query, doc, has_image=bool(img))
+            doc_inputs.append(self._build_document(doc, img))
 
-        if hasattr(self._processor, "rerank_max_length"):
-            self._processor.rerank_max_length = max_length
-
-        with torch.inference_mode():
-            for start in range(0, len(documents), batch_size):
-                end = start + batch_size
-                batch_docs = documents[start:end]
-                batch_images = image_dicts[start:end]
-
-                features = [
-                    {
-                        "question": query,
-                        "doc_text": doc,
-                        "doc_image": img,
-                    }
-                    for doc, img in zip(batch_docs, batch_images)
-                ]
-                inputs = self._processor.process_queries_documents_crossencoder(features)
-                inputs = {k: v.to(self._device) for k, v in inputs.items() if hasattr(v, "to")}
-                logits = self._model(**inputs).logits
-                all_scores.extend(logits.view(-1).cpu().tolist())
-
-        return all_scores
+        outputs = self._llm.score(
+            query,
+            doc_inputs,
+            chat_template=SCORE_TEMPLATE,
+        )
+        return [out.outputs.score for out in outputs]
 
     def score_pairs(
         self,
@@ -235,43 +280,41 @@ class NemotronRerankVLV2(BaseModel):
         images_b64:
             Optional base64-encoded images aligned with *pairs*.
         max_length:
-            Processor truncation length.
+            Unused (API compatibility).  Document text is automatically
+            truncated to fit ``max_model_len``.
         batch_size:
-            GPU forward-pass batch size.
+            Unused (API compatibility).
 
         Returns
         -------
         List[float]
             Raw logit scores (higher = more relevant).
         """
-        import torch
-
+        self._require_loaded()
         if not pairs:
             return []
 
-        image_dicts = self._prepare_images(images_b64, len(pairs))
-        all_scores: List[float] = []
+        # Group consecutive pairs by query so each (query, [docs...]) goes to
+        # vLLM in a single batched score() call instead of one round-trip per pair.
+        scores: List[float] = [0.0] * len(pairs)
+        i = 0
+        while i < len(pairs):
+            q = pairs[i][0]
+            j = i
+            doc_inputs: list[Any] = []
+            while j < len(pairs) and pairs[j][0] == q:
+                _, d = pairs[j]
+                img = images_b64[j] if (images_b64 is not None and j < len(images_b64)) else None
+                d = self._truncate_doc_text(q, d, has_image=bool(img))
+                doc_inputs.append(self._build_document(d, img))
+                j += 1
+            outputs = self._llm.score(
+                q,
+                doc_inputs,
+                chat_template=SCORE_TEMPLATE,
+            )
+            for k, out in enumerate(outputs):
+                scores[i + k] = out.outputs.score
+            i = j
 
-        if hasattr(self._processor, "rerank_max_length"):
-            self._processor.rerank_max_length = max_length
-
-        with torch.inference_mode():
-            for start in range(0, len(pairs), batch_size):
-                end = start + batch_size
-                batch_pairs = pairs[start:end]
-                batch_images = image_dicts[start:end]
-
-                features = [
-                    {
-                        "question": q,
-                        "doc_text": d,
-                        "doc_image": img,
-                    }
-                    for (q, d), img in zip(batch_pairs, batch_images)
-                ]
-                inputs = self._processor.process_queries_documents_crossencoder(features)
-                inputs = {k: v.to(self._device) for k, v in inputs.items() if hasattr(v, "to")}
-                logits = self._model(**inputs).logits
-                all_scores.extend(logits.view(-1).cpu().tolist())
-
-        return all_scores
+        return scores

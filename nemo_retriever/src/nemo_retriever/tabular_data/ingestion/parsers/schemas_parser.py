@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.model.schema import Schema
+from nemo_retriever.tabular_data.ingestion.dal.schemas_dal import get_table_ids, get_column_ids
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,9 @@ def parse_df(tables_df, columns_df, db_name: str, db_node=None):
             props={"name": db_name, "pulled": datetime.now(timezone.utc)},
             match_props={"name": db_name},
         )
+
+    tables_df = get_table_ids(tables_df, db_name)
+    columns_df = get_column_ids(columns_df, db_name)
 
     unique_schema_names = tables_df["table_schema"].unique()
     schemas = {}

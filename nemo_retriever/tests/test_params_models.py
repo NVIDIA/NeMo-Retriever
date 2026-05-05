@@ -4,7 +4,17 @@
 
 """Unit tests for _ParamsModel._resolve_api_keys model validator."""
 
-from nemo_retriever.params.models import EmbedParams, ExtractParams, NO_API_KEY
+import pytest
+from pydantic import ValidationError
+
+from nemo_retriever.params.models import EmbedParams, ExtractParams, NO_API_KEY, VideoFrameParams
+
+
+class TestVideoFrameParams:
+    def test_fps_zero_rejected(self) -> None:
+        """``fps=0`` would div-by-zero in ``_extract_one``; reject at the model boundary."""
+        with pytest.raises(ValidationError):
+            VideoFrameParams(fps=0)
 
 
 class TestResolveApiKeys:

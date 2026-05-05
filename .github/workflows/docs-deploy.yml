@@ -1,4 +1,9 @@
-name: Documentation Deploy
+# Full documentation pipeline in Docker (Sphinx + OpenAPI + MkDocs), then `make mkdocs`
+# (docs/mkdocs.yml --strict). CI only — uploads a downloadable artifact; does NOT publish to GitHub Pages.
+#
+# Public documentation at https://nvidia.github.io/NeMo-Retriever/ is deployed only by
+# nrl-docs-github-pages.yml (docs/mkdocs.yml — 13-section NRL TOC).
+name: Documentation build (full pipeline, CI only)
 
 on:
   push:
@@ -8,11 +13,9 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages"
+  group: docs-docker-full-pipeline
   cancel-in-progress: false
 
 jobs:
@@ -21,10 +24,7 @@ jobs:
     runs-on: linux-large-disk
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx
@@ -43,27 +43,26 @@ jobs:
           echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
       - name: Wait for documentation generation
-        run: docker wait $CONTAINER_ID
+        run: |
+          EXIT_CODE=$(docker wait "$CONTAINER_ID")
+          docker logs "$CONTAINER_ID"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Error: docs build failed with exit code $EXIT_CODE"
+            exit 1
+          fi
 
       - name: Copy generated docs from container
-        run: docker cp $CONTAINER_ID:/workspace/docs/site ./generated-site
+        run: docker cp "$CONTAINER_ID:/workspace/docs/site" ./generated-site
 
       - name: Clean up container
-        run: docker rm $CONTAINER_ID
+        if: always()
+        run: |
+          if [ -n "${CONTAINER_ID:-}" ]; then
+            docker rm -f "$CONTAINER_ID"
+          fi
 
-      - name: Upload Site Artifacts
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload site artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
+          name: docker-docs-site
           path: ./generated-site
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

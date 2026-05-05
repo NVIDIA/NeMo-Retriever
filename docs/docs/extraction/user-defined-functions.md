@@ -3,11 +3,6 @@
 User-Defined Functions (UDFs) allow you to inject custom processing logic into the [NeMo Retriever Library](overview.md) pipeline at specific stages. 
 This guide covers how to write, validate, and submit UDFs using both the CLI and the Python client interface.
 
-!!! note
-
-    This documentation describes NeMo Retriever Library. 
-
-
 ## Quickstart
 
 ### 1. Write Your UDF

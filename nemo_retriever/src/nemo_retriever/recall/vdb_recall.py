@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import typer
 import pandas as pd  # noqa: F401
@@ -53,27 +53,29 @@ def _coerce_endpoint_str(v: Optional[str]) -> Optional[str]:
     return s
 
 
-def _resolve_endpoints(
+def _normalize_local_query_embed_backend(value: str) -> str:
+    raw = (value or "hf").strip().lower()
+    if raw not in ("hf", "vllm"):
+        raise typer.BadParameter("local query embed backend must be 'hf' or 'vllm', " f"got {value!r}")
+    return raw
+
+
+def _resolve_query_embedding_endpoint(
     *,
     embedding_endpoint: Optional[str],
     embedding_http_endpoint: Optional[str],
     embedding_grpc_endpoint: Optional[str],
-) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Resolve endpoint options with precedence:
-      1) explicit http/grpc options
-      2) single --embedding-endpoint (auto-routed by scheme)
-    """
+) -> tuple[Optional[str], Optional[bool]]:
     http_ep = _coerce_endpoint_str(embedding_http_endpoint)
     grpc_ep = _coerce_endpoint_str(embedding_grpc_endpoint)
     single = _coerce_endpoint_str(embedding_endpoint)
 
-    if http_ep or grpc_ep:
-        return http_ep, grpc_ep
+    if http_ep:
+        return http_ep, False
+    if grpc_ep:
+        return grpc_ep, True
     if single:
-        if single.lower().startswith("http"):
-            return single, None
-        return None, single
+        return single, not single.lower().startswith("http")
     return None, None
 
 
@@ -131,30 +133,43 @@ def recall_with_main(
         min=1,
         help="Batch size for local HF embedding inference.",
     ),
+    local_query_embed_backend: str = typer.Option(
+        "hf",
+        "--local-query-embed-backend",
+        help=(
+            "When no remote embedding endpoint is set: 'hf' (default) uses HuggingFace; "
+            "'vllm' uses the local vLLM path."
+        ),
+    ),
 ) -> None:
     query_csv = _resolve_query_csv(Path(query_csv))
+    _lqeb = _normalize_local_query_embed_backend(local_query_embed_backend)
 
     metrics_ks = (1, 5, 10)
     search_k = max(int(top_k), max(metrics_ks))
-
-    http_ep, grpc_ep = _resolve_endpoints(
+    query_embedding_endpoint, query_embedding_use_grpc = _resolve_query_embedding_endpoint(
         embedding_endpoint=embedding_endpoint,
         embedding_http_endpoint=embedding_http_endpoint,
         embedding_grpc_endpoint=embedding_grpc_endpoint,
     )
+
     cfg = RecallConfig(
-        lancedb_uri=str(lancedb_uri),
-        lancedb_table=str(table_name),
-        embedding_http_endpoint=http_ep,
-        embedding_grpc_endpoint=grpc_ep,
-        embedding_endpoint=_coerce_endpoint_str(embedding_endpoint),
-        embedding_model=str(embedding_model),
+        vdb_op="lancedb",
+        vdb_kwargs={
+            "uri": str(lancedb_uri),
+            "table_name": str(table_name),
+            "vector_column_name": str(vector_column_name),
+        },
+        query_embedder=str(embedding_model),
+        embedding_endpoint=query_embedding_endpoint,
         embedding_api_key=(embedding_api_key or ""),
+        embedding_use_grpc=query_embedding_use_grpc,
         top_k=int(search_k),
         ks=metrics_ks,
         local_hf_device=_coerce_endpoint_str(local_hf_device),
         local_hf_cache_dir=(str(local_hf_cache_dir) if local_hf_cache_dir is not None else None),
         local_hf_batch_size=int(local_hf_batch_size),
+        local_query_embed_backend=_lqeb,
     )
 
     print("Reading and normalizing query CSV...")
@@ -162,7 +177,6 @@ def recall_with_main(
         query_csv=query_csv,
         cfg=cfg,
         limit=None,
-        vector_column_name=str(vector_column_name),
     )
 
     queries = df_query["query"].astype(str).tolist()
@@ -251,6 +265,14 @@ def run(
         min=1,
         help="Batch size for local HF embedding inference.",
     ),
+    local_query_embed_backend: str = typer.Option(
+        "hf",
+        "--local-query-embed-backend",
+        help=(
+            "When no remote embedding endpoint is set: 'hf' (default) uses HuggingFace; "
+            "'vllm' uses the local vLLM path."
+        ),
+    ),
     print_hits: bool = typer.Option(True, "--print-hits/--no-print-hits", help="Print top-k hits per query."),
 ) -> None:
     """
@@ -260,35 +282,39 @@ def run(
     search_k = max(top_k, 10) but only print the first `--top-k`.
     """
     query_csv = _resolve_query_csv(Path(query_csv))
+    _lqeb = _normalize_local_query_embed_backend(local_query_embed_backend)
 
     metrics_ks = (1, 5, 10)
     search_k = max(int(top_k), max(metrics_ks))
-
-    http_ep, grpc_ep = _resolve_endpoints(
+    query_embedding_endpoint, query_embedding_use_grpc = _resolve_query_embedding_endpoint(
         embedding_endpoint=embedding_endpoint,
         embedding_http_endpoint=embedding_http_endpoint,
         embedding_grpc_endpoint=embedding_grpc_endpoint,
     )
+
     cfg = RecallConfig(
-        lancedb_uri=str(lancedb_uri),
-        lancedb_table=str(table_name),
-        embedding_http_endpoint=http_ep,
-        embedding_grpc_endpoint=grpc_ep,
-        embedding_endpoint=_coerce_endpoint_str(embedding_endpoint),
-        embedding_model=str(embedding_model),
+        vdb_op="lancedb",
+        vdb_kwargs={
+            "uri": str(lancedb_uri),
+            "table_name": str(table_name),
+            "vector_column_name": str(vector_column_name),
+        },
+        query_embedder=str(embedding_model),
+        embedding_endpoint=query_embedding_endpoint,
         embedding_api_key=(embedding_api_key or ""),
+        embedding_use_grpc=query_embedding_use_grpc,
         top_k=int(search_k),
         ks=metrics_ks,
         local_hf_device=_coerce_endpoint_str(local_hf_device),
         local_hf_cache_dir=(str(local_hf_cache_dir) if local_hf_cache_dir is not None else None),
         local_hf_batch_size=int(local_hf_batch_size),
+        local_query_embed_backend=_lqeb,
     )
 
     df_query, gold, raw_hits, retrieved_keys, metrics = retrieve_and_score(
         query_csv=query_csv,
         cfg=cfg,
         limit=limit,
-        vector_column_name=str(vector_column_name),
     )
 
     if print_hits:

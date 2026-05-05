@@ -15,6 +15,17 @@ from nemo_retriever.harness.run import _build_command, _evaluate_run_outcome, _n
 RUNNER = CliRunner()
 
 
+def test_embedded_ray_scripts_import_env_helpers_inside_try() -> None:
+    from nemo_retriever.harness.runner import _GRAPH_WRAPPER_SCRIPT
+
+    for script in (harness_run._GRAPH_RUNNER_SCRIPT, _GRAPH_WRAPPER_SCRIPT):
+        before_try, after_try = script.split("\ntry:\n", 1)
+        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" not in before_try
+        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" not in before_try
+        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" in after_try
+        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" in after_try
+
+
 def test_evaluate_run_outcome_passes_when_process_succeeds_and_recall_present() -> None:
     rc, reason, success = _evaluate_run_outcome(0, "recall", True, {"recall@5": 0.9})
     assert rc == 0
@@ -738,7 +749,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
         harness_run,
         "_build_command",
         lambda _cfg, _artifact_dir, _run_id: (
-            ["python", "-m", "nemo_retriever.examples.batch_pipeline", str(dataset_dir)],
+            ["python", "-m", "nemo_retriever.examples.graph_pipeline", str(dataset_dir)],
             runtime_dir,
             detection_file,
             query_csv,
@@ -889,7 +900,7 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
         harness_run,
         "_build_command",
         lambda _cfg, _artifact_dir, _run_id: (
-            ["python", "-m", "nemo_retriever.examples.batch_pipeline", str(dataset_dir)],
+            ["python", "-m", "nemo_retriever.examples.graph_pipeline", str(dataset_dir)],
             runtime_dir,
             detection_file,
             query_csv,

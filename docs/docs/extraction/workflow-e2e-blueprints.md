@@ -1,8 +1,8 @@
 # Workflow: End-to-end RAG with NVIDIA Blueprints
 
-!!! note
+Use these external resources for end-to-end RAG implementations with NeMo Retriever Library:
 
-    This documentation describes NeMo Retriever Library.
+- [Enterprise RAG - multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
+- [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover)
 
-
-For NVIDIA AI Blueprint links, solution cards, enterprise RAG resources, and related product landing pages, refer to [NVIDIA AI Blueprints and product links](resources-links.md).
+For framework-specific integration patterns, see [Framework integrations](integrations-langchain-llamaindex-haystack.md).

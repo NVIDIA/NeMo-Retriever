@@ -146,64 +146,64 @@ LIMIT 3
 def test_rfm_query_tables():
     """All three source tables are detected; no CTE names leak into the result."""
     result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert set(result.keys()) == {"orders", "customers", "order_items"}
+    assert set(result.tables.keys()) == {"orders", "customers", "order_items"}
 
 
 def test_rfm_query_schema_name():
     """Each table resolves to the owning schema key."""
     result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert result["orders"].schema_name == "ecommerce"
-    assert result["customers"].schema_name == "ecommerce"
-    assert result["order_items"].schema_name == "ecommerce"
+    assert result.tables["orders"].schema_name == "ecommerce"
+    assert result.tables["customers"].schema_name == "ecommerce"
+    assert result.tables["order_items"].schema_name == "ecommerce"
 
 
 def test_rfm_query_orders_columns():
     """orders: join-key customer_id, join-key order_id, filter order_status,
     aggregation column order_purchase_timestamp."""
     result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert result["orders"].columns == {"order_id", "customer_id", "order_status", "order_purchase_timestamp"}
+    assert result.tables["orders"].columns == {"order_id", "customer_id", "order_status", "order_purchase_timestamp"}
 
 
 def test_rfm_query_customers_columns():
     """customers: join-key customer_id, grouping/select customer_unique_id."""
     result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert result["customers"].columns == {"customer_id", "customer_unique_id"}
+    assert result.tables["customers"].columns == {"customer_id", "customer_unique_id"}
 
 
 def test_rfm_query_order_items_columns():
     """order_items: join-key order_id, aggregation column price."""
     result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert result["order_items"].columns == {"order_id", "price"}
+    assert result.tables["order_items"].columns == {"order_id", "price"}
 
 
 def test_clv_query_tables():
     """All three source tables are detected; CustomerData CTE does not appear."""
     result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert set(result.keys()) == {"customers", "orders", "order_payments"}
+    assert set(result.tables.keys()) == {"customers", "orders", "order_payments"}
 
 
 def test_clv_query_customers_columns():
     """customers: join-key customer_id, select/group-by customer_unique_id."""
     result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert result["customers"].columns == {"customer_id", "customer_unique_id"}
+    assert result.tables["customers"].columns == {"customer_id", "customer_unique_id"}
 
 
 def test_clv_query_orders_columns():
     """orders: join-key customer_id, explicit order_id reference, timestamp aggregations."""
     result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert result["orders"].columns == {"customer_id", "order_id", "order_purchase_timestamp"}
+    assert result.tables["orders"].columns == {"customer_id", "order_id", "order_purchase_timestamp"}
 
 
 def test_clv_query_order_payments_columns():
     """order_payments: join-key order_id, aggregation column payment_value."""
     result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    assert result["order_payments"].columns == {"order_id", "payment_value"}
+    assert result.tables["order_payments"].columns == {"order_id", "payment_value"}
 
 
 def test_no_schema_name_when_schemas_empty():
     """Without all_schemas, schema_name is None for every table."""
     result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas={})
-    for match in result.values():
+    for match in result.tables.values():
         assert match.schema_name is None
 
 
@@ -211,16 +211,22 @@ def test_no_schema_returns_subset():
     """Without schema assistance qualify() still resolves explicitly-qualified columns."""
     result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas={})
     # join-key columns resolved via qualify's USING→ON expansion must be present
-    assert "customer_id" in result.get("orders", TableMatch()).columns
-    assert "customer_id" in result.get("customers", TableMatch()).columns
-    assert "order_id" in result.get("order_items", TableMatch()).columns
+    assert "customer_id" in result.tables.get("orders", TableMatch()).columns
+    assert "customer_id" in result.tables.get("customers", TableMatch()).columns
+    assert "order_id" in result.tables.get("order_items", TableMatch()).columns
+
+
+def test_ast_node_count_is_positive():
+    """ast_node_count is populated with a positive value for valid SQL."""
+    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    assert result.ast_node_count > 0
 
 
 def test_empty_sql_returns_empty():
     result = extract_tables_and_columns("", all_schemas=_ALL_SCHEMAS)
-    assert result == {}
+    assert result.tables == {}
 
 
 def test_invalid_sql_returns_empty():
     result = extract_tables_and_columns("NOT VALID SQL !!!", all_schemas=_ALL_SCHEMAS)
-    assert result == {}
+    assert result.tables == {}

@@ -24,19 +24,54 @@ RunMode = Literal["inprocess", "batch", "fused", "online"]
 NO_API_KEY = ""
 
 
+_REDACTED = "***"
+
+
+def _is_api_key_field(field_name: str) -> bool:
+    """Return True when ``field_name`` should be masked in ``repr`` / logs."""
+    return field_name == "api_key" or field_name.endswith("_api_key")
+
+
 class _ParamsModel(BaseModel):
+    """Shared base for all remote-transport Pydantic params models.
+
+    Two cross-cutting behaviours live here:
+
+    * :meth:`_resolve_api_keys` auto-fills unset ``*api_key`` fields from
+      ``NVIDIA_API_KEY`` / ``NGC_API_KEY`` (see
+      :func:`nemo_retriever.utils.remote_auth.resolve_remote_api_key`).
+    * :meth:`__repr__` redacts every field whose name matches
+      :func:`_is_api_key_field` so that logging a transport object (or
+      letting Pydantic's default error formatter echo one back) never
+      prints a bearer token.  The underlying field still serialises as
+      a plain ``str`` via ``.model_dump()`` / ``getattr(self, field)``
+      so no downstream consumer needs changes.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def _resolve_api_keys(self) -> "_ParamsModel":
         for field_name in type(self).model_fields:
-            if field_name == "api_key" or field_name.endswith("_api_key"):
+            if _is_api_key_field(field_name):
                 value = getattr(self, field_name, None)
                 if value is None:
                     setattr(self, field_name, resolve_remote_api_key())
                 elif value == NO_API_KEY:
                     setattr(self, field_name, None)
         return self
+
+    def __repr__(self) -> str:
+        parts: list[str] = []
+        for field_name in type(self).model_fields:
+            value = getattr(self, field_name, None)
+            if _is_api_key_field(field_name) and value:
+                parts.append(f"{field_name}={_REDACTED}")
+            else:
+                parts.append(f"{field_name}={value!r}")
+        return f"{type(self).__name__}({', '.join(parts)})"
+
+    __str__ = __repr__
 
 
 class RemoteRetryParams(_ParamsModel):
@@ -57,6 +92,8 @@ class ModelRuntimeParams(_ParamsModel):
     normalize: bool = True
     max_length: int = 8192
     model_name: Optional[str] = None
+    gpu_memory_utilization: float = 0.45
+    enforce_eager: bool = False
 
 
 class IngestorCreateParams(_ParamsModel):
@@ -99,8 +136,15 @@ class HtmlChunkParams(TextChunkParams):
 
 
 class AudioChunkParams(_ParamsModel):
-    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader."""
+    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader.
 
+    Set ``enabled=False`` (when wired through ``VideoSplitActor``) to skip
+    audio chunking and ASR on a video pipeline — useful for visual-only
+    recall benchmarks. ``MediaChunkActor`` ignores this flag for the
+    audio-only pipeline since chunking is the whole point there.
+    """
+
+    enabled: bool = True
     split_type: Literal["size", "time", "frame"] = "size"
     split_interval: int = 450
     audio_only: bool = False
@@ -115,6 +159,58 @@ class ASRParams(_ParamsModel):
     function_id: Optional[str] = None
     auth_token: Optional[str] = None
     segment_audio: bool = False
+
+
+class VideoFrameParams(_ParamsModel):
+    """Params for video frame extraction (ffmpeg fps + perceptual-hash dedup).
+
+    Set ``enabled=False`` to skip frame extraction entirely; the video
+    pipeline then produces only audio (ASR) rows — no frame OCR, no
+    audio+visual fusion. Useful for ablating the visual modality or for
+    audio-only recall benchmarks against video corpora.
+
+    ``dedup`` activates perceptual-hash (dhash) dedup before OCR. dhash
+    catches visually-identical adjacent frames that byte-level hashing
+    misses (encoder noise, brightness drift, etc.). On a 60s slide-heavy
+    sample we measured ~91% duplicates collapsed at distance 5 vs ~11%
+    for MD5 — a near-10x cut in OCR cost on slide content. Tune
+    ``dedup_max_hamming_distance`` upward for more aggressive merging or
+    down to 0 to require exact perceptual-hash matches.
+    """
+
+    enabled: bool = True
+    fps: float = Field(default=1.0, gt=0.0)
+    max_frames: Optional[int] = None
+    dedup: bool = True
+    dedup_max_hamming_distance: int = 5
+    dedup_max_dropped_frames: int = 2
+
+
+class VideoFrameTextDedupParams(_ParamsModel):
+    """Params for merging consecutive video_frame rows with identical OCR text.
+
+    After full-frame OCR, slides that are visible for many seconds produce a
+    flood of frames with the same text (image-hash dedup misses them when
+    encoder noise differs frame-to-frame). This stage groups by
+    ``(source_path, text)`` and merges adjacent runs into a single row whose
+    ``segment_start_seconds`` / ``segment_end_seconds`` cover the union of
+    the run.
+
+    Tolerance is expressed in **dropped frames**, not seconds, so it scales
+    with ``video_frame_fps``: at runtime the dedup reads each group's
+    ``metadata.fps`` and converts to ``max_gap_seconds = max_dropped_frames / fps``.
+    Default 2 means we bridge gaps of up to 2 missing frames in a run —
+    a typical safety margin for image-hash dedup leaving small holes.
+    """
+
+    enabled: bool = True
+    max_dropped_frames: int = 2
+
+
+class AudioVisualFuseParams(_ParamsModel):
+    """Toggle for :class:`~nemo_retriever.video.AudioVisualFuser`."""
+
+    enabled: bool = True
 
 
 class LanceDbParams(_ParamsModel):
@@ -149,7 +245,7 @@ class BatchTuningParams(_ParamsModel):
     page_elements_cpus_per_actor: float = 1
     ocr_cpus_per_actor: float = 1
     embed_workers: Optional[int] = None
-    embed_batch_size: int = 256
+    embed_batch_size: int = 32
     embed_cpus_per_actor: float = 1
     gpu_page_elements: Optional[float] = None
     gpu_ocr: Optional[float] = None
@@ -192,6 +288,7 @@ class ExtractParams(_ParamsModel):
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
+    ocr_version: Literal["v1", "v2"] = "v2"
 
     # Service endpoints
     invoke_url: Optional[str] = None
@@ -244,6 +341,7 @@ class EmbedParams(_ParamsModel):
     model_name: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
+    embed_model_name: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types
@@ -257,12 +355,30 @@ class EmbedParams(_ParamsModel):
     has_embedding_column: str = "text_embeddings_1b_v2_has_embedding"
     embed_output_column: str = "text_embeddings_1b_v2"
     embed_inference_batch_size: int = 16
+
+    local_ingest_embed_backend: str = (
+        "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
+    )
+    dimensions: Optional[int] = None
+
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
     fused_tuning: FusedTuningParams = Field(default_factory=FusedTuningParams)
+
+    @field_validator("local_ingest_embed_backend", mode="before")
+    @classmethod
+    def _validate_local_ingest_embed_backend(cls, v: str) -> str:
+        from nemo_retriever.model import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+
+        return normalize_backend(
+            str(v) if v is not None else None,
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            field_name="local_ingest_embed_backend",
+            default="vllm",
+        )
 
     @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
     @classmethod
@@ -291,8 +407,8 @@ class EmbedParams(_ParamsModel):
 
 
 class VdbUploadParams(_ParamsModel):
-    purge_results_after_upload: bool = True
-    lancedb: LanceDbParams = Field(default_factory=LanceDbParams)
+    vdb_op: str = "lancedb"
+    vdb_kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
 class StoreParams(_ParamsModel):
@@ -394,6 +510,36 @@ class LLMInferenceParams(_ParamsModel):
         return kw
 
 
+class LLMRemoteClientParams(_ParamsModel):
+    """Transport / connection parameters for any remote LLM client.
+
+    Pairs with :class:`LLMInferenceParams` (sampling) to fully specify a
+    call.  ``api_key`` is auto-resolved from the environment by
+    :class:`_ParamsModel` when left as ``None``.
+    """
+
+    model: str
+    api_base: Optional[str] = None
+    api_key: Optional[str] = None
+    num_retries: int = 3
+    timeout: float = 120.0
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("num_retries")
+    @classmethod
+    def _check_retries(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("num_retries must be >= 0")
+        return v
+
+    @field_validator("timeout")
+    @classmethod
+    def _check_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("timeout must be > 0")
+        return v
+
+
 class CaptionParams(LLMInferenceParams):
     endpoint_url: Optional[str] = None
     model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
@@ -407,6 +553,21 @@ class CaptionParams(LLMInferenceParams):
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
     caption_infographics: bool = False
+
+
+class WebhookParams(_ParamsModel):
+    """Configuration for the webhook notification stage.
+
+    When ``endpoint_url`` is set, selected columns from the processed batch
+    are serialised to JSON and HTTP-POSTed to that URL.  If ``endpoint_url``
+    is ``None`` the stage is a no-op.
+    """
+
+    endpoint_url: Optional[str] = None
+    columns: list[str] = Field(default_factory=list)
+    headers: dict[str, str] = Field(default_factory=dict)
+    timeout_s: float = 30.0
+    max_retries: int = 3
 
 
 class DedupParams(_ParamsModel):

@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from nemo_retriever.evaluation.types import RetrieverStrategy
+    from nemo_retriever.llm.types import RetrieverStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +64,7 @@ def run_eval_sweep(
         ``"FAIL"``), ``output_path`` (or ``error``), and ``eval_results``
         (the full evaluation dict when status is PASS).
     """
-    from nemo_retriever.evaluation.generators import LiteLLMClient
-    from nemo_retriever.evaluation.judges import LLMJudge
+    from nemo_retriever.llm.clients import LLMJudge, LiteLLMClient
     from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
     from nemo_retriever.evaluation.retrievers import FileRetriever
 
@@ -110,18 +109,18 @@ def run_eval_sweep(
         check_unresolved_env(gen_model_cfg.get("api_key"), "api_key", f"generator '{gen_name}'")
         check_unresolved_env(judge_model_cfg.get("api_key"), "api_key", f"judge '{judge_name}'")
 
-        client = LiteLLMClient(
+        client = LiteLLMClient.from_kwargs(
             model=gen_model_cfg["model"],
             api_base=gen_model_cfg.get("api_base"),
             api_key=gen_model_cfg.get("api_key"),
             temperature=eval_cfg.get("temperature", gen_model_cfg.get("temperature", 0.0)),
-            top_p=eval_cfg.get("top_p", gen_model_cfg.get("top_p", 1.0)),
+            top_p=eval_cfg.get("top_p", gen_model_cfg.get("top_p")),
             max_tokens=eval_cfg.get("max_tokens", gen_model_cfg.get("max_tokens", 4096)),
             extra_params=gen_model_cfg.get("extra_params"),
             num_retries=gen_model_cfg.get("num_retries", 3),
             timeout=gen_model_cfg.get("timeout", default_timeout),
         )
-        judge = LLMJudge(
+        judge = LLMJudge.from_kwargs(
             model=judge_model_cfg["model"],
             api_base=judge_model_cfg.get("api_base"),
             api_key=judge_model_cfg.get("api_key"),

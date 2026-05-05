@@ -819,11 +819,9 @@ async def get_run_lancedb_info(run_id: int):
     if not uri:
         return {"available": False, "uri": None, "row_count": 0}
     try:
-        import lancedb  # type: ignore
+        from nemo_retriever.vdb.lancedb_read import lancedb_row_count
 
-        db = lancedb.connect(uri)
-        table = db.open_table(LANCEDB_TABLE)
-        count = int(table.count_rows())
+        count = int(lancedb_row_count(uri, LANCEDB_TABLE))
         return {"available": True, "uri": uri, "row_count": count, "table": LANCEDB_TABLE}
     except Exception as exc:
         logger.debug("LanceDB probe failed for run %s: %s", run_id, exc)
@@ -852,8 +850,8 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
         from nemo_retriever.retriever import Retriever
 
         retriever = Retriever(
-            lancedb_uri=uri,
-            lancedb_table=LANCEDB_TABLE,
+            vdb="lancedb",
+            vdb_kwargs={"uri": uri, "table_name": LANCEDB_TABLE},
             embedder=embed_model,
             top_k=req.top_k,
         )

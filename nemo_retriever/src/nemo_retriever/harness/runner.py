@@ -450,6 +450,8 @@ try:
             return 0
 
     import ray
+    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")
@@ -464,10 +466,8 @@ try:
         "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
         "PYTHONPATH": pypath,
     }
-    for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
-        if os.environ.get(_fwd_key):
-            ray_env_vars[_fwd_key] = os.environ[_fwd_key]
-    ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+    ray_env_vars.update(collect_hf_runtime_env())
+    ray_env_vars.update(collect_remote_auth_runtime_env())
     runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:

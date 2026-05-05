@@ -34,6 +34,7 @@ dependencies = [
   "sqlglot>=30.0.0",
   "tqdm>=4.66.0",
   "typer>=0.12.0",
+  "click>=8.2.0",
   "pyyaml>=6.0",
   # Service layer
   "fastapi>=0.114.0",
@@ -83,11 +84,18 @@ local = [
   "nemotron-page-elements-v3>=0.dev0",
   "nemotron-graphic-elements-v1>=0.dev0",
   "nemotron-table-structure-v1>=0.dev0",
-  "nemotron-ocr>=0.dev0; sys_platform == 'linux'",
+  # Stay on the 1.0.2 OCR dev train and exclude older PyPI finals.
+  "nemotron-ocr>=1.0.2.dev0,<1.0.2a0; sys_platform == 'linux'",
   "nvidia-ml-py",
   "apscheduler>=3.10",
   "psutil>=5.9.0",
+  # vLLM compiles CUDA kernels at runtime via torch inductor (requires Python.h).
+  # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
+  # system Python installs typically omit them and will fail with InductorError.
   "vllm==0.17.0; sys_platform == 'linux'",
+  # flashinfer and cubin versions must match
+  "flashinfer-cubin==0.6.4; sys_platform == 'linux'",
+  "flashinfer-python==0.6.4; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
@@ -102,10 +110,11 @@ multimedia = [
 # ── Independent extras ───────────────────────────────────────────────────────
 
 # SQL and graph storage backends (lancedb is in core deps).
-stores = [
+tabular = [
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
+  "langgraph>=1.1.0",
 ]
 
 # BEIR benchmarking and evaluation tools (not needed for production use).
@@ -114,10 +123,12 @@ benchmarks = [
   "open-clip-torch==3.2.0",
 ]
 
-eval = [
+# ── LLM client (generation + judge) ──────────────────────────────────────────
+# Install this if you want to call ``Retriever.answer()``, ``Retriever.pipeline()``,
+# or construct an ``LLMJudge`` / ``LiteLLMClient`` directly.  Powers both the
+# live-RAG SDK and the batch evaluation framework.
+llm = [
   "litellm>=1.40.0",
-  "pyyaml>=6.0",
-  "tenacity>=8.0.0",
 ]
 dev = [
   "build>=1.2.2",
@@ -126,7 +137,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[local,multimedia,stores,benchmarks]",
+  "nemo_retriever[local,multimedia,tabular,benchmarks,llm]",
 ]
 
 [project.scripts]
