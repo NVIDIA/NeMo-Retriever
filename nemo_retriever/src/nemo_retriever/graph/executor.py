@@ -296,6 +296,14 @@ class RayDataExecutor(AbstractExecutor):
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
 
+            # Self-join operators (AudioVisualFuser, VideoFrameTextDedup) need
+            # the entire dataset in one batch — see the repartition site below
+            # for the actual single-block enforcement.
+            requires_global_batch = bool(getattr(node.operator_class, "REQUIRES_GLOBAL_BATCH", False))
+            if requires_global_batch:
+                batch_size = None
+                target_num_rows_per_block = None
+
             # When no explicit num_gpus override is given, auto-detect from the
             # GPUOperator mixin using actual cluster GPU availability.
             if "num_gpus" in overrides:
@@ -345,7 +353,19 @@ class RayDataExecutor(AbstractExecutor):
             else:
                 num_gpus = self._default_num_gpus
 
-            if target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
+            if requires_global_batch:
+                # ``num_blocks=1`` is exact; ``target_num_rows_per_block`` is a
+                # streaming best-effort cap that can leave joins missing rows.
+                # When the operator declares ``GLOBAL_BATCH_GROUP_KEYS`` and
+                # concurrency > 1, hash-partition by those keys so rows sharing
+                # the keys stay co-located while blocks distribute across actors.
+                group_keys = list(getattr(node.operator_class, "GLOBAL_BATCH_GROUP_KEYS", None) or ())
+                n_blocks = max(1, int(overrides.get("concurrency") or 1)) if group_keys else 1
+                if n_blocks > 1:
+                    ds = ds.repartition(num_blocks=n_blocks, keys=group_keys, shuffle=True)
+                else:
+                    ds = ds.repartition(num_blocks=1)
+            elif target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
                 ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
 
             # Pass the operator class directly to map_batches with

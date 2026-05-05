@@ -68,6 +68,13 @@ class HarnessConfig:
     audio_split_interval: int = 500000
     evaluation_mode: str = "beir"
     beir_loader: str | None = "vidore_hf"
+    video_extract_audio: bool = True
+    video_extract_frames: bool = True
+    video_frame_fps: float = 1.0
+    video_frame_dedup: bool = True
+    video_frame_text_dedup: bool = True
+    video_frame_text_dedup_max_dropped_frames: int = 2
+    video_av_fuse: bool = True
     beir_dataset_name: str | None = None
     beir_split: str = "test"
     beir_query_language: str | None = None
@@ -97,7 +104,6 @@ class HarnessConfig:
     page_elements_workers: int = 3
     ocr_workers: int = 3
     ocr_batch_size: int = 16
-    ocr_version: str = "v2"
     embed_workers: int = 3
     embed_batch_size: int = 256
     page_elements_cpus_per_actor: float = 1.0
@@ -126,8 +132,8 @@ class HarnessConfig:
         if self.evaluation_mode == "recall" and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
 
-        if self.input_type not in {"pdf", "txt", "html", "doc", "audio"}:
-            errors.append(f"input_type must be one of pdf/txt/html/doc/audio, got '{self.input_type}'")
+        if self.input_type not in {"pdf", "txt", "html", "doc", "audio", "video"}:
+            errors.append(f"input_type must be one of pdf/txt/html/doc/audio/video, got '{self.input_type}'")
 
         if self.evaluation_mode == "recall":
             if self.input_type != "audio":
@@ -143,6 +149,10 @@ class HarnessConfig:
                 errors.append("audio_split_type must be one of size/time/frame")
             if int(self.audio_split_interval) < 1:
                 errors.append("audio_split_interval must be >= 1")
+            if float(self.video_frame_fps) <= 0.0:
+                errors.append("video_frame_fps must be > 0.0")
+            if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
+                errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
         else:
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
@@ -169,9 +179,6 @@ class HarnessConfig:
 
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
-
-        if self.ocr_version not in {"v1", "v2"}:
-            errors.append("ocr_version must be one of ['v1', 'v2']")
 
         _ZERO_ALLOWED_WORKERS = {f for f in TUNING_FIELDS if f.endswith("_workers")} if self.use_heuristics else set()
         for name in TUNING_FIELDS:
@@ -286,6 +293,16 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_SEGMENT_AUDIO": ("segment_audio", _parse_bool),
         "HARNESS_AUDIO_SPLIT_TYPE": ("audio_split_type", str),
         "HARNESS_AUDIO_SPLIT_INTERVAL": ("audio_split_interval", _parse_number),
+        "HARNESS_VIDEO_EXTRACT_AUDIO": ("video_extract_audio", _parse_bool),
+        "HARNESS_VIDEO_EXTRACT_FRAMES": ("video_extract_frames", _parse_bool),
+        "HARNESS_VIDEO_FRAME_FPS": ("video_frame_fps", _parse_number),
+        "HARNESS_VIDEO_FRAME_DEDUP": ("video_frame_dedup", _parse_bool),
+        "HARNESS_VIDEO_FRAME_TEXT_DEDUP": ("video_frame_text_dedup", _parse_bool),
+        "HARNESS_VIDEO_FRAME_TEXT_DEDUP_MAX_DROPPED_FRAMES": (
+            "video_frame_text_dedup_max_dropped_frames",
+            _parse_number,
+        ),
+        "HARNESS_VIDEO_AV_FUSE": ("video_av_fuse", _parse_bool),
         "HARNESS_EVALUATION_MODE": ("evaluation_mode", str),
         "HARNESS_BEIR_LOADER": ("beir_loader", str),
         "HARNESS_BEIR_DATASET_NAME": ("beir_dataset_name", str),
@@ -301,7 +318,6 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
-        "HARNESS_OCR_VERSION": ("ocr_version", str),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
         "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),

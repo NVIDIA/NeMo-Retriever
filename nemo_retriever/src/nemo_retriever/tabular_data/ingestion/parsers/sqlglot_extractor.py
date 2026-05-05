@@ -310,8 +310,6 @@ def extract_tables_and_columns(
             if len(candidates) == 1:
                 result[candidates[0]].columns.add(col_name)
             elif len(candidates) > 1 and col_name in join_keys:
-                # Cross-validate: only attribute to tables that are both in the
-                # schema candidates AND in the actual USING join for this column.
                 matched = [t for t in candidates if t in join_keys[col_name]]
                 for tbl in matched or candidates:
                     result[tbl].columns.add(col_name)

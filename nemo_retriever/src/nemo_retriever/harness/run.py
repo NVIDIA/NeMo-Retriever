@@ -357,8 +357,6 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             str(cfg.ocr_workers),
             "--ocr-batch-size",
             str(cfg.ocr_batch_size),
-        "--ocr-version",
-        cfg.ocr_version,
             "--embed-actors",
             str(cfg.embed_workers),
             "--embed-batch-size",
@@ -443,18 +441,27 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         ]
 
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    if cfg.input_type == "audio":
+    if cfg.input_type in ("audio", "video"):
         cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
         cmd += ["--audio-split-type", cfg.audio_split_type]
         cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
+    if cfg.input_type == "video":
+        cmd += ["--video-extract-audio" if cfg.video_extract_audio else "--no-video-extract-audio"]
+        cmd += ["--video-extract-frames" if cfg.video_extract_frames else "--no-video-extract-frames"]
+        cmd += ["--video-frame-fps", str(cfg.video_frame_fps)]
+        cmd += ["--video-frame-dedup" if cfg.video_frame_dedup else "--no-video-frame-dedup"]
+        cmd += ["--video-frame-text-dedup" if cfg.video_frame_text_dedup else "--no-video-frame-text-dedup"]
+        cmd += [
+            "--video-frame-text-dedup-max-dropped-frames",
+            str(cfg.video_frame_text_dedup_max_dropped_frames),
+        ]
+        cmd += ["--video-av-fuse" if cfg.video_av_fuse else "--no-video-av-fuse"]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
         cmd += ["--structured-elements-modality", cfg.embed_modality]
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
-    if cfg.hybrid:
-        cmd += ["--hybrid"]
 
     resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
     if resolved_store_uri is not None:
@@ -483,6 +490,90 @@ def _evaluate_run_outcome(
     return 0, "", True
 
 
+_FAIL_SEPARATOR = "\u2500" * 72
+
+
+def _print_failure_report(
+    result: dict[str, Any],
+    command_text: str,
+    artifact_dir: Path,
+    tail_lines: list[str],
+) -> None:
+    """Pretty-print a detailed failure report so the root cause is easy to find."""
+    reason = result.get("failure_reason") or "unknown"
+    rc = result.get("return_code", "?")
+    cfg = result.get("test_config", {})
+    meta = result.get("run_metadata", {})
+
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+    RESET = "\033[0m"
+
+    lines: list[str] = []
+    lines.append("")
+    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
+    lines.append(f"{RED}{BOLD}  RUN FAILED  {RESET}")
+    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
+    lines.append("")
+
+    lines.append(f"  {BOLD}Failure Reason :{RESET}  {RED}{reason}{RESET}")
+    lines.append(f"  {BOLD}Return Code    :{RESET}  {rc}")
+    lines.append("")
+
+    em_dash = "\u2014"
+    lines.append(f"  {CYAN}{BOLD}Test Configuration{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    lines.append(f"  Dataset        :  {cfg.get('dataset_label', em_dash)}")
+    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', em_dash)}")
+    lines.append(f"  Preset         :  {cfg.get('preset', em_dash)}")
+    lines.append(f"  Input Type     :  {cfg.get('input_type', em_dash)}")
+    lines.append(f"  Recall Required:  {cfg.get('recall_required', False)}")
+    lines.append(f"  Hybrid         :  {cfg.get('hybrid', False)}")
+    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', em_dash)}")
+    lines.append("")
+
+    lines.append(f"  {CYAN}{BOLD}Host Information{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    lines.append(f"  Hostname       :  {meta.get('host', em_dash)}")
+    lines.append(f"  GPU            :  {meta.get('gpu_type', em_dash)} (x{meta.get('gpu_count', '?')})")
+    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', em_dash)}")
+    lines.append(f"  Python         :  {meta.get('python_version', em_dash)}")
+    lines.append(f"  CPU / Memory   :  {meta.get('cpu_count', '?')} cores / {meta.get('memory_gb', '?')} GB")
+    lines.append("")
+
+    lines.append(f"  {CYAN}{BOLD}Artifacts{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    lines.append(f"  Artifact Dir   :  {artifact_dir.resolve()}")
+    lines.append(f"  Results JSON   :  {artifact_dir.resolve() / 'results.json'}")
+    lines.append(f"  Command File   :  {artifact_dir.resolve() / 'command.txt'}")
+    lines.append("")
+
+    lines.append(f"  {CYAN}{BOLD}Command{RESET}")
+    lines.append(f"  {DIM}{'-' * 40}{RESET}")
+    # Wrap long commands for readability
+    if len(command_text) > 120:
+        lines.append(f"  {DIM}{command_text[:120]}...{RESET}")
+        lines.append(f"  {DIM}(full command in {artifact_dir.resolve() / 'command.txt'}){RESET}")
+    else:
+        lines.append(f"  {DIM}{command_text}{RESET}")
+    lines.append("")
+
+    if tail_lines:
+        lines.append(f"  {YELLOW}{BOLD}Last {len(tail_lines)} Lines of Output{RESET}")
+        lines.append(f"  {DIM}{'-' * 40}{RESET}")
+        for tl in tail_lines:
+            lines.append(f"  {DIM}|{RESET} {tl}")
+        lines.append("")
+
+    lines.append(f"{RED}{BOLD}{_FAIL_SEPARATOR}{RESET}")
+    lines.append("")
+
+    typer.echo("\n".join(lines), err=True)
+
+
 def _read_json_if_exists(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
@@ -501,30 +592,6 @@ def _consume_parseable_output(metrics: StreamMetrics, parse_buffer: str) -> str:
         cleaned = ANSI_ESCAPE_RE.sub("", line)
         metrics.consume(cleaned + "\n")
     return parse_buffer
-
-
-_FAIL_SEPARATOR = "\u2500" * 72
-
-
-def _print_failure_report(
-    result: dict[str, Any],
-    command_text: str,
-    artifact_dir: Path,
-    tail_lines: list[str],
-) -> None:
-    reason = result.get("failure_reason") or "unknown"
-    rc = result.get("return_code", "?")
-    typer.echo(f"\n{_FAIL_SEPARATOR}")
-    typer.echo(f"RUN FAILED: return_code={rc} reason={reason}")
-    if result.get("error_detail"):
-        typer.echo(str(result["error_detail"]))
-    if tail_lines:
-        typer.echo("\nRecent output:")
-        for line in tail_lines[-20:]:
-            typer.echo(line)
-    typer.echo(f"Command: {command_text}")
-    typer.echo(f"Artifacts: {artifact_dir}")
-    typer.echo(_FAIL_SEPARATOR)
 
 
 def _run_subprocess_with_tty(cmd: list[str]) -> int:
