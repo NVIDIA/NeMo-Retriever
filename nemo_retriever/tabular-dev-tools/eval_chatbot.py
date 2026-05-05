@@ -256,8 +256,33 @@ CSV_FIELDS = [
 ]
 
 
+def _print_agent_result(qid: Any, question: str, agent_result: Dict[str, Any] | None) -> None:
+    """Pretty-print the agent result to stdout for quick visual inspection."""
+    sep = "=" * 80
+    print(f"\n{sep}")
+    print(f"  Question {qid}: {question}")
+    print(sep)
+    if not agent_result:
+        print("  (no result)")
+        print(sep)
+        return
+    for key in ("sql_code", "response", "sql_response_from_db"):
+        val = agent_result.get(key)
+        if val is None:
+            continue
+        print(f"\n  [{key}]")
+        for line in str(val).splitlines():
+            print(f"    {line}")
+    remaining = {k: v for k, v in agent_result.items() if k not in ("sql_code", "response", "sql_response_from_db")}
+    if remaining:
+        print(f"\n  [other keys]")
+        for k, v in remaining.items():
+            print(f"    {k}: {v}")
+    print(sep)
+
+
 def evaluate(input_path: Path, output_path: Path) -> None:
-    questions = ["Show me the details for component 670-14039-0072-TS5"]
+    questions = [{"question_id": 0, "question": "Show me the details for component 670-14039-0072-TS5", "SQL": ""}]
     # questions = _load_questions(input_path)
     logger.info("Loaded %d questions from %s", len(questions), input_path)
 
@@ -307,6 +332,7 @@ def evaluate(input_path: Path, output_path: Path) -> None:
                     "acronyms": "",
                 }
                 agent_result = get_agent_response(payload)
+                _print_agent_result(qid, question, agent_result)
                 returned_sql = (agent_result or {}).get("sql_code", "") or ""
                 returned_answer = (agent_result or {}).get("response", "") or ""
                 returned_db = (agent_result or {}).get("sql_response_from_db")

@@ -56,14 +56,6 @@ def clean_results(raw_candidates: list[dict]) -> list[dict]:
     return out
 
 
-queries_for_columns_params = {
-    "wildcard_names": ["Wildcard", "QualifiedWildcard"],
-    "sql_subgraph_rel": "<SQL",
-    "sql_subgraph_labels": ">sql|-table",
-    "sql_type": Labels.SQL,
-}
-queries_for_columns_params_keys = ", ".join([f"{key}:${key}" for key in queries_for_columns_params.keys()])
-
 
 def expand_info(ids_and_labels):
     """Fetch Neo4j properties per (label, id). Column nodes merge parent table into ``relevant_tables``."""
@@ -123,7 +115,7 @@ def expand_info(ids_and_labels):
                                  ) as item'
                         ],
                         'with n RETURN n{{ .*}} as item ',
-                        {{n:n, sql_type: $sql_type, {queries_for_columns_params_keys} }}
+                        {{n:n, sql_type: $sql_type }}
                         )
                     YIELD value as response
                     WITH collect(response.item) as all_items
@@ -133,7 +125,6 @@ def expand_info(ids_and_labels):
             "sql_type": Labels.SQL,
             "label_id_pairs": label_id_pairs_for_current_label,
         }
-        params.update(queries_for_columns_params)
         result = get_neo4j_conn().query_read(
             query=query,
             parameters=params,
