@@ -93,7 +93,7 @@ You can submit jobs programmatically in Python or using the [CLI](https://github
 
 !!! important "Python version"
 
-    Install the client and CLI into an environment that uses Python 3.12 or later. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. Refer to [Prerequisites](prerequisites.md) and [Support Matrix](support-matrix.md).
+    Install the client and CLI into an environment that uses Python 3.12 or later. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. Refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md).
 
 The following examples demonstrate how to extract text, charts, tables, and images:
 
@@ -443,13 +443,12 @@ This syntax and structure can be repeated for each NIM model used by CAS, ensuri
 
 !!! important
 
-    Advanced features require additional GPU support and disk space. For more information, refer to [Support Matrix](support-matrix.md).
+    Advanced features require additional GPU support and disk space. For more information, refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md).
 
 ## Related Topics
 
 - [Troubleshoot](troubleshoot.md)
-- [Prerequisites](prerequisites.md)
-- [Support Matrix](support-matrix.md)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [Notebooks](notebooks.md)

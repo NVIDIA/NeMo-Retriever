@@ -4,13 +4,13 @@ This page covers **extracting content from documents** and **turning that conten
 
 ## Ingest and extract
 
-**Document ingestion** is the step where NeMo Retriever Library reads your files (PDFs, Office documents, images, and other [supported formats](supported-file-types.md)), runs extraction and optional enrichment, and returns structured content you can chunk, embed, and index.
+**Document ingestion** is the step where NeMo Retriever Library reads your files (PDFs, Office documents, images, and other [supported formats](multimodal-extraction.md#supported-file-types-and-formats)), runs extraction and optional enrichment, and returns structured content you can chunk, embed, and index.
 
 Follow these steps:
 
 1. **Choose how you call the library.** Use the [Python API](nemo-retriever-api-reference.md) or [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) from application code, or run a deployment (for example [Quickstart: NeMo Retriever Library (local)](quickstart-library-mode.md), [Deployment options](deployment-options.md), or [Quickstart: Kubernetes (Helm)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)) and send jobs over the network.
 2. **Use parallel PDF handling.** The default ingest path splits large PDFs before Ray processing; behavior and tuning are described in the [API guide — PDF pre-splitting](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest). Set `message_client_kwargs={"api_version": "v2"}` when using the client if you need to be explicit.
-3. **Tune extraction for your content.** Refer to [Multimodal extraction](supported-file-types.md) for formats, [Text and layout extraction](text-layout-extraction.md), [Tables](extraction-tables.md), [OCR](extraction-ocr-scanned.md), and related topics in the navigation.
+3. **Tune extraction for your content.** Refer to [Multimodal extraction](multimodal-extraction.md) for formats, [text and layout](multimodal-extraction.md#text-and-layout-extraction), [tables](multimodal-extraction.md#tables), [OCR](multimodal-extraction.md#ocr-and-scanned-documents), and related subsections on that page.
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md).
 

@@ -22,7 +22,7 @@ to transcribe speech to text, which is then embedded by using the NeMo Retriever
 
 !!! important
 
-    Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). For the full list of requirements, refer to [Support Matrix](support-matrix.md).
+    Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](prerequisites-support-matrix.md#model-hardware-requirements). For the full list of requirements, refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements).
 
 This pipeline enables users to retrieve speech files at the segment level.
 
@@ -38,21 +38,11 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 !!! important
 
-    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](support-matrix.md). Pin the workload to that GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
+    The parakeet-1-1b-ctc-en-us ASR NIM microservice must run on a [dedicated additional GPU](prerequisites-support-matrix.md#model-hardware-requirements). Pin the workload to that GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
 
-1. Create [your NGC personal key](api-keys.md) with the scopes required for `nvcr.io` image pulls and NGC API access. Configure it for the cluster using the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (for example `ngcImagePullSecret` / `ngcApiSecret` on `helm upgrade --install`, or pre-created secrets with username `$oauthtoken`).
+1. Deploy or upgrade NeMo Retriever Library with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM.
 
-2. **Optional — local tooling only.** Helm-managed pods get NGC credentials from chart secrets (step 1), not from a file on your laptop. If you also run **Python clients, CLIs, or other scripts on your machine** (outside the cluster) that load `NGC_API_KEY` from disk, create a `.env` in that working directory:
-
-    ```ini
-    NGC_API_KEY=<your-ngc-key>
-    ```
-
-    Skip this step if you only operate the cluster through Helm and do not run such local processes.
-
-3. Deploy or upgrade NeMo Retriever Library with the Helm chart and enable the ASR / audio components your release requires (Parakeet and related services). Follow [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [Deployment options](deployment-options.md). Ensure the chart values for your cluster request the ASR NIM.
-
-4. After the services are running, you can interact with the pipeline by using Python.
+2. After the services are running, you can interact with the pipeline by using Python.
 
     - The `Ingestor` object initializes the ingestion process.
     - The `files` method specifies the input files to process.
@@ -119,6 +109,6 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
 
 ## Related Topics
 
-- [Support Matrix](support-matrix.md)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
 - [Use the Python API](nemo-retriever-api-reference.md)
