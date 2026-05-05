@@ -1,10 +1,10 @@
 # Workflow: Ingest documents into a searchable VDB collection
 
-This page covers **extracting content from documents** and **turning that content into a searchable vector collection** in one place so you can scroll and search (for example with Ctrl+F) instead of jumping across multiple short workflow stubs.
+This page covers extracting content from documents and turning that content into a searchable vector collection in one place so you can scroll and search (for example with Ctrl+F) instead of jumping across multiple short workflow stubs.
 
 ## Ingest and extract
 
-**Document ingestion** is the step where NeMo Retriever Library reads your files (PDFs, Office documents, images, and other [supported formats](multimodal-extraction.md#supported-file-types-and-formats)), runs extraction and optional enrichment, and returns structured content you can embed and index.
+Document ingestion is the step where NeMo Retriever Library reads your files (PDFs, Office documents, images, and other [supported formats](multimodal-extraction.md#supported-file-types-and-formats)), runs extraction and optional enrichment, and returns structured content you can embed and index.
 
 Follow these steps:
 
@@ -14,7 +14,7 @@ Follow these steps:
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md). Default chunking behavior is summarized under [Chunking](concepts.md#chunking).
 
-Vector persistence is still the **`vdb_upload` task**: when you build an `Ingestor` in Python, you **chain** `.vdb_upload()` (with the right `vdb_op` / LanceDB settings; see [Vector databases](vdbs.md)) if you want chunks written to a vector store—it does not run implicitly. The Python snippet below and the CLI `graph_pipeline` flow already include that stage together with `.embed()`, so you get extraction → embedding → upload in one run without a separate “after ingestion, go configure chunking and indexing” step. Omit `.vdb_upload()` when you only need extraction or in-memory embeddings.
+Vector persistence is still the `vdb_upload` task: when you build an `Ingestor` in Python, you chain `.vdb_upload()` (with the right `vdb_op` / LanceDB settings; see [Vector databases](vdbs.md)) if you want chunks written to a vector store—it does not run implicitly. The Python snippet below and the CLI `graph_pipeline` flow already include that stage together with `.embed()`, so you get extraction → embedding → upload in one run without a separate “after ingestion, go configure chunking and indexing” step. Omit `.vdb_upload()` when you only need extraction or in-memory embeddings.
 
 ## Choose how you call the library
 
