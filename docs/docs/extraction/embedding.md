@@ -71,7 +71,7 @@ results = ingestor.ingest()
 
 ## Related Topics
 
-- [Support Matrix](support-matrix.md)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
 - [Use the Python API](nemo-retriever-api-reference.md)
 - [Extract Captions from Images](nemo-retriever-api-reference.md)
