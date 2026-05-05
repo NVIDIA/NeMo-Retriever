@@ -492,7 +492,7 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
     if run_mode == "service":
         records = list(result)
         result_df = pd.DataFrame(records) if records else pd.DataFrame()
-        num_units = len({r.get("source_file", "") for r in records}) if records else 0
+        num_units = getattr(result, "total_pages", 0) or len(records)
         return records, result_df, 0.0, num_units
 
     if isinstance(result, pd.DataFrame):

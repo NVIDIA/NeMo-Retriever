@@ -84,6 +84,7 @@ class ServiceIngestResult(list):
         self.metrics: dict[str, dict[str, int]] = {}
         self.job_ids: list[str] = []
         self.elapsed_s: float = 0.0
+        self.total_pages: int = 0
 
     def __repr__(self) -> str:
         return (
@@ -430,6 +431,7 @@ class ServiceIngestor(ingestor):
             print()
 
         result.job_ids = list(self._job_ids)
+        result.total_pages = total_pages
         result.elapsed_s = time.monotonic() - t0
         self._last_run_elapsed_s = result.elapsed_s
         return result

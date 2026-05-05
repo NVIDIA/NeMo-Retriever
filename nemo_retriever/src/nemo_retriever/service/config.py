@@ -55,7 +55,7 @@ class ProcessingConfig(BaseModel):
     num_workers: int = 16
     batch_size: int = 32
     batch_timeout_s: float = 2.0
-    store_page_results: bool = True
+    results_dir: str = "retriever_results"
 
 
 class ResourceLimitsConfig(BaseModel):

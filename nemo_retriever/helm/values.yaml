@@ -188,6 +188,8 @@ serviceConfig:
     numWorkers: 16
     batchSize: 16
     batchTimeoutS: 2.0
+    # Must match retrieverResults.mountPath so the service writes to the PVC.
+    resultsDir: "/retriever_results"
 
   # External NIM endpoints. Used as-is when `nims.enabled` is false. When
   # `nims.enabled` is true these are *overridden* by the in-cluster
@@ -282,6 +284,22 @@ lancedb:
     - ReadWriteOnce
   size: 10Gi
   mountPath: /lancedb
+  annotations: {}
+
+# =============================================================================
+# Retriever Results volume
+# =============================================================================
+# A PVC mounted at `mountPath` for storing per-job page results as JSON files.
+# The processing pool writes results here and the /v1/ingest/job/{id}/results
+# endpoint reads from this directory instead of SQLite for faster retrieval.
+retrieverResults:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi
+  mountPath: /retriever_results
   annotations: {}
 
 # =============================================================================

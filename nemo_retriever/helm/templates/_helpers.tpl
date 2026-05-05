@@ -103,6 +103,14 @@ PVC + Secret name helpers
 {{- end -}}
 {{- end -}}
 
+{{- define "nemo-retriever.retrieverResultsPvcName" -}}
+{{- if .Values.retrieverResults.existingClaim -}}
+{{- .Values.retrieverResults.existingClaim -}}
+{{- else -}}
+{{- printf "%s-retriever-results" (include "nemo-retriever.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "nemo-retriever.nimApiKeySecretName" -}}
 {{- if .Values.nimApiKey.existingSecret -}}
 {{- .Values.nimApiKey.existingSecret -}}

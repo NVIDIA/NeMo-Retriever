@@ -1,0 +1,25 @@
+{{- if and .Values.retrieverResults.enabled (not .Values.retrieverResults.existingClaim) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemo-retriever.retrieverResultsPvcName" . }}
+  labels:
+    {{- include "nemo-retriever.labels" . | nindent 4 }}
+  {{- with .Values.retrieverResults.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.retrieverResults.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.retrieverResults.size | quote }}
+  {{- if .Values.retrieverResults.storageClass }}
+  {{- if eq "-" .Values.retrieverResults.storageClass }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.retrieverResults.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

@@ -337,50 +337,44 @@ class RetrieverServiceClient:
 
         The server splits PDFs into pages internally. Returns the JSON
         response including ``job_id``, ``total_pages``, etc.
-        """
-        async with self._semaphore:
-            backoff = _DEFAULT_RETRY_AFTER
-            was_busy = False
-            transport_attempts = 0
-            file_bytes = file_path.read_bytes()
-            filename = file_path.name
 
-            while True:
-                meta = {"filename": filename}
-                files = {"file": (filename, file_bytes)}
-                data = {"metadata": json.dumps(meta)}
-                try:
-                    resp = await client.post(f"{self._base_url}/v1/ingest/job", files=files, data=data)
-                except _TRANSIENT_HTTPX_ERRORS as exc:
-                    transport_attempts += 1
-                    if transport_attempts > _UPLOAD_TRANSIENT_RETRIES:
-                        logger.warning(
-                            "Upload of %s failed after %d attempts: %s",
-                            filename,
-                            transport_attempts,
-                            exc.__class__.__name__,
-                        )
-                        raise
-                    delay = min(_RETRY_BASE_DELAY * (2 ** (transport_attempts - 1)), _MAX_BACKOFF)
-                    logger.debug(
-                        "Transient %s on upload of %s (attempt %d/%d), sleeping %.1fs",
-                        exc.__class__.__name__,
+        Callers are responsible for concurrency control (semaphore).
+        """
+        backoff = _DEFAULT_RETRY_AFTER
+        was_busy = False
+        transport_attempts = 0
+        file_bytes = file_path.read_bytes()
+        filename = file_path.name
+
+        while True:
+            meta = {"filename": filename}
+            files = {"file": (filename, file_bytes)}
+            data = {"metadata": json.dumps(meta)}
+            try:
+                resp = await client.post(f"{self._base_url}/v1/ingest/job", files=files, data=data)
+            except _TRANSIENT_HTTPX_ERRORS as exc:
+                transport_attempts += 1
+                if transport_attempts > _UPLOAD_TRANSIENT_RETRIES:
+                    logger.warning(
+                        "Upload of %s failed after %d attempts: %s",
                         filename,
                         transport_attempts,
-                        _UPLOAD_TRANSIENT_RETRIES,
-                        delay,
+                        exc.__class__.__name__,
                     )
-                    await asyncio.sleep(delay)
-                    continue
+                    raise
+                delay = min(_RETRY_BASE_DELAY * (2 ** (transport_attempts - 1)), _MAX_BACKOFF)
+                logger.debug(
+                    "Transient %s on upload of %s (attempt %d/%d), sleeping %.1fs",
+                    exc.__class__.__name__,
+                    filename,
+                    transport_attempts,
+                    _UPLOAD_TRANSIENT_RETRIES,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                continue
 
-                if resp.status_code != 503:
-                    if was_busy and tracker is not None:
-                        job_id = resp.json().get("job_id", "")
-                        if job_id:
-                            tracker.mark_not_busy(job_id)
-                    resp.raise_for_status()
-                    return resp.json()
-
+            if resp.status_code == 503:
                 retry_after = float(resp.headers.get("Retry-After", backoff))
                 self._capacity_event.clear()
                 try:
@@ -388,6 +382,23 @@ class RetrieverServiceClient:
                 except asyncio.TimeoutError:
                     pass
                 backoff = min(backoff * 2.0, _MAX_BACKOFF)
+                continue
+
+            if resp.status_code >= 400:
+                detail = resp.text[:500] if resp.text else "(empty body)"
+                logger.error(
+                    "Upload of %s returned HTTP %d: %s",
+                    filename,
+                    resp.status_code,
+                    detail,
+                )
+                resp.raise_for_status()
+
+            if was_busy and tracker is not None:
+                job_id = resp.json().get("job_id", "")
+                if job_id:
+                    tracker.mark_not_busy(job_id)
+            return resp.json()
 
     # ------------------------------------------------------------------
     # SSE job stream (runs concurrently with uploads)
@@ -724,9 +735,10 @@ class RetrieverServiceClient:
 
                 try:
                     uploads_done = asyncio.Event()
+                    _upload_sem = asyncio.Semaphore(16)
 
-                    async def _upload_all() -> None:
-                        for fpath in files:
+                    async def _upload_one_rich(fpath: Path) -> None:
+                        async with _upload_sem:
                             resp_json = await self._upload_document(client, fpath, tracker=tracker)
                             job_id = resp_json["job_id"]
                             total_pages = resp_json.get("total_pages", 1)
@@ -742,6 +754,10 @@ class RetrieverServiceClient:
                                 }
                             )
                             job_ids.append(job_id)
+
+                    async def _upload_all() -> None:
+                        tasks = [asyncio.create_task(_upload_one_rich(f)) for f in files]
+                        await asyncio.gather(*tasks, return_exceptions=True)
                         uploads_done.set()
 
                     if use_sse:
@@ -779,13 +795,20 @@ class RetrieverServiceClient:
         text_previews: dict[str, str] = {}
 
         async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
-            for plan in job_plans:
-                try:
-                    resp = await client.get(f"{self._base_url}/v1/ingest/job/{plan['job_id']}/results")
-                    resp.raise_for_status()
-                    final_results.append(resp.json())
-                except Exception as exc:
-                    logger.error("Failed to fetch final results for job %s: %s", plan["job_id"][:8], exc)
+            fetch_sem = asyncio.Semaphore(16)
+
+            async def _fetch_one(plan: dict[str, Any]) -> dict[str, Any] | None:
+                async with fetch_sem:
+                    try:
+                        resp = await client.get(f"{self._base_url}/v1/ingest/job/{plan['job_id']}/results")
+                        resp.raise_for_status()
+                        return resp.json()
+                    except Exception as exc:
+                        logger.error("Failed to fetch final results for job %s: %s", plan["job_id"][:8], exc)
+                        return None
+
+            results = await asyncio.gather(*(_fetch_one(p) for p in job_plans))
+            final_results = [r for r in results if r is not None]
 
             if show_progress:
                 await self._fetch_failed_pages(client, tracker)
@@ -809,17 +832,17 @@ class RetrieverServiceClient:
     ) -> AsyncIterator[dict[str, Any]]:
         """Async generator: upload whole files, poll for completion, yield results.
 
-        Pure polling approach — no SSE. Each file is uploaded via
-        ``POST /v1/ingest/job``, then the client polls up to 16 jobs at
-        a time via ``GET /v1/ingest/job/{id}`` until they reach a terminal
-        state, at which point results are fetched from
-        ``GET /v1/ingest/job/{id}/results``.
+        Pure polling approach — no SSE. Up to 16 files are uploaded
+        concurrently via ``POST /v1/ingest/job``. Polling starts in
+        parallel with uploads so results stream back as soon as jobs
+        finish, without waiting for all uploads to complete.
 
         Yields:
 
         * ``{"event": "job_started", "job_id": ..., "filename": ..., "total_pages": ...}``
         * ``{"event": "job_complete", "job_id": ..., "results": {...}}``
         """
+        _UPLOAD_CONCURRENCY = 16
         _POLL_CONCURRENCY = 16
         _POLL_INTERVAL_S = 2.0
         _STATUS_REPORT_INTERVAL_S = 30.0
@@ -829,58 +852,93 @@ class RetrieverServiceClient:
 
         async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
             jobs: dict[str, dict[str, Any]] = {}
+            pending: set[str] = set()
+            uploads_done = asyncio.Event()
+            upload_sem = asyncio.Semaphore(_UPLOAD_CONCURRENCY)
+            event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
-            for fpath in files:
-                resp_json = await self._upload_document(client, fpath)
-                job_id = resp_json["job_id"]
-                total_pages = resp_json.get("total_pages", 1)
-                jobs[job_id] = {
-                    "filename": fpath.name,
-                    "total_pages": total_pages,
-                    "submitted_at": time.monotonic(),
-                }
-                print(f"  [upload] {fpath.name} -> job_id={job_id[:8]}  ({total_pages} pages)")
-                yield {
-                    "event": "job_started",
-                    "job_id": job_id,
-                    "filename": fpath.name,
-                    "total_pages": total_pages,
-                }
+            async def _upload_one(fpath: Path) -> None:
+                async with upload_sem:
+                    try:
+                        resp_json = await self._upload_document(client, fpath)
+                    except Exception as exc:
+                        print(f"  [FAILED] {fpath.name}: {exc}")
+                        return
+                    job_id = resp_json["job_id"]
+                    total_pages = resp_json.get("total_pages", 1)
+                    jobs[job_id] = {
+                        "filename": fpath.name,
+                        "total_pages": total_pages,
+                        "submitted_at": time.monotonic(),
+                    }
+                    pending.add(job_id)
+                    print(f"  [upload] {fpath.name} -> job_id={job_id[:8]}  ({total_pages} pages)")
+                    await event_queue.put({
+                        "event": "job_started",
+                        "job_id": job_id,
+                        "filename": fpath.name,
+                        "total_pages": total_pages,
+                    })
 
-            print(f"  All {len(jobs)} documents uploaded. Polling for results...")
-            pending = set(jobs.keys())
-            last_status_report = time.monotonic()
+            async def _upload_all() -> None:
+                tasks = [asyncio.create_task(_upload_one(f)) for f in files]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        logger.error("Upload failed for %s: %s", files[i].name, result)
+                uploads_done.set()
+                print(f"  All {len(jobs)} documents uploaded. Polling for results...")
 
-            while pending:
-                batch = list(pending)[:_POLL_CONCURRENCY]
-                statuses = await asyncio.gather(
-                    *(self._poll_single_job_status(client, jid) for jid in batch),
-                    return_exceptions=True,
-                )
-
-                for jid, status in zip(batch, statuses):
-                    if isinstance(status, Exception):
-                        logger.debug("[poll] error for %s: %s", jid[:8], status)
+            async def _poll_loop() -> None:
+                last_status_report = time.monotonic()
+                while True:
+                    if not pending:
+                        if uploads_done.is_set():
+                            break
+                        await asyncio.sleep(0.1)
                         continue
 
-                    if status in ("complete", "failed"):
-                        pending.discard(jid)
-                        results = await self._fetch_single_job_results(client, jid)
-                        yield {"event": "job_complete", "job_id": jid, "results": results}
+                    batch = list(pending)[:_POLL_CONCURRENCY]
+                    statuses = await asyncio.gather(
+                        *(self._poll_single_job_status(client, jid) for jid in batch),
+                        return_exceptions=True,
+                    )
 
-                now = time.monotonic()
-                if pending and (now - last_status_report) >= _STATUS_REPORT_INTERVAL_S:
-                    last_status_report = now
-                    print(f"\n  --- {len(pending)} jobs still pending ---")
-                    for jid in sorted(pending, key=lambda j: jobs[j]["submitted_at"]):
-                        elapsed = now - jobs[jid]["submitted_at"]
-                        fname = jobs[jid]["filename"]
-                        pages = jobs[jid]["total_pages"]
-                        print(f"    {jid[:8]}  {fname:<40} {pages:>3} pages  {elapsed:>6.0f}s")
-                    print()
+                    for jid, status in zip(batch, statuses):
+                        if isinstance(status, Exception):
+                            logger.debug("[poll] error for %s: %s", jid[:8], status)
+                            continue
+                        if status in ("complete", "failed"):
+                            pending.discard(jid)
+                            results = await self._fetch_single_job_results(client, jid)
+                            await event_queue.put({"event": "job_complete", "job_id": jid, "results": results})
 
-                if pending:
+                    now = time.monotonic()
+                    if pending and (now - last_status_report) >= _STATUS_REPORT_INTERVAL_S:
+                        last_status_report = now
+                        print(f"\n  --- {len(pending)} jobs still pending ---")
+                        for jid in sorted(pending, key=lambda j: jobs[j]["submitted_at"]):
+                            elapsed = now - jobs[jid]["submitted_at"]
+                            fname = jobs[jid]["filename"]
+                            pages = jobs[jid]["total_pages"]
+                            print(f"    {jid[:8]}  {fname:<40} {pages:>3} pages  {elapsed:>6.0f}s")
+                        print()
+
                     await asyncio.sleep(_POLL_INTERVAL_S)
+
+                await event_queue.put(None)
+
+            upload_task = asyncio.create_task(_upload_all())
+            poll_task = asyncio.create_task(_poll_loop())
+
+            while True:
+                event = await event_queue.get()
+                if event is None:
+                    break
+                yield event
+
+            await upload_task
+            await poll_task
 
     async def _poll_single_job_status(
         self, client: httpx.AsyncClient, job_id: str

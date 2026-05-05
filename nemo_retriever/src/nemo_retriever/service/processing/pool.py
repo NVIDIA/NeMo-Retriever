@@ -45,6 +45,7 @@ import traceback as _traceback
 import typing
 from concurrent.futures import Future, ProcessPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -1023,18 +1024,22 @@ class _DbWriterThread:
     so that worker processes and the callback thread never contend for
     the WAL write lock.  Items are batched: the thread wakes every
     ``flush_interval_s`` or when ``max_batch`` items accumulate.
+
+    Page results are written as JSON files to ``results_dir/{job_id}/``
+    instead of the SQLite ``page_results`` table.
     """
 
     def __init__(
         self,
         db_engine: DatabaseEngine,
         *,
-        store_page_results: bool = False,
+        results_dir: Path,
         flush_interval_s: float = 0.1,
         max_batch: int = 64,
     ) -> None:
         self._db_engine = db_engine
-        self._store_page_results = store_page_results
+        self._results_dir = results_dir
+        self._results_dir.mkdir(parents=True, exist_ok=True)
         self._flush_interval_s = flush_interval_s
         self._max_batch = max_batch
         self._queue: _queue_mod.Queue[_DbWriteItem | object] = _queue_mod.Queue(maxsize=4096)
@@ -1105,12 +1110,12 @@ class _DbWriterThread:
                         placeholders = ", ".join(f":{k}" for k in row.keys())
                         conn.execute(f"INSERT INTO processing_metrics ({cols}) VALUES ({placeholders})", row)
 
-                    if self._store_page_results:
+                    if item.page_results and item.job_id:
+                        job_dir = self._results_dir / item.job_id
+                        job_dir.mkdir(parents=True, exist_ok=True)
                         for pr in item.page_results:
-                            row = pr.to_row()
-                            cols = ", ".join(row.keys())
-                            placeholders = ", ".join(f":{k}" for k in row.keys())
-                            conn.execute(f"INSERT INTO page_results ({cols}) VALUES ({placeholders})", row)
+                            fname = f"{item.document_id}_{pr.page_number}.json"
+                            (job_dir / fname).write_text(pr.content_json, encoding="utf-8")
 
                     if item.pages_received_increment > 0:
                         conn.execute(
@@ -1166,9 +1171,10 @@ class _DbWriterThread:
                         )
 
                 if item.job_id:
+                    increment = max(item.total_pages, 1)
                     conn.execute(
-                        "UPDATE jobs SET pages_completed = pages_completed + 1, updated_at = ? WHERE id = ?",
-                        (now, item.job_id),
+                        "UPDATE jobs SET pages_completed = pages_completed + ?, updated_at = ? WHERE id = ?",
+                        (increment, now, item.job_id),
                     )
 
             conn.commit()
@@ -1220,7 +1226,7 @@ class ProcessingPool:
         self._num_workers = config.processing.num_workers
         self._batch_size = config.processing.batch_size
         self._batch_timeout_s = config.processing.batch_timeout_s
-        self._store_page_results = config.processing.store_page_results
+        self._results_dir = Path(config.processing.results_dir)
         self._executor: ProcessPoolExecutor | None = None
         self._buffer: _BatchBuffer | None = None
         self._db_writer: _DbWriterThread | None = None
@@ -1288,12 +1294,12 @@ class ProcessingPool:
 
         self._db_writer = _DbWriterThread(
             self._db_engine,
-            store_page_results=self._store_page_results,
+            results_dir=self._results_dir,
         )
         self._db_writer.start()
         logger.info(
-            "Background DB writer started (store_page_results=%s)",
-            self._store_page_results,
+            "Background DB writer started (results_dir=%s)",
+            self._results_dir,
         )
 
         max_buffered = self._num_workers * self._batch_size
@@ -1704,10 +1710,10 @@ class ProcessingPool:
             page_result_objs = [
                 PageResult(
                     document_id=doc_id,
-                    page_number=result.page_number,
+                    page_number=idx + 1,
                     content_json=json.dumps(c),
                 )
-                for c in result.page_contents
+                for idx, c in enumerate(result.page_contents)
             ]
 
             log_entry = PageProcessingLog(

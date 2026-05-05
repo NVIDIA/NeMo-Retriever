@@ -553,7 +553,12 @@ async def get_job_page(
     ``/v1/ingest/job/{job_id}/results`` to fetch all output rows for every
     input page in one call.
     """
+    from pathlib import Path
+
     repo: Repository = request.app.state.repository
+    config = request.app.state.config
+    results_dir = Path(config.processing.results_dir)
+
     job = await asyncio.to_thread(repo.get_job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
@@ -565,15 +570,18 @@ async def get_job_page(
             detail=f"Page {page_number} not found for job {job_id}",
         )
 
-    pages = await asyncio.to_thread(repo.get_page_results, doc.id)
-    if not pages:
+    job_dir = results_dir / job_id
+    result_files = sorted(job_dir.glob(f"{doc.id}_*.json")) if job_dir.is_dir() else []
+    if not result_files:
         raise HTTPException(
             status_code=409,
             detail=f"Page {page_number} of job {job_id} is still processing (status={doc.processing_status})",
         )
 
-    first = pages[0]
-    return PageSummary(page_number=first.page_number, content=json.loads(first.content_json))
+    first_file = result_files[0]
+    content = json.loads(first_file.read_text(encoding="utf-8"))
+    page_num = int(first_file.stem.rsplit("_", 1)[1])
+    return PageSummary(page_number=page_num, content=content)
 
 
 @router.get(
@@ -587,33 +595,40 @@ async def get_job_results(
 ) -> JobResults:
     """Return the per-input-page results for an entire job in input-page order.
 
-    Each entry in ``pages`` corresponds to one input page (one POST to
-    ``/v1/ingest`` with that ``page_number``) and contains the full list of
-    output rows the pipeline produced for that input page.
-
-    Pages whose pipeline run has not yet produced any output rows appear in
-    the response with an empty ``pages`` list and the document's current
-    ``status``, so callers can distinguish "in flight" from "produced no
-    output".
+    Results are read from the filesystem at ``{results_dir}/{job_id}/``.
+    Each JSON file corresponds to one output row produced by the pipeline.
     """
+    from pathlib import Path
+
     repo: Repository = request.app.state.repository
+    config = request.app.state.config
+    results_dir = Path(config.processing.results_dir)
 
     def _build() -> JobResults | None:
         job = repo.get_job(job_id)
         if job is None:
             return None
+
+        job_dir = results_dir / job_id
         documents = repo.get_documents_for_job(job_id)
+
         page_entries: list[JobInputPage] = []
         for doc in documents:
-            page_results = repo.get_page_results(doc.id)
+            doc_pages: list[PageSummary] = []
+            if job_dir.is_dir():
+                for json_file in sorted(job_dir.glob(f"{doc.id}_*.json")):
+                    try:
+                        content = json.loads(json_file.read_text(encoding="utf-8"))
+                        page_num = int(json_file.stem.rsplit("_", 1)[1])
+                        doc_pages.append(PageSummary(page_number=page_num, content=content))
+                    except (json.JSONDecodeError, ValueError, IndexError):
+                        logger.warning("Skipping malformed result file: %s", json_file)
             page_entries.append(
                 JobInputPage(
                     page_number=doc.page_number or 0,
                     document_id=doc.id,
                     status=doc.processing_status,
-                    pages=[
-                        PageSummary(page_number=p.page_number, content=json.loads(p.content_json)) for p in page_results
-                    ],
+                    pages=doc_pages,
                 )
             )
         return JobResults(
@@ -635,10 +650,7 @@ async def get_job_results(
 
 
 def _split_pdf_bytes(file_bytes: bytes) -> list[bytes]:
-    """Split a PDF into single-page byte buffers using pypdfium2.
-
-    Imported lazily so non-PDF code paths don't pay the import cost.
-    """
+    """Split a PDF into single-page byte buffers using pypdfium2."""
     from nemo_retriever.pdf.split import _split_pdf_to_single_page_bytes
 
     return _split_pdf_to_single_page_bytes(file_bytes)
@@ -821,13 +833,15 @@ async def ingest_whole_job(
     is_pdf = filename.lower().endswith(".pdf") or content_type == "application/pdf"
     if is_pdf:
         try:
-            pages = await asyncio.to_thread(_split_pdf_bytes, file_bytes)
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail=f"Failed to split PDF: {exc}")
+            import pypdfium2 as pdfium
+            doc = pdfium.PdfDocument(file_bytes)
+            total_pages = len(doc)
+            doc.close()
+        except Exception:
+            total_pages = 1
     else:
-        pages = [file_bytes]
+        total_pages = 1
 
-    total_pages = len(pages)
     job_id = meta.job_id or uuid.uuid4().hex
 
     job = Job(id=job_id, filename=filename, content_sha256="", total_pages=total_pages)
@@ -837,24 +851,24 @@ async def ingest_whole_job(
     except Exception:  # noqa: BLE001 — job_id may already exist
         pass
 
+    ok, payload = await asyncio.to_thread(
+        _enqueue_one_page,
+        repo=repo,
+        pool=pool,
+        job_id=job_id,
+        filename=filename,
+        content_type=content_type,
+        page_bytes=file_bytes,
+        page_number=1,
+        extra_metadata=meta.metadata,
+    )
+
     accepted_docs: list[str] = []
     rejections: list[dict] = []
-    for idx, page_bytes in enumerate(pages, start=1):
-        ok, payload = await asyncio.to_thread(
-            _enqueue_one_page,
-            repo=repo,
-            pool=pool,
-            job_id=job_id,
-            filename=filename,
-            content_type=content_type,
-            page_bytes=page_bytes,
-            page_number=idx,
-            extra_metadata=meta.metadata,
-        )
-        if ok and isinstance(payload, IngestAccepted):
-            accepted_docs.append(payload.document_id)
-        elif not ok:
-            rejections.append(payload)  # type: ignore[arg-type]
+    if ok and isinstance(payload, IngestAccepted):
+        accepted_docs.append(payload.document_id)
+    elif not ok:
+        rejections.append(payload)  # type: ignore[arg-type]
 
     return JobAccepted(
         job_id=job_id,

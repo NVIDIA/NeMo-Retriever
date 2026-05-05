@@ -34,6 +34,10 @@ processing:
   # Maximum seconds to wait for a full batch before dispatching a
   # partial one.  Keeps latency low for small jobs.
   batch_timeout_s: 2.0
+  # Directory where per-job page results are written as JSON files.
+  # Each job gets a subdirectory: {results_dir}/{job_id}/.  The results
+  # endpoint reads from here instead of SQLite for faster retrieval.
+  results_dir: "/home/local/jdyer/datasets/retriever_results"
 
 # Remote NIM microservice endpoints.  When set, the pipeline calls these
 # HTTP endpoints instead of loading GPU models locally.  All four must
