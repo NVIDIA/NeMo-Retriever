@@ -18,9 +18,6 @@ def test_extraction_hf_repos_have_pinned_revisions():
     assert (
         registry.HF_MODEL_REVISIONS["nvidia/nemotron-table-structure-v1"] == "9350162faa1110320af62699105780b0c87b73ad"
     )
-    assert (
-        registry.HF_MODEL_REVISIONS["nvidia/nemotron-graphic-elements-v1"] == "4a76546bb1bb4cbab3401361c91cf01706321805"
-    )
 
 
 def test_hf_hub_download_with_pinned_revision_injects_known_revision(monkeypatch):

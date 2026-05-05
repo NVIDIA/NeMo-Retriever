@@ -97,10 +97,6 @@ def run(
         chart_stage.run(input_path=p, output_path=out, config=config)
 
 
-# Preserve access to other chart-stage commands under local stage4 (e.g. `graphic-elements`).
-app.command("graphic-elements")(chart_stage.render_graphic_elements)
-
-
 def main() -> None:
     app()
 

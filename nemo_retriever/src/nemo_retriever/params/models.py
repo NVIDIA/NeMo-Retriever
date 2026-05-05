@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, Sequence, Tuple
+from typing import Any, Literal, Optional, Tuple
 from urllib.parse import urlparse
 
 import warnings
@@ -281,7 +281,6 @@ class ExtractParams(_ParamsModel):
     method: str = "pdfium"
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
-    use_graphic_elements: bool = False
     dpi: int = 200
     image_format: str = "jpeg"
     jpeg_quality: int = 100
@@ -300,7 +299,6 @@ class ExtractParams(_ParamsModel):
     ocr_invoke_url: Optional[str] = None
     ocr_api_key: Optional[str] = None
     ocr_request_timeout_s: Optional[float] = None
-    graphic_elements_invoke_url: Optional[str] = None
     table_structure_invoke_url: Optional[str] = None
     nemotron_parse_invoke_url: Optional[str] = None
     nemotron_parse_model: Optional[str] = None
@@ -317,15 +315,11 @@ class ExtractParams(_ParamsModel):
     def _auto_enable_features(self) -> "ExtractParams":
         """Auto-configure feature flags from remote endpoints.
 
-        * Enable ``use_graphic_elements`` when ``graphic_elements_invoke_url``
-          is provided.
         * Enable ``use_table_structure`` when ``table_structure_invoke_url``
           is provided.
         * Default ``table_output_format`` to ``"markdown"`` when the stage is
           enabled and the caller did not explicitly choose a format.
         """
-        if self.graphic_elements_invoke_url and not self.use_graphic_elements:
-            self.use_graphic_elements = True
         if self.table_structure_invoke_url and not self.use_table_structure:
             self.use_table_structure = True
         if self.table_output_format is None:
@@ -574,16 +568,6 @@ class DedupParams(_ParamsModel):
     content_hash: bool = True
     bbox_iou: bool = True
     iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
-
-
-class InfographicParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    allowed_page_element_labels: Sequence[str] = ("infographic", "title")
-    output_column: str = "infographic_elements_v1"
-    num_detections_column: str = "infographic_elements_v1_num_detections"
-    counts_by_label_column: str = "infographic_elements_v1_counts_by_label"
 
 
 # ---------------------------------------------------------------------------

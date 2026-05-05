@@ -1,6 +1,6 @@
 # Charts and infographics
 
-Charts and infographic regions are classified as graphic elements and processed with the corresponding NVIDIA NIM workflows (for example, **yolox-graphic-elements** in current releases). Outputs use the same metadata schema as other extracted objects.
+Chart and infographic regions are detected by page-element detection and processed by NeMo Retriever Library's OCR workflow. Outputs use the same metadata schema as other extracted objects.
 
 **Related**
 

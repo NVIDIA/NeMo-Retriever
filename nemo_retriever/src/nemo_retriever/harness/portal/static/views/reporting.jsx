@@ -16,14 +16,14 @@ const REPORT_CHARTS = [
 ];
 
 const PRESET_MATRIX_PRESETS = [
-  { key: "PE_GE_OCR_TE_DENSE", label: "TE Dense", desc: "Page Elements + Graphic Elements + OCR + Text Embedding + Dense" },
-  { key: "PE_GE_OCR_TE_HYBRID", label: "TE Hybrid", desc: "Page Elements + Graphic Elements + OCR + Text Embedding + Hybrid" },
-  { key: "PE_GE_OCR_VL_IMAGE_ONLY_DENSE", label: "VL Image-Only Dense", desc: "Page Elements + Graphic Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image only) + Dense" },
-  { key: "PE_GE_OCR_VL_IMAGE_ONLY_HYBRID", label: "VL Image-Only Hybrid", desc: "Page Elements + Graphic Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image only) + Hybrid" },
-  { key: "PE_GE_OCR_VL_IMAGE_TEXT_DENSE", label: "VL Image+Text Dense", desc: "Page Elements + Graphic Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image and text) + Dense" },
-  { key: "PE_GE_OCR_VL_IMAGE_TEXT_HYBRID", label: "VL Image+Text Hybrid", desc: "Page Elements + Graphic Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image and text) + Hybrid" },
-  { key: "PE_GE_OCR_VL_TEXT_ONLY_DENSE", label: "VL Text-Only Dense", desc: "Page Elements + Graphic Elements + OCR + llama-nemotron-embed-vl-1b-v2 (Text only) + Dense" },
-  { key: "PE_GE_OCR_VL_TEXT_ONLY_HYBRID", label: "VL Text-Only Hybrid", desc: "Page Elements + Graphic Elements + OCR + llama-nemotron-embed-vl-1b-v2 (Text only) + Hybrid" },
+  { key: "PE_OCR_TE_DENSE", label: "TE Dense", desc: "Page Elements + OCR + Text Embedding + Dense" },
+  { key: "PE_OCR_TE_HYBRID", label: "TE Hybrid", desc: "Page Elements + OCR + Text Embedding + Hybrid" },
+  { key: "PE_OCR_VL_IMAGE_ONLY_DENSE", label: "VL Image-Only Dense", desc: "Page Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image only) + Dense" },
+  { key: "PE_OCR_VL_IMAGE_ONLY_HYBRID", label: "VL Image-Only Hybrid", desc: "Page Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image only) + Hybrid" },
+  { key: "PE_OCR_VL_IMAGE_TEXT_DENSE", label: "VL Image+Text Dense", desc: "Page Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image and text) + Dense" },
+  { key: "PE_OCR_VL_IMAGE_TEXT_HYBRID", label: "VL Image+Text Hybrid", desc: "Page Elements + OCR + llama-nemotron-embed-vl-1b-v2 (image and text) + Hybrid" },
+  { key: "PE_OCR_VL_TEXT_ONLY_DENSE", label: "VL Text-Only Dense", desc: "Page Elements + OCR + llama-nemotron-embed-vl-1b-v2 (Text only) + Dense" },
+  { key: "PE_OCR_VL_TEXT_ONLY_HYBRID", label: "VL Text-Only Hybrid", desc: "Page Elements + OCR + llama-nemotron-embed-vl-1b-v2 (Text only) + Hybrid" },
 ];
 
 function DataExportSection({ filteredRuns, filterDataset, filterPreset, filterStatus, dateFrom, dateTo }) {
