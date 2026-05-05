@@ -807,230 +807,102 @@ class RetrieverServiceClient:
         self,
         files: list[Path],
     ) -> AsyncIterator[dict[str, Any]]:
-        """Async generator: upload whole files, yield job lifecycle events.
+        """Async generator: upload whole files, poll for completion, yield results.
 
-        Each file is uploaded as a whole document to ``POST /v1/ingest/job``
-        (server handles PDF splitting internally). The generator yields:
+        Pure polling approach — no SSE. Each file is uploaded via
+        ``POST /v1/ingest/job``, then the client polls up to 16 jobs at
+        a time via ``GET /v1/ingest/job/{id}`` until they reach a terminal
+        state, at which point results are fetched from
+        ``GET /v1/ingest/job/{id}/results``.
+
+        Yields:
 
         * ``{"event": "job_started", "job_id": ..., "filename": ..., "total_pages": ...}``
-        * ``{"event": "page_complete", ...}`` (passthrough from SSE)
-        * ``{"event": "document_complete", ...}`` (passthrough from SSE)
         * ``{"event": "job_complete", "job_id": ..., "results": {...}}``
-
-        On ``job_complete``, the client fetches full results from
-        ``GET /v1/ingest/job/{job_id}/results`` and includes them under
-        the ``results`` key.
-
-        The generator terminates when every job has completed.
-
-        A background watchdog polls any job that hasn't received a
-        ``job_complete`` SSE event within 30 seconds of upload, preventing
-        hangs if the SSE stream misses events.
         """
-        _JOB_IDLE_TIMEOUT_S = 30.0
-
-        result_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
-        job_ids: list[str] = []
-        completed_jobs: set[str] = set()
+        _POLL_CONCURRENCY = 16
+        _POLL_INTERVAL_S = 2.0
+        _STATUS_REPORT_INTERVAL_S = 30.0
 
         pool_limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
         timeout = httpx.Timeout(600.0, connect=30.0)
 
         async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
-            uploads_done = asyncio.Event()
-            first_job_ready = asyncio.Event()
+            jobs: dict[str, dict[str, Any]] = {}
 
-            async def _upload_all() -> None:
-                """Upload each file as a whole document."""
-                try:
-                    for fpath in files:
-                        resp_json = await self._upload_document(client, fpath)
-                        job_id = resp_json["job_id"]
-                        total_pages = resp_json.get("total_pages", 1)
-                        job_ids.append(job_id)
-                        first_job_ready.set()
-                        await result_queue.put(
-                            {
-                                "event": "job_started",
-                                "job_id": job_id,
-                                "filename": fpath.name,
-                                "total_pages": total_pages,
-                            }
-                        )
-                finally:
-                    first_job_ready.set()
-                    uploads_done.set()
+            for fpath in files:
+                resp_json = await self._upload_document(client, fpath)
+                job_id = resp_json["job_id"]
+                total_pages = resp_json.get("total_pages", 1)
+                jobs[job_id] = {
+                    "filename": fpath.name,
+                    "total_pages": total_pages,
+                    "submitted_at": time.monotonic(),
+                }
+                print(f"  [upload] {fpath.name} -> job_id={job_id[:8]}  ({total_pages} pages)")
+                yield {
+                    "event": "job_started",
+                    "job_id": job_id,
+                    "filename": fpath.name,
+                    "total_pages": total_pages,
+                }
 
-            async def _fetch_job_results(jid: str) -> dict[str, Any] | None:
-                try:
-                    r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}/results")
-                    r.raise_for_status()
-                    return r.json()
-                except Exception as exc:
-                    logger.warning("Failed to fetch results for job %s: %s", jid[:8], exc)
-                    return None
+            print(f"  All {len(jobs)} documents uploaded. Polling for results...")
+            pending = set(jobs.keys())
+            last_status_report = time.monotonic()
 
-            async def _emit_job_complete(jid: str) -> None:
-                """Fetch results and emit job_complete if not already done."""
-                if jid in completed_jobs:
-                    return
-                completed_jobs.add(jid)
-                results = await _fetch_job_results(jid)
-                await result_queue.put(
-                    {"event": "job_complete", "job_id": jid, "results": results}
+            while pending:
+                batch = list(pending)[:_POLL_CONCURRENCY]
+                statuses = await asyncio.gather(
+                    *(self._poll_single_job_status(client, jid) for jid in batch),
+                    return_exceptions=True,
                 )
 
-            async def _consume_sse() -> None:
-                """Subscribe to job-level SSE and forward events.
-
-                Opens SSE as soon as the first job_id is available. If the
-                SSE connection fails, returns silently — the watchdog will
-                pick up any remaining jobs via polling.
-                """
-                await first_job_ready.wait()
-                if not job_ids:
-                    return
-
-                sse_url = f"{self._base_url}/v1/ingest/stream/jobs"
-
-                for attempt in range(_MAX_RETRIES):
-                    try:
-                        async with client.stream(
-                            "POST",
-                            sse_url,
-                            json={"job_ids": list(job_ids)},
-                        ) as resp:
-                            resp.raise_for_status()
-
-                            buffer = ""
-                            async for chunk in resp.aiter_text():
-                                buffer += chunk
-                                while "\n\n" in buffer:
-                                    raw_event, buffer = buffer.split("\n\n", 1)
-                                    event = _parse_sse_event(raw_event)
-                                    if event is None:
-                                        continue
-
-                                    event_type = event.get("event", "message")
-
-                                    if event_type in ("page_complete", "document_complete"):
-                                        await result_queue.put(event)
-
-                                    elif event_type == "job_complete":
-                                        jid = event.get("job_id")
-                                        if jid:
-                                            await _emit_job_complete(jid)
-
-                                    elif event_type == "session_complete":
-                                        return
-
-                            return
-
-                    except (httpx.ConnectError, httpx.PoolTimeout, httpx.RemoteProtocolError) as exc:
-                        delay = _RETRY_BASE_DELAY * (2**attempt)
-                        if attempt < _MAX_RETRIES - 1:
-                            logger.warning("SSE connection failed (%s), retrying in %.0fs", exc, delay)
-                            await asyncio.sleep(delay)
-                        else:
-                            logger.warning("SSE failed after %d attempts; watchdog will handle remaining jobs", _MAX_RETRIES)
-                            return
-
-            async def _idle_watchdog() -> None:
-                """Poll jobs that haven't completed within the idle timeout.
-
-                Every 5 seconds, checks each uploaded job. If more than
-                _JOB_IDLE_TIMEOUT_S has passed since upload without a
-                job_complete event, polls the server REST API directly.
-                Terminates once all jobs are complete.
-                """
-                await first_job_ready.wait()
-                job_upload_times: dict[str, float] = {}
-
-                while True:
-                    await asyncio.sleep(5.0)
-                    now = asyncio.get_event_loop().time()
-
-                    for jid in list(job_ids):
-                        if jid in completed_jobs:
-                            continue
-                        if jid not in job_upload_times:
-                            job_upload_times[jid] = now
-
-                        elapsed = now - job_upload_times[jid]
-                        if elapsed < _JOB_IDLE_TIMEOUT_S:
-                            continue
-
-                        try:
-                            r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}")
-                            if r.status_code == 404:
-                                continue
-                            r.raise_for_status()
-                            status = r.json().get("status", "")
-                            if status in ("complete", "failed"):
-                                await _emit_job_complete(jid)
-                        except Exception as exc:
-                            logger.debug("[watchdog] poll error for %s: %s", jid[:8], exc)
-
-                    if uploads_done.is_set() and len(completed_jobs) >= len(job_ids):
-                        break
-
-                await result_queue.put(None)
-
-            upload_task = asyncio.create_task(_upload_all())
-            sse_task = asyncio.create_task(_consume_sse())
-            watchdog_task = asyncio.create_task(_idle_watchdog())
-
-            try:
-                while True:
-                    item = await result_queue.get()
-                    if item is None:
-                        break
-                    yield item
-            finally:
-                for t in (upload_task, sse_task, watchdog_task):
-                    if not t.done():
-                        t.cancel()
-                await asyncio.gather(upload_task, sse_task, watchdog_task, return_exceptions=True)
-
-    async def _poll_remaining_jobs(
-        self,
-        client: httpx.AsyncClient,
-        pending_jobs: set[str],
-        result_queue: asyncio.Queue[dict[str, Any] | None],
-    ) -> None:
-        """Polling fallback for jobs not resolved via SSE."""
-        poll_interval = 2.0
-
-        async def _fetch_results(jid: str) -> dict[str, Any] | None:
-            try:
-                resp = await client.get(f"{self._base_url}/v1/ingest/job/{jid}/results")
-                resp.raise_for_status()
-                return resp.json()
-            except Exception as exc:
-                logger.warning("Failed to fetch results for job %s: %s", jid[:8], exc)
-                return None
-
-        while pending_jobs:
-            await asyncio.sleep(poll_interval)
-            for jid in list(pending_jobs):
-                try:
-                    r = await client.get(f"{self._base_url}/v1/ingest/job/{jid}")
-                    if r.status_code == 404:
-                        pending_jobs.discard(jid)
-                        await result_queue.put(
-                            {"event": "job_complete", "job_id": jid, "results": None}
-                        )
+                for jid, status in zip(batch, statuses):
+                    if isinstance(status, Exception):
+                        logger.debug("[poll] error for %s: %s", jid[:8], status)
                         continue
-                    r.raise_for_status()
-                    status = r.json().get("status", "")
+
                     if status in ("complete", "failed"):
-                        pending_jobs.discard(jid)
-                        results = await _fetch_results(jid)
-                        await result_queue.put(
-                            {"event": "job_complete", "job_id": jid, "results": results}
-                        )
-                except Exception as exc:
-                    logger.debug("[job %s] poll error: %s", jid[:8], exc)
+                        pending.discard(jid)
+                        results = await self._fetch_single_job_results(client, jid)
+                        yield {"event": "job_complete", "job_id": jid, "results": results}
+
+                now = time.monotonic()
+                if pending and (now - last_status_report) >= _STATUS_REPORT_INTERVAL_S:
+                    last_status_report = now
+                    print(f"\n  --- {len(pending)} jobs still pending ---")
+                    for jid in sorted(pending, key=lambda j: jobs[j]["submitted_at"]):
+                        elapsed = now - jobs[jid]["submitted_at"]
+                        fname = jobs[jid]["filename"]
+                        pages = jobs[jid]["total_pages"]
+                        print(f"    {jid[:8]}  {fname:<40} {pages:>3} pages  {elapsed:>6.0f}s")
+                    print()
+
+                if pending:
+                    await asyncio.sleep(_POLL_INTERVAL_S)
+
+    async def _poll_single_job_status(
+        self, client: httpx.AsyncClient, job_id: str
+    ) -> str:
+        """Return the current status string for a job, or 'unknown'."""
+        r = await client.get(f"{self._base_url}/v1/ingest/job/{job_id}")
+        if r.status_code == 404:
+            return "failed"
+        r.raise_for_status()
+        return r.json().get("status", "unknown")
+
+    async def _fetch_single_job_results(
+        self, client: httpx.AsyncClient, job_id: str
+    ) -> dict[str, Any] | None:
+        """Fetch full results for a completed job."""
+        try:
+            r = await client.get(f"{self._base_url}/v1/ingest/job/{job_id}/results")
+            r.raise_for_status()
+            return r.json()
+        except Exception as exc:
+            logger.warning("Failed to fetch results for job %s: %s", job_id[:8], exc)
+            return None
 
 
 # ------------------------------------------------------------------

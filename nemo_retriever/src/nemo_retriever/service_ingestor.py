@@ -390,26 +390,11 @@ class ServiceIngestor(ingestor):
                     flush=True,
                 )
 
-            elif event_type == "page_complete":
-                pages_completed += 1
-                print(
-                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
-                    f"Documents: {documents_completed}/{total_documents}",
-                    end="",
-                    flush=True,
-                )
-
             elif event_type == "job_complete":
                 documents_completed += 1
-                print(
-                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
-                    f"Documents: {documents_completed}/{total_documents}",
-                    end="",
-                    flush=True,
-                )
-
                 job_results = evt.get("results")
                 if job_results and isinstance(job_results, dict):
+                    pages_completed += job_results.get("pages_completed", 0)
                     for input_page in job_results.get("pages", []):
                         doc_id = input_page.get("document_id", "")
                         page_num = input_page.get("page_number", 0)
@@ -433,6 +418,13 @@ class ServiceIngestor(ingestor):
                                     "error": f"page processing failed (status={status})",
                                 }
                             )
+
+                print(
+                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
+                    f"Documents: {documents_completed}/{total_documents}",
+                    end="",
+                    flush=True,
+                )
 
         if total_documents > 0:
             print()
