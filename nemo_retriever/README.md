@@ -443,38 +443,26 @@ ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 ```
 
-### Video (visual OCR on frames)
+### Video (MP4 files)
 
-Video files are chunked with ffmpeg and transcribed when you route them through the audio path above. To run the **image OCR pipeline** (page-element detection + Nemotron OCR) on on-screen text, decode the video to raster frames first, then use the same configuration as `retriever pipeline run <dir> --input-type image --method ocr`, which is implemented in `nemo_retriever/pipeline/__main__.py` by `_build_ingestor` when `input_type="image"` together with `_build_extract_params` (defaults shown there for DPI, extraction flags, and remote NIM URLs).
-
-Example: extract one PNG per second, then run the image OCR pipeline:
-
-```bash
-mkdir -p /tmp/video_frames
-ffmpeg -y -i "$INPUT_VIDEO" -vf "fps=1" /tmp/video_frames/frame_%04d.png
-```
+Pass `.mp4` paths (or globs that resolve to videos) to `.files(...)` and use `.extract_audio()`: ffmpeg splits the media into chunks and the pipeline runs ASR on each chunk (speech in the soundtrack). This matches the dedicated audio graph in `nemo_retriever/graph/ingestor_runtime.py` (`MediaChunkActor` → `ASRActor`), not the PDF/image OCR path.
 
 ```python
-from nemo_retriever import create_ingestor
-from nemo_retriever.params import ExtractParams
+from pathlib import Path
 
-FRAME_GLOBS = ["/tmp/video_frames/*.png"]
-extract_params = ExtractParams(
-    method="ocr",
-    dpi=300,
-    extract_text=True,
-    extract_tables=True,
-    extract_charts=True,
-    extract_infographics=True,
-)
+from nemo_retriever import create_ingestor
+
+INPUT_VIDEOS = [str(Path("/path/to/clip.mp4"))]
 ingestor = (
     create_ingestor(run_mode="batch")
-    .files(FRAME_GLOBS)
-    .extract_image_files(extract_params)
+    .files(INPUT_VIDEOS)
+    .extract_audio()
     .embed()
 )
 # ray_dataset_or_df = ingestor.ingest()
 ```
+
+**On-screen text (visual OCR):** the library does not run Nemotron page-elements / OCR on raw MP4 pixels. Decode frames first (for example `ffmpeg -i clip.mp4 -vf fps=1 frames/frame_%04d.png`), then use `.extract_image_files(ExtractParams(method="ocr", ...))` on those images—the same shape as `retriever pipeline run <dir> --input-type image --method ocr` in `nemo_retriever/pipeline/__main__.py` (`_build_ingestor` with `input_type="image"`).
 
 ### Store extracted images and text
 
