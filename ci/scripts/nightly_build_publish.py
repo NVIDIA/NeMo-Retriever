@@ -39,9 +39,7 @@ _PATCHABLE_TEXT_SUFFIXES = {
     ".yaml",
     ".yml",
 }
-_PYTHON_IDENTIFIER_RE = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$"
-)
+_PYTHON_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
 def _run(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
@@ -250,9 +248,7 @@ def _rename_python_package(project_dir: Path, old_name: str, new_name: str) -> b
             continue
         new_path = root / new_rel
         if new_path.exists():
-            raise RuntimeError(
-                f"Cannot rename Python package: destination already exists: {new_path}"
-            )
+            raise RuntimeError(f"Cannot rename Python package: destination already exists: {new_path}")
         new_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(old_path), str(new_path))
         print(
@@ -542,9 +538,7 @@ def _pyproject_build_system_requires(project_dir: Path) -> list[str]:
     data = tomllib.loads(_read_text(pyproject))
     requires = data.get("build-system", {}).get("requires", [])
     if not isinstance(requires, list) or not all(isinstance(req, str) for req in requires):
-        raise RuntimeError(
-            "Invalid pyproject.toml [build-system].requires; expected a list of strings"
-        )
+        raise RuntimeError("Invalid pyproject.toml [build-system].requires; expected a list of strings")
     return requires
 
 
@@ -601,12 +595,9 @@ def _build(
 
     _pip_install(py, ["build"], cwd=project_dir, env=env)
     if no_isolation:
-        _pip_install(
-            py,
-            _pyproject_build_system_requires(project_dir),
-            cwd=project_dir,
-            env=env,
-        )
+        build_system_requires = _pyproject_build_system_requires(project_dir)
+        if build_system_requires:
+            _pip_install(py, build_system_requires, cwd=project_dir, env=env)
     _pip_install(py, venv_pip_install, cwd=project_dir, env=env)
 
     if pin_runtime_dependencies:
