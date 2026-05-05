@@ -48,7 +48,7 @@ new CLI does not yet expose an equivalent — continue to use `nv-ingest-cli`
 for these cases:
 
 - `--task 'udf:{…}'` — user-defined functions
-  (`nv-ingest/docs/docs/extraction/user-defined-functions.md`,
+  (`nemo_retriever/src/nemo_retriever/graph/README.md`,
   `nv-ingest/examples/udfs/README.md`). `retriever` does not expose UDFs.
 - `--task 'filter:{content_type:"image", min_size:…, min_aspect_ratio:…, max_aspect_ratio:…}'`.
   The image scale/aspect-ratio filter stage is not reproduced in the new CLI.
