@@ -95,14 +95,6 @@ PVC + Secret name helpers
 {{- end -}}
 {{- end -}}
 
-{{- define "nemo-retriever.lancedbPvcName" -}}
-{{- if .Values.lancedb.existingClaim -}}
-{{- .Values.lancedb.existingClaim -}}
-{{- else -}}
-{{- printf "%s-lancedb" (include "nemo-retriever.fullname" .) -}}
-{{- end -}}
-{{- end -}}
-
 {{- define "nemo-retriever.retrieverResultsPvcName" -}}
 {{- if .Values.retrieverResults.existingClaim -}}
 {{- .Values.retrieverResults.existingClaim -}}

@@ -108,10 +108,6 @@ spec:
             - name: data
               mountPath: {{ .Values.persistence.mountPath }}
             {{- end }}
-            {{- if .Values.lancedb.enabled }}
-            - name: lancedb
-              mountPath: {{ .Values.lancedb.mountPath }}
-            {{- end }}
             {{- if .Values.retrieverResults.enabled }}
             - name: retriever-results
               mountPath: {{ .Values.retrieverResults.mountPath }}
@@ -145,11 +141,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "nemo-retriever.pvcName" . }}
-        {{- end }}
-        {{- if .Values.lancedb.enabled }}
-        - name: lancedb
-          persistentVolumeClaim:
-            claimName: {{ include "nemo-retriever.lancedbPvcName" . }}
         {{- end }}
         {{- if .Values.retrieverResults.enabled }}
         - name: retriever-results
