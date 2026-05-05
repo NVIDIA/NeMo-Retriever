@@ -1,6 +1,6 @@
 # Audio and video ingestion
 
-Use this page for **speech and audio extraction** with Parakeet ASR and for **video workflows** that combine audio with **OCR on frames** or derived images.
+Use this page for speech and audio extraction with Parakeet ASR and for video workflows that combine audio with OCR on frames or derived images.
 
 **Sections:** [Speech and audio (Parakeet)](#speech-and-audio-extraction) · [Run Parakeet on the cluster (Helm)](#run-parakeet-on-the-cluster-helm) · [Parakeet on NVCF (cloud)](#parakeet-on-nvcf) · [Video and frame OCR](#video-and-frame-ocr)
 
