@@ -375,14 +375,13 @@ def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
 
 def _build_command(
     cfg: HarnessConfig, artifact_dir: Path, run_id: str
-) -> tuple[list[str], Path, Path, Path | None, Path, dict[str, str]]:
+) -> tuple[list[str], Path, Path, Path | None, dict[str, str]]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if cfg.write_detection_file:
         detection_summary_file = artifact_dir / "detection_summary.json"
     else:
         detection_summary_file = runtime_dir / ".detection_summary.json"
-    metrics_output_file = runtime_dir / f"{run_id}.metrics.json"
     effective_query_csv: Path | None = None
 
     cmd = [
@@ -447,8 +446,13 @@ def _build_command(
         run_id,
         "--detection-summary-file",
         str(detection_summary_file),
-        "--lancedb-uri",
-        _resolve_lancedb_uri(cfg, artifact_dir),
+        "--vdb-kwargs-json",
+        json.dumps(
+            {
+                "uri": _resolve_lancedb_uri(cfg, artifact_dir),
+                "hybrid": bool(cfg.hybrid),
+            }
+        ),
     ]
 
     if cfg.evaluation_mode == "beir":
@@ -501,10 +505,21 @@ def _build_command(
         cmd += ["--caption-invoke-url", cfg.caption_invoke_url]
 
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    if cfg.input_type == "audio":
+    if cfg.input_type in ("audio", "video"):
         cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
         cmd += ["--audio-split-type", cfg.audio_split_type]
         cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
+    if cfg.input_type == "video":
+        cmd += ["--video-extract-audio" if cfg.video_extract_audio else "--no-video-extract-audio"]
+        cmd += ["--video-extract-frames" if cfg.video_extract_frames else "--no-video-extract-frames"]
+        cmd += ["--video-frame-fps", str(cfg.video_frame_fps)]
+        cmd += ["--video-frame-dedup" if cfg.video_frame_dedup else "--no-video-frame-dedup"]
+        cmd += ["--video-frame-text-dedup" if cfg.video_frame_text_dedup else "--no-video-frame-text-dedup"]
+        cmd += [
+            "--video-frame-text-dedup-max-dropped-frames",
+            str(cfg.video_frame_text_dedup_max_dropped_frames),
+        ]
+        cmd += ["--video-av-fuse" if cfg.video_av_fuse else "--no-video-av-fuse"]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
@@ -514,8 +529,6 @@ def _build_command(
         env_extra["NVIDIA_API_KEY"] = cfg.api_key
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
-    if cfg.hybrid:
-        cmd += ["--hybrid"]
 
     resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
     if resolved_store_uri is not None:
@@ -524,7 +537,7 @@ def _build_command(
             cmd += ["--store-text"]
         cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
 
-    return cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra
+    return cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra
 
 
 def _evaluate_run_outcome(
@@ -577,23 +590,24 @@ def _print_failure_report(
     lines.append(f"  {BOLD}Return Code    :{RESET}  {rc}")
     lines.append("")
 
+    em_dash = "\u2014"
     lines.append(f"  {CYAN}{BOLD}Test Configuration{RESET}")
     lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Dataset        :  {cfg.get('dataset_label', '\u2014')}")
-    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', '\u2014')}")
-    lines.append(f"  Preset         :  {cfg.get('preset', '\u2014')}")
-    lines.append(f"  Input Type     :  {cfg.get('input_type', '\u2014')}")
+    lines.append(f"  Dataset        :  {cfg.get('dataset_label', em_dash)}")
+    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', em_dash)}")
+    lines.append(f"  Preset         :  {cfg.get('preset', em_dash)}")
+    lines.append(f"  Input Type     :  {cfg.get('input_type', em_dash)}")
     lines.append(f"  Recall Required:  {cfg.get('recall_required', False)}")
     lines.append(f"  Hybrid         :  {cfg.get('hybrid', False)}")
-    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', '\u2014')}")
+    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', em_dash)}")
     lines.append("")
 
     lines.append(f"  {CYAN}{BOLD}Host Information{RESET}")
     lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Hostname       :  {meta.get('host', '\u2014')}")
-    lines.append(f"  GPU            :  {meta.get('gpu_type', '\u2014')} (x{meta.get('gpu_count', '?')})")
-    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', '\u2014')}")
-    lines.append(f"  Python         :  {meta.get('python_version', '\u2014')}")
+    lines.append(f"  Hostname       :  {meta.get('host', em_dash)}")
+    lines.append(f"  GPU            :  {meta.get('gpu_type', em_dash)} (x{meta.get('gpu_count', '?')})")
+    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', em_dash)}")
+    lines.append(f"  Python         :  {meta.get('python_version', em_dash)}")
     lines.append(f"  CPU / Memory   :  {meta.get('cpu_count', '?')} cores / {meta.get('memory_gb', '?')} GB")
     lines.append("")
 
@@ -701,9 +715,7 @@ def _run_single(
     tags: list[str] | None = None,
     skip_local_history: bool = False,
 ) -> dict[str, Any]:
-    cmd, runtime_dir, detection_summary_file, effective_query_csv, metrics_output_file, env_extra = _build_command(
-        cfg, artifact_dir, run_id
-    )
+    cmd, runtime_dir, detection_summary_file, effective_query_csv, env_extra = _build_command(cfg, artifact_dir, run_id)
 
     lancedb_path = Path(_resolve_lancedb_uri(cfg, artifact_dir))
     if lancedb_path.is_dir():
@@ -859,13 +871,25 @@ try:
             return 0
 
     import ray
+    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")
 
     ray.shutdown()
 
-    runtime_env = {"env_vars": {"VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable))}}
+    venv = os.path.dirname(os.path.dirname(sys.executable))
+    venv_bin = os.path.join(venv, "bin")
+    pypath = os.pathsep.join(p for p in sys.path if p)
+    ray_env_vars: dict[str, str] = {
+        "VIRTUAL_ENV": venv,
+        "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+        "PYTHONPATH": pypath,
+    }
+    ray_env_vars.update(collect_hf_runtime_env())
+    ray_env_vars.update(collect_remote_auth_runtime_env())
+    runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:
         os.environ.pop("RAY_ADDRESS", None)

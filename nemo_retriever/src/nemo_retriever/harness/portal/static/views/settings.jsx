@@ -13,6 +13,13 @@ function SettingsView() {
   const [runCodeRefInput, setRunCodeRefInput] = useState("");
   const [savingRunCodeRef, setSavingRunCodeRef] = useState(false);
   const [runCodeRefSaved, setRunCodeRefSaved] = useState(false);
+  const [slackWebhookInput, setSlackWebhookInput] = useState("");
+  const [portalBaseUrlInput, setPortalBaseUrlInput] = useState("");
+  const [savingSlack, setSavingSlack] = useState(false);
+  const [slackSaved, setSlackSaved] = useState(false);
+  const [slackTestBusy, setSlackTestBusy] = useState(false);
+  const [slackTestResult, setSlackTestResult] = useState(null);
+  const [slackTestError, setSlackTestError] = useState("");
 
   async function fetchPortalSettings() {
     try {
@@ -20,6 +27,8 @@ function SettingsView() {
       const data = await res.json();
       setPortalSettings(data);
       setRunCodeRefInput(data.run_code_ref || "upstream/main");
+      setSlackWebhookInput(data.slack_webhook_url || "");
+      setPortalBaseUrlInput(data.portal_base_url || "http://localhost:8100");
     } catch (err) {
       console.error("Failed to fetch portal settings:", err);
     }
@@ -46,18 +55,66 @@ function SettingsView() {
     }
   }
 
+  async function saveSlackSettings() {
+    setSavingSlack(true);
+    setSlackSaved(false);
+    try {
+      const res = await fetch("/api/portal-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slack_webhook_url: slackWebhookInput.trim(),
+          portal_base_url: portalBaseUrlInput.trim() || "http://localhost:8100",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      const data = await res.json();
+      setPortalSettings(data);
+      setSlackSaved(true);
+      setTimeout(() => setSlackSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save Slack settings:", err);
+    } finally {
+      setSavingSlack(false);
+    }
+  }
+
+  async function testSlack() {
+    setSlackTestBusy(true);
+    setSlackTestResult(null);
+    setSlackTestError("");
+    try {
+      const res = await fetch("/api/alerts/test-slack", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      setSlackTestResult("Test message sent successfully!");
+      setTimeout(() => setSlackTestResult(null), 5000);
+    } catch (err) {
+      setSlackTestError(err.message);
+      setTimeout(() => setSlackTestError(""), 8000);
+    } finally {
+      setSlackTestBusy(false);
+    }
+  }
+
   async function fetchGitInfo() {
     setGitLoading(true);
     try {
       const res = await fetch("/api/settings/git-info");
       const data = await res.json();
       setGitInfo(data);
-      if (data.available && data.remotes?.length) {
-        const nvidiaR = data.remotes.find(r => r.url && (r.url.includes("NVIDIA/") || r.url.includes("nvidia/")));
-        setDeployRemote(nvidiaR ? nvidiaR.name : data.remotes[0].name);
-      }
       if (data.available && data.current_branch) {
         setDeployBranch(data.current_branch);
+      }
+      if (data.available && data.remotes?.length) {
+        if (data.tracking_remote) {
+          setDeployRemote(data.tracking_remote);
+        } else {
+          const nvidiaR = data.remotes.find(r => r.url && (r.url.includes("NVIDIA/") || r.url.includes("nvidia/")));
+          setDeployRemote(nvidiaR ? nvidiaR.name : data.remotes[0].name);
+        }
       }
     } catch (err) {
       setGitInfo({ available: false, error: err.message });
@@ -474,6 +531,55 @@ function SettingsView() {
           <pre className="mono" style={{fontSize:'12px',color:'#ff5050',whiteSpace:'pre-wrap',wordBreak:'break-all',margin:0}}>{deployError}</pre>
         </div>
       )}
+
+      {/* Slack Integration */}
+      <div className="card" style={{padding:'24px',marginBottom:'20px'}}>
+        <div className="section-title" style={{marginBottom:'16px'}}>Slack Integration</div>
+        <div style={{fontSize:'12px',color:'var(--nv-text-dim)',marginBottom:'16px',lineHeight:'1.6'}}>
+          Configure Slack notifications for alert rules. When an alert rule with Slack enabled fires, a message will be posted to the configured webhook URL with run details.
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+          <div>
+            <label style={{display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Webhook URL</label>
+            <input className="input mono" style={{width:'100%'}} value={slackWebhookInput} onChange={e=>setSlackWebhookInput(e.target.value)}
+              placeholder="https://hooks.slack.com/services/T.../B.../..." />
+            <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'4px'}}>
+              Create an incoming webhook in your Slack workspace and paste the URL here.
+            </div>
+          </div>
+          <div>
+            <label style={{display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Portal Base URL</label>
+            <input className="input mono" style={{width:'100%'}} value={portalBaseUrlInput} onChange={e=>setPortalBaseUrlInput(e.target.value)}
+              placeholder="http://localhost:8100" />
+            <div style={{fontSize:'10px',color:'var(--nv-text-dim)',marginTop:'4px'}}>
+              Used to construct "View Run" links in Slack messages. Set to the externally reachable URL of this portal.
+            </div>
+          </div>
+          <div style={{display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}}>
+            <button className="btn btn-primary btn-sm" onClick={saveSlackSettings} disabled={savingSlack}>
+              {savingSlack ? <><span className="spinner" style={{marginRight:'6px'}}></span>Saving…</> : "Save Slack Settings"}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={testSlack} disabled={slackTestBusy || !slackWebhookInput.trim()}>
+              {slackTestBusy ? <><span className="spinner" style={{marginRight:'6px'}}></span>Sending…</> : "Send Test Message"}
+            </button>
+            {slackSaved && (
+              <span style={{fontSize:'12px',color:'var(--nv-green)',fontWeight:600}}>
+                <IconCheck /> Saved
+              </span>
+            )}
+            {slackTestResult && (
+              <span style={{fontSize:'12px',color:'var(--nv-green)',fontWeight:600}}>
+                <IconCheck /> {slackTestResult}
+              </span>
+            )}
+            {slackTestError && (
+              <span style={{fontSize:'12px',color:'#ff5050',fontWeight:600}}>
+                {slackTestError}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Confirmation Modal */}
       {confirm && (

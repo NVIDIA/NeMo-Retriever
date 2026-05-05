@@ -41,7 +41,7 @@ def add_schema(
             chunks(
                 [
                     {
-                        "label": [x["props"]["label"]],
+                        "label": [Labels.TABLE],
                         "match_props": x["match_props"],
                         "props": x["props"],
                     }
@@ -53,7 +53,7 @@ def add_schema(
             chunks(
                 [
                     {
-                        "label": [x["props"]["label"]],
+                        "label": [Labels.COLUMN],
                         "match_props": x["match_props"],
                         "props": x["props"],
                     }

@@ -44,6 +44,9 @@ class SQLDatabase(ABC):
     ----------
     connection_string:
         A driver-specific connection string or database path.
+    dialect:
+        SQL dialect used by this connector (e.g. ``"duckdb"``, ``"snowflake"``).
+        Used by the text-to-SQL agent to emit dialect-appropriate SQL.
     """
 
     @abstractmethod
@@ -85,12 +88,18 @@ class SQLDatabase(ABC):
         """
 
     @abstractmethod
-    def get_queries(self) -> pd.DataFrame:
+    def get_queries(self, hours: int = 24) -> pd.DataFrame:
         """Return recent / historical queries if the backend supports it.
 
         Expected columns: ``end_time``, ``query_text``.
         Connectors without query history should return an empty DataFrame
         with those two columns.
+
+        Parameters
+        ----------
+        hours:
+            Only return queries whose ``end_time`` falls within the last
+            ``hours`` hours. Defaults to 24.
         """
 
     @abstractmethod

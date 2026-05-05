@@ -1,41 +1,39 @@
-# Deploy With Docker Compose (Self-Hosted) for NeMo Retriever Library
+# Self-hosted NeMo Retriever Library (Helm)
 
-This guide helps you get started using [NeMo Retriever Library](overview.md) in self-hosted mode.
+!!! note
+
+    This documentation describes NeMo Retriever Library.
 
 
-## Step 1: Start Containers
+This guide helps you get started using [NeMo Retriever Library](overview.md) in self-hosted mode on Kubernetes.
 
-Use the provided [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml) to start all needed services with a few commands.
+
+## Step 1: Deploy on Kubernetes
+
+Install and upgrade NeMo Retriever extraction with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md). The chart pulls NIM and microservice images from NGC; first startup can take significant time while models load.
 
 !!! warning
 
     NIM containers on their first startup can take 10-15 minutes to pull and fully load models.
 
 
-If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/nv-ingest/blob/main/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
+For a comparison of deployment modes, see [Deployment options](deployment-options.md). For tunable service settings, see [Environment variables](environment-config.md).
 
 a. Git clone the repo:
 
-    `git clone https://github.com/nvidia/nv-ingest`
+    `git clone https://github.com/NVIDIA/NeMo-Retriever`
 
 b. Change the directory to the cloned repo by running the following code.
    
-    `cd nv-ingest`.
+    `cd NeMo-Retriever`.
 
-c. [Generate API keys](ngc-api-key.md) and authenticate with NGC with the `docker login` command.
+c. [Generate API keys](api-keys.md) for your deployment: create an NGC personal key with the scopes listed there, then supply it to the cluster through the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) (`helm upgrade` flags such as `ngcImagePullSecret` / `ngcApiSecret`, Helm repo login with username `$oauthtoken`, or your organization’s equivalent secrets).
 
-    ```shell
-    # This is required to access pre-built containers and NIM microservices
-    $ docker login nvcr.io
-    Username: $oauthtoken
-    Password: <Your Key>
-    ```
-   
-d. Create a .env file that contains your NVIDIA Build API key.
+d. If tools on this machine read keys from a `.env` file, add the NGC-scoped variables below (see note — not the same as `NVIDIA_API_KEY` for build.nvidia.com).
 
     !!! note
 
-        If you use an NGC personal key, then you should provide the same value for all keys, but you must specify each environment variable individually. In the past, you could create an API key. If you have an API key, you can still use that. For more information, refer to [Generate Your NGC Keys](ngc-api-key.md) and [Environment Configuration Variables](environment-config.md).
+        If you use an NGC personal key for cluster access, supply the same NGC personal key value for each of the NGC-scoped variables listed below (`NGC_API_KEY`, `NIM_NGC_API_KEY`), specifying each variable individually. The `NVIDIA_API_KEY` for hosted build.nvidia.com inference is a separate credential — see [Authentication and API keys](api-keys.md). If you have a legacy NGC API key, you can still use it for the NGC-scoped variables. Refer to [Environment variables](environment-config.md) for details.
 
     ```
     # Container images must access resources from NGC.
@@ -44,27 +42,25 @@ d. Create a .env file that contains your NVIDIA Build API key.
     NIM_NGC_API_KEY=<key to download model files after containers start>
     ```
    
-e. Make sure that NVIDIA is set as your default container runtime before you run the docker compose command by running the following code.
+e. Ensure your GPU nodes meet the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) and driver requirements from the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
-    `sudo nvidia-ctk runtime configure --runtime=docker --set-as-default`
+f. Install or upgrade the release. The documented path uses LanceDB as the vector database (embedded, in-process). For more information about optional components (audio, nemotron-parse, VLM captioning), refer to [Profile Information](#profile-information) and [Data Upload](vdbs.md).
 
-f. Start core services. By default, the pipeline uses **LanceDB** as the vector database (embedded, in-process); no extra Docker profile is required. If you want to use **Milvus** instead, start with the retrieval profile. This example uses the retrieval profile to run Milvus. For more information about other profiles, see [Profile Information](#profile-information).
+    Follow the `helm upgrade --install` flow in the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md), including NGC authentication and any `--set` values your cluster requires.
 
-    `docker compose --profile retrieval up`
+    !!! tip "LanceDB"
 
-    !!! tip "LanceDB (default)"
-
-        To use the default LanceDB backend, you can run `docker compose up` without `--profile retrieval`. LanceDB runs in-process and does not require Milvus, etcd, or MinIO. For details, see [Data Upload](data-store.md).
+        LanceDB runs in-process alongside your client; you do not deploy separate vector-database containers for this path. For details, refer to [Data Upload](vdbs.md).
 
     !!! tip
 
-        By default, we have [configured log levels to be verbose](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml). It's possible to observe service startup proceeding. You will notice a lot of log messages. Disable verbose logging by configuring `NIM_TRITON_LOG_VERBOSE=0` for each NIM in [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml).
+        If logs are too noisy during bring-up, set `NIM_TRITON_LOG_VERBOSE=0` (or equivalent) on the relevant NIM workloads in your Helm values, then roll out the change.
 
     !!! tip
 
-        The default configuration might not fit on a single GPU for some hardware targets. Use a [docker compose override file](#docker-compose-override-files) to reduce VRAM usage. Override files typically lower per-service memory allocation, batch sizes, or concurrency, trading peak throughput for making the full pipeline runnable on the available GPU.
+        The default chart values might not fit on a single GPU for some hardware targets. Use chart overrides (for example files under [`helm/overrides/`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/helm/overrides)) or custom `values.yaml` fragments to lower per-service memory, batch sizes, or concurrency. See [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
 
-g. When core services have fully started, `nvidia-smi` should show processes like the following:
+g. When core services have fully started, `nvidia-smi` on a GPU node should show NIM / Triton processes similar to the following:
 
     ```
     # If it's taking > 1m for `nvidia-smi` to return, the bus will likely be busy setting up the models.
@@ -73,7 +69,6 @@ g. When core services have fully started, `nvidia-smi` should show processes lik
     |  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
     |        ID   ID                                                             Usage      |
     |=======================================================================================|
-    |    0   N/A  N/A     80461      C   milvus                                     1438MiB |
     |    0   N/A  N/A     83791      C   tritonserver                               2492MiB |
     |    0   N/A  N/A     85605      C   tritonserver                               1896MiB |
     |    0   N/A  N/A     85889      C   tritonserver                               2824MiB |
@@ -82,32 +77,23 @@ g. When core services have fully started, `nvidia-smi` should show processes lik
     +---------------------------------------------------------------------------------------+
     ```
 
-h. Run the command `docker ps`. You should see output similar to the following. Confirm that the status of the containers is `Up`.
+h. Run `kubectl get pods -n <your-namespace>`. You should see pods reach `Running` / `Ready` similar to the following (names vary by release):
 
-    ```
-    CONTAINER ID  IMAGE                                            COMMAND                 CREATED         STATUS                  PORTS            NAMES
-    1b885f37c991  nvcr.io/nvidia/nemo-microservices/nv-ingest:...  "/usr/bin/tini -- /w…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:7670...  nv-ingest-nv-ingest-ms-runtime-1
-    14ef31ed7f49  milvusdb/milvus:v2.5.3-gpu                       "/tini -- bash -c 's…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9091...  milvus-standalone
-    dceaf36cc5df  otel/opentelemetry-collector-contrib:...         "/otelcol-contrib --…"  7 minutes ago   Up 7 minutes            0.0.0.0:4317...  nv-ingest-otel-collector-1
-    5bd0b48eb71b  nvcr.io/nim/nvidia/nemoretriever-graphic-ele...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8003...  nv-ingest-graphic-elements-1
-    daf878669036  nvcr.io/nim/nvidia/nemoretriever-ocr-v1:1.2.1    "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8009...  nv-ingest-ocr-1
-    216bdf11c566  nvcr.io/nim/nvidia/nemoretriever-page-elements-v3:1.7.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8000...  nv-ingest-page-elements-1
-    aee9580b0b9a  nvcr.io/nim/nvidia/llama-3.2-nv-embedqa-1b-v2:1.10.0  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8012...  nv-ingest-embedding-1
-    178a92bf6f7f  nvcr.io/nim/nvidia/nemoretriever-table-struc...  "/opt/nvidia/nvidia_…"  7 minutes ago   Up 7 minutes            0.0.0.0:8006...  nv-ingest-table-structure-1
-    7ddbf7690036  openzipkin/zipkin                                "start-zipkin"          7 minutes ago   Up 7 minutes (healthy)  9410/tcp...      nv-ingest-zipkin-1
-    b73bbe0c202d  minio/minio:RELEASE.2023-03-20T20-16-18Z         "/usr/bin/docker-ent…"  7 minutes ago   Up 7 minutes (healthy)  0.0.0.0:9000...  minio
-    97fa798dbe4f  prom/prometheus:latest                           "/bin/prometheus --w…"  7 minutes ago   Up 7 minutes            0.0.0.0:9090...  nv-ingest-prometheus-1
-    f17cb556b086  grafana/grafana                                  "/run.sh"               7 minutes ago   Up 7 minutes            0.0.0.0:3000...  grafana-service
-    3403c5a0e7be  redis/redis-stack                                "/entrypoint.sh"        7 minutes ago   Up 7 minutes            0.0.0.0:6379...  nv-ingest-redis-1
+    ```text
+    NAME                                          READY   STATUS    RESTARTS   AGE
+    nemo-retriever-ms-runtime-xxxxxxxxxx-xxxxx    1/1     Running   0          7m
+    nemoretriever-embedding-xxxxxxxxxx-xxxxx      1/1     Running   0          7m
+    nemoretriever-page-elements-xxxxxxxxxx-xxxxx  1/1     Running   0          7m
+    redis-master-0                                1/1     Running   0          7m
     ```
 
 ## Step 2: Ingest Documents
 
-You can submit jobs programmatically in Python or using the [CLI](nv-ingest_cli.md).
+You can submit jobs programmatically in Python or using the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 !!! important "Python version"
 
-    Install the client and CLI into an environment that uses Python 3.12 or later. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. See [Prerequisites](prerequisites.md) and [Support Matrix](support-matrix.md).
+    Install the client and CLI into an environment that uses Python 3.12 or later. The published packages require Python `>= 3.12`; using Python 3.10 or 3.11 typically fails with dependency resolution errors. Refer to [Prerequisites](prerequisites.md) and [Support Matrix](support-matrix.md).
 
 The following examples demonstrate how to extract text, charts, tables, and images:
 
@@ -121,7 +107,7 @@ The following examples demonstrate how to extract text, charts, tables, and imag
 
 !!! tip
 
-    For more Python examples, refer to [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+    For more Python examples, refer to the [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
 <a id="ingest_python_example"></a>
 ```python
@@ -147,11 +133,12 @@ ingestor = (
         text_depth="page"
     ).embed()
     .vdb_upload(
-        collection_name="test",
-        sparse=False,
+        vdb_op="lancedb",
+        uri="./lancedb_data",
+        table_name="test",
+        hybrid=False,
         # for llama-3.2 embedder, use 1024 for e5-v5
         dense_dim=2048,
-        # milvus_uri="http://milvus:19530"  # When running from within a container, the URI to the Milvus service is specified using the internal Docker network.
     )
 )
 
@@ -177,14 +164,14 @@ if failures:
 
 !!! note
 
-    For advanced visual parsing in self-hosted mode, uncomment `extract_method="nemotron_parse"` in the previous code. For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md).
+    For advanced visual parsing in self-hosted mode, uncomment `extract_method="nemotron_parse"` in the previous code. For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 
 The output looks similar to the following.
 
 ```
 Starting ingestion..
-1 records to insert to milvus
+Indexed records into LanceDB
 logged 8 records
 Total time: 5.479151725769043 seconds
 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost   Chart 1 - Hammer - Powerdrill - Bluetooth speaker - Minifridge - Premium desk fan Dollars $- - $20.00 - $40.00 - $60.00 - $80.00 - $100.00 - $120.00 - $140.00 - $160.00 Cost
@@ -258,15 +245,15 @@ image_caption:[]
 
 ```
 
-### Using the `nv-ingest-cli`
+### Using the CLI
 
 !!! tip
 
-    There is a Jupyter notebook available to help you get started with the CLI. For more information, refer to [CLI Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/cli_client_usage.ipynb).
+    There is a Jupyter notebook available to help you get started with the CLI. For more information, refer to the [CLI Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/cli_client_usage.ipynb).
 
 <a id="ingest_cli_example"></a>
 ```shell
-nv-ingest-cli \
+nemo-retriever \
   --doc ./data/multimodal_test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_tables": "true", "extract_images": "true", "extract_charts": "true"}' \
@@ -282,47 +269,45 @@ None of PyTorch, TensorFlow >= 2.0, or Flax have been found. Models won't be ava
 [nltk_data]     /path/to/your/venv/lib/python3.12/site-
 [nltk_data]     packages/llama_index/core/_static/nltk_cache...
 [nltk_data]   Package punkt_tab is already up-to-date!
-INFO:nv_ingest_client.nv_ingest_cli:Processing 1 documents.
-INFO:nv_ingest_client.nv_ingest_cli:Output will be written to: ./processed_docs
+INFO:retriever_client.cli:Processing 1 documents.
+INFO:retriever_client.cli:Output will be written to: ./processed_docs
 Processing files: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:02<00:00,  2.34s/file, pages_per_sec=1.28]
-INFO:nv_ingest_client.cli.util.processing:message_broker_task_source: Avg: 2.39 ms, Median: 2.39 ms, Total Time: 2.39 ms, Total % of Trace Computation: 0.06%
-INFO:nv_ingest_client.cli.util.processing:broker_source_network_in: Avg: 9.51 ms, Median: 9.51 ms, Total Time: 9.51 ms, Total % of Trace Computation: 0.25%
-INFO:nv_ingest_client.cli.util.processing:job_counter: Avg: 1.47 ms, Median: 1.47 ms, Total Time: 1.47 ms, Total % of Trace Computation: 0.04%
-INFO:nv_ingest_client.cli.util.processing:job_counter_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:metadata_injection: Avg: 3.52 ms, Median: 3.52 ms, Total Time: 3.52 ms, Total % of Trace Computation: 0.09%
-INFO:nv_ingest_client.cli.util.processing:metadata_injection_channel_in: Avg: 0.16 ms, Median: 0.16 ms, Total Time: 0.16 ms, Total % of Trace Computation: 0.00%
-INFO:nv_ingest_client.cli.util.processing:pdf_content_extractor: Avg: 475.64 ms, Median: 163.77 ms, Total Time: 2378.21 ms, Total % of Trace Computation: 62.73%
-INFO:nv_ingest_client.cli.util.processing:pdf_content_extractor_channel_in: Avg: 0.31 ms, Median: 0.31 ms, Total Time: 0.31 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:image_content_extractor: Avg: 0.67 ms, Median: 0.67 ms, Total Time: 0.67 ms, Total % of Trace Computation: 0.02%
-INFO:nv_ingest_client.cli.util.processing:image_content_extractor_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:docx_content_extractor: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:docx_content_extractor_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:pptx_content_extractor: Avg: 0.68 ms, Median: 0.68 ms, Total Time: 0.68 ms, Total % of Trace Computation: 0.02%
-INFO:nv_ingest_client.cli.util.processing:pptx_content_extractor_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:audio_data_extraction: Avg: 1.08 ms, Median: 1.08 ms, Total Time: 1.08 ms, Total % of Trace Computation: 0.03%
-INFO:nv_ingest_client.cli.util.processing:audio_data_extraction_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:dedup_images: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:dedup_images_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:filter_images: Avg: 0.59 ms, Median: 0.59 ms, Total Time: 0.59 ms, Total % of Trace Computation: 0.02%
-INFO:nv_ingest_client.cli.util.processing:filter_images_channel_in: Avg: 0.57 ms, Median: 0.57 ms, Total Time: 0.57 ms, Total % of Trace Computation: 0.02%
-INFO:nv_ingest_client.cli.util.processing:table_data_extraction: Avg: 240.75 ms, Median: 240.75 ms, Total Time: 481.49 ms, Total % of Trace Computation: 12.70%
-INFO:nv_ingest_client.cli.util.processing:table_data_extraction_channel_in: Avg: 0.38 ms, Median: 0.38 ms, Total Time: 0.38 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:chart_data_extraction: Avg: 300.54 ms, Median: 299.94 ms, Total Time: 901.62 ms, Total % of Trace Computation: 23.78%
-INFO:nv_ingest_client.cli.util.processing:chart_data_extraction_channel_in: Avg: 0.23 ms, Median: 0.23 ms, Total Time: 0.23 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:infographic_data_extraction: Avg: 0.77 ms, Median: 0.77 ms, Total Time: 0.77 ms, Total % of Trace Computation: 0.02%
-INFO:nv_ingest_client.cli.util.processing:infographic_data_extraction_channel_in: Avg: 0.25 ms, Median: 0.25 ms, Total Time: 0.25 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:caption_ext: Avg: 0.55 ms, Median: 0.55 ms, Total Time: 0.55 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:caption_ext_channel_in: Avg: 0.51 ms, Median: 0.51 ms, Total Time: 0.51 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:embed_text: Avg: 1.21 ms, Median: 1.21 ms, Total Time: 1.21 ms, Total % of Trace Computation: 0.03%
-INFO:nv_ingest_client.cli.util.processing:embed_text_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:store_embedding_minio: Avg: 0.32 ms, Median: 0.32 ms, Total Time: 0.32 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:store_embedding_minio_channel_in: Avg: 1.18 ms, Median: 1.18 ms, Total Time: 1.18 ms, Total % of Trace Computation: 0.03%
-INFO:nv_ingest_client.cli.util.processing:message_broker_task_sink_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
-INFO:nv_ingest_client.cli.util.processing:No unresolved time detected. Trace times account for the entire elapsed duration.
-INFO:nv_ingest_client.cli.util.processing:Processed 1 files in 2.34 seconds.
-INFO:nv_ingest_client.cli.util.processing:Total pages processed: 3
-INFO:nv_ingest_client.cli.util.processing:Throughput (Pages/sec): 1.28
-INFO:nv_ingest_client.cli.util.processing:Throughput (Files/sec): 0.43
+INFO:retriever_client.processing:message_broker_task_source: Avg: 2.39 ms, Median: 2.39 ms, Total Time: 2.39 ms, Total % of Trace Computation: 0.06%
+INFO:retriever_client.processing:broker_source_network_in: Avg: 9.51 ms, Median: 9.51 ms, Total Time: 9.51 ms, Total % of Trace Computation: 0.25%
+INFO:retriever_client.processing:job_counter: Avg: 1.47 ms, Median: 1.47 ms, Total Time: 1.47 ms, Total % of Trace Computation: 0.04%
+INFO:retriever_client.processing:job_counter_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:metadata_injection: Avg: 3.52 ms, Median: 3.52 ms, Total Time: 3.52 ms, Total % of Trace Computation: 0.09%
+INFO:retriever_client.processing:metadata_injection_channel_in: Avg: 0.16 ms, Median: 0.16 ms, Total Time: 0.16 ms, Total % of Trace Computation: 0.00%
+INFO:retriever_client.processing:pdf_content_extractor: Avg: 475.64 ms, Median: 163.77 ms, Total Time: 2378.21 ms, Total % of Trace Computation: 62.73%
+INFO:retriever_client.processing:pdf_content_extractor_channel_in: Avg: 0.31 ms, Median: 0.31 ms, Total Time: 0.31 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:image_content_extractor: Avg: 0.67 ms, Median: 0.67 ms, Total Time: 0.67 ms, Total % of Trace Computation: 0.02%
+INFO:retriever_client.processing:image_content_extractor_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:docx_content_extractor: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:docx_content_extractor_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:pptx_content_extractor: Avg: 0.68 ms, Median: 0.68 ms, Total Time: 0.68 ms, Total % of Trace Computation: 0.02%
+INFO:retriever_client.processing:pptx_content_extractor_channel_in: Avg: 0.46 ms, Median: 0.46 ms, Total Time: 0.46 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:audio_data_extraction: Avg: 1.08 ms, Median: 1.08 ms, Total Time: 1.08 ms, Total % of Trace Computation: 0.03%
+INFO:retriever_client.processing:audio_data_extraction_channel_in: Avg: 0.20 ms, Median: 0.20 ms, Total Time: 0.20 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:dedup_images: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:dedup_images_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:filter_images: Avg: 0.59 ms, Median: 0.59 ms, Total Time: 0.59 ms, Total % of Trace Computation: 0.02%
+INFO:retriever_client.processing:filter_images_channel_in: Avg: 0.57 ms, Median: 0.57 ms, Total Time: 0.57 ms, Total % of Trace Computation: 0.02%
+INFO:retriever_client.processing:table_data_extraction: Avg: 240.75 ms, Median: 240.75 ms, Total Time: 481.49 ms, Total % of Trace Computation: 12.70%
+INFO:retriever_client.processing:table_data_extraction_channel_in: Avg: 0.38 ms, Median: 0.38 ms, Total Time: 0.38 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:chart_data_extraction: Avg: 300.54 ms, Median: 299.94 ms, Total Time: 901.62 ms, Total % of Trace Computation: 23.78%
+INFO:retriever_client.processing:chart_data_extraction_channel_in: Avg: 0.23 ms, Median: 0.23 ms, Total Time: 0.23 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:infographic_data_extraction: Avg: 0.77 ms, Median: 0.77 ms, Total Time: 0.77 ms, Total % of Trace Computation: 0.02%
+INFO:retriever_client.processing:infographic_data_extraction_channel_in: Avg: 0.25 ms, Median: 0.25 ms, Total Time: 0.25 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:caption_ext: Avg: 0.55 ms, Median: 0.55 ms, Total Time: 0.55 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:caption_ext_channel_in: Avg: 0.51 ms, Median: 0.51 ms, Total Time: 0.51 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:embed_text: Avg: 1.21 ms, Median: 1.21 ms, Total Time: 1.21 ms, Total % of Trace Computation: 0.03%
+INFO:retriever_client.processing:embed_text_channel_in: Avg: 0.21 ms, Median: 0.21 ms, Total Time: 0.21 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:message_broker_task_sink_channel_in: Avg: 0.42 ms, Median: 0.42 ms, Total Time: 0.42 ms, Total % of Trace Computation: 0.01%
+INFO:retriever_client.processing:No unresolved time detected. Trace times account for the entire elapsed duration.
+INFO:retriever_client.processing:Processed 1 files in 2.34 seconds.
+INFO:retriever_client.processing:Total pages processed: 3
+INFO:retriever_client.processing:Throughput (Pages/sec): 1.28
+INFO:retriever_client.processing:Throughput (Files/sec): 0.43
 ```
 
 ## Step 3: Inspecting and Consuming Results
@@ -349,7 +334,7 @@ multimodal_test.pdf.metadata.json
 
 For the full metadata definitions, refer to [Content Metadata](content-metadata.md). 
 
-We also provide a script for inspecting [extracted images](https://github.com/NVIDIA/nv-ingest/blob/main/src/util/image_viewer.py).
+We also provide a script for inspecting [extracted images](https://github.com/NVIDIA/NeMo-Retriever/blob/main/src/util/image_viewer.py).
 
 First, install `tkinter` by running the following code. Choose the code for your OS.
 
@@ -380,106 +365,61 @@ python src/util/image_viewer.py --file_path ./processed_docs/image/multimodal_te
 
 !!! tip
 
-    Beyond inspecting the results, you can read them into things like [llama-index](https://github.com/NVIDIA/nv-ingest/blob/main/examples/llama_index_multimodal_rag.ipynb) or [langchain](https://github.com/NVIDIA/nv-ingest/blob/main/examples/langchain_multimodal_rag.ipynb) retrieval pipelines. Also, checkout our [Enterprise RAG Blueprint on build.nvidia.com](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag) to query over document content pre-extracted with the retriever pipeline.
+    Beyond inspecting the results, you can read them into things like [llama-index](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) or [langchain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb) retrieval pipelines. Also, checkout our [Enterprise RAG Blueprint on build.nvidia.com](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag) to query over document content pre-extracted with the retriever pipeline.
 
 
 
 ## Profile Information
 
-The values that you specify in the `--profile` option of your `docker compose up` command are explained in the following table. 
-You can specify multiple `--profile` options.
+The following table maps **logical capability bundles** (optional NIM and storage stacks) to what you enable in **Helm values** when deploying NeMo Retriever extraction. Enable the rows you need for your workload; exact value paths depend on chart version—use the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) as the source of truth.
 
-| Profile               | Type     | Description                                                       | 
+| Capability            | Type     | Description                                                       | 
 |-----------------------|----------|-------------------------------------------------------------------| 
-| `retrieval`           | Core     | Enables the embedding NIM and (optional) GPU-accelerated Milvus. Omit this profile to use the default LanceDB backend.           | 
-| `audio`               | Advanced | Use the [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) ASR NIM (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) for processing audio files. For more information, refer to [Audio Processing](audio.md). | 
-| `nemotron-parse`      | Advanced | Use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse), which adds state-of-the-art text and table extraction. For more information, refer to [Advanced Visual Parsing](nemoretriever-parse.md). | 
-| `vlm`                 | Advanced | Use [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning of unstructured images and infographics. This profile enables the `caption` method in the Python API to generate text descriptions of visual content. For more information, refer to [Use Multimodal Embedding](vlm-embed.md) and [Extract Captions from Images](nv-ingest-python-api.md#extract-captions-from-images). | 
+| `retrieval`           | Core     | Embedding NIM for passage and query embeddings; pair with LanceDB in your client configuration for vector storage. | 
+| `audio`               | Advanced | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) ASR NIM for audio files. See [Audio Processing](audio-video.md). | 
+| `nemotron-parse`      | Advanced | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) for higher-accuracy text and table extraction. |
+| `vlm`                 | Advanced | [Nemotron Nano 12B v2 VL](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl/modelcard) for image captioning. Enables the `caption` API. See [Use Multimodal Embedding](embedding.md) and [Extract Captions from Images](nemo-retriever-api-reference.md). | 
 
-### Example: Using the VLM Profile for Infographic Captioning
-
-Infographics often combine text, charts, and diagrams into complex visuals. Vision-language model (VLM) captioning generates natural language descriptions that capture this complexity, making the content searchable and more accessible for downstream applications.
-
-To use VLM captioning for infographics, start NeMo Retriever Library with both the `retrieval` and `vlm` profiles by running the following code.
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  --profile retrieval \
-  --profile vlm up
-```
-
-## Air-Gapped Deployment (Docker Compose)
-
-When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
-
-1. On a machine with network access: Clone the repo, authenticate with NGC (`docker login nvcr.io`), and pull all images used by your chosen profile (for example, `docker compose --profile retrieval pull`).
-2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)).
-3. Transfer the image archives and your `docker-compose.yaml` (and `.env` if used) to the air-gapped system.
-4. On the air-gapped machine: Load the images (`docker load -i <archive>`) and start the stack with the same profile (for example, `docker compose --profile retrieval up`).
-
-Ensure the same image tags and `docker-compose.yaml` version are used in both environments so that service configuration stays consistent.
-
-## Docker Compose override files
-
-The default [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml) might exceed VRAM on a single GPU for some hardware. Override files reduce per-service memory, batch sizes, or concurrency so the full pipeline can run on the available GPU. To use an override, pass a second `-f` file after the base compose file; Docker Compose merges them and the override takes precedence.
-
-| Override file | GPU target |
-|---------------|------------|
-| `docker-compose.a10g.yaml` | NVIDIA A10G |
-| `docker-compose.a100-40gb.yaml` | NVIDIA A100-SXM4-40GB |
-| `docker-compose.l40s.yaml` | NVIDIA L40S |
-
-For RTX Pro 6000 Server Edition and other GPUs with limited VRAM, use the override that best matches your GPU memory (for example, `docker-compose.l40s.yaml` or `docker-compose.a10g.yaml`).
-
-### Example: Using the VLM Profile for Infographic Captioning
+### Example: VLM captioning for infographics
 
 Infographics often combine text, charts, and diagrams into complex visuals. Vision-language model (VLM) captioning generates natural language descriptions that capture this complexity, making the content searchable and more accessible for downstream applications.
 
-To use VLM captioning for infographics, start NeMo Retriever Library with both the `retrieval` and `vlm` profiles by running the following code.
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  --profile retrieval \
-  --profile vlm up
-```
+Enable the VLM / captioning NIM and the retrieval (embedding) stack your values require in your Helm values, then upgrade the release. Refer to the chart README and [embedding](embedding.md) for the environment variables that select the multimodal embedding and caption stack.
 
-### Example with A100 40GB
+## Air-gapped deployment (Kubernetes)
 
-The following example uses an override file for an A100 40GB GPU.
+When deploying without internet or NGC registry access from the cluster, follow [Air-Gapped Deployment (Kubernetes)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) in the Helm chart documentation and the [NVIDIA NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html): mirror images to your registry, load secrets, then install or upgrade the chart with those private references. Keep the same image tags and values between staging and production so configuration stays consistent.
 
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  -f docker-compose.a100-40gb.yaml \
-  --profile retrieval up
-```
+## Helm values and GPU-specific overrides
 
-### Example with A10G
+Default chart settings might exceed VRAM on a single GPU for some hardware targets. Use **values fragments** or the checked-in examples under [`helm/overrides/`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/helm/overrides) (for example A10G, A100 40GB, L40S) to lower per-service memory, batch sizes, or concurrency. Merge the override file with `-f` when you run `helm upgrade`, or maintain a single consolidated `values.yaml` per environment.
 
-```shell
-docker compose \
-  -f docker-compose.yaml \
-  -f docker-compose.a10g.yaml \
-  --profile retrieval up
-```
+| Example override asset (repo) | GPU target |
+|--------------------------------|------------|
+| `helm/overrides/values-a10g.yaml` | NVIDIA A10G |
+| `helm/overrides/values-a100-40gb.yaml` | NVIDIA A100-SXM4-40GB |
+| `helm/overrides/values-l40s.yaml` | NVIDIA L40S |
 
-### Example with L40S
+For RTX Pro 6000 Server Edition and other GPUs with limited VRAM, start from the override that best matches your GPU memory, then tune further.
+
+### Example: merge a GPU override with `helm upgrade`
 
 ```shell
-docker compose \
-  -f docker-compose.yaml \
-  -f docker-compose.l40s.yaml \
-  --profile retrieval up
+helm upgrade --install nemo-retriever <chart-or-tgz> -n "${NAMESPACE}" \
+  -f my-base-values.yaml \
+  -f helm/overrides/values-a100-40gb.yaml
 ```
+
+Use the same pattern for other override files, substituting the path that matches your GPU.
 
 
 ## Specify MIG slices for NIM models
 
-When you deploy the pipeline with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/nv-ingest/main/helm/README.md).
+When you deploy the pipeline with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NIM pods to land only on nodes that expose the desired MIG profiles (see the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)).
 
 To target a specific MIG profile—for example, a 3g.20gb slice on an A100, which is a hardware-partitioned virtual GPU instance that gives your workload a fixed mid-sized share of the A100’s compute plus 20 GB of dedicated GPU memory and behaves like a smaller independent GPU—for a given NIM, configure the `resources` and `nodeSelector` under that NIM’s values path in `values.yaml`.
 
-The following example shows the pattern. Paths vary by NIM, such as `nvingest.nvidiaNim.nemoretrieverPageElements` instead of the generic `nvingest.nim` placeholder. For details refer to [catalog.ngc.nvidia](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/helm-charts/nv-ingest).
+The following example shows the pattern. Paths vary by NIM, such as `nvingest.nvidiaNim.nemoretrieverPageElements` instead of the generic `nvingest.nim` placeholder. For details refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and the chart listing on [NGC](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/containers).
 Set `resources.requests` and `resources.limits` to the name of the MIG resource that you want (for example, `nvidia.com/mig-3g.20gb`).
 ```shell
 nvingest:
@@ -495,10 +435,11 @@ nvingest:
         nvidia.com/gpu.product: A100-SXM4-40GB-MIG-3g.20gb
 ```
 Key points:
-* Use the appropriate NIM‑specific values path (for example, `nvingest.nvidiaNim.nemoretrieverPageElements.resources`) rather than the generic `nvingest.nim` placeholder.
-* Set `resources.requests` and `resources.limits` to the desired MIG resource name (for example, `nvidia.com/mig-3g.20gb`).
-* Use `nodeSelector` (or tolerations/affinity, if you prefer) to target nodes labeled with the corresponding MIG‑enabled GPU product (for example, `nvidia.com/gpu.product: A100-SXM4-40GB-MIG-3g.20gb`).
-This syntax and structure can be repeated for each NIM model used by CAS, ensuring that each NV-Ingest NIM pod is mapped to the correct MIG slice type and scheduled onto compatible nodes.
+
+ * Use the appropriate NIM‑specific values path (for example, `nvingest.nvidiaNim.nemoretrieverPageElements.resources`) rather than the generic `nvingest.nim` placeholder.
+ * Set `resources.requests` and `resources.limits` to the desired MIG resource name (for example, `nvidia.com/mig-3g.20gb`).
+ * Use `nodeSelector` (or tolerations/affinity, if you prefer) to target nodes labeled with the corresponding MIG‑enabled GPU product (for example, `nvidia.com/gpu.product: A100-SXM4-40GB-MIG-3g.20gb`).
+This syntax and structure can be repeated for each NIM model used by CAS, ensuring that each NeMo Retriever Library NIM pod is mapped to the correct MIG slice type and scheduled onto compatible nodes.
 
 !!! important
 
@@ -510,6 +451,6 @@ This syntax and structure can be repeated for each NIM model used by CAS, ensuri
 - [Prerequisites](prerequisites.md)
 - [Support Matrix](support-matrix.md)
 - [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
-- [Deploy With Helm](helm.md)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [Notebooks](notebooks.md)
 - [Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)

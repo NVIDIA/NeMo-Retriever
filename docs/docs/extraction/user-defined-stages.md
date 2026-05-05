@@ -6,11 +6,6 @@ By following these steps,
 your Lambda stages are robust, signature-validated, plug-and-play for your RayPipeline, 
 and operate on a well-defined DataFrame payload and metadata structure.
 
-!!! note
-
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
-
-
 To add user-defined stages to your pipeline, you need the following:
 
 - **A callable function** — Your function must have the following exact signature. For more information, refer to []().
@@ -292,5 +287,5 @@ The  following example adds user-defined stages to your NeMo Retriever Library p
 
 ## Related Topics
 
-- [User-Defined Functions for NeMo Retriever Library](user-defined-functions.md)
+- [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md)
 - [NimClient Usage](nimclient.md)

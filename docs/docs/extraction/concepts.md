@@ -1,0 +1,27 @@
+# Concepts
+
+These terms appear throughout NeMo Retriever Library documentation.
+
+## Job
+
+A **job** is a unit of work you submit with a JSON description: a document payload (or reference) and a list of **ingestion tasks** to run on that payload. Results are retrieved as structured metadata and annotations.
+
+## Pipeline and tasks
+
+NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md), [user-defined stages](user-defined-stages.md).
+
+## Extraction metadata
+
+Output is typically a **JSON dictionary** listing extracted objects (text regions, tables, images, and so on), processing notes, and timing or trace data. Field-level detail is in the [metadata reference](content-metadata.md).
+
+## Embeddings and retrieval
+
+Optionally, the library can compute **embeddings** for extracted content and store vectors in [LanceDB](https://lancedb.com/) for downstream semantic or hybrid search in your application.
+
+## Deployment modes
+
+- **Library mode** — Run without the full container stack where appropriate ([quickstart](quickstart-library-mode.md)).
+- **Kubernetes / Helm (self-hosted)** — See [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
+- **Notebooks** — [Jupyter examples](notebooks.md) for experimentation and RAG demos.
+
+For a concise comparison, refer to [Deployment options](deployment-options.md).

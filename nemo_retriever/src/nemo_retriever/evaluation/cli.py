@@ -5,7 +5,7 @@
 """``retriever eval`` Typer subcommands.
 
 All heavy imports (litellm, evaluation modules) are deferred to inside
-command bodies so that ``pip install nemo-retriever`` (without ``[eval]``)
+command bodies so that ``pip install nemo-retriever`` (without ``[llm]``)
 does not break the CLI at import time.
 """
 
@@ -126,8 +126,12 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
     Returns ``(config, qa_dataset, ground_truth_dir, results_dir, min_coverage)``.
     """
     retrieval_file = os.environ.get("RETRIEVAL_FILE", "")
-    if not retrieval_file:
-        typer.echo("ERROR: RETRIEVAL_FILE environment variable is required with --from-env", err=True)
+    lancedb_uri = os.environ.get("LANCEDB_URI", "")
+    if not retrieval_file and not lancedb_uri:
+        typer.echo(
+            "ERROR: set RETRIEVAL_FILE (file mode) or LANCEDB_URI (lancedb mode) with --from-env",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     qa_dataset = os.environ.get("QA_DATASET", "")
@@ -187,6 +191,17 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
         os.path.dirname(os.environ.get("OUTPUT_FILE", "")) or "data/test_retrieval",
     )
 
+    if retrieval_file:
+        retrieval_block: dict[str, str | None] = {"type": "file", "file_path": retrieval_file}
+    else:
+        retrieval_block = {
+            "type": "lancedb",
+            "lancedb_uri": lancedb_uri,
+            "lancedb_table": os.environ.get("LANCEDB_TABLE", "nv-ingest"),
+            "embedder": os.environ.get("EMBEDDER", "nvidia/llama-nemotron-embed-1b-v2"),
+            "save_path": os.environ.get("RETRIEVAL_SAVE_PATH"),
+        }
+
     config = {
         "execution": {
             "runs": 1,
@@ -196,12 +211,103 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
             "min_coverage": min_coverage,
         },
         "dataset": {"source": qa_dataset, "ground_truth_dir": ground_truth_dir},
-        "retrieval": {"file_path": retrieval_file},
+        "retrieval": retrieval_block,
         "models": models,
         "evaluations": evaluations,
         "output": {"results_dir": results_dir},
     }
     return config, qa_dataset, ground_truth_dir, results_dir, min_coverage
+
+
+def run_qa_sweep_from_config_dict(cfg: dict) -> int:
+    """Run a QA evaluation sweep from a loaded config dict (0 = success, 1 = failure).
+
+    Used by ``retriever eval run`` and by ``retriever pipeline run`` when
+    ``--evaluation-mode=qa`` so the LLM sweep stays in one implementation.
+    """
+    from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
+    from nemo_retriever.evaluation.retrievers import FileRetriever
+    from nemo_retriever.evaluation.runner import run_eval_sweep
+
+    if os.environ.get("LITELLM_DEBUG", "0").strip() in ("1", "true", "yes"):
+        import litellm
+
+        litellm._turn_on_debug()
+
+    execution = cfg.get("execution", {})
+    dataset_cfg = cfg.get("dataset", {})
+    retrieval_cfg = cfg.get("retrieval", {})
+    output_cfg = cfg.get("output", {})
+
+    qa_dataset = dataset_cfg.get("source", "")
+    if not qa_dataset:
+        typer.echo("ERROR: dataset.source is required in config", err=True)
+        return 1
+
+    results_dir = output_cfg.get("results_dir", "data/test_retrieval")
+    qa_limit = execution.get("limit", 0)
+    min_coverage = execution.get("min_coverage", 0.0)
+
+    loader = get_qa_dataset_loader(qa_dataset)
+    ground_truth_dir = dataset_cfg.get("ground_truth_dir", "data")
+    qa_pairs = loader(data_dir=ground_truth_dir)
+    typer.echo(f"Loaded {len(qa_pairs)} Q&A pairs from '{qa_dataset}'")
+
+    if qa_limit and qa_limit > 0:
+        qa_pairs = qa_pairs[:qa_limit]
+        typer.echo(f"limit={qa_limit}: evaluating first {len(qa_pairs)} pairs")
+
+    retrieval_type = retrieval_cfg.get("type", "file")
+    if retrieval_type == "lancedb":
+        page_index_path = retrieval_cfg.get("page_index")
+        page_idx = None
+        if page_index_path:
+            with open(page_index_path, encoding="utf-8") as f:
+                page_idx = json.load(f)
+            typer.echo(f"Loaded page index: {len(page_idx)} documents")
+
+        save_path = retrieval_cfg.get("save_path")
+        retriever = FileRetriever.from_lancedb(
+            qa_pairs=qa_pairs,
+            lancedb_uri=retrieval_cfg.get("lancedb_uri", "lancedb"),
+            lancedb_table=retrieval_cfg.get("lancedb_table", "nv-ingest"),
+            embedder=retrieval_cfg.get("embedder", "nvidia/llama-nemotron-embed-1b-v2"),
+            top_k=execution.get("top_k", 5),
+            page_index=page_idx,
+            save_path=save_path,
+        )
+        typer.echo("Built retriever from LanceDB (in-memory)")
+    else:
+        retrieval_file = retrieval_cfg.get("file_path", "")
+        if not retrieval_file:
+            typer.echo("ERROR: retrieval.file_path is required when type='file'", err=True)
+            return 1
+        retriever = FileRetriever(file_path=retrieval_file)
+
+    coverage = retriever.check_coverage(qa_pairs)
+    typer.echo(f"Coverage: {coverage:.1%}")
+    if coverage < min_coverage:
+        typer.echo(
+            f"ERROR: retrieval covers only {coverage:.1%} of queries " f"(min_coverage={min_coverage:.0%}). Aborting.",
+            err=True,
+        )
+        return 1
+
+    results = run_eval_sweep(
+        cfg,
+        qa_pairs,
+        results_dir,
+        retriever=retriever,
+        on_run_complete=_on_run,
+    )
+
+    passed = sum(1 for r in results if r["status"] == "PASS")
+    typer.echo(f"\nSweep complete: {passed}/{len(results)} passed")
+    typer.echo(f"Coverage: {coverage:.1%}")
+    for r in results:
+        typer.echo(f"  {r['status']}: {r['label']} -> {r.get('output_path', r.get('error', ''))}")
+
+    return 0 if passed == len(results) else 1
 
 
 @app.command("run")
@@ -225,21 +331,12 @@ def run_cmd(
     RETRIEVAL_FILE, QA_DATASET, GEN_MODEL, JUDGE_MODEL, etc. from
     the environment).
     """
-    from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
-    from nemo_retriever.evaluation.retrievers import FileRetriever
-    from nemo_retriever.evaluation.runner import run_eval_sweep
-
     if not config and not from_env:
         typer.echo("ERROR: supply --config <path> or --from-env", err=True)
         raise typer.Exit(code=1)
     if config and from_env:
         typer.echo("ERROR: --config and --from-env are mutually exclusive", err=True)
         raise typer.Exit(code=1)
-
-    if os.environ.get("LITELLM_DEBUG", "0").strip() in ("1", "true", "yes"):
-        import litellm
-
-        litellm._turn_on_debug()
 
     if config:
         from nemo_retriever.evaluation.config import load_eval_config
@@ -248,61 +345,9 @@ def run_cmd(
     else:
         cfg, *_ = _build_env_config()
 
-    execution = cfg.get("execution", {})
-    dataset_cfg = cfg.get("dataset", {})
-    retrieval_cfg = cfg.get("retrieval", {})
-    output_cfg = cfg.get("output", {})
-
-    qa_dataset = dataset_cfg.get("source", "")
-    if not qa_dataset:
-        typer.echo("ERROR: dataset.source is required in config", err=True)
-        raise typer.Exit(code=1)
-
-    retrieval_file = retrieval_cfg.get("file_path", "")
-    if not retrieval_file:
-        typer.echo("ERROR: retrieval.file_path is required in config", err=True)
-        raise typer.Exit(code=1)
-
-    results_dir = output_cfg.get("results_dir", "data/test_retrieval")
-    qa_limit = execution.get("limit", 0)
-    min_coverage = execution.get("min_coverage", 0.0)
-
-    loader = get_qa_dataset_loader(qa_dataset)
-    ground_truth_dir = dataset_cfg.get("ground_truth_dir", "data")
-    qa_pairs = loader(data_dir=ground_truth_dir)
-    typer.echo(f"Loaded {len(qa_pairs)} Q&A pairs from '{qa_dataset}'")
-
-    if qa_limit and qa_limit > 0:
-        qa_pairs = qa_pairs[:qa_limit]
-        typer.echo(f"limit={qa_limit}: evaluating first {len(qa_pairs)} pairs")
-
-    retriever = FileRetriever(file_path=retrieval_file)
-    coverage = retriever.check_coverage(qa_pairs)
-    typer.echo(f"Coverage: {coverage:.1%}")
-    if coverage < min_coverage:
-        typer.echo(
-            f"ERROR: retrieval file covers only {coverage:.1%} of queries "
-            f"(min_coverage={min_coverage:.0%}). Aborting.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    results = run_eval_sweep(
-        cfg,
-        qa_pairs,
-        results_dir,
-        retriever=retriever,
-        on_run_complete=_on_run,
-    )
-
-    passed = sum(1 for r in results if r["status"] == "PASS")
-    typer.echo(f"\nSweep complete: {passed}/{len(results)} passed")
-    typer.echo(f"Coverage: {coverage:.1%}")
-    for r in results:
-        typer.echo(f"  {r['status']}: {r['label']} -> {r.get('output_path', r.get('error', ''))}")
-
-    if passed < len(results):
-        raise typer.Exit(code=1)
+    code = run_qa_sweep_from_config_dict(cfg)
+    if code != 0:
+        raise typer.Exit(code=code)
 
 
 @app.command("export")

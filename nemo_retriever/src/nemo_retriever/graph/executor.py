@@ -15,6 +15,8 @@ import pandas as pd
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
     gather_local_resources,
@@ -237,11 +239,18 @@ class RayDataExecutor(AbstractExecutor):
             )
 
         if self._ray_address or not ray.is_initialized():
-            runtime_env = {
-                "env_vars": {
-                    "VIRTUAL_ENV": os.path.dirname(os.path.dirname(sys.executable)),
-                },
+            venv = os.path.dirname(os.path.dirname(sys.executable))
+            venv_bin = os.path.join(venv, "bin")
+            pypath = os.pathsep.join(p for p in sys.path if p)
+            ray_env_vars: dict[str, str] = {
+                "VIRTUAL_ENV": venv,
+                "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                "PYTHONPATH": pypath,
             }
+            ray_env_vars.update(collect_hf_runtime_env())
+            ray_env_vars.update(collect_remote_auth_runtime_env())
+            os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
+            runtime_env = {"env_vars": ray_env_vars}
             ray.init(
                 address=self._ray_address,
                 ignore_reinit_error=True,
@@ -286,6 +295,14 @@ class RayDataExecutor(AbstractExecutor):
                 node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
+
+            # Self-join operators (AudioVisualFuser, VideoFrameTextDedup) need
+            # the entire dataset in one batch — see the repartition site below
+            # for the actual single-block enforcement.
+            requires_global_batch = bool(getattr(node.operator_class, "REQUIRES_GLOBAL_BATCH", False))
+            if requires_global_batch:
+                batch_size = None
+                target_num_rows_per_block = None
 
             # When no explicit num_gpus override is given, auto-detect from the
             # GPUOperator mixin using actual cluster GPU availability.
@@ -336,7 +353,19 @@ class RayDataExecutor(AbstractExecutor):
             else:
                 num_gpus = self._default_num_gpus
 
-            if target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
+            if requires_global_batch:
+                # ``num_blocks=1`` is exact; ``target_num_rows_per_block`` is a
+                # streaming best-effort cap that can leave joins missing rows.
+                # When the operator declares ``GLOBAL_BATCH_GROUP_KEYS`` and
+                # concurrency > 1, hash-partition by those keys so rows sharing
+                # the keys stay co-located while blocks distribute across actors.
+                group_keys = list(getattr(node.operator_class, "GLOBAL_BATCH_GROUP_KEYS", None) or ())
+                n_blocks = max(1, int(overrides.get("concurrency") or 1)) if group_keys else 1
+                if n_blocks > 1:
+                    ds = ds.repartition(num_blocks=n_blocks, keys=group_keys, shuffle=True)
+                else:
+                    ds = ds.repartition(num_blocks=1)
+            elif target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
                 ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
 
             # Pass the operator class directly to map_batches with
@@ -353,4 +382,4 @@ class RayDataExecutor(AbstractExecutor):
                 **overrides,
             )
 
-        return ds.materialize()
+        return ds.to_pandas()

@@ -101,7 +101,7 @@ class _DummyDuckDB(SQLDatabase):
     def get_fks(self) -> pd.DataFrame:
         return _FAKE_FKS.copy()
 
-    def get_queries(self) -> pd.DataFrame:
+    def get_queries(self, hours: int = 24) -> pd.DataFrame:
         return pd.DataFrame(columns=["end_time", "query_text"])
 
     def close(self) -> None:

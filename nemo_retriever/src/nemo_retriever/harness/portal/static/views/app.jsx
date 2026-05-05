@@ -203,7 +203,7 @@ function App() {
     } catch {}
   }
 
-  const viewTitles = { runs: "Runs", analytics: "Analytics", reporting: "Reporting", datasets: "Datasets", presets: "Presets", runners: "Runners", scheduling: "Scheduling", alerts: "Alerts", ingestion: "Ingestion", retrieval: "Retrieval", models: "Models", designer: "Pipeline Designer", settings: "Settings" };
+  const viewTitles = { runs: "Runs", analytics: "Analytics", reporting: "Reporting", datasets: "Datasets", presets: "Presets", runners: "Runners", scheduling: "Scheduling", alerts: "Alerts", ingestion: "Ingestion", retrieval: "Retrieval", models: "Models", designer: "Pipeline Designer", settings: "Settings", database: "Database", mcp: "MCP" };
 
   const activeJobCount = jobs.filter(j => j.status==="running" || j.status==="pending" || j.status==="cancelling").length;
 
@@ -232,6 +232,12 @@ function App() {
     }
     if (activeView === "settings") {
       return "Manage portal deployment and system settings";
+    }
+    if (activeView === "database") {
+      return "Database backup, restore, and export management";
+    }
+    if (activeView === "mcp") {
+      return "MCP server configuration, exposed tools, and agent activity";
     }
     if (activeView === "ingestion") {
       return "Upload documents and run custom ingestion jobs";
@@ -297,7 +303,7 @@ function App() {
           )}
           {activeView==="datasets" && (
             <DatasetsView managedDatasets={managedDatasets}
-              loading={managedDatasetsLoading} onRefresh={fetchManagedDatasets} runners={runners} />
+              loading={managedDatasetsLoading} onRefresh={fetchManagedDatasets} />
           )}
           {activeView==="presets" && (
             <PresetsView managedPresets={managedPresets} yamlPresets={yamlPresets}
@@ -314,6 +320,12 @@ function App() {
           )}
           {activeView==="settings" && (
             <SettingsView />
+          )}
+          {activeView==="database" && (
+            <DatabaseView />
+          )}
+          {activeView==="mcp" && (
+            <McpView />
           )}
           {activeView==="ingestion" && (
             <IngestionView jobs={jobs} onViewLogs={setLogViewerJobId} />

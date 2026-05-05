@@ -71,12 +71,44 @@ class BeirConfig:
     refine_factor: int = 10
     local_hf_device: str | None = None
     local_hf_cache_dir: str | None = None
-    local_hf_batch_size: int = 64
+    local_hf_batch_size: int = 32
     reranker: bool = False
     reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
     reranker_endpoint: str | None = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
+    local_reranker_backend: str = "vllm"
+    #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
+    local_query_embed_backend: str = "hf"
+
+    def __post_init__(self) -> None:
+        from nemo_retriever.model import (
+            _LOCAL_QUERY_BACKENDS,
+            _LOCAL_RERANKER_BACKENDS,
+            normalize_backend,
+        )
+
+        # frozen=True: must use object.__setattr__ to write normalized values.
+        object.__setattr__(
+            self,
+            "local_query_embed_backend",
+            normalize_backend(
+                self.local_query_embed_backend,
+                _LOCAL_QUERY_BACKENDS,
+                field_name="local_query_embed_backend",
+                default="hf",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "local_reranker_backend",
+            normalize_backend(
+                self.local_reranker_backend,
+                _LOCAL_RERANKER_BACKENDS,
+                field_name="local_reranker_backend",
+                default="vllm",
+            ),
+        )
 
 
 def _row_get(row: Any, key: str, default: Any = None) -> Any:
@@ -304,25 +336,73 @@ def _load_financebench_json_dataset(*, dataset_name: str, doc_id_field: str) -> 
     )
 
 
+_LANG_ALIASES: dict[str, set[str]] = {
+    "en": {"en", "eng", "english"},
+    "fr": {"fr", "fra", "fre", "french", "français", "francais"},
+    "de": {"de", "deu", "ger", "german", "deutsch"},
+    "es": {"es", "spa", "spanish", "español", "espanol"},
+    "it": {"it", "ita", "italian", "italiano"},
+    "pt": {"pt", "por", "portuguese", "português", "portugues"},
+    "zh": {"zh", "zho", "chi", "chinese"},
+    "ja": {"ja", "jpn", "japanese"},
+    "ko": {"ko", "kor", "korean"},
+    "ar": {"ar", "ara", "arabic"},
+    "ru": {"ru", "rus", "russian"},
+    "nl": {"nl", "nld", "dut", "dutch"},
+    "pl": {"pl", "pol", "polish"},
+    "sv": {"sv", "swe", "swedish"},
+    "tr": {"tr", "tur", "turkish"},
+    "hi": {"hi", "hin", "hindi"},
+}
+
+
+def _languages_match(filter_lang: str, row_lang: str) -> bool:
+    """Fuzzy language matching that accepts ISO codes and full names."""
+    a = filter_lang.strip().lower()
+    b = row_lang.strip().lower()
+    if a == b:
+        return True
+    for aliases in _LANG_ALIASES.values():
+        if a in aliases and b in aliases:
+            return True
+    return False
+
+
 def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = None) -> tuple[list[str], list[str]]:
     """Normalize iterable rows into ordered ``(query_ids, queries)``."""
     normalized_language = str(query_language).strip().lower() if query_language is not None else None
     query_ids: list[str] = []
     queries: list[str] = []
+    total_rows = 0
+    skipped_empty = 0
+    skipped_language = 0
 
     for idx, row in enumerate(rows):
+        total_rows += 1
         query_text = _row_get(row, "query")
         if not isinstance(query_text, str) or not query_text.strip():
+            skipped_empty += 1
             continue
 
         if normalized_language is not None:
             row_language = str(_row_get(row, "language", "") or "").strip().lower()
-            if row_language != normalized_language:
+            if not _languages_match(normalized_language, row_language):
+                skipped_language += 1
                 continue
 
         query_id = _row_get(row, "query_id", idx)
         query_ids.append(str(query_id))
         queries.append(query_text)
+
+    if not query_ids:
+        logger.warning(
+            "build_queries_by_id returned 0 queries: total_rows=%d, "
+            "skipped_empty=%d, skipped_language=%d (filter=%r)",
+            total_rows,
+            skipped_empty,
+            skipped_language,
+            query_language,
+        )
 
     return query_ids, queries
 
@@ -381,12 +461,33 @@ def load_beir_dataset(
     except ImportError as exc:  # pragma: no cover - exercised in runtime environments
         raise ImportError("BEIR-style ViDoRe evaluation requires the 'datasets' package.") from exc
 
-    queries_rows = load_dataset(f"vidore/{dataset_name}", data_dir="queries", split=split)
-    qrels_rows = load_dataset(f"vidore/{dataset_name}", data_dir="qrels", split=split)
+    ds_repo = f"vidore/{dataset_name}"
+    try:
+        queries_rows = load_dataset(ds_repo, "queries", split=split)
+    except Exception as exc:
+        logger.debug("load_dataset config='queries' failed (%s); retrying with data_dir", exc)
+        queries_rows = load_dataset(ds_repo, data_dir="queries", split=split)
+    try:
+        qrels_rows = load_dataset(ds_repo, "qrels", split=split)
+    except Exception as exc:
+        logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
+        qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
+
+    logger.info(
+        "Loaded BEIR dataset %s split=%s: %d query rows, %d qrel rows",
+        ds_repo,
+        split,
+        len(queries_rows),
+        len(qrels_rows),
+    )
 
     query_ids, queries = build_queries_by_id(queries_rows, query_language=query_language)
     if not query_ids:
-        raise ValueError(f"No queries loaded for dataset={dataset_name!r} split={split!r}")
+        raise ValueError(
+            f"No queries loaded for dataset={dataset_name!r} split={split!r} "
+            f"query_language={query_language!r}. "
+            f"Loaded {len(queries_rows)} raw rows from HuggingFace."
+        )
 
     allowed_query_ids = set(query_ids)
     qrels = build_qrels_by_query_id(qrels_rows, allowed_query_ids=allowed_query_ids)
@@ -599,15 +700,19 @@ def evaluate_lancedb_beir(
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
     retriever = Retriever(
-        lancedb_uri=str(cfg.lancedb_uri),
-        lancedb_table=str(cfg.lancedb_table),
+        vdb="lancedb",
+        vdb_kwargs={
+            "uri": str(cfg.lancedb_uri),
+            "table_name": str(cfg.lancedb_table),
+            "hybrid": bool(cfg.hybrid),
+            "nprobes": int(cfg.nprobes),
+            "refine_factor": int(cfg.refine_factor),
+        },
         embedder=str(cfg.embedding_model),
-        embedding_http_endpoint=cfg.embedding_http_endpoint,
+        embedding_endpoint=cfg.embedding_http_endpoint,
         embedding_api_key=(cfg.embedding_api_key or "").strip(),
+        embedding_use_grpc=False if cfg.embedding_http_endpoint else None,
         top_k=max(ks),
-        nprobes=int(cfg.nprobes),
-        refine_factor=int(cfg.refine_factor),
-        hybrid=bool(cfg.hybrid),
         local_hf_device=cfg.local_hf_device,
         local_hf_cache_dir=Path(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
         local_hf_batch_size=int(cfg.local_hf_batch_size),
@@ -616,6 +721,8 @@ def evaluate_lancedb_beir(
         reranker_endpoint=cfg.reranker_endpoint,
         reranker_api_key=(cfg.reranker_api_key or "").strip(),
         reranker_batch_size=int(cfg.reranker_batch_size),
+        local_reranker_backend=str(cfg.local_reranker_backend),
+        local_query_embed_backend=str(cfg.local_query_embed_backend),
     )
     raw_hits = retriever.queries(dataset.queries)
     run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)

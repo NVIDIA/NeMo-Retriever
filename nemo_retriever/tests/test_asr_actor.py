@@ -150,11 +150,11 @@ def test_asr_actor_remote_segment_audio():
         assert out["chunk_index"].tolist() == [3, 3]
         assert out["metadata"].iloc[0]["segment_index"] == 0
         assert out["metadata"].iloc[0]["segment_count"] == 2
-        assert out["metadata"].iloc[0]["segment_start"] == 0.0
-        assert out["metadata"].iloc[0]["segment_end"] == 1.0
+        assert out["metadata"].iloc[0]["segment_start_seconds"] == 0.0
+        assert out["metadata"].iloc[0]["segment_end_seconds"] == 1.0
         assert out["metadata"].iloc[1]["segment_index"] == 1
-        assert out["metadata"].iloc[1]["segment_start"] == 1.0
-        assert out["metadata"].iloc[1]["segment_end"] == 2.5
+        assert out["metadata"].iloc[1]["segment_start_seconds"] == 1.0
+        assert out["metadata"].iloc[1]["segment_end_seconds"] == 2.5
 
 
 def test_apply_asr_to_df_segment_audio():
@@ -195,7 +195,7 @@ def test_apply_asr_to_df_segment_audio():
 def test_local_asr_does_not_call_get_client():
     """When audio_endpoints are both null, ASRActor uses local model and does not call _get_client."""
     mock_model = MagicMock()
-    mock_model.transcribe.return_value = ["mocked local transcript"]
+    mock_model.transcribe_with_segments.return_value = [("mocked local transcript", [])]
     mock_class = MagicMock(return_value=mock_model)
     mock_local = MagicMock()
     mock_local.ParakeetCTC1B1ASR = mock_class
@@ -227,9 +227,9 @@ def test_local_asr_does_not_call_get_client():
 
             assert len(out) == 1
             assert out["text"].iloc[0] == "mocked local transcript"
-            mock_model.transcribe.assert_called_once()
+            mock_model.transcribe_with_segments.assert_called_once()
             # One path passed (temp file or /tmp/chunk.wav)
-            call_args = mock_model.transcribe.call_args[0][0]
+            call_args = mock_model.transcribe_with_segments.call_args[0][0]
             assert isinstance(call_args, list)
             assert len(call_args) == 1
     finally:
@@ -242,7 +242,7 @@ def test_local_asr_does_not_call_get_client():
 def test_local_asr_apply_asr_to_df():
     """apply_asr_to_df with audio_endpoints=(None, None) uses local model when mocked."""
     mock_model = MagicMock()
-    mock_model.transcribe.return_value = ["apply local text"]
+    mock_model.transcribe_with_segments.return_value = [("apply local text", [])]
     mock_class = MagicMock(return_value=mock_model)
     mock_local = MagicMock()
     mock_local.ParakeetCTC1B1ASR = mock_class

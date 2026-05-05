@@ -14,6 +14,7 @@ modules, allowing unit tests with minimal deps to run.
 __all__ = [
     "NemotronPageElementsV3",
     "NemotronOCRV1",
+    "NemotronOCRV2",
     "NemotronTableStructureV1",
     "NemotronGraphicElementsV1",
     "NemotronParseV12",
@@ -33,6 +34,10 @@ def __getattr__(name: str):
         from .nemotron_ocr_v1 import NemotronOCRV1
 
         return NemotronOCRV1
+    if name == "NemotronOCRV2":
+        from .nemotron_ocr_v2 import NemotronOCRV2
+
+        return NemotronOCRV2
     if name == "NemotronTableStructureV1":
         from .nemotron_table_structure_v1 import NemotronTableStructureV1
 
@@ -50,7 +55,7 @@ def __getattr__(name: str):
 
         return NemotronRerankV2
     if name == "NemotronRerankVLV2":
-        from .nemotron_rerank_vl_v2 import NemotronRerankVLV2
+        from .nemotron_rerank_vl_v2_hf import NemotronRerankVLV2
 
         return NemotronRerankVLV2
     if name == "NemotronVLMCaptioner":

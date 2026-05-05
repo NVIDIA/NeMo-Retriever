@@ -12,7 +12,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
-from nemo_retriever.text_embed.shared import build_embed_kwargs
+from nemo_retriever.text_embed.shared import build_embed_kwargs, _to_bool
 
 
 class _BatchEmbedActor(AbstractOperator, GPUOperator):
@@ -36,12 +36,20 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             self._model = None
             return
 
+        ingest_backend = (self._kwargs.get("local_ingest_embed_backend") or "vllm").strip().lower()
+        hf_cache = str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None
+
         from nemo_retriever.model import create_local_embedder
 
+        hf_device = str(self._kwargs["local_hf_device"]) if self._kwargs.get("local_hf_device") else None
         self._model = create_local_embedder(
-            self._kwargs.get("model_name"),
-            device=str(self._kwargs["device"]) if self._kwargs.get("device") else None,
-            hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
+            self._kwargs.get("embed_model_name") or self._kwargs.get("model_name"),
+            backend=ingest_backend,
+            device=hf_device,
+            hf_cache_dir=hf_cache,
+            gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
+            enforce_eager=_to_bool(self._kwargs.get("enforce_eager"), default=False),
+            dimensions=self._kwargs.get("dimensions"),
             normalize=bool(self._kwargs.get("normalize", True)),
             max_length=int(self._kwargs.get("max_length", 8192)),
         )

@@ -2,11 +2,6 @@
 
 You can view telemetry data for [NeMo Retriever Library](overview.md).
 
-!!! note
-
-    NVIDIA Ingest (nv-ingest) has been renamed NeMo Retriever Library.
-
-
 ## OpenTelemetry
 
 After OpenTelemetry and Zipkin are running, you can open your browser to explore traces: 

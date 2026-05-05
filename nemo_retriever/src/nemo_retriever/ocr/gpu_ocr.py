@@ -82,6 +82,6 @@ class OCRActor(AbstractOperator, GPUOperator):
                 out["table"] = [[] for _ in range(n)]
                 out["chart"] = [[] for _ in range(n)]
                 out["infographic"] = [[] for _ in range(n)]
-                out["ocr_v1"] = [payload for _ in range(n)]
+                out["ocr"] = [payload for _ in range(n)]
                 return out
-            return [{"ocr_v1": _error_payload(stage="actor_call", exc=exc)}]
+            return [{"ocr": _error_payload(stage="actor_call", exc=exc)}]

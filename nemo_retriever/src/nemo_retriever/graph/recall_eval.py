@@ -29,12 +29,13 @@ logger = logging.getLogger(__name__)
     component_type="pipeline_evaluator",
 )
 class RecallEvaluatorActor:
-    """Evaluation node placed after a LanceDB Writer in the Designer pipeline.
+    """Designer evaluation node against an existing LanceDB table.
 
-    Supports both ``recall`` (ground-truth query CSV) and ``beir``
-    (HuggingFace BEIR dataset) evaluation modes.  After evaluation, calls
-    ``print_run_summary`` to emit the same structured output that the
-    batch pipeline produces.
+    Assumes vectors were already written (for example via
+    :class:`~nemo_retriever.vdb.operators.IngestVdbOperator` or the ``retriever
+    pipeline`` upload path). Supports ``recall`` (ground-truth query CSV) and
+    ``beir`` (HuggingFace BEIR dataset) modes, then calls
+    ``print_run_summary`` like the batch pipeline.
     """
 
     def __init__(
@@ -130,12 +131,11 @@ class RecallEvaluatorActor:
                 return {}
 
             recall_cfg = RecallConfig(
-                lancedb_uri=self.lancedb_uri,
-                lancedb_table=self.lancedb_table,
-                embedding_model=resolved_model,
+                vdb_op="lancedb",
+                vdb_kwargs={"uri": self.lancedb_uri, "table_name": self.lancedb_table, "hybrid": self.hybrid},
+                query_embedder=resolved_model,
                 ks=self._ks,
                 match_mode=self.match_mode,
-                hybrid=self.hybrid,
             )
             eval_start = time.perf_counter()
             _df_query, _gold, _raw_hits, _retrieved_keys, evaluation_metrics = retrieve_and_score(
@@ -151,13 +151,12 @@ class RecallEvaluatorActor:
         summary_dict = print_run_summary(
             processed_pages=-1,
             input_path=Path(self.lancedb_uri),
-            hybrid=self.hybrid,
-            lancedb_uri=self.lancedb_uri,
-            lancedb_table_name=self.lancedb_table,
+            vdb_op="lancedb",
+            vdb_kwargs={"uri": self.lancedb_uri, "table_name": self.lancedb_table, "hybrid": self.hybrid},
             total_time=-1,
             ingest_only_total_time=-1,
             ray_dataset_download_total_time=-1,
-            lancedb_write_total_time=-1,
+            vdb_upload_total_time=-1,
             evaluation_total_time=evaluation_total_time,
             evaluation_metrics=evaluation_metrics,
             recall_total_time=recall_total_time,

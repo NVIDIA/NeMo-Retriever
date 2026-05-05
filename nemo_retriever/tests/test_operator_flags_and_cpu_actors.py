@@ -263,7 +263,7 @@ class TestOCRCPUActor:
     def test_process(self, mock_fn):
         from nemo_retriever.ocr.cpu_ocr import OCRCPUActor
 
-        expected = pd.DataFrame({"ocr_v1": ["res"]})
+        expected = pd.DataFrame({"ocr": ["res"]})
         mock_fn.return_value = expected
         actor = OCRCPUActor(ocr_invoke_url="http://fake")
         result = actor.process(pd.DataFrame({"page_image": ["x"]}))
