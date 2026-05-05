@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -533,6 +534,20 @@ def _pip_install(py: Path, packages: list[str], *, cwd: Path, env: dict[str, str
     _run([str(py), "-m", "pip", "install", "--upgrade", *packages], cwd=cwd, env=env)
 
 
+def _pyproject_build_system_requires(project_dir: Path) -> list[str]:
+    pyproject = project_dir / "pyproject.toml"
+    if not pyproject.exists():
+        return []
+
+    data = tomllib.loads(_read_text(pyproject))
+    requires = data.get("build-system", {}).get("requires", [])
+    if not isinstance(requires, list) or not all(isinstance(req, str) for req in requires):
+        raise RuntimeError(
+            "Invalid pyproject.toml [build-system].requires; expected a list of strings"
+        )
+    return requires
+
+
 def _installed_distribution_public_version(
     py: Path,
     package: str,
@@ -585,6 +600,13 @@ def _build(
             shutil.rmtree(p)
 
     _pip_install(py, ["build"], cwd=project_dir, env=env)
+    if no_isolation:
+        _pip_install(
+            py,
+            _pyproject_build_system_requires(project_dir),
+            cwd=project_dir,
+            env=env,
+        )
     _pip_install(py, venv_pip_install, cwd=project_dir, env=env)
 
     if pin_runtime_dependencies:

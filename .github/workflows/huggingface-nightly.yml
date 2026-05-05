@@ -281,6 +281,7 @@ jobs:
             --build-no-isolation \
             --venv-pip-install "hatchling" \
             --venv-pip-install "setuptools>=68" \
+            --venv-pip-install "ninja" \
             --venv-pip-install "torch==2.10.0" \
             --venv-pip-install "torchvision==0.25.0" \
             --pin-runtime-dependency "torch" \

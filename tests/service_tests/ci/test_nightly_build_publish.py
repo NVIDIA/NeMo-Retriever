@@ -145,6 +145,59 @@ def test_parse_package_rename_requires_old_equals_new():
         nightly._parse_package_rename("nemotron_ocr_v2")
 
 
+def test_build_no_isolation_installs_pyproject_build_system_requires(tmp_path, monkeypatch):
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "pyproject.toml").write_text(
+        textwrap.dedent(
+            """
+            [build-system]
+            requires = ["hatchling", "editables"]
+            build-backend = "hatchling.build"
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+    pip_install_calls = []
+
+    monkeypatch.setattr(
+        nightly,
+        "_ensure_venv",
+        lambda venv_dir, *, system_site_packages: Path("/venv/bin/python"),
+    )
+
+    def fake_pip_install(py, packages, *, cwd, env):
+        pip_install_calls.append(list(packages))
+
+    def fake_run(cmd, *, cwd=None, env=None):
+        assert cmd[:3] == ["/venv/bin/python", "-m", "build"]
+        assert "--no-isolation" in cmd
+        dist_dir = project_dir / "dist"
+        dist_dir.mkdir()
+        (dist_dir / "example-0.0.0.tar.gz").write_text("sdist", encoding="utf-8")
+
+    monkeypatch.setattr(nightly, "_pip_install", fake_pip_install)
+    monkeypatch.setattr(nightly, "_run", fake_run)
+
+    nightly._build(
+        project_dir,
+        out_dir,
+        build_env=[],
+        no_isolation=True,
+        venv_system_site_packages=False,
+        venv_pip_install=["torch==2.10.0"],
+        pin_runtime_dependencies=[],
+    )
+
+    assert pip_install_calls == [
+        ["build"],
+        ["hatchling", "editables"],
+        ["torch==2.10.0"],
+    ]
+    assert (out_dir / "example-0.0.0.tar.gz").exists()
+
+
 def test_patch_pyproject_runtime_dependency_pins_only_project_dependencies(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
