@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, Sequence, Tuple
+from typing import Any, Literal, Optional, Tuple
 from urllib.parse import urlparse
 
 import warnings
