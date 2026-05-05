@@ -39,13 +39,17 @@ class PostgresDatabase(SQLDatabase):
     # ------------------------------------------------------------------
 
     def execute(self, sql: str, parameters: Optional[list] = None) -> pd.DataFrame:
-        with self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, parameters)
-            if cur.description is None:
-                self._conn.commit()
-                return pd.DataFrame()
-            rows = cur.fetchall()
-        return pd.DataFrame(rows)
+        try:
+            with self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, parameters)
+                if cur.description is None:
+                    self._conn.commit()
+                    return pd.DataFrame()
+                rows = cur.fetchall()
+            return pd.DataFrame(rows)
+        except psycopg2.Error:
+            self._conn.rollback()
+            raise
 
     # ------------------------------------------------------------------
     # Schema introspection

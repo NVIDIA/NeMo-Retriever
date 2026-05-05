@@ -344,7 +344,7 @@ def evaluate(input_path: Path, output_path: Path) -> None:
                 returned_db = (agent_result or {}).get("sql_response_from_db")
 
                 row["returned_sql"] = returned_sql
-                row["returned_answer"] = returned_answer
+                row["returned_answer"] = _stringify_db_result(returned_db)
 
                 row.update(_score_sql(connector, expected_sql, returned_sql))
                 row.update(_score_answer(expected_answer, returned_answer, _stringify_db_result(returned_db)))
