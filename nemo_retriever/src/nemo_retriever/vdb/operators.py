@@ -15,6 +15,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.vdb.records import normalize_retrieval_results, to_client_vdb_records
 from nemo_retriever.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
+    build_sidecar_lookup,
     materialize_sidecar_dataframe,
     split_sidecar_from_vdb_kwargs,
 )
@@ -46,9 +47,17 @@ class IngestVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=merged)
-        self._vdb_kwargs = merged
+        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        self._vdb_kwargs = clean_kwargs
         self._sidecar_spec = sidecar
+        self._sidecar_lookup: dict[str, dict[str, Any]] | None = None
+        if sidecar is not None:
+            _df = materialize_sidecar_dataframe(sidecar)
+            self._sidecar_lookup = build_sidecar_lookup(
+                _df,
+                sidecar["meta_source_field"],
+                sidecar["meta_fields"],
+            )
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
@@ -58,12 +67,10 @@ class IngestVdbOperator(AbstractOperator):
         # Compatibility shim: graph_pipeline emits flat embedded rows, while
         # nv-ingest-client VDB.run still expects nested NV-Ingest records.
         records = to_client_vdb_records(data)
-        if self._sidecar_spec is not None:
-            meta_df = materialize_sidecar_dataframe(self._sidecar_spec)
+        if self._sidecar_spec is not None and self._sidecar_lookup is not None:
             records = apply_sidecar_metadata_to_client_batches(
                 records,
-                meta_df=meta_df,
-                meta_source_field=self._sidecar_spec["meta_source_field"],
+                lookup=self._sidecar_lookup,
                 meta_fields=self._sidecar_spec["meta_fields"],
                 join_key=self._sidecar_spec["meta_join_key"],
             )
@@ -86,8 +93,8 @@ class RetrieveVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, _sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=merged)
-        self._vdb_kwargs = merged
+        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        self._vdb_kwargs = clean_kwargs
         self._retrieval_vdb_kwargs = clean_kwargs
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
 

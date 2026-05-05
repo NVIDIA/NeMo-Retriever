@@ -15,6 +15,7 @@ from nemo_retriever.vdb import IngestVdbOperator
 from nemo_retriever.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     filter_hits_by_content_metadata,
+    normalize_sidecar_cell_value,
     parse_hit_content_metadata,
     split_sidecar_from_vdb_kwargs,
 )
@@ -36,6 +37,13 @@ class _FakeVDB:
 
     def run(self, records: Any) -> None:
         self.run_calls.append(records)
+
+
+def test_normalize_sidecar_cell_value_list_and_dict_no_raise() -> None:
+    assert normalize_sidecar_cell_value([1, 2]) == [1, 2]
+    assert normalize_sidecar_cell_value({"k": 1}) == {"k": 1}
+    np = pytest.importorskip("numpy")
+    assert (normalize_sidecar_cell_value(np.array([1, 2])) == np.array([1, 2])).all()
 
 
 def test_split_sidecar_from_vdb_kwargs_round_trip() -> None:

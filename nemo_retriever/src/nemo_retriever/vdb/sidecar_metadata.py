@@ -16,20 +16,22 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Literal, Mapping
+from collections.abc import Callable
+from typing import Any, Mapping
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from nemo_retriever.params.models import MetaJoinKey
 
-MetaJoinKey = Literal["auto", "source_id", "source_name"]
+logger = logging.getLogger(__name__)
 
 
 def normalize_sidecar_cell_value(field: Any) -> Any:
     """Normalize a dataframe cell for JSON / vector DB storage (matches client behavior)."""
     if field is None:
         return None
-    if pd.isna(field):
+    # pd.isna(list/dict/ndarray) returns array-like; bool(array) raises ValueError.
+    if pd.api.types.is_scalar(field) and pd.isna(field):
         return None
     if isinstance(field, str):
         if field == "":
@@ -110,6 +112,15 @@ def _build_lookup(
     return lookup
 
 
+def build_sidecar_lookup(
+    meta_df: pd.DataFrame,
+    meta_source_field: str,
+    meta_fields: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Build the source-key → metadata row dict once; reuse across ``process()`` calls."""
+    return _build_lookup(meta_df, meta_source_field, meta_fields)
+
+
 def _resolve_join_keys(source_metadata: Mapping[str, Any], join_key: MetaJoinKey) -> list[str]:
     out: list[str] = []
     if join_key == "auto":
@@ -132,13 +143,17 @@ def _resolve_join_keys(source_metadata: Mapping[str, Any], join_key: MetaJoinKey
 def apply_sidecar_metadata_to_client_batches(
     batches: list[list[dict[str, Any]]],
     *,
-    meta_df: pd.DataFrame,
-    meta_source_field: str,
     meta_fields: list[str],
     join_key: MetaJoinKey = "auto",
+    meta_df: pd.DataFrame | None = None,
+    meta_source_field: str | None = None,
+    lookup: dict[str, dict[str, Any]] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """For each NV-Ingest record, merge sidecar columns into ``metadata['content_metadata']``."""
-    lookup = _build_lookup(meta_df, meta_source_field, meta_fields)
+    if lookup is None:
+        if meta_df is None or meta_source_field is None:
+            raise TypeError("Provide lookup=... or both meta_df and meta_source_field.")
+        lookup = _build_lookup(meta_df, meta_source_field, meta_fields)
     new_batches: list[list[dict[str, Any]]] = []
     for batch in batches:
         new_batch: list[dict[str, Any]] = []
@@ -237,7 +252,7 @@ def parse_hit_content_metadata(hit: Mapping[str, Any]) -> dict[str, Any]:
 
 def filter_hits_by_content_metadata(
     hits: list[dict[str, Any]],
-    predicate,
+    predicate: Callable[[dict[str, Any]], Any],
 ) -> list[dict[str, Any]]:
     """Keep hits where ``predicate(content_metadata_dict)`` is true."""
     out: list[dict[str, Any]] = []
@@ -246,6 +261,12 @@ def filter_hits_by_content_metadata(
         try:
             if predicate(cm):
                 out.append(h)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "content_metadata predicate failed; excluding hit. error=%s keys=%s",
+                exc,
+                sorted(cm)[:32] if isinstance(cm, dict) else type(cm).__name__,
+                exc_info=True,
+            )
             continue
     return out
