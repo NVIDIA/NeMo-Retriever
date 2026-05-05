@@ -22,7 +22,7 @@ Supported audio file types today:
 
     Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM must run on a [dedicated additional GPU](prerequisites-support-matrix.md#model-hardware-requirements). For the full list of requirements, refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements).
 
-This pipeline enables retrieval at the speech **segment** level when you enable segmenting (see examples below).
+This pipeline enables retrieval at the speech segment level when you enable segmenting (see examples below).
 
 ![Overview diagram](images/audio.png)
 
@@ -100,7 +100,7 @@ Instead of running the pipeline locally, you can use NVCF with remote endpoints.
 
 ## Video and frame OCR {#video-and-frame-ocr}
 
-For **video** assets, NeMo Retriever Library can combine **audio or speech** processing (see [Speech and audio extraction](#speech-and-audio-extraction) above) with **visual text extraction** when OCR applies to frames or derived images.
+For video assets, NeMo Retriever Library can combine audio or speech processing (see [Speech and audio extraction](#speech-and-audio-extraction) above) with visual text extraction when OCR applies to frames or derived images.
 
 For OCR-oriented extract methods on scanned or image-heavy content, see [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [text and layout extraction](multimodal-extraction.md#text-and-layout-extraction), and [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing.
 
