@@ -28,6 +28,12 @@ from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload
+from nemo_retriever.tabular_data.retrieval.deep_agent.main import (
+    get_agent_response as get_deep_agent_response,
+)
+from nemo_retriever.tabular_data.retrieval.deep_agent.state import (
+    AgentPayload as DeepAgentPayload,
+)
 from nemo_retriever.params import (
     EmbedParams,
     TabularExtractParams,
@@ -92,10 +98,7 @@ def run_ingest() -> None:
         connector=connector,
     )
 
-    extract_graph = (
-        Graph()
-        >> TabularSchemaExtractOp(tabular_params=TABULAR_PARAMS)
-    )
+    extract_graph = Graph() >> TabularSchemaExtractOp(tabular_params=TABULAR_PARAMS)
     extract_graph.execute(None)
 
     apply_metadata(connector.database_name)
@@ -151,7 +154,22 @@ def run_retrieve() -> None:
     logger.info("get_agent_response result: %s", agent_result)
 
 
-_ALL_MODES = ("ingest", "retrieve")
+def run_retrieve_deep() -> None:
+    """Run the deep-agent text-to-SQL pipeline against the previously ingested LanceDB."""
+    connector = _get_connector()
+
+    payload: DeepAgentPayload = {
+        "question": "How many DORs were created",
+        "history": [],
+        "path_state": {},
+        "db_connector": connector,
+    }
+
+    agent_result = get_deep_agent_response(payload)
+    logger.info("get_deep_agent_response result: %s", agent_result)
+
+
+_ALL_MODES = ("ingest", "retrieve", "retrieve-deep")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -177,3 +195,5 @@ if __name__ == "__main__":
         run_ingest()
     if "retrieve" in modes:
         run_retrieve()
+    if "retrieve-deep" in modes:
+        run_retrieve_deep()
