@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 from nemo_retriever.recall.beir import (
     BeirConfig,
     BeirDataset,
@@ -355,6 +357,24 @@ def test_load_beir_dataset_falls_back_to_vidore_data_dir(monkeypatch) -> None:
         ("vidore/vidore_v3_computer_science", ("qrels",), {"split": "test"}),
         ("vidore/vidore_v3_computer_science", (), {"data_dir": "qrels", "split": "test"}),
     ]
+
+
+def test_load_beir_dataset_error_includes_query_language_and_raw_row_count(monkeypatch) -> None:
+    def _fake_load_dataset(_repo, *args, **_kwargs):
+        if args == ("queries",):
+            return [{"query_id": "q1", "query": "bonjour", "language": "fr"}]
+        if args == ("qrels",):
+            return [{"query_id": "q1", "corpus_id": "doc_a", "score": 1}]
+        raise AssertionError("unexpected load_dataset call")
+
+    monkeypatch.setitem(sys.modules, "datasets", type("Datasets", (), {"load_dataset": _fake_load_dataset}))
+
+    with pytest.raises(ValueError) as exc_info:
+        load_beir_dataset("vidore_hf", dataset_name="vidore_v3_computer_science", query_language="en")
+
+    message = str(exc_info.value)
+    assert "query_language='en'" in message
+    assert "Loaded 1 raw rows from HuggingFace" in message
 
 
 def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:

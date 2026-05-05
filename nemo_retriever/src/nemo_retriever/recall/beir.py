@@ -493,7 +493,15 @@ def load_beir_dataset(
 
     query_ids, queries = build_queries_by_id(queries_rows, query_language=query_language)
     if not query_ids:
-        raise ValueError(f"No queries loaded for dataset={dataset_name!r} split={split!r}")
+        try:
+            raw_query_count = len(queries_rows)
+        except TypeError:
+            raw_query_count = "unknown"
+        raise ValueError(
+            f"No queries loaded for dataset={dataset_name!r} split={split!r} "
+            f"query_language={query_language!r}. "
+            f"Loaded {raw_query_count} raw rows from HuggingFace."
+        )
 
     allowed_query_ids = set(query_ids)
     qrels = build_qrels_by_query_id(qrels_rows, allowed_query_ids=allowed_query_ids)
