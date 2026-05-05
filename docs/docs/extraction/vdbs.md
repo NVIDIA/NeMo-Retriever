@@ -145,7 +145,7 @@ NeMo Retriever Library does not provide connections to other data sources.
 
 ## Vector database partners {#vector-database-partners}
 
-NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as used in the library. This section summarizes other client `VDB` implementations and how they plug into NeMo Retriever Library graph operators. For chunking before ingest, see [Chunking and splitting](chunking.md).
+NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as used in the library. This section summarizes other client `VDB` implementations and how they plug into NeMo Retriever Library graph operators. For chunking behavior, see [Chunking](concepts.md#chunking).
 
 ### Backends with `VDB` implementations (retriever adapters) {#vdb-backends-implementations}
 
@@ -162,7 +162,8 @@ For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` 
 
 **Related**
 
-- [Embedding NIMs and models](embedding-nims-models.md)
+- [Multimodal embeddings (VLM)](embedding.md)
+- [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
 - [NVIDIA NIM catalog](https://build.nvidia.com/) for embedding and retrieval-related NIMs
 
 !!! important

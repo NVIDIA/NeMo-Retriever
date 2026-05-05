@@ -8,7 +8,7 @@ You can specify these in a .env file in your working directory or directly as sh
 
 | Name                             | Example                        | Description                                                           |
 |----------------------------------|--------------------------------|-----------------------------------------------------------------------|
-| `HF_ACCESS_TOKEN`                | -                                                         | A token to access HuggingFace models. For details, refer to [Token-Based Splitting](chunking.md#token-based-splitting). |
+| `HF_ACCESS_TOKEN`                | -                                                         | A token to access HuggingFace models. For details, refer to [Token-based splitting](concepts.md#token-based-splitting). |
 | `INGEST_LOG_LEVEL`               | - `DEBUG` <br/> - `INFO` <br/> - `WARNING` <br/> - `ERROR` <br/> - `CRITICAL` <br/> | The log level for the ingest service, which controls the verbosity of the logging output. |
 | `NVIDIA_API_KEY`                    | `nvapi-*************` <br/>                              | An authorized build.nvidia.com API key, used to interact with nvidia hosted NIMs. Create via build.nvidia.com or via [NGC](https://org.ngc.nvidia.com/setup/api-keys). |
 | `NGC_API_KEY`                | —                                                          | The key that NIM microservices in the cluster use to access NGC resources. |

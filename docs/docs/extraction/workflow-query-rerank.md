@@ -1,6 +1,6 @@
 # Workflow: Query and rerank
 
-After documents are [ingested](workflow-document-ingestion.md), [chunked](chunking.md), and [indexed](vdbs.md), applications run retrieval (semantic and optionally hybrid search) and optional reranking to improve top-K quality.
+After documents are [ingested](workflow-document-ingestion.md), [chunked](concepts.md#chunking), and [indexed](vdbs.md), applications run retrieval (semantic and optionally hybrid search) and optional reranking to improve top-K quality.
 
 Follow these steps:
 

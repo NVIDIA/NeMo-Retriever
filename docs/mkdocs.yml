@@ -85,19 +85,15 @@ nav:
   - "3. Deployment options": extraction/deployment-options.md
   - "4. Core workflows":
       - "Workflow: Ingest documents into a searchable VDB collection": extraction/workflow-document-ingestion.md
-      - "Workflow: Audio & Video Ingestion":
-          - "Speech and audio extraction": extraction/audio-video.md
-          - "OCR of video frames": extraction/workflow-video-ocr.md
+      - "Workflow: Audio & video ingestion": extraction/audio-video.md
   - "5. Multimodal extraction": extraction/multimodal-extraction.md
   - "6. Embedding, indexing & storage":
-      - "Embedding NIMs and models": extraction/embedding-nims-models.md
       - "Multimodal embeddings (VLM)": extraction/embedding.md
       # Nav targets must be real paths (no `#…` fragments). Both entries open vdbs.md; use the
       # in-page TOC / "Vector database partners" heading for deep links.
       - Vector databases:
           - "Data upload (LanceDB)": extraction/vdbs.md
           - "Vector database partners": extraction/vdbs.md
-      - "Chunking and splitting": extraction/chunking.md
   - "7. Retrieval & ranking":
       - "Custom metadata and filtering": extraction/custom-metadata.md
       - "Agentic retrieval (concept)": extraction/agentic-retrieval-concept.md
@@ -183,6 +179,9 @@ plugins:
         extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
         extraction/prerequisites.md: extraction/prerequisites-support-matrix.md
         extraction/support-matrix.md: extraction/prerequisites-support-matrix.md
+        extraction/embedding-nims-models.md: extraction/embedding.md
+        extraction/chunking.md: extraction/concepts.md
+        extraction/workflow-video-ocr.md: extraction/audio-video.md
   - site-urls
 
 markdown_extensions:
