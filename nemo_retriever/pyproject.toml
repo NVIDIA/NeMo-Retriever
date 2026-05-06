@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [tool.uv]
 managed = true
 package = true
-no-build-package = ["nemotron-ocr"]
+no-build-package = ["nemotron-ocr", "nemotron-ocr-v2"]
 # fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
@@ -52,6 +52,8 @@ dependencies = [
   "universal-pathlib>=0.2.0",
   "numpy>=1.26.0",
   "debugpy>=1.8.0",
+  "fsspec>=2025.5.1",
+  "s3fs>=2025.5.1",
   # Core ingest packages
   "nv-ingest-api",
   "nv-ingest-client",
@@ -86,6 +88,8 @@ local = [
   "nemotron-table-structure-v1>=0.dev0",
   # Stay on the 1.0.2 OCR dev train and exclude older PyPI finals.
   "nemotron-ocr>=1.0.2.dev0,<1.0.2a0; sys_platform == 'linux'",
+  # Stay on the 2.0.0 OCR v2 dev train and exclude older PyPI finals.
+  "nemotron-ocr-v2>=2.0.0.dev0,<2.0.0a0; sys_platform == 'linux'",
   "nvidia-ml-py",
   "apscheduler>=3.10",
   "psutil>=5.9.0",
@@ -110,10 +114,11 @@ multimedia = [
 # ── Independent extras ───────────────────────────────────────────────────────
 
 # SQL and graph storage backends (lancedb is in core deps).
-stores = [
+tabular = [
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
+  "langgraph>=1.1.0",
 ]
 
 # BEIR benchmarking and evaluation tools (not needed for production use).
@@ -136,7 +141,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[local,multimedia,stores,benchmarks,llm]",
+  "nemo_retriever[local,multimedia,tabular,benchmarks,llm]",
 ]
 
 [project.scripts]
@@ -153,6 +158,7 @@ nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
+nemotron-ocr-v2 = { index = "test-pypi" }
 # On Linux, resolve torch/torchvision from the CUDA wheel index.
 # On Mac, fall through to PyPI to get CPU wheels.
 torch = [

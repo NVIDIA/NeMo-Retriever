@@ -8,7 +8,7 @@ A **job** is a unit of work you submit with a JSON description: a document paylo
 
 ## Pipeline and tasks
 
-NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Customize your pipeline](user-defined-functions.md), [user-defined stages](user-defined-stages.md).
+NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md), [user-defined stages](user-defined-stages.md).
 
 ## Extraction metadata
 
