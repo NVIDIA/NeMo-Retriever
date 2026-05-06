@@ -87,6 +87,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && apt update && apt-get --fix-broken install -y && apt-get -y install cuda-toolkit-13-0
 
 WORKDIR /workspace
+COPY data data
 COPY nemo_retriever nemo_retriever
 
 # ENV VIRTUAL_ENV=/opt/retriever_runtime
