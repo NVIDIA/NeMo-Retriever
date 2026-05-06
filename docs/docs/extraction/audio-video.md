@@ -41,7 +41,6 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
     - The `Ingestor` object initializes the ingestion process.
     - The `files` method specifies the input files to process.
     - The `extract` method runs audio extraction.
-    - The `document_type` parameter is optional because `Ingestor` should detect the file type automatically in most cases.
 
     ```python
     ingestor = (
