@@ -29,6 +29,7 @@ def _build_state(payload: AgentPayload) -> AgentState:
 
     acronyms_text = f"Acronyms:\n{acronyms}\n\n" if acronyms else ""
     custom_prompts_text = f"{custom_prompts}\n\n" if custom_prompts else ""
+    initial_path_state = dict(payload.get("path_state") or {})
 
     main_system_prompt = main_system_prompt_template.format(
         date=datetime.now(),
@@ -51,10 +52,10 @@ def _build_state(payload: AgentPayload) -> AgentState:
     return {
         "llm": llm_client,
         "initial_question": payload["question"],
-        "connector": payload.get("connector"),
+        "connector": connector,
         "messages": messages,
         "retriever": retriever,
-        "path_state": dict(payload.get("path_state") or {}),
+        "path_state": initial_path_state,
         "decision": "",
     }
 
