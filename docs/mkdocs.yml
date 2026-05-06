@@ -181,6 +181,7 @@ plugins:
         extraction/support-matrix.md: extraction/prerequisites-support-matrix.md
         extraction/embedding-nims-models.md: extraction/embedding.md
         extraction/chunking.md: extraction/concepts.md#chunking
+        extraction/quickstart-library-mode.md: extraction/deployment-options.md
         extraction/workflow-video-ocr.md: extraction/audio-video.md
   - site-urls
 
@@ -204,8 +205,10 @@ markdown_extensions:
   - footnotes
 
 # MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
+# extraction/chunking.md — removed from nav; content is under concepts.md (redirect_maps keeps old URLs).
 exclude_docs: |
   index.md
+  extraction/chunking.md
   extraction/helm.md
   extraction/quickstart-guide.md
   extraction/choose-your-path.md
