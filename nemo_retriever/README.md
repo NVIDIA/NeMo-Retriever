@@ -443,21 +443,19 @@ ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 ```
 
-### Store extracted images and text
+### Store row images
 
-Use `.store()` to persist extracted images, tables, charts, and text to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame so downstream stages (embed, VDB upload) can reference them. By default, base64 payloads are stripped after writing to reduce memory pressure.
+Use `.store()` after `.embed()` to persist row-level image payloads to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame for VDB upload and reranking.
 
 ```python
 ingestor = (
   ingestor.files(documents)
   .extract()
+  .embed()
   .store(
     storage_uri="s3://my-bucket/citation-assets",  # or a local path
     storage_options={"key": "...", "secret": "..."},  # fsspec auth for S3/MinIO
-    store_text=True,       # also write .txt files for page text and structured content
-    strip_base64=True,     # free image payloads after writing (default)
   )
-  .embed()
   .vdb_upload()
 )
 ```
