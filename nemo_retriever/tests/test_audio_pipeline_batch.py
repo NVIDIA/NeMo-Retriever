@@ -18,7 +18,7 @@ import pytest
 
 from nemo_retriever.audio.chunk_actor import _chunk_one
 from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.audio.media_interface import is_media_available
+from tests import _have_ffmpeg_binary
 from nemo_retriever.graph_ingestor import GraphIngestor
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
@@ -35,7 +35,7 @@ def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 80
         wav.writeframes(b"\x00\x00" * n_frames)
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_audio_chunk_then_mock_asr_flow(tmp_path: Path):
     """Chunk one small WAV and verify chunk rows have expected shape (no Ray)."""
     wav = tmp_path / "tiny.wav"
@@ -50,7 +50,7 @@ def test_audio_chunk_then_mock_asr_flow(tmp_path: Path):
     assert row["source_path"] == str(wav.resolve())
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_inprocess_audio_pipeline_with_mocked_asr(tmp_path: Path):
     """Inprocess: files -> extract_audio (chunk + mocked ASR) -> ingest(); assert result DataFrame has text."""
     wav = tmp_path / "small.wav"
@@ -77,7 +77,7 @@ def test_inprocess_audio_pipeline_with_mocked_asr(tmp_path: Path):
     assert (results["text"] == "inprocess mock transcript").all()
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_inprocess_audio_pipeline_with_mocked_segmented_asr(tmp_path: Path):
     """Inprocess audio pipeline can fan out punctuation-delimited Parakeet segments into multiple rows."""
     wav = tmp_path / "small.wav"
@@ -113,7 +113,7 @@ def test_inprocess_audio_pipeline_with_mocked_segmented_asr(tmp_path: Path):
     assert results["metadata"].iloc[1]["segment_end_seconds"] == 0.5
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_inprocess_audio_pipeline_local_asr_mocked(tmp_path: Path):
     """Inprocess with audio_endpoints=(None, None) uses local ASR; mock ParakeetCTC1B1ASR so no real model."""
     wav = tmp_path / "small.wav"

@@ -135,8 +135,8 @@ def _build_prompt_with_context(base_prompt: str, context_text: str) -> str:
 
 def _create_remote_client(endpoint_url: str, api_key: str | None) -> Any:
     """Create a reusable NIM inference client for a remote VLM endpoint."""
-    from nv_ingest_api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
-    from nv_ingest_api.util.nim import create_inference_client
+    from nemo_retriever.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.api.util.nim import create_inference_client
 
     return create_inference_client(
         model_interface=VLMModelInterface(),
@@ -158,7 +158,7 @@ def _caption_batch_remote(
     max_tokens: int = 1024,
 ) -> List[str]:
     """Send a batch of images to a remote VLM endpoint and return captions."""
-    from nv_ingest_api.util.image_processing.transforms import scale_image_to_encoding_size
+    from nemo_retriever.api.util.image_processing.transforms import scale_image_to_encoding_size
 
     scaled = [scale_image_to_encoding_size(b64)[0] for b64 in base64_images]
 
