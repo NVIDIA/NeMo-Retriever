@@ -79,7 +79,6 @@ nav:
       - Release notes: extraction/releasenotes.md
   - "2. Get started":
       - About this section: extraction/getting-started-about.md
-      - "Library mode quickstart": extraction/quickstart-library-mode.md
       - "Pre-Requisites & Support Matrix": extraction/prerequisites-support-matrix.md
       - "Quickstart: NeMo Retriever Library": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
       - "Authentication and API keys": extraction/api-keys.md
@@ -126,6 +125,10 @@ nav:
       - Contributing: extraction/contributing.md
   - Additional resources:
       - "OSS licences": license.md
+
+# Linked from other pages but intentionally omitted from the numbered sidebar TOC.
+not_in_nav: |
+  extraction/quickstart-library-mode.md
 
 plugins:
   - search
