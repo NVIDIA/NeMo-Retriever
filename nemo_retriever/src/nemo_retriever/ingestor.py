@@ -11,7 +11,6 @@ Concrete implementations are provided by runmodes:
 - inprocess: local Python process, no framework assumptions
 - batch: large-scale batch execution
 - fused: low-latency single-actor GPU model fusion
-- online: low-latency, multi-request serving
 """
 
 from __future__ import annotations
@@ -56,10 +55,21 @@ def create_ingestor(
         parsed = merged
     else:
         parsed = IngestorCreateParams(**merged)
+
+    if run_mode == "service":
+        from nemo_retriever.service_ingestor import ServiceIngestor
+
+        service_kwargs: dict[str, Any] = {
+            "base_url": parsed.base_url,
+            "documents": parsed.documents,
+            "api_token": parsed.api_key,
+        }
+        if parsed.max_concurrency is not None:
+            service_kwargs["max_concurrency"] = parsed.max_concurrency
+        return ServiceIngestor(**service_kwargs)
+
     if run_mode not in {"batch", "inprocess"}:
-        raise ValueError(
-            f"create_ingestor now supports only graph-backed run modes 'batch' and 'inprocess'; got {run_mode!r}."
-        )
+        raise ValueError(f"create_ingestor supports run modes 'inprocess', 'batch', and 'service'; got {run_mode!r}.")
 
     from nemo_retriever.graph_ingestor import GraphIngestor
 

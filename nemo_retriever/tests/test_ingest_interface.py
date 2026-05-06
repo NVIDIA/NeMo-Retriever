@@ -40,7 +40,7 @@ def test_create_ingestor_rejects_unknown_kwargs() -> None:
 
 
 def test_create_ingestor_rejects_legacy_non_graph_modes() -> None:
-    with pytest.raises(ValueError, match="supports only graph-backed run modes"):
+    with pytest.raises(ValueError, match="supports run modes"):
         create_ingestor(run_mode="fused")  # type: ignore[arg-type]
 
 

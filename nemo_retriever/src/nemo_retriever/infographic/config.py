@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from nemo_retriever.config_utils import endpoints_from_yaml
 
-from nv_ingest_api.internal.schemas.extract.extract_infographic_schema import InfographicExtractorSchema
+from nemo_retriever.api.internal.schemas.extract.extract_infographic_schema import InfographicExtractorSchema
 
 
 def load_infographic_extractor_schema_from_dict(cfg: Dict[str, Any]) -> InfographicExtractorSchema:
@@ -20,7 +20,7 @@ def load_infographic_extractor_schema_from_dict(cfg: Dict[str, Any]) -> Infograp
         ocr_endpoints = endpoints_from_yaml(endpoint_cfg.get("ocr_endpoints"))
 
         # Special-case: treat "no endpoints" as "use local model".
-        # The nv-ingest-api schema forbids endpoint_config with both endpoints empty,
+        # The `nemo_retriever.api` schema forbids endpoint_config with both endpoints empty,
         # so we drop endpoint_config entirely to allow stage code to choose local fallback.
         if not (ocr_endpoints[0] or ocr_endpoints[1]):
             cfg.pop("endpoint_config", None)

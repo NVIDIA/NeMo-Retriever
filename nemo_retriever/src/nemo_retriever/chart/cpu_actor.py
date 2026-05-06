@@ -35,6 +35,7 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
         *,
         graphic_elements_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
+        load_ocr_v2: bool = True,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -119,6 +120,8 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
                 n = len(out.index)
                 out["chart"] = [[] for _ in range(n)]
                 out["graphic_elements_ocr_v1"] = [payload for _ in range(n)]
+                out["graphic_elements_v1_num_detections"] = [0 for _ in range(n)]
+                out["graphic_elements_v1_counts_by_label"] = [{} for _ in range(n)]
                 return out
             return [
                 {
