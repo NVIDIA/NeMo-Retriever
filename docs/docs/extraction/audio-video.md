@@ -57,7 +57,9 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
     )
     ```
 
-    To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (self-hosted or NVCF) but has no effect when using the local Hugging Face Parakeet model.
+
+    To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
+
 
     !!! tip
 
