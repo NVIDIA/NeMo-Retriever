@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "nemo_retriever" / 
 from apply_metadata import apply_metadata  # noqa: E402
 from postgres_connector import PostgresDatabase  # noqa: E402
 from nemo_retriever.graph import Graph
-from nemo_retriever.graph.lancedb_sink import LanceDBWriterActor
 from nemo_retriever.graph.tabular_schema_extract_operator import TabularSchemaExtractOp
 from nemo_retriever.graph.tabular_fetch_embeddings_operator import (
     TabularFetchEmbeddingsOp,
@@ -34,6 +33,7 @@ from nemo_retriever.tabular_data.retrieval.deep_agent.main import (
 from nemo_retriever.tabular_data.retrieval.deep_agent.state import (
     AgentPayload as DeepAgentPayload,
 )
+from nemo_retriever.vdb import IngestVdbOperator
 from nemo_retriever.params import (
     EmbedParams,
     TabularExtractParams,
@@ -58,13 +58,13 @@ EMBED_PARAMS = EmbedParams(
     embed_modality="text",
 )
 
+# vdb_kwargs are forwarded straight to ``nemo_retriever.vdb.lancedb.LanceDB``.
 VDB_PARAMS = VdbUploadParams(
     vdb_op="lancedb",
     vdb_kwargs={
-        "lancedb_uri": "lancedb",
+        "uri": "lancedb",
         "table_name": "nv-ingest-tabular",
         "overwrite": True,
-        "create_index": False,
     },
 )
 
@@ -111,16 +111,12 @@ def run_ingest() -> None:
     results = embed_graph.execute(None)
     result_df = results[0] if results else None
 
-    lancedb_kwargs = VDB_PARAMS.vdb_kwargs
     if result_df is not None and not result_df.empty:
-        writer = LanceDBWriterActor(
-            uri=lancedb_kwargs["lancedb_uri"],
-            table_name=lancedb_kwargs["table_name"],
-            overwrite=lancedb_kwargs.get("overwrite", True),
-            create_index=lancedb_kwargs.get("create_index", False),
+        ingest_op = IngestVdbOperator(
+            vdb_op=VDB_PARAMS.vdb_op,
+            vdb_kwargs=VDB_PARAMS.vdb_kwargs,
         )
-        writer(result_df)
-        writer.finalize()
+        ingest_op(result_df.to_dict(orient="records"))
         logger.info("Tabular ingest result: %d rows written to LanceDB", len(result_df))
     else:
         logger.info("Tabular ingest result: no rows produced")
@@ -133,7 +129,7 @@ def run_retrieve() -> None:
     retriever = Retriever(
         vdb="lancedb",
         vdb_kwargs={
-            "uri": lancedb_kwargs["lancedb_uri"],
+            "uri": lancedb_kwargs["uri"],
             "table_name": lancedb_kwargs["table_name"],
         },
         top_k=15,
