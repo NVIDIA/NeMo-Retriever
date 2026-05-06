@@ -30,7 +30,7 @@ For PDF parallelism before Ray processing (large files), see [PDF pre-splitting 
 
 ### Token-based splitting {#token-based-splitting}
 
-Token-based splitting uses the Llama 3.2 1B tokenizer (default **`meta-llama/Llama-3.2-1B`**) with configurable `chunk_size` and overlap when you add an explicit `.split(...)` stage or when the pipeline applies the default text segmentation for unstructured text. In the shipped NeMo Retriever container, tokenizer assets are included locally, so you do not need `HF_ACCESS_TOKEN` for this default path. If your runtime loads the tokenizer from the Hugging Face Hub instead (for example, some library-only installs), set `HF_ACCESS_TOKEN` or pass `hf_access_token` in task params when the Hub requires it. Details appear in the [Python API guide](nemo-retriever-api-reference.md).
+Token-based splitting uses the Llama 3.2 1B tokenizer (default **`meta-llama/Llama-3.2-1B`**) with configurable `max_tokens` and `overlap_tokens` when you add an explicit `.split(...)` stage or when the pipeline applies the default text segmentation for unstructured text. In the shipped NeMo Retriever container, tokenizer assets are included locally, so you do not need `HF_ACCESS_TOKEN` for this default path. If your runtime loads the tokenizer from the Hugging Face Hub instead (for example, some library-only installs), set `HF_ACCESS_TOKEN` or pass `hf_access_token` in task params when the Hub requires it. Details appear in the [Python API guide](nemo-retriever-api-reference.md).
 
 ## Deployment modes
 
