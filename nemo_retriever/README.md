@@ -404,7 +404,7 @@ ingestor = (
 )
 ```
 
-*Note:* the `split()` task uses a tokenizer to split texts by a max_token length
+*Note:* the `split_config` keyword on `.extract()` uses a tokenizer to split texts by a max_token length
 ### Render results as markdown
 
 If you want a readable markdown view of extracted results, pass the full in-process result list
@@ -414,15 +414,14 @@ headers, so both single-document and multi-document runs follow the same contrac
 
 PDF text is split at the page level.
 
-HTML and .txt files have no natural page delimiters, so they almost always need to be paired with the `.split()` task.
+HTML and .txt files have no natural page delimiters, so they almost always need to be paired with the `split_config` keyword.
 
 ```python
-# html and text files - include a split task to prevent texts from exceeding the embedder's max sequence length
+# html and text files - include split_config to prevent texts from exceeding the embedder's max sequence length
 documents = [str(Path(f"../data/*{ext}")) for ext in [".txt", ".html"]]
 ingestor = (
   ingestor.files(documents)
-  .extract()
-  .split(max_tokens=5) #1024 by default, set low here to demonstrate chunking
+  .extract(split_config={"text": {"max_tokens": 5}, "html": {"max_tokens": 5}}) # 1024 by default, set low here to demonstrate chunking
 )
 results = ingestor.ingest()
 markdown_docs = to_markdown(results)

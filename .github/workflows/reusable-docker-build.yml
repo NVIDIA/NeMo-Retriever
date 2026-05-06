@@ -11,7 +11,7 @@ on:
         description: 'Dockerfile target to build'
         required: false
         type: string
-        default: 'runtime'
+        default: 'service'
       push:
         description: 'Push image to registry'
         required: false

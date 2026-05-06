@@ -11,7 +11,7 @@ on:
         description: 'Dockerfile target to build'
         required: false
         type: string
-        default: 'base'
+        default: 'service'
       tags:
         description: 'Docker image tag(s), comma-separated (first tag is used for running tests)'
         required: true
@@ -149,7 +149,7 @@ jobs:
           docker buildx build \
             --platform "${{ inputs.platform }}" \
             --load \
-            --target base \
+            --target "${{ inputs.target }}" \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             --build-arg BASE_IMG="${{ inputs.base-image }}" \
             --build-arg BASE_IMG_TAG="${{ inputs.base-image-tag }}" \

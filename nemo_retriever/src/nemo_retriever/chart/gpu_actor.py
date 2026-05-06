@@ -110,6 +110,8 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
                 n = len(out.index)
                 out["chart"] = [[] for _ in range(n)]
                 out["graphic_elements_ocr_v1"] = [payload for _ in range(n)]
+                out["graphic_elements_v1_num_detections"] = [0 for _ in range(n)]
+                out["graphic_elements_v1_counts_by_label"] = [{} for _ in range(n)]
                 return out
             return [
                 {

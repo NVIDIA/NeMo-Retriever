@@ -36,6 +36,7 @@ from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
+from nemo_retriever.params import TextChunkParams, resolve_split_params
 from nemo_retriever.txt.ray_data import TextChunkActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.ingest_plans import IngestExecutionPlan
@@ -363,7 +364,7 @@ def _resolve_execution_inputs(
     audio_chunk_params: Any | None,
     asr_params: Any | None,
     dedup_params: Any | None,
-    split_params: Any | None,
+    split_config: dict[str, Any] | None,
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
@@ -395,7 +396,7 @@ def _resolve_execution_inputs(
             audio_chunk_params,
             asr_params,
             dedup_params,
-            split_params,
+            split_config,
             caption_params,
             store_params,
             embed_params,
@@ -412,7 +413,7 @@ def _resolve_execution_inputs(
         execution_plan.audio_chunk_params,
         execution_plan.asr_params,
         stage_map.get("dedup"),
-        stage_map.get("split"),
+        execution_plan.split_config,
         stage_map.get("caption"),
         stage_map.get("store"),
         stage_map.get("embed"),
@@ -434,12 +435,22 @@ def _should_build_audio_graph(
     return False
 
 
+def _maybe_append_chunk_actor(graph: Graph, split_config: dict[str, Any], key: str) -> Graph:
+    """Append a TextChunkActor to *graph* when split_config[key] requests chunking.
+
+    Skips on both ``None`` (absent) and ``False`` (explicit opt-out).
+    """
+    params = split_config.get(key)
+    if isinstance(params, TextChunkParams):
+        graph = graph >> TextChunkActor(params)
+    return graph
+
+
 def _append_ordered_transform_stages(
     graph: Graph,
     *,
     extraction_mode: str,
     dedup_params: Any | None,
-    split_params: Any | None,
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
@@ -453,7 +464,7 @@ def _append_ordered_transform_stages(
     pending_stages = [
         stage
         for stage in stage_order
-        if stage in {"dedup", "split", "caption", "store", "embed"} and (supports_dedup or stage != "dedup")
+        if stage in {"dedup", "caption", "store", "embed"} and (supports_dedup or stage != "dedup")
     ]
     if not pending_stages:
         if supports_dedup and dedup_params is not None:
@@ -462,8 +473,6 @@ def _append_ordered_transform_stages(
             pending_stages.append("caption")
         if store_params is not None:
             pending_stages.append("store")
-        if split_params is not None:
-            pending_stages.append("split")
         if embed_params is not None:
             pending_stages.append("embed")
 
@@ -475,8 +484,6 @@ def _append_ordered_transform_stages(
             graph = graph >> UDFOperator(partial(dedup_images, **dedup_kwargs), name="DedupImages")
         elif stage_name == "caption" and caption_params is not None:
             graph = graph >> CaptionActor(caption_params)
-        elif stage_name == "split" and split_params is not None:
-            graph = graph >> TextChunkActor(split_params)
         elif stage_name == "embed" and embed_params is not None:
             needs_content_reshape = reshape_for_modal_content and extraction_mode in {"pdf", "image", "auto"}
             if needs_content_reshape:
@@ -521,7 +528,7 @@ def build_graph(
     asr_params: Any | None = None,
     dedup_params: Any | None = None,
     embed_params: Any | None = None,
-    split_params: Any | None = None,
+    split_config: dict[str, Any] | None = None,
     caption_params: Any | None = None,
     store_params: Any | None = None,
     webhook_params: Any | None = None,
@@ -540,7 +547,7 @@ def build_graph(
         audio_chunk_params,
         asr_params,
         dedup_params,
-        split_params,
+        split_config,
         caption_params,
         store_params,
         embed_params,
@@ -555,13 +562,19 @@ def build_graph(
         audio_chunk_params=audio_chunk_params,
         asr_params=asr_params,
         dedup_params=dedup_params,
-        split_params=split_params,
+        split_config=split_config,
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,
         webhook_params=webhook_params,
         stage_order=stage_order,
     )
+
+    # GraphIngestor pre-resolves split_config; tests and other direct callers
+    # may omit it, in which case fill in defaults consistently with the
+    # ingestor surface.
+    if split_config is None:
+        split_config = resolve_split_params(None)
 
     # Video ingestion uses a dedicated chain so each stage (fan-out, ASR,
     # frame OCR, scene fusion) shows up as its own Ray Data MapBatches op.
@@ -602,11 +615,13 @@ def build_graph(
             graph = graph >> VideoFrameTextDedup(params=video_text_dedup_params)
         if fuse_enabled:
             graph = graph >> AudioVisualFuser(params=av_fuse_params)
+        graph = _maybe_append_chunk_actor(graph, split_config, "video")
     elif _should_build_audio_graph(
         extract_params=extract_params,
         asr_params=asr_params,
     ):
         graph = Graph() >> MediaChunkActor(params=audio_chunk_params) >> ASRActor(params=asr_params)
+        graph = _maybe_append_chunk_actor(graph, split_config, "audio")
     elif extraction_mode in {"text", "html", "audio", "image", "auto"}:
         graph = Graph() >> MultiTypeExtractOperator(
             extraction_mode=extraction_mode,
@@ -618,6 +633,7 @@ def build_graph(
             caption_params=caption_params,
             video_frame_params=video_frame_params,
             av_fuse_params=av_fuse_params,
+            split_config=split_config,
         )
     else:
         graph = Graph()
@@ -741,11 +757,12 @@ def build_graph(
                 )
                 graph = graph >> ocr_archetype(**ocr_kwargs)
 
+        graph = _maybe_append_chunk_actor(graph, split_config, "pdf")
+
     return _append_ordered_transform_stages(
         graph,
         extraction_mode=extraction_mode,
         dedup_params=dedup_params,
-        split_params=split_params,
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,

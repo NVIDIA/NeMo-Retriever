@@ -1,0 +1,36 @@
+apiVersion: v2
+name: nemo-retriever
+description: |
+  Helm chart for the nemo-retriever ingest service (FastAPI) and its
+  optional set of supporting NIM microservices.
+
+  This chart deploys the "service" run mode of nemo-retriever as a single
+  scalable web endpoint that orchestrates document ingestion against
+  remote NIM endpoints (page-elements, graphic-elements, table-structure,
+  OCR, embed). The NIMs themselves are optional and may either be
+  deployed by this chart (GPU-backed) or provided as external URLs.
+
+  Persistence today uses SQLite on a PersistentVolumeClaim, which caps
+  the service at a single replica. A future iteration will introduce a
+  shared PostgreSQL backend so the service can scale horizontally.
+
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/NVIDIA/nv-ingest
+sources:
+  - https://github.com/NVIDIA/nv-ingest
+maintainers:
+  - name: nv-ingest maintainers
+keywords:
+  - nemo-retriever
+  - nvidia
+  - nim
+  - document-ingestion
+  - rag
+  - retrieval
+icon: https://www.nvidia.com/content/dam/en-zz/Solutions/about-nvidia/logo-and-brand/01-nvidia-logo-vert-500x200-2c50-d.png
+annotations:
+  category: AI
+  licenses: Apache-2.0
