@@ -608,6 +608,56 @@ def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> 
     assert captured["payload"]["metrics"]["recall_5"] == 0.8
 
 
+def test_run_single_forwards_api_key_to_subprocess_env_and_redacts_results(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    runtime_dir = tmp_path / "runtime_metrics"
+    runtime_dir.mkdir()
+    (runtime_dir / "r1.runtime.summary.json").write_text(
+        json.dumps({"num_pages": 1, "ingestion_only_secs": 1.0, "evaluation_metrics": {"recall@5": 1.0}}),
+        encoding="utf-8",
+    )
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        api_key="secret-token",
+    )
+
+    monkeypatch.setattr(
+        harness_run,
+        "_build_command",
+        lambda *_args, **_kwargs: (
+            ["python", "-V", "--api-key", "secret-token"],
+            runtime_dir,
+            runtime_dir / ".detection_summary.json",
+            query_csv,
+        ),
+    )
+
+    captured_env: dict[str, str] = {}
+
+    def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        captured_env.update(env_extra or {})
+        return 0
+
+    payloads: dict[str, dict] = {}
+    monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, payload: payloads.setdefault("result", payload))
+
+    harness_run._run_single(cfg, tmp_path, run_id="r1")
+
+    assert captured_env == {"NVIDIA_API_KEY": "secret-token"}
+    assert payloads["result"]["test_config"]["api_key"] == "(set)"
+    assert "secret-token" not in json.dumps(payloads["result"])
+
+
 def test_run_entry_session_artifact_dir_uses_run_name(monkeypatch, tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

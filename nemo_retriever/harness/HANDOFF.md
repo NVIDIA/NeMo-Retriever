@@ -100,7 +100,6 @@ pytest -q nemo_retriever/tests/test_harness_run.py \
   nemo_retriever/tests/test_harness_config.py \
   nemo_retriever/tests/test_harness_reporting.py \
   nemo_retriever/tests/test_harness_nightly.py \
-  nemo_retriever/tests/test_harness_recall_adapters.py \
   nemo_retriever/tests/test_graph_pipeline_cli.py
 ```
 

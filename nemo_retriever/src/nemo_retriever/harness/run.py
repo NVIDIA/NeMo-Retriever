@@ -610,19 +610,21 @@ def _consume_parseable_output(metrics: StreamMetrics, parse_buffer: str) -> str:
     return parse_buffer
 
 
-def _run_subprocess_with_tty(cmd: list[str]) -> int:
+def _run_subprocess_with_tty(cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
     """
     Run command in a pseudo-terminal so Ray renders rich progress while still
     streaming child process output to the current terminal.
     """
     master_fd, slave_fd = pty.openpty()
     try:
+        env = {**os.environ, **(env_extra or {})} if env_extra else None
         proc = subprocess.Popen(
             cmd,
             stdin=None,
             stdout=slave_fd,
             stderr=slave_fd,
             close_fds=True,
+            env=env,
         )
     finally:
         os.close(slave_fd)
@@ -663,13 +665,17 @@ def _run_single(
     skip_local_history: bool = False,
 ) -> dict[str, Any]:
     cmd, runtime_dir, detection_summary_file, effective_query_csv = _build_command(cfg, artifact_dir, run_id)
+    env_extra = {"NVIDIA_API_KEY": cfg.api_key} if cfg.api_key else None
     command_text = " ".join(shlex.quote(token) for token in cmd)
     (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
 
     typer.echo(f"\n=== Running {run_id} ===")
     typer.echo(command_text)
 
-    process_rc = _run_subprocess_with_tty(cmd)
+    if env_extra:
+        process_rc = _run_subprocess_with_tty(cmd, env_extra=env_extra)
+    else:
+        process_rc = _run_subprocess_with_tty(cmd)
     run_metadata = _collect_run_metadata()
     runtime_summary_path = runtime_dir / f"{run_id}.runtime.summary.json"
     runtime_summary = _read_json_if_exists(runtime_summary_path)
@@ -745,6 +751,8 @@ def _run_single(
             "runtime_metrics_dir": str(runtime_dir.resolve()),
         },
     }
+    if cfg.api_key:
+        result_payload["test_config"]["api_key"] = "(set)"
     if cfg.write_detection_file:
         result_payload["artifacts"]["detection_summary_file"] = str(detection_summary_file.resolve())
     if tags:
