@@ -164,7 +164,7 @@ def traceable_func(trace_name=None, dedupe=True):
     Example
     -------
     >>> @traceable_func(trace_name="pdf_extractor::{model_name}")
-    >>> def extract_pdf(model_name):
+    ... def extract_pdf(model_name):
     ...     pass
     >>> trace_info = {}
     >>> extract_pdf("my_model", trace_info=trace_info)
@@ -253,9 +253,14 @@ def set_trace_timestamps_with_parent_context(control_message, execution_trace_lo
     --------
     Basic usage in a stage:
 
+    >>> from datetime import datetime
+    >>> from unittest.mock import MagicMock
+    >>> ts1 = datetime(2024, 1, 1, 12, 0, 0)
+    >>> ts2 = datetime(2024, 1, 1, 12, 0, 1)
     >>> execution_trace_log = {"trace::entry::yolox_inference": ts1, "trace::exit::yolox_inference": ts2}
+    >>> control_message = MagicMock()
     >>> set_trace_timestamps_with_parent_context(
-    ...     control_message, execution_trace_log, "pdf_extractor", logger
+    ...     control_message, execution_trace_log, "pdf_extractor", logger=None
     ... )
 
     This transforms:
