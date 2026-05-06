@@ -143,7 +143,10 @@ FROM install AS service
 
 ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
 
-RUN groupadd -r nemo && useradd -r -g nemo -d /workspace -s /sbin/nologin nemo \
+ENV PATH=/opt/retriever_runtime/bin:$PATH
+
+RUN chmod -R a+rX /root/.local \
+    && groupadd -r nemo && useradd -r -g nemo -d /workspace -s /sbin/nologin nemo \
     && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
