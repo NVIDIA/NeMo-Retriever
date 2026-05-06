@@ -35,11 +35,12 @@ from nemo_retriever.params import AudioVisualFuseParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VideoFrameParams
 from nemo_retriever.params import VideoFrameTextDedupParams
+from nemo_retriever.params import resolve_split_params
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
 from nemo_retriever.table.table_detection import TableStructureActor
-from nemo_retriever.txt.ray_data import TxtSplitActor
+from nemo_retriever.txt.ray_data import TextChunkCPUActor, TxtSplitActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.video import AudioVisualFuser
 from nemo_retriever.video import VideoFrameActor
@@ -131,6 +132,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         video_frame_params: VideoFrameParams | None = None,
         video_text_dedup_params: VideoFrameTextDedupParams | None = None,
         av_fuse_params: AudioVisualFuseParams | None = None,
+        split_config: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -144,6 +146,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         self.video_frame_params = video_frame_params or VideoFrameParams()
         self.video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
         self.av_fuse_params = av_fuse_params or AudioVisualFuseParams()
+        self._split_config: dict[str, Any] = split_config if split_config is not None else resolve_split_params(None)
         self._resolved_resources = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> pd.DataFrame | dict[str, list[str]]:
@@ -168,12 +171,15 @@ class _MultiTypeExtractBase(AbstractOperator):
         if not grouped["image"].empty:
             outputs.append(self._run_image_pipeline(grouped["image"]))
         if not grouped["text"].empty:
-            outputs.append(TxtSplitActor(params=self.text_params).run(grouped["text"]))
+            text_params = self._effective_chunk_params("text")
+            outputs.append(TxtSplitActor(params=text_params).run(grouped["text"]))
         if not grouped["html"].empty:
-            outputs.append(HtmlSplitActor(params=self.html_params).run(grouped["html"]))
+            html_params = self._effective_chunk_params("html")
+            outputs.append(HtmlSplitActor(params=html_params).run(grouped["html"]))
         if not grouped["audio"].empty:
             audio_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["audio"])
-            outputs.append(ASRActor(params=self.asr_params).run(audio_df))
+            audio_df = ASRActor(params=self.asr_params).run(audio_df)
+            outputs.append(self._maybe_chunk(audio_df, "audio"))
         if not grouped["video"].empty:
             outputs.append(self._run_video_pipeline(grouped["video"]))
 
@@ -264,25 +270,28 @@ class _MultiTypeExtractBase(AbstractOperator):
                 parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
-            return self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
-
-        extract_kwargs: dict[str, Any] = {
-            "method": extract_params.method,
-            "dpi": int(extract_params.dpi),
-            "extract_text": extract_params.extract_text,
-            "extract_images": extract_params.extract_images,
-            "extract_tables": extract_params.extract_tables,
-            "extract_charts": extract_params.extract_charts,
-            "extract_infographics": extract_params.extract_infographics,
-            "extract_page_as_image": extract_params.extract_page_as_image,
-            "api_key": extract_params.api_key,
-        }
-        batch_df = PDFExtractionActor(**extract_kwargs).run(batch_df)
-        return self._run_detection_pipeline(batch_df)
+            batch_df = self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
+        else:
+            # standard non-parse path: continue with PDFExtractionActor and detection
+            extract_kwargs: dict[str, Any] = {
+                "method": extract_params.method,
+                "dpi": int(extract_params.dpi),
+                "extract_text": extract_params.extract_text,
+                "extract_images": extract_params.extract_images,
+                "extract_tables": extract_params.extract_tables,
+                "extract_charts": extract_params.extract_charts,
+                "extract_infographics": extract_params.extract_infographics,
+                "extract_page_as_image": extract_params.extract_page_as_image,
+                "api_key": extract_params.api_key,
+            }
+            batch_df = PDFExtractionActor(**extract_kwargs).run(batch_df)
+            batch_df = self._run_detection_pipeline(batch_df)
+        return self._maybe_chunk(batch_df, "pdf")
 
     def _run_image_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         batch_df = ImageLoadActor().run(batch_df)
-        return self._run_detection_pipeline(batch_df)
+        batch_df = self._run_detection_pipeline(batch_df)
+        return self._maybe_chunk(batch_df, "image")
 
     def _video_ocr_kwargs(self) -> dict[str, Any]:
         """Build OCR kwargs for the video frame branch from ``extract_params``.
@@ -352,7 +361,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         # the fuser drops all video_frame rows when no audio is present.
         if audio_enabled and self.av_fuse_params.enabled:
             combined = AudioVisualFuser(params=self.av_fuse_params).run(combined)
-        return combined
+        return self._maybe_chunk(combined, "video")
 
     def _run_detection_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
@@ -420,6 +429,35 @@ class _MultiTypeExtractBase(AbstractOperator):
 
         return batch_df
 
+    def _effective_chunk_params(self, key: str) -> Any | None:
+        """Return the params used for chunking *key*.
+
+        Priority: an explicit ``TextChunkParams`` instance under
+        ``split_config[key]`` wins; otherwise fall back to the legacy
+        per-extractor param (``text_params`` for ``"text"`` /
+        ``html_params`` for ``"html"``). ``split_config[key] is False``
+        and "key absent" both fall through to the legacy fallback —
+        ``text``/``html`` files always need an extractor, so "no
+        chunking" is not a separate state for those keys.
+        """
+        cfg = self._split_config.get(key)
+        if isinstance(cfg, TextChunkParams):
+            return cfg
+        if key == "text":
+            return self.text_params
+        if key == "html":
+            return self.html_params
+        return None
+
+    def _maybe_chunk(self, df: Any, key: str) -> Any:
+        """Append a TextChunkActor pass when chunking is on for *key*."""
+        params = self._split_config.get(key)
+        if not isinstance(params, TextChunkParams):
+            return df
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return df
+        return TextChunkCPUActor(params=params).run(df)
+
     def _local_resources(self):
         if self._resolved_resources is None:
             self._resolved_resources = gather_local_resources()
@@ -480,6 +518,7 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         video_frame_params: VideoFrameParams | None = None,
         video_text_dedup_params: VideoFrameTextDedupParams | None = None,
         av_fuse_params: AudioVisualFuseParams | None = None,
+        split_config: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -493,6 +532,7 @@ class MultiTypeExtractOperator(ArchetypeOperator):
             video_frame_params=video_frame_params,
             video_text_dedup_params=video_text_dedup_params,
             av_fuse_params=av_fuse_params,
+            split_config=split_config,
             **kwargs,
         )
         self.extraction_mode = extraction_mode
@@ -505,3 +545,4 @@ class MultiTypeExtractOperator(ArchetypeOperator):
         self.video_frame_params = video_frame_params
         self.video_text_dedup_params = video_text_dedup_params
         self.av_fuse_params = av_fuse_params
+        self.split_config = split_config

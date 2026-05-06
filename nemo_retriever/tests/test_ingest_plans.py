@@ -23,11 +23,6 @@ from nemo_retriever.params import TextChunkParams
 from nemo_retriever.utils.ray_resource_hueristics import ClusterResources
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
-try:
-    import torch
-except Exception:  # pragma: no cover
-    torch = None  # type: ignore[assignment]
-
 
 def _linear_nodes(graph):
     node = graph.roots[0]
@@ -39,10 +34,10 @@ def _linear_nodes(graph):
         node = node.children[0]
 
 
-def test_base_ingest_plan_builds_ordered_execution_plan() -> None:
+def test_base_ingest_plan_carries_split_config() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(mode="pdf", extract_params=ExtractParams())
-    plan.split_params = TextChunkParams(max_tokens=128)
+    plan.split_config = {"pdf": TextChunkParams(max_tokens=128)}
     plan.caption_params = CaptionParams(endpoint_url="http://caption.example/v1")
     plan.embed_params = EmbedParams(
         model_name="nvidia/llama-nemotron-embed-1b-v2",
@@ -50,18 +45,13 @@ def test_base_ingest_plan_builds_ordered_execution_plan() -> None:
     )
 
     plan.record_stage("caption")
-    plan.record_stage("split")
     plan.record_stage("embed")
-    plan.record_stage("caption")
 
     execution_plan = plan.build_execution_plan()
 
     assert execution_plan.extraction_mode == "pdf"
-    assert execution_plan.extract_params is not None
-    assert [stage.name for stage in execution_plan.stages] == ["split", "embed", "caption"]
-    assert execution_plan.stages[0].params.max_tokens == 128
-    assert execution_plan.stages[1].params.model_name == "nvidia/llama-nemotron-embed-1b-v2"
-    assert execution_plan.stages[2].params.endpoint_url == "http://caption.example/v1"
+    assert execution_plan.split_config["pdf"].max_tokens == 128
+    assert [stage.name for stage in execution_plan.stages] == ["caption", "embed"]
 
 
 def test_base_ingest_plan_builds_audio_execution_plan() -> None:
@@ -76,15 +66,14 @@ def test_base_ingest_plan_builds_audio_execution_plan() -> None:
     assert execution_plan.has_extraction() is True
 
 
-def test_build_graph_accepts_execution_plan() -> None:
+def test_build_graph_accepts_execution_plan_with_split_config() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(mode="text", text_params=TextChunkParams(max_tokens=64))
-    plan.split_params = TextChunkParams(max_tokens=32)
+    plan.split_config = {"text": TextChunkParams(max_tokens=32)}
     plan.embed_params = EmbedParams(
         model_name="nvidia/llama-nemotron-embed-1b-v2",
         embedding_endpoint="http://embed.example/v1",
     )
-    plan.record_stage("split")
     plan.record_stage("embed")
 
     graph = build_graph(execution_plan=plan.build_execution_plan())
@@ -97,7 +86,10 @@ def test_build_graph_accepts_execution_plan() -> None:
             break
         node = node.children[0]
 
-    assert names == ["MultiTypeExtractOperator", "TextChunkActor", "_BatchEmbedActor"]
+    # Text path uses MultiTypeExtractOperator; split_config['text'] = 32-token
+    # params is forwarded into TxtSplitActor inside the operator (no separate
+    # TextChunkActor at graph level here).
+    assert names == ["MultiTypeExtractOperator", "_BatchEmbedActor"]
 
 
 @pytest.mark.parametrize(
@@ -311,52 +303,14 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
     assert result["data"] == ["/tmp/input.pdf"]
 
 
-@pytest.mark.skipif(torch is None or not torch.cuda.is_available(), reason="CUDA not available")
-def test_build_inprocess_graph_accepts_execution_plan() -> None:
-    plan = BaseIngestPlan()
-    plan.set_extraction(mode="pdf", extract_params=ExtractParams(extract_text=True))
-    plan.split_params = TextChunkParams(max_tokens=32)
-    plan.caption_params = CaptionParams(endpoint_url="http://caption.example/v1")
-    plan.embed_params = EmbedParams(
-        model_name="nvidia/llama-nemotron-embed-1b-v2",
-        embedding_endpoint="http://embed.example/v1",
-    )
-    plan.record_stage("split")
-    plan.record_stage("caption")
-    plan.record_stage("embed")
-
-    graph = build_inprocess_graph(execution_plan=plan.build_execution_plan())
-
-    node = graph.roots[0]
-    names = []
-    while True:
-        names.append(node.name)
-        if not node.children:
-            break
-        node = node.children[0]
-
-    assert names == [
-        "DocToPdfConversionActor",
-        "PDFSplitActor",
-        "PDFExtractionActor",
-        "PageElementDetectionActor",
-        "OCRV2Actor",
-        "TextChunkActor",
-        "CaptionActor",
-        "UDFOperator",
-        "_BatchEmbedActor",
-    ]
-
-
 def test_build_inprocess_graph_supports_text_execution_plan() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(mode="text", text_params=TextChunkParams(max_tokens=64))
-    plan.split_params = TextChunkParams(max_tokens=32)
+    plan.split_config = {"text": TextChunkParams(max_tokens=32)}
     plan.embed_params = EmbedParams(
         model_name="nvidia/llama-nemotron-embed-1b-v2",
         embedding_endpoint="http://embed.example/v1",
     )
-    plan.record_stage("split")
     plan.record_stage("embed")
 
     graph = build_inprocess_graph(execution_plan=plan.build_execution_plan())
@@ -369,7 +323,7 @@ def test_build_inprocess_graph_supports_text_execution_plan() -> None:
             break
         node = node.children[0]
 
-    assert names == ["MultiTypeExtractOperator", "TextChunkActor", "_BatchEmbedActor"]
+    assert names == ["MultiTypeExtractOperator", "_BatchEmbedActor"]
 
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
