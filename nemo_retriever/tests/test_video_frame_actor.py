@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary_for_png_frames
+from tests import _have_ffmpeg_binary_for_png_frames
 from nemo_retriever.params import VideoFrameParams
 from nemo_retriever.video.frame_actor import (
     FRAME_COLUMNS,

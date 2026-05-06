@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary_for_png_frames
+from tests import _have_ffmpeg_binary_for_png_frames
 from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,

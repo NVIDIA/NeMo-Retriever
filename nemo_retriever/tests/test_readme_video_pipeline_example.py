@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary_for_png_frames
+from tests import _have_ffmpeg_binary_for_png_frames
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.params import (

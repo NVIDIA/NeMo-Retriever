@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary
+from tests import _have_ffmpeg_binary
 from nemo_retriever.audio.stage import _audio_extraction_json_path
 from nemo_retriever.audio.stage import _run_extract_one
 from nemo_retriever.audio.stage import extract

@@ -1,6 +1,6 @@
 import pytest
 
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary
+from tests import _have_ffmpeg_binary
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph

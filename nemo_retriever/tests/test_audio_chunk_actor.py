@@ -16,7 +16,7 @@ from nemo_retriever.audio.chunk_actor import CHUNK_COLUMNS
 from nemo_retriever.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
 from nemo_retriever.audio.media_interface import is_media_available
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary
+from tests import _have_ffmpeg_binary
 from nemo_retriever.params import AudioChunkParams
 
 

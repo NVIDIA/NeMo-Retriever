@@ -187,3 +187,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "nemo_retriever.harness.portal" = ["static/**/*"]
+
+[tool.pytest.ini_options]
+# So ``from tests import …`` resolves to ``nemo_retriever/tests`` when pytest rootdir is this project.
+pythonpath = ["."]

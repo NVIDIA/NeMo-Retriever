@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary
+from tests import _have_ffmpeg_binary
 
 
 def _make_small_wav(path: Path, duration_sec: float = 0.3, sample_rate: int = 8000) -> None:

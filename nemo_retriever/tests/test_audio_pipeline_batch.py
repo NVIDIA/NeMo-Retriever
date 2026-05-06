@@ -18,7 +18,7 @@ import pytest
 
 from nemo_retriever.audio.chunk_actor import _chunk_one
 from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.audio.media_interface import _have_ffmpeg_binary
+from tests import _have_ffmpeg_binary
 from nemo_retriever.graph_ingestor import GraphIngestor
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
