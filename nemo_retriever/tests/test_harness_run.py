@@ -252,6 +252,7 @@ def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
         beir_doc_id_field="pdf_page",
         query_csv=str(annotations_csv),
         recall_required=False,
+        lancedb_table_name="custom-table",
     )
 
     cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
@@ -263,6 +264,8 @@ def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     assert "--beir-k" in cmd
     assert "--query-csv" not in cmd
     assert "--recall-match-mode" not in cmd
+    vdb_kwargs = json.loads(cmd[cmd.index("--vdb-kwargs-json") + 1])
+    assert vdb_kwargs["table_name"] == "custom-table"
     assert effective_query_csv is None
 
 
@@ -1222,6 +1225,8 @@ def test_build_command_includes_store_flags(tmp_path: Path) -> None:
         dataset_label="jp20",
         preset="single_gpu",
         query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
         store_images_uri="stored_images",
         store_text=True,
         strip_base64=True,
@@ -1246,6 +1251,8 @@ def test_build_command_omits_store_when_uri_is_none(tmp_path: Path) -> None:
         dataset_label="jp20",
         preset="single_gpu",
         query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
         store_images_uri=None,
     )
     cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
@@ -1266,6 +1273,8 @@ def test_build_command_store_no_strip_base64(tmp_path: Path) -> None:
         dataset_label="jp20",
         preset="single_gpu",
         query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
         store_images_uri="/absolute/path/store",
         store_text=False,
         strip_base64=False,

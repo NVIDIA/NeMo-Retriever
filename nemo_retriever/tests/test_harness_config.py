@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 import nemo_retriever.harness.config as harness_config
-from nemo_retriever.harness.config import load_harness_config, load_nightly_config, load_runs_config
+from nemo_retriever.harness.config import HarnessConfig, load_harness_config, load_nightly_config, load_runs_config
 
 
 def _write_harness_config(path: Path, dataset_dir: Path, query_csv: Path) -> None:
@@ -65,6 +65,31 @@ def test_load_harness_config_precedence(tmp_path: Path, monkeypatch: pytest.Monk
     assert cfg.gpu_ocr == 0.7  # sweep override
     assert cfg.gpu_embed == 0.9  # env override (highest)
     assert cfg.recall_required is True
+
+
+def test_harness_config_preserves_legacy_evaluation_defaults(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(dataset_dir=str(dataset_dir), dataset_label="tiny", preset="base")
+
+    assert cfg.evaluation_mode == "recall"
+    assert cfg.beir_loader is None
+
+
+def test_load_harness_config_supports_lancedb_table_name_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,source,page\nq,a,1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    _write_harness_config(cfg_path, dataset_dir, query_csv)
+
+    monkeypatch.setenv("HARNESS_LANCEDB_TABLE_NAME", "custom-table")
+
+    cfg = load_harness_config(config_file=str(cfg_path), dataset="tiny", preset="base")
+
+    assert cfg.lancedb_table_name == "custom-table"
 
 
 def test_load_harness_config_supports_run_mode_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

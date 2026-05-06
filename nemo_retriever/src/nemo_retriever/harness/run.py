@@ -395,7 +395,7 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         json.dumps(
             {
                 "uri": _resolve_lancedb_uri(cfg, artifact_dir),
-                "table_name": "nv-ingest",
+                "table_name": cfg.lancedb_table_name or "nv-ingest",
                 "hybrid": bool(cfg.hybrid),
             },
             sort_keys=True,

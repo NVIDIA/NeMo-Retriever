@@ -206,7 +206,7 @@ def _normalize_language(value: Any) -> str:
     return normalized
 
 
-def _languages_match(requested_language: str, row_language: str) -> bool:
+def _languages_match(requested_language: Any, row_language: Any) -> bool:
     requested = _normalize_language(requested_language)
     row = _normalize_language(row_language)
     return bool(requested and row and requested == row)
@@ -404,7 +404,7 @@ def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = Non
             continue
 
         if normalized_language is not None:
-            row_language = str(_row_get(row, "language", "") or "").strip().lower()
+            row_language = _row_get(row, "language", "")
             if not _languages_match(normalized_language, row_language):
                 skipped_language += 1
                 continue

@@ -67,8 +67,8 @@ class HarnessConfig:
     segment_audio: bool = False
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
-    evaluation_mode: str = "beir"
-    beir_loader: str | None = "vidore_hf"
+    evaluation_mode: str = "recall"
+    beir_loader: str | None = None
     video_extract_audio: bool = True
     video_extract_frames: bool = True
     video_frame_fps: float = 1.0
@@ -85,6 +85,7 @@ class HarnessConfig:
     artifacts_dir: str | None = None
     ray_address: str | None = None
     lancedb_uri: str = "lancedb"
+    lancedb_table_name: str = "nv-ingest"
     hybrid: bool = False
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
@@ -202,6 +203,9 @@ class HarnessConfig:
 
         if self.ocr_version is not None and self.ocr_version not in {"v1", "v2"}:
             errors.append("ocr_version must be one of ['v1', 'v2'] when provided")
+
+        if not str(self.lancedb_table_name).strip():
+            errors.append("lancedb_table_name must be a non-empty string")
 
         _ZERO_ALLOWED_WORKERS = {f for f in TUNING_FIELDS if f.endswith("_workers")} if self.use_heuristics else set()
         for name in TUNING_FIELDS:
@@ -335,6 +339,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_ARTIFACTS_DIR": ("artifacts_dir", str),
         "HARNESS_RAY_ADDRESS": ("ray_address", str),
         "HARNESS_LANCEDB_URI": ("lancedb_uri", str),
+        "HARNESS_LANCEDB_TABLE_NAME": ("lancedb_table_name", str),
         "HARNESS_HYBRID": ("hybrid", _parse_bool),
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
