@@ -63,6 +63,6 @@ python -m nemo_retriever.examples.graph_pipeline \
   --lancedb-uri lancedb
 ```
 
-For remote NIMs instead of local GPU extraction and embedding, set [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) and pass the `--*-invoke-url` / `--embed-invoke-url` options shown in the [README remote inference section](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md#ingest-a-test-corpus-cli).
+For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) and pass the `--*-invoke-url` / `--embed-invoke-url` options shown in the [README remote inference section](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md#ingest-a-test-corpus-cli).
 
 **Next:** [Semantic and hybrid retrieval](vdbs.md#semantic-and-hybrid-retrieval) when serving queries (see also [Evaluate on your data](evaluate-on-your-data.md) for reranking and quality checks).
