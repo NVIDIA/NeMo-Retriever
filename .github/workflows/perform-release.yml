@@ -135,7 +135,7 @@ jobs:
           context: .
           push: false
           load: true
-          target: runtime
+          target: service
           platforms: linux/amd64
           build-args: |
             DOWNLOAD_LLAMA_TOKENIZER=True
