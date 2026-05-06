@@ -834,6 +834,7 @@ async def ingest_whole_job(
     if is_pdf:
         try:
             import pypdfium2 as pdfium
+
             doc = pdfium.PdfDocument(file_bytes)
             total_pages = len(doc)
             doc.close()

@@ -1301,10 +1301,7 @@ def _run_service_mode(
         except Exception:
             pass
 
-    typer.echo(
-        f"\n  Service ingestion complete: {total_pages} pages in {elapsed:.1f}s "
-        f"({pps:.2f} pages/sec)"
-    )
+    typer.echo(f"\n  Service ingestion complete: {total_pages} pages in {elapsed:.1f}s " f"({pps:.2f} pages/sec)")
     if pages_failed:
         typer.echo(f"  WARNING: {pages_failed} page(s) failed")
 

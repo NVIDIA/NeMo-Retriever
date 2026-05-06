@@ -628,4 +628,3 @@ class ServiceIngestor(ingestor):
                 files.append(target)
 
         return files
-

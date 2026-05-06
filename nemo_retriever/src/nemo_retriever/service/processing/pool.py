@@ -340,9 +340,7 @@ def _record_probe_events(db_path: str) -> None:
 
     for result in failures:
         category = (
-            EventCategory.NIM_UNREACHABLE.value
-            if result.status == "unreachable"
-            else EventCategory.NIM_TIMEOUT.value
+            EventCategory.NIM_UNREACHABLE.value if result.status == "unreachable" else EventCategory.NIM_TIMEOUT.value
         )
         record_event(
             repo,
@@ -631,15 +629,21 @@ def _run_pipeline_batch(
                 stage=err.stage or stage_name,
                 endpoint="pipeline",
                 job_id=runnable_pages[0].job_id if runnable_pages else None,
-                document_id=runnable_pages[err.row_index].document_id
-                if err.row_index is not None and err.row_index < len(runnable_pages)
-                else None,
-                source_file=runnable_pages[err.row_index].filename
-                if err.row_index is not None and err.row_index < len(runnable_pages)
-                else "",
-                page_number=runnable_pages[err.row_index].page_number
-                if err.row_index is not None and err.row_index < len(runnable_pages)
-                else None,
+                document_id=(
+                    runnable_pages[err.row_index].document_id
+                    if err.row_index is not None and err.row_index < len(runnable_pages)
+                    else None
+                ),
+                source_file=(
+                    runnable_pages[err.row_index].filename
+                    if err.row_index is not None and err.row_index < len(runnable_pages)
+                    else ""
+                ),
+                page_number=(
+                    runnable_pages[err.row_index].page_number
+                    if err.row_index is not None and err.row_index < len(runnable_pages)
+                    else None
+                ),
             )
 
     if failed_exc is not None:
@@ -1147,10 +1151,12 @@ class _DbWriterThread:
                         document_id=item.document_id,
                         source_file=item.source_file,
                         page_number=item.page_number,
-                        extra_json=json.dumps({
-                            "detection_count": item.detection_count,
-                            "processing_duration_ms": item.processing_duration_ms,
-                        }),
+                        extra_json=json.dumps(
+                            {
+                                "detection_count": item.detection_count,
+                                "processing_duration_ms": item.processing_duration_ms,
+                            }
+                        ),
                     )
                     erow = event.to_row()
                     ecols = ", ".join(erow.keys())

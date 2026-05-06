@@ -313,13 +313,11 @@ class Repository:
                 return False
             now = datetime.now(timezone.utc).isoformat()
             self._conn.execute(
-                "UPDATE jobs SET processing_status = 'queued', "
-                "pages_completed = 0, updated_at = ? WHERE id = ?",
+                "UPDATE jobs SET processing_status = 'queued', " "pages_completed = 0, updated_at = ? WHERE id = ?",
                 (now, job_id),
             )
             self._conn.execute(
-                "UPDATE documents SET processing_status = 'queued', "
-                "updated_at = ? WHERE job_id = ?",
+                "UPDATE documents SET processing_status = 'queued', " "updated_at = ? WHERE job_id = ?",
                 (now, job_id),
             )
             self._conn.commit()

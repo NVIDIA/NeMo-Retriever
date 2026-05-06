@@ -777,12 +777,15 @@ def ocr_page_elements(
                 if upstream_err:
                     _logger.warning(
                         "OCR skipping page %s of %s — no page image (upstream error: %s)",
-                        page_num, path, upstream_err,
+                        page_num,
+                        path,
+                        upstream_err,
                     )
                 else:
                     _logger.debug(
                         "OCR skipping page %s of %s — no page image (text-only or raster not requested)",
-                        page_num, path,
+                        page_num,
+                        path,
                     )
                 all_table.append(table_items)
                 all_chart.append(chart_items)

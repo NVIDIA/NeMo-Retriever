@@ -9,13 +9,11 @@ from unittest.mock import patch, MagicMock
 import requests
 
 from nemo_retriever.nim.error_reporter import (
-    OperatorError,
     _errors,
     drain_errors,
     report_error,
 )
 from nemo_retriever.nim.probe import (
-    ProbeResult,
     _probe_results,
     drain_probe_results,
     probe_endpoint,
@@ -115,13 +113,9 @@ class TestRecordProbeEvents:
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="TestActor")
             probe_endpoint("http://localhost:8006/v1/invoke", name="table-structure", prefix="TestActor2")
 
-        with patch(
-            "nemo_retriever.service.processing.pool.DatabaseEngine"
-        ) as mock_engine_cls, patch(
+        with patch("nemo_retriever.service.processing.pool.DatabaseEngine"), patch(
             "nemo_retriever.service.processing.pool.Repository"
-        ) as mock_repo_cls, patch(
-            "nemo_retriever.service.processing.pool.record_event"
-        ) as mock_record:
+        ) as mock_repo_cls, patch("nemo_retriever.service.processing.pool.record_event") as mock_record:
             mock_repo_cls.return_value = MagicMock()
 
             from nemo_retriever.service.processing.pool import _record_probe_events
@@ -141,9 +135,7 @@ class TestRecordProbeEvents:
         with patch("nemo_retriever.nim.probe.requests.get", return_value=mock_resp):
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="TestActor")
 
-        with patch(
-            "nemo_retriever.service.processing.pool.record_event"
-        ) as mock_record:
+        with patch("nemo_retriever.service.processing.pool.record_event") as mock_record:
             from nemo_retriever.service.processing.pool import _record_probe_events
 
             _record_probe_events("/tmp/test.db")
@@ -154,13 +146,9 @@ class TestRecordProbeEvents:
         with patch("nemo_retriever.nim.probe.requests.get", side_effect=requests.Timeout()):
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="TestActor")
 
-        with patch(
-            "nemo_retriever.service.processing.pool.DatabaseEngine"
-        ), patch(
+        with patch("nemo_retriever.service.processing.pool.DatabaseEngine"), patch(
             "nemo_retriever.service.processing.pool.Repository"
-        ) as mock_repo_cls, patch(
-            "nemo_retriever.service.processing.pool.record_event"
-        ) as mock_record:
+        ) as mock_repo_cls, patch("nemo_retriever.service.processing.pool.record_event") as mock_record:
             mock_repo_cls.return_value = MagicMock()
 
             from nemo_retriever.service.processing.pool import _record_probe_events
