@@ -11,10 +11,10 @@ This documentation describes two ways to run [NeMo Retriever Library](overview.m
 - Run the NIM locally on your cluster with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
 
-Supported audio file types today:
+Supported file types for speech extraction today:
 
-- `mp3`
-- `wav`
+- `mp3`, `wav`
+- `mp4`, `mov`, `mkv`, `avi` — common video containers; the audio track is transcribed (same extensions as in [What is NeMo Retriever Library?](overview.md))
 
 [NeMo Retriever Library](overview.md) supports extracting speech from audio for Retrieval Augmented Generation (RAG). Similar to how the multimodal document pipeline uses detection and OCR microservices, NeMo Retriever Library uses the [parakeet-1-1b-ctc-en-us ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) to transcribe speech to text, then embeddings via the NeMo Retriever embedding path.
 
