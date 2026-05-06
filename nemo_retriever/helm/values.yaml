@@ -281,7 +281,7 @@ nimApiKey:
 retrieverResults:
   enabled: true
   existingClaim: ""
-  storageClass: "local-path"
+  storageClass: ""
   accessModes:
     - ReadWriteOnce
   size: 50Gi
@@ -304,7 +304,7 @@ persistence:
   # When `existingClaim` is set the chart will skip PVC creation and mount
   # the named claim instead. Useful for promotion across releases.
   existingClaim: ""
-  storageClass: "local-path"
+  storageClass: ""
   accessModes:
     - ReadWriteOnce
   size: 50Gi
