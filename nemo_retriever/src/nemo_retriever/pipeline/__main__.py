@@ -32,6 +32,10 @@ Examples::
         --vdb-op <operator-key> \\
         --vdb-kwargs-json '<operator kwargs JSON object>'
 
+    # Extract + embed only (skip in-graph VDB; default run includes VDB for recall)
+    retriever pipeline run /data/pdfs \\
+        --no-vdb
+
     # Sidecar metadata (merged into each chunk's content_metadata, same triplet as nv-ingest-client)
     retriever pipeline run /data/pdfs \\
         --meta-dataframe ./meta.csv \\
@@ -986,13 +990,22 @@ def run(
     vdb_op: str = typer.Option(
         DEFAULT_VDB_OP,
         "--vdb-op",
-        help="nv-ingest-client VDB operator key used for in-graph upload (after embed/store).",
+        help="nv-ingest-client VDB operator key for in-graph upload after embed/store (skipped with --no-vdb).",
         rich_help_panel=_PANEL_VDB,
     ),
     vdb_kwargs_json: Optional[str] = typer.Option(
         None,
         "--vdb-kwargs-json",
-        help="JSON object forwarded as constructor kwargs to the selected VDB operator.",
+        help=(
+            "JSON object forwarded as constructor kwargs to the selected VDB operator "
+            "(optional; backends such as LanceDB use sensible defaults when omitted)."
+        ),
+        rich_help_panel=_PANEL_VDB,
+    ),
+    no_vdb: bool = typer.Option(
+        False,
+        "--no-vdb",
+        help="Skip in-graph vector DB upload (extract+embed only; default run uploads for recall/eval).",
         rich_help_panel=_PANEL_VDB,
     ),
     meta_dataframe: Optional[Path] = typer.Option(
@@ -1040,7 +1053,13 @@ def run(
     ),
     runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix", rich_help_panel=_PANEL_OBS),
     # --- Evaluation -----------------------------------------------------
-    evaluation_mode: str = typer.Option("recall", "--evaluation-mode", rich_help_panel=_PANEL_EVAL),
+    evaluation_mode: str = typer.Option(
+        "recall",
+        "--evaluation-mode",
+        help="Post-ingest evaluation: default 'recall' runs when a \
+        query CSV exists (after VDB upload unless --no-vdb).",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     query_csv: Path = typer.Option(
         "./data/bo767_query_gt.csv",
         "--query-csv",
@@ -1259,8 +1278,10 @@ def run(
         enable_caption = caption or caption_invoke_url is not None
         enable_dedup = dedup if dedup is not None else enable_caption
 
+        # In-graph VDB by default (supports default recall); opt out with --no-vdb.
+        enable_in_graph_vdb_upload = run_mode != "service" and not no_vdb
         pipeline_vdb_upload: Optional[VdbUploadParams] = None
-        if run_mode != "service":
+        if enable_in_graph_vdb_upload:
             pipeline_vdb_upload = VdbUploadParams(vdb_op=resolved_vdb_op, vdb_kwargs=resolved_vdb_kwargs)
 
         logger.info("Building graph pipeline (run_mode=%s) for %s ...", run_mode, input_path)
@@ -1332,9 +1353,10 @@ def run(
                     "No uploadable VDB records produced; skipping %s evaluation.",
                     evaluation_mode,
                 )
-            else:
+            elif enable_in_graph_vdb_upload:
                 logger.info(
-                    "In-graph VDB stage wrote %s VDB records (%s graph rows) to backend %s.",
+                    "Prepared %s uploadable VDB records (%s graph rows) for in-graph upload to %s "
+                    "(row conversion count, not backend-confirmed writes; see VDB/operator logs for persistence).",
                     uploadable_vdb_records,
                     len(ingest_local_results),
                     resolved_vdb_op,

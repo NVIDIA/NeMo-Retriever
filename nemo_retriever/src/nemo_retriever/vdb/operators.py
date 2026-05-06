@@ -78,7 +78,8 @@ class IngestVdbOperator(AbstractOperator):
                 meta_fields=self._sidecar_spec["meta_fields"],
                 join_key=self._sidecar_spec["meta_join_key"],
             )
-        self._vdb.run(records)
+        if records and any(batch for batch in records):
+            self._vdb.run(records)
         return data
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

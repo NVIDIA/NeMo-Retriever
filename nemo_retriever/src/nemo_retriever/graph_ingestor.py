@@ -315,7 +315,14 @@ class GraphIngestor(ingestor):
         return self
 
     def vdb_upload(self, params: Optional[VdbUploadParams] = None, **kwargs: Any) -> "GraphIngestor":
-        """Record a vector DB upload stage (runs in-graph after embed/store, before webhook)."""
+        """Record a vector DB upload **sink** (in-graph after embed/store, before webhook).
+
+        Does not call :meth:`_record_stage`: ``stage_order`` only lists
+        ``dedup`` / ``caption`` / ``store`` / ``embed`` for reordering; VDB is
+        always appended from ``_vdb_upload_params`` in
+        :func:`~nemo_retriever.graph.ingestor_runtime._append_ordered_transform_stages`.
+        Plan builders that round-trip sinks use :meth:`~nemo_retriever.ingest_plans.BaseIngestPlan.record_sink`.
+        """
         self._vdb_upload_params = _coerce(params, kwargs, default_factory=VdbUploadParams)
         return self
 
