@@ -64,6 +64,7 @@ from nemo_retriever.params import (
     ExtractParams,
     StoreParams,
     TextChunkParams,
+    VdbUploadParams,
     VideoFrameParams,
     VideoFrameTextDedupParams,
 )
@@ -409,6 +410,7 @@ def _build_ingestor(
     service_url: str = "http://localhost:7670",
     service_concurrency: int = 8,
     service_api_token: Optional[str] = None,
+    vdb_upload_params: Optional[VdbUploadParams] = None,
 ) -> Any:
     """Construct an ingestor with all requested stages attached.
 
@@ -555,6 +557,9 @@ def _build_ingestor(
             )
         )
 
+    if vdb_upload_params is not None:
+        ingestor = ingestor.vdb_upload(vdb_upload_params)
+
     return ingestor
 
 
@@ -591,20 +596,6 @@ def _count_uploadable_vdb_records(records: list[dict[str, Any]]) -> int:
     from nemo_retriever.vdb.records import to_client_vdb_records
 
     return sum(len(batch) for batch in to_client_vdb_records(records))
-
-
-def _upload_vdb_records(records: list[dict[str, Any]], *, vdb_op: str, vdb_kwargs: dict[str, Any]) -> float:
-    """Upload materialized graph records through the configured VDB backend."""
-
-    from nemo_retriever.vdb import IngestVdbOperator
-
-    upload_start = time.perf_counter()
-    operator = IngestVdbOperator(
-        vdb_op=str(vdb_op),
-        vdb_kwargs=dict(vdb_kwargs or {}),
-    )
-    operator(records)
-    return time.perf_counter() - upload_start
 
 
 def _run_evaluation(
@@ -995,7 +986,7 @@ def run(
     vdb_op: str = typer.Option(
         DEFAULT_VDB_OP,
         "--vdb-op",
-        help="nv-ingest-client VDB operator key used for post-graph upload.",
+        help="nv-ingest-client VDB operator key used for in-graph upload (after embed/store).",
         rich_help_panel=_PANEL_VDB,
     ),
     vdb_kwargs_json: Optional[str] = typer.Option(
@@ -1268,6 +1259,10 @@ def run(
         enable_caption = caption or caption_invoke_url is not None
         enable_dedup = dedup if dedup is not None else enable_caption
 
+        pipeline_vdb_upload: Optional[VdbUploadParams] = None
+        if run_mode != "service":
+            pipeline_vdb_upload = VdbUploadParams(vdb_op=resolved_vdb_op, vdb_kwargs=resolved_vdb_kwargs)
+
         logger.info("Building graph pipeline (run_mode=%s) for %s ...", run_mode, input_path)
         ingestor = _build_ingestor(
             run_mode=run_mode,
@@ -1305,6 +1300,7 @@ def run(
             service_url=service_url,
             service_concurrency=service_concurrency,
             service_api_token=service_api_token,
+            vdb_upload_params=pipeline_vdb_upload,
         )
 
         # --- Execute ---------------------------------------------------
@@ -1330,23 +1326,18 @@ def run(
             vdb_upload_time = 0.0
         else:
             uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+            vdb_upload_time = 0.0
             if uploadable_vdb_records == 0:
                 logger.warning(
-                    "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
+                    "No uploadable VDB records produced; skipping %s evaluation.",
                     evaluation_mode,
                 )
-                vdb_upload_time = 0.0
             else:
                 logger.info(
-                    "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
-                    len(ingest_local_results),
+                    "In-graph VDB stage wrote %s VDB records (%s graph rows) to backend %s.",
                     uploadable_vdb_records,
+                    len(ingest_local_results),
                     resolved_vdb_op,
-                )
-                vdb_upload_time = _upload_vdb_records(
-                    ingest_local_results,
-                    vdb_op=resolved_vdb_op,
-                    vdb_kwargs=resolved_vdb_kwargs,
                 )
 
         if save_intermediate is not None:

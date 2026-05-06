@@ -93,14 +93,11 @@ def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
 
 def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Convert graph-pipeline rows into the nested record shape expected by client VDBs."""
-    records: list[dict[str, Any]] = []
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        record = _client_record_from_graph_row(row)
-        if record is not None:
-            records.append(record)
-    return [records] if records else []
+    if hasattr(rows, "to_dict"):
+        rows = rows.to_dict("records")
+    return [
+        [_client_record_from_graph_row(row) for row in rows or [] if _client_record_from_graph_row(row) is not None]
+    ]
 
 
 def _mapping(value: Any) -> dict[str, Any]:

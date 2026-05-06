@@ -36,7 +36,8 @@ from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
-from nemo_retriever.params import TextChunkParams, resolve_split_params
+from nemo_retriever.params import TextChunkParams, VdbUploadParams, resolve_split_params
+from nemo_retriever.vdb import IngestVdbOperator
 from nemo_retriever.txt.ray_data import TextChunkActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.ingest_plans import IngestExecutionPlan
@@ -454,6 +455,7 @@ def _append_ordered_transform_stages(
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
+    vdb_upload_params: VdbUploadParams | None = None,
     webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
@@ -511,6 +513,12 @@ def _append_ordered_transform_stages(
                     )
             graph = graph >> _BatchEmbedActor(params=embed_params)
 
+    if vdb_upload_params is not None:
+        graph = graph >> IngestVdbOperator(
+            vdb_op=vdb_upload_params.vdb_op,
+            vdb_kwargs=vdb_upload_params.to_ingest_operator_kwargs(),
+        )
+
     if webhook_params is not None and getattr(webhook_params, "endpoint_url", None):
         graph = graph >> WebhookNotifyOperator(params=webhook_params)
 
@@ -531,6 +539,7 @@ def build_graph(
     split_config: dict[str, Any] | None = None,
     caption_params: Any | None = None,
     store_params: Any | None = None,
+    vdb_upload_params: VdbUploadParams | None = None,
     webhook_params: Any | None = None,
     video_frame_params: Any | None = None,
     video_text_dedup_params: Any | None = None,
@@ -569,6 +578,14 @@ def build_graph(
         webhook_params=webhook_params,
         stage_order=stage_order,
     )
+
+    sink_vdb: VdbUploadParams | None = None
+    if execution_plan is not None:
+        for sink in execution_plan.sinks:
+            if sink.name == "vdb_upload":
+                sink_vdb = sink.params
+                break
+    effective_vdb_upload_params = vdb_upload_params if vdb_upload_params is not None else sink_vdb
 
     # GraphIngestor pre-resolves split_config; tests and other direct callers
     # may omit it, in which case fill in defaults consistently with the
@@ -766,6 +783,7 @@ def build_graph(
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,
+        vdb_upload_params=effective_vdb_upload_params,
         webhook_params=webhook_params,
         stage_order=stage_order,
         supports_dedup=True,
