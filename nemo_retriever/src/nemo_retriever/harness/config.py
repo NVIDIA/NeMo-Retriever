@@ -60,6 +60,7 @@ class HarnessConfig:
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = True
+    # Legacy recall fields only apply when evaluation_mode="recall" and input_type="audio".
     recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
     audio_match_tolerance_secs: float = 2.0
