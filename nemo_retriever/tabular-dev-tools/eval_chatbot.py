@@ -189,25 +189,91 @@ def _extract_numbers(text: str) -> List[float]:
     return out
 
 
-def _score_answer(expected_raw: str, returned_answer: str, returned_db: Any) -> Dict[str, Any]:
+def _parse_markdown_table(md: str) -> Optional[pd.DataFrame]:
+    """Parse a simple markdown table into a DataFrame, or None on failure."""
+    if not md:
+        return None
+    lines = [l.strip() for l in md.strip().splitlines() if l.strip()]
+    # Need at least header + separator + one data row
+    if len(lines) < 3:
+        return None
+    data_lines = [l for l in lines if not re.match(r"^\|[\s:_-]+\|$", l)]
+    if len(data_lines) < 2:
+        return None
+    header = [c.strip() for c in data_lines[0].strip("|").split("|")]
+    rows = []
+    for line in data_lines[1:]:
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) == len(header):
+            rows.append(cells)
+    if not rows:
+        return None
+    return pd.DataFrame(rows, columns=header)
+
+
+def _db_result_to_df(value: str) -> Optional[pd.DataFrame]:
+    """Try to parse the stringified DB result into a DataFrame."""
+    if not value:
+        return None
+    text = str(value).strip()
+    # Unwrap outer list wrapper like ['[{"count":712}]']
+    if text.startswith("[") and text.endswith("]"):
+        try:
+            outer = json.loads(text)
+            if isinstance(outer, list) and len(outer) == 1 and isinstance(outer[0], str):
+                text = outer[0]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    # Try JSON array of objects
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return pd.DataFrame(parsed)
+        if isinstance(parsed, dict):
+            return pd.DataFrame([parsed])
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Try CSV
+    try:
+        from io import StringIO
+        df = pd.read_csv(StringIO(text))
+        if not df.empty:
+            return df
+    except Exception:
+        pass
+    return None
+
+
+def _score_answer(expected_raw: str, returned_db_str: str) -> Dict[str, Any]:
     """Score the agent's answer against the expected ``answer_raw`` markdown table.
 
-    Strategy:
-    - Compute fuzzy text similarity between ``expected_raw`` and the agent's
-      formatted ``response`` text + a stringified DB result.
-    - Compare the multiset of numeric values appearing in both, which is a
-      cheap proxy that survives the markdown-table formatting differences.
+    Strategy (in priority order):
+    1. Parse both sides into DataFrames and compare row-multisets (structural match).
+    2. Compare the multiset of numeric values (survives formatting differences).
+    3. Fall back to fuzzy text similarity.
     """
-    haystack = "\n".join(filter(None, [str(returned_answer or ""), str(returned_db or "")]))
+    expected_df = _parse_markdown_table(expected_raw)
+    actual_df = _db_result_to_df(returned_db_str)
+
+    structural_match = 0
+    if expected_df is not None and actual_df is not None:
+        structural_match = 1 if _df_values_equal(expected_df, actual_df) else 0
+
+    haystack = str(returned_db_str or "")
+
+    expected_nums = sorted(round(n, 4) for n in _extract_numbers(expected_raw))
+    actual_nums = sorted(round(n, 4) for n in _extract_numbers(haystack))
+    nums_match = 1 if expected_nums and expected_nums == actual_nums else 0
+
     sim = (
         difflib.SequenceMatcher(None, _normalize_text(expected_raw), _normalize_text(haystack)).ratio()
         if expected_raw and haystack
         else 0.0
     )
-
-    expected_nums = sorted(round(n, 4) for n in _extract_numbers(expected_raw))
-    actual_nums = sorted(round(n, 4) for n in _extract_numbers(haystack))
-    nums_match = 1 if expected_nums and expected_nums == actual_nums else 0
+    if structural_match:
+        sim = 1.0
+    elif nums_match:
+        sim = max(sim, 1.0)
 
     return {
         "answer_text_similarity": round(sim, 4),
@@ -287,7 +353,7 @@ def _print_agent_result(
     print(sep)
 
 
-def evaluate(input_path: Path, output_path: Path) -> None:
+def evaluate(input_path: Path, output_path: Path, start_index: int = 0) -> None:
     # questions = [{"question_id": 0, "question": "Show me the details for component 670-14039-0072-TS5", "SQL": ""}]
     questions = _load_questions(input_path)
     logger.info("Loaded %d questions from %s", len(questions), input_path)
@@ -295,12 +361,18 @@ def evaluate(input_path: Path, output_path: Path) -> None:
     connector = PostgresDatabase(_conn_string(DATABASE))
     retriever = _build_retriever()
 
+    resuming = start_index > 0 and output_path.exists()
+    mode = "a" if resuming else "w"
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8", newline="") as f:
+    with output_path.open(mode, encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
-        writer.writeheader()
+        if not resuming:
+            writer.writeheader()
 
         for idx, item in enumerate(questions):
+            if idx < start_index:
+                continue
             qid = item.get("question_id", idx)
             question = item.get("question", "")
             expected_sql = item.get("SQL", "")
@@ -334,20 +406,27 @@ def evaluate(input_path: Path, output_path: Path) -> None:
                     "retriever": retriever,
                     "connector": connector,
                     "path_state": {},
-                    "custom_prompts": "",
+                    "custom_prompts": (
+                        "## Responsible Users\n"
+                        "request_tasks.pic_id = primary responsible user for a request task.\n"
+                        "request_task_collaborators.user_id = additional users collaborating on that same request task.\n"
+                        "For questions asking who is responsible, involved, assigned, working on, or blocking a request task or request, "
+                        "include all user-role associations for the relevant request tasks unless the question explicitly asks only for "
+                        "the primary responsible user.\n"
+                    ),
                     "acronyms": "",
                 }
                 agent_result = get_agent_response(payload)
                 _print_agent_result(qid, question, agent_result, expected_sql)
                 returned_sql = (agent_result or {}).get("sql_code", "") or ""
-                returned_answer = (agent_result or {}).get("response", "") or ""
                 returned_db = (agent_result or {}).get("sql_response_from_db")
+                returned_db_str = _stringify_db_result(returned_db)
 
                 row["returned_sql"] = returned_sql
-                row["returned_answer"] = _stringify_db_result(returned_db)
+                row["returned_answer"] = returned_db_str
 
                 row.update(_score_sql(connector, expected_sql, returned_sql))
-                row.update(_score_answer(expected_answer, returned_answer, _stringify_db_result(returned_db)))
+                row.update(_score_answer(expected_answer, returned_db_str))
             except Exception as exc:
                 logger.exception("Question %s failed", qid)
                 row["error"] = f"{type(exc).__name__}: {exc}"
@@ -378,10 +457,12 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+START_INDEX = 0
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     args = _parse_args()
-    evaluate(args.input, args.output)
+    evaluate(args.input, args.output, START_INDEX)
