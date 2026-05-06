@@ -1548,6 +1548,8 @@ async def list_managed_datasets():
 
 @app.post("/api/managed-datasets")
 async def create_managed_dataset(req: DatasetCreateRequest):
+    if req.evaluation_mode == "beir" and not str(req.beir_loader or "").strip():
+        raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
     data = req.model_dump(exclude_none=True)
     try:
         ds = history.create_dataset(data)

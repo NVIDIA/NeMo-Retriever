@@ -197,7 +197,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
     recall_match_mode: dataset?.recall_match_mode || "audio_segment",
     recall_adapter: dataset?.recall_adapter || "none",
     evaluation_mode: dataset?.evaluation_mode || "beir",
-    beir_loader: dataset?.beir_loader || "vidore_hf",
+    beir_loader: dataset?.beir_loader || "",
     beir_dataset_name: dataset?.beir_dataset_name || "",
     beir_split: dataset?.beir_split || "test",
     beir_query_language: dataset?.beir_query_language || "",
@@ -216,6 +216,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
   const [error, setError] = useState("");
 
   const isBeir = form.evaluation_mode === "beir";
+  const beirLoaderOptions = ["bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"];
 
   function set(field, val) { setForm(f=>({...f,[field]:val})); }
 
@@ -228,6 +229,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
     const payload = {
       ...form,
       query_csv: form.query_csv || null,
+      beir_loader: isBeir ? (form.beir_loader || null) : null,
       beir_dataset_name: form.beir_dataset_name || null,
       beir_query_language: form.beir_query_language || null,
       beir_ks: (isBeir && parsedKs && parsedKs.length > 0) ? parsedKs : null,
@@ -332,8 +334,9 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
                   <div>
                     <label style={labelStyle}>BEIR Loader</label>
-                    <select className="select" style={{width:'100%'}} value={form.beir_loader} onChange={e=>set('beir_loader',e.target.value)}>
-                      <option value="vidore_hf">vidore_hf</option>
+                    <select className="select" style={{width:'100%'}} value={form.beir_loader} onChange={e=>set('beir_loader',e.target.value)} required>
+                      <option value="">Select loader...</option>
+                      {beirLoaderOptions.map(loader => <option key={loader} value={loader}>{loader}</option>)}
                     </select>
                   </div>
                   <div>
