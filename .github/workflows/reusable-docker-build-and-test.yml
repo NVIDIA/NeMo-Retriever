@@ -149,7 +149,7 @@ jobs:
           docker buildx build \
             --platform "${{ inputs.platform }}" \
             --load \
-            --target base \
+            --target "${{ inputs.target }}" \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             --build-arg BASE_IMG="${{ inputs.base-image }}" \
             --build-arg BASE_IMG_TAG="${{ inputs.base-image-tag }}" \
@@ -208,9 +208,14 @@ jobs:
             exit 1
           fi
 
+          if [ "${{ inputs.coverage }}" = "true" ]; then
+            COV_ARGS="--cov nemo_retriever --cov-report term --cov-report xml:/tmp/coverage.xml"
+          else
+            COV_ARGS=""
+          fi
 
           if [ "${{ inputs.test-selection }}" = "full" ]; then
-            CMD="uv pip install -e nemo_retriever[all,dev] && uv pip install pytest && python -m pytest -rs -m \"$MARKERS\" $COV_ARGS $TEST_PATHS"
+            CMD="source /opt/retriever_runtime/bin/activate; uv pip install -e nemo_retriever[all,dev] && uv pip install pytest && python -m pytest -rs -m \"$MARKERS\" $COV_ARGS $TEST_PATHS"
           else
             N="${{ inputs.random-count }}"
             CMD="set -euo pipefail; \
