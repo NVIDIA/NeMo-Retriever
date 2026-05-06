@@ -306,6 +306,22 @@ _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN dataset_config_hash TEXT",
 ]
 
+CREATE_DATA_MIGRATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS _applied_data_migrations (
+    key TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+"""
+
+_MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR = "non_audio_recall_datasets_to_beir"
+_DATA_MIGRATIONS = (
+    (
+        _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR,
+        "UPDATE datasets SET evaluation_mode = 'beir' "
+        "WHERE evaluation_mode = 'recall' AND COALESCE(input_type, 'pdf') != 'audio'",
+    ),
+)
+
 RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
 
 CREATE_INDEX_SQL = """
@@ -350,6 +366,15 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+    conn.execute(CREATE_DATA_MIGRATIONS_TABLE_SQL)
+    for key, stmt in _DATA_MIGRATIONS:
+        if conn.execute("SELECT 1 FROM _applied_data_migrations WHERE key = ?", (key,)).fetchone():
+            continue
+        conn.execute(stmt)
+        conn.execute(
+            "INSERT INTO _applied_data_migrations (key, applied_at) VALUES (?, ?)",
+            (key, datetime.now(timezone.utc).isoformat()),
+        )
     conn.commit()
     return conn
 
