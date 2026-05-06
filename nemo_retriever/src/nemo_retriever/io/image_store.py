@@ -14,6 +14,12 @@ from upath import UPath
 logger = logging.getLogger(__name__)
 
 
+# Known limitation: _safe_stem derives the output subdirectory from the
+# filename alone (e.g. "report.pdf" → "report/").  Two source files with
+# the same basename but different parent directories will write to the same
+# subdirectory and may overwrite each other.  This matches the legacy
+# `nemo_retriever.api` store behaviour.  A future PR should incorporate a short hash
+# of the full source path to eliminate collisions.
 def inline_image_b64(container: dict) -> str | None:
     """Return inline base64 image data without reloading stored URIs."""
     value = container.get("image_b64")

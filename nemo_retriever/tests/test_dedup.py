@@ -6,7 +6,7 @@
 
 import pandas as pd
 
-from nv_ingest_api.internal.mutate.deduplicate import calculate_iou
+from nemo_retriever.api.internal.mutate.deduplicate import calculate_iou
 from nemo_retriever.dedup.dedup import dedup_images
 
 

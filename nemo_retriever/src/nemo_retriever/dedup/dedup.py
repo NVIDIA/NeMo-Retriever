@@ -9,7 +9,7 @@ from typing import Any, List, Tuple
 
 import pandas as pd
 
-from nv_ingest_api.internal.mutate.deduplicate import calculate_iou
+from nemo_retriever.api.internal.mutate.deduplicate import calculate_iou
 from nemo_retriever.params import DedupParams
 
 _STRUCTURED_COLUMNS = ("table", "chart", "infographic")

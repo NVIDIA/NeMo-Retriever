@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -14,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.media_interface import is_media_available
+from tests import _have_ffmpeg_binary_for_png_frames
 from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,
@@ -24,11 +23,8 @@ from nemo_retriever.params import (
 )
 
 
-def _have_ffmpeg_binary() -> bool:
-    return is_media_available() and shutil.which("ffmpeg") is not None
-
-
-def _make_test_mp4(path: Path, duration_sec: int = 5) -> None:
+def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
+    """Synthetic MP4 with video+audio; ``mpeg4`` avoids requiring ``libx264``."""
     cmd = [
         "ffmpeg",
         "-y",
@@ -43,7 +39,9 @@ def _make_test_mp4(path: Path, duration_sec: int = 5) -> None:
         "-i",
         f"sine=frequency=440:duration={duration_sec}",
         "-c:v",
-        "libx264",
+        "mpeg4",
+        "-q:v",
+        "5",
         "-c:a",
         "aac",
         "-shortest",
@@ -52,14 +50,17 @@ def _make_test_mp4(path: Path, duration_sec: int = 5) -> None:
     subprocess.run(cmd, check=True)
 
 
-@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_png_frames(),
+    reason="ffmpeg with PNG encoder required for frame extraction",
+)
 def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> None:
     """End-to-end through MultiTypeExtractOperator._run_video_pipeline.
 
     Mocks the OCR + ASR backends so the test runs offline.
     """
     fixture = tmp_path / "fixture.mp4"
-    _make_test_mp4(fixture, duration_sec=5)
+    _make_test_mp4_with_av(fixture, duration_sec=5)
 
     from nemo_retriever.graph.multi_type_extract_operator import _MultiTypeExtractBase
 
