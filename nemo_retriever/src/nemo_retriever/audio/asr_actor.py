@@ -178,7 +178,9 @@ def _get_client(params: ASRParams):  # noqa: ANN201
     http_endpoint = (params.audio_endpoints[1] or "").strip() or None
     if not grpc_endpoint:
         raise ValueError(
-            "ASR audio_endpoints[0] (gRPC) must be set for Parakeet (e.g. localhost:50051 or the default NVIDIA hosted endpoint from build.nvidia.com)."
+            "ASR audio_endpoints[0] (gRPC) must be set for Parakeet "
+            f"(e.g. localhost:50051 for a local NIM, or {DEFAULT_NGC_ASR_GRPC_ENDPOINT!r} "
+            "for build.nvidia.com hosted inference)."
         )
     return create_audio_inference_client(
         (grpc_endpoint, http_endpoint or ""),
