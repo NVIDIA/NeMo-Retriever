@@ -10,14 +10,13 @@ and that ``VideoSplitActor`` emits both audio and frame rows on a synthetic MP4.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import _have_ffmpeg_binary_for_png_frames
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.params import (
@@ -33,11 +32,8 @@ from nemo_retriever.video import VideoSplitActor
 from nemo_retriever.video import _content_types as _CT
 
 
-def _have_ffmpeg_binary() -> bool:
-    return is_media_available() and shutil.which("ffmpeg") is not None
-
-
-def _make_test_mp4(path: Path, duration_sec: int = 5) -> None:
+def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
+    """Synthetic MP4 with video+audio; ``mpeg4`` avoids requiring ``libx264``."""
     cmd = [
         "ffmpeg",
         "-y",
@@ -52,7 +48,9 @@ def _make_test_mp4(path: Path, duration_sec: int = 5) -> None:
         "-i",
         f"sine=frequency=440:duration={duration_sec}",
         "-c:v",
-        "libx264",
+        "mpeg4",
+        "-q:v",
+        "5",
         "-c:a",
         "aac",
         "-shortest",
@@ -105,11 +103,14 @@ def test_readme_video_pipeline_build_graph_chain() -> None:
     assert "_BatchEmbedActor" in names
 
 
-@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_png_frames(),
+    reason="ffmpeg with PNG encoder required for frame extraction",
+)
 def test_readme_video_split_actor_emits_audio_and_frame_rows(tmp_path: Path) -> None:
     """Mirror README ``AudioChunkParams`` / ``VideoFrameParams`` on a synthetic MP4."""
     fixture = tmp_path / "readme_fixture.mp4"
-    _make_test_mp4(fixture, duration_sec=5)
+    _make_test_mp4_with_av(fixture, duration_sec=5)
 
     actor = VideoSplitActor(
         audio_chunk_params=AudioChunkParams(
