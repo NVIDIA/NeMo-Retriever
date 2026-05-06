@@ -70,10 +70,15 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ENV PATH=/usr/local/bin:$PATH
 ENV UV_LINK_MODE=copy
+# Managed interpreters default to ~/.local/share/uv (under /root here). The service
+# image runs as USER nemo; uv cannot resolve python3 in the venv if it symlinks there.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv python install 3.12 \
-    && uv venv --python 3.12 /opt/retriever_runtime
+    mkdir -p /opt/uv-python \
+    && uv python install 3.12 \
+    && uv venv --python 3.12 /opt/retriever_runtime \
+    && chmod -R a+rX /opt/uv-python
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
