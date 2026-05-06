@@ -137,10 +137,10 @@ jobs:
 
   build_ocr_cuda:
     needs: nightly_coordinate
-    # nemotron-ocr-v1 needs nvcc/CUDA headers to build its extension.
+    # Nemotron OCR packages need nvcc/CUDA headers to build their extension.
     # Build with Python 3.12 to match upstream package constraints and
     # avoid producing an extension for the wrong Python ABI.
-    # Matrix across x86_64 and aarch64 so the wheel works on ARM hosts
+    # Matrix across model generations, x86_64, and aarch64 so the wheel works on ARM hosts
     # (e.g. DGX Spark) as well as conventional x86 machines.
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -153,6 +153,21 @@ jobs:
           - runner: ubuntu-24.04-arm
             cuda_image: nvidia/cuda:13.0.0-devel-ubuntu24.04
             arch: aarch64
+        ocr:
+          - id: nemotron-ocr-v1
+            url: https://huggingface.co/nvidia/nemotron-ocr-v1
+            project_name: ""
+            expected_project_name: nemotron-ocr
+            package_rename: ""
+            expected_package: nemotron_ocr
+            nightly_base_version: "1.0.2"
+          - id: nemotron-ocr-v2
+            url: https://huggingface.co/nvidia/nemotron-ocr-v2
+            project_name: nemotron-ocr-v2
+            expected_project_name: nemotron-ocr-v2
+            package_rename: nemotron_ocr=nemotron_ocr_v2
+            expected_package: nemotron_ocr_v2
+            nightly_base_version: "2.0.0"
     container:
       image: ${{ matrix.platform.cuda_image }}
     steps:
@@ -196,7 +211,7 @@ jobs:
           echo "upload_to=${upload_to}" >> "$GITHUB_OUTPUT"
           echo "skip_existing=${skip_existing}" >> "$GITHUB_OUTPUT"
 
-      - name: Build nemotron-ocr-v1 (and maybe upload)
+      - name: Build ${{ matrix.ocr.id }} (and maybe upload)
         env:
           NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
           TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
@@ -235,14 +250,26 @@ jobs:
             arch_env_arg="--build-env ARCH=arm64"
           fi
 
+          project_name_args=()
+          if [[ -n "${{ matrix.ocr.project_name }}" ]]; then
+            project_name_args+=(--project-name "${{ matrix.ocr.project_name }}")
+          fi
+
+          package_rename_args=()
+          if [[ -n "${{ matrix.ocr.package_rename }}" ]]; then
+            package_rename_args+=(--rename-python-package "${{ matrix.ocr.package_rename }}")
+          fi
+
           python --version
           python ci/scripts/nightly_build_publish.py \
-            --repo-id "nemotron-ocr-v1" \
-            --repo-url "https://huggingface.co/nvidia/nemotron-ocr-v1" \
+            --repo-id "${{ matrix.ocr.id }}" \
+            --repo-url "${{ matrix.ocr.url }}" \
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "nemotron-ocr" \
-            --nightly-base-version "1.0.2" \
+            --nightly-base-version "${{ matrix.ocr.nightly_base_version }}" \
+            "${project_name_args[@]}" \
+            "${package_rename_args[@]}" \
             --hatch-force-platform-wheel \
             --auditwheel-repair \
             --auditwheel-exclude libtorch_cpu.so \
@@ -254,6 +281,7 @@ jobs:
             --build-no-isolation \
             --venv-pip-install "hatchling" \
             --venv-pip-install "setuptools>=68" \
+            --venv-pip-install "ninja" \
             --venv-pip-install "torch==2.10.0" \
             --venv-pip-install "torchvision==0.25.0" \
             --pin-runtime-dependency "torch" \
@@ -271,15 +299,31 @@ jobs:
           import zipfile
           from pathlib import Path
 
-          wheels = sorted(Path("dist-out/nemotron-ocr-v1").glob("*.whl"))
+          dist_dir = Path("dist-out/${{ matrix.ocr.id }}")
+          wheels = sorted(dist_dir.glob("*.whl"))
           if not wheels:
-              raise SystemExit("No wheel found in dist-out/nemotron-ocr-v1")
+              raise SystemExit(f"No wheel found in {dist_dir}")
 
           py_tag = f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+          expected_project = "${{ matrix.ocr.expected_project_name }}"
+          expected_package = "${{ matrix.ocr.expected_package }}"
+          expected_version_prefix = "${{ matrix.ocr.nightly_base_version }}.dev"
           matches = []
           for wheel in wheels:
               with zipfile.ZipFile(wheel) as zf:
                   names = zf.namelist()
+                  metadata_names = [n for n in names if n.endswith(".dist-info/METADATA")]
+                  metadata = "\n".join(zf.read(n).decode("utf-8") for n in metadata_names)
+              if f"Name: {expected_project}" not in metadata:
+                  raise SystemExit(f"Built wheel metadata does not declare project {expected_project!r}")
+              if f"Version: {expected_version_prefix}" not in metadata:
+                  raise SystemExit(
+                      f"Built wheel metadata does not declare a {expected_version_prefix} nightly"
+                  )
+              if not any(name.startswith(f"{expected_package}/") for name in names):
+                  raise SystemExit(f"Built wheel is missing {expected_package} package")
+              if expected_package != "nemotron_ocr" and any(name.startswith("nemotron_ocr/") for name in names):
+                  raise SystemExit("Built wheel still contains the unversioned nemotron_ocr package")
               for name in names:
                   if "nemotron_ocr_cpp/_nemotron_ocr_cpp." in name:
                       matches.append((wheel.name, name))
@@ -313,5 +357,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dist-nemotron-ocr-v1-${{ matrix.platform.arch }}
-          path: dist-out/nemotron-ocr-v1/*
+          name: dist-${{ matrix.ocr.id }}-${{ matrix.platform.arch }}
+          path: dist-out/${{ matrix.ocr.id }}/*
