@@ -24,7 +24,7 @@ jobs:
       - name: Set up FFMPEG
         run: |
           ./docker/scripts/install_ffmpeg.sh
-        
+
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
