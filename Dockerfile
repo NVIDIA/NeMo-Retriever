@@ -63,12 +63,11 @@ RUN sed -i 's/# deb-src/deb-src/' /etc/apt/sources.list \
        done \
     && apt-get clean
 
-ENV UV_INSTALL_DIR=/opt/uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/opt/uv/bin sh
+
 ENV PATH=/opt/uv/bin:$PATH
 ENV UV_LINK_MODE=copy
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
-
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv python install 3.12 \
