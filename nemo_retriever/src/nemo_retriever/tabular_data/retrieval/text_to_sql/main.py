@@ -80,10 +80,11 @@ def stream_agent_response(
     then ``{"type": "result", "answer": ...}`` with the final answer.
     On error yields ``{"type": "error", "message": ...}``."""
     t0 = time.perf_counter()
-    state = _build_state(payload)
-    final_state = dict(state)
 
     try:
+        state = _build_state(payload)
+        final_state = dict(state)
+
         for step in app.stream(state, config={"recursion_limit": 45}):
             for node_name, node_output in step.items():
                 logger.info("Node: %s", node_name)
@@ -103,9 +104,9 @@ def stream_agent_response(
         logger.info("Final answer (%.2fs):\n%s", elapsed, answer)
         yield {"type": "result", "answer": answer}
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Error during agent stream")
-        yield {"type": "error", "message": "An internal error occurred."}
+        yield {"type": "error", "message": f"Agent failed: {exc}"}
 
 
 def get_agent_response(payload: AgentPayload) -> dict:
@@ -115,7 +116,7 @@ def get_agent_response(payload: AgentPayload) -> dict:
             return event["answer"]
         if event["type"] == "error":
             raise RuntimeError(event["message"])
-    return {}
+    return {"answer": "SQL can't be constructed.", "sql_code": "", "result": None}
 
 
 __all__ = [
