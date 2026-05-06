@@ -5,6 +5,7 @@ import time
 
 from datetime import timedelta
 from functools import partial
+from typing import Any, Final, FrozenSet
 from urllib.parse import urlparse
 
 import lancedb
@@ -16,6 +17,34 @@ from nv_ingest_client.util.vdb.adt_vdb import VDB
 from nv_ingest_client.util.vdb.milvus import nv_rerank
 
 logger = logging.getLogger(__name__)
+
+
+_DEFAULT_VECTOR_DIM: Final[int] = 2048
+_VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
+
+
+def _normalize_on_bad_vectors(value: str) -> str:
+    """Validate and normalize an ``on_bad_vectors`` policy string.
+
+    LanceDB's ``Table.create`` accepts a fixed set of policies for handling rows
+    whose vector column does not match the declared fixed-size schema. We
+    surface the same vocabulary on this wrapper so callers can configure the
+    behavior through ``--vdb-kwargs-json``.
+
+    Args:
+        value: User-supplied policy name. Whitespace and case are ignored.
+
+    Returns:
+        The normalized lower-case policy string.
+
+    Raises:
+        ValueError: If ``value`` is not one of ``drop``, ``fill``, ``null``,
+            or ``error``.
+    """
+    normalized = (value or "drop").strip().lower()
+    if normalized not in _VALID_ON_BAD_VECTORS:
+        raise ValueError(f"on_bad_vectors must be one of {sorted(_VALID_ON_BAD_VECTORS)}; got {value!r}")
+    return normalized
 
 
 def _json_str(value) -> str:
@@ -103,36 +132,75 @@ def _get_text_for_element(element):
         return metadata.get("content")
 
 
-def create_lancedb_results(results):
-    """
-    Transform NV-Ingest pipeline results into LanceDB ingestible rows.
+def _create_lancedb_results(
+    results,
+    *,
+    expected_dim: int | None = _DEFAULT_VECTOR_DIM,
+) -> tuple[list, dict[str, int]]:
+    """Transform NV-Ingest pipeline results into LanceDB ingestible rows.
 
-    Extracts appropriate text based on document_type rather than storing
-    raw content (which may include base64 images).
+    Extracts the appropriate searchable text per ``document_type`` and, when
+    ``expected_dim`` is set, validates that each row's embedding is shaped
+    consistently with the LanceDB fixed-size-list schema before forwarding it
+    to the writer. Rows whose embedding is missing, of the wrong type, or of
+    the wrong length are dropped and counted; per-row reasons are emitted at
+    ``DEBUG`` and a single structured ``WARNING`` summary is emitted at the
+    end of the call when any drops occurred.
 
-    Parameters
-    ----------
-    results : list
-        Pipeline output results.
+    Passing ``expected_dim=None`` disables the length check entirely. Callers
+    that prefer to defer to LanceDB's ``on_bad_vectors`` policy on the writer
+    side (e.g. ``LanceDB(on_bad_vectors="error")``) should use this mode so
+    bad rows reach LanceDB rather than being silently dropped at the wrapper.
+
+    Args:
+        results: Iterable of pipeline output result lists, where each element
+            is a per-document list of NV-Ingest record dicts.
+        expected_dim: Required vector length, or ``None`` to skip the length
+            check. Defaults to :data:`_DEFAULT_VECTOR_DIM`.
+
+    Returns:
+        ``(rows, counts)`` where ``rows`` is the list of dicts shaped for
+        LanceDB ingestion (``vector``, ``text``, ``metadata``, ``source``)
+        and ``counts`` is a dict containing ``accepted``,
+        ``dropped_no_embedding``, ``dropped_bad_length``, and
+        ``dropped_no_text`` keys.
     """
-    lancedb_rows = []
+    lancedb_rows: list = []
+    accepted = 0
+    dropped_no_embedding = 0
+    dropped_bad_length = 0
+    dropped_no_text = 0
+
+    enforce_length = expected_dim is not None
+    expected_dim_int = int(expected_dim) if enforce_length else None
 
     for result in results:
         for element in result:
             metadata = element.get("metadata", {})
             doc_type = element.get("document_type")
 
-            # Check if embedding exists
             embedding = metadata.get("embedding")
             if embedding is None:
+                dropped_no_embedding += 1
+                continue
+
+            if enforce_length and (not isinstance(embedding, (list, tuple)) or len(embedding) != expected_dim_int):
+                dropped_bad_length += 1
+                got_len: Any = len(embedding) if hasattr(embedding, "__len__") else "n/a"
+                logger.debug(
+                    "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
+                    got_len,
+                    expected_dim_int,
+                    doc_type,
+                )
                 continue
 
             content_meta = metadata.get("content_metadata", {})
 
-            # Extract appropriate text based on document type
             text = _get_text_for_element(element)
 
             if not text:
+                dropped_no_text += 1
                 source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
                 pg_num = content_meta.get("page_number")
                 logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
@@ -142,13 +210,32 @@ def create_lancedb_results(results):
                 {
                     "vector": embedding,
                     "text": text,
-                    # Stored as strings in LanceDB; serialize nested structures.
                     "metadata": _json_str(content_meta),
                     "source": _json_str(metadata.get("source_metadata", {})),
                 }
             )
+            accepted += 1
 
-    return lancedb_rows
+    counts: dict[str, int] = {
+        "accepted": accepted,
+        "dropped_no_embedding": dropped_no_embedding,
+        "dropped_bad_length": dropped_bad_length,
+        "dropped_no_text": dropped_no_text,
+    }
+
+    if dropped_no_embedding or dropped_bad_length or dropped_no_text:
+        expected_dim_repr = expected_dim_int if enforce_length else "None"
+        logger.warning(
+            "_create_lancedb_results: accepted=%d dropped_no_embedding=%d "
+            "dropped_bad_length=%d dropped_no_text=%d expected_dim=%s",
+            accepted,
+            dropped_no_embedding,
+            dropped_bad_length,
+            dropped_no_text,
+            expected_dim_repr,
+        )
+
+    return lancedb_rows, counts
 
 
 class LanceDB(VDB):
@@ -156,17 +243,23 @@ class LanceDB(VDB):
 
     def __init__(
         self,
-        uri=None,
-        overwrite=True,
-        table_name="nv-ingest",
-        index_type="IVF_HNSW_SQ",
-        metric="l2",
-        num_partitions=16,
-        num_sub_vectors=256,
+        uri: str | None = None,
+        overwrite: bool = True,
+        table_name: str = "nv-ingest",
+        index_type: str = "IVF_HNSW_SQ",
+        metric: str = "l2",
+        num_partitions: int = 16,
+        num_sub_vectors: int = 256,
         hybrid: bool = False,
         fts_language: str = "English",
+        vector_dim: int = _DEFAULT_VECTOR_DIM,
+        on_bad_vectors: str = "drop",
+        fill_value: float = 0.0,
+        validate_vector_length: bool = True,
         **kwargs,
     ):
+        if int(vector_dim) <= 0:
+            raise ValueError(f"vector_dim must be positive; got {vector_dim}")
         self.uri = uri or "lancedb"
         self.overwrite = overwrite
         self.table_name = table_name
@@ -176,30 +269,56 @@ class LanceDB(VDB):
         self.num_sub_vectors = num_sub_vectors
         self.hybrid = hybrid
         self.fts_language = fts_language
+        self.vector_dim = int(vector_dim)
+        self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
+        self.fill_value = float(fill_value)
+        self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
 
-    def create_index(self, records=None, table_name="nv-ingest", **kwargs):
-        """Create a LanceDB table and populate it with transformed records."""
+    def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
+        """Create a LanceDB table and populate it with transformed records.
+
+        Validates per-row vector shape (when ``validate_vector_length`` is set
+        on the instance and ``on_bad_vectors`` is not ``"error"``) and forwards
+        LanceDB's ``on_bad_vectors`` policy as defense-in-depth so that any
+        rows escaping the row-builder check are still handled by the LanceDB
+        writer instead of aborting the run. When ``on_bad_vectors == "error"``
+        the wrapper deliberately skips its own length check so that LanceDB
+        itself raises on the bad row, matching the documented strict-fail
+        semantics of that policy.
+        """
         connect_start = time.perf_counter()
         db = lancedb.connect(uri=self.uri)
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
-        results = create_lancedb_results(records)
+
+        if self.validate_vector_length and self.on_bad_vectors != "error":
+            expected_dim: int | None = self.vector_dim
+        else:
+            expected_dim = None
+
+        results, counts = _create_lancedb_results(records, expected_dim=expected_dim)
         schema = pa.schema(
             [
-                pa.field("vector", pa.list_(pa.float32(), 2048)),
+                pa.field("vector", pa.list_(pa.float32(), self.vector_dim)),
                 pa.field("text", pa.string()),
                 pa.field("metadata", pa.string()),
                 pa.field("source", pa.string()),
             ]
         )
+        create_kwargs: dict[str, Any] = {
+            "data": results,
+            "schema": schema,
+            "mode": "overwrite" if self.overwrite else "append",
+            "on_bad_vectors": self.on_bad_vectors,
+        }
+        if self.on_bad_vectors == "fill":
+            create_kwargs["fill_value"] = self.fill_value
         create_start = time.perf_counter()
-        table = db.create_table(
-            table_name, data=results, schema=schema, mode="overwrite" if self.overwrite else "append"
-        )
+        table = db.create_table(table_name, **create_kwargs)
         _record_timing(
             "lancedb.create_table",
             time.perf_counter() - create_start,
-            {"rows": len(results)},
+            {"rows": len(results), **counts},
         )
         return table
 

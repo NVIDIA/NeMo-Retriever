@@ -67,7 +67,7 @@ class RetrievalStore:
     """
 
     def __init__(self, retriever=None) -> None:
-        self.retriever = retriever  # shared DeepAgentRetriever — init once in main.py
+        self.retriever = retriever  # shared Retriever — init once in main.py
         self.question: str = ""
         self.entities: list[dict] = []
         self.entity_results: list[dict] = []
@@ -580,10 +580,10 @@ def build_retrieval_tools(payload: AgentPayload, llm: Any, retriever=None) -> tu
         payload: The ``AgentPayload`` from the caller.
         llm: The LLM client used by ``decompose_question`` and
             ``synthesize_expression``.
-        retriever: Optional pre-built ``DeepAgentRetriever`` singleton from
-            ``main.py``.  When provided, the same instance is reused across all
-            ``retrieve_for_entity`` calls in this session instead of creating a
-            new one each time.
+        retriever: Optional pre-built :class:`~nemo_retriever.retriever.Retriever`
+            singleton from ``main.py``.  When provided, the same instance is
+            reused across all ``retrieve_for_entity`` calls in this session
+            instead of creating a new one each time.
 
     Returns:
         ``(tools, store)`` — tools list and the ``RetrievalStore`` that will be

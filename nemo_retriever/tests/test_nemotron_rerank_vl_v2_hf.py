@@ -4,7 +4,7 @@
 
 """
 Unit tests for NemotronRerankVLV2, VL-aware rerank_hits, content_transforms
-URI propagation, and lancedb_utils stored_image_uri support.
+URI propagation, and LanceDB schema stored_image_uri support.
 
 Heavy dependencies (torch, transformers) are stubbed so no GPU or model
 download is required.
@@ -398,20 +398,20 @@ class TestContentTransformsStoredImageURI:
 
 
 # ---------------------------------------------------------------------------
-# lancedb_utils — stored_image_uri in schema and row building
+# lancedb_schema — stored_image_uri in schema and row building
 # ---------------------------------------------------------------------------
 
 
 class TestLanceDBStoredImageURI:
     def test_schema_includes_stored_image_uri(self):
-        from nemo_retriever.vector_store.lancedb_utils import lancedb_schema
+        from nemo_retriever.vdb.lancedb_schema import lancedb_schema
 
         schema = lancedb_schema()
         field_names = [f.name for f in schema]
         assert "stored_image_uri" in field_names
 
     def test_build_lancedb_row_includes_stored_image_uri(self):
-        from nemo_retriever.vector_store.lancedb_utils import build_lancedb_row
+        from nemo_retriever.vdb.lancedb_schema import build_lancedb_row
 
         row = MagicMock()
         row.metadata = {"embedding": [0.1] * 2048}
@@ -429,7 +429,7 @@ class TestLanceDBStoredImageURI:
         assert result["bbox_xyxy_norm"] == ""
 
     def test_build_lancedb_row_empty_when_no_uri(self):
-        from nemo_retriever.vector_store.lancedb_utils import build_lancedb_row
+        from nemo_retriever.vdb.lancedb_schema import build_lancedb_row
 
         row = MagicMock()
         row.metadata = {"embedding": [0.1] * 2048}
@@ -445,7 +445,7 @@ class TestLanceDBStoredImageURI:
         assert result["stored_image_uri"] == ""
 
     def test_build_lancedb_row_missing_attr(self):
-        from nemo_retriever.vector_store.lancedb_utils import build_lancedb_row
+        from nemo_retriever.vdb.lancedb_schema import build_lancedb_row
 
         row = MagicMock(spec=["metadata", "path", "page_number", "text"])
         row.metadata = {"embedding": [0.1] * 2048}

@@ -19,6 +19,7 @@ Phases
 import logging
 import os
 
+from nemo_retriever.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.deep_agent.context import RetrievalContext
 from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.agent_runtime import (
     create_sql_agent,
@@ -44,16 +45,24 @@ except ValueError as e:
     llm_client = None
 
 try:
-    from nemo_retriever.tabular_data.retrieval.deep_agent.retrieve_candidates.retriever import DeepAgentRetriever
-
     _uri = os.environ.get("OMNI_SEMANTIC_LANCEDB_URI", "lancedb")
     _table = os.environ.get("OMNI_SEMANTIC_LANCEDB_TABLE", "nv-ingest-tabular")
     # top_k=30 covers the highest k used anywhere; per-call limits are applied
     # downstream by _hits_to_semantic_rows so no results are wasted.
-    retriever_client = DeepAgentRetriever(**_semantic_retriever_init_kwargs(_uri, _table, top_k=30))
-    logger.info("DeepAgentRetriever initialised once at startup (uri=%s table=%s)", _uri, _table)
+    # Translate the legacy ``lancedb_uri``/``lancedb_table`` keys produced by
+    # ``_semantic_retriever_init_kwargs`` (kept as-is for the text_to_sql pipeline)
+    # into the ``vdb`` / ``vdb_kwargs`` shape that ``Retriever.__init__`` expects.
+    _kwargs = _semantic_retriever_init_kwargs(_uri, _table, top_k=30)
+    _lancedb_uri = _kwargs.pop("lancedb_uri")
+    _lancedb_table = _kwargs.pop("lancedb_table")
+    retriever_client = Retriever(
+        vdb="lancedb",
+        vdb_kwargs={"uri": _lancedb_uri, "table_name": _lancedb_table},
+        **_kwargs,
+    )
+    logger.info("Retriever initialised once at startup (uri=%s table=%s)", _lancedb_uri, _lancedb_table)
 except Exception as e:
-    logger.error("Failed to initialize DeepAgentRetriever: %s", e)
+    logger.error("Failed to initialize Retriever: %s", e)
     retriever_client = None
 
 

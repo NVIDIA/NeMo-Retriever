@@ -4,7 +4,29 @@
 
 """Unit tests for _ParamsModel._resolve_api_keys model validator."""
 
-from nemo_retriever.params.models import EmbedParams, ExtractParams, NO_API_KEY
+import pytest
+from pydantic import ValidationError
+
+from nemo_retriever.params.models import EmbedParams, ExtractParams, NO_API_KEY, StoreParams, VideoFrameParams
+
+
+class TestVideoFrameParams:
+    def test_fps_zero_rejected(self) -> None:
+        """``fps=0`` would div-by-zero in ``_extract_one``; reject at the model boundary."""
+        with pytest.raises(ValidationError):
+            VideoFrameParams(fps=0)
+
+
+class TestStoreParams:
+    def test_storage_options_redacted_from_repr(self) -> None:
+        params = StoreParams(storage_options={"key": "AKIA_TEST", "secret": "SECRET_TEST"})
+
+        rendered = repr(params)
+
+        assert "AKIA_TEST" not in rendered
+        assert "SECRET_TEST" not in rendered
+        assert "storage_options=***" in rendered
+        assert params.storage_options == {"key": "AKIA_TEST", "secret": "SECRET_TEST"}
 
 
 class TestResolveApiKeys:

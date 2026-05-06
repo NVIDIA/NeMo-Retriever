@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from nv_ingest_client.util.vdb import VDB
+from nemo_retriever.vdb.adt_vdb import VDB
 from nemo_retriever.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.vdb import operators as vdb_operator_module
 
