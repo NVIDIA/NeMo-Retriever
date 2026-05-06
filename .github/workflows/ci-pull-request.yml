@@ -34,7 +34,7 @@ jobs:
     with:
       platform: 'linux/amd64'
       target: 'service'
-      tags: 'nv-ingest:pr-${{ github.event.pull_request.number }}'
+      tags: 'nrl-service:pr-${{ github.event.pull_request.number }}'
       base-image: 'ubuntu'
       base-image-tag: 'jammy-20250415.1'
       test-selection: 'full'
