@@ -698,6 +698,54 @@ def test_run_single_removes_stale_default_lancedb_dir(monkeypatch, tmp_path: Pat
     assert not (stale_lancedb / "stale.txt").exists()
 
 
+def test_run_graph_pipeline_forwards_api_key_to_subprocess_env_and_redacts_results(
+    monkeypatch, tmp_path: Path
+) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="graph_ds",
+        preset="graph",
+        api_key="secret-token",
+    )
+    artifact_dir = tmp_path / "artifact"
+    artifact_dir.mkdir()
+    captured_env: dict[str, str] = {}
+
+    class _FakeProc:
+        def __init__(self) -> None:
+            self._polled = False
+
+        def poll(self):
+            if not self._polled:
+                self._polled = True
+                return None
+            return 0
+
+        @staticmethod
+        def wait() -> int:
+            return 0
+
+    def _fake_popen(_cmd, **kwargs):
+        captured_env.update(kwargs.get("env") or {})
+        result_file = artifact_dir / "runtime_metrics" / "r1.graph_result.json"
+        result_file.write_text(json.dumps({"success": True, "return_code": 0, "rows": 0}), encoding="utf-8")
+        return _FakeProc()
+
+    monkeypatch.setattr(harness_run.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(harness_run.select, "select", lambda *_args, **_kwargs: ([], [], []))
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+
+    result = harness_run._run_graph_pipeline(cfg, "result = []", artifact_dir, run_id="r1")
+
+    assert captured_env["NVIDIA_API_KEY"] == "secret-token"
+    assert result["test_config"]["api_key"] == "(set)"
+    assert "secret-token" not in json.dumps(result)
+
+
 def test_run_entry_session_artifact_dir_uses_run_name(monkeypatch, tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

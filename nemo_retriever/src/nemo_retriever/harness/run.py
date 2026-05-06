@@ -963,6 +963,8 @@ def _run_graph_pipeline(
     typer.echo(command_text)
 
     env = os.environ.copy()
+    if cfg.api_key:
+        env["NVIDIA_API_KEY"] = cfg.api_key
 
     metrics = StreamMetrics()
     _wall_start = _time.perf_counter()
@@ -1052,6 +1054,7 @@ def _run_graph_pipeline(
             "input_type": "graph",
             "ray_address": cfg.ray_address,
             "graph_pipeline": True,
+            "api_key": "(set)" if cfg.api_key else None,
         },
         "metrics": metrics_payload,
         "summary_metrics": summary_metrics,
