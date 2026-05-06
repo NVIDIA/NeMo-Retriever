@@ -23,14 +23,14 @@ Optionally, the library can compute **embeddings** for extracted content and sto
 Chunking is built into the `.extract()` task and depends on **content type**:
 
 - **PDF, DOCX, and PPTX** — Text is grouped using built-in **page** boundaries (one chunk per page where the format has pages).
-- **Plain text (`.txt`) and HTML** — Formats without natural page breaks are split into segments of **1024 tokens** by default, using the [Llama 3.2 1B tokenizer](https://huggingface.co/meta-llama/Llama-3.2-1B) so chunk boundaries stay aligned with the default embedding tokenizer. The gated tokenizer may require a Hugging Face access token; see [Token-based splitting](#token-based-splitting) and [Environment variables](environment-config.md).
+- **Plain text (`.txt`) and HTML** — Formats without natural page breaks are split into segments of **1024 tokens** by default, using the [Llama 3.2 1B tokenizer](https://huggingface.co/meta-llama/Llama-3.2-1B) so chunk boundaries stay aligned with the default embedding tokenizer. The NeMo Retriever container image bundles this tokenizer, so default text chunking does not require a Hugging Face access token. See [Token-based splitting](#token-based-splitting) and [Environment variables](environment-config.md) for overrides and other runtimes.
 - **Audio and video** — Media is split into **segments** for decoding and ASR using ffmpeg-based rules (configurable **size**, **time**, or **frame** split modes in the media chunking stage). With the Parakeet ASR path, you can optionally emit **sentence-like segments** using `extract_audio_params={"segment_audio": True}`; see [Speech and audio extraction](audio-video.md#speech-and-audio-extraction).
 
 For PDF parallelism before Ray processing (large files), see [PDF pre-splitting for parallel ingest](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest).
 
 ### Token-based splitting {#token-based-splitting}
 
-Token-based splitting uses a Hugging Face tokenizer (default **`meta-llama/Llama-3.2-1B`**) with configurable `chunk_size` and overlap when you add an explicit `.split(...)` stage or when the pipeline applies the default text segmentation for unstructured text. Set `HF_ACCESS_TOKEN` (or pass `hf_access_token` in task params) when using a gated tokenizer. Details appear in the [Python API guide](nemo-retriever-api-reference.md).
+Token-based splitting uses the Llama 3.2 1B tokenizer (default **`meta-llama/Llama-3.2-1B`**) with configurable `chunk_size` and overlap when you add an explicit `.split(...)` stage or when the pipeline applies the default text segmentation for unstructured text. In the shipped NeMo Retriever container, tokenizer assets are included locally, so you do not need `HF_ACCESS_TOKEN` for this default path. If your runtime loads the tokenizer from the Hugging Face Hub instead (for example, some library-only installs), set `HF_ACCESS_TOKEN` or pass `hf_access_token` in task params when the Hub requires it. Details appear in the [Python API guide](nemo-retriever-api-reference.md).
 
 ## Deployment modes
 

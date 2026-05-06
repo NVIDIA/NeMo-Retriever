@@ -2,14 +2,14 @@
 
 Use this page for speech and audio extraction with Parakeet ASR and for video workflows that combine audio with OCR on frames or derived images.
 
-**Sections:** [Speech and audio (Parakeet)](#speech-and-audio-extraction) · [Run Parakeet on the cluster (Helm)](#run-parakeet-on-the-cluster-helm) · [Parakeet on NVCF (cloud)](#parakeet-on-nvcf) · [Video and frame OCR](#video-and-frame-ocr)
+**Sections:** [Speech and audio (Parakeet)](#speech-and-audio-extraction) · [Run Parakeet on the cluster (Helm)](#run-parakeet-on-the-cluster-helm) · [Parakeet with hosted inference (build.nvidia.com)](#parakeet-hosted-inference-build-nvidia) · [Video and frame OCR](#video-and-frame-ocr)
 
 ## Speech and audio extraction {#speech-and-audio-extraction}
 
 This documentation describes two ways to run [NeMo Retriever Library](overview.md) with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files:
 
 - Run the NIM locally on your cluster with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
-- Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
+- Use [build.nvidia.com](https://build.nvidia.com/) for NVIDIA-hosted inference (API key and function ID from the Parakeet model page)
 
 Supported file types for speech extraction today:
 
@@ -64,13 +64,13 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
         For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
-## Parakeet on NVCF (cloud) {#parakeet-on-nvcf}
+## Parakeet with hosted inference (build.nvidia.com) {#parakeet-hosted-inference-build-nvidia}
 
-Instead of running the pipeline locally, you can use build.nvidia.com hosted remote endpoints.
+Instead of running the pipeline locally, you can call Parakeet through [build.nvidia.com](https://build.nvidia.com/) hosted inference.
 
-1. NVCF requires an authentication token and a function ID for access. Ensure you have these credentials ready before making API calls.
+1. On the Parakeet model page on [build.nvidia.com](https://build.nvidia.com/), create or copy an API key and note the function ID for hosted access. You need both before making API calls.
 
-2. Run inference from Python. Provide an NVCF endpoint along with authentication details.
+2. Run inference from Python with the hosted gRPC endpoint and credentials from that page (the example below uses the default hosted gRPC hostname; confirm values in the **Get API Key** flow for your deployment).
 
     - The `Ingestor` object initializes the ingestion process.
     - The `files` method specifies the input files to process.
