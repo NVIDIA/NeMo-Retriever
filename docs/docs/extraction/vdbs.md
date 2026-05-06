@@ -178,5 +178,6 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
 - [Store Extracted Images](nemo-retriever-api-reference.md)
+- [Chunking](concepts.md#chunking) — default segmentation before embeddings and vector upload
 - [Environment Variables](environment-config.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
