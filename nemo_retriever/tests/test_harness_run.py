@@ -588,7 +588,8 @@ def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> 
         lambda *_args, **_kwargs: (["python", "-V"], runtime_dir, runtime_dir / ".detection_summary.json", query_csv),
     )
 
-    def _fake_run_subprocess(_cmd: list[str]) -> int:
+    def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        assert env_extra is None
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -656,6 +657,45 @@ def test_run_single_forwards_api_key_to_subprocess_env_and_redacts_results(monke
     assert captured_env == {"NVIDIA_API_KEY": "secret-token"}
     assert payloads["result"]["test_config"]["api_key"] == "(set)"
     assert "secret-token" not in json.dumps(payloads["result"])
+
+
+def test_run_single_removes_stale_default_lancedb_dir(monkeypatch, tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "run_artifacts"
+    artifact_dir.mkdir()
+    stale_lancedb = artifact_dir / "lancedb"
+    stale_lancedb.mkdir()
+    (stale_lancedb / "stale.txt").write_text("old index", encoding="utf-8")
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    runtime_dir = artifact_dir / "runtime_metrics"
+    runtime_dir.mkdir()
+    (runtime_dir / "r1.runtime.summary.json").write_text(
+        json.dumps({"num_pages": 1, "ingestion_only_secs": 1.0, "evaluation_metrics": {"recall@5": 1.0}}),
+        encoding="utf-8",
+    )
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+    )
+
+    monkeypatch.setattr(
+        harness_run,
+        "_build_command",
+        lambda *_args, **_kwargs: (["python", "-V"], runtime_dir, runtime_dir / ".detection_summary.json", query_csv),
+    )
+    monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+
+    harness_run._run_single(cfg, artifact_dir, run_id="r1")
+
+    assert stale_lancedb.is_dir()
+    assert not (stale_lancedb / "stale.txt").exists()
 
 
 def test_run_entry_session_artifact_dir_uses_run_name(monkeypatch, tmp_path: Path) -> None:
@@ -891,7 +931,8 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
         ),
     )
 
-    def _fake_run_subprocess(_cmd: list[str]) -> int:
+    def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        assert env_extra is None
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -1035,7 +1076,8 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
         ),
     )
 
-    def _fake_run_subprocess(_cmd: list[str]) -> int:
+    def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        assert env_extra is None
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)

@@ -12,6 +12,7 @@ import pty
 import re
 import select
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -666,16 +667,19 @@ def _run_single(
 ) -> dict[str, Any]:
     cmd, runtime_dir, detection_summary_file, effective_query_csv = _build_command(cfg, artifact_dir, run_id)
     env_extra = {"NVIDIA_API_KEY": cfg.api_key} if cfg.api_key else None
+    lancedb_path = Path(_resolve_lancedb_uri(cfg, artifact_dir))
+    default_lancedb_path = (artifact_dir / "lancedb").resolve()
+    if lancedb_path == default_lancedb_path:
+        if lancedb_path.is_dir():
+            shutil.rmtree(lancedb_path)
+        lancedb_path.mkdir(parents=True, exist_ok=True)
     command_text = " ".join(shlex.quote(token) for token in cmd)
     (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
 
     typer.echo(f"\n=== Running {run_id} ===")
     typer.echo(command_text)
 
-    if env_extra:
-        process_rc = _run_subprocess_with_tty(cmd, env_extra=env_extra)
-    else:
-        process_rc = _run_subprocess_with_tty(cmd)
+    process_rc = _run_subprocess_with_tty(cmd, env_extra=env_extra)
     run_metadata = _collect_run_metadata()
     runtime_summary_path = runtime_dir / f"{run_id}.runtime.summary.json"
     runtime_summary = _read_json_if_exists(runtime_summary_path)

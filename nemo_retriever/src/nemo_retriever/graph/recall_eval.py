@@ -16,18 +16,12 @@ from pathlib import Path
 from typing import Annotated, Any, Optional
 
 from nemo_retriever.graph.designer import Param, designer_component
+from nemo_retriever.harness.config import VALID_BEIR_DOC_ID_FIELDS, VALID_BEIR_LOADERS
 
 logger = logging.getLogger(__name__)
 
-_BEIR_LOADER_CHOICES = [
-    "vidore_hf",
-    "jp20_csv",
-    "bo767_csv",
-    "bo10k_csv",
-    "earnings_csv",
-    "financebench_json",
-]
-_BEIR_DOC_ID_FIELD_CHOICES = ["pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"]
+_BEIR_LOADER_CHOICES = sorted(VALID_BEIR_LOADERS)
+_BEIR_DOC_ID_FIELD_CHOICES = sorted(VALID_BEIR_DOC_ID_FIELDS)
 
 
 @designer_component(
