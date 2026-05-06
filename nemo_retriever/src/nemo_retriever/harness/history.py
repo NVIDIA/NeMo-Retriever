@@ -881,6 +881,31 @@ _DATASET_FIELDS = (
     "description",
 )
 
+_HASH_AFFECTING_FIELDS = (
+    "query_csv",
+    "input_type",
+    "recall_required",
+    "recall_match_mode",
+    "recall_adapter",
+    "evaluation_mode",
+    "beir_loader",
+    "beir_dataset_name",
+    "beir_split",
+    "beir_query_language",
+    "beir_doc_id_field",
+    "beir_ks",
+    "embed_model_name",
+    "embed_modality",
+    "embed_granularity",
+    "extract_page_as_image",
+    "extract_infographics",
+)
+
+
+def _dataset_config_fields_for_hash(data: dict[str, Any]) -> dict[str, Any] | None:
+    fields = {key: data.get(key) for key in _HASH_AFFECTING_FIELDS if data.get(key) is not None}
+    return fields or None
+
 
 def _deserialize_dataset_row(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
@@ -970,13 +995,17 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
             ),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM datasets WHERE id = ?", (row_id,)).fetchone()
+        ds = dict(row) if row else data
 
-        config_fields = {
-            k: data.get(k)
-            for k in ("query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter")
-            if data.get(k) is not None
-        }
-        _compute_and_store_config_hash(conn, row_id, data["path"], data.get("query_csv"), config_fields or None)
+        _compute_and_store_config_hash(
+            conn,
+            row_id,
+            ds["path"],
+            ds.get("query_csv"),
+            _dataset_config_fields_for_hash(ds),
+        )
 
         conn.commit()
         return get_dataset_by_id(row_id, db_path)  # type: ignore[return-value]
@@ -1006,9 +1035,6 @@ def get_dataset_by_id(dataset_id: int, db_path: str | None = None) -> dict[str, 
         conn.close()
 
 
-_HASH_AFFECTING_FIELDS = {"path", "query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter"}
-
-
 def update_dataset(dataset_id: int, data: dict[str, Any], db_path: str | None = None) -> dict[str, Any] | None:
     _BOOL_DATASET_FIELDS = {"recall_required", "extract_page_as_image", "extract_infographics", "distribute"}
     conn = _connect(db_path)
@@ -1034,17 +1060,18 @@ def update_dataset(dataset_id: int, data: dict[str, Any], db_path: str | None = 
         vals.append(dataset_id)
         conn.execute(f"UPDATE datasets SET {', '.join(sets)} WHERE id = ?", vals)
 
-        if _HASH_AFFECTING_FIELDS & data.keys():
+        if {"path", *_HASH_AFFECTING_FIELDS} & data.keys():
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
             if row:
                 ds = dict(row)
-                config_fields = {
-                    k: ds.get(k)
-                    for k in ("query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter")
-                    if ds.get(k) is not None
-                }
-                _compute_and_store_config_hash(conn, dataset_id, ds["path"], ds.get("query_csv"), config_fields or None)
+                _compute_and_store_config_hash(
+                    conn,
+                    dataset_id,
+                    ds["path"],
+                    ds.get("query_csv"),
+                    _dataset_config_fields_for_hash(ds),
+                )
 
         conn.commit()
         return get_dataset_by_id(dataset_id, db_path)
