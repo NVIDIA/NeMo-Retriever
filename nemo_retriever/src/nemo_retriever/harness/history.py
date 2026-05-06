@@ -1191,16 +1191,16 @@ def import_yaml_datasets(yaml_datasets: dict[str, dict[str, Any]], db_path: str 
         existing = get_dataset_by_name(name, db_path)
         if existing:
             continue
-        data = {
+        data: dict[str, Any] = {
             "name": name,
             "path": cfg.get("path", ""),
-            "query_csv": cfg.get("query_csv"),
-            "input_type": cfg.get("input_type", "pdf"),
-            "recall_required": cfg.get("recall_required", False),
-            "recall_match_mode": cfg.get("recall_match_mode", "audio_segment"),
-            "recall_adapter": cfg.get("recall_adapter", "none"),
             "description": "Imported from test_configs.yaml",
         }
+        for field in _DATASET_FIELDS:
+            if field in {"name", "path", "description"}:
+                continue
+            if field in cfg and cfg[field] is not None:
+                data[field] = cfg[field]
         try:
             create_dataset(data, db_path)
             imported += 1
