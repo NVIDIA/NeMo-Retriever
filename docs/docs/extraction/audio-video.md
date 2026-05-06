@@ -67,7 +67,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 ## Parakeet on NVCF (cloud) {#parakeet-on-nvcf}
 
-Instead of running the pipeline locally, you can use NVCF with remote endpoints.
+Instead of running the pipeline locally, you can use build.nvidia.com hosted remote endpoints.
 
 1. NVCF requires an authentication token and a function ID for access. Ensure you have these credentials ready before making API calls.
 
