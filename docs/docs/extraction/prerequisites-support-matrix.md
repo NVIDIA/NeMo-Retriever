@@ -107,7 +107,7 @@ and run only the embedder, reranker, and your vector database.
 
 - [Troubleshooting](troubleshoot.md)
 - [Release Notes](releasenotes.md)
-- [Deploy As a Python Library](quickstart-library-mode.md)
+- [Deployment options](deployment-options.md) (local Python, hosted NIMs, and Kubernetes)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [NVIDIA NIM for Object Detection (support matrix)](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html)
 - [NVIDIA NIM for Image OCR (support matrix)](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html)
