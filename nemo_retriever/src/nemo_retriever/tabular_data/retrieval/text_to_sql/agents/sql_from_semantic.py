@@ -195,10 +195,11 @@ class SQLFromCandidatesAgent(BaseAgent):
                 queries=relevant_queries,
                 qa_from_conversations=similar_questions_txt,
                 tables=format_tables_for_prompt(relevant_tables),
+                custom_prompts=state.get("custom_prompts", ""),
             )
 
             # Choose system prompt based on context
-            system_prompt = create_sql_from_candidates_prompt(custom_analyses)
+            system_prompt = create_sql_from_candidates_prompt(custom_analyses, state.get("custom_prompts", ""))
 
             messages = state["messages"] + [
                 SystemMessage(content=system_prompt),

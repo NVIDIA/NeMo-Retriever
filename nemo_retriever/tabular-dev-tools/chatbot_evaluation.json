@@ -40,16 +40,6 @@
         "answer": "From the request_attribute_values table (field modsVersion), the most frequently used GPU MODS version is: 570.384."
     },
     {
-        "question_id": 3,
-        "db_id": "dor",
-        "question": "What is the most frequently used GPU MODS version?",
-        "evidence": "",
-        "SQL": "SELECT request_id FROM request_boms JOIN boms ON boms.id = request_boms.bom_id WHERE boms.name = '699-5G147-0520-RC2';",
-        "difficulty": "simple",
-        "answer_raw": "|   request_id |\n|-------------:|\n|        50273 |\n|        50274 |\n|        50275 |\n|        50276 |\n|        50277 |\n|        50278 |\n|        50279 |\n|        50280 |\n|        50285 |\n|        50305 |\n|        50324 |\n|        50329 |\n|        50353 |\n|        50357 |\n|        50358 |\n|        50359 |\n|        50360 |\n|        50361 |\n|        50363 |\n|        50364 |\n|        50389 |\n|        50446 |\n|        50552 |\n|        50741 |",
-        "answer": "There are 23 DORs for BOM 699-5G147-0520-RC2: 50273, 50274, 50275, 50276, 50277, 50278, 50279, 50280, 50285, 50305, 50324, 50329, 50353, 50357, 50358, 50359, 50360, 50361, 50363, 50364, 50389, 50446, 50552, and 50741."
-    },
-    {
         "question_id": 4,
         "db_id": "dor",
         "question": "What are three most frequently occurring processes across all requests?",

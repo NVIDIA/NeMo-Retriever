@@ -353,10 +353,12 @@ def _print_agent_result(
     print(sep)
 
 
-def evaluate(input_path: Path, output_path: Path, start_index: int = 0) -> None:
+def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_index: int | None = None) -> None:
     # questions = [{"question_id": 0, "question": "Show me the details for component 670-14039-0072-TS5", "SQL": ""}]
-    questions = _load_questions(input_path)
-    logger.info("Loaded %d questions from %s", len(questions), input_path)
+    all_questions = _load_questions(input_path)
+    questions = all_questions[start_index:end_index]
+    logger.info("Running questions %d–%d (%d of %d total) from %s",
+                start_index, start_index + len(questions) - 1, len(questions), len(all_questions), input_path)
 
     connector = PostgresDatabase(_conn_string(DATABASE))
     retriever = _build_retriever()
@@ -370,9 +372,7 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0) -> None:
         if not resuming:
             writer.writeheader()
 
-        for idx, item in enumerate(questions):
-            if idx < start_index:
-                continue
+        for idx, item in enumerate(questions, start=start_index):
             qid = item.get("question_id", idx)
             question = item.get("question", "")
             expected_sql = item.get("SQL", "")
@@ -408,11 +408,22 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0) -> None:
                     "path_state": {},
                     "custom_prompts": (
                         "## Responsible Users\n"
-                        "request_tasks.pic_id = primary responsible user for a request task.\n"
-                        "request_task_collaborators.user_id = additional users collaborating on that same request task.\n"
-                        "For questions asking who is responsible, involved, assigned, working on, or blocking a request task or request, "
-                        "include all user-role associations for the relevant request tasks unless the question explicitly asks only for "
-                        "the primary responsible user.\n"
+                        "When asked who is responsible, involved, assigned, working on, or blocking a request or request task, "
+                        "always use this UNION pattern to get ALL assigned users:\n"
+                        "  SELECT users.name FROM request_tasks\n"
+                        "    JOIN users ON request_tasks.pic_id = users.id\n"
+                        "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
+                        "  UNION\n"
+                        "  SELECT users.name FROM request_tasks\n"
+                        "    JOIN request_task_collaborators ON request_task_collaborators.request_task_id = request_tasks.id\n"
+                        "    JOIN users ON request_task_collaborators.user_id = users.id\n"
+                        "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
+                        "The first half selects primary responsible users (pic_id), the second half selects collaborators (user_id). "
+                        "Only skip the second half if the question explicitly asks for the primary responsible user only.\n"
+                        "\n"
+                        "## GPU MODS Version\n"
+                        "GPU MODS version values are stored in the request_attribute_values table "
+                        "where field_name = 'modsVersion'. The actual version value is in the text_value column.\n"
                     ),
                     "acronyms": "",
                 }
@@ -458,6 +469,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 START_INDEX = 0
+END_INDEX = None  # None = run to the end
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -465,4 +477,4 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     args = _parse_args()
-    evaluate(args.input, args.output, START_INDEX)
+    evaluate(args.input, args.output, START_INDEX, END_INDEX)

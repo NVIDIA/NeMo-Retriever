@@ -1,8 +1,8 @@
 main_system_prompt_template = (
-    "{custom_prompts}"
     "Today's date is: {{ 'Year': {date.year}, 'Month': {date.month}, 'Day': {date.day}, "
     "'Time': '{date.hour:02}:{date.minute:02}:{date.second:02}' }}.\n\n"
     "{acronyms}"
+    "{custom_prompts}"
     "SQL dialect: {dialect}"
 )
 
@@ -37,6 +37,8 @@ create_sql_user_prompt = (
     "Previous conversations ordered by similarity to the "
     "user's question and most recent first:\n"
     "{qa_from_conversations}.\n"
+    "IMPORTANT DOMAIN-SPECIFIC RULES (you MUST follow these when constructing SQL):\n"
+    "{custom_prompts}\n"
     "Instructions:\n"
     "- CRITICAL: Construct a SQL query that is syntactically "
     "and semantically valid for the specified SQL "
@@ -111,14 +113,20 @@ create_sql_user_prompt = (
 )
 
 
-def create_sql_from_candidates_prompt(custom_analyses: list) -> str:
+def create_sql_from_candidates_prompt(custom_analyses: list, custom_prompts: str = "") -> str:
     """
     System prompt for SQL generation from semantic retrieval (custom analyses, columns, etc.).
 
     Used by ``SQLFromCandidatesAgent`` with prepared candidates from CandidatePreparationAgent.
     """
+    domain_rules = ""
+    if custom_prompts:
+        domain_rules = (
+            "\n    IMPORTANT DOMAIN-SPECIFIC RULES (you MUST follow these when constructing SQL):\n"
+            f"    {custom_prompts}\n"
+        )
 
-    return """
+    return f"""
     You will receive:
       - A user's question
       - A set of relevant tables
@@ -190,7 +198,7 @@ def create_sql_from_candidates_prompt(custom_analyses: list) -> str:
          - Columns present in SELECT or GROUP BY.
          - Do NOT ORDER BY raw expressions not selected
            or grouped.
-
+{domain_rules}
     MANDATORY Pre-Output Verification (complete ALL checks
     before returning SQL):
       - STEP 1 - ALIAS VERIFICATION (MOST CRITICAL):

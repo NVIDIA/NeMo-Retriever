@@ -38,6 +38,7 @@ class AgentState(TypedDict):
     connector: Any
     path_state: dict
     retriever: Retriever
+    custom_prompts: str
 
 
 def get_question_for_processing(state: AgentState) -> str:

@@ -57,6 +57,7 @@ def get_agent_response(payload: AgentPayload):
         "path_state": initial_path_state,
         "retriever": retriever,
         "decision": "",
+        "custom_prompts": custom_prompts_text,
     }
 
     final_state = state.copy()

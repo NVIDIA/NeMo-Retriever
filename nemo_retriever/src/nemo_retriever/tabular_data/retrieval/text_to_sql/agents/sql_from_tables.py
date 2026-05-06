@@ -90,9 +90,10 @@ class SQLFromTablesAgent(BaseAgent):
             dialect=connector.dialect,
             main_question=question,
             observation_block="",
-            queries=[],  # Relevant queries can be added if needed
+            queries=[],
             tables=format_tables_for_prompt(relevant_tables),
             qa_from_conversations=similar_questions,
+            custom_prompts=state.get("custom_prompts", ""),
         )
 
         messages = state["messages"] + [
