@@ -149,7 +149,6 @@ jobs:
           docker buildx build \
             --platform "${{ inputs.platform }}" \
             --load \
-            --target "${{ inputs.target }}" \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             --build-arg BASE_IMG="${{ inputs.base-image }}" \
             --build-arg BASE_IMG_TAG="${{ inputs.base-image-tag }}" \
