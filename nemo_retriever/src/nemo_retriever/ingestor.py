@@ -26,7 +26,6 @@ from nemo_retriever.params import IngestExecuteParams
 from nemo_retriever.params import IngestorCreateParams
 from nemo_retriever.params import RunMode
 from nemo_retriever.params import StoreParams
-from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VdbUploadParams
 from nemo_retriever.params import WebhookParams
 
@@ -160,11 +159,6 @@ class ingestor:
     def filter(self) -> "ingestor":
         """Record a filter task configuration."""
         self._not_implemented("filter")
-
-    def split(self, params: TextChunkParams | None = None, **kwargs: Any) -> "ingestor":
-        """Record a split task configuration."""
-        _ = _merge_params(params, kwargs)
-        self._not_implemented("split")
 
     def store(self, params: StoreParams | None = None, **kwargs: Any) -> "ingestor":
         """Record a store task configuration."""

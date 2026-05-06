@@ -437,46 +437,90 @@ def _build_ingestor(
     )
     ingestor = ingestor.files(file_patterns)
 
-    # Extraction stage is selected by input type.
-    if input_type == "txt":
-        ingestor = ingestor.extract_txt(text_chunk_params)
-    elif input_type == "html":
-        ingestor = ingestor.extract_html(text_chunk_params)
-    elif input_type == "image":
-        ingestor = ingestor.extract_image_files(extract_params)
-    elif input_type == "audio":
-        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-        ingestor = ingestor.extract_audio(
-            params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
-            asr_params=asr_params,
-        )
-    elif input_type == "video":
-        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-        ingestor = ingestor.extract_video(
-            params=AudioChunkParams(
-                enabled=bool(video_extract_audio),
-                split_type=audio_split_type,
-                split_interval=int(audio_split_interval),
-            ),
-            asr_params=asr_params,
-            video_frame_params=VideoFrameParams(
-                enabled=bool(video_extract_frames),
-                fps=float(video_frame_fps),
-                dedup=bool(video_frame_dedup),
-            ),
-            video_text_dedup_params=VideoFrameTextDedupParams(
-                enabled=bool(video_frame_text_dedup),
-                max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
-            ),
-            av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
-            extract_params=extract_params,
-        )
+    # Extraction stage is selected by input type, with split_config threaded
+    # through when text chunking is enabled.
+    if not enable_text_chunk:
+        # Original extraction-only construction.
+        if input_type == "txt":
+            ingestor = ingestor.extract_txt(text_chunk_params)
+        elif input_type == "html":
+            ingestor = ingestor.extract_html(text_chunk_params)
+        elif input_type == "image":
+            ingestor = ingestor.extract_image_files(extract_params)
+        elif input_type == "audio":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_audio(
+                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+                asr_params=asr_params,
+            )
+        elif input_type == "video":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_video(
+                params=AudioChunkParams(
+                    enabled=bool(video_extract_audio),
+                    split_type=audio_split_type,
+                    split_interval=int(audio_split_interval),
+                ),
+                asr_params=asr_params,
+                video_frame_params=VideoFrameParams(
+                    enabled=bool(video_extract_frames),
+                    fps=float(video_frame_fps),
+                    dedup=bool(video_frame_dedup),
+                ),
+                video_text_dedup_params=VideoFrameTextDedupParams(
+                    enabled=bool(video_frame_text_dedup),
+                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
+                ),
+                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
+                extract_params=extract_params,
+            )
+        else:
+            ingestor = ingestor.extract(extract_params)
     else:
-        # "pdf" or "doc"
-        ingestor = ingestor.extract(extract_params)
-
-    if enable_text_chunk:
-        ingestor = ingestor.split(text_chunk_params)
+        chunk_dict = text_chunk_params.model_dump()
+        if input_type == "txt":
+            ingestor = ingestor.extract_txt(text_chunk_params)
+        elif input_type == "html":
+            ingestor = ingestor.extract_html(text_chunk_params)
+        elif input_type == "image":
+            ingestor = ingestor.extract_image_files(
+                extract_params,
+                split_config={"image": chunk_dict},
+            )
+        elif input_type == "audio":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_audio(
+                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+                asr_params=asr_params,
+                split_config={"audio": chunk_dict},
+            )
+        elif input_type == "video":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_video(
+                params=AudioChunkParams(
+                    enabled=bool(video_extract_audio),
+                    split_type=audio_split_type,
+                    split_interval=int(audio_split_interval),
+                ),
+                asr_params=asr_params,
+                video_frame_params=VideoFrameParams(
+                    enabled=bool(video_extract_frames),
+                    fps=float(video_frame_fps),
+                    dedup=bool(video_frame_dedup),
+                ),
+                video_text_dedup_params=VideoFrameTextDedupParams(
+                    enabled=bool(video_frame_text_dedup),
+                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
+                ),
+                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
+                extract_params=extract_params,
+                split_config={"video": chunk_dict, "audio": chunk_dict},
+            )
+        else:
+            ingestor = ingestor.extract(
+                extract_params,
+                split_config={"pdf": chunk_dict},
+            )
 
     if enable_dedup:
         ingestor = ingestor.dedup(DedupParams(iou_threshold=dedup_iou_threshold))
