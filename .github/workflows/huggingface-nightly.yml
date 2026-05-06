@@ -52,13 +52,6 @@ jobs:
           - id: nemotron-graphic-elements-v1
             url: https://huggingface.co/nvidia/nemotron-graphic-elements-v1
             project_subdir: ""
-          - id: llama-nemotron-embed-1b-v2
-            url: https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2
-            # Repo layout matches nemotron-ocr-v1: Python project is nested under a same-named subdir.
-            project_subdir: llama-nemotron-embed-1b-v2
-          - id: llama-nemotron-rerank-1b-v2
-            url: https://huggingface.co/nvidia/llama-nemotron-rerank-1b-v2
-            project_subdir: ""
 
     steps:
       - name: Checkout orchestrator repo

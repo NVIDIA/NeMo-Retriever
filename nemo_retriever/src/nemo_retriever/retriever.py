@@ -174,7 +174,7 @@ class Retriever:
         if endpoint is None or use_grpc is None:
             raise ValueError("Remote query embedding requires embedding_endpoint.")
 
-        from nv_ingest_api.util.nim import infer_microservice
+        from nemo_retriever.api.util.nim import infer_microservice
 
         embeddings = infer_microservice(
             query_texts,

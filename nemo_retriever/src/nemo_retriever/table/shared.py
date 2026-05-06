@@ -21,7 +21,7 @@ except Exception:  # pragma: no cover
     torch = None  # type: ignore[assignment]
 
 try:
-    from nv_ingest_api.internal.primitives.nim.model_interface.yolox import (
+    from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import (
         YOLOX_TABLE_MIN_SCORE,
     )
 except ImportError:

@@ -15,7 +15,7 @@ try:
 except ImportError:
     cv2 = None
 
-from nv_ingest_api.util.pdf.pdfium import (
+from nemo_retriever.api.util.pdf.pdfium import (
     convert_bitmap_to_corrected_numpy,
     extract_image_like_objects_from_pdfium_page,
     is_scanned_page as _is_scanned_page,
@@ -41,7 +41,7 @@ try:
 except Exception:  # pragma: no cover
     np = None  # type: ignore[assignment]
 
-# Default model input size used by nv-ingest for page-element detection.
+# Default model input size used by `nemo_retriever.api` for page-element detection.
 _MODEL_INPUT_SIZE: Tuple[int, int] = (1024, 1024)
 
 # Allowed render-mode values.
@@ -55,7 +55,7 @@ def _compute_fit_to_model_scale(
 ) -> float:
     """Compute a pdfium render scale that fits the page within *target_wh* pixels.
 
-    This mirrors the logic in ``nv_ingest_api.util.pdf.pdfium._compute_render_scale_to_fit``
+    This mirrors the logic in ``nemo_retriever.api.util.pdf.pdfium._compute_render_scale_to_fit``
     combined with the ``min(base_scale, fit_scale)`` cap applied in
     ``pdfium_pages_to_numpy`` when ``scale_tuple`` is provided.
 
@@ -87,7 +87,7 @@ def _render_page_to_base64(
     ----------
     render_mode:
         ``"full_dpi"`` – render at *dpi* (default 300 → 2550×3300 for US Letter).
-        ``"fit_to_model"`` – render at the nv-ingest fit-to-1024 scale (~93 DPI
+        ``"fit_to_model"`` – render at the `nemo_retriever.api` fit-to-1024 scale (~93 DPI
         for US Letter) so the raster is already close to the model's input size,
         avoiding a large bilinear down-scale in ``resize_pad``.
 

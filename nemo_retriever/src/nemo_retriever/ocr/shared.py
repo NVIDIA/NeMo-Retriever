@@ -547,7 +547,7 @@ def _blocks_to_pseudo_markdown(
     crop_hw : (height, width)
         Pixel dimensions of the crop image.  When provided the normalised
         ``sort_y`` values are scaled to pixels and clustered with
-        ``eps=10`` (matching nv-ingest behaviour).  Falls back to the old
+        ``eps=10`` (matching `nemo_retriever.api` behaviour).  Falls back to the old
         normalised-space heuristic when the height is unavailable.
     """
     if not blocks:
