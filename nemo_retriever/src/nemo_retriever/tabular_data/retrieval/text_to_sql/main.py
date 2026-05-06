@@ -86,10 +86,10 @@ def stream_agent_response(
     On error yields ``{"type": "error", "message": ...}``."""
     t0 = time.perf_counter()
 
-    try:
-        state = _build_state(payload)
-        final_state = dict(state)
+    state = _build_state(payload)
+    final_state = dict(state)
 
+    try:
         for step in app.stream(state, config={"recursion_limit": 45}):
             logger.info("--- AGENT STEP ---")
             for node_name, node_output in step.items():
