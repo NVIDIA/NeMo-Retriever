@@ -48,6 +48,8 @@ from nemo_retriever.params import (
     VideoFrameParams,
     VideoFrameTextDedupParams,
     WebhookParams,
+    SPLIT_CONFIG_VALID_KEYS,
+    resolve_split_params,
 )
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env, resolve_remote_api_key
@@ -152,7 +154,7 @@ class GraphIngestor(ingestor):
         self._video_text_dedup_params: Any = None
         self._av_fuse_params: Any = None
         self._embed_params: Any = None
-        self._split_params: Any = None
+        self._split_config: dict[str, Any] = dict.fromkeys(SPLIT_CONFIG_VALID_KEYS, None)
         self._caption_params: Any = None
         self._dedup_params: Any = None
         self._store_params: Any = None
@@ -174,17 +176,38 @@ class GraphIngestor(ingestor):
     # Extraction stage (sets extraction_mode and primary params)
     # ------------------------------------------------------------------
 
-    def extract(self, params: Optional[ExtractParams] = None, **kwargs: Any) -> "GraphIngestor":
-        """Configure PDF/document extraction (extraction_mode='pdf')."""
-        self._extraction_mode = "pdf"
+    def extract(
+        self,
+        params: Optional[ExtractParams] = None,
+        *,
+        split_config: dict[str, Any] | None = None,
+        extraction_mode: str = "pdf",
+        **kwargs: Any,
+    ) -> "GraphIngestor":
+        """Configure PDF/document extraction.
+
+        Defaults to ``extraction_mode='pdf'``. Pass ``extraction_mode='auto'``
+        to dispatch a mixed folder through :class:`MultiTypeExtractOperator`.
+        Chunking is opt-in: pass ``split_config={"<key>": {...}}`` to enable
+        post-extract token chunking for that source type.
+        """
+        self._extraction_mode = extraction_mode
         self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
+        self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
 
-    def extract_image_files(self, params: Optional[ExtractParams] = None, **kwargs: Any) -> "GraphIngestor":
+    def extract_image_files(
+        self,
+        params: Optional[ExtractParams] = None,
+        *,
+        split_config: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> "GraphIngestor":
         """Configure image extraction (extraction_mode='image')."""
         self._extraction_mode = "image"
         self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
+        self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
 
@@ -207,12 +230,14 @@ class GraphIngestor(ingestor):
         params: Optional[AudioChunkParams] = None,
         *,
         asr_params: Optional[ASRParams] = None,
+        split_config: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> "GraphIngestor":
         """Configure audio extraction (extraction_mode='audio')."""
         self._extraction_mode = "audio"
         self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
         self._asr_params = asr_params or ASRParams()
+        self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
 
@@ -225,6 +250,7 @@ class GraphIngestor(ingestor):
         video_text_dedup_params: Optional[VideoFrameTextDedupParams] = None,
         av_fuse_params: Optional[AudioVisualFuseParams] = None,
         extract_params: Optional[ExtractParams] = None,
+        split_config: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> "GraphIngestor":
         """Configure video extraction.
@@ -238,6 +264,11 @@ class GraphIngestor(ingestor):
         ``inference_batch_size``, ``ocr_request_timeout_s``) is read from
         :class:`ExtractParams` — the same object the PDF/image pipelines
         use — so the user only configures OCR once.
+
+        The ``split_config`` keyword honors the ``"video"`` key (chunking the
+        fused audio+visual transcript). The ``"audio"`` key is ignored on the
+        video pipeline — for audio-only chunking, use :meth:`extract_audio`
+        directly with that file.
         """
         self._extraction_mode = "auto"
         self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
@@ -249,6 +280,7 @@ class GraphIngestor(ingestor):
             self._extract_params = _resolve_api_key(extract_params)
         elif self._extract_params is None:
             self._extract_params = ExtractParams()
+        self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
 
@@ -266,12 +298,6 @@ class GraphIngestor(ingestor):
         """Record a caption stage."""
         self._caption_params = _resolve_api_key(_coerce(params, kwargs, default_factory=CaptionParams))
         self._record_stage("caption")
-        return self
-
-    def split(self, params: Optional[TextChunkParams] = None, **kwargs: Any) -> "GraphIngestor":
-        """Record a text-split stage."""
-        self._split_params = _coerce(params, kwargs, default_factory=TextChunkParams)
-        self._record_stage("split")
         return self
 
     def store(self, params: Optional[StoreParams] = None, **kwargs: Any) -> "GraphIngestor":
@@ -359,7 +385,7 @@ class GraphIngestor(ingestor):
                 video_text_dedup_params=self._video_text_dedup_params,
                 av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
-                split_params=self._split_params,
+                split_config=self._split_config,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
@@ -406,7 +432,7 @@ class GraphIngestor(ingestor):
                 video_text_dedup_params=self._video_text_dedup_params,
                 av_fuse_params=self._av_fuse_params,
                 embed_params=self._embed_params,
-                split_params=self._split_params,
+                split_config=self._split_config,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
@@ -496,3 +522,14 @@ class GraphIngestor(ingestor):
         """Append *name* to the stage order list (deduplicated in place)."""
         if name not in self._stage_order:
             self._stage_order.append(name)
+
+    def _apply_split_config(self, split_config: dict[str, Any] | None) -> None:
+        """Resolve split_config when the caller opts in.
+
+        Typed shortcuts (extract_audio, extract_video, extract_image_files)
+        leave the constructor's all-None default in place when split_config is
+        omitted. Only the unified .extract() resolves None into the natural
+        default-on set.
+        """
+        if split_config is not None:
+            self._split_config = resolve_split_params(split_config)

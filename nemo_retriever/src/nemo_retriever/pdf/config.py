@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from nemo_retriever.config_utils import endpoints_from_yaml
 
-from nv_ingest_api.internal.schemas.extract.extract_pdf_schema import PDFExtractorSchema
+from nemo_retriever.api.internal.schemas.extract.extract_pdf_schema import PDFExtractorSchema
 
 
 def load_pdf_extractor_schema_from_dict(cfg: Dict[str, Any]) -> PDFExtractorSchema:

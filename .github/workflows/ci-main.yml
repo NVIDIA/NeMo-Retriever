@@ -24,9 +24,9 @@ jobs:
     uses: ./.github/workflows/reusable-docker-build.yml
     with:
       platform: 'linux/amd64'
-      target: 'runtime'
+      target: 'service'
       push: false
-      tags: 'nv-ingest:main-${{ github.sha }}'
+      tags: 'nrl-service:main-${{ github.sha }}'
       base-image: 'ubuntu'
       base-image-tag: 'jammy-20250415.1'
       runner: 'linux-large-disk'
@@ -39,7 +39,7 @@ jobs:
     needs: docker-build
     uses: ./.github/workflows/reusable-docker-test.yml
     with:
-      image-tag: 'nv-ingest:main-${{ github.sha }}'
+      image-tag: 'nrl-service:main-${{ github.sha }}'
       platform: 'linux/amd64'
       test-selection: 'full'
       pytest-markers: 'not integration'

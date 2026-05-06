@@ -35,6 +35,8 @@ from .models import VdbUploadParams
 from .models import VideoFrameParams
 from .models import VideoFrameTextDedupParams
 from .models import WebhookParams
+from .utils import SPLIT_CONFIG_VALID_KEYS
+from .utils import resolve_split_params
 
 __all__ = [
     "ASRParams",
@@ -62,6 +64,7 @@ __all__ = [
     "RemoteInvokeParams",
     "RemoteRetryParams",
     "RunMode",
+    "SPLIT_CONFIG_VALID_KEYS",
     "StoreParams",
     "TabularExtractParams",
     "TableParams",
@@ -70,4 +73,5 @@ __all__ = [
     "VideoFrameParams",
     "VideoFrameTextDedupParams",
     "WebhookParams",
+    "resolve_split_params",
 ]

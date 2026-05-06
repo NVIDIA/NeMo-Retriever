@@ -116,39 +116,46 @@ def convert_batch_to_pdf(batch_df: Any) -> pd.DataFrame:
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("convert_batch_to_pdf currently only supports pandas.DataFrame input.")
 
+    _EXPLICIT_COLS = frozenset(("bytes", "path"))
+
     out_rows: List[Dict[str, Any]] = []
     for _, row in batch_df.iterrows():
         file_path = row.get("path") or ""
         file_bytes = row.get("bytes", b"")
 
+        extra = {k: v for k, v in row.to_dict().items() if k not in _EXPLICIT_COLS}
+
         ext = os.path.splitext(file_path)[1].lower() if file_path else ".pdf"
 
         if ext not in SUPPORTED_EXTENSIONS:
-            # Unsupported extension — pass through unchanged (let downstream
-            # stages handle or error).
-            out_rows.append({"bytes": file_bytes, "path": file_path})
+            out_row: Dict[str, Any] = {"bytes": file_bytes, "path": file_path}
+            out_row.update(extra)
+            out_rows.append(out_row)
             continue
 
         if ext == ".pdf" and len(file_bytes) > 0:
-            out_rows.append({"bytes": file_bytes, "path": file_path})
+            out_row = {"bytes": file_bytes, "path": file_path}
+            out_row.update(extra)
+            out_rows.append(out_row)
             continue
 
         try:
             if not isinstance(file_bytes, (bytes, bytearray, memoryview)):
                 raise ValueError(f"Unsupported bytes payload type: {type(file_bytes)!r}")
             pdf_bytes = convert_to_pdf_bytes(bytes(file_bytes), ext)
-            # Preserve original path so downstream metadata tracks the source file.
-            out_rows.append({"bytes": pdf_bytes, "path": file_path})
+            out_row = {"bytes": pdf_bytes, "path": file_path}
+            out_row.update(extra)
+            out_rows.append(out_row)
         except FileNotFoundError:
             raise  # LibreOffice not installed — fail fast, don't swallow.
         except BaseException as e:
-            out_rows.append(
-                _error_record(
-                    source_path=str(file_path) if file_path else None,
-                    stage="convert_to_pdf",
-                    exc=e,
-                )
+            err = _error_record(
+                source_path=str(file_path) if file_path else None,
+                stage="convert_to_pdf",
+                exc=e,
             )
+            err.update(extra)
+            out_rows.append(err)
 
     return pd.DataFrame(out_rows)
 
