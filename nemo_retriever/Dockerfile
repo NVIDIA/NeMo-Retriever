@@ -109,9 +109,7 @@ ENV VIRTUAL_ENV=/opt/retriever_runtime
 ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
 
 COPY nemo_retriever nemo_retriever
-COPY src src
-COPY api api
-COPY client client
+
 
 # Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]

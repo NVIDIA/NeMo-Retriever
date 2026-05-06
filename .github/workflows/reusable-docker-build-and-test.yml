@@ -165,7 +165,7 @@ jobs:
           TAGS="${{ inputs.tags }}"
           PLATFORM="${{ inputs.platform }}"
           MARKERS="${{ inputs.pytest-markers }}"
-          TEST_PATHS="tests/service_tests client/client_tests api/api_tests"
+          TEST_PATHS="nemo_retriever/tests"
 
           sanitize_image_ref() {
             local ref="$1"
