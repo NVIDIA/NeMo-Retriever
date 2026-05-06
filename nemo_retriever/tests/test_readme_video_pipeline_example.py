@@ -72,6 +72,10 @@ def _collect_node_names(graph: Graph) -> list[str]:
     return names
 
 
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_png_frames(),
+    reason="ffmpeg with PNG encoder required for frame extraction",
+)
 def test_readme_video_pipeline_build_graph_chain() -> None:
     """``build_graph`` for the README video params starts with the documented chain."""
     graph = build_graph(
