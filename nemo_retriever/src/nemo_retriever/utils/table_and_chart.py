@@ -6,7 +6,7 @@
 Table/chart/infographic content reconstruction utilities.
 
 Ports bbox-matching and content-reconstruction algorithms from
-``nv_ingest_api.util.image_processing.table_and_chart`` and adds adapter
+``nemo_retriever.api.util.image_processing.table_and_chart`` and adds adapter
 functions that convert the retriever's detection/OCR formats into the
 pixel-coordinate representations expected by the core joining routines.
 """
@@ -23,7 +23,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Core algorithms ported from nv-ingest
+# Core algorithms ported from `nemo_retriever.api`
 # ---------------------------------------------------------------------------
 
 
@@ -408,7 +408,7 @@ def reorder_boxes(
 
 
 # ---------------------------------------------------------------------------
-# Adapter functions  (retriever formats → nv-ingest formats)
+# Adapter functions  (retriever formats → `nemo_retriever.api` formats)
 # ---------------------------------------------------------------------------
 
 

@@ -44,8 +44,22 @@ def extract_embedding_from_row(
     return None
 
 
-def extract_source_path_and_page(row: Any) -> Tuple[str, int]:
-    """Best-effort extract of source path and page number from a row."""
+def extract_source_path_and_page(row: Any, *, provenance_page: Optional[int] = None) -> Tuple[str, int]:
+    """Best-effort extract of source path and page number from a row.
+
+    In service mode the client pre-splits multi-page PDFs into single pages
+    before uploading.  The pipeline therefore always sees a 1-page document
+    and sets ``page_number = 1``.  However, the *original* page number from
+    the source document is preserved in the ``_page_number`` provenance
+    column.  We prefer that value when it exceeds the pipeline-derived one.
+
+    Parameters
+    ----------
+    provenance_page
+        The original page number from the client upload metadata.  Passed
+        explicitly because ``_page_number`` (underscore-prefixed) is not
+        accessible via ``getattr`` on pandas namedtuples from ``itertuples()``.
+    """
     path = ""
     page = -1
 
@@ -73,6 +87,20 @@ def extract_source_path_and_page(row: Any) -> Tuple[str, int]:
                     page = int(hierarchy.get("page"))
                 except Exception:
                     pass
+
+    # Prefer the provenance page number set by service-mode pre-splitting.
+    # In service mode _page_number carries the original page index from the
+    # source document; the pipeline's page_number is always 1 since each
+    # upload is a single-page PDF.  In batch mode _page_number is 1 (whole
+    # document submitted) and the pipeline sets the correct page_number, so
+    # taking the max produces the right value in both cases.
+    if provenance_page is not None:
+        try:
+            pp = int(provenance_page)
+            if pp > page:
+                page = pp
+        except (TypeError, ValueError):
+            pass
 
     return path, page
 
@@ -124,13 +152,14 @@ def build_lancedb_row(
     embedding_key: str = "embedding",
     text_column: str = "text",
     include_text: bool = True,
+    provenance_page: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """Build a single LanceDB-ready dict from a DataFrame row."""
     embedding = extract_embedding_from_row(row, embedding_column=embedding_column, embedding_key=embedding_key)
     if embedding is None:
         return None
 
-    path, page_number = extract_source_path_and_page(row)
+    path, page_number = extract_source_path_and_page(row, provenance_page=provenance_page)
     path_obj = Path(path) if path else None
     filename = path_obj.name if path_obj is not None else ""
     pdf_basename = path_obj.stem if path_obj is not None else ""
@@ -189,14 +218,23 @@ def build_lancedb_rows(
     include_text: bool = True,
 ) -> List[Dict[str, Any]]:
     """Build LanceDB rows from a pandas DataFrame."""
+    import pandas as pd
+
+    # Extract _page_number explicitly since itertuples() mangles
+    # underscore-prefixed column names into positional _0, _1, etc.
+    has_provenance = isinstance(df, pd.DataFrame) and "_page_number" in df.columns
+    provenance_pages = df["_page_number"].tolist() if has_provenance else None
+
     rows: List[Dict[str, Any]] = []
-    for row in df.itertuples(index=False):
+    for i, row in enumerate(df.itertuples(index=False)):
+        pp = int(provenance_pages[i]) if provenance_pages is not None else None
         row_out = build_lancedb_row(
             row,
             embedding_column=embedding_column,
             embedding_key=embedding_key,
             text_column=text_column,
             include_text=include_text,
+            provenance_page=pp,
         )
         if row_out is not None:
             rows.append(row_out)

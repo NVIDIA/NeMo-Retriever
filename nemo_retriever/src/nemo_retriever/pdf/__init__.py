@@ -5,7 +5,7 @@
 """
 PDF extraction stage (pure Python + Ray Data adapters).
 
-This package intentionally reuses the core extraction logic from `nv-ingest-api`
+This package intentionally reuses the core extraction logic from `nemo_retriever.api`
 and only provides thin orchestration wrappers.
 """
 

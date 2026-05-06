@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
-RunMode = Literal["inprocess", "batch", "fused", "online"]
+RunMode = Literal["inprocess", "batch", "fused", "service"]
 
 # Pass as an api_key value to suppress auto-resolution from environment variables.
 # Example: EmbedParams(api_key=NO_API_KEY)
@@ -67,6 +67,8 @@ class _ParamsModel(BaseModel):
             value = getattr(self, field_name, None)
             if _is_api_key_field(field_name) and value:
                 parts.append(f"{field_name}={_REDACTED}")
+            elif field_name == "storage_options" and value:
+                parts.append(f"{field_name}={_REDACTED}")
             else:
                 parts.append(f"{field_name}={value!r}")
         return f"{type(self).__name__}({', '.join(parts)})"
@@ -103,6 +105,11 @@ class IngestorCreateParams(_ParamsModel):
     debug: bool = False
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
+    api_key: Optional[str] = None
+    # service run mode: maximum number of concurrent page uploads.  Lower
+    # values (e.g. 2-4) reduce burst pressure on Kubernetes NodePort /
+    # kube-proxy paths that otherwise reset connections under heavy load.
+    max_concurrency: Optional[int] = None
 
 
 class IngestExecuteParams(_ParamsModel):
@@ -136,7 +143,7 @@ class HtmlChunkParams(TextChunkParams):
 
 
 class AudioChunkParams(_ParamsModel):
-    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader.
+    """Params for media chunking (audio/video split). Aligned with `nemo_retriever.api` dataloader.
 
     Set ``enabled=False`` (when wired through ``VideoSplitActor``) to skip
     audio chunking and ASR on a video pipeline — useful for visual-only
@@ -414,13 +421,6 @@ class VdbUploadParams(_ParamsModel):
 class StoreParams(_ParamsModel):
     storage_uri: str = "stored_images"
     storage_options: dict[str, Any] = Field(default_factory=dict)
-    public_base_url: Optional[str] = None
-    store_page_images: bool = True
-    store_tables: bool = True
-    store_charts: bool = True
-    store_infographics: bool = True
-    store_images: bool = True
-    store_text: bool = False
     image_format: str = "png"
     strip_base64: bool = True
 

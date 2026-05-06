@@ -108,6 +108,8 @@ class TableStructureActor(AbstractOperator, GPUOperator):
                 n = len(out.index)
                 out["table"] = [[] for _ in range(n)]
                 out["table_structure_ocr_v1"] = [payload for _ in range(n)]
+                out["table_structure_v1_num_detections"] = [0 for _ in range(n)]
+                out["table_structure_v1_counts_by_label"] = [{} for _ in range(n)]
                 return out
             return [
                 {

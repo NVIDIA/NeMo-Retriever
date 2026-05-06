@@ -40,6 +40,7 @@ class IngestExecutionPlan:
     html_params: HtmlChunkParams | None = None
     audio_chunk_params: AudioChunkParams | None = None
     asr_params: ASRParams | None = None
+    split_config: dict[str, Any] | None = None
     stages: tuple[PlannedStage, ...] = ()
     sinks: tuple[PlannedSink, ...] = ()
 
@@ -64,7 +65,7 @@ class BaseIngestPlan:
     html_params: HtmlChunkParams | None = None
     audio_chunk_params: AudioChunkParams | None = None
     asr_params: ASRParams | None = None
-    split_params: TextChunkParams | None = None
+    split_config: dict[str, Any] | None = None
     dedup_params: DedupParams | None = None
     caption_params: CaptionParams | None = None
     embed_params: EmbedParams | None = None
@@ -110,10 +111,14 @@ class BaseIngestPlan:
         self.sink_order.append(sink_name)
 
     def build_execution_plan(self) -> IngestExecutionPlan:
-        """Collapse fluent plan state into an ordered execution-ready contract."""
+        """Collapse fluent plan state into an ordered execution-ready contract.
+
+        Splitting is configured via ``split_config`` on the returned plan, not
+        as a :class:`PlannedStage`. The ordered ``stages`` tuple covers only the
+        post-extraction transforms (``dedup``, ``caption``, ``embed``).
+        """
 
         stage_params = {
-            "split": self.split_params,
             "dedup": self.dedup_params,
             "caption": self.caption_params,
             "embed": self.embed_params,
@@ -140,6 +145,7 @@ class BaseIngestPlan:
             html_params=self.html_params,
             audio_chunk_params=self.audio_chunk_params,
             asr_params=self.asr_params,
+            split_config=self.split_config,
             stages=stages,
             sinks=sinks,
         )

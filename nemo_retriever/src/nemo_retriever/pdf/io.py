@@ -18,9 +18,9 @@ def pdf_files_to_ledger_df(
     start_index: int = 0,
     extra_metadata: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
-    """Create an nv-ingest-style ledger DataFrame from local PDF files.
+    """Create a `nemo_retriever.api`-style ledger DataFrame from local PDF files.
 
-    The extraction functions in `nv-ingest-api` expect a ledger with a base64 `content`
+    The extraction functions in `nemo_retriever.api` expect a ledger with a base64 `content`
     column plus identifying metadata.
     """
     extra_metadata = dict(extra_metadata or {})
