@@ -215,7 +215,7 @@ jobs:
           fi
 
           if [ "${{ inputs.test-selection }}" = "full" ]; then
-            CMD="source /opt/retriever_runtime/bin/activate; uv pip install -e nemo_retriever[all,dev] && uv pip install pytest && python -m pytest nemo_retriever/tests"
+            CMD="source /opt/retriever_runtime/bin/activate; uv pip install -e ./nemo_retriever[all,dev] && uv pip install pytest && python -m pytest nemo_retriever/tests"
           else
             N="${{ inputs.random-count }}"
             CMD="set -euo pipefail; \

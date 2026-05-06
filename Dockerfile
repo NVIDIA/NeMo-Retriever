@@ -86,6 +86,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
     && apt update && apt-get --fix-broken install -y && apt-get -y install cuda-toolkit-13-0
 
+WORKDIR /workspace
+COPY nemo_retriever nemo_retriever
 
 # ENV VIRTUAL_ENV=/opt/retriever_runtime
 # ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
@@ -107,9 +109,6 @@ ENV PYTHONUNBUFFERED=1
 # Activate venv by default so CLI and python see nemo_retriever; mount over /workspace for dev.
 ENV VIRTUAL_ENV=/opt/retriever_runtime
 ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
-
-COPY nemo_retriever nemo_retriever
-
 
 # Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]
