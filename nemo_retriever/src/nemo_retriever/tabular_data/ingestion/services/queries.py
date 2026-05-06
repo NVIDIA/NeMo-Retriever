@@ -106,7 +106,6 @@ def parse_query_single(
         sql_text=sql,
         ltimestamp=datetime.now(),
         count=1,
-        dialect=dialect,
     )
     is_parsed = parse_query_slim(sql_text=sql, query_obj=query_obj, dialect=dialect, schemas=schemas)
     if not is_parsed:
@@ -263,7 +262,6 @@ def parse_queries_df(
                 sql_text=sql_text,
                 ltimestamp=sql_timestamp,
                 count=sql_count,
-                dialect=dialect,
             )
             is_parsed = parse_query_slim(
                 sql_text=sql_text,

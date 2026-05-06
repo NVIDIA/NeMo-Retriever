@@ -838,7 +838,6 @@ class RetrieverServiceClient:
         """
         _POLL_CONCURRENCY = 16
         _POLL_INTERVAL_S = 2.0
-        _STATUS_REPORT_INTERVAL_S = 30.0
 
         pool_limits = httpx.Limits(max_connections=1000, max_keepalive_connections=200)
         timeout = httpx.Timeout(600.0, connect=30.0)
@@ -883,7 +882,6 @@ class RetrieverServiceClient:
                 print(f"  All {len(jobs)} documents uploaded. Polling for results...")
 
             async def _poll_loop() -> None:
-                last_status_report = time.monotonic()
                 while True:
                     if not pending:
                         if uploads_done.is_set():
@@ -906,17 +904,6 @@ class RetrieverServiceClient:
                             self.notify_capacity_available()
                             results = await self._fetch_single_job_results(client, jid)
                             await event_queue.put({"event": "job_complete", "job_id": jid, "results": results})
-
-                    now = time.monotonic()
-                    if pending and (now - last_status_report) >= _STATUS_REPORT_INTERVAL_S:
-                        last_status_report = now
-                        print(f"\n  --- {len(pending)} jobs still pending ---")
-                        for jid in sorted(pending, key=lambda j: jobs[j]["submitted_at"]):
-                            elapsed = now - jobs[jid]["submitted_at"]
-                            fname = jobs[jid]["filename"]
-                            pages = jobs[jid]["total_pages"]
-                            print(f"    {jid[:8]}  {fname:<40} {pages:>3} pages  {elapsed:>6.0f}s")
-                        print()
 
                     await asyncio.sleep(_POLL_INTERVAL_S)
 

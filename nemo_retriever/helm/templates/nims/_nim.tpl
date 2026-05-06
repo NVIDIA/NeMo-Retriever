@@ -1,7 +1,12 @@
 {{/*
 =============================================================================
-Per-NIM resource bundle (Deployment + Service + optional cache PVC)
+Per-NIM resource bundle (StatefulSet + headless Service + cache VCT)
 =============================================================================
+
+StatefulSets with headless Services give each NIM pod a stable DNS name
+(<name>-N.<name>.<ns>.svc.cluster.local) so the retriever service can
+generate per-pod endpoint URLs and pin workers to individual replicas,
+achieving the same application-level load spreading as the Docker setup.
 
 Usage:
   {{ include "nemo-retriever.nim.bundle" (dict "context" $ "key" "pageElements" "shortName" "page-elements") }}
@@ -22,6 +27,8 @@ Usage:
 {{- $labels := include "nemo-retriever.nim.labels" (dict "context" $ctx "shortName" $short) -}}
 {{- $selector := include "nemo-retriever.nim.selectorLabels" (dict "context" $ctx "shortName" $short) }}
 ---
+# Headless Service for StatefulSet pod DNS (enables per-pod endpoint URLs
+# for application-level load spreading across NIM replicas).
 apiVersion: v1
 kind: Service
 metadata:
@@ -30,6 +37,7 @@ metadata:
     {{- $labels | nindent 4 }}
 spec:
   type: ClusterIP
+  clusterIP: None
   selector:
     {{- $selector | nindent 4 }}
   ports:
@@ -38,35 +46,14 @@ spec:
       port: {{ $port }}
       targetPort: http
 ---
-{{- if and $merged.cache $merged.cache.enabled }}
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ printf "%s-cache" $name }}
-  labels:
-    {{- $labels | nindent 4 }}
-spec:
-  accessModes:
-    {{- toYaml $merged.cache.accessModes | nindent 4 }}
-  resources:
-    requests:
-      storage: {{ $merged.cache.size | quote }}
-  {{- if $merged.cache.storageClass }}
-  {{- if eq "-" (toString $merged.cache.storageClass) }}
-  storageClassName: ""
-  {{- else }}
-  storageClassName: {{ $merged.cache.storageClass | quote }}
-  {{- end }}
-  {{- end }}
----
-{{- end }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ $name }}
   labels:
     {{- $labels | nindent 4 }}
 spec:
+  serviceName: {{ $name }}
   replicas: {{ $merged.replicas }}
   selector:
     matchLabels:
@@ -100,11 +87,6 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: {{ $merged.shmSize | quote }}
-        {{- if and $merged.cache $merged.cache.enabled }}
-        - name: cache
-          persistentVolumeClaim:
-            claimName: {{ printf "%s-cache" $name }}
-        {{- end }}
       containers:
         - name: nim
           image: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
@@ -149,5 +131,23 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+  {{- if and $merged.cache $merged.cache.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: cache
+      spec:
+        accessModes:
+          {{- toYaml $merged.cache.accessModes | nindent 10 }}
+        resources:
+          requests:
+            storage: {{ $merged.cache.size | quote }}
+        {{- if $merged.cache.storageClass }}
+        {{- if eq "-" (toString $merged.cache.storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: {{ $merged.cache.storageClass | quote }}
+        {{- end }}
+        {{- end }}
+  {{- end }}
 {{- end }}
 {{- end }}

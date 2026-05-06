@@ -173,12 +173,8 @@ def embed_text_main_text_embed(
         out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)
         out_df[embedding_dim_column] = 0
         out_df[has_embedding_column] = False
-        n = len(out_df)
-        out_df["embedding_v1_num_detections"] = [0] * n
-        out_df["embedding_v1_counts_by_label"] = [{} for _ in range(n)]
-        for column in ("_image_b64", "_embed_modality"):
-            if column in out_df.columns:
-                out_df = out_df.drop(columns=[column])
+        if "_embed_modality" in out_df.columns:
+            out_df = out_df.drop(columns=["_embed_modality"])
         return out_df
 
     if embedding_dim_column:
@@ -204,8 +200,8 @@ def embed_text_main_text_embed(
     out_df["embedding_v1_num_detections"] = [int(f) for f in embedded_flags]
     out_df["embedding_v1_counts_by_label"] = [{"embedded": 1} if f else {} for f in embedded_flags]
 
-    for column in ("_image_b64", "_embed_modality"):
-        if column in out_df.columns:
-            out_df = out_df.drop(columns=[column])
+    if "_embed_modality" in out_df.columns:
+        # Internal embedding router column; StoreOperator consumes _image_b64.
+        out_df = out_df.drop(columns=["_embed_modality"])
 
     return out_df

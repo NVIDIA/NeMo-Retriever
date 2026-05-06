@@ -287,5 +287,5 @@ The  following example adds user-defined stages to your NeMo Retriever Library p
 
 ## Related Topics
 
-- [User-Defined Functions for NeMo Retriever Library](user-defined-functions.md)
+- [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md)
 - [NimClient Usage](nimclient.md)

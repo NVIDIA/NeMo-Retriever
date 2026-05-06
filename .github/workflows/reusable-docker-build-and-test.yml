@@ -11,7 +11,7 @@ on:
         description: 'Dockerfile target to build'
         required: false
         type: string
-        default: 'test'
+        default: 'base'
       tags:
         description: 'Docker image tag(s), comma-separated (first tag is used for running tests)'
         required: true
@@ -149,7 +149,7 @@ jobs:
           docker buildx build \
             --platform "${{ inputs.platform }}" \
             --load \
-            --target "${{ inputs.target }}" \
+            --target base \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             --build-arg BASE_IMG="${{ inputs.base-image }}" \
             --build-arg BASE_IMG_TAG="${{ inputs.base-image-tag }}" \
@@ -165,7 +165,7 @@ jobs:
           TAGS="${{ inputs.tags }}"
           PLATFORM="${{ inputs.platform }}"
           MARKERS="${{ inputs.pytest-markers }}"
-          TEST_PATHS="tests/service_tests client/client_tests api/api_tests"
+          TEST_PATHS="nemo_retriever/tests"
 
           sanitize_image_ref() {
             local ref="$1"
@@ -209,17 +209,18 @@ jobs:
           fi
 
           if [ "${{ inputs.coverage }}" = "true" ]; then
-            COV_ARGS="--cov nv_ingest --cov nv_ingest_client --cov nv_ingest_api --cov-report term --cov-report xml:/tmp/coverage.xml"
+            COV_ARGS="--cov-report term --cov-report xml:/tmp/coverage.xml"
           else
             COV_ARGS=""
           fi
 
           if [ "${{ inputs.test-selection }}" = "full" ]; then
-            CMD="python -m pip install --disable-pip-version-check 'pymilvus[milvus_lite]' && python -m pytest -rs -m \"$MARKERS\" $COV_ARGS $TEST_PATHS"
+            CMD="source /opt/retriever_runtime/bin/activate; uv pip install -e ./nemo_retriever[all,dev] && uv pip install pytest && python -m pytest nemo_retriever/tests"
           else
             N="${{ inputs.random-count }}"
             CMD="set -euo pipefail; \
-              python -m pip install --disable-pip-version-check 'pymilvus[milvus_lite]'; \
+              source /opt/retriever_runtime/bin/activate; \
+              uv pip install -e nemo_retriever[all,dev];  && uv pip install pytest; \
               python -m pytest --collect-only -q $TEST_PATHS | grep '::' | shuf -n \"$N\" > /tmp/selected-tests.txt; \
               python -m pytest -rs -m \"$MARKERS\" $COV_ARGS \$(cat /tmp/selected-tests.txt)"
           fi

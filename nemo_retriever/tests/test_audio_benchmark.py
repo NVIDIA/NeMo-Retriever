@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from nemo_retriever.audio.media_interface import is_media_available
+from tests import _have_ffmpeg_binary
 
 
 def _make_small_wav(path: Path, duration_sec: float = 0.3, sample_rate: int = 8000) -> None:
@@ -25,7 +25,7 @@ def _make_small_wav(path: Path, duration_sec: float = 0.3, sample_rate: int = 80
         wav.writeframes(b"\x00\x00" * n_frames)
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_audio_benchmark_run_mock_asr(tmp_path: Path):
     """Run benchmark with --mock-asr and small row count; assert it completes."""
     wav = tmp_path / "tiny.wav"

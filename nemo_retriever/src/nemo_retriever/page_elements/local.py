@@ -14,7 +14,7 @@ except Exception:  # pragma: no cover
     _postprocess_preds_page_element = None
 
 try:
-    from nv_ingest_api.internal.primitives.nim.model_interface.yolox import (
+    from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import (
         postprocess_page_elements_v3,
         YOLOX_PAGE_V3_CLASS_LABELS,
         YOLOX_PAGE_V3_FINAL_SCORE,

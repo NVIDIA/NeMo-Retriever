@@ -64,6 +64,36 @@ def _use_remote(params: ASRParams) -> bool:
     return bool(grpc or http)
 
 
+def _split_audio_rows(batch_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Partition a mixed batch into audio rows (to ASR) and passthrough rows.
+
+    Audio-only pipelines emit batches without a ``_content_type`` column;
+    in that case the whole batch is treated as audio.
+    """
+    if "_content_type" not in batch_df.columns:
+        return batch_df, pd.DataFrame()
+    is_audio = batch_df["_content_type"].astype(str) == "audio"
+    return (
+        batch_df[is_audio].reset_index(drop=True),
+        batch_df[~is_audio].reset_index(drop=True),
+    )
+
+
+def _concat_with_passthrough(processed: pd.DataFrame, passthrough: pd.DataFrame) -> pd.DataFrame:
+    """Concat the ASR output with the passthrough rows, harmonising columns."""
+    if passthrough is None or passthrough.empty:
+        return processed
+    if processed is None or processed.empty:
+        return passthrough
+    for col in processed.columns:
+        if col not in passthrough.columns:
+            passthrough = passthrough.assign(**{col: None})
+    for col in passthrough.columns:
+        if col not in processed.columns:
+            processed = processed.assign(**{col: None})
+    return pd.concat([processed[passthrough.columns.tolist()], passthrough], ignore_index=True, sort=False)
+
+
 logger = logging.getLogger(__name__)
 
 # Public NVCF Parakeet endpoint and the libmode function ID. Exposed as named
@@ -99,7 +129,7 @@ def asr_params_from_env(
 
     - ``NGC_API_KEY`` — Bearer token; only consulted when an endpoint is set.
     - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to ``default_function_id``
-      (the nv-ingest libmode Parakeet NIM) when an endpoint is set but the env
+      (the `nemo_retriever.api` / libmode Parakeet NIM) when an endpoint is set but the env
       var is unset.
     """
     import os
@@ -128,7 +158,7 @@ def asr_params_from_env(
 
 
 try:
-    from nv_ingest_api.internal.primitives.nim.model_interface.parakeet import (
+    from nemo_retriever.api.internal.primitives.nim.model_interface.parakeet import (
         create_audio_inference_client,
     )
 
@@ -141,8 +171,8 @@ except ImportError:
 def _get_client(params: ASRParams):  # noqa: ANN201
     if not _PARAKEET_AVAILABLE or create_audio_inference_client is None:
         raise RuntimeError(
-            "ASRActor requires nv-ingest-api (Parakeet client). "
-            "Install with: pip install nv-ingest-api (or add nv-ingest-api to dependencies)."
+            "ASRActor requires the Parakeet NIM client (vendored in nemo_retriever.api). "
+            "Ensure optional multimedia + nv-ingest-client dependencies are installed."
         )
     grpc_endpoint = (params.audio_endpoints[0] or "").strip() or None
     http_endpoint = (params.audio_endpoints[1] or "").strip() or None
@@ -199,9 +229,19 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
                 columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
             )
 
+        # When ``_content_type`` is set on the batch (mixed audio + video_frame
+        # rows from a video pipeline), only ASR the audio rows and pass the
+        # rest through unchanged. Audio-only pipelines have no ``_content_type``
+        # column, so this branch is a no-op for them.
+        audio_df, passthrough_df = _split_audio_rows(batch_df)
+        if audio_df.empty:
+            return passthrough_df
+
         if self._client is not None:
-            return self._call_remote_batch(batch_df)
-        return self._call_local_batch(batch_df)
+            asr_out = self._call_remote_batch(audio_df)
+        else:
+            asr_out = self._call_local_batch(audio_df)
+        return _concat_with_passthrough(asr_out, passthrough_df)
 
     def postprocess(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         return data

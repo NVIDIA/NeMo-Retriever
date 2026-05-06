@@ -4,8 +4,9 @@ Renders retriever-service.yaml from .Values.serviceConfig and mounts it at
 
 NIM endpoint URLs are resolved at template time via nim.endpointURL: if the
 user supplied an explicit URL in serviceConfig.nimEndpoints we use it,
-otherwise we auto-wire the in-cluster URL of the matching NIM Deployment
-(when nims.enabled).
+otherwise we auto-wire the in-cluster URL(s) of the matching NIM StatefulSet
+(when nims.enabled). When replicas > 1, comma-separated per-pod URLs are
+generated so the retriever service can pin workers to individual NIM pods.
 */}}
 {{- $ctx := . -}}
 {{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "pageElements" "shortName" "page-elements" "configKey" "pageElementsInvokeUrl") -}}
@@ -37,6 +38,7 @@ data:
       num_workers: {{ .Values.serviceConfig.processing.numWorkers }}
       batch_size: {{ .Values.serviceConfig.processing.batchSize }}
       batch_timeout_s: {{ .Values.serviceConfig.processing.batchTimeoutS }}
+      results_dir: {{ .Values.serviceConfig.processing.resultsDir | quote }}
 
     nim_endpoints:
       page_elements_invoke_url: {{ $pageElementsURL | quote }}

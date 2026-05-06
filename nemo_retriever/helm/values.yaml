@@ -60,7 +60,22 @@ service:
   podLabels: {}
   nodeSelector: {}
   tolerations: []
-  affinity: {}
+  # Prefer co-locating the retriever pod on the same node as NIM pods to
+  # minimize network latency for inference calls. This is a soft preference
+  # (preferredDuringScheduling) so the pod still schedules if no NIM node
+  # has capacity.
+  affinity:
+    podAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - nim
+            topologyKey: kubernetes.io/hostname
   topologySpreadConstraints: []
   priorityClassName: ""
   terminationGracePeriodSeconds: 60
@@ -184,8 +199,9 @@ serviceConfig:
     # Worker processes per pod. With remote NIM endpoints these are
     # lightweight HTTP clients, so the upstream default is 64. Match this
     # to the requested CPU on the pod (rough rule of thumb: 8-16 workers per
-    # core).
-    numWorkers: 16
+    # core). Higher values keep GPUs saturated by maintaining more in-flight
+    # NIM requests in parallel.
+    numWorkers: 64
     batchSize: 16
     batchTimeoutS: 2.0
     # Must match retrieverResults.mountPath so the service writes to the PVC.
@@ -260,10 +276,12 @@ nimApiKey:
 # A PVC mounted at `mountPath` for storing per-job page results as JSON files.
 # The processing pool writes results here and the /v1/ingest/job/{id}/results
 # endpoint reads from this directory instead of SQLite for faster retrieval.
+#
+# Use local/host-path storage for results to avoid network I/O overhead.
 retrieverResults:
   enabled: true
   existingClaim: ""
-  storageClass: ""
+  storageClass: "local-path"
   accessModes:
     - ReadWriteOnce
   size: 50Gi
@@ -276,12 +294,17 @@ retrieverResults:
 # A single ReadWriteOnce PVC mounted at `mountPath`. SQLite's WAL mode is
 # enabled in-process, but cross-pod replication is NOT possible — keep
 # `service.replicas` at 1 until a shared DB lands.
+#
+# IMPORTANT: SQLite WAL + spool fsync are latency-sensitive. Use local/
+# host-path backed storage to avoid network I/O penalties (NFS, CephFS, or
+# cloud block storage can add 5-50ms per fsync, severely throttling
+# throughput).
 persistence:
   enabled: true
   # When `existingClaim` is set the chart will skip PVC creation and mount
   # the named claim instead. Useful for promotion across releases.
   existingClaim: ""
-  storageClass: ""
+  storageClass: "local-path"
   accessModes:
     - ReadWriteOnce
   size: 50Gi
@@ -354,7 +377,7 @@ nims:
   # Default values inherited by every NIM unless overridden. Per-NIM blocks
   # below can override any of these keys.
   defaults:
-    replicas: 1
+    replicas: 2
     port: 8000
     shmSize: "16Gi"
     resources:

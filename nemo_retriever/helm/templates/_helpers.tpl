@@ -232,8 +232,14 @@ nemo-retriever.nim.merged
 
 {{/*
 nemo-retriever.nim.url
-  In-cluster invocation URL for one NIM. Returns "" when the NIM is
-  disabled so callers can fall back to externally configured URLs.
+  In-cluster invocation URL(s) for one NIM. When replicas > 1, returns
+  comma-separated per-pod URLs so the retriever service can pin workers
+  to individual NIM replicas (application-level load spreading). With a
+  headless Service + StatefulSet the pod DNS is predictable:
+    <name>-0.<name>.<namespace>.svc.cluster.local
+
+  Returns "" when the NIM is disabled so callers can fall back to
+  externally configured URLs.
 */}}
 {{- define "nemo-retriever.nim.url" -}}
 {{- $ctx := .context -}}
@@ -242,9 +248,15 @@ nemo-retriever.nim.url
 {{- $cfg := index $ctx.Values.nims $key -}}
 {{- if and $ctx.Values.nims.enabled $cfg.enabled -}}
 {{- $name := include "nemo-retriever.nim.fullname" (dict "context" $ctx "shortName" $short) -}}
-{{- $port := default $ctx.Values.nims.defaults.port (get $cfg "port") -}}
+{{- $merged := include "nemo-retriever.nim.merged" (dict "context" $ctx "key" $key) | fromYaml -}}
+{{- $port := int $merged.port -}}
 {{- $path := $cfg.invokePath -}}
-{{- printf "http://%s.%s.svc.cluster.local:%d%s" $name $ctx.Release.Namespace (int $port) $path -}}
+{{- $replicas := int $merged.replicas -}}
+{{- $urls := list -}}
+{{- range $i := until $replicas -}}
+{{- $urls = append $urls (printf "http://%s-%d.%s.%s.svc.cluster.local:%d%s" $name $i $name $ctx.Release.Namespace $port $path) -}}
+{{- end -}}
+{{- join "," $urls -}}
 {{- end -}}
 {{- end -}}
 

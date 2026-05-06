@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 
-from nv_ingest_api.internal.primitives.tracing.tagging import traceable_func
-from nv_ingest_api.internal.schemas.transform.transform_text_embedding_schema import TextEmbeddingSchema
-from nv_ingest_api.internal.transform.embed_text import transform_create_text_embeddings_internal
+from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.api.internal.schemas.transform.transform_text_embedding_schema import TextEmbeddingSchema
+from nemo_retriever.api.internal.transform.embed_text import transform_create_text_embeddings_internal
 
 from nemo_retriever.io.dataframe import validate_primitives_dataframe
 from nemo_retriever.text_embed.shared import _to_bool
@@ -70,7 +70,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
     """
     If no remote embedding endpoint is configured, inject a local HF embedder into task_config.
 
-    This keeps the DataFrame embedding logic centralized in `nv_ingest_api.internal.transform.embed_text`
+    This keeps the DataFrame embedding logic centralized in `nemo_retriever.api.internal.transform.embed_text`
     while allowing retriever-local runs to operate without an embedding microservice.
     """
     # Respect explicit caller-provided embedder.

@@ -16,6 +16,7 @@ from nemo_retriever.audio.chunk_actor import CHUNK_COLUMNS
 from nemo_retriever.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
 from nemo_retriever.audio.media_interface import is_media_available
+from tests import _have_ffmpeg_binary
 from nemo_retriever.params import AudioChunkParams
 
 
@@ -29,7 +30,7 @@ def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 80
         wav.writeframes(b"\x00\x00" * n_frames)
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_media_chunk_actor_empty_batch():
     from nemo_retriever.audio import MediaChunkActor
 
@@ -42,7 +43,7 @@ def test_media_chunk_actor_empty_batch():
     assert len(out) == 0
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_media_chunk_actor_single_small_file(tmp_path: Path):
     from nemo_retriever.audio import MediaChunkActor
 
@@ -65,7 +66,7 @@ def test_media_chunk_actor_single_small_file(tmp_path: Path):
     assert isinstance(out["bytes"].iloc[0], bytes)
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_audio_path_to_chunks_df(tmp_path: Path):
     wav = tmp_path / "small.wav"
     _make_small_wav(wav, duration_sec=0.4)
@@ -81,8 +82,7 @@ def test_audio_path_to_chunks_df(tmp_path: Path):
 def test_media_chunk_actor_requires_ffmpeg():
     """Without ffmpeg, MediaChunkActor.__init__ raises."""
     pytest.importorskip("ffmpeg")
-    # If ffmpeg is available, is_media_available() is True; we can't test the failure path
-    # without unimporting. So we only run the raise test when ffmpeg is missing.
+    # If is_media_available() is True, __init__ succeeds; we only exercise the raise path otherwise.
     if is_media_available():
         pytest.skip("ffmpeg available; cannot test missing-ffmpeg path here")
     with pytest.raises(RuntimeError, match="ffmpeg"):
