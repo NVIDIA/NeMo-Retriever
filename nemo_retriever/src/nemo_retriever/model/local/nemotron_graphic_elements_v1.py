@@ -6,9 +6,11 @@ from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.hf_model_registry import install_pinned_hf_hub_download
 from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
+import nemotron_graphic_elements_v1.model as _graphic_elements_model
 from nemotron_graphic_elements_v1.model import define_model as define_model_graphic_elements
 from nemotron_graphic_elements_v1.model import resize_pad as resize_pad_graphic_elements
 
@@ -34,6 +36,7 @@ class NemotronGraphicElementsV1(BaseModel):
     ) -> None:
         super().__init__()
         configure_global_hf_cache_base()
+        install_pinned_hf_hub_download(_graphic_elements_model)
         self._model = define_model_graphic_elements(self.model_name)
         self._graphic_elements_input_shape = (1024, 1024)
 

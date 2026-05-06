@@ -1,7 +1,9 @@
 # PDF Blueprint — `retriever` CLI Replacement
 
 This page is the `retriever`-CLI counterpart to the CLI cell in
-`nv-ingest/deploy/pdf-blueprint.ipynb`.
+`nv-ingest/deploy/pdf-blueprint.ipynb`. For installation and pinned
+dependencies, use the [NeMo Retriever Library quick start](../../README.md);
+everything below assumes `retriever` is already installed and configured.
 
 ## Original blueprint cell
 
@@ -68,18 +70,17 @@ print(tbl.to_pandas().head())
 
 ## Migrating the blueprint `pip install` cell
 
-The blueprint also installs `nv-ingest-client==25.9.0`. For the `retriever`
-path, install `nemo-retriever` instead (see `nemo_retriever/README.md` for
-current pinned versions):
+The blueprint notebook pins `nv-ingest-client` and related packages. For
+`retriever`, follow the install and environment steps in
+[**Quick Start for NeMo Retriever Library**](../../README.md) (including
+[**Setup your environment**](../../README.md#setup-your-environment) for
+pinned versions and optional extras such as `[local]`). This page assumes that
+setup is already done and only documents the CLI usage above.
 
-```bash
-pip install "nemo-retriever==26.3.0" \
-    nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0 \
-    pymilvus[bulk_writer,model] \
-    minio \
-    tritonclient \
-    langchain_milvus
-```
+The sample `retriever pipeline run` command above uses local paths for images
+and intermediates only. Add `minio` if you extend the notebook to S3-compatible
+`store` / `fsspec` URIs (for example `s3://…` for `--store-images-uri`), where
+optional nv-ingest client code paths import the MinIO SDK.
 
 ## Parity notes
 

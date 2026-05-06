@@ -35,7 +35,7 @@ from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload
-from nemo_retriever.vector_store.lancedb_store import handle_lancedb
+from nemo_retriever.vdb import IngestVdbOperator
 from nemo_retriever.params import (
     EmbedParams,
     TabularExtractParams,
@@ -71,15 +71,13 @@ EMBED_PARAMS = EmbedParams(
     embed_modality="text",
 )
 
-# Post-merge schema: VdbUploadParams now uses (vdb_op, vdb_kwargs).
-# The kwargs are the LanceDbParams fields when vdb_op == "lancedb".
+# vdb_kwargs are forwarded straight to ``nemo_retriever.vdb.lancedb.LanceDB``.
 VDB_PARAMS = VdbUploadParams(
     vdb_op="lancedb",
     vdb_kwargs={
-        "lancedb_uri": "lancedb",
+        "uri": "lancedb",
         "table_name": "nv-ingest-tabular",
         "overwrite": True,
-        "create_index": True,
     },
 )
 
@@ -99,12 +97,11 @@ def run_ingest() -> None:
     result_df = results[0] if results else None
 
     if result_df is not None and not result_df.empty:
-        lancedb_kwargs = VDB_PARAMS.vdb_kwargs
-        handle_lancedb(
-            result_df.to_dict(orient="records"),
-            uri=lancedb_kwargs["lancedb_uri"],
-            table_name=lancedb_kwargs["table_name"],
+        ingest_op = IngestVdbOperator(
+            vdb_op=VDB_PARAMS.vdb_op,
+            vdb_kwargs=VDB_PARAMS.vdb_kwargs,
         )
+        ingest_op(result_df.to_dict(orient="records"))
         print("Tabular ingest result:", len(result_df), "rows written to LanceDB")
     else:
         print("Tabular ingest result: no rows produced")
@@ -116,7 +113,7 @@ def run_retrieve() -> None:
     retriever = Retriever(
         vdb="lancedb",
         vdb_kwargs={
-            "uri": lancedb_kwargs["lancedb_uri"],
+            "uri": lancedb_kwargs["uri"],
             "table_name": lancedb_kwargs["table_name"],
         },
         top_k=15,

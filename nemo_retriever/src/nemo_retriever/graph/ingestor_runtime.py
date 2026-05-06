@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from functools import partial
 from typing import cast
 from typing import Any
@@ -23,7 +24,13 @@ from nemo_retriever.graph.content_transforms import (
 )
 from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractOperator
 from nemo_retriever.text_embed.operators import _BatchEmbedActor
-from nemo_retriever.ocr.ocr import OCRActor
+from nemo_retriever.video import (
+    AudioVisualFuser,
+    VideoFrameOCRActor,
+    VideoFrameTextDedup,
+    VideoSplitActor,
+)
+from nemo_retriever.ocr.ocr import resolve_ocr_archetype
 from nemo_retriever.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.table.table_detection import TableStructureActor
@@ -36,6 +43,8 @@ from nemo_retriever.utils.ray_resource_hueristics import (
     ClusterResources,
     resolve_requested_plan,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _batch_tuning(params: Any) -> Any:
@@ -65,6 +74,7 @@ def batch_tuning_to_node_overrides(
     allow_no_gpu: bool | None = None,
     caption_params: Any | None = None,
     caption_gpus_per_actor: float | None = None,
+    video_frame_params: Any | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
 
@@ -165,11 +175,12 @@ def batch_tuning_to_node_overrides(
     if extract_params is not None:
         ocr_invoke_url = _positive(getattr(extract_params, "ocr_invoke_url", None))
         page_elements_invoke_url = _positive(getattr(extract_params, "page_elements_invoke_url", None))
+        ocr_actor_name = resolve_ocr_archetype(extract_params).__name__
 
         ocr_bs = _positive(
             getattr(extract_tuning, "ocr_inference_batch_size", None) if extract_tuning is not None else None
         ) or (plan.ocr_batch_size if plan else None)
-        _set(OCRActor.__name__, "batch_size", ocr_bs)
+        _set(ocr_actor_name, "batch_size", ocr_bs)
         ocr_concurrency = (
             _resolve(
                 getattr(extract_tuning, "ocr_workers", None) if extract_tuning is not None else None,
@@ -177,19 +188,19 @@ def batch_tuning_to_node_overrides(
             )
             or 0
         )
-        _set(OCRActor.__name__, "concurrency", ocr_concurrency or None)
+        _set(ocr_actor_name, "concurrency", ocr_concurrency or None)
         ocr_cpus = (
             _resolve(
                 getattr(extract_tuning, "ocr_cpus_per_actor", None) if extract_tuning is not None else None,
             )
             or 1.0
         )
-        _set(OCRActor.__name__, "num_cpus", ocr_cpus if ocr_cpus != 1.0 else None)
+        _set(ocr_actor_name, "num_cpus", ocr_cpus if ocr_cpus != 1.0 else None)
         if effective_allow_no_gpu:
-            _force_cpu_only(OCRActor.__name__)
+            _force_cpu_only(ocr_actor_name)
         elif not ocr_invoke_url:
             _set_gpu(
-                OCRActor.__name__,
+                ocr_actor_name,
                 getattr(extract_tuning, "gpu_ocr", None) if extract_tuning is not None else None,
                 plan.ocr_gpus_per_actor if plan else None,
             )
@@ -326,6 +337,18 @@ def batch_tuning_to_node_overrides(
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
+
+    # VideoSplitActor: one ffmpeg subprocess per input video, ~1-2 CPU cores
+    # per actor during decode. Default Ray Data concurrency=1 serialises every
+    # video, making this stage the wall-clock bottleneck on multi-video inputs.
+    # Scale with available CPUs (one actor per ~4 cores leaves headroom for
+    # downstream ASR/OCR/fuse stages); cap at 8 to avoid disk-I/O contention
+    # on slower storage. With fewer input videos than the cap, Ray Data only
+    # spawns as many actors as there are blocks — so an oversized cap is safe.
+    if video_frame_params is not None and getattr(video_frame_params, "enabled", True):
+        cpus = cluster_resources.total_cpu_count() if cluster_resources is not None else 0
+        if cpus > 0:
+            _set(VideoSplitActor.__name__, "concurrency", max(1, min(cpus // 4, 8)))
 
     return overrides
 
@@ -502,6 +525,9 @@ def build_graph(
     caption_params: Any | None = None,
     store_params: Any | None = None,
     webhook_params: Any | None = None,
+    video_frame_params: Any | None = None,
+    video_text_dedup_params: Any | None = None,
+    av_fuse_params: Any | None = None,
     stage_order: tuple[str, ...] = (),
 ) -> Graph:
     """Build a batch graph from explicit params or a shared execution plan."""
@@ -537,7 +563,46 @@ def build_graph(
         stage_order=stage_order,
     )
 
-    if _should_build_audio_graph(
+    # Video ingestion uses a dedicated chain so each stage (fan-out, ASR,
+    # frame OCR, scene fusion) shows up as its own Ray Data MapBatches op.
+    # The audio-only shortcut below would otherwise short-circuit to a
+    # single ``MediaChunkActor → ASRActor`` graph and we'd lose frame OCR.
+    has_video_branch = video_frame_params is not None
+    if has_video_branch:
+        # Each stream's actor is appended only when that stream is enabled.
+        # This skips the eager Parakeet load when audio is off and avoids
+        # empty Ray Data MapBatches stages cluttering the dashboard.
+        audio_enabled = audio_chunk_params is not None and getattr(audio_chunk_params, "enabled", True)
+        frames_enabled = getattr(video_frame_params, "enabled", True)
+        text_dedup_enabled = (
+            frames_enabled and video_text_dedup_params is not None and getattr(video_text_dedup_params, "enabled", True)
+        )
+        fuse_enabled = (
+            audio_enabled and frames_enabled and av_fuse_params is not None and getattr(av_fuse_params, "enabled", True)
+        )
+
+        graph = Graph() >> VideoSplitActor(
+            audio_chunk_params=audio_chunk_params,
+            video_frame_params=video_frame_params,
+        )
+        if audio_enabled:
+            graph = graph >> ASRActor(params=asr_params)
+        if frames_enabled:
+            graph = graph >> VideoFrameOCRActor(
+                ocr_invoke_url=getattr(extract_params, "ocr_invoke_url", None),
+                api_key=getattr(extract_params, "ocr_api_key", None) or getattr(extract_params, "api_key", None),
+                inference_batch_size=int(getattr(extract_params, "inference_batch_size", None) or 8),
+                request_timeout_s=float(
+                    getattr(extract_params, "ocr_request_timeout_s", None)
+                    or getattr(extract_params, "request_timeout_s", None)
+                    or 120.0
+                ),
+            )
+        if text_dedup_enabled:
+            graph = graph >> VideoFrameTextDedup(params=video_text_dedup_params)
+        if fuse_enabled:
+            graph = graph >> AudioVisualFuser(params=av_fuse_params)
+    elif _should_build_audio_graph(
         extract_params=extract_params,
         asr_params=asr_params,
     ):
@@ -551,6 +616,8 @@ def build_graph(
             audio_chunk_params=audio_chunk_params,
             asr_params=asr_params,
             caption_params=caption_params,
+            video_frame_params=video_frame_params,
+            av_fuse_params=av_fuse_params,
         )
     else:
         graph = Graph()
@@ -627,13 +694,18 @@ def build_graph(
             if detect_batch_size:
                 ocr_kwargs["inference_batch_size"] = int(detect_batch_size)
 
+            load_ocr_v2 = getattr(extract_params, "ocr_version", "v2") == "v2"
+
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
+            if extract_params.ocr_invoke_url:
+                table_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
                 table_kwargs["table_output_format"] = extract_params.table_output_format
+            table_kwargs["load_ocr_v2"] = load_ocr_v2
 
             graphic_kwargs: dict[str, Any] = {}
             if extract_params.graphic_elements_invoke_url:
@@ -642,6 +714,7 @@ def build_graph(
                 graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 graphic_kwargs["api_key"] = extract_params.api_key
+            graphic_kwargs["load_ocr_v2"] = load_ocr_v2
 
             _rr = _nim_remote_http_kwargs(extract_params)
             detect_kwargs.update(_rr)
@@ -660,7 +733,13 @@ def build_graph(
                 for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
             )
             if needs_ocr:
-                graph = graph >> OCRActor(**ocr_kwargs)
+                ocr_archetype = resolve_ocr_archetype(extract_params)
+                logger.info(
+                    "Selected OCR engine: %s (%s)",
+                    getattr(extract_params, "ocr_version", "v2"),
+                    ocr_archetype.__name__,
+                )
+                graph = graph >> ocr_archetype(**ocr_kwargs)
 
     return _append_ordered_transform_stages(
         graph,

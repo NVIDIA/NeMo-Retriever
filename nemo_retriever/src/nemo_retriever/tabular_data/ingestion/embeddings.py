@@ -90,6 +90,17 @@ def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
         label = item.get("label", "")
         name = item.get("name", "")
         path = f"neo4j:{node_id}" if node_id is not None else "neo4j:unknown"
+        # Nest tabular identifiers under content_metadata so they survive the
+        # IngestVdbOperator → LanceDB write path (which only persists
+        # content_metadata + source_metadata into the table's metadata column).
+        # Top-level copies are kept for any in-memory consumer of this DataFrame.
+        tabular_fields = {
+            "id": node_id,
+            "label": label,
+            "name": name,
+            "source_path": path,
+            "database_name": database_name,
+        }
         rows.append(
             {
                 "text": text,
@@ -97,11 +108,8 @@ def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
                 "path": path,
                 "page_number": -1,
                 "metadata": {
-                    "id": node_id,
-                    "label": label,
-                    "name": name,
-                    "source_path": path,
-                    "database_name": database_name,
+                    **tabular_fields,
+                    "content_metadata": dict(tabular_fields),
                 },
             }
         )

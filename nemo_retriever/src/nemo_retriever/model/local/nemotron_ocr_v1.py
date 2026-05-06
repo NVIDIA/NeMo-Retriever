@@ -12,6 +12,7 @@ from pathlib import Path  # noqa: F401
 import numpy as np
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.utils.hf_model_registry import install_pinned_hf_hub_download
 from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
 
@@ -34,7 +35,10 @@ class NemotronOCRV1(BaseModel):
     ) -> None:
         super().__init__()
         configure_global_hf_cache_base()
-        from nemotron_ocr.inference.pipeline import NemotronOCR  # local-only import
+        from nemotron_ocr.inference import pipeline as _nemotron_ocr_pipeline  # local-only import
+
+        install_pinned_hf_hub_download(_nemotron_ocr_pipeline)
+        NemotronOCR = _nemotron_ocr_pipeline.NemotronOCR
 
         if model_dir:
             self._model = NemotronOCR(model_dir=model_dir)

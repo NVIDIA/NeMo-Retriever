@@ -100,29 +100,6 @@ def compute_detection_summary(
     }
 
 
-def iter_lancedb_rows(uri: str, table_name: str):
-    """Yield ``(page_key, meta, row_dict)`` tuples from a LanceDB table."""
-    import lancedb  # type: ignore
-
-    db = lancedb.connect(uri)
-    table = db.open_table(table_name)
-    df = table.to_pandas()[["source_id", "page_number", "metadata"]]
-
-    for row in df.itertuples(index=False):
-        source_id = str(getattr(row, "source_id", "") or "")
-        page_number = _safe_int(getattr(row, "page_number", -1), default=-1)
-        raw_metadata = getattr(row, "metadata", None)
-        meta: dict = {}
-        if isinstance(raw_metadata, str) and raw_metadata.strip():
-            try:
-                parsed = json.loads(raw_metadata)
-                if isinstance(parsed, dict):
-                    meta = parsed
-            except Exception:
-                pass
-        yield (source_id, page_number), meta, {}
-
-
 def iter_dataframe_rows(df):
     """Yield ``(page_key, meta, row_dict)`` tuples from a pandas DataFrame."""
     for _, row in df.iterrows():
@@ -145,6 +122,8 @@ def iter_dataframe_rows(df):
 def collect_detection_summary_from_lancedb(uri: str, table_name: str) -> Optional[Dict[str, Any]]:
     """Collect detection summary from a LanceDB table."""
     try:
+        from nemo_retriever.vdb.lancedb_read import iter_lancedb_rows
+
         return compute_detection_summary(iter_lancedb_rows(uri, table_name))
     except Exception:
         return None
