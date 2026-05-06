@@ -116,7 +116,7 @@ def _load_vidore(corpus_name: str, n_queries: Optional[int], split: str):
     # Build corpus_id (int) -> pdf_page (str) mapping from the HF corpus split.
     corpus_ds = load_dataset(f"vidore/{corpus_name}", "corpus", split=split)
     id_to_pdf_page: dict[str, str] = {
-        str(row["corpus_id"]): f"{row['doc_id']}_{row['page_number_in_doc']}"
+        str(row["corpus_id"]): f"{row['doc_id']}_{row['page_number_in_doc'] + 1}"
         for row in corpus_ds
     }
 

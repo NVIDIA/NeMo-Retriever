@@ -269,8 +269,9 @@ def _make_final_results_tool_spec(top_k: Optional[int]) -> Dict[str, Any]:
 
 #: Message sent when the LLM produces a stop without calling any tool.
 _AUTO_USER_MSG = (
-    "continue with the task. Do not re-read the query. Do not summarize your progress. "
-    "If you believe you have done all the required steps, call the `final_results` tool"
+    "Please continue on whatever approach you think is suitable.\n"
+    "If you think you have solved the task, please finish the interaction.\n"
+    "IMPORTANT: YOU SHOULD NEVER ASK FOR HUMAN RESPONSE.\n"
 )
 
 
@@ -524,6 +525,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         for _step in range(self._max_steps):
             logger.debug("query=%r loop_step=%d seen_docs=%d", query_id, _step, len(seen_doc_ids))
             try:
+                char_count = sum(len(str(m.get("content", ""))) for m in messages)
+                logger.debug("query=%r step=%d prompt_chars=%d approx_tokens=%d", query_id, _step, char_count, char_count // 4)
+
                 response = invoke_chat_completion_step(
                     invoke_url=self._invoke_url,
                     messages=messages,

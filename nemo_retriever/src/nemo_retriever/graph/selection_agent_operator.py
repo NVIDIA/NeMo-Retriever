@@ -444,6 +444,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             messages.append(assistant_turn)
 
             if finish_reason == "stop" or not tool_calls:
+                logger.debug("query=%r step=%d [stop] content=%s", query_text, _step, msg.get("content"))
                 messages.append(
                     {
                         "role": "user",
@@ -515,6 +516,11 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
             messages.extend(tool_messages)
 
+        logger.warning(
+            "SelectionAgentOperator: falling back to RRF top-%d for query %r",
+            feasible_k,
+            query_text,
+        )
         return {
             "doc_ids": [],
             "message": "Selection agent reached max steps without completing.",
