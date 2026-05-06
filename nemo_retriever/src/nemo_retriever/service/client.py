@@ -54,8 +54,6 @@ _SSE_TRANSIENT_RETRIES = 10
 console = Console()
 
 
-
-
 # ------------------------------------------------------------------
 # Failure record
 # ------------------------------------------------------------------
@@ -136,7 +134,6 @@ class _JobTracker:
             j = self.jobs[job_id]
             j["status"] = status
             j["pages_completed"] = j["total_pages"]
-
 
     @property
     def total_pages(self) -> int:
@@ -583,10 +580,7 @@ class RetrieverServiceClient:
         tracker: _JobTracker,
         poll_interval: float,
     ) -> None:
-        tasks = [
-            self._poll_job_until_complete(client, jid, tracker, poll_interval)
-            for jid in job_ids
-        ]
+        tasks = [self._poll_job_until_complete(client, jid, tracker, poll_interval) for jid in job_ids]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     # ------------------------------------------------------------------
@@ -842,43 +836,42 @@ class RetrieverServiceClient:
         * ``{"event": "job_started", "job_id": ..., "filename": ..., "total_pages": ...}``
         * ``{"event": "job_complete", "job_id": ..., "results": {...}}``
         """
-        _UPLOAD_CONCURRENCY = 16
         _POLL_CONCURRENCY = 16
         _POLL_INTERVAL_S = 2.0
         _STATUS_REPORT_INTERVAL_S = 30.0
 
-        pool_limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
+        pool_limits = httpx.Limits(max_connections=1000, max_keepalive_connections=200)
         timeout = httpx.Timeout(600.0, connect=30.0)
 
         async with httpx.AsyncClient(timeout=timeout, limits=pool_limits, headers=self._auth_headers) as client:
             jobs: dict[str, dict[str, Any]] = {}
             pending: set[str] = set()
             uploads_done = asyncio.Event()
-            upload_sem = asyncio.Semaphore(_UPLOAD_CONCURRENCY)
             event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
             async def _upload_one(fpath: Path) -> None:
-                async with upload_sem:
-                    try:
-                        resp_json = await self._upload_document(client, fpath)
-                    except Exception as exc:
-                        print(f"  [FAILED] {fpath.name}: {exc}")
-                        return
-                    job_id = resp_json["job_id"]
-                    total_pages = resp_json.get("total_pages", 1)
-                    jobs[job_id] = {
-                        "filename": fpath.name,
-                        "total_pages": total_pages,
-                        "submitted_at": time.monotonic(),
-                    }
-                    pending.add(job_id)
-                    print(f"  [upload] {fpath.name} -> job_id={job_id[:8]}  ({total_pages} pages)")
-                    await event_queue.put({
+                try:
+                    resp_json = await self._upload_document(client, fpath)
+                except Exception as exc:
+                    print(f"  [FAILED] {fpath.name}: {exc}")
+                    return
+                job_id = resp_json["job_id"]
+                total_pages = resp_json.get("total_pages", 1)
+                jobs[job_id] = {
+                    "filename": fpath.name,
+                    "total_pages": total_pages,
+                    "submitted_at": time.monotonic(),
+                }
+                pending.add(job_id)
+                print(f"  [upload] {fpath.name} -> job_id={job_id[:8]}  ({total_pages} pages)")
+                await event_queue.put(
+                    {
                         "event": "job_started",
                         "job_id": job_id,
                         "filename": fpath.name,
                         "total_pages": total_pages,
-                    })
+                    }
+                )
 
             async def _upload_all() -> None:
                 tasks = [asyncio.create_task(_upload_one(f)) for f in files]
@@ -910,6 +903,7 @@ class RetrieverServiceClient:
                             continue
                         if status in ("complete", "failed"):
                             pending.discard(jid)
+                            self.notify_capacity_available()
                             results = await self._fetch_single_job_results(client, jid)
                             await event_queue.put({"event": "job_complete", "job_id": jid, "results": results})
 
@@ -940,9 +934,7 @@ class RetrieverServiceClient:
             await upload_task
             await poll_task
 
-    async def _poll_single_job_status(
-        self, client: httpx.AsyncClient, job_id: str
-    ) -> str:
+    async def _poll_single_job_status(self, client: httpx.AsyncClient, job_id: str) -> str:
         """Return the current status string for a job, or 'unknown'."""
         r = await client.get(f"{self._base_url}/v1/ingest/job/{job_id}")
         if r.status_code == 404:
@@ -950,9 +942,7 @@ class RetrieverServiceClient:
         r.raise_for_status()
         return r.json().get("status", "unknown")
 
-    async def _fetch_single_job_results(
-        self, client: httpx.AsyncClient, job_id: str
-    ) -> dict[str, Any] | None:
+    async def _fetch_single_job_results(self, client: httpx.AsyncClient, job_id: str) -> dict[str, Any] | None:
         """Fetch full results for a completed job."""
         try:
             r = await client.get(f"{self._base_url}/v1/ingest/job/{job_id}/results")
