@@ -41,7 +41,6 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
     - The `Ingestor` object initializes the ingestion process.
     - The `files` method specifies the input files to process.
     - The `extract` method runs audio extraction.
-    - The `document_type` parameter is optional because `Ingestor` should detect the file type automatically in most cases.
 
     ```python
     ingestor = (
@@ -57,7 +56,9 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
     )
     ```
 
-    To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a Parakeet NIM (self-hosted or NVCF) but has no effect when using the local Hugging Face Parakeet model.
+
+    To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
+
 
     !!! tip
 
@@ -65,7 +66,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 ## Parakeet on NVCF (cloud) {#parakeet-on-nvcf}
 
-Instead of running the pipeline locally, you can use NVCF with remote endpoints.
+Instead of running the pipeline locally, you can use build.nvidia.com hosted remote endpoints.
 
 1. NVCF requires an authentication token and a function ID for access. Ensure you have these credentials ready before making API calls.
 
