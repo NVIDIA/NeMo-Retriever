@@ -28,7 +28,7 @@ retriever = _retriever_cls()
 
 def __getattr__(name: str):
     if name == "create_ingestor":
-        from .api import create_ingestor
+        from .ingestor import create_ingestor
 
         return create_ingestor
     if name in {"__version__", "get_version", "get_version_info"}:

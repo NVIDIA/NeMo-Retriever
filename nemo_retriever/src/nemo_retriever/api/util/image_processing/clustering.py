@@ -31,7 +31,7 @@ def boxes_are_close_or_overlap(b1: List[int], b2: List[int], threshold: float = 
     >>> box1 = (100, 100, 150, 150)
     >>> box2 = (160, 110, 200, 140)
     >>> boxes_are_close_or_overlap(box1, box2, threshold=10)
-    True  # Because box2 is within 10 pixels of box1 along the x-axis
+    True
     """
     (xmin1, ymin1, xmax1, ymax1) = b1
     (xmin2, ymin2, xmax2, ymax2) = b2

@@ -49,7 +49,7 @@ For advanced scenarios, you might want to set environment variables for NIM cont
 
 ### Library Mode
 
-For production environments, you should use the provided Helm charts. For [library mode](quickstart-library-mode.md), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to arbitrary variables on your laptop or jump host unless you inject them into the workload (for example via Helm, `Secret`, or the client environment as documented for library mode).
+For production environments, you should use the provided Helm charts. When you run the NeMo Retriever Library from Python (without those charts), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to arbitrary variables on your laptop or jump host unless you inject them into the workload (for example via Helm, `Secret`, or the client environment as documented on [Deployment options](deployment-options.md) and [Authentication and API keys](api-keys.md)).
 
 For advanced scenarios, you might want to use library mode with self-hosted NIM instances. 
 You can set custom endpoints for each NIM. 

@@ -95,6 +95,12 @@ class Retriever:
             reranker_endpoint="http://localhost:8000",
         )
         results = retriever.query("What is machine learning?")
+
+    LanceDB SQL filters
+    --------------------
+    Pass a Lance / DataFusion predicate via ``where`` (or ``_filter``) in
+    ``vdb_kwargs``, or per call to ``query`` / ``queries``, to pre-filter
+    vector search (see ``LanceDB.retrieval`` in ``nemo_retriever.vdb.lancedb``).
     """
 
     # Run-mode selection ---------------------------------------------------

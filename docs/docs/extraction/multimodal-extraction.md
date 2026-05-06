@@ -13,7 +13,7 @@ NeMo Retriever Library classifies and extracts text, tables, charts, infographic
 - [Metadata and content schema](#metadata-and-content-schema)
 - [Extraction limitations and quality](#extraction-limitations-and-quality)
 
-## Supported file types and formats {#supported-file-types-and-formats}
+## Supported file types and formats { #supported-file-types-and-formats }
 
 NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [What is NeMo Retriever Library?](overview.md) under **NeMo Retriever Library supports the following file types**.
 
@@ -22,7 +22,7 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 - [Troubleshoot](troubleshoot.md) for format-specific issues
 - [Speech and audio](audio-video.md)
 
-## Text and layout extraction {#text-and-layout-extraction}
+## Text and layout extraction { #text-and-layout-extraction }
 
 For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid or OCR-oriented methods. For `extract_method` options such as `pdfium`, `pdfium_hybrid`, and `ocr`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
@@ -32,7 +32,7 @@ For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with
 - [OCR and scanned documents](#ocr-and-scanned-documents)
 - [Chunking and splitting](chunking.md)
 
-## Tables {#tables}
+## Tables { #tables }
 
 NeMo Retriever Library detects tables as structured page elements, processes them through the appropriate NIMs, and exports formats suitable for downstream RAG (including Markdown-oriented representations where configured). Availability depends on pipeline and model configuration; refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md).
 
@@ -42,7 +42,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 - [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing
 - [Metadata reference](content-metadata.md)
 
-## Charts and infographics {#charts-and-infographics}
+## Charts and infographics { #charts-and-infographics }
 
 Charts and infographic regions are classified as graphic elements and processed with the corresponding NVIDIA NIM workflows (for example, **yolox-graphic-elements** in current releases). Outputs use the same metadata schema as other extracted objects.
 
@@ -52,7 +52,7 @@ Charts and infographic regions are classified as graphic elements and processed 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
 
-## OCR and scanned documents {#ocr-and-scanned-documents}
+## OCR and scanned documents { #ocr-and-scanned-documents }
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
@@ -62,7 +62,7 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 - [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse)
 - [Extraction limitations and quality](#extraction-limitations-and-quality)
 
-## Image captioning {#image-captioning}
+## Image captioning { #image-captioning }
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
 
@@ -72,11 +72,11 @@ Image captioning generates natural-language descriptions for unstructured image 
 - [Metadata reference](content-metadata.md)
 - [What is NeMo Retriever Library?](overview.md)
 
-## Metadata and content schema {#metadata-and-content-schema}
+## Metadata and content schema { #metadata-and-content-schema }
 
 Extracted objects follow the schema and field descriptions in the [Metadata reference](content-metadata.md). Use that page for tables, types, and per-field notes.
 
-## Extraction limitations and quality {#extraction-limitations-and-quality}
+## Extraction limitations and quality { #extraction-limitations-and-quality }
 
 A single headline metric can drastically misrepresent system efficiency. The amount of compute that you need to process a dataset depends far more on its content and how your pipeline operates than on its disk size. This section explains why, and offers better ways to measure and report throughput.
 

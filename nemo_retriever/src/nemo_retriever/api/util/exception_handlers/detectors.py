@@ -46,10 +46,11 @@ def langdetect_exception_handler(func: Callable, **kwargs: Dict[str, Any]) -> Ca
 
     Examples
     --------
+    >>> import langdetect
+    >>> from nemo_retriever.api.internal.enums.common import LanguageEnum
     >>> @langdetect_exception_handler
     ... def detect_language(text):
-    ...     # Function implementation here
-    ...     pass
+    ...     return LanguageEnum(langdetect.detect(text))
     ...
     >>> detect_language('This is a test sentence.')
     <LanguageEnum.EN: 'en'>
