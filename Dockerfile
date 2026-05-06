@@ -143,13 +143,14 @@ FROM install AS service
 
 ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
 
-# Seed the well-known config path with the bundled default so the image is
-# usable out of the box.  At runtime, a host bind-mount at the same path
-# transparently replaces this file.
-RUN mkdir -p /etc/nemo-retriever \
+RUN groupadd -r nemo && useradd -r -g nemo -d /workspace -s /sbin/nologin nemo \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
-            "${NEMO_RETRIEVER_SERVICE_CONFIG}"
+            "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /opt/retriever_runtime
 
 EXPOSE 7670
+
+USER nemo
 
 CMD ["retriever", "service", "start", "--config", "/etc/nemo-retriever/retriever-service.yaml"]
