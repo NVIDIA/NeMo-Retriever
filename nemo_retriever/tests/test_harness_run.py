@@ -698,9 +698,7 @@ def test_run_single_removes_stale_default_lancedb_dir(monkeypatch, tmp_path: Pat
     assert not (stale_lancedb / "stale.txt").exists()
 
 
-def test_run_graph_pipeline_forwards_api_key_to_subprocess_env_and_redacts_results(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_run_graph_pipeline_forwards_api_key_to_subprocess_env_and_redacts_results(monkeypatch, tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     cfg = HarnessConfig(
