@@ -67,6 +67,8 @@ class _ParamsModel(BaseModel):
             value = getattr(self, field_name, None)
             if _is_api_key_field(field_name) and value:
                 parts.append(f"{field_name}={_REDACTED}")
+            elif field_name == "storage_options" and value:
+                parts.append(f"{field_name}={_REDACTED}")
             else:
                 parts.append(f"{field_name}={value!r}")
         return f"{type(self).__name__}({', '.join(parts)})"
@@ -136,8 +138,15 @@ class HtmlChunkParams(TextChunkParams):
 
 
 class AudioChunkParams(_ParamsModel):
-    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader."""
+    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader.
 
+    Set ``enabled=False`` (when wired through ``VideoSplitActor``) to skip
+    audio chunking and ASR on a video pipeline — useful for visual-only
+    recall benchmarks. ``MediaChunkActor`` ignores this flag for the
+    audio-only pipeline since chunking is the whole point there.
+    """
+
+    enabled: bool = True
     split_type: Literal["size", "time", "frame"] = "size"
     split_interval: int = 450
     audio_only: bool = False
@@ -152,6 +161,58 @@ class ASRParams(_ParamsModel):
     function_id: Optional[str] = None
     auth_token: Optional[str] = None
     segment_audio: bool = False
+
+
+class VideoFrameParams(_ParamsModel):
+    """Params for video frame extraction (ffmpeg fps + perceptual-hash dedup).
+
+    Set ``enabled=False`` to skip frame extraction entirely; the video
+    pipeline then produces only audio (ASR) rows — no frame OCR, no
+    audio+visual fusion. Useful for ablating the visual modality or for
+    audio-only recall benchmarks against video corpora.
+
+    ``dedup`` activates perceptual-hash (dhash) dedup before OCR. dhash
+    catches visually-identical adjacent frames that byte-level hashing
+    misses (encoder noise, brightness drift, etc.). On a 60s slide-heavy
+    sample we measured ~91% duplicates collapsed at distance 5 vs ~11%
+    for MD5 — a near-10x cut in OCR cost on slide content. Tune
+    ``dedup_max_hamming_distance`` upward for more aggressive merging or
+    down to 0 to require exact perceptual-hash matches.
+    """
+
+    enabled: bool = True
+    fps: float = Field(default=1.0, gt=0.0)
+    max_frames: Optional[int] = None
+    dedup: bool = True
+    dedup_max_hamming_distance: int = 5
+    dedup_max_dropped_frames: int = 2
+
+
+class VideoFrameTextDedupParams(_ParamsModel):
+    """Params for merging consecutive video_frame rows with identical OCR text.
+
+    After full-frame OCR, slides that are visible for many seconds produce a
+    flood of frames with the same text (image-hash dedup misses them when
+    encoder noise differs frame-to-frame). This stage groups by
+    ``(source_path, text)`` and merges adjacent runs into a single row whose
+    ``segment_start_seconds`` / ``segment_end_seconds`` cover the union of
+    the run.
+
+    Tolerance is expressed in **dropped frames**, not seconds, so it scales
+    with ``video_frame_fps``: at runtime the dedup reads each group's
+    ``metadata.fps`` and converts to ``max_gap_seconds = max_dropped_frames / fps``.
+    Default 2 means we bridge gaps of up to 2 missing frames in a run —
+    a typical safety margin for image-hash dedup leaving small holes.
+    """
+
+    enabled: bool = True
+    max_dropped_frames: int = 2
+
+
+class AudioVisualFuseParams(_ParamsModel):
+    """Toggle for :class:`~nemo_retriever.video.AudioVisualFuser`."""
+
+    enabled: bool = True
 
 
 class LanceDbParams(_ParamsModel):
@@ -229,6 +290,7 @@ class ExtractParams(_ParamsModel):
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
+    ocr_version: Literal["v1", "v2"] = "v2"
 
     # Service endpoints
     invoke_url: Optional[str] = None
@@ -354,13 +416,6 @@ class VdbUploadParams(_ParamsModel):
 class StoreParams(_ParamsModel):
     storage_uri: str = "stored_images"
     storage_options: dict[str, Any] = Field(default_factory=dict)
-    public_base_url: Optional[str] = None
-    store_page_images: bool = True
-    store_tables: bool = True
-    store_charts: bool = True
-    store_infographics: bool = True
-    store_images: bool = True
-    store_text: bool = False
     image_format: str = "png"
     strip_base64: bool = True
 

@@ -2,8 +2,8 @@
 
 NVIDIA NeMo Retriever Library (NRL) is a high retrieval accuracy, performant, and scalable framework for content and metadata extraction from various media types (PDFs, HTML, Word docs, Powerpoint, audio, video, and image files). It supports both NVIDIA NIM microservices and a range of models to find, contextualize, and extract text, tables, charts, infographics, and transcripts for use in downstream generative and retrieval-augmented applications.
 
-NeMo Retriever Library enables parallelization of splitting documents into pages where sub-page content is classified (such as text paragraphs, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a standard schema. From there, NeMo Retriever Library manages computation of embeddings for the extracted content, 
-and stores into a vector database ([LanceDB by default](https://lancedb.com/).
+NeMo Retriever Library enables parallelization of splitting documents into pages where sub-page content is classified (such as text paragraphs, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a standard schema. From there, NeMo Retriever Library manages computation of embeddings for the extracted content,
+and can store vectors in [LanceDB](https://lancedb.com/) for the recommended embedded path when you pass `vdb_op="lancedb"` to upload (see [Data Upload](vdbs.md)).
 
 ## What NeMo Retriever Library Is ✔️
 
@@ -42,8 +42,7 @@ NeMo Retriever Library supports the following file types:
 
 ## Related Topics
 
-- [Prerequisites](prerequisites.md)
-- [Support Matrix](support-matrix.md)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deploy As a Library](quickstart-library-mode.md)
 - [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place

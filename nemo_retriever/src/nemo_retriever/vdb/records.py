@@ -64,11 +64,15 @@ def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
     if bbox:
         content_metadata.setdefault("bbox_xyxy_norm", bbox)
 
+    for key in ("segment_start_seconds", "segment_end_seconds", "frame_timestamp_seconds"):
+        if key in metadata:
+            content_metadata.setdefault(key, metadata[key])
+
     source_path = _first_str(
+        metadata.get("source_path"),
         row.get("path"),
         row.get("source_id"),
         row.get("source"),
-        metadata.get("source_path"),
         metadata.get("source_id"),
     )
     source_name = Path(source_path).name if source_path else str(row.get("filename") or row.get("source_id") or "")
@@ -112,7 +116,7 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 
 def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
-    """Adapt LanceDB/Milvus client hit shapes to Retriever hits."""
+    """Adapt LanceDB client hit shapes to Retriever hits."""
     entity = hit.get("entity") if isinstance(hit.get("entity"), dict) else hit
 
     source = _mapping(entity.get("source") or hit.get("source") or entity.get("source_metadata"))

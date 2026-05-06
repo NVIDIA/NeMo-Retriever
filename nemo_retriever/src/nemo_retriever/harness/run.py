@@ -446,8 +446,13 @@ def _build_command(
         run_id,
         "--detection-summary-file",
         str(detection_summary_file),
-        "--lancedb-uri",
-        _resolve_lancedb_uri(cfg, artifact_dir),
+        "--vdb-kwargs-json",
+        json.dumps(
+            {
+                "uri": _resolve_lancedb_uri(cfg, artifact_dir),
+                "hybrid": bool(cfg.hybrid),
+            }
+        ),
     ]
 
     if cfg.evaluation_mode == "beir":
@@ -500,10 +505,21 @@ def _build_command(
         cmd += ["--caption-invoke-url", cfg.caption_invoke_url]
 
     cmd += ["--extract-page-as-image" if cfg.extract_page_as_image else "--no-extract-page-as-image"]
-    if cfg.input_type == "audio":
+    if cfg.input_type in ("audio", "video"):
         cmd += ["--segment-audio" if cfg.segment_audio else "--no-segment-audio"]
         cmd += ["--audio-split-type", cfg.audio_split_type]
         cmd += ["--audio-split-interval", str(cfg.audio_split_interval)]
+    if cfg.input_type == "video":
+        cmd += ["--video-extract-audio" if cfg.video_extract_audio else "--no-video-extract-audio"]
+        cmd += ["--video-extract-frames" if cfg.video_extract_frames else "--no-video-extract-frames"]
+        cmd += ["--video-frame-fps", str(cfg.video_frame_fps)]
+        cmd += ["--video-frame-dedup" if cfg.video_frame_dedup else "--no-video-frame-dedup"]
+        cmd += ["--video-frame-text-dedup" if cfg.video_frame_text_dedup else "--no-video-frame-text-dedup"]
+        cmd += [
+            "--video-frame-text-dedup-max-dropped-frames",
+            str(cfg.video_frame_text_dedup_max_dropped_frames),
+        ]
+        cmd += ["--video-av-fuse" if cfg.video_av_fuse else "--no-video-av-fuse"]
     if cfg.extract_infographics:
         cmd += ["--extract-infographics"]
     if cfg.embed_modality:
@@ -513,8 +529,6 @@ def _build_command(
         env_extra["NVIDIA_API_KEY"] = cfg.api_key
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
-    if cfg.hybrid:
-        cmd += ["--hybrid"]
 
     resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
     if resolved_store_uri is not None:
@@ -576,23 +590,24 @@ def _print_failure_report(
     lines.append(f"  {BOLD}Return Code    :{RESET}  {rc}")
     lines.append("")
 
+    em_dash = "\u2014"
     lines.append(f"  {CYAN}{BOLD}Test Configuration{RESET}")
     lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Dataset        :  {cfg.get('dataset_label', '\u2014')}")
-    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', '\u2014')}")
-    lines.append(f"  Preset         :  {cfg.get('preset', '\u2014')}")
-    lines.append(f"  Input Type     :  {cfg.get('input_type', '\u2014')}")
+    lines.append(f"  Dataset        :  {cfg.get('dataset_label', em_dash)}")
+    lines.append(f"  Dataset Dir    :  {cfg.get('dataset_dir', em_dash)}")
+    lines.append(f"  Preset         :  {cfg.get('preset', em_dash)}")
+    lines.append(f"  Input Type     :  {cfg.get('input_type', em_dash)}")
     lines.append(f"  Recall Required:  {cfg.get('recall_required', False)}")
     lines.append(f"  Hybrid         :  {cfg.get('hybrid', False)}")
-    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', '\u2014')}")
+    lines.append(f"  Embed Model    :  {cfg.get('embed_model_name', em_dash)}")
     lines.append("")
 
     lines.append(f"  {CYAN}{BOLD}Host Information{RESET}")
     lines.append(f"  {DIM}{'-' * 40}{RESET}")
-    lines.append(f"  Hostname       :  {meta.get('host', '\u2014')}")
-    lines.append(f"  GPU            :  {meta.get('gpu_type', '\u2014')} (x{meta.get('gpu_count', '?')})")
-    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', '\u2014')}")
-    lines.append(f"  Python         :  {meta.get('python_version', '\u2014')}")
+    lines.append(f"  Hostname       :  {meta.get('host', em_dash)}")
+    lines.append(f"  GPU            :  {meta.get('gpu_type', em_dash)} (x{meta.get('gpu_count', '?')})")
+    lines.append(f"  CUDA Driver    :  {meta.get('cuda_driver', em_dash)}")
+    lines.append(f"  Python         :  {meta.get('python_version', em_dash)}")
     lines.append(f"  CPU / Memory   :  {meta.get('cpu_count', '?')} cores / {meta.get('memory_gb', '?')} GB")
     lines.append("")
 
@@ -856,6 +871,8 @@ try:
             return 0
 
     import ray
+    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")
@@ -870,10 +887,8 @@ try:
         "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
         "PYTHONPATH": pypath,
     }
-    for _fwd_key in ("HF_TOKEN", "HF_HOME", "HUGGING_FACE_HUB_TOKEN", "NVIDIA_API_KEY"):
-        if os.environ.get(_fwd_key):
-            ray_env_vars[_fwd_key] = os.environ[_fwd_key]
-    ray_env_vars["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE", "1")
+    ray_env_vars.update(collect_hf_runtime_env())
+    ray_env_vars.update(collect_remote_auth_runtime_env())
     runtime_env = {"env_vars": ray_env_vars}
 
     if is_local:
