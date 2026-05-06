@@ -38,7 +38,7 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
+uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0
 ```
 
 For **remote NIM inference only** (no local GPU required), the base package is sufficient:
@@ -47,7 +47,7 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
+uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0
 ```
 
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.

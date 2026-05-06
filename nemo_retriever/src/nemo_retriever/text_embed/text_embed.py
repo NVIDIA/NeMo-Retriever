@@ -7,7 +7,7 @@ from __future__ import annotations
 """
 Lightweight text embedding helpers (local vLLM for the default 1b-v2 text model).
 
-This module is intentionally independent of `nv-ingest-api` so it can be used in
+This module is intentionally independent of `nemo_retriever.api` so it can be used in
 environments that don't have the full schema/transform stack installed.
 
 It mirrors the "pure pandas batch fn + Ray-friendly actor" pattern used by:

@@ -2,49 +2,38 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # syntax=docker/dockerfile:1.3
+#
+# Build from repo root: docker build -f nemo_retriever/Dockerfile -t nemo-retriever .
+# Run: docker run nemo-retriever  (shell with venv active)
+# Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
+# Run with data:     docker run -v /host/docs:/data nemo-retriever /data
 
 ARG BASE_IMG=nvcr.io/nvidia/base/ubuntu
 ARG BASE_IMG_TAG=jammy-20250619
 
 FROM $BASE_IMG:$BASE_IMG_TAG AS base
 
-ARG RELEASE_TYPE="dev"
-ARG VERSION=""
-ARG VERSION_REV="0"
-ARG DOWNLOAD_LLAMA_TOKENIZER="False"
-ARG HF_ACCESS_TOKEN=""
-ARG MODEL_PREDOWNLOAD_PATH="/workspace/models/"
-
-# Embed the `git rev-parse HEAD` as a Docker metadata label
-ARG GIT_COMMIT
-LABEL git_commit=$GIT_COMMIT
-
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
       bzip2 \
       ca-certificates \
       curl \
       libgl1-mesa-glx \
       libglib2.0-0 \
-      make \
-      tini \
       wget \
     && apt-get clean
 
-COPY ./docker/scripts/install_ffmpeg.sh scripts/install_ffmpeg.sh
-RUN chmod +x scripts/install_ffmpeg.sh \
-    && bash scripts/install_ffmpeg.sh \
-    && rm scripts/install_ffmpeg.sh
+# ffmpeg/ffprobe for audio extraction (run before LibreOffice so apt state is consistent)
+COPY docker/scripts/install_ffmpeg.sh /tmp/install_ffmpeg.sh
+RUN bash /tmp/install_ffmpeg.sh && rm /tmp/install_ffmpeg.sh
 
-# Install libreoffice
-# For GPL-licensed components, we provide their source code in the container
-# via `apt-get source` below to satisfy GPL requirements.
+# LibreOffice (headless) for docx/pptx -> PDF. GPL source handling per nv-ingest Dockerfile.
 ARG GPL_LIBS="\
-    libfreetype6 \
     libltdl7 \
     libhunspell-1.7-0 \
     libhyphen0 \
     libdbus-1-3 \
 "
+# Keep libfreetype6 so LibreOffice (soffice.bin) can load; omit from force-remove.
 ARG FORCE_REMOVE_PKGS="\
     ucf \
     liblangtag-common \
@@ -81,108 +70,53 @@ ENV UV_LINK_MODE=copy
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv python install 3.12 \
-    && uv venv --python 3.12 /opt/nv_ingest_runtime
+    && uv venv --python 3.12 /opt/retriever_runtime
 
-ENV VIRTUAL_ENV=/opt/nv_ingest_runtime
-ENV PATH=/opt/nv_ingest_runtime/bin:/root/.local/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/nv_ingest_runtime/lib:$LD_LIBRARY_PATH
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . /opt/retriever_runtime/bin/activate \
+    && wget -qO- https://bootstrap.pypa.io/get-pip.py | python -
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . /opt/retriever_runtime/bin/activate \
+    && pip install --no-cache-dir openai
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . /opt/retriever_runtime/bin/activate \
+    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && apt update && apt-get --fix-broken install -y && apt-get -y install cuda-toolkit-13-0
+
+WORKDIR /workspace
+COPY data data
+COPY nemo_retriever nemo_retriever
+
+# ENV VIRTUAL_ENV=/opt/retriever_runtime
+# ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
+# ENV LD_LIBRARY_PATH=/opt/retriever_runtime/lib:${LD_LIBRARY_PATH}
+
+# ---------------------------------------------------------------------------
+# Install nemo_retriever and path deps (build context = repo root)
+# To pick up dev changes without rebuilding, run with:
+#   -v /path/to/NeMo-Retriever/main:/workspace
+# The editable install points at /workspace, so the mounted tree is used.
+# ---------------------------------------------------------------------------
+FROM base AS install
 
 WORKDIR /workspace
 
-FROM base AS nv_ingest_install
+# Unbuffered stdout/stderr so CLI output appears when run without a TTY (e.g. docker run without -it)
+ENV PYTHONUNBUFFERED=1
 
-COPY ci ci
+# Activate venv by default so CLI and python see nemo_retriever; mount over /workspace for dev.
+ENV VIRTUAL_ENV=/opt/retriever_runtime
+ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
 
-ENV HAYSTACK_TELEMETRY_ENABLED=False
-
-# Ensure the NV_INGEST_VERSION is PEP 440 compatible
-RUN if [ -z "${VERSION}" ]; then \
-        export VERSION="$(date +'%Y.%m.%d')"; \
-    fi; \
-    if [ "${RELEASE_TYPE}" = "dev" ]; then \
-        export NV_INGEST_VERSION_OVERRIDE="${VERSION}.dev${VERSION_REV}"; \
-    elif [ "${RELEASE_TYPE}" = "release" ]; then \
-        export NV_INGEST_VERSION_OVERRIDE="${VERSION}.post${VERSION_REV}"; \
-    else \
-        echo "Invalid RELEASE_TYPE: ${RELEASE_TYPE}"; \
-        exit 1; \
-    fi
-
-ENV NV_INGEST_RELEASE_TYPE=${RELEASE_TYPE}
-ENV NV_INGEST_VERSION_OVERRIDE=${NV_INGEST_VERSION_OVERRIDE}
-
+# Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/uv \
+    . /opt/retriever_runtime/bin/activate \
+    && uv pip install -e ./nemo_retriever
 
-COPY scripts scripts
-COPY tests tests
-COPY data data
-COPY api api
-COPY client client
-COPY src src
-RUN rm -rf ./src/nv_ingest/dist ./src/dist ./client/dist ./api/dist
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install 'build>=1.2.2'
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    chmod +x ./ci/scripts/build_pip_packages.sh \
-    && ./ci/scripts/build_pip_packages.sh --type ${RELEASE_TYPE} --lib api \
-    && ./ci/scripts/build_pip_packages.sh --type ${RELEASE_TYPE} --lib client \
-    && ./ci/scripts/build_pip_packages.sh --type ${RELEASE_TYPE} --lib service
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install ./src/dist/*.whl \
-    && uv pip install ./api/dist/*.whl \
-    && uv pip install ./client/dist/*.whl
-
-# Remove Ray's Java JAR (ray_dist.jar). It bundles shaded Jackson (e.g. jackson-core) and is only
-# needed for Ray's Java API / cross-language. This image runs Python-only; removing it drops
-# the bundled Java deps and reduces image size.
-RUN rm -f /opt/nv_ingest_runtime/lib/python3.12/site-packages/ray/jars/ray_dist.jar
-
-RUN rm -rf src
-
-FROM nv_ingest_install AS runtime
-
-COPY src/microservice_entrypoint.py ./
-COPY config/default_pipeline.yaml ./config/
-
-COPY ./docker/scripts/entrypoint.sh /workspace/docker/entrypoint.sh
-COPY ./docker/scripts/entrypoint_source_ext.sh /workspace/docker/entrypoint_source_ext.sh
-COPY ./docker/scripts/post_build_triggers.py /workspace/docker/post_build_triggers.py
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=secret,id=hf_token,required=false \
-    python3 /workspace/docker/post_build_triggers.py
-
-RUN chmod +x /workspace/docker/entrypoint.sh
-
-ENTRYPOINT ["/usr/bin/tini", "--", "/workspace/docker/entrypoint.sh"]
-
-FROM runtime AS test
-RUN --mount=type=cache,target=/root/.cache/uv \
-    WHEEL="$(ls ./api/dist/*.whl)" \
-    && uv pip install "${WHEEL}[test]"
-
-FROM nv_ingest_install AS development
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install -e ./client
-
+# Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
-
-FROM nv_ingest_install AS docs
-
-COPY docs docs
-COPY THIRD_PARTY_LICENSES.md THIRD_PARTY_LICENSES.md
-
-# Docs needs all the source code present so add it to the container
-COPY src src
-COPY api api
-COPY client client
-COPY nemo_retriever nemo_retriever
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install -r ./docs/requirements.txt
-
-CMD ["bash", "-c", "cd /workspace/docs && make docs"]
