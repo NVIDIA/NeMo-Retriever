@@ -2105,7 +2105,7 @@
     ]
   },
   "request_task_collaborators": {
-    "description": "Table containing collaborators for request tasks. This is the request-level analog of the request_task.pic_id -> filter_rule_group_task.pic_id. Once a request has been created, the collaborators of any task the support collaboration can be changed without impacting the base template defined in collaborators",
+    "description": "Table containing collaborators for request tasks. Collaborators are additional users responsible for, assigned to, working on, or blocking a request task alongside the primary PIC (pic_id). This is the request-level analog of the request_task.pic_id -> filter_rule_group_task.pic_id. Once a request has been created, the collaborators of any task that supports collaboration can be changed without impacting the base template defined in collaborators",
     "columns": [
       {
         "name": "id",
