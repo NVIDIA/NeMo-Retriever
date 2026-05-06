@@ -114,7 +114,7 @@ SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e ./nemo_retriever
+    && uv pip install -e "./nemo_retriever[all]"
 
 # Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
