@@ -129,7 +129,7 @@ def asr_params_from_env(
 
     - ``NGC_API_KEY`` — Bearer token; only consulted when an endpoint is set.
     - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to ``default_function_id``
-      (the nv-ingest libmode Parakeet NIM) when an endpoint is set but the env
+      (the `nemo_retriever.api` / libmode Parakeet NIM) when an endpoint is set but the env
       var is unset.
     """
     import os
@@ -158,7 +158,7 @@ def asr_params_from_env(
 
 
 try:
-    from nv_ingest_api.internal.primitives.nim.model_interface.parakeet import (
+    from nemo_retriever.api.internal.primitives.nim.model_interface.parakeet import (
         create_audio_inference_client,
     )
 
@@ -171,8 +171,8 @@ except ImportError:
 def _get_client(params: ASRParams):  # noqa: ANN201
     if not _PARAKEET_AVAILABLE or create_audio_inference_client is None:
         raise RuntimeError(
-            "ASRActor requires nv-ingest-api (Parakeet client). "
-            "Install with: pip install nv-ingest-api (or add nv-ingest-api to dependencies)."
+            "ASRActor requires the Parakeet NIM client (vendored in nemo_retriever.api). "
+            "Ensure optional multimedia + nv-ingest-client dependencies are installed."
         )
     grpc_endpoint = (params.audio_endpoints[0] or "").strip() or None
     http_endpoint = (params.audio_endpoints[1] or "").strip() or None

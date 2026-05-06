@@ -8,7 +8,7 @@ from typing import Any, Optional, Tuple
 
 
 def endpoints_from_yaml(value: Any) -> Tuple[Optional[str], Optional[str]]:
-    """Normalize YAML endpoint values into the tuple shape used by nv-ingest-api schemas."""
+    """Normalize YAML endpoint values into the tuple shape used by `nemo_retriever.api` schemas."""
     if value is None:
         return (None, None)
     if isinstance(value, (tuple, list)) and len(value) == 2:

@@ -6,7 +6,7 @@
 Infographic extraction stage (pure Python + Ray Data adapters).
 
 This stage enriches existing STRUCTURED/infographic primitives by populating
-`metadata.table_metadata.table_content` via OCR, using `nv-ingest-api` internals.
+`metadata.table_metadata.table_content` via OCR, using `nemo_retriever.api` internals.
 """
 
 from .infographic_detection import (
@@ -23,7 +23,7 @@ __all__ = [
     "detect_infographic_elements_v1",
 ]
 
-# Optional imports: infographic *extraction* depends on nv-ingest-api (and its deps).
+# Optional imports: infographic *extraction* depends on `nemo_retriever.api` (and its deps).
 # We keep detection importable even in lightweight environments.
 try:  # pragma: no cover
     from .commands import app

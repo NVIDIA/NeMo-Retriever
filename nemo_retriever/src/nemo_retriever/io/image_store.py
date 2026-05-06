@@ -27,7 +27,7 @@ _FORMAT_ALIASES = {"jpg": "jpeg"}
 # filename alone (e.g. "report.pdf" → "report/").  Two source files with
 # the same basename but different parent directories will write to the same
 # subdirectory and may overwrite each other.  This matches the legacy
-# nv-ingest store behaviour.  A future PR should incorporate a short hash
+# `nemo_retriever.api` store behaviour.  A future PR should incorporate a short hash
 # of the full source path to eliminate collisions.
 
 

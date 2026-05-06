@@ -1,4 +1,4 @@
-# nv-ingest retriever consolidated configuration
+# NeMo Retriever consolidated configuration
 #
 # This single file replaces the older per-stage YAML configs:
 #   - pdf_stage_config.yaml
@@ -46,7 +46,7 @@ pdf:
   #   full_dpi     – render at `dpi` (default 300), then resize_pad down to 1024×1024.
   #                  Higher source resolution, but bilinear downscale may differ from NIM.
   #   fit_to_model – render directly at the scale that fits within 1024×1024 (~93 DPI
-  #                  for US Letter), matching the nv-ingest/NIM container rasterization.
+  #                  for US Letter), matching the NIM container rasterization.
   render_mode: fit_to_model
 
   extract:
@@ -116,7 +116,7 @@ table:
   #   - `retriever table stage run --config <this.yaml> --input <primitives.parquet>`
   #   - `retriever local stage3 run --config <this.yaml> --input <primitives.parquet>`
   #
-  # This YAML is parsed into `nv_ingest_api.internal.schemas.extract.extract_table_schema.TableExtractorSchema`
+  # This YAML is parsed into `nemo_retriever.api.internal.schemas.extract.extract_table_schema.TableExtractorSchema`
   # via `nemo_retriever.table.config.load_table_extractor_schema_from_dict`.
   #
   # IMPORTANT:
@@ -155,7 +155,7 @@ chart:
   #   - `retriever chart stage run --config <this.yaml> --input <primitives.parquet>`
   #   - `retriever local stage4 run --config <this.yaml> --input <primitives.parquet>`
   #
-  # This YAML is parsed into `nv_ingest_api.internal.schemas.extract.extract_chart_schema.ChartExtractorSchema`
+  # This YAML is parsed into `nemo_retriever.api.internal.schemas.extract.extract_chart_schema.ChartExtractorSchema`
   # via `nemo_retriever.chart.config.load_chart_extractor_schema_from_dict`.
   #
   # IMPORTANT:
@@ -207,7 +207,7 @@ infographic:
   #   - `retriever infographic stage run --config <this.yaml> --input <primitives.parquet>`
   #   - `retriever local stage2 run --config <this.yaml> --input <primitives.parquet>`
   #
-  # This YAML is parsed into `nv_ingest_api.internal.schemas.extract.extract_infographic_schema.InfographicExtractorSchema`
+  # This YAML is parsed into `nemo_retriever.api.internal.schemas.extract.extract_infographic_schema.InfographicExtractorSchema`
   # via `nemo_retriever.infographic.config.load_infographic_extractor_schema_from_dict`.
   #
   # IMPORTANT:
@@ -241,7 +241,7 @@ embedding:
   #
   # This YAML is passed to:
   #   nemo_retriever.text_embed.config.load_text_embedding_schema_from_dict(...)
-  # which validates against nv-ingest-api's `TextEmbeddingSchema`.
+  # which validates against `nemo_retriever.api` `TextEmbeddingSchema`.
   #
   # Minimal required fields are optional (schema provides defaults), but you
   # typically set api_key / endpoint / model to point at your embedding service.

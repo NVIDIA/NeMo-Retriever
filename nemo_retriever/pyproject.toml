@@ -53,8 +53,6 @@ dependencies = [
   "numpy>=1.26.0",
   "debugpy>=1.8.0",
   # Core ingest packages
-  "nv-ingest-api",
-  "nv-ingest-client",
   # Document parsing and NIM client libs
   "pypdfium2==4.30.0",
   "pillow==12.1.1",
@@ -148,8 +146,6 @@ retriever-harness = "nemo_retriever.harness:main"
 version = {attr = "nemo_retriever.version.get_build_version"}
 
 [tool.uv.sources]
-nv-ingest-api = { path = "../api/", editable = true }
-nv-ingest-client = { path = "../client/", editable = true }
 nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }

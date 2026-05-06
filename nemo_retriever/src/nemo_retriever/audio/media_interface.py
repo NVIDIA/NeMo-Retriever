@@ -6,7 +6,7 @@
 Shared media (audio/video) chunking logic for the retriever.
 
 Minimal copy of ffmpeg/ffprobe and MediaInterface semantics from
-nv-ingest-api dataloader so the retriever stays self-contained.
+`nemo_retriever.api` dataloader so the retriever stays self-contained.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ except Exception:
 
 
 class SplitType:
-    """Split strategy for media; values match nv-ingest-api."""
+    """Split strategy for media; values match `nemo_retriever.api`."""
 
     SIZE = "size"
     TIME = "time"
