@@ -119,6 +119,7 @@ nav:
       - "API guide": extraction/nemo-retriever-api-reference.md
       # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
       - "CLI reference": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
+      - "Quickstart: retriever CLI": reference/retriever-cli-quickstart.md
       - Environment variables: extraction/environment-config.md
       - "Metadata reference": extraction/content-metadata.md
   - "13. Support & community":
