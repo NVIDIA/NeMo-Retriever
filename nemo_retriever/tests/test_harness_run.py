@@ -276,6 +276,30 @@ def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     assert effective_query_csv is None
 
 
+def test_build_command_does_not_include_api_key(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
+        api_key="secret-token",
+    )
+
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--api-key" not in cmd
+    assert "secret-token" not in cmd
+
+
 def test_build_command_supports_no_evaluation_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

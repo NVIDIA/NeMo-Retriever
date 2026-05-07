@@ -445,8 +445,6 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     else:
         effective_query_csv = None
 
-    if cfg.api_key:
-        cmd += ["--api-key", cfg.api_key]
     if cfg.page_elements_invoke_url:
         cmd += ["--page-elements-invoke-url", cfg.page_elements_invoke_url]
     if cfg.ocr_invoke_url:

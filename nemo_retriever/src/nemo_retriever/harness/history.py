@@ -317,16 +317,38 @@ CREATE TABLE IF NOT EXISTS _applied_data_migrations (
 
 _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR = "non_audio_recall_datasets_to_beir"
 _MIGRATE_BO20_DATASETS_TO_NONE = "bo20_datasets_to_none"
+_MIGRATE_KNOWN_BEIR_DATASET_LOADERS = "known_beir_dataset_loaders"
+_MIGRATE_UNKNOWN_BEIR_DATASETS_WITHOUT_LOADERS_TO_NONE = "unknown_beir_datasets_without_loaders_to_none"
 _DATA_MIGRATIONS = (
     (
         _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR,
-        "UPDATE datasets SET evaluation_mode = CASE WHEN name = 'bo20' THEN 'none' ELSE 'beir' END "
+        "UPDATE datasets SET evaluation_mode = CASE "
+        "WHEN name = 'bo20' THEN 'none' "
+        "WHEN name IN ('jp20', 'bo767', 'bo10k', 'earnings', 'financebench') OR name LIKE 'vidore%' THEN 'beir' "
+        "ELSE 'none' END "
         "WHERE evaluation_mode = 'recall' AND COALESCE(input_type, 'pdf') != 'audio'",
     ),
     (
         _MIGRATE_BO20_DATASETS_TO_NONE,
         "UPDATE datasets SET evaluation_mode = 'none' "
         "WHERE name = 'bo20' AND COALESCE(input_type, 'pdf') != 'audio'",
+    ),
+    (
+        _MIGRATE_KNOWN_BEIR_DATASET_LOADERS,
+        "UPDATE datasets SET beir_loader = CASE "
+        "WHEN name = 'jp20' THEN 'jp20_csv' "
+        "WHEN name = 'bo767' THEN 'bo767_csv' "
+        "WHEN name = 'bo10k' THEN 'bo10k_csv' "
+        "WHEN name = 'earnings' THEN 'earnings_csv' "
+        "WHEN name = 'financebench' THEN 'financebench_json' "
+        "WHEN name LIKE 'vidore%' THEN 'vidore_hf' "
+        "ELSE beir_loader END "
+        "WHERE evaluation_mode = 'beir' AND beir_loader IS NULL",
+    ),
+    (
+        _MIGRATE_UNKNOWN_BEIR_DATASETS_WITHOUT_LOADERS_TO_NONE,
+        "UPDATE datasets SET evaluation_mode = 'none' "
+        "WHERE evaluation_mode = 'beir' AND beir_loader IS NULL AND COALESCE(input_type, 'pdf') != 'audio'",
     ),
 )
 
