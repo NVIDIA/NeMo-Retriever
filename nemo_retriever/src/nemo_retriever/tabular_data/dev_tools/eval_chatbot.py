@@ -31,7 +31,6 @@ import json
 import logging
 import os
 import re
-import sys
 import time
 import traceback
 from pathlib import Path
@@ -39,13 +38,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "nemo_retriever" / "tabular-dev-tools"))
-from postgres_connector import PostgresDatabase  # noqa: E402
-
-from nemo_retriever.params import EmbedParams, VdbUploadParams  # noqa: E402
-from nemo_retriever.retriever import Retriever  # noqa: E402
-from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response  # noqa: E402
-from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload  # noqa: E402
+from nemo_retriever.tabular_data.dev_tools.postgres_connector import PostgresDatabase
+from nemo_retriever.params import EmbedParams, VdbUploadParams
+from nemo_retriever.retriever import Retriever
+from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response
+from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload
 
 logger = logging.getLogger("eval_chatbot")
 

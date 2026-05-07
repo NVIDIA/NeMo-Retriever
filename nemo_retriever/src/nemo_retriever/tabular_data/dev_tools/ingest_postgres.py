@@ -12,12 +12,9 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "nemo_retriever" / "tabular-dev-tools"))
-from apply_metadata import apply_metadata  # noqa: E402
-from postgres_connector import PostgresDatabase  # noqa: E402
+from nemo_retriever.tabular_data.dev_tools.apply_metadata import apply_metadata
+from nemo_retriever.tabular_data.dev_tools.postgres_connector import PostgresDatabase
 from nemo_retriever.graph import Graph
 from nemo_retriever.graph.tabular_schema_extract_operator import TabularSchemaExtractOp
 from nemo_retriever.graph.tabular_fetch_embeddings_operator import (
@@ -142,7 +139,7 @@ def run_retrieve() -> None:
     retriever = _build_retriever()
 
     payload: AgentPayload = {
-        "question": "How many DORs were created",
+        "question": "How many DORs were created in Q4 2025?",
         "retriever": retriever,
         "connector": connector,
         "path_state": {},
@@ -160,7 +157,7 @@ def run_retrieve_deep() -> None:
     retriever = _build_retriever()
 
     payload: DeepAgentPayload = {
-        "question": "How many DORs were created",
+        "question": "How many DORs were created in Q4 2025?",
         "retriever": retriever,
         "connector": connector,
         "path_state": {},
