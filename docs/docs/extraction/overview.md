@@ -44,7 +44,7 @@ NeMo Retriever Library supports the following file types:
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)
-- [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
+- [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
 - [Notebooks](notebooks.md)
 - [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — solution cards, enterprise RAG blueprints, and end-to-end patterns (including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)); for integration pathways, also see [Integrations](integrations-langchain-llamaindex-haystack.md).
