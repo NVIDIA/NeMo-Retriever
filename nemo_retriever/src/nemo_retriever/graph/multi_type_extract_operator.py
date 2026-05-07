@@ -208,7 +208,10 @@ class _MultiTypeExtractBase(AbstractOperator):
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
             if explicit_mode == "auto" and target == "":
-                logger.warning("%s path=%s", _unsupported_extension_message(ext), path)
+                logger.warning(
+                    _unsupported_extension_message(ext),
+                    extra={"path": path},
+                )
                 continue
             if target in grouped:
                 grouped[target].append(idx)
@@ -252,7 +255,10 @@ class _MultiTypeExtractBase(AbstractOperator):
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
             if explicit_mode == "auto" and target == "":
-                logger.warning("%s path=%s", _unsupported_extension_message(ext), path)
+                logger.warning(
+                    _unsupported_extension_message(ext),
+                    extra={"path": path},
+                )
                 continue
             if target in grouped:
                 grouped[target].append(path)
