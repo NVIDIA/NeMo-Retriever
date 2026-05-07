@@ -32,7 +32,8 @@ def double(x):
     return x * 2
 
 
-graph = UDFOperator(double, name="Double")
+graph = Graph()
+graph.add_root(UDFOperator(double, name="Double"))
 result = graph.execute(3)
 
 print(result)  # [6]
@@ -82,7 +83,7 @@ from typing import Any
 from nemo_retriever.graph import AbstractOperator
 
 
-class AddSuffixOperator(AbstractOperator, VDB):
+class AddSuffixOperator(AbstractOperator):
     def __init__(self, suffix: str = "_done") -> None:
         super().__init__()
         self.suffix = suffix
@@ -91,7 +92,7 @@ class AddSuffixOperator(AbstractOperator, VDB):
         return str(data).strip()
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        return self._vdb.write_to_index(data)
+        return f"{data}{self.suffix}"
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -143,14 +144,15 @@ This pattern is helpful when you want to:
 It lets you wrap a plain Python callable:
 
 ```python
-from nemo_retriever.graph import UDFOperator
+from nemo_retriever.graph import Graph, UDFOperator
 
 
 def uppercase_and_prefix(text: str) -> str:
     return f"PROCESSED: {text.upper()}"
 
 
-graph = UDFOperator(uppercase_and_prefix, name="UppercasePrefix")
+graph = Graph()
+graph.add_root(UDFOperator(uppercase_and_prefix, name="UppercasePrefix"))
 print(graph.execute("hello world"))  # ['PROCESSED: HELLO WORLD']
 ```
 

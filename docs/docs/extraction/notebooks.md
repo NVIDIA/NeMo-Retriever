@@ -29,6 +29,5 @@ For more advanced scenarios, try one of the following notebooks:
 ## Related Topics
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)

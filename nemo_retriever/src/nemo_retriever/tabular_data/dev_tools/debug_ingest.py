@@ -20,14 +20,7 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
-from pathlib import Path
-
-# tabular-dev-tools is not an installed package; extend sys.path so DuckDB
-# can be imported directly when running this debug script.
-sys.path.insert(0, str(Path(__file__).parents[1] / "nemo_retriever" / "tabular-dev-tools"))
-from duckdb_connector import DuckDB  # noqa: E402
-
+from nemo_retriever.tabular_data.dev_tools.duckdb_connector import DuckDB  # noqa: E402
 from nemo_retriever.graph import Graph
 from nemo_retriever.graph.tabular_schema_extract_operator import TabularSchemaExtractOp
 from nemo_retriever.graph.tabular_fetch_embeddings_operator import TabularFetchEmbeddingsOp

@@ -31,6 +31,7 @@ from .models import StoreParams
 from .models import TabularExtractParams
 from .models import TableParams
 from .models import TextChunkParams
+from .models import MetaJoinKey
 from .models import VdbUploadParams
 from .models import VideoFrameParams
 from .models import VideoFrameTextDedupParams
@@ -69,6 +70,7 @@ __all__ = [
     "TabularExtractParams",
     "TableParams",
     "TextChunkParams",
+    "MetaJoinKey",
     "VdbUploadParams",
     "VideoFrameParams",
     "VideoFrameTextDedupParams",

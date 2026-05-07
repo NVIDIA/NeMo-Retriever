@@ -91,16 +91,17 @@ def rgba_to_rgb_white_bg(rgba_image):
     Examples
     --------
     >>> import numpy as np
-    >>> # Create a sample RGBA image with some transparency
     >>> rgba = np.random.randint(0, 256, (100, 100, 4), dtype=np.uint8)
     >>> rgb = rgba_to_rgb_white_bg(rgba)
-    >>> print(rgb.shape)  # (100, 100, 3)
-    >>> print(rgb.dtype)  # uint8
+    >>> rgb.shape
+    (100, 100, 3)
+    >>> rgb.dtype
+    dtype('uint8')
 
-    >>> # Example with float alpha values [0, 1]
     >>> rgba_float = np.random.rand(50, 50, 4).astype(np.float32)
     >>> rgb_float = rgba_to_rgb_white_bg(rgba_float)
-    >>> print(rgb_float.dtype)  # uint8
+    >>> rgb_float.dtype
+    dtype('uint8')
     """
     # Extract RGB and alpha channels
     rgb = rgba_image[:, :, :3]  # RGB channels (H, W, 3)
@@ -684,9 +685,16 @@ def base64_to_numpy(base64_string: str) -> np.ndarray:
 
     Examples
     --------
-    >>> base64_str = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD...'
-    >>> img_array = base64_to_numpy(base64_str)
-    >>> # img_array is now in RGB format (for color images)
+    >>> import base64
+    >>> from io import BytesIO
+    >>> import numpy as np
+    >>> from PIL import Image
+    >>> buf = BytesIO()
+    >>> Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(buf, format="PNG")
+    >>> b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    >>> img_array = base64_to_numpy(b64)
+    >>> img_array.shape
+    (4, 4, 3)
     """
     try:
         # Decode the base64 string to bytes using bytetools
@@ -781,9 +789,16 @@ def base64_to_disk(base64_string: str, output_path: str) -> bool:
 
     Examples
     --------
-    >>> success = base64_to_disk(image_b64, "/path/to/output.jpeg")
-    >>> if success:
-    ...     print("Image saved successfully")
+    >>> import base64, os, tempfile  # doctest: +SKIP
+    >>> from io import BytesIO  # doctest: +SKIP
+    >>> from PIL import Image  # doctest: +SKIP
+    >>> import numpy as np  # doctest: +SKIP
+    >>> buf = BytesIO(); Image.fromarray(np.zeros((2, 2, 3), dtype=np.uint8)).save(buf, format="PNG")  # doctest: +SKIP
+    >>> image_b64 = base64.b64encode(buf.getvalue()).decode("ascii")  # doctest: +SKIP
+    >>> fd, path = tempfile.mkstemp(suffix=".png"); os.close(fd)  # doctest: +SKIP
+    >>> base64_to_disk(image_b64, path)  # doctest: +SKIP
+    True  # doctest: +SKIP
+    >>> os.unlink(path)  # doctest: +SKIP
     """
     try:
         # Validate input
@@ -840,11 +855,18 @@ def save_image_to_disk(base64_content: str, output_path: str, target_format: str
 
     Examples
     --------
-    >>> # Preserve original format (fastest)
-    >>> success = save_image_to_disk(image_b64, "/path/to/output.jpeg", "auto")
-    >>>
-    >>> # Convert to JPEG with specific quality
-    >>> success = save_image_to_disk(image_b64, "/path/to/output.jpeg", "JPEG", quality=85)
+    >>> import base64, os, tempfile  # doctest: +SKIP
+    >>> from io import BytesIO  # doctest: +SKIP
+    >>> from PIL import Image  # doctest: +SKIP
+    >>> import numpy as np  # doctest: +SKIP
+    >>> buf = BytesIO(); Image.fromarray(np.zeros((2, 2, 3), dtype=np.uint8)).save(buf, format="PNG")  # doctest: +SKIP
+    >>> image_b64 = base64.b64encode(buf.getvalue()).decode("ascii")  # doctest: +SKIP
+    >>> fd, p_auto = tempfile.mkstemp(suffix=".png"); os.close(fd)  # doctest: +SKIP
+    >>> save_image_to_disk(image_b64, p_auto, "auto") and os.unlink(p_auto) is None  # doctest: +SKIP
+    True  # doctest: +SKIP
+    >>> fd, p_jpg = tempfile.mkstemp(suffix=".jpg"); os.close(fd)  # doctest: +SKIP
+    >>> save_image_to_disk(image_b64, p_jpg, "JPEG", quality=85) and os.unlink(p_jpg) is None  # doctest: +SKIP
+    True  # doctest: +SKIP
     """
     try:
         # Quick format normalization
