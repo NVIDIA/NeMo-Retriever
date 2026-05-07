@@ -2378,6 +2378,7 @@ wheels = [
 name = "nemo-retriever"
 source = { editable = "." }
 dependencies = [
+    { name = "backoff" },
     { name = "click" },
     { name = "debugpy" },
     { name = "fastapi" },
@@ -2416,7 +2417,6 @@ all = [
     { name = "addict" },
     { name = "albumentations" },
     { name = "apscheduler" },
-    { name = "backoff" },
     { name = "cairosvg" },
     { name = "datasets" },
     { name = "duckdb" },
@@ -2469,7 +2469,6 @@ local = [
     { name = "addict" },
     { name = "albumentations" },
     { name = "apscheduler" },
-    { name = "backoff" },
     { name = "easydict" },
     { name = "einops" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
@@ -2514,7 +2513,7 @@ requires-dist = [
     { name = "addict", marker = "extra == 'local'" },
     { name = "albumentations", marker = "extra == 'local'", specifier = "==2.0.8" },
     { name = "apscheduler", marker = "extra == 'local'", specifier = ">=3.10" },
-    { name = "backoff", marker = "extra == 'local'" },
+    { name = "backoff" },
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2.2" },
     { name = "cairosvg", marker = "extra == 'multimedia'", specifier = ">=2.7.0" },
     { name = "click", specifier = ">=8.2.0" },

@@ -38,7 +38,7 @@ class NemotronOCRV2(BaseModel):
         super().__init__()
         configure_global_hf_cache_base()
         try:
-            from nemotron_ocr_v2.inference import pipeline_v2 as _nemotron_ocr_pipeline_v2  # local-only import
+            from nemotron_ocr.inference import pipeline_v2 as _nemotron_ocr_pipeline_v2  # local-only import
         except ImportError as exc:
             raise ImportError(
                 "Local Nemotron OCR v2 requires the `nemotron_ocr_v2` package. "

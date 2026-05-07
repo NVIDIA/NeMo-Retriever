@@ -27,6 +27,31 @@ jobs:
 
       - uses: pre-commit/action@v3.0.1
 
+  # Core install must not require tritonclient (remote NIM / slim API); see tests/test_slim_imports_no_triton.py
+  slim-import-contract:
+    name: Slim import contract (core deps, no tritonclient)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install nemo-retriever without local extra and assert slim imports
+        working-directory: nemo_retriever
+        run: |
+          set -euo pipefail
+          uv venv .venv-slim
+          source .venv-slim/bin/activate
+          uv pip install -e ".[dev]"
+          uv pip uninstall tritonclient 2>/dev/null || true
+          python -c "import importlib.util; import sys; sys.exit(0 if importlib.util.find_spec('tritonclient') is None else 1)"
+          python -m pytest tests/test_slim_imports_no_triton.py -q
+
   # Docker build + test for x86_64 (single job so built image is available locally)
   docker-build-and-test:
     name: Build & Test Docker (amd64)
@@ -47,6 +72,7 @@ jobs:
     name: PR Validation Complete
     needs:
       - pre-commit
+      - slim-import-contract
       - docker-build-and-test
     runs-on: ubuntu-latest
     if: always()
