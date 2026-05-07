@@ -87,7 +87,7 @@ Ideas not committed to code; pick up or trim as priorities change.
 
 1. `config.py` + defaults in `test_configs.yaml` (and env keys if any).
 2. `run.py` and artifact payloads (`results.json` / `session_summary.json` shape).
-3. Unit tests under `nemo_retriever/tests/test_harness_*.py` and graph coverage via `test_batch_pipeline.py`.
+3. Unit tests under `nemo_retriever/tests/test_harness_*.py` and graph coverage via `test_graph_pipeline_cli.py`.
 4. `nemo_retriever/README.md` harness section if user-facing commands changed.
 5. At least one local run or `--dry-run` on the affected CLI path.
 
@@ -100,8 +100,7 @@ pytest -q nemo_retriever/tests/test_harness_run.py \
   nemo_retriever/tests/test_harness_config.py \
   nemo_retriever/tests/test_harness_reporting.py \
   nemo_retriever/tests/test_harness_nightly.py \
-  nemo_retriever/tests/test_harness_recall_adapters.py \
-  nemo_retriever/tests/test_batch_pipeline.py
+  nemo_retriever/tests/test_graph_pipeline_cli.py
 ```
 
 See `nemo_retriever/README.md` for broader retriever documentation.
