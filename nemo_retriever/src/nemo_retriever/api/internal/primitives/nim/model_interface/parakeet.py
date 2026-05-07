@@ -48,7 +48,7 @@ class ParakeetClient:
         auth_token : Optional[str], default=None
             The authentication token for accessing the service.
         function_id: Optional[str]
-            The hosted-inference function ID from build.nvidia.com for invoking the service.
+            The NVCF function ID for invoking the service.
         use_ssl : bool, default=False
             Whether to use SSL for the connection.
         ssl_cert : Optional[str], default=None
@@ -334,7 +334,7 @@ def create_audio_inference_client(
     auth_token : str, optional
         Authorization token for authentication (default: None).
     function_id : str, optional
-        Hosted-inference function ID from build.nvidia.com for the invocation (default: None)
+        NVCF function ID of the invocation (default: None)
     use_ssl : bool, optional
         Whether to use SSL for secure communication (default: False).
     ssl_cert : str, optional

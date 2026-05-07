@@ -96,8 +96,8 @@ def _concat_with_passthrough(processed: pd.DataFrame, passthrough: pd.DataFrame)
 
 logger = logging.getLogger(__name__)
 
-# Default build.nvidia.com hosted Parakeet gRPC endpoint and libmode function ID. Exposed as named
-# constants so Python callers can opt into hosted inference without hardcoding strings:
+# Public NVCF Parakeet endpoint and the libmode function ID. Exposed as named
+# constants so Python callers can opt into NVCF without hardcoding strings:
 #   asr_params_from_env(default_grpc_endpoint=DEFAULT_NGC_ASR_GRPC_ENDPOINT)
 DEFAULT_NGC_ASR_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
 DEFAULT_NGC_ASR_FUNCTION_ID = "1598d209-5e27-4d3c-8079-4751568b1081"
@@ -122,13 +122,13 @@ def asr_params_from_env(
     Two opt-in paths to remote, both honoured:
 
     - **Environment variable**: ``AUDIO_GRPC_ENDPOINT=grpc.nvcf.nvidia.com:443``
-      (build.nvidia.com hosted inference) or ``AUDIO_GRPC_ENDPOINT=localhost:50051`` (local NIM).
+      (NVCF) or ``AUDIO_GRPC_ENDPOINT=localhost:50051`` (local NIM).
     - **Python API**: pass ``default_grpc_endpoint=...`` to this function. The
       env var wins when both are present. Use the exported
-      :data:`DEFAULT_NGC_ASR_GRPC_ENDPOINT` constant for hosted inference.
+      :data:`DEFAULT_NGC_ASR_GRPC_ENDPOINT` constant for NVCF.
 
     - ``NGC_API_KEY`` — Bearer token; only consulted when an endpoint is set.
-    - ``AUDIO_FUNCTION_ID`` — function ID from build.nvidia.com; defaults to ``default_function_id``
+    - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to ``default_function_id``
       (the `nemo_retriever.api` / libmode Parakeet NIM) when an endpoint is set but the env
       var is unset.
     """
@@ -178,9 +178,7 @@ def _get_client(params: ASRParams):  # noqa: ANN201
     http_endpoint = (params.audio_endpoints[1] or "").strip() or None
     if not grpc_endpoint:
         raise ValueError(
-            "ASR audio_endpoints[0] (gRPC) must be set for Parakeet "
-            f"(e.g. localhost:50051 for a local NIM, or {DEFAULT_NGC_ASR_GRPC_ENDPOINT!r} "
-            "for build.nvidia.com hosted inference)."
+            "ASR audio_endpoints[0] (gRPC) must be set for Parakeet (e.g. localhost:50051 or grpc.nvcf.nvidia.com:443)."
         )
     return create_audio_inference_client(
         (grpc_endpoint, http_endpoint or ""),
