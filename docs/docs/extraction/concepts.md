@@ -35,7 +35,7 @@ Token-based splitting uses the Llama 3.2 1B tokenizer (default **`meta-llama/Lla
 ## Deployment modes
 
 - **Library mode** — Run without the full container stack where appropriate; see [Deployment options](deployment-options.md).
-- **Kubernetes / Helm (self-hosted)** — See [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
+- **Kubernetes / Helm (self-hosted)** — See [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
 - **Notebooks** — [Jupyter examples](notebooks.md) for experimentation and RAG demos.
 
 For a concise comparison, refer to [Deployment options](deployment-options.md).
