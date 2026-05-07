@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.audio.media_interface import is_media_available
+from tests import _have_ffmpeg_binary
 from nemo_retriever.audio.stage import _audio_extraction_json_path
 from nemo_retriever.audio.stage import _run_extract_one
 from nemo_retriever.audio.stage import extract
@@ -31,7 +31,7 @@ def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 80
         wav.writeframes(b"\x00\x00" * n_frames)
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_audio_stage_extract_one_mocked_asr(tmp_path: Path):
     """Run extraction (chunk + ASR) on one small WAV with mocked ASR; assert output shape."""
     wav = tmp_path / "tiny.wav"
@@ -53,7 +53,7 @@ def test_audio_stage_extract_one_mocked_asr(tmp_path: Path):
     assert df["text"].iloc[0] == "mock transcript for stage test"
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_audio_stage_extract_cli_writes_sidecar(tmp_path: Path):
     """Run audio extract CLI; assert sidecar JSON exists and has expected shape."""
     wav = tmp_path / "sample.wav"

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.12.*"
 resolution-markers = [
     "platform_machine != 'aarch64' and platform_machine != 's390x' and platform_machine != 'x86_64' and sys_platform == 'linux'",
@@ -1304,9 +1304,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/65/8b/3669ad3b3f247a791b2b4aceb3aa5a31f5f6817bf547e4e1ff712338145a/greenlet-3.4.0-cp312-cp312-macosx_11_0_universal2.whl", hash = "sha256:1a54a921561dd9518d31d2d3db4d7f80e589083063ab4d3e2e950756ef809e1a", size = 286902, upload-time = "2026-04-08T15:52:12.138Z" },
     { url = "https://files.pythonhosted.org/packages/38/3e/3c0e19b82900873e2d8469b590a6c4b3dfd2b316d0591f1c26b38a4879a5/greenlet-3.4.0-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:16dec271460a9a2b154e3b1c2fa1050ce6280878430320e85e08c166772e3f97", size = 606099, upload-time = "2026-04-08T16:24:38.408Z" },
     { url = "https://files.pythonhosted.org/packages/b5/33/99fef65e7754fc76a4ed14794074c38c9ed3394a5bd129d7f61b705f3168/greenlet-3.4.0-cp312-cp312-manylinux_2_24_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:90036ce224ed6fe75508c1907a77e4540176dcf0744473627785dd519c6f9996", size = 618837, upload-time = "2026-04-08T16:30:58.298Z" },
-    { url = "https://files.pythonhosted.org/packages/44/57/eae2cac10421feae6c0987e3dc106c6d86262b1cb379e171b017aba893a6/greenlet-3.4.0-cp312-cp312-manylinux_2_24_s390x.manylinux_2_28_s390x.whl", hash = "sha256:6f0def07ec9a71d72315cf26c061aceee53b306c36ed38c35caba952ea1b319d", size = 624901, upload-time = "2026-04-08T16:40:38.981Z" },
     { url = "https://files.pythonhosted.org/packages/36/f7/229f3aed6948faa20e0616a0b8568da22e365ede6a54d7d369058b128afd/greenlet-3.4.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a1c4f6b453006efb8310affb2d132832e9bbb4fc01ce6df6b70d810d38f1f6dc", size = 615062, upload-time = "2026-04-08T15:56:33.766Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/8a/0e73c9b94f31d1cc257fe79a0eff621674141cdae7d6d00f40de378a1e42/greenlet-3.4.0-cp312-cp312-manylinux_2_39_riscv64.whl", hash = "sha256:0e1254cf0cbaa17b04320c3a78575f29f3c161ef38f59c977108f19ffddaf077", size = 423927, upload-time = "2026-04-08T16:43:05.293Z" },
     { url = "https://files.pythonhosted.org/packages/08/97/d988180011aa40135c46cd0d0cf01dd97f7162bae14139b4a3ef54889ba5/greenlet-3.4.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:9b2d9a138ffa0e306d0e2b72976d2fb10b97e690d40ab36a472acaab0838e2de", size = 1573511, upload-time = "2026-04-08T16:26:20.058Z" },
     { url = "https://files.pythonhosted.org/packages/d4/0f/a5a26fe152fb3d12e6a474181f6e9848283504d0afd095f353d85726374b/greenlet-3.4.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:8424683caf46eb0eb6f626cb95e008e8cc30d0cb675bdfa48200925c79b38a08", size = 1640396, upload-time = "2026-04-08T15:57:30.88Z" },
     { url = "https://files.pythonhosted.org/packages/42/cf/bb2c32d9a100e36ee9f6e38fad6b1e082b8184010cb06259b49e1266ca01/greenlet-3.4.0-cp312-cp312-win_amd64.whl", hash = "sha256:a0a53fb071531d003b075c444014ff8f8b1a9898d36bb88abd9ac7b3524648a2", size = 238892, upload-time = "2026-04-08T17:03:10.094Z" },
@@ -2306,6 +2304,7 @@ dependencies = [
     { name = "debugpy" },
     { name = "fastapi" },
     { name = "fastmcp" },
+    { name = "ffmpeg-python" },
     { name = "fsspec" },
     { name = "httpx" },
     { name = "lancedb" },
@@ -2314,8 +2313,6 @@ dependencies = [
     { name = "nltk" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
-    { name = "nv-ingest-api" },
-    { name = "nv-ingest-client" },
     { name = "pandas" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -2340,6 +2337,7 @@ all = [
     { name = "addict" },
     { name = "albumentations" },
     { name = "apscheduler" },
+    { name = "backoff" },
     { name = "cairosvg" },
     { name = "datasets" },
     { name = "duckdb" },
@@ -2348,6 +2346,7 @@ all = [
     { name = "einops" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
+    { name = "glom" },
     { name = "langgraph" },
     { name = "litellm" },
     { name = "nemotron-graphic-elements-v1" },
@@ -2369,6 +2368,7 @@ all = [
     { name = "torchvision", version = "0.25.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "transformers" },
+    { name = "tritonclient" },
     { name = "vllm", version = "0.17.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'" },
     { name = "vllm", version = "0.17.0+cu130", source = { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl" }, marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
     { name = "vllm", version = "0.17.0+cu130", source = { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -2389,10 +2389,12 @@ local = [
     { name = "addict" },
     { name = "albumentations" },
     { name = "apscheduler" },
+    { name = "backoff" },
     { name = "easydict" },
     { name = "einops" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
+    { name = "glom" },
     { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "sys_platform == 'linux'" },
     { name = "nemotron-ocr-v2", marker = "sys_platform == 'linux'" },
@@ -2408,6 +2410,7 @@ local = [
     { name = "torchvision", version = "0.25.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "transformers" },
+    { name = "tritonclient" },
     { name = "vllm", version = "0.17.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux'" },
     { name = "vllm", version = "0.17.0+cu130", source = { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl" }, marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
     { name = "vllm", version = "0.17.0+cu130", source = { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -2430,6 +2433,7 @@ requires-dist = [
     { name = "addict", marker = "extra == 'local'" },
     { name = "albumentations", marker = "extra == 'local'", specifier = "==2.0.8" },
     { name = "apscheduler", marker = "extra == 'local'", specifier = ">=3.10" },
+    { name = "backoff", marker = "extra == 'local'" },
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2.2" },
     { name = "cairosvg", marker = "extra == 'multimedia'", specifier = ">=2.7.0" },
     { name = "click", specifier = ">=8.2.0" },
@@ -2441,9 +2445,11 @@ requires-dist = [
     { name = "einops", marker = "extra == 'local'" },
     { name = "fastapi", specifier = ">=0.114.0" },
     { name = "fastmcp", specifier = ">=2.0.0" },
+    { name = "ffmpeg-python" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==0.6.4" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==0.6.4" },
     { name = "fsspec", specifier = ">=2025.5.1" },
+    { name = "glom", marker = "extra == 'local'" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lancedb" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=0.3.0" },
@@ -2459,8 +2465,6 @@ requires-dist = [
     { name = "neo4j", marker = "extra == 'tabular'", specifier = ">=5.0" },
     { name = "nltk", specifier = "==3.9.3" },
     { name = "numpy", specifier = ">=1.26.0" },
-    { name = "nv-ingest-api", editable = "../api" },
-    { name = "nv-ingest-client", editable = "../client" },
     { name = "nvidia-ml-py", marker = "extra == 'local'" },
     { name = "open-clip-torch", marker = "extra == 'benchmarks'", specifier = "==3.2.0" },
     { name = "pandas", specifier = ">=2.0,<3" },
@@ -2487,6 +2491,7 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'local'", specifier = ">=0.25,<0.26" },
     { name = "tqdm", specifier = ">=4.66.0" },
     { name = "transformers", marker = "extra == 'local'", specifier = ">=4.57.6,<5" },
+    { name = "tritonclient", marker = "extra == 'local'" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "universal-pathlib", specifier = ">=0.2.0" },
     { name = "urllib3", specifier = "==2.6.3" },
@@ -2714,76 +2719,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/92/0f/7ceaaeaacb40567071e94dbf2c9480c0ae453d5bb4f52bea3892c39dc83c/numpy-2.4.2-cp312-cp312-win_amd64.whl", hash = "sha256:209fae046e62d0ce6435fcfe3b1a10537e858249b3d9b05829e2a05218296a85", size = 12314210, upload-time = "2026-01-31T23:11:12.176Z" },
     { url = "https://files.pythonhosted.org/packages/2f/a3/56c5c604fae6dd40fa2ed3040d005fca97e91bd320d232ac9931d77ba13c/numpy-2.4.2-cp312-cp312-win_arm64.whl", hash = "sha256:fbde1b0c6e81d56f5dccd95dd4a711d9b95df1ae4009a60887e56b27e8d903fa", size = 10220171, upload-time = "2026-01-31T23:11:14.684Z" },
 ]
-
-[[package]]
-name = "nv-ingest-api"
-source = { editable = "../api" }
-dependencies = [
-    { name = "backoff" },
-    { name = "ffmpeg-python" },
-    { name = "fsspec" },
-    { name = "glom" },
-    { name = "pandas" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pypdfium2" },
-    { name = "tritonclient" },
-    { name = "universal-pathlib" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "backoff", specifier = "==2.2.1" },
-    { name = "ffmpeg-python", specifier = "==0.2.0" },
-    { name = "fsspec", specifier = ">=2025.5.1" },
-    { name = "glom" },
-    { name = "moviepy", marker = "extra == 'test'", specifier = "==2.2.1" },
-    { name = "pandas", specifier = ">=2.0" },
-    { name = "pydantic", specifier = ">2.0.0" },
-    { name = "pydantic-settings", specifier = ">2.0.0" },
-    { name = "pypdfium2", specifier = "==4.30.0" },
-    { name = "tritonclient" },
-    { name = "universal-pathlib", specifier = ">=0.2.6" },
-]
-provides-extras = ["test"]
-
-[[package]]
-name = "nv-ingest-client"
-source = { editable = "../client" }
-dependencies = [
-    { name = "build" },
-    { name = "charset-normalizer" },
-    { name = "click" },
-    { name = "fsspec" },
-    { name = "httpx" },
-    { name = "lancedb" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "requests" },
-    { name = "setuptools" },
-    { name = "tqdm" },
-    { name = "urllib3" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "build", specifier = ">=1.2.2" },
-    { name = "charset-normalizer", specifier = ">=3.4.1" },
-    { name = "click", specifier = ">=8.1.8" },
-    { name = "fsspec", specifier = ">=2025.2.0" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "lancedb", specifier = ">=0.25.3" },
-    { name = "minio", marker = "extra == 'minio'", specifier = ">=7.2.15" },
-    { name = "pydantic", specifier = ">2.0.0" },
-    { name = "pydantic-settings", specifier = ">2.0.0" },
-    { name = "pymilvus", marker = "extra == 'milvus'", specifier = "==2.5.10" },
-    { name = "pymilvus", extras = ["bulk-writer", "model"], marker = "extra == 'milvus'" },
-    { name = "requests", specifier = ">=2.32.5" },
-    { name = "setuptools", specifier = ">=78.1.1" },
-    { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "urllib3", specifier = "==2.6.3" },
-]
-provides-extras = ["milvus", "minio"]
 
 [[package]]
 name = "nvidia-cublas"
@@ -4922,7 +4857,7 @@ wheels = [
 
 [[package]]
 name = "tritonclient"
-version = "2.66.0"
+version = "2.68.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
@@ -4931,9 +4866,9 @@ dependencies = [
     { name = "urllib3" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/5a/d4a255b94f74ec225ff2ec0eff2ae480fec65198dc962236748493e87a17/tritonclient-2.66.0-py3-none-any.whl", hash = "sha256:7e3558a47542528a4edd2da607050e756022c6b14ea2b352a67c78f1484e698f", size = 98317, upload-time = "2026-03-02T17:58:43.417Z" },
-    { url = "https://files.pythonhosted.org/packages/79/a6/e37f2e8ef2a3d782f4d4535c1136007ff3a702174c952cf7944ca709505d/tritonclient-2.66.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:d2c2865239017a0d15a5f34e23f093feac222e608d6182a1444354204a0833ad", size = 111866, upload-time = "2026-03-02T17:58:21.792Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/87/e1adba7819a42f71071914c51617b36760a7a17606eb969954153b761076/tritonclient-2.66.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:ec759cd8186130be9726be2fa31bc14b1dd46daa19add770610df889aa57d0a4", size = 111868, upload-time = "2026-03-02T17:56:22.572Z" },
+    { url = "https://files.pythonhosted.org/packages/57/aa/9fbaf3352c3ad41a5f906cbb7865a5c2e43e27a8170f379964d3bd4321e9/tritonclient-2.68.0-py3-none-any.whl", hash = "sha256:c1183025194f32641ba594d81cc364e63dd6fe29e22c3aef7672b6fd695af403", size = 98325, upload-time = "2026-04-28T01:33:09.484Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/e9/a7842197bd9717800196d4ac1eb6d1115b5815d26f348cd540ffdb33e450/tritonclient-2.68.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:ee1f7c1ff8a9664e7ad7dddf86169247ad8c9e2b3859a927fd984eae159ae2f7", size = 111878, upload-time = "2026-04-28T01:33:28.947Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/0b/81634e1f41af503e350076a7a4ab979d41d4aef23303fcd254d393c5ab56/tritonclient-2.68.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:4641dd0f8c8fbe8f3916ab6cd3b5c5b2088c5021575a25ae1d0a9f183ce72469", size = 111882, upload-time = "2026-04-28T01:33:51.665Z" },
 ]
 
 [[package]]

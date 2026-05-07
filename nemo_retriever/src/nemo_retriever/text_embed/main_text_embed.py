@@ -7,7 +7,7 @@ Standalone text embedding helper for retriever-local pandas DataFrames.
 
 Goal:
 - Mirror (as closely as practical) the batching/runner logic from
-  `nv_ingest_api.internal.transform.embed_text.transform_create_text_embeddings_internal`,
+  `nemo_retriever.api.internal.transform.embed_text.transform_create_text_embeddings_internal`,
   but adapt it to the **retriever-local** DataFrame structure used by
   `nemo_retriever.text_embed.text_embed.embed_text_1b_v2`.
 
@@ -15,7 +15,7 @@ Key differences vs the API transform:
 - This module operates on a simple pandas.DataFrame that typically contains:
   - `text`: the text to embed (or other common text columns)
   - `metadata`: optional dict; if present, embeddings are written to `metadata["embedding"]`
-- Uses ``nv_ingest_api`` for shared HTTP embedding URL normalization (with pandas/httpx).
+- Uses ``nemo_retriever.api`` for shared HTTP embedding URL normalization (with pandas/httpx).
 
 Usage:
 
@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
-from nv_ingest_api.util.string_processing import ensure_openai_embeddings_http_url
+from nemo_retriever.api.util.string_processing import ensure_openai_embeddings_http_url
 
 from nemo_retriever.model import _DEFAULT_EMBED_MODEL
 from nemo_retriever.params.models import IMAGE_MODALITIES
@@ -259,7 +259,7 @@ def _multimodal_callable_runner(
 
 def _normalize_embeddings_endpoint(endpoint_url: str) -> str:
     """
-    Normalize endpoint to a concrete embeddings URL (delegates to shared nv-ingest helper).
+    Normalize endpoint to a concrete embeddings URL (delegates to shared `nemo_retriever.api` helper).
     """
     return ensure_openai_embeddings_http_url(endpoint_url)
 

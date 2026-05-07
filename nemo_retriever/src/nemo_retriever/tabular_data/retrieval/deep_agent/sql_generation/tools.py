@@ -511,7 +511,8 @@ def build_sql_tools(
         ``(tools, store)`` — tools list and the ``SqlGenerationStore`` that will
         be populated as the agent runs.
     """
-    dialects = payload.get("dialects") or []
+    dialect = payload.get("dialect")
+    dialects = [dialect] if dialect else []
     question = payload.get("question") or ""
     ctx: RetrievalContext = retrieval_ctx or {
         "entity_coverage": [],

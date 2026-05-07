@@ -122,11 +122,9 @@ def run_ingest() -> None:
         logger.info("Tabular ingest result: no rows produced")
 
 
-def run_retrieve() -> None:
-    """Run the text-to-SQL agent against the previously ingested LanceDB."""
-    connector = _get_connector()
+def _build_retriever() -> Retriever:
     lancedb_kwargs = VDB_PARAMS.vdb_kwargs
-    retriever = Retriever(
+    return Retriever(
         vdb="lancedb",
         vdb_kwargs={
             "uri": lancedb_kwargs["uri"],
@@ -136,6 +134,12 @@ def run_retrieve() -> None:
         embedding_api_key=_NVIDIA_API_KEY,
         embedding_http_endpoint=EMBED_PARAMS.embed_invoke_url,
     )
+
+
+def run_retrieve() -> None:
+    """Run the text-to-SQL agent against the previously ingested LanceDB."""
+    connector = _get_connector()
+    retriever = _build_retriever()
 
     payload: AgentPayload = {
         "question": "How many DORs were created",
@@ -153,12 +157,15 @@ def run_retrieve() -> None:
 def run_retrieve_deep() -> None:
     """Run the deep-agent text-to-SQL pipeline against the previously ingested LanceDB."""
     connector = _get_connector()
+    retriever = _build_retriever()
 
     payload: DeepAgentPayload = {
         "question": "How many DORs were created",
-        "history": [],
+        "retriever": retriever,
+        "connector": connector,
         "path_state": {},
-        "db_connector": connector,
+        "custom_prompts": "",
+        "acronyms": "",
     }
 
     agent_result = get_deep_agent_response(payload)

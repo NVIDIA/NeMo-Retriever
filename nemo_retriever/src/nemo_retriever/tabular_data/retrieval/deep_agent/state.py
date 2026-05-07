@@ -19,6 +19,7 @@ from typing import Any, NotRequired, TypedDict
 from langchain_core.messages import HumanMessage
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
+from nemo_retriever.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.deep_agent.context import (  # noqa: F401
     EntityCoverage,
     RetrievalContext,
@@ -26,13 +27,19 @@ from nemo_retriever.tabular_data.retrieval.deep_agent.context import (  # noqa: 
 
 
 class AgentPayload(TypedDict):
-    """Payload received from the API."""
+    """Payload received from the API.
+
+    Mirrors :class:`nemo_retriever.tabular_data.retrieval.text_to_sql.state.AgentPayload`
+    so callers can use a single payload shape across both pipelines.
+    """
 
     question: str
-    history: list[dict[str, str]]
+    retriever: Retriever
     path_state: NotRequired[dict]
-    dialects: NotRequired[list[str]]
-    db_connector: NotRequired[Any]
+    dialect: NotRequired[str]
+    connector: NotRequired[Any]
+    acronyms: NotRequired[str]
+    custom_prompts: NotRequired[str]
 
 
 class AgentState(TypedDict):
@@ -42,9 +49,11 @@ class AgentState(TypedDict):
     initial_question: str
     messages: list[HumanMessage]
     decision: str
-    dialects: list[str]
-    db_connector: Any
+    dialect: str
+    connector: Any
     path_state: dict
+    retriever: Retriever
+    custom_prompts: str
 
 
 def get_question_for_processing(state: AgentState) -> str:

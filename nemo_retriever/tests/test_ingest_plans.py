@@ -1,6 +1,6 @@
 import pytest
 
-from nemo_retriever.audio.media_interface import is_media_available
+from tests import _have_ffmpeg_binary
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
@@ -372,7 +372,7 @@ def test_build_inprocess_graph_supports_text_execution_plan() -> None:
     assert names == ["MultiTypeExtractOperator", "TextChunkActor", "_BatchEmbedActor"]
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(
@@ -394,7 +394,7 @@ def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
     assert names == ["MediaChunkActor", "ASRActor"]
 
 
-@pytest.mark.skipif(not is_media_available(), reason="ffmpeg not available")
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_build_graph_uses_explicit_audio_graph_for_audio_extract_method() -> None:
     graph = build_graph(
         extract_params=ExtractParams(method="audio"),

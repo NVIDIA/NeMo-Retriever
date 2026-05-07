@@ -138,7 +138,7 @@ class HtmlChunkParams(TextChunkParams):
 
 
 class AudioChunkParams(_ParamsModel):
-    """Params for media chunking (audio/video split). Aligned with nv-ingest-api dataloader.
+    """Params for media chunking (audio/video split). Aligned with `nemo_retriever.api` dataloader.
 
     Set ``enabled=False`` (when wired through ``VideoSplitActor``) to skip
     audio chunking and ASR on a video pipeline — useful for visual-only

@@ -6,14 +6,13 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.media_interface import is_media_available
+from tests import _have_ffmpeg_binary_for_png_frames
 from nemo_retriever.params import VideoFrameParams
 from nemo_retriever.video.frame_actor import (
     FRAME_COLUMNS,
@@ -23,12 +22,8 @@ from nemo_retriever.video.frame_actor import (
 )
 
 
-def _have_ffmpeg_binary() -> bool:
-    return is_media_available() and shutil.which("ffmpeg") is not None
-
-
-def _make_test_mp4(path: Path, duration_sec: int = 5, size: str = "320x240", fps: int = 30) -> None:
-    """Generate a synthetic test mp4 via ffmpeg lavfi testsrc."""
+def _make_test_mp4_video_only(path: Path, *, duration_sec: int = 5, size: str = "320x240", fps: int = 30) -> None:
+    """Synthetic MP4 from lavfi; ``mpeg4`` avoids requiring ``libx264``."""
     cmd = [
         "ffmpeg",
         "-y",
@@ -39,16 +34,21 @@ def _make_test_mp4(path: Path, duration_sec: int = 5, size: str = "320x240", fps
         "-i",
         f"testsrc=duration={duration_sec}:size={size}:rate={fps}",
         "-c:v",
-        "libx264",
+        "mpeg4",
+        "-q:v",
+        "5",
         str(path),
     ]
     subprocess.run(cmd, check=True)
 
 
-@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_png_frames(),
+    reason="ffmpeg with PNG encoder required for frame extraction",
+)
 def test_video_path_to_frames_df_basic_count_and_timestamps(tmp_path: Path) -> None:
     fixture = tmp_path / "fixture.mp4"
-    _make_test_mp4(fixture, duration_sec=5)
+    _make_test_mp4_video_only(fixture, duration_sec=5)
 
     df = video_path_to_frames_df(str(fixture), VideoFrameParams(fps=1.0))
     assert isinstance(df, pd.DataFrame)
@@ -75,10 +75,13 @@ def test_video_path_to_frames_df_basic_count_and_timestamps(tmp_path: Path) -> N
     assert df.iloc[0]["_content_type"] == "video_frame"
 
 
-@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_png_frames(),
+    reason="ffmpeg with PNG encoder required for frame extraction",
+)
 def test_video_frame_actor_runs_on_dataframe(tmp_path: Path) -> None:
     fixture = tmp_path / "fixture.mp4"
-    _make_test_mp4(fixture, duration_sec=3)
+    _make_test_mp4_video_only(fixture, duration_sec=3)
     batch = pd.DataFrame([{"path": str(fixture)}])
 
     actor = VideoFrameActor(VideoFrameParams(fps=1.0))

@@ -30,6 +30,7 @@ classifiers = [
 dependencies = [
   # Core orchestration and framework
   "ray[data,serve]>=2.49.0",
+  "ffmpeg-python",
   "pandas>=2.0,<3",
   "sqlglot>=30.0.0",
   "tqdm>=4.66.0",
@@ -55,8 +56,6 @@ dependencies = [
   "fsspec>=2025.5.1",
   "s3fs>=2025.5.1",
   # Core ingest packages
-  "nv-ingest-api",
-  "nv-ingest-client",
   # Document parsing and NIM client libs
   "pypdfium2==4.30.0",
   "pillow==12.1.1",
@@ -72,11 +71,14 @@ dependencies = [
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
 # Adds HuggingFace transformers, torch, nemotron models, GPU monitoring, and vLLM.
 local = [
+  "backoff",
+  "glom",
   "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",
   "accelerate==1.12.0",
   "torch~=2.10.0",
   "torchvision>=0.25,<0.26",
+  "tritonclient",
   "einops",
   "easydict",
   "addict",
@@ -152,8 +154,6 @@ retriever-harness = "nemo_retriever.harness:main"
 version = {attr = "nemo_retriever.version.get_build_version"}
 
 [tool.uv.sources]
-nv-ingest-api = { path = "../api/", editable = true }
-nv-ingest-client = { path = "../client/", editable = true }
 nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
@@ -187,3 +187,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "nemo_retriever.harness.portal" = ["static/**/*"]
+
+[tool.pytest.ini_options]
+# So ``from tests import …`` resolves to ``nemo_retriever/tests`` when pytest rootdir is this project.
+pythonpath = ["."]

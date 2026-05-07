@@ -21,9 +21,9 @@ from rich.console import Console
 from tqdm import tqdm
 import typer
 
-from nv_ingest_api.internal.extract.pdf.pdf_extractor import extract_primitives_from_pdf_internal
-from nv_ingest_api.internal.schemas.extract.extract_pdf_schema import PDFExtractorSchema
-from nv_ingest_api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.api.internal.extract.pdf.pdf_extractor import extract_primitives_from_pdf_internal
+from nemo_retriever.api.internal.schemas.extract.extract_pdf_schema import PDFExtractorSchema
+from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +366,7 @@ def make_pdf_task_config(
     text_depth: str = "page",
     extract_method: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Build the `task_config` dict expected by `nv-ingest-api` PDF extraction internals."""
+    """Build the `task_config` dict expected by `nemo_retriever.api` PDF extraction internals."""
     params: Dict[str, Any] = {
         "extract_text": extract_text,
         "extract_images": extract_images,
@@ -408,7 +408,7 @@ def extract_pdf_primitives_from_ledger_df(
     """
     _validate_pdf_ledger_df(df_ledger)
 
-    # `nv-ingest-api` engines treat this as a string-keyed mapping of trace timestamps.
+    # `nemo_retriever.api` PDF engines treat this as a string-keyed mapping of trace timestamps.
     # The Ray pipeline stage uses `{}` as well; using a list can trigger
     # "list indices must be integers or slices, not str".
     execution_trace_log: Dict[str, Any] = {}
@@ -528,7 +528,7 @@ def render_page_elements(
         "--render-mode",
         help=(
             "Page rendering mode: 'full_dpi' (render at DPI then resize_pad) or "
-            "'fit_to_model' (render at nv-ingest fit-to-1024 scale, ~93 DPI for US Letter)."
+            "'fit_to_model' (render at `nemo_retriever.api` fit-to-1024 scale, ~93 DPI for US Letter)."
         ),
     ),
     write_json_outputs: bool = typer.Option(
@@ -546,7 +546,7 @@ def render_page_elements(
     limit: Optional[int] = typer.Option(None, "--limit", help="Optionally limit number of PDFs processed."),
 ) -> None:
     """
-    Scan `input_dir` for PDFs and run nv-ingest-api PDF extraction, writing primitives JSON sidecars.
+    Scan `input_dir` for PDFs and run `nemo_retriever.api` PDF extraction, writing primitives JSON sidecars.
 
     This command is intentionally "directory-first" so you can point it at a folder of PDFs
     and get per-PDF outputs without having to build a ledger by hand.
