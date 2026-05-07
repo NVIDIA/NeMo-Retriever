@@ -449,7 +449,7 @@ This syntax and structure can be repeated for each NIM model used by CAS, ensuri
 
 - [Troubleshoot](troubleshoot.md)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
+- [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
 - [Notebooks](notebooks.md)
 - [Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)

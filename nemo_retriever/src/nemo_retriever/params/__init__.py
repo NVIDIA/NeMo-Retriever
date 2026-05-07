@@ -31,10 +31,13 @@ from .models import StoreParams
 from .models import TabularExtractParams
 from .models import TableParams
 from .models import TextChunkParams
+from .models import MetaJoinKey
 from .models import VdbUploadParams
 from .models import VideoFrameParams
 from .models import VideoFrameTextDedupParams
 from .models import WebhookParams
+from .utils import SPLIT_CONFIG_VALID_KEYS
+from .utils import resolve_split_params
 
 __all__ = [
     "ASRParams",
@@ -62,12 +65,15 @@ __all__ = [
     "RemoteInvokeParams",
     "RemoteRetryParams",
     "RunMode",
+    "SPLIT_CONFIG_VALID_KEYS",
     "StoreParams",
     "TabularExtractParams",
     "TableParams",
     "TextChunkParams",
+    "MetaJoinKey",
     "VdbUploadParams",
     "VideoFrameParams",
     "VideoFrameTextDedupParams",
     "WebhookParams",
+    "resolve_split_params",
 ]

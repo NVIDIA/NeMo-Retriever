@@ -193,11 +193,11 @@ def _parse_markdown_table(md: str) -> Optional[pd.DataFrame]:
     """Parse a simple markdown table into a DataFrame, or None on failure."""
     if not md:
         return None
-    lines = [l.strip() for l in md.strip().splitlines() if l.strip()]
+    lines = [ln.strip() for ln in md.strip().splitlines() if ln.strip()]
     # Need at least header + separator + one data row
     if len(lines) < 3:
         return None
-    data_lines = [l for l in lines if not re.match(r"^\|[\s:_-]+\|$", l)]
+    data_lines = [ln for ln in lines if not re.match(r"^\|[\s:_-]+\|$", ln)]
     if len(data_lines) < 2:
         return None
     header = [c.strip() for c in data_lines[0].strip("|").split("|")]
@@ -236,6 +236,7 @@ def _db_result_to_df(value: str) -> Optional[pd.DataFrame]:
     # Try CSV
     try:
         from io import StringIO
+
         df = pd.read_csv(StringIO(text))
         if not df.empty:
             return df
@@ -322,16 +323,14 @@ CSV_FIELDS = [
 ]
 
 
-def _print_agent_result(
-    qid: Any, question: str, agent_result: Dict[str, Any] | None, expected_sql: str = ""
-) -> None:
+def _print_agent_result(qid: Any, question: str, agent_result: Dict[str, Any] | None, expected_sql: str = "") -> None:
     """Pretty-print the agent result to stdout for quick visual inspection."""
     sep = "=" * 80
     print(f"\n{sep}")
     print(f"  Question {qid}: {question}")
     print(sep)
     if expected_sql:
-        print(f"\n  [expected_sql]")
+        print("\n  [expected_sql]")
         for line in expected_sql.splitlines():
             print(f"    {line}")
     if not agent_result:
@@ -347,7 +346,7 @@ def _print_agent_result(
             print(f"    {line}")
     remaining = {k: v for k, v in agent_result.items() if k not in ("sql_code", "response", "sql_response_from_db")}
     if remaining:
-        print(f"\n  [other keys]")
+        print("\n  [other keys]")
         for k, v in remaining.items():
             print(f"    {k}: {v}")
     print(sep)
@@ -357,8 +356,14 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_inde
     # questions = [{"question_id": 0, "question": "Show me the details for component 670-14039-0072-TS5", "SQL": ""}]
     all_questions = _load_questions(input_path)
     questions = all_questions[start_index:end_index]
-    logger.info("Running questions %d–%d (%d of %d total) from %s",
-                start_index, start_index + len(questions) - 1, len(questions), len(all_questions), input_path)
+    logger.info(
+        "Running questions %d–%d (%d of %d total) from %s",
+        start_index,
+        start_index + len(questions) - 1,
+        len(questions),
+        len(all_questions),
+        input_path,
+    )
 
     connector = PostgresDatabase(_conn_string(DATABASE))
     retriever = _build_retriever()
@@ -408,22 +413,28 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_inde
                     "path_state": {},
                     "custom_prompts": (
                         "## Responsible Users\n"
-                        "When asked who is responsible, involved, assigned, working on, or blocking a request or request task, "
+                        "When asked who is responsible, involved, assigned, working on, "
+                        "or blocking a request or request task, "
                         "always use this UNION pattern to get ALL assigned users:\n"
                         "  SELECT users.name FROM request_tasks\n"
                         "    JOIN users ON request_tasks.pic_id = users.id\n"
                         "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
                         "  UNION\n"
                         "  SELECT users.name FROM request_tasks\n"
-                        "    JOIN request_task_collaborators ON request_task_collaborators.request_task_id = request_tasks.id\n"
+                        "    JOIN request_task_collaborators "
+                        "ON request_task_collaborators.request_task_id = request_tasks.id\n"
                         "    JOIN users ON request_task_collaborators.user_id = users.id\n"
                         "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
-                        "The first half selects primary responsible users (pic_id), the second half selects collaborators (user_id). "
-                        "Only skip the second half if the question explicitly asks for the primary responsible user only.\n"
+                        "The first half selects primary responsible users (pic_id), "
+                        "the second half selects collaborators (user_id). "
+                        "Only skip the second half if the question explicitly asks "
+                        "for the primary responsible user only.\n"
                         "\n"
                         "## Task vs Request Task\n"
-                        "When a question refers to 'tasks' generically (e.g. 'all tasks', 'tasks by frequency', 'task rollback'), "
-                        "it means task definitions from the `tasks` table (which has `name`, `id`), NOT individual request_tasks. "
+                        "When a question refers to 'tasks' generically "
+                        "(e.g. 'all tasks', 'tasks by frequency', 'task rollback'), "
+                        "it means task definitions from the `tasks` table "
+                        "(which has `name`, `id`), NOT individual request_tasks. "
                         "To connect events or request-level data back to task definitions, use the join chain:\n"
                         "  request_task_events → request_tasks (via request_task_id)\n"
                         "    → filter_rule_group_tasks (via filter_rule_group_task_id)\n"
@@ -437,7 +448,9 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_inde
                         "the actual names live in separate lookup tables, not in the requests table itself. "
                         "The requests table only stores foreign key IDs. You must JOIN to get names:\n"
                         "- Trainstop: JOIN trainstops ON requests.trainstop_id = trainstops.id → use trainstops.name\n"
-                        "- Quality level: JOIN quality_levels ON requests.quality_level_id = quality_levels.id → use quality_levels.name\n"
+                        "- Quality level: JOIN quality_levels "
+                        "ON requests.quality_level_id = quality_levels.id "
+                        "→ use quality_levels.name\n"
                         "- Process: JOIN request_processes ON request_processes.request_id = requests.id "
                         "JOIN processes ON request_processes.process_id = processes.id → use processes.name\n"
                         "\n"

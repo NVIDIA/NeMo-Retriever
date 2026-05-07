@@ -116,7 +116,7 @@ jobs:
             echo "::error::DOCKER_REGISTRY secret is not set"
             exit 1
           fi
-          echo "image=${DOCKER_REGISTRY}/nv-ingest:${{ needs.determine-version.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "image=${DOCKER_REGISTRY}/nrl-service:${{ needs.determine-version.outputs.version }}" >> $GITHUB_OUTPUT
         env:
           DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
 
@@ -135,7 +135,7 @@ jobs:
           context: .
           push: false
           load: true
-          target: runtime
+          target: service
           platforms: linux/amd64
           build-args: |
             DOWNLOAD_LLAMA_TOKENIZER=True
@@ -147,14 +147,14 @@ jobs:
 
       - name: Export Docker image
         run: |
-          docker save "${{ steps.meta.outputs.image }}" | gzip -1 > nv-ingest-docker-image.tar.gz
-          ls -lh nv-ingest-docker-image.tar.gz
+          docker save "${{ steps.meta.outputs.image }}" | gzip -1 > nrl-service-docker-image.tar.gz
+          ls -lh nrl-service-docker-image.tar.gz
 
       - name: Upload Docker image artifact
         uses: actions/upload-artifact@v5
         with:
-          name: nv-ingest-docker-image
-          path: nv-ingest-docker-image.tar.gz
+          name: nrl-service-docker-image
+          path: nrl-service-docker-image.tar.gz
           if-no-files-found: error
 
   helm-build:
@@ -253,13 +253,13 @@ jobs:
       - name: Download Docker image artifact
         uses: actions/download-artifact@v5
         with:
-          name: nv-ingest-docker-image
+          name: nrl-service-docker-image
 
       - name: Load and push image
         id: push
         run: |
           echo "Loading image from tarball..."
-          LOAD_OUTPUT=$(gunzip -c nv-ingest-docker-image.tar.gz | docker load)
+          LOAD_OUTPUT=$(gunzip -c nrl-service-docker-image.tar.gz | docker load)
           echo "$LOAD_OUTPUT"
           IMAGE=$(echo "$LOAD_OUTPUT" | sed -n 's/^Loaded image: //p')
           if [ -z "$IMAGE" ]; then

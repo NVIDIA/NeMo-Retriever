@@ -120,3 +120,40 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
+
+# ---------------------------------------------------------------------------
+# Service profile: run the FastAPI ingest service.
+#
+# Build:  docker build -f nemo_retriever/Dockerfile --target service \
+#             -t nemo-retriever-service .
+#
+# Run with the bundled default config:
+#   docker run --rm -p 7670:7670 nemo-retriever-service
+#
+# Run with a custom config mounted at the well-known path:
+#   docker run --rm -p 7670:7670 \
+#     -v /host/path/to/retriever-service.yaml:/etc/nemo-retriever/retriever-service.yaml:ro \
+#     nemo-retriever-service
+#
+# The container always loads its config from
+#   /etc/nemo-retriever/retriever-service.yaml
+# Bind-mount your file to that exact path to override the bundled default.
+# ---------------------------------------------------------------------------
+FROM install AS service
+
+ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
+
+ENV PATH=/opt/retriever_runtime/bin:$PATH
+
+RUN chmod -R a+rX /root/.local \
+    && groupadd -r nemo && useradd -r -g nemo -d /workspace -s /sbin/nologin nemo \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever \
+    && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
+            "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /opt/retriever_runtime
+
+EXPOSE 7670
+
+USER nemo
+
+CMD ["retriever", "service", "start", "--config", "/etc/nemo-retriever/retriever-service.yaml"]

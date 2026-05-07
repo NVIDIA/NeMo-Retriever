@@ -41,7 +41,6 @@ _HEAVY_INTERNAL = [
     # -- sibling ingest modes (prevents batch.py/fused.py from loading) ------
     "nemo_retriever.ingest_modes.batch",
     "nemo_retriever.ingest_modes.fused",
-    "nemo_retriever.ingest_modes.online",
     # -- model / ML packages (torch, nemotron_*, transformers) ---------------
     "nemo_retriever.model.local",
     "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder",

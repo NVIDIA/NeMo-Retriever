@@ -7,9 +7,9 @@ NeMo Retriever uses different credentials depending on what you are doing:
 
 You may need one or both, for example if you deploy with Helm from NGC and also call hosted inference APIs.
 
-## NVIDIA API key (`NVIDIA_API_KEY`) {#nvidia-api-key}
+## NVIDIA API key (`NVIDIA_API_KEY`) { #nvidia-api-key }
 
-Use this key when you run [library mode](quickstart-library-mode.md), remote NIM URLs, or any workflow that calls NVIDIA-hosted inference without supplying a separate per-service secret.
+Use this key when you run the NeMo Retriever Library from Python, call remote NIM URLs, or use any workflow that calls NVIDIA-hosted inference without supplying a separate per-service secret.
 
 1. Sign in at [build.nvidia.com](https://build.nvidia.com/) with your NVIDIA developer account.
 2. Open [API keys](https://build.nvidia.com/settings/api-keys) (profile menu → **Settings** → **API keys**, or use that link after you are signed in).

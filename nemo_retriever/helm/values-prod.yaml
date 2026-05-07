@@ -1,0 +1,13 @@
+# values-prod.yaml — strict no-loss profile
+serviceConfig:
+  processing:
+    numWorkers: 64
+    batchSize: 32
+    batchTimeoutS: 1.0
+  spool:
+    enabled: true       # accepted pages are durable on PVC
+  eventBus:
+    overflowPolicy: backpressure   # never drop under sustained load
+    publishTimeoutS: 30.0          # gives slow consumers 30s before overflow
+    queueMaxsize: 8192
+    replayBufferSize: 1024

@@ -183,6 +183,7 @@ plugins:
         extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
         extraction/prerequisites.md: extraction/prerequisites-support-matrix.md
         extraction/support-matrix.md: extraction/prerequisites-support-matrix.md
+        extraction/quickstart-library-mode.md: extraction/deployment-options.md
   - site-urls
 
 markdown_extensions:
