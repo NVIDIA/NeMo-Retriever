@@ -300,6 +300,8 @@ _MIGRATIONS = [
     "ALTER TABLE datasets ADD COLUMN distribute INTEGER DEFAULT 1",
     "ALTER TABLE datasets ADD COLUMN active INTEGER DEFAULT 1",
     "ALTER TABLE datasets ADD COLUMN config_hash TEXT",
+    "ALTER TABLE datasets ADD COLUMN ocr_version TEXT",
+    "ALTER TABLE datasets ADD COLUMN lancedb_table_name TEXT DEFAULT 'nv-ingest'",
     "ALTER TABLE jobs ADD COLUMN dataset_id INTEGER",
     "ALTER TABLE jobs ADD COLUMN dataset_config_hash TEXT",
     "ALTER TABLE runs ADD COLUMN dataset_id INTEGER",
@@ -902,6 +904,8 @@ _DATASET_FIELDS = (
     "embed_granularity",
     "extract_page_as_image",
     "extract_infographics",
+    "ocr_version",
+    "lancedb_table_name",
     "distribute",
     "description",
 )
@@ -924,6 +928,8 @@ _HASH_AFFECTING_FIELDS = (
     "embed_granularity",
     "extract_page_as_image",
     "extract_infographics",
+    "ocr_version",
+    "lancedb_table_name",
 )
 
 
@@ -989,9 +995,9 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
             " recall_match_mode, recall_adapter, evaluation_mode, beir_loader,"
             " beir_dataset_name, beir_split, beir_query_language, beir_doc_id_field,"
             " beir_ks, embed_model_name, embed_modality, embed_granularity,"
-            " extract_page_as_image, extract_infographics, distribute,"
+            " extract_page_as_image, extract_infographics, ocr_version, lancedb_table_name, distribute,"
             " description, tags, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["name"],
                 data["path"],
@@ -1012,6 +1018,8 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
                 data.get("embed_granularity", "element"),
                 1 if data.get("extract_page_as_image") else 0,
                 1 if data.get("extract_infographics") else 0,
+                data.get("ocr_version") or None,
+                data.get("lancedb_table_name", "nv-ingest") or "nv-ingest",
                 0 if data.get("distribute") is False else 1,
                 data.get("description") or None,
                 tags,

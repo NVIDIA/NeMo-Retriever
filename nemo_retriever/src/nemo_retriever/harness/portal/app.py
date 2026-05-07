@@ -393,6 +393,8 @@ class DatasetCreateRequest(BaseModel):
     beir_query_language: str | None = None
     beir_doc_id_field: str = "pdf_basename"
     beir_ks: list[int] | None = None
+    ocr_version: str | None = None
+    lancedb_table_name: str | None = None
     embed_model_name: str | None = None
     embed_modality: str = "text"
     embed_granularity: str = "element"
@@ -418,6 +420,8 @@ class DatasetUpdateRequest(BaseModel):
     beir_query_language: str | None = None
     beir_doc_id_field: str | None = None
     beir_ks: list[int] | None = None
+    ocr_version: str | None = None
+    lancedb_table_name: str | None = None
     embed_model_name: str | None = None
     embed_modality: str | None = None
     embed_granularity: str | None = None
@@ -2141,6 +2145,10 @@ def _resolve_dataset_config(
         beir_ks = managed.get("beir_ks")
         if beir_ks and isinstance(beir_ks, list):
             overrides["beir_ks"] = beir_ks
+        if managed.get("ocr_version"):
+            overrides["ocr_version"] = managed["ocr_version"]
+        if managed.get("lancedb_table_name"):
+            overrides["lancedb_table_name"] = managed["lancedb_table_name"]
         if managed.get("embed_model_name"):
             overrides["embed_model_name"] = managed["embed_model_name"]
         if managed.get("embed_modality"):
