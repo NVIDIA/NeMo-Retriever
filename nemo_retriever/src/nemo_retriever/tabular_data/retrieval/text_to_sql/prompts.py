@@ -395,13 +395,22 @@ Only mark as invalid if there are SERIOUS problems. If the SQL could reasonably 
 Provide your analysis."""
 
 
-def create_entity_extraction_prompt(question: str) -> str:
+def create_entity_extraction_prompt(question: str, custom_prompts: str = "") -> str:
+    domain_section = ""
+    if custom_prompts:
+        domain_section = (
+            "\nDomain-specific rules (use these to identify relevant database "
+            "concepts and item names for item_search_queries, and to decide "
+            "which rules are relevant via relevant_rule_names):\n"
+            f"{custom_prompts}\n"
+        )
+
     return f"""
 You are extracting entities and concepts from a user question for SQL calculation.
 
 User Question:
 {question}
-
+{domain_section}
 Extract:
 1) required_entity_name: list of entities/concepts mentioned in the question.
 - extract ALL entities that most likely refer to a specific entity in the database.
@@ -412,6 +421,18 @@ Extract:
 - Remove dates, numbers, names, specific identifiers
    - Keep the structure and intent
    - Example: "What is the average order value in 2023?" → "What is the average order value?"
+
+3) item_search_queries: 2-4 short search phrases to find relevant database items (tables, columns, relationships, etc.).
+- Rephrase the question from different angles using database concepts.
+- If domain rules mention specific item/table names or concepts relevant to the question,
+  include those names as search phrases.
+- Each phrase should target a different aspect of the question.
+- Example: For "Who is blocking progress?" with domain rules mentioning collaborators →
+  ["request task collaborators blocking", "request tasks status in_progress", "users assigned to tasks"]
+
+4) relevant_rule_names: from the domain rules above, list the NAMES (## headings) of rules
+   that are relevant to answering this question. Only include rules whose guidance is needed.
+   Return an empty list if no domain rules are provided or none apply.
 """
 
 
@@ -435,4 +456,10 @@ User's question:
 Candidate tables:
 {tables_summary}
 
-Return the names of tables that should be KEPT."""
+You MUST provide your reasoning FIRST — think step-by-step:
+1. What does the question ask for?
+2. Which tables are needed and why?
+3. What join chains connect them?
+4. Which tables are irrelevant and can be removed?
+
+Then return the names of tables that should be KEPT."""

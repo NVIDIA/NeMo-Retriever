@@ -6,7 +6,7 @@ from typing import Generator
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from nemo_retriever.tabular_data.retrieval.text_to_sql.text_to_sql_graph import create_graph
-from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload, AgentState
+from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload, AgentState, rules_to_text
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import main_system_prompt_template
 from nemo_retriever.tabular_data.retrieval.utils import get_llm_client
 
@@ -24,7 +24,7 @@ app = graph.compile()
 
 def _build_state(payload: AgentPayload) -> AgentState:
     acronyms = payload.get("acronyms", "")
-    custom_prompts = payload.get("custom_prompts", "")
+    custom_prompts_raw = payload.get("custom_prompts", "")
     connector = payload.get("connector")
     if connector is None:
         raise ValueError(
@@ -40,7 +40,14 @@ def _build_state(payload: AgentPayload) -> AgentState:
         )
 
     acronyms_text = f"Acronyms:\n{acronyms}\n\n" if acronyms else ""
-    custom_prompts_text = f"{custom_prompts}\n\n" if custom_prompts else ""
+
+    if isinstance(custom_prompts_raw, list):
+        custom_prompts_rules = custom_prompts_raw
+        custom_prompts_text = rules_to_text(custom_prompts_rules)
+    else:
+        custom_prompts_rules = []
+        custom_prompts_text = f"{custom_prompts_raw}\n\n" if custom_prompts_raw else ""
+
     initial_path_state = dict(payload.get("path_state") or {})
 
     main_system_prompt = main_system_prompt_template.format(
@@ -62,7 +69,7 @@ def _build_state(payload: AgentPayload) -> AgentState:
         "path_state": initial_path_state,
         "retriever": retriever,
         "decision": "",
-        "custom_prompts": custom_prompts_text,
+        "custom_prompts_rules": custom_prompts_rules,
     }
 
 
@@ -71,8 +78,11 @@ def _extract_answer(final_state: dict) -> dict:
     final_response = path_state.get("final_response")
 
     if final_response is None:
-        messages_out = final_state.get("messages", [])
-        final_response = messages_out[-1] if messages_out else ""
+        messages_out = final_state.get("messages") or []
+        if isinstance(messages_out, list) and messages_out:
+            final_response = messages_out[-1]
+        else:
+            final_response = ""
 
     if isinstance(final_response, dict):
         return final_response

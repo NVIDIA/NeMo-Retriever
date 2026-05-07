@@ -408,59 +408,76 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_inde
                     "retriever": retriever,
                     "connector": connector,
                     "path_state": {},
-                    "custom_prompts": (
-                        "## Responsible Users\n"
-                        "When asked who is responsible, involved, assigned, working on, "
-                        "or blocking a request or request task, "
-                        "always use this UNION pattern to get ALL assigned users:\n"
-                        "  SELECT users.name FROM request_tasks\n"
-                        "    JOIN users ON request_tasks.pic_id = users.id\n"
-                        "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
-                        "  UNION\n"
-                        "  SELECT users.name FROM request_tasks\n"
-                        "    JOIN request_task_collaborators "
-                        "ON request_task_collaborators.request_task_id = request_tasks.id\n"
-                        "    JOIN users ON request_task_collaborators.user_id = users.id\n"
-                        "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
-                        "The first half selects primary responsible users (pic_id), "
-                        "the second half selects collaborators (user_id). "
-                        "Only skip the second half if the question explicitly asks "
-                        "for the primary responsible user only.\n"
-                        "\n"
-                        "## Task vs Request Task\n"
-                        "When a question refers to 'tasks' generically "
-                        "(e.g. 'all tasks', 'tasks by frequency', 'task rollback'), "
-                        "it means task definitions from the `tasks` table "
-                        "(which has `name`, `id`), NOT individual request_tasks. "
-                        "To connect events or request-level data back to task definitions, use the join chain:\n"
-                        "  request_task_events → request_tasks (via request_task_id)\n"
-                        "    → filter_rule_group_tasks (via filter_rule_group_task_id)\n"
-                        "    → workflow_tasks (via workflow_task_id)\n"
-                        "    → tasks (via task_id)\n"
-                        "A `request_task` is a specific instance of a task for a specific request. "
-                        "Always GROUP BY tasks.id and SELECT tasks.name when aggregating across task types.\n"
-                        "\n"
-                        "## Request Attributes\n"
-                        "When a question mentions trainstop, quality level, or process by name, "
-                        "the actual names live in separate lookup tables, not in the requests table itself. "
-                        "The requests table only stores foreign key IDs. You must JOIN to get names:\n"
-                        "- Trainstop: JOIN trainstops ON requests.trainstop_id = trainstops.id → use trainstops.name\n"
-                        "- Quality level: JOIN quality_levels "
-                        "ON requests.quality_level_id = quality_levels.id "
-                        "→ use quality_levels.name\n"
-                        "- Process: JOIN request_processes ON request_processes.request_id = requests.id "
-                        "JOIN processes ON request_processes.process_id = processes.id → use processes.name\n"
-                        "\n"
-                        "## Product Hierarchy\n"
-                        "Pcodes, products, and business units form a hierarchy:\n"
-                        "- A pcode belongs to a product: JOIN products ON pcodes.product_id = products.id\n"
-                        "- A product belongs to a business unit (BU): JOIN bus ON products.bu_id = bus.id\n"
-                        "When a question asks about pcodes and business units together, always join through products. "
-                        "\n"
-                        "## GPU MODS Version\n"
-                        "GPU MODS version values are stored in the request_attribute_values table "
-                        "where field_name = 'modsVersion'. The actual version value is in the text_value column.\n"
-                    ),
+                    "custom_prompts": [
+                        {
+                            "name": "Responsible Users",
+                            "description": (
+                                "When asked who is responsible, involved, assigned, working on, "
+                                "or blocking a request or request task, "
+                                "always use this UNION pattern to get ALL assigned users:\n"
+                                "  SELECT users.name FROM request_tasks\n"
+                                "    JOIN users ON request_tasks.pic_id = users.id\n"
+                                "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
+                                "  UNION\n"
+                                "  SELECT users.name FROM request_tasks\n"
+                                "    JOIN request_task_collaborators "
+                                "ON request_task_collaborators.request_task_id = request_tasks.id\n"
+                                "    JOIN users ON request_task_collaborators.user_id = users.id\n"
+                                "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
+                                "The first half selects primary responsible users (pic_id), "
+                                "the second half selects collaborators (user_id). "
+                                "Only skip the second half if the question explicitly asks "
+                                "for the primary responsible user only."
+                            ),
+                        },
+                        {
+                            "name": "Task vs Request Task",
+                            "description": (
+                                "When a question refers to 'tasks' generically "
+                                "(e.g. 'all tasks', 'tasks by frequency', 'task rollback'), "
+                                "it means task definitions from the `tasks` table "
+                                "(which has `name`, `id`), NOT individual request_tasks. "
+                                "To connect events or request-level data back to task definitions, "
+                                "use the join chain:\n"
+                                "  request_task_events → request_tasks (via request_task_id)\n"
+                                "    → filter_rule_group_tasks (via filter_rule_group_task_id)\n"
+                                "    → workflow_tasks (via workflow_task_id)\n"
+                                "    → tasks (via task_id)\n"
+                                "A `request_task` is a specific instance of a task for a specific request. "
+                                "Always GROUP BY tasks.id and SELECT tasks.name when aggregating across task types."
+                            ),
+                        },
+                        {
+                            "name": "Request Attributes",
+                            "description": (
+                                "When a question mentions trainstop, quality level, or process by name, "
+                                "the actual names live in separate lookup tables, not in the requests table itself. "
+                                "The requests table only stores foreign key IDs. You must JOIN to get names:\n"
+                                "- Trainstop: JOIN trainstops ON requests.trainstop_id = trainstops.id → use trainstops.name\n"
+                                "- Quality level: JOIN quality_levels "
+                                "ON requests.quality_level_id = quality_levels.id → use quality_levels.name\n"
+                                "- Process: JOIN request_processes ON request_processes.request_id = requests.id "
+                                "JOIN processes ON request_processes.process_id = processes.id → use processes.name"
+                            ),
+                        },
+                        {
+                            "name": "Product Hierarchy",
+                            "description": (
+                                "Pcodes, products, and business units form a hierarchy:\n"
+                                "- A pcode belongs to a product: JOIN products ON pcodes.product_id = products.id\n"
+                                "- A product belongs to a business unit (BU): JOIN bus ON products.bu_id = bus.id\n"
+                                "When a question asks about pcodes and business units together, "
+                                "always join through products."
+                            ),
+                        },
+                        {
+                            "name": "GPU MODS Version",
+                            "description": (
+                                "GPU MODS version values are stored in the request_attribute_values table "
+                                "where field_name = 'modsVersion'. The actual version value is in the text_value column."
+                            ),
+                        },
+                    ],
                     "acronyms": "",
                 }
                 agent_result = get_agent_response(payload)

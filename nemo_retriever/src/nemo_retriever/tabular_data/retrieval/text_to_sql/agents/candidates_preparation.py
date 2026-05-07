@@ -26,6 +26,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import TableRelevanceModel
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import TABLE_RELEVANCE_FILTER_PROMPT
+from nemo_retriever.tabular_data.retrieval.text_to_sql.state import rules_to_text
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     AgentState,
     get_question_for_processing,
@@ -107,17 +108,20 @@ class CandidatePreparationAgent(BaseAgent):
         additional_tables = get_relevant_tables(
             state["retriever"],
             question,
-            k=5,
+            k=15,
         )
-
         relevant_tables.extend(additional_tables)
-        relevant_tables = dedupe_merge_relevant_tables(relevant_tables)
-        self.logger.info(f"Found {len(relevant_tables)} relevant tables (before relevance filter)")
+        relevant_tables = dedupe_merge_relevant_tables(relevant_tables)[:20]
+        self.logger.info(f"Found {len(relevant_tables)} relevant tables (after dedupe, capped at 20)")
 
         relevant_tables, table_relevance_reasoning = self._filter_tables_by_relevance(
             state, question, relevant_tables,
         )
-        self.logger.info(f"Kept {len(relevant_tables)} relevant tables (after relevance filter)")
+        self.logger.info(
+            "Kept %d relevant tables (after relevance filter): %s",
+            len(relevant_tables),
+            [t["name"] for t in relevant_tables],
+        )
 
         relevant_queries = _extract_relevant_queries(
             candidates,
@@ -167,12 +171,12 @@ class CandidatePreparationAgent(BaseAgent):
             for t in tables
         )
 
-        custom_prompts = state.get("custom_prompts", "")
+        custom_prompts_text = rules_to_text(state.get("custom_prompts_rules", []))
         domain_rules = ""
-        if custom_prompts:
+        if custom_prompts_text:
             domain_rules = (
                 "Domain-specific rules (use these to decide relevance):\n"
-                f"{custom_prompts}\n"
+                f"{custom_prompts_text}\n"
             )
 
         prompt_text = TABLE_RELEVANCE_FILTER_PROMPT.format(
@@ -189,27 +193,41 @@ class CandidatePreparationAgent(BaseAgent):
         try:
             result = invoke_with_structured_output(llm, messages, TableRelevanceModel)
         except Exception as e:
-            self.logger.warning(f"Table relevance LLM call failed: {e} — keeping all tables")
-            return tables, ""
+            top_n = tables[:10]
+            self.logger.warning(
+                "Table relevance LLM call failed: %s — falling back to top %d/%d tables",
+                e, len(top_n), len(tables),
+            )
+            return top_n, ""
 
         if result is None:
-            self.logger.warning("Table relevance filter returned None — keeping all tables")
-            return tables, ""
+            top_n = tables[:10]
+            self.logger.warning(
+                "Table relevance filter returned None (LLM parsing failed). "
+                "Falling back to top %d/%d tables by retrieval order. "
+                "Check ERROR logs above for parsing/validation details.",
+                len(top_n),
+                len(tables),
+            )
+            return top_n, ""
 
-        reasoning = result.reasoning or ""
+        reasoning = (result.reasoning or "").strip()
         kept_names = {name.lower() for name in result.relevant_table_names}
 
         filtered = [t for t in tables if t["name"].lower() in kept_names]
 
         removed = [t["name"] for t in tables if t["name"].lower() not in kept_names]
+        self.logger.info("Relevance filter reasoning: %s", reasoning if reasoning else "(empty)")
         if removed:
-            self.logger.info(f"Relevance filter removed tables: {removed}")
-        if reasoning:
-            self.logger.info(f"Relevance filter reasoning: {reasoning}")
+            self.logger.info("Relevance filter removed tables: %s", removed)
 
         if not filtered:
-            self.logger.warning("Relevance filter removed ALL tables — keeping originals")
-            return tables, reasoning
+            top_n = tables[:10]
+            self.logger.warning(
+                "Relevance filter removed ALL tables — falling back to top %d/%d tables",
+                len(top_n), len(tables),
+            )
+            return top_n, reasoning
 
         return filtered, reasoning
 

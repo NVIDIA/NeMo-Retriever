@@ -37,6 +37,7 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import (
     create_sql_user_prompt,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
+from nemo_retriever.tabular_data.retrieval.text_to_sql.state import rules_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -199,11 +200,13 @@ class SQLFromCandidatesAgent(BaseAgent):
                 queries=relevant_queries,
                 qa_from_conversations=similar_questions_txt,
                 tables=format_tables_for_prompt(relevant_tables),
-                custom_prompts=state.get("custom_prompts", ""),
+                custom_prompts=rules_to_text(state.get("custom_prompts_rules", [])),
             )
 
             # Choose system prompt based on context
-            system_prompt = create_sql_from_candidates_prompt(custom_analyses, state.get("custom_prompts", ""))
+            system_prompt = create_sql_from_candidates_prompt(
+                custom_analyses, rules_to_text(state.get("custom_prompts_rules", []))
+            )
 
             messages = state["messages"] + [
                 SystemMessage(content=system_prompt),

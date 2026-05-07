@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     AgentState,
     get_question_for_processing,
+    rules_to_text,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
@@ -34,6 +35,26 @@ class EntitiesExtractionModel(BaseModel):
     query_no_values: str = Field(
         ...,
         description="The user's query with all specific values stripped out (dates, numbers, names, etc.).",
+    )
+    item_search_queries: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Generate 2-4 short search phrases to help find relevant database items "
+            "(tables, columns, etc.). "
+            "Rephrase the question from different angles. Use the domain rules "
+            "(if provided) to identify which database concepts and item names "
+            "might be relevant. Each phrase should target a different aspect "
+            "of the question."
+        ),
+    )
+    relevant_rule_names: list[str] = Field(
+        default_factory=list,
+        description=(
+            "From the domain rules provided, return the names of rules that are "
+            "relevant to the user's question. Only include rules whose guidance "
+            "is needed to construct the correct SQL. Return an empty list if no "
+            "domain rules are provided or none are relevant."
+        ),
     )
 
 
@@ -57,21 +78,50 @@ class EntitiesExtractionAgent(BaseAgent):
         base_messages = state["messages"]
         path_state = state.get("path_state", {})
         question = get_question_for_processing(state)
+        custom_prompts_rules = state.get("custom_prompts_rules", [])
+        custom_prompts_text = rules_to_text(custom_prompts_rules)
 
         try:
-            extraction_messages = base_messages + [SystemMessage(content=create_entity_extraction_prompt(question))]
+            extraction_messages = base_messages + [
+                SystemMessage(content=create_entity_extraction_prompt(question, custom_prompts_text))
+            ]
             extraction_result = invoke_with_structured_output(llm, extraction_messages, EntitiesExtractionModel)
             entities = extraction_result.required_entity_name or []
+            item_search_queries = extraction_result.item_search_queries or []
+            relevant_rule_names = extraction_result.relevant_rule_names or []
+
+            combined = entities + item_search_queries
 
             path_state["query_no_values"] = extraction_result.query_no_values
-            path_state["entities"] = entities
+            path_state["entities"] = combined
 
             self.logger.info(
-                "Extracted %s entities/concepts from normalized question: %s",
+                "Extracted %s entities + %s search queries = %s total: %s",
                 len(entities),
-                entities,
+                len(item_search_queries),
+                len(combined),
+                combined,
             )
-            return {"path_state": path_state}
+
+            result: Dict[str, Any] = {"path_state": path_state}
+
+            if custom_prompts_rules and relevant_rule_names:
+                names_lower = {n.lower() for n in relevant_rule_names}
+                filtered_rules = [
+                    r for r in custom_prompts_rules
+                    if r.get("name", "").lower() in names_lower
+                ]
+                result["custom_prompts_rules"] = filtered_rules
+                self.logger.info(
+                    "Filtered custom_prompts_rules: kept %s/%s rules: %s",
+                    len(filtered_rules),
+                    len(custom_prompts_rules),
+                    [r["name"] for r in filtered_rules],
+                )
+            else:
+                self.logger.info("No rule filtering applied (no rules or no relevant names returned)")
+
+            return result
 
         except Exception as e:
             self.logger.warning(f"Entity extraction failed: {e}, using fallback values")
