@@ -59,6 +59,14 @@ IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
 
 
+def _unsupported_extension_error(ext: str) -> ValueError:
+    display_ext = ext or "<none>"
+    return ValueError(
+        f"Unsupported file extension '{display_ext}' for extraction_mode='auto'. "
+        "Provide a supported extension or set extraction_mode explicitly."
+    )
+
+
 def _has_endpoint(*values: Any) -> bool:
     return any(bool(str(value or "").strip()) for value in values)
 
@@ -196,6 +204,8 @@ class _MultiTypeExtractBase(AbstractOperator):
             path = str(row.get("path") or "")
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            if explicit_mode == "auto" and target == "":
+                raise _unsupported_extension_error(ext)
             if target in grouped:
                 grouped[target].append(idx)
 
@@ -237,6 +247,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         for path in files:
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            if explicit_mode == "auto" and target == "":
+                raise _unsupported_extension_error(ext)
             if target in grouped:
                 grouped[target].append(path)
 

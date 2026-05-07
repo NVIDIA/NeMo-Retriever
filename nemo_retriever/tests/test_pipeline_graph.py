@@ -609,7 +609,6 @@ class TestMultiTypeExtractOperator:
             "/folder/page.html",
             "/folder/audio.mp3",
             "/folder/video.mp4",
-            "/folder/unknown.xyz",
         ]
 
         grouped = op.preprocess(files)
@@ -620,6 +619,21 @@ class TestMultiTypeExtractOperator:
         assert grouped["html"] == ["/folder/page.html"]
         assert grouped["audio"] == ["/folder/audio.mp3"]
         assert grouped["video"] == ["/folder/video.mp4"]
+
+    def test_auto_mode_rejects_unsupported_extension_in_file_list(self):
+        op = MultiTypeExtractOperator(extraction_mode="auto")
+
+        with pytest.raises(ValueError, match=r"Unsupported file extension '\.xyz'"):
+            op.preprocess(["/folder/unknown.xyz"])
+
+    def test_auto_mode_rejects_unsupported_extension_in_dataframe_batch(self):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+        op = MultiTypeExtractCPUActor(extraction_mode="auto")
+        batch = pd.DataFrame({"path": ["/folder/unknown.xyz"], "bytes": [b"unsupported"]})
+
+        with pytest.raises(ValueError, match=r"Unsupported file extension '\.xyz'"):
+            op.process(batch)
 
     def test_preprocess_folder_path(self):
         """Test preprocessing with folder path."""
