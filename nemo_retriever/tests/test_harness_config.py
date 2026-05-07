@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 import nemo_retriever.harness.config as harness_config
-from nemo_retriever.harness.config import load_harness_config, load_nightly_config, load_runs_config
+from nemo_retriever.harness.config import HarnessConfig, load_harness_config, load_nightly_config, load_runs_config
 
 
 def _write_harness_config(path: Path, dataset_dir: Path, query_csv: Path) -> None:
@@ -32,6 +32,8 @@ def _write_harness_config(path: Path, dataset_dir: Path, query_csv: Path) -> Non
                 f"    query_csv: {query_csv}",
                 "    input_type: pdf",
                 "    recall_required: true",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
             ]
         ),
         encoding="utf-8",
@@ -63,6 +65,31 @@ def test_load_harness_config_precedence(tmp_path: Path, monkeypatch: pytest.Monk
     assert cfg.gpu_ocr == 0.7  # sweep override
     assert cfg.gpu_embed == 0.9  # env override (highest)
     assert cfg.recall_required is True
+
+
+def test_harness_config_preserves_legacy_evaluation_defaults(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(dataset_dir=str(dataset_dir), dataset_label="tiny", preset="base")
+
+    assert cfg.evaluation_mode == "recall"
+    assert cfg.beir_loader is None
+
+
+def test_load_harness_config_supports_lancedb_table_name_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,source,page\nq,a,1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    _write_harness_config(cfg_path, dataset_dir, query_csv)
+
+    monkeypatch.setenv("HARNESS_LANCEDB_TABLE_NAME", "custom-table")
+
+    cfg = load_harness_config(config_file=str(cfg_path), dataset="tiny", preset="base")
+
+    assert cfg.lancedb_table_name == "custom-table"
 
 
 def test_load_harness_config_supports_run_mode_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -117,6 +144,9 @@ def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: 
                 "active:",
                 f"  dataset_dir: {dataset_dir}",
                 "  preset: base",
+                "  input_type: audio",
+                "  evaluation_mode: recall",
+                "  recall_match_mode: audio_segment",
                 "  recall_required: true",
                 "presets:",
                 "  base: {}",
@@ -177,6 +207,43 @@ def test_load_nightly_config_parses_slack_defaults(tmp_path: Path) -> None:
     assert "recall_5" in cfg["slack"]["metric_keys"]
 
 
+def test_beir_dense_sweep_config_lists_all_beir_datasets() -> None:
+    cfg = load_nightly_config(str(harness_config.NEMO_RETRIEVER_ROOT / "harness" / "beir_sweep_dense.yaml"))
+    datasets = [run["dataset"] for run in cfg["runs"]]
+    presets_by_dataset = {run["dataset"]: run["preset"] for run in cfg["runs"]}
+
+    assert datasets == [
+        "jp20",
+        "bo767",
+        "bo10k",
+        "earnings",
+        "financebench",
+        "vidore_v3_computer_science",
+        "vidore_v3_energy",
+        "vidore_v3_finance_en",
+        "vidore_v3_finance_fr",
+        "vidore_v3_hr",
+        "vidore_v3_industrial",
+        "vidore_v3_pharmaceuticals",
+        "vidore_v3_physics",
+    ]
+    for dataset in ["jp20", "bo767", "bo10k", "earnings", "financebench"]:
+        assert presets_by_dataset[dataset] == "PE_GE_OCR_TE_DENSE"
+    for dataset in [
+        "vidore_v3_computer_science",
+        "vidore_v3_energy",
+        "vidore_v3_finance_en",
+        "vidore_v3_finance_fr",
+        "vidore_v3_hr",
+        "vidore_v3_industrial",
+        "vidore_v3_pharmaceuticals",
+        "vidore_v3_physics",
+    ]:
+        assert presets_by_dataset[dataset] == "PE_GE_OCR_VL_IMAGE_TEXT_DENSE"
+    assert cfg["slack"]["title"] == "BEIR Dense Dataset Sweep"
+    assert "ndcg_10" in cfg["slack"]["metric_keys"]
+
+
 def test_load_nightly_config_rejects_invalid_metric_keys(tmp_path: Path) -> None:
     runs_path = tmp_path / "nightly.yaml"
     runs_path.write_text(
@@ -195,7 +262,7 @@ def test_load_nightly_config_rejects_invalid_metric_keys(tmp_path: Path) -> None
         load_nightly_config(str(runs_path))
 
 
-def test_load_harness_config_supports_recall_adapter_and_match_mode(tmp_path: Path) -> None:
+def test_load_harness_config_rejects_document_recall_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -213,17 +280,18 @@ def test_load_harness_config_supports_recall_adapter_and_match_mode(tmp_path: Pa
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
+                "    input_type: pdf",
+                "    evaluation_mode: recall",
                 "    recall_required: true",
-                "    recall_adapter: page_plus_one",
+                "    recall_adapter: none",
                 "    recall_match_mode: pdf_page",
             ]
         ),
         encoding="utf-8",
     )
 
-    cfg = load_harness_config(config_file=str(cfg_path))
-    assert cfg.recall_adapter == "page_plus_one"
-    assert cfg.recall_match_mode == "pdf_page"
+    with pytest.raises(ValueError, match="evaluation_mode=recall is only supported"):
+        load_harness_config(config_file=str(cfg_path))
 
 
 def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> None:
@@ -248,6 +316,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
                 "    input_type: audio",
+                "    evaluation_mode: recall",
                 "    segment_audio: true",
                 "    audio_split_type: time",
                 "    audio_split_interval: 30",
@@ -288,7 +357,9 @@ def test_load_harness_config_supports_multimodal_embedding_options(tmp_path: Pat
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    embed_modality: text",
                 "    embed_granularity: element",
                 "    extract_page_as_image: false",
@@ -383,7 +454,9 @@ def test_load_harness_config_resolves_relative_query_csv_from_config_dir(
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 "    query_csv: query.csv",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
             ]
         ),
         encoding="utf-8",
@@ -423,7 +496,10 @@ def test_load_harness_config_falls_back_to_repo_root_for_query_csv(
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 "    query_csv: data/financebench_train.json",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: financebench_json",
+                "    beir_doc_id_field: pdf_basename",
             ]
         ),
         encoding="utf-8",
@@ -469,6 +545,9 @@ def test_load_harness_config_rejects_invalid_recall_adapter(tmp_path: Path) -> N
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
+                "    input_type: audio",
+                "    evaluation_mode: recall",
+                "    recall_match_mode: audio_segment",
                 "    recall_required: true",
                 "    recall_adapter: unknown_adapter",
             ]
@@ -525,7 +604,9 @@ def test_load_harness_config_rejects_invalid_embed_modality(tmp_path: Path) -> N
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    embed_modality: invalid",
             ]
         ),
@@ -533,6 +614,70 @@ def test_load_harness_config_rejects_invalid_embed_modality(tmp_path: Path) -> N
     )
 
     with pytest.raises(ValueError, match="embed_modality must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_supports_optional_ocr_version_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    recall_required: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.ocr_version is None
+
+    cfg = load_harness_config(config_file=str(cfg_path), cli_overrides=["ocr_version=v1"])
+    assert cfg.ocr_version == "v1"
+
+    monkeypatch.setenv("HARNESS_OCR_VERSION", "v2")
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.ocr_version == "v2"
+
+
+def test_load_harness_config_rejects_invalid_ocr_version(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    recall_required: false",
+                "    ocr_version: v3",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ocr_version must be one of"):
         load_harness_config(config_file=str(cfg_path))
 
 
@@ -554,7 +699,9 @@ def test_load_harness_config_rejects_image_text_alias(tmp_path: Path) -> None:
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    embed_modality: image_text",
             ]
         ),
@@ -583,7 +730,9 @@ def test_load_harness_config_rejects_removed_image_elements_modality_key(tmp_pat
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    image_elements_modality: text_image",
             ]
         ),
@@ -617,6 +766,26 @@ def test_load_harness_config_supports_financebench_beir_defaults(monkeypatch: py
     assert cfg.beir_doc_id_field == "pdf_basename"
 
 
+def test_load_harness_config_supports_bo20_ingestion_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_exists = Path.exists
+    expected_dataset_dir = Path("/datasets/nv-ingest/bo20").resolve()
+
+    def _fake_exists(path_self: Path) -> bool:
+        if path_self == expected_dataset_dir:
+            return True
+        return real_exists(path_self)
+
+    monkeypatch.setattr(harness_config.Path, "exists", _fake_exists)
+
+    cfg = load_harness_config(dataset="bo20", preset="single_gpu")
+
+    assert cfg.dataset_dir == str(expected_dataset_dir)
+    assert cfg.query_csv is None
+    assert cfg.recall_required is False
+    assert cfg.evaluation_mode == "none"
+    assert cfg.beir_loader is None
+
+
 def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     real_exists = Path.exists
     expected_dataset_dir = Path("/datasets/nv-ingest/bo767").resolve()
@@ -638,6 +807,30 @@ def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.Mo
     assert cfg.recall_required is False
     assert cfg.evaluation_mode == "beir"
     assert cfg.beir_loader == "bo767_csv"
+    assert cfg.beir_doc_id_field == "pdf_page"
+
+
+def test_load_harness_config_supports_jp20_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_exists = Path.exists
+    expected_dataset_dir = Path("/datasets/nv-ingest/jp20").resolve()
+    expected_query_csv = (harness_config.REPO_ROOT / "data" / "jp20_query_gt.csv").resolve()
+
+    def _fake_exists(path_self: Path) -> bool:
+        if path_self == expected_dataset_dir:
+            return True
+        if path_self == expected_query_csv:
+            return True
+        return real_exists(path_self)
+
+    monkeypatch.setattr(harness_config.Path, "exists", _fake_exists)
+
+    cfg = load_harness_config(dataset="jp20", preset="single_gpu")
+
+    assert cfg.dataset_dir == str(expected_dataset_dir)
+    assert cfg.query_csv == str(expected_query_csv)
+    assert cfg.recall_required is False
+    assert cfg.evaluation_mode == "beir"
+    assert cfg.beir_loader == "jp20_csv"
     assert cfg.beir_doc_id_field == "pdf_page"
 
 
@@ -707,7 +900,9 @@ def test_load_harness_config_supports_store_options(tmp_path: Path) -> None:
                 "  tiny:",
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
-                "    recall_required: true",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
                 "    store_images_uri: stored_images",
                 "    store_text: true",
                 "    strip_base64: false",

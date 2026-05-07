@@ -47,11 +47,44 @@ def test_evaluate_run_outcome_fails_when_beir_metrics_missing() -> None:
     assert success is False
 
 
+def test_evaluate_run_outcome_allows_no_evaluation_metrics() -> None:
+    rc, reason, success = _evaluate_run_outcome(0, "none", False, {}, {})
+    assert rc == 0
+    assert reason == ""
+    assert success is True
+
+
 def test_evaluate_run_outcome_uses_subprocess_error_code() -> None:
     rc, reason, success = _evaluate_run_outcome(2, "recall", True, {"recall@5": 0.9})
     assert rc == 2
     assert reason == "subprocess_exit_2"
     assert success is False
+
+
+def test_print_failure_report_only_uses_collected_host_metadata(tmp_path: Path, capsys) -> None:
+    artifact_dir = tmp_path / "run"
+    artifact_dir.mkdir()
+    result = {
+        "failure_reason": "missing_beir_metrics",
+        "return_code": 97,
+        "test_config": {"dataset_label": "jp20", "dataset_dir": "/data/jp20", "preset": "PE_GE_OCR_TE_DENSE"},
+        "run_metadata": {
+            "host": "worker-1",
+            "gpu_count": 8,
+            "cuda_driver": "550.54",
+            "python_version": "3.12.8",
+        },
+    }
+
+    harness_run._print_failure_report(result, "retriever harness run --dataset jp20", artifact_dir, [])
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "GPU Count      :  8" in output
+    assert "CUDA Driver    :  550.54" in output
+    assert "Python         :  3.12.8" in output
+    assert "GPU            :" not in output
+    assert "CPU / Memory" not in output
 
 
 def test_create_run_artifact_dir_defaults_to_dataset_label(tmp_path: Path) -> None:
@@ -122,24 +155,28 @@ def test_last_commit_fallback_reads_git_metadata(
 def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         write_detection_file=False,
     )
-    cmd, runtime_dir, detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--run-mode" in cmd
     assert cmd[cmd.index("--run-mode") + 1] == "batch"
     assert "--detection-summary-file" in cmd
     assert "--evaluation-mode" in cmd
-    assert cmd[cmd.index("--evaluation-mode") + 1] == "recall"
-    assert "--recall-match-mode" in cmd
-    assert "pdf_page" in cmd
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
+    assert "--beir-loader" in cmd
+    assert "--recall-match-mode" not in cmd
     assert "--pdf-extract-tasks" in cmd
     assert "--pdf-extract-cpus-per-task" in cmd
     assert "--page-elements-actors" in cmd
@@ -152,54 +189,133 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     assert "text" in cmd
     assert "--embed-granularity" in cmd
     assert "element" in cmd
+    assert "--ocr-version" not in cmd
     assert "--extract-page-as-image" in cmd
     assert "--no-extract-page-as-image" not in cmd
     assert detection_file.parent == runtime_dir
     assert detection_file.name == ".detection_summary.json"
-    assert effective_query_csv == query_csv
+    assert effective_query_csv is None
 
 
 def test_build_command_supports_inprocess_run_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
         run_mode="inprocess",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         write_detection_file=False,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--run-mode" in cmd
     assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
+
+
+def test_build_command_passes_explicit_ocr_version(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="PE_GE_OCR_TE_DENSE",
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
+        ocr_version="v1",
+    )
+
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--ocr-version" in cmd
+    assert cmd[cmd.index("--ocr-version") + 1] == "v1"
 
 
 def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
-        dataset_label="vidore_v3_computer_science",
+        dataset_label="jp20",
         preset="single_gpu",
         evaluation_mode="beir",
-        beir_loader="vidore_hf",
-        beir_dataset_name="vidore_v3_computer_science",
-        query_csv=None,
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
         recall_required=False,
+        lancedb_table_name="custom-table",
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--evaluation-mode" in cmd
     assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
     assert "--beir-loader" in cmd
-    assert cmd[cmd.index("--beir-loader") + 1] == "vidore_hf"
+    assert cmd[cmd.index("--beir-loader") + 1] == "jp20_csv"
     assert "--beir-dataset-name" in cmd
     assert "--beir-k" in cmd
+    assert "--query-csv" not in cmd
+    assert "--recall-match-mode" not in cmd
+    vdb_kwargs = json.loads(cmd[cmd.index("--vdb-kwargs-json") + 1])
+    assert vdb_kwargs["table_name"] == "custom-table"
+    assert effective_query_csv is None
+
+
+def test_build_command_does_not_include_api_key(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
+        api_key="secret-token",
+    )
+
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--api-key" not in cmd
+    assert "secret-token" not in cmd
+
+
+def test_build_command_supports_no_evaluation_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="bo20",
+        preset="single_gpu",
+        evaluation_mode="none",
+        recall_required=False,
+    )
+
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "none"
+    assert "--beir-loader" not in cmd
     assert "--query-csv" not in cmd
     assert "--recall-match-mode" not in cmd
     assert effective_query_csv is None
@@ -222,7 +338,7 @@ def test_build_command_supports_bo767_beir_pdf_page_modality_doc_id_field(tmp_pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "bo767_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
@@ -248,11 +364,37 @@ def test_build_command_supports_bo10k_beir_pdf_page_modality_doc_id_field(tmp_pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "bo10k_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
     assert cmd[cmd.index("--beir-doc-id-field") + 1] == "pdf_page_modality"
+    assert "--query-csv" not in cmd
+    assert effective_query_csv is None
+
+
+def test_build_command_supports_jp20_beir_pdf_page_doc_id_field(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
+    )
+
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert cmd[cmd.index("--beir-loader") + 1] == "jp20_csv"
+    assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
+    assert cmd[cmd.index("--beir-doc-id-field") + 1] == "pdf_page"
     assert "--query-csv" not in cmd
     assert effective_query_csv is None
 
@@ -274,7 +416,7 @@ def test_build_command_supports_earnings_beir_pdf_page_doc_id_field(tmp_path: Pa
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "earnings_csv"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_csv.resolve())
@@ -300,7 +442,7 @@ def test_build_command_supports_financebench_beir_pdf_basename_doc_id_field(tmp_
         recall_required=False,
     )
 
-    cmd, _runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
     assert cmd[cmd.index("--beir-loader") + 1] == "financebench_json"
     assert cmd[cmd.index("--beir-dataset-name") + 1] == str(annotations_json.resolve())
@@ -312,21 +454,25 @@ def test_build_command_supports_financebench_beir_pdf_basename_doc_id_field(tmp_
 def test_build_command_uses_top_level_detection_file_when_enabled(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         write_detection_file=True,
     )
-    cmd, runtime_dir, detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--detection-summary-file" in cmd
     assert detection_file.parent == tmp_path
     assert detection_file.name == "detection_summary.json"
-    assert effective_query_csv == query_csv
+    assert effective_query_csv is None
 
 
 def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: Path) -> None:
@@ -339,13 +485,17 @@ def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: 
         dataset_dir=str(dataset_dir),
         dataset_label="earnings",
         preset="single_gpu",
+        evaluation_mode="beir",
+        beir_loader="earnings_csv",
+        beir_doc_id_field="pdf_page",
         query_csv=str(query_csv),
+        recall_required=False,
         embed_modality="text_image",
         embed_granularity="element",
         extract_page_as_image=False,
         extract_infographics=True,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
     assert "--no-extract-page-as-image" in cmd
     assert "--extract-page-as-image" not in cmd
@@ -358,7 +508,7 @@ def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: 
     assert cmd[cmd.index("--structured-elements-modality") + 1] == "text_image"
 
 
-def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
+def test_build_command_rejects_document_legacy_recall(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -369,21 +519,12 @@ def test_build_command_applies_page_plus_one_adapter(tmp_path: Path) -> None:
         dataset_label="earnings",
         preset="single_gpu",
         query_csv=str(query_csv),
-        recall_adapter="page_plus_one",
+        evaluation_mode="recall",
+        recall_match_mode="pdf_page",
+        recall_adapter="none",
     )
-    cmd, runtime_dir, _detection_file, effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
-
-    assert effective_query_csv.parent == runtime_dir
-    assert effective_query_csv.name == "query_adapter.page_plus_one.csv"
-    assert "--query-csv" in cmd
-    assert str(effective_query_csv) in cmd
-    csv_contents = effective_query_csv.read_text(encoding="utf-8")
-    assert "query,pdf_page" in csv_contents
-    assert "q,doc_name_1" in csv_contents
-    assert "--segment-audio" not in cmd
-    assert "--no-segment-audio" not in cmd
-    assert "--audio-split-type" not in cmd
-    assert "--audio-split-interval" not in cmd
+    with pytest.raises(ValueError, match="Legacy recall evaluation is only supported for audio input"):
+        _build_command(cfg, tmp_path, run_id="r1")
 
 
 def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
@@ -401,13 +542,14 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
         preset="single_gpu",
         query_csv=str(query_csv),
         input_type="audio",
+        evaluation_mode="recall",
         segment_audio=True,
         audio_split_type="time",
         audio_split_interval=45,
         recall_match_mode="audio_segment",
         audio_match_tolerance_secs=3.25,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
     assert "--input-type" in cmd
     assert cmd[cmd.index("--input-type") + 1] == "audio"
@@ -426,17 +568,21 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
 def test_build_command_omits_tuning_flags_when_use_heuristics(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("q,s,p\nx,y,1\n", encoding="utf-8")
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
         dataset_label="jp20",
         preset="single_gpu",
-        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
         use_heuristics=True,
     )
-    cmd, _runtime_dir, _detection_file, _effective_query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
     assert "--pdf-extract-tasks" not in cmd
     assert "--pdf-extract-cpus-per-task" not in cmd
@@ -494,16 +640,11 @@ def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setattr(
         harness_run,
         "_build_command",
-        lambda *_args, **_kwargs: (
-            ["python", "-V"],
-            runtime_dir,
-            runtime_dir / ".detection_summary.json",
-            query_csv,
-            {},
-        ),
+        lambda *_args, **_kwargs: (["python", "-V"], runtime_dir, runtime_dir / ".detection_summary.json", query_csv),
     )
 
     def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        assert env_extra is None
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -521,6 +662,141 @@ def test_run_single_writes_tags_to_results_json(monkeypatch, tmp_path: Path) -> 
     assert captured["payload"]["tags"] == ["nightly", "candidate"]
     assert captured["payload"]["metrics"]["recall_1"] == 0.5
     assert captured["payload"]["metrics"]["recall_5"] == 0.8
+
+
+def test_run_single_forwards_api_key_to_subprocess_env_and_redacts_results(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    runtime_dir = tmp_path / "runtime_metrics"
+    runtime_dir.mkdir()
+    (runtime_dir / "r1.runtime.summary.json").write_text(
+        json.dumps({"num_pages": 1, "ingestion_only_secs": 1.0, "evaluation_metrics": {"recall@5": 1.0}}),
+        encoding="utf-8",
+    )
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+        api_key="secret-token",
+    )
+
+    monkeypatch.setattr(
+        harness_run,
+        "_build_command",
+        lambda *_args, **_kwargs: (
+            ["python", "-V", "--api-key", "secret-token"],
+            runtime_dir,
+            runtime_dir / ".detection_summary.json",
+            query_csv,
+        ),
+    )
+
+    captured_env: dict[str, str] = {}
+
+    def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        captured_env.update(env_extra or {})
+        return 0
+
+    payloads: dict[str, dict] = {}
+    monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, payload: payloads.setdefault("result", payload))
+
+    harness_run._run_single(cfg, tmp_path, run_id="r1")
+
+    assert captured_env == {"NVIDIA_API_KEY": "secret-token"}
+    assert payloads["result"]["test_config"]["api_key"] == "(set)"
+    assert "secret-token" not in json.dumps(payloads["result"])
+
+
+def test_run_single_removes_stale_default_lancedb_dir(monkeypatch, tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "run_artifacts"
+    artifact_dir.mkdir()
+    stale_lancedb = artifact_dir / "lancedb"
+    stale_lancedb.mkdir()
+    (stale_lancedb / "stale.txt").write_text("old index", encoding="utf-8")
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    runtime_dir = artifact_dir / "runtime_metrics"
+    runtime_dir.mkdir()
+    (runtime_dir / "r1.runtime.summary.json").write_text(
+        json.dumps({"num_pages": 1, "ingestion_only_secs": 1.0, "evaluation_metrics": {"recall@5": 1.0}}),
+        encoding="utf-8",
+    )
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="single_gpu",
+        query_csv=str(query_csv),
+    )
+
+    monkeypatch.setattr(
+        harness_run,
+        "_build_command",
+        lambda *_args, **_kwargs: (["python", "-V"], runtime_dir, runtime_dir / ".detection_summary.json", query_csv),
+    )
+    monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+
+    harness_run._run_single(cfg, artifact_dir, run_id="r1")
+
+    assert stale_lancedb.is_dir()
+    assert not (stale_lancedb / "stale.txt").exists()
+
+
+def test_run_graph_pipeline_forwards_api_key_to_subprocess_env_and_redacts_results(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="graph_ds",
+        preset="graph",
+        api_key="secret-token",
+    )
+    artifact_dir = tmp_path / "artifact"
+    artifact_dir.mkdir()
+    captured_env: dict[str, str] = {}
+
+    class _FakeProc:
+        def __init__(self) -> None:
+            self._polled = False
+
+        def poll(self):
+            if not self._polled:
+                self._polled = True
+                return None
+            return 0
+
+        @staticmethod
+        def wait() -> int:
+            return 0
+
+    def _fake_popen(_cmd, **kwargs):
+        captured_env.update(kwargs.get("env") or {})
+        result_file = artifact_dir / "runtime_metrics" / "r1.graph_result.json"
+        result_file.write_text(json.dumps({"success": True, "return_code": 0, "rows": 0}), encoding="utf-8")
+        return _FakeProc()
+
+    monkeypatch.setattr(harness_run.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(harness_run.select, "select", lambda *_args, **_kwargs: ([], [], []))
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+
+    result = harness_run._run_graph_pipeline(cfg, "result = []", artifact_dir, run_id="r1")
+
+    assert captured_env["NVIDIA_API_KEY"] == "secret-token"
+    assert result["test_config"]["api_key"] == "(set)"
+    assert "secret-token" not in json.dumps(result)
 
 
 def test_run_entry_session_artifact_dir_uses_run_name(monkeypatch, tmp_path: Path) -> None:
@@ -697,16 +973,16 @@ def test_collect_run_metadata_falls_back_without_gpu_or_ray(monkeypatch) -> None
 
     monkeypatch.setattr(harness_run.socket, "gethostname", lambda: "")
     monkeypatch.setattr(harness_run.metadata, "version", _raise_package_not_found)
-    monkeypatch.setattr(harness_run, "_collect_gpu_metadata", lambda: (None, None, None))
-    monkeypatch.delattr(harness_run.sys, "version_info")
+    monkeypatch.setattr(harness_run, "_collect_gpu_metadata", lambda: (None, None))
+    monkeypatch.setattr(harness_run.sys, "version_info", None)
 
-    result = harness_run._collect_run_metadata()
-    assert result["host"] == "unknown"
-    assert result["gpu_count"] is None
-    assert result["gpu_type"] is None
-    assert result["cuda_driver"] is None
-    assert result["ray_version"] == "unknown"
-    assert result["python_version"] == "unknown"
+    assert harness_run._collect_run_metadata() == {
+        "host": "unknown",
+        "gpu_count": None,
+        "cuda_driver": None,
+        "ray_version": "unknown",
+        "python_version": "unknown",
+    }
 
 
 def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path) -> None:
@@ -753,11 +1029,11 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             runtime_dir,
             detection_file,
             query_csv,
-            {},
         ),
     )
 
     def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        assert env_extra is None
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -816,13 +1092,6 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": True,
             "use_heuristics": cfg.use_heuristics,
-            "api_key": None,
-            "page_elements_invoke_url": None,
-            "ocr_invoke_url": None,
-            "graphic_elements_invoke_url": None,
-            "table_structure_invoke_url": None,
-            "embed_invoke_url": None,
-            "caption_invoke_url": None,
             "store_images_uri": None,
             "store_text": False,
             "strip_base64": True,
@@ -839,7 +1108,6 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "recall_5": 0.9,
         },
         "summary_metrics": {
-            "files": None,
             "pages": 1940,
             "ingest_secs": 12.5,
             "pages_per_sec_ingest": 155.2,
@@ -852,7 +1120,6 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "cuda_driver": "550.54.15",
             "ray_version": "2.49.0",
             "python_version": "3.12.4",
-            "ray_cluster_mode": "local",
         },
         "runtime_summary": {
             "run_mode": "batch",
@@ -889,9 +1156,12 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
 
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
-        dataset_label="jp20",
+        dataset_label="audio_retrieval",
         preset="single_gpu",
         query_csv=str(query_csv),
+        input_type="audio",
+        evaluation_mode="recall",
+        recall_match_mode="audio_segment",
         write_detection_file=False,
         recall_required=False,
     )
@@ -904,11 +1174,11 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
             runtime_dir,
             detection_file,
             query_csv,
-            {},
         ),
     )
 
     def _fake_run_subprocess(_cmd: list[str], env_extra: dict[str, str] | None = None) -> int:
+        assert env_extra is None
         return 0
 
     monkeypatch.setattr(harness_run, "_run_subprocess_with_tty", _fake_run_subprocess)
@@ -926,7 +1196,6 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
     assert result["metrics"]["pages"] is None
     assert "effective_tuning" not in result["test_config"]
     assert result["summary_metrics"] == {
-        "files": None,
         "pages": None,
         "ingest_secs": None,
         "pages_per_sec_ingest": None,
@@ -961,7 +1230,6 @@ def test_resolve_summary_metrics_falls_back_to_dataset_page_count(monkeypatch, t
     )
 
     assert summary == {
-        "files": 2,
         "pages": 10,
         "ingest_secs": 5.0,
         "pages_per_sec_ingest": 2.0,
@@ -1009,11 +1277,13 @@ def test_build_command_includes_store_flags(tmp_path: Path) -> None:
         dataset_label="jp20",
         preset="single_gpu",
         query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
         store_images_uri="stored_images",
         store_text=True,
         strip_base64=True,
     )
-    cmd, _runtime_dir, _detection_file, _query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--store-images-uri" in cmd
     resolved = cmd[cmd.index("--store-images-uri") + 1]
     assert resolved == str((tmp_path / "stored_images").resolve())
@@ -1033,9 +1303,11 @@ def test_build_command_omits_store_when_uri_is_none(tmp_path: Path) -> None:
         dataset_label="jp20",
         preset="single_gpu",
         query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
         store_images_uri=None,
     )
-    cmd, _runtime_dir, _detection_file, _query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--store-images-uri" not in cmd
     assert "--store-text" not in cmd
     assert "--strip-base64" not in cmd
@@ -1053,11 +1325,13 @@ def test_build_command_store_no_strip_base64(tmp_path: Path) -> None:
         dataset_label="jp20",
         preset="single_gpu",
         query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
         store_images_uri="/absolute/path/store",
         store_text=False,
         strip_base64=False,
     )
-    cmd, _runtime_dir, _detection_file, _query_csv, _env_extra = _build_command(cfg, tmp_path, run_id="r1")
+    cmd, _runtime_dir, _detection_file, _query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--store-images-uri" in cmd
     assert cmd[cmd.index("--store-images-uri") + 1] == "/absolute/path/store"
     assert "--store-text" not in cmd
