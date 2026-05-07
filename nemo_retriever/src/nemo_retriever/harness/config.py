@@ -16,9 +16,9 @@ REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
 VALID_RUN_MODES = {"batch", "inprocess", "service"}
-VALID_EVALUATION_MODES = {"recall", "beir"}
-VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
-VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "vidore_hf"}
+VALID_EVALUATION_MODES = {"none", "recall", "beir"}
+VALID_RECALL_ADAPTERS = {"none"}
+VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
 VALID_EMBED_GRANULARITIES = {"element", "page"}
@@ -60,12 +60,15 @@ class HarnessConfig:
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = True
-    recall_match_mode: str = "pdf_page"
+    # Legacy recall fields only apply when evaluation_mode="recall" and input_type="audio".
+    recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
     audio_match_tolerance_secs: float = 2.0
     segment_audio: bool = False
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
+    evaluation_mode: str = "recall"
+    beir_loader: str | None = None
     video_extract_audio: bool = True
     video_extract_frames: bool = True
     video_frame_fps: float = 1.0
@@ -73,8 +76,6 @@ class HarnessConfig:
     video_frame_text_dedup: bool = True
     video_frame_text_dedup_max_dropped_frames: int = 2
     video_av_fuse: bool = True
-    evaluation_mode: str = "recall"
-    beir_loader: str | None = None
     beir_dataset_name: str | None = None
     beir_split: str = "test"
     beir_query_language: str | None = None
@@ -84,10 +85,12 @@ class HarnessConfig:
     artifacts_dir: str | None = None
     ray_address: str | None = None
     lancedb_uri: str = "lancedb"
+    lancedb_table_name: str = "nv-ingest"
     hybrid: bool = False
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
     embed_granularity: str = "element"
+    ocr_version: str | None = None
     extract_page_as_image: bool = True
     extract_infographics: bool = False
     write_detection_file: bool = False
@@ -154,8 +157,10 @@ class HarnessConfig:
             errors.append(f"input_type must be one of pdf/txt/html/doc/audio/video, got '{self.input_type}'")
 
         if self.evaluation_mode == "recall":
-            if self.recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
-                errors.append("recall_match_mode must be one of pdf_page/pdf_only/audio_segment")
+            if self.input_type != "audio":
+                errors.append("evaluation_mode=recall is only supported for input_type=audio; use evaluation_mode=beir")
+            if self.recall_match_mode != "audio_segment":
+                errors.append("recall_match_mode must be audio_segment when evaluation_mode=recall")
 
             if self.recall_adapter not in VALID_RECALL_ADAPTERS:
                 errors.append(f"recall_adapter must be one of {sorted(VALID_RECALL_ADAPTERS)}")
@@ -169,7 +174,7 @@ class HarnessConfig:
                 errors.append("video_frame_fps must be > 0.0")
             if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
                 errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
-        else:
+        elif self.evaluation_mode == "beir":
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
             if self.beir_doc_id_field not in VALID_BEIR_DOC_ID_FIELDS:
@@ -195,6 +200,12 @@ class HarnessConfig:
 
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
+
+        if self.ocr_version is not None and self.ocr_version not in {"v1", "v2"}:
+            errors.append("ocr_version must be one of ['v1', 'v2'] when provided")
+
+        if not str(self.lancedb_table_name).strip():
+            errors.append("lancedb_table_name must be a non-empty string")
 
         _ZERO_ALLOWED_WORKERS = {f for f in TUNING_FIELDS if f.endswith("_workers")} if self.use_heuristics else set()
         for name in TUNING_FIELDS:
@@ -328,10 +339,12 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_ARTIFACTS_DIR": ("artifacts_dir", str),
         "HARNESS_RAY_ADDRESS": ("ray_address", str),
         "HARNESS_LANCEDB_URI": ("lancedb_uri", str),
+        "HARNESS_LANCEDB_TABLE_NAME": ("lancedb_table_name", str),
         "HARNESS_HYBRID": ("hybrid", _parse_bool),
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
+        "HARNESS_OCR_VERSION": ("ocr_version", str),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
@@ -459,6 +472,10 @@ def load_harness_config(
     merged["preset"] = str(merged.get("preset") or "single_gpu")
     if merged.get("evaluation_mode") == "beir" and merged.get("beir_dataset_name") is None:
         merged["beir_dataset_name"] = merged["dataset_label"]
+    if merged.get("evaluation_mode") != "beir":
+        merged["beir_loader"] = None
+        merged["beir_dataset_name"] = None
+        merged["beir_query_language"] = None
     for removed_key in sorted(REMOVED_HARNESS_KEYS):
         if removed_key in merged:
             raise ValueError(f"{removed_key} is no longer supported by the harness; use embed_modality instead")

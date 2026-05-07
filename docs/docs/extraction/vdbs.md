@@ -13,6 +13,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) handle
 - [Upload to a Custom Data Store](#upload-to-a-custom-data-store)
 - [Vector database partners](#vector-database-partners)
     - [Backends with `VDB` implementations](#vdb-backends-implementations)
+    - [RAG Blueprint and partner vector stores](#rag-blueprint-and-partner-vector-stores)
 - [Related Topics](#related-topics)
 
 ## Overview { #overview }
@@ -159,6 +160,18 @@ NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/N
 On nv-ingest-client `Ingestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; see [Upload to LanceDB](#upload-to-lancedb).
 
 For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` subclasses, construct the client class and pass it as the graph operator’s `vdb` argument.
+
+### RAG Blueprint and partner vector stores {#rag-blueprint-and-partner-vector-stores}
+
+Some deployments use a different vector store than the default LanceDB path on this page—for example the **NVIDIA RAG Blueprint** (Docker Compose or Helm) or a **partner** package that subclasses the same [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface. Use the following public references when you wire those stacks to ingestion and retrieval:
+
+| Vector store | Where to configure or implement |
+|--------------|--------------------------------|
+| **Elasticsearch** | [Configure Elasticsearch as Your Vector Database for NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/change-vectordb.html) — compose profiles, environment variables, and Helm notes for the RAG Blueprint. |
+| **Pinecone** | [Customize your vector database (Pinecone + NVIDIA RAG)](https://github.com/pinecone-io/nvidia-pinecone-rag/blob/main/docs/vector-database.md) in the `pinecone-io/nvidia-pinecone-rag` examples. |
+| **Teradata** | [TeradataVDB (NVIDIA NIM Ingest integration)](https://docs.teradata.com/r/VMware/Teradata-Package-for-Generative-AI-Function-Reference/Vector-Store/NVIDIA-NIM-Ingest-Integration/TeradataVDB) — `teradatagenai.vector_store.teradataVDB.TeradataVDB` implements the NV-Ingest `VDB` abstract class for Teradata Vector Store. |
+
+Testing and release cadence for these integrations follow the owning project (RAG Blueprint, Pinecone sample repo, or Teradata Generative AI package), not the first-party LanceDB operator validated for NeMo Retriever Library on this page.
 
 **Related**
 
