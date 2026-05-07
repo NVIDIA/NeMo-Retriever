@@ -1,7 +1,8 @@
 # Quick Start — `retriever` CLI
 
-This page is the `retriever`-CLI counterpart to the CLI section of
-`nv-ingest/docs/docs/extraction/quickstart-guide.md`.
+This page is the `retriever`-CLI counterpart to the legacy `nv-ingest-cli`
+quickstart. Self-hosted Helm deployment docs live in the NeMo Retriever repo
+under [nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm).
 
 ## Replacement for the quickstart CLI example
 
