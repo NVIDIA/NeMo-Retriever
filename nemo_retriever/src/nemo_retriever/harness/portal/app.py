@@ -1642,10 +1642,18 @@ async def get_managed_dataset(dataset_id: int):
 
 @app.put("/api/managed-datasets/{dataset_id}")
 async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
+    existing = history.get_dataset_by_id(dataset_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    requested = req.model_dump()
+    effective_mode = requested.get("evaluation_mode") or existing.get("evaluation_mode")
+    effective_loader = requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
+    if effective_mode == "beir" and not str(effective_loader or "").strip():
+        raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
+
     data = {k: v for k, v in req.model_dump().items() if v is not None}
     row = history.update_dataset(dataset_id, data)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Dataset not found")
     return row
 
 
