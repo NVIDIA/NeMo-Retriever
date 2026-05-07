@@ -41,8 +41,25 @@ import pandas as pd
 from nemo_retriever.tabular_data.dev_tools.postgres_connector import PostgresDatabase
 from nemo_retriever.params import EmbedParams, VdbUploadParams
 from nemo_retriever.retriever import Retriever
-from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response
+from nemo_retriever.tabular_data.retrieval.text_to_sql.main import (
+    get_agent_response as get_langgraph_agent_response,
+)
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload
+from nemo_retriever.tabular_data.retrieval.deep_agent.main import (
+    get_agent_response as get_deep_agent_response,
+)
+
+# Each agent produces the same `sql_code` field but stores the executed-DB
+# rows under a different key.  The dispatch below lets the rest of the
+# evaluation code stay agent-agnostic.
+_AGENT_DISPATCH = {
+    "langgraph": get_langgraph_agent_response,
+    "deep": get_deep_agent_response,
+}
+_DB_RESULT_KEY = {
+    "langgraph": "sql_response_from_db",
+    "deep": "result",
+}
 
 logger = logging.getLogger("eval_chatbot")
 
@@ -75,7 +92,11 @@ VDB_PARAMS = VdbUploadParams(
 DATABASE: str = os.environ.get("POSTGRES_DB", "testdb")
 
 _DEFAULT_INPUT = Path(__file__).parent / "chatbot_evaluation.json"
-_DEFAULT_OUTPUT = Path(__file__).parent / "chatbot_evaluation_scores.csv"
+
+
+def _default_output_for(agent: str) -> Path:
+    suffix = "_deep" if agent == "deep" else ""
+    return Path(__file__).parent / f"chatbot_evaluation_scores{suffix}.csv"
 
 
 def _conn_string(db: str) -> str:
@@ -297,6 +318,14 @@ def _stringify_db_result(value: Any) -> str:
         return ""
     if isinstance(value, pd.DataFrame):
         return value.to_csv(index=False)
+    # The deep agent returns the executed rows as a plain ``list[dict]`` —
+    # serialise as JSON so the downstream parser hits the JSON branch
+    # (rather than ``str(...)`` which uses single quotes and breaks json.loads).
+    if isinstance(value, list) and value and isinstance(value[0], dict):
+        try:
+            return json.dumps(value, default=str)
+        except (TypeError, ValueError):
+            return str(value)
     return str(value)
 
 
@@ -349,12 +378,24 @@ def _print_agent_result(qid: Any, question: str, agent_result: Dict[str, Any] | 
     print(sep)
 
 
-def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_index: int | None = None) -> None:
-    # questions = [{"question_id": 0, "question": "Show me the details for component 670-14039-0072-TS5", "SQL": ""}]
+def evaluate(
+    input_path: Path,
+    output_path: Path,
+    agent: str = "langgraph",
+    start_index: int = 0,
+    end_index: int | None = None,
+) -> None:
+    if agent not in _AGENT_DISPATCH:
+        raise ValueError(f"Unknown agent {agent!r}. Choose one of {sorted(_AGENT_DISPATCH)}")
+
+    get_agent_response = _AGENT_DISPATCH[agent]
+    db_result_key = _DB_RESULT_KEY[agent]
+
     all_questions = _load_questions(input_path)
     questions = all_questions[start_index:end_index]
     logger.info(
-        "Running questions %d–%d (%d of %d total) from %s",
+        "Running agent=%s on questions %d–%d (%d of %d total) from %s",
+        agent,
         start_index,
         start_index + len(questions) - 1,
         len(questions),
@@ -483,7 +524,7 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_inde
                 agent_result = get_agent_response(payload)
                 _print_agent_result(qid, question, agent_result, expected_sql)
                 returned_sql = (agent_result or {}).get("sql_code", "") or ""
-                returned_db = (agent_result or {}).get("sql_response_from_db")
+                returned_db = (agent_result or {}).get(db_result_key)
                 returned_db_str = _stringify_db_result(returned_db)
 
                 row["returned_sql"] = returned_sql
@@ -507,6 +548,12 @@ def evaluate(input_path: Path, output_path: Path, start_index: int = 0, end_inde
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--agent",
+        choices=sorted(_AGENT_DISPATCH),
+        default="langgraph",
+        help="Which text-to-SQL agent to evaluate (default: langgraph).",
+    )
+    parser.add_argument(
         "--input",
         type=Path,
         default=_DEFAULT_INPUT,
@@ -515,8 +562,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=_DEFAULT_OUTPUT,
-        help=f"Output CSV path (default: {_DEFAULT_OUTPUT})",
+        default=None,
+        help="Output CSV path (default depends on --agent: "
+        "chatbot_evaluation_scores.csv for langgraph, "
+        "chatbot_evaluation_scores_deep.csv for deep).",
     )
     return parser.parse_args()
 
@@ -530,4 +579,5 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     args = _parse_args()
-    evaluate(args.input, args.output, START_INDEX, END_INDEX)
+    output_path = args.output if args.output is not None else _default_output_for(args.agent)
+    evaluate(args.input, output_path, args.agent, START_INDEX, END_INDEX)
