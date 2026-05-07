@@ -812,7 +812,7 @@
     ]
   },
   "bus": {
-    "description": "Table containing business unit (BU) options. Every product at NVIDIA belongs a particular business unit, or BU",
+    "description": "Table containing business unit (BU) options. Every product at NVIDIA belongs a particular business unit, or BU. Referenced by products.bu_id. To find which BU a pcode belongs to: pcodes → products → bus.",
     "columns": [
       {
         "name": "id",
@@ -866,7 +866,7 @@
     ]
   },
   "products": {
-    "description": "Table containing product options. A business unit is responsible for multiple products. For example, the 'GPU' business unit has 'Quadro' and 'Geforce', to name a few.",
+    "description": "Table containing product options. A business unit is responsible for multiple products. For example, the 'GPU' business unit has 'Quadro' and 'Geforce', to name a few. Referenced by pcodes.product_id. Each product belongs to a business unit via bu_id. Join chain: pcodes → products → bus.",
     "columns": [
       {
         "name": "id",
@@ -963,7 +963,7 @@
     ]
   },
   "pcodes": {
-    "description": "Table containing product code options. A product can have multiple product codes. For example, the 'Quadro' product has 'PG150' and 'PG400' to name a few.",
+    "description": "Table containing product code options. A product can have multiple product codes. For example, the 'Quadro' product has 'PG150' and 'PG400' to name a few. Each pcode belongs to a product via product_id. To find the business unit for a pcode: JOIN products ON pcodes.product_id = products.id JOIN bus ON products.bu_id = bus.id.",
     "columns": [
       {
         "name": "id",

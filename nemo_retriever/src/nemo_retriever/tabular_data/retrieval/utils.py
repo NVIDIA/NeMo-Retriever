@@ -232,7 +232,11 @@ def search_lancedb_semantic_index(
     """
     allowed_labels = {str(x) for x in (label_filter or []) if x is not None} or None
 
-    retriever.top_k = LANCEDB_FETCH_LIMIT
+    # TODO: revert after logical change in labels filter
+    if allowed_labels and allowed_labels == {Labels.TABLE}:
+        retriever.top_k = 500
+    else:
+        retriever.top_k = LANCEDB_FETCH_LIMIT
 
     hits = retriever.query(entity)
 

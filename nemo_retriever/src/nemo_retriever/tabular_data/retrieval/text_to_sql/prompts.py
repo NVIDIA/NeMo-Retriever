@@ -51,9 +51,9 @@ create_sql_user_prompt = (
     "GROUP BY, ORDER BY, OR HAVING CLAUSES MUST BE DEFINED "
     "IN THE FROM OR JOIN CLAUSES. Never reference an "
     "undefined alias.\n"
-    "- CRITICAL: NEVER use :: casts. NEVER use FILTER "
-    "(WHERE ...), QUALIFY, DISTINCT ON, GROUP BY ALL, or "
-    "PostgreSQL-specific syntax.\n"
+    "- CRITICAL: NEVER use :: casts. NEVER use "
+    "QUALIFY, DISTINCT ON, GROUP BY ALL, or "
+    "vendor-specific syntax unsupported by the dialect.\n"
     "- Choose exactly ONE connection whose tables can answer "
     "the question and use ONLY that connection's dialect "
     "(derived from the selected tables' connection).\n"
@@ -187,8 +187,14 @@ def create_sql_from_candidates_prompt(custom_analyses: list, custom_prompts: str
          - NULL handling and safe casts/conversions
          - Calendar-based time filtering (per #5)
       7) If grouping is needed:
-         - Use GROUP BY with all non-aggregated selected
-           columns.
+         - GROUP BY must include all non-aggregated columns
+           in SELECT. But choose carefully WHAT to select:
+           group by name/label columns when the question asks
+           about categories or types. Do NOT add primary key
+           (id) columns to SELECT or GROUP BY unless the
+           question asks for individual records — adding id
+           prevents meaningful aggregation across rows that
+           share the same name.
          - If business categories are specified, use
            CASE WHEN to classify.
       8) When referencing specific values/names/IDs from the
