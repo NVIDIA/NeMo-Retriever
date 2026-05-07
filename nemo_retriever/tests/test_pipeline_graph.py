@@ -4,6 +4,7 @@
 
 """Unit tests for Node, Graph, >> chaining (including auto-wrap), and Executors."""
 
+import logging
 from typing import Any
 
 import pandas as pd
@@ -609,7 +610,6 @@ class TestMultiTypeExtractOperator:
             "/folder/page.html",
             "/folder/audio.mp3",
             "/folder/video.mp4",
-            "/folder/unknown.xyz",
         ]
 
         grouped = op.preprocess(files)
@@ -620,6 +620,33 @@ class TestMultiTypeExtractOperator:
         assert grouped["html"] == ["/folder/page.html"]
         assert grouped["audio"] == ["/folder/audio.mp3"]
         assert grouped["video"] == ["/folder/video.mp4"]
+
+    def test_auto_mode_logs_and_skips_unsupported_extension_in_file_list(self, caplog):
+        op = MultiTypeExtractOperator(extraction_mode="auto")
+
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+            grouped = op.preprocess(["/folder/known.txt", "/folder/unknown.xyz"])
+
+        assert grouped["text"] == ["/folder/known.txt"]
+        assert grouped["pdf"] == []
+        assert grouped["image"] == []
+        assert grouped["html"] == []
+        assert grouped["audio"] == []
+        assert grouped["video"] == []
+        assert "Unsupported file extension '.xyz'" in caplog.text
+
+    def test_auto_mode_logs_and_skips_unsupported_extension_in_dataframe_batch(self, caplog):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+        op = MultiTypeExtractCPUActor(extraction_mode="auto")
+        batch = pd.DataFrame({"path": ["/folder/unknown.xyz"], "bytes": [b"unsupported"]})
+
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+            result = op.process(batch)
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+        assert "Unsupported file extension '.xyz'" in caplog.text
 
     def test_preprocess_folder_path(self):
         """Test preprocessing with folder path."""
