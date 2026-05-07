@@ -1648,7 +1648,9 @@ async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
 
     requested = req.model_dump()
     effective_mode = requested.get("evaluation_mode") or existing.get("evaluation_mode")
-    effective_loader = requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
+    effective_loader = (
+        requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
+    )
     if effective_mode == "beir" and not str(effective_loader or "").strip():
         raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
 
