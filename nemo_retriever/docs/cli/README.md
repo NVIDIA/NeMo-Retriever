@@ -34,7 +34,6 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | New file | Replaces example(s) in |
 |----------|------------------------|
 | [`retriever_cli.md`](retriever_cli.md) | `nv-ingest/docs/docs/extraction/nv-ingest_cli.md` and the rebranded mirror `cli-reference.md` |
-| [`quickstart.md`](quickstart.md) | Legacy `nv-ingest-cli` quickstart (Helm / self-hosted docs now live under [nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub) |
 | [`pdf-split-tuning.md`](pdf-split-tuning.md) | `nv-ingest/docs/docs/extraction/v2-api-guide.md` (CLI example) |
 | [`smoke-test.md`](smoke-test.md) | `nv-ingest/api/api_tests/smoke_test.sh` |
 | [`cli-client-usage.md`](cli-client-usage.md) | `nv-ingest/client/client_examples/examples/cli_client_usage.ipynb` |
