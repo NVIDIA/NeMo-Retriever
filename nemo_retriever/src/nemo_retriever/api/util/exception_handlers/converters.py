@@ -52,8 +52,8 @@ def datetools_exception_handler(func: Callable, **kwargs: Dict[str, Any]) -> Cal
 
     If the input is invalid, the current UTC time without timezone information is returned:
 
-    >>> parse_date('invalid-date')
-    '2024-08-22T12:34:56'
+    >>> isinstance(parse_date('invalid-date'), str)
+    True
 
     Raises
     ------

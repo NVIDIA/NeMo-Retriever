@@ -39,8 +39,7 @@ def pdfium_exception_handler(descriptor):
     --------
     >>> @pdfium_exception_handler("PDF Processing")
     ... def process_pdf(file_path):
-    ...     # Function implementation here
-    ...     pass
+    ...     raise RuntimeError("simulated PDFium failure")
     ...
     >>> process_pdf("example.pdf")
     []
@@ -92,8 +91,11 @@ def create_exception_tag(error_message, source_id=None):
 
     Examples
     --------
-    >>> create_exception_tag("File not found", source_id="12345")
-    [[None, {'task': 'EXTRACT', 'status': 'ERROR', 'source_id': '12345', 'error_msg': 'File not found'}]]
+    >>> tag = create_exception_tag("File not found", source_id="12345")
+    >>> tag[0][1]["error_metadata"]["error_msg"]
+    'File not found'
+    >>> tag[0][1]["error_metadata"]["source_id"]
+    '12345'
 
     Raises
     ------

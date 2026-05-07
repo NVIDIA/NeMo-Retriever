@@ -7,7 +7,7 @@ Chunking also prevents text from exceeding the context window of the embedding m
 There are two ways that NV Ingest chunks text:
 
 - By using the `text_depth` parameter in the `extraction` task.
-- Token-based splitting by using the `split` task.
+- Token-based splitting by using the `split_config` keyword on the `extract` task.
 
 
 !!! warning
@@ -42,35 +42,29 @@ If you want chunks smaller than `page`, use token-based splitting as described i
 
 ## Token-Based Splitting {: #token-based-splitting }
 
-The `split` task uses a tokenizer to count the number of tokens in the document, 
+The `split_config` keyword on the `extract` task uses a tokenizer to count the number of tokens in the document, 
 and splits the document based on the desired maximum chunk size and chunk overlap.
 
 We recommend the default tokenizer for token-based splitting. For more information, refer to [Llama tokenizer (default)](#llama-tokenizer).
 You can also use any tokenizer from any HuggingFace model that includes a tokenizer file.
 
-Use the `split` method to chunk large documents as shown in the following code.
+Use `split_config` to chunk large documents as shown in the following code.
 
 !!! note
 
-    The default tokenizer (`meta-llama/Llama-3.2-1B`) requires a [Hugging Face access token](https://huggingface.co/docs/hub/en/security-tokens). You must set `hf_access_token": "hf_***` to authenticate.
+    The default tokenizer (`meta-llama/Llama-3.2-1B`) requires a [Hugging Face access token](https://huggingface.co/docs/hub/en/security-tokens). You must set the `HF_ACCESS_TOKEN` environment variable to authenticate.
 
 ```python
-ingestor = ingestor.split(
-    tokenizer="meta-llama/Llama-3.2-1B",
-    chunk_size=1024,
-    chunk_overlap=150,
-    params={"split_source_types": ["text", "PDF"], "hf_access_token": "hf_***"}
+ingestor = ingestor.extract(
+    split_config={"text": {"max_tokens": 1024, "overlap_tokens": 150}}
 )
 ```
 
-To use a different tokenizer, such as `intfloat/e5-large-unsupervised`, you can modify the `split` call as shown following.
+To use a different tokenizer, such as `intfloat/e5-large-unsupervised`, set `tokenizer_model_id` in the per-key config as shown following.
 
 ```python
-ingestor = ingestor.split(
-    tokenizer="intfloat/e5-large-unsupervised",
-    chunk_size=1024,
-    chunk_overlap=150,
-    params={"split_source_types": ["text", "PDF"], "hf_access_token": "hf_***"}
+ingestor = ingestor.extract(
+    split_config={"text": {"tokenizer_model_id": "intfloat/e5-large-unsupervised", "max_tokens": 1024, "overlap_tokens": 150}}
 )
 ```
 
@@ -80,7 +74,7 @@ The default tokenizer for token-based splitting is **`meta-llama/Llama-3.2-1B`**
 
 !!! note
 
-    This tokenizer is gated on Hugging Face and requires an access token. For more information, refer to [User access tokens](https://huggingface.co/docs/hub/en/security-tokens). You must set `hf_access_token` in your `split` params (for example, `"hf_***"`) to authenticate.
+    This tokenizer is gated on Hugging Face and requires an access token. For more information, refer to [User access tokens](https://huggingface.co/docs/hub/en/security-tokens). You must set the `HF_ACCESS_TOKEN` environment variable to authenticate.
 
 By default, the NV Ingest container includes this tokenizer pre-downloaded at build time, so it does not need to be fetched at runtime. If you build the container yourself and want to pre-download it, do the following:
 
@@ -93,16 +87,13 @@ For details on how to set environment variables, refer to [Environment Variables
 
 ### Split Parameters
 
-The following table contains the `split` parameters.
+The following table contains the per-source-type `split_config` parameters.
 
 | Parameter | Description | Default |
 | ------ | ----------- | -------- |
-| `tokenizer` | HuggingFace Tokenizer identifier or path. | `meta-llama/Llama-3.2-1B`|
-| `chunk_size` | Maximum number of tokens per chunk.  | `1024` |
-| `chunk_overlap` | Number of tokens to overlap between chunks.  | `150` |
-| `params` | A sub-dictionary that can contain `split_source_types` and `hf_access_token` | `{}` |
-| `hf_access_token` | Your Hugging Face access token. | — |
-| `split_source_types` | The source types to split on (only splits on text by default). | — |
+| `tokenizer_model_id` | HuggingFace Tokenizer identifier or path. | `meta-llama/Llama-3.2-1B`|
+| `max_tokens` | Maximum number of tokens per chunk.  | `1024` |
+| `overlap_tokens` | Number of tokens to overlap between chunks.  | `0` |
 
 ## Related Topics
 

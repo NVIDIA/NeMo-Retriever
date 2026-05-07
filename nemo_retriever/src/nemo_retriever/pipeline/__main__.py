@@ -18,6 +18,11 @@ Examples::
         --run-mode inprocess \\
         --ocr-invoke-url http://localhost:9000/v1
 
+    # Service mode (delegate to a running retriever service)
+    retriever pipeline run /data/pdfs \\
+        --run-mode service \\
+        --service-url http://localhost:7670
+
     # Save extraction Parquet for full-page markdown (page index / export)
     retriever pipeline run /data/pdfs \\
         --save-intermediate /path/to/extracted_parquet_dir
@@ -26,6 +31,12 @@ Examples::
     retriever pipeline run /data/pdfs \\
         --vdb-op <operator-key> \\
         --vdb-kwargs-json '<operator kwargs JSON object>'
+
+    # Sidecar metadata (merged into each chunk's content_metadata, same triplet as nv-ingest-client)
+    retriever pipeline run /data/pdfs \\
+        --meta-dataframe ./meta.csv \\
+        --meta-source-field source \\
+        --meta-fields meta_a,meta_b
 """
 
 from __future__ import annotations
@@ -79,6 +90,7 @@ _PANEL_RAY = "Ray / Batch Tuning"
 _PANEL_VDB = "VDB and Outputs"
 _PANEL_EVAL = "Evaluation (Recall / BEIR)"
 _PANEL_OBS = "Observability"
+_PANEL_SERVICE = "Service Mode"
 
 
 # ---------------------------------------------------------------------------
@@ -394,8 +406,31 @@ def _build_ingestor(
     video_frame_text_dedup: bool,
     video_frame_text_dedup_max_dropped_frames: int,
     video_av_fuse: bool,
-) -> GraphIngestor:
-    """Construct a :class:`GraphIngestor` with all requested stages attached."""
+    service_url: str = "http://localhost:7670",
+    service_concurrency: int = 8,
+    service_api_token: Optional[str] = None,
+) -> Any:
+    """Construct an ingestor with all requested stages attached.
+
+    For ``run_mode='service'`` returns a :class:`ServiceIngestor` backed by a
+    remote retriever service; otherwise returns a :class:`GraphIngestor` for
+    local ``batch`` or ``inprocess`` execution.
+    """
+
+    if run_mode == "service":
+        from nemo_retriever.service_ingestor import ServiceIngestor
+
+        resolved_files: list[str] = []
+        for pattern in file_patterns:
+            resolved_files.extend(sorted(_glob.glob(pattern, recursive=True)))
+        if not resolved_files:
+            raise typer.BadParameter("No files matched the input patterns for service mode.")
+
+        return ServiceIngestor(
+            base_url=service_url,
+            max_concurrency=service_concurrency,
+            api_token=service_api_token,
+        ).files(resolved_files)
 
     node_overrides: dict[str, dict[str, Any]] = {}
     if caption_gpus_per_actor is not None:
@@ -408,46 +443,90 @@ def _build_ingestor(
     )
     ingestor = ingestor.files(file_patterns)
 
-    # Extraction stage is selected by input type.
-    if input_type == "txt":
-        ingestor = ingestor.extract_txt(text_chunk_params)
-    elif input_type == "html":
-        ingestor = ingestor.extract_html(text_chunk_params)
-    elif input_type == "image":
-        ingestor = ingestor.extract_image_files(extract_params)
-    elif input_type == "audio":
-        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-        ingestor = ingestor.extract_audio(
-            params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
-            asr_params=asr_params,
-        )
-    elif input_type == "video":
-        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-        ingestor = ingestor.extract_video(
-            params=AudioChunkParams(
-                enabled=bool(video_extract_audio),
-                split_type=audio_split_type,
-                split_interval=int(audio_split_interval),
-            ),
-            asr_params=asr_params,
-            video_frame_params=VideoFrameParams(
-                enabled=bool(video_extract_frames),
-                fps=float(video_frame_fps),
-                dedup=bool(video_frame_dedup),
-            ),
-            video_text_dedup_params=VideoFrameTextDedupParams(
-                enabled=bool(video_frame_text_dedup),
-                max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
-            ),
-            av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
-            extract_params=extract_params,
-        )
+    # Extraction stage is selected by input type, with split_config threaded
+    # through when text chunking is enabled.
+    if not enable_text_chunk:
+        # Original extraction-only construction.
+        if input_type == "txt":
+            ingestor = ingestor.extract_txt(text_chunk_params)
+        elif input_type == "html":
+            ingestor = ingestor.extract_html(text_chunk_params)
+        elif input_type == "image":
+            ingestor = ingestor.extract_image_files(extract_params)
+        elif input_type == "audio":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_audio(
+                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+                asr_params=asr_params,
+            )
+        elif input_type == "video":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_video(
+                params=AudioChunkParams(
+                    enabled=bool(video_extract_audio),
+                    split_type=audio_split_type,
+                    split_interval=int(audio_split_interval),
+                ),
+                asr_params=asr_params,
+                video_frame_params=VideoFrameParams(
+                    enabled=bool(video_extract_frames),
+                    fps=float(video_frame_fps),
+                    dedup=bool(video_frame_dedup),
+                ),
+                video_text_dedup_params=VideoFrameTextDedupParams(
+                    enabled=bool(video_frame_text_dedup),
+                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
+                ),
+                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
+                extract_params=extract_params,
+            )
+        else:
+            ingestor = ingestor.extract(extract_params)
     else:
-        # "pdf" or "doc"
-        ingestor = ingestor.extract(extract_params)
-
-    if enable_text_chunk:
-        ingestor = ingestor.split(text_chunk_params)
+        chunk_dict = text_chunk_params.model_dump()
+        if input_type == "txt":
+            ingestor = ingestor.extract_txt(text_chunk_params)
+        elif input_type == "html":
+            ingestor = ingestor.extract_html(text_chunk_params)
+        elif input_type == "image":
+            ingestor = ingestor.extract_image_files(
+                extract_params,
+                split_config={"image": chunk_dict},
+            )
+        elif input_type == "audio":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_audio(
+                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+                asr_params=asr_params,
+                split_config={"audio": chunk_dict},
+            )
+        elif input_type == "video":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            ingestor = ingestor.extract_video(
+                params=AudioChunkParams(
+                    enabled=bool(video_extract_audio),
+                    split_type=audio_split_type,
+                    split_interval=int(audio_split_interval),
+                ),
+                asr_params=asr_params,
+                video_frame_params=VideoFrameParams(
+                    enabled=bool(video_extract_frames),
+                    fps=float(video_frame_fps),
+                    dedup=bool(video_frame_dedup),
+                ),
+                video_text_dedup_params=VideoFrameTextDedupParams(
+                    enabled=bool(video_frame_text_dedup),
+                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
+                ),
+                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
+                extract_params=extract_params,
+                split_config={"video": chunk_dict, "audio": chunk_dict},
+            )
+        else:
+            ingestor = ingestor.extract(
+                extract_params,
+                split_config={"pdf": chunk_dict},
+            )
 
     if enable_dedup:
         ingestor = ingestor.dedup(DedupParams(iou_threshold=dedup_iou_threshold))
@@ -483,11 +562,18 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
     """Materialize the graph result into a list of records + DataFrame.
 
     Ingest may return a ``pandas.DataFrame`` (in-process or after
-    ``ray.data.Dataset.to_pandas()`` in the executor) or a ``ray.data.Dataset``;
-    normalize via ``.to_pandas()`` when the result is not already a DataFrame.
+    ``ray.data.Dataset.to_pandas()`` in the executor), a ``ray.data.Dataset``,
+    or a :class:`~nemo_retriever.service_ingestor.ServiceIngestResult` (service
+    mode); normalize to a consistent ``(records, DataFrame, secs, units)`` tuple.
 
     Returns ``(records, result_df, ray_download_secs, num_input_units)``.
     """
+
+    if run_mode == "service":
+        records = list(result)
+        result_df = pd.DataFrame(records) if records else pd.DataFrame()
+        num_units = getattr(result, "total_pages", 0) or len(records)
+        return records, result_df, 0.0, num_units
 
     if isinstance(result, pd.DataFrame):
         result_df = result
@@ -648,7 +734,10 @@ def run(
     run_mode: str = typer.Option(
         "batch",
         "--run-mode",
-        help="Execution mode: 'batch' (Ray Data) or 'inprocess' (pandas, no Ray).",
+        help=(
+            "Execution mode: 'batch' (Ray Data), 'inprocess' (pandas, no Ray), "
+            "or 'service' (remote retriever service)."
+        ),
         rich_help_panel=_PANEL_IO,
     ),
     input_type: str = typer.Option(
@@ -877,6 +966,31 @@ def run(
         help="Emit fused per-utterance rows (audio transcript + concurrent OCR).",
         rich_help_panel=_PANEL_VIDEO,
     ),
+    # --- Service mode ---------------------------------------------------
+    service_url: str = typer.Option(
+        "http://localhost:7670",
+        "--service-url",
+        help="Base URL of the retriever service (used only when --run-mode=service).",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
+    service_concurrency: int = typer.Option(
+        8,
+        "--service-concurrency",
+        min=1,
+        help="Maximum concurrent page uploads to the service (used only when --run-mode=service).",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
+    service_api_token: Optional[str] = typer.Option(
+        None,
+        "--service-api-token",
+        help=(
+            "Bearer token for authenticating with the retriever service "
+            "(used only when --run-mode=service). "
+            "Falls back to $NEMO_RETRIEVER_API_TOKEN."
+        ),
+        envvar="NEMO_RETRIEVER_API_TOKEN",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
     # --- VDB / outputs --------------------------------------------------
     vdb_op: str = typer.Option(
         DEFAULT_VDB_OP,
@@ -888,6 +1002,34 @@ def run(
         None,
         "--vdb-kwargs-json",
         help="JSON object forwarded as constructor kwargs to the selected VDB operator.",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_dataframe: Optional[Path] = typer.Option(
+        None,
+        "--meta-dataframe",
+        help="CSV/JSON/Parquet sidecar metadata (requires --meta-source-field and --meta-fields).",
+        path_type=Path,
+        exists=True,
+        dir_okay=False,
+        file_okay=True,
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_source_field: Optional[str] = typer.Option(
+        None,
+        "--meta-source-field",
+        help="Column in the metadata file that matches document path (same as nv-ingest-client).",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_fields: Optional[str] = typer.Option(
+        None,
+        "--meta-fields",
+        help="Comma-separated metadata columns to copy onto each chunk's content_metadata.",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_join_key: str = typer.Option(
+        "auto",
+        "--meta-join-key",
+        help="Document match key: auto (try source_id then source_name), source_id, or source_name.",
         rich_help_panel=_PANEL_VDB,
     ),
     save_intermediate: Optional[Path] = typer.Option(
@@ -986,7 +1128,7 @@ def run(
     _ = ctx
     log_handle, original_stdout, original_stderr = _configure_logging(log_file, debug=bool(debug))
     try:
-        if run_mode not in {"batch", "inprocess"}:
+        if run_mode not in {"batch", "inprocess", "service"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
         if recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
             raise ValueError(f"Unsupported --recall-match-mode: {recall_match_mode!r}")
@@ -1007,6 +1149,26 @@ def run(
 
         resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
         resolved_vdb_kwargs = _parse_vdb_kwargs_json(vdb_kwargs_json)
+
+        _sidecar_n = sum(1 for x in (meta_dataframe, meta_source_field, meta_fields) if x is not None)
+        if _sidecar_n not in (0, 3):
+            raise typer.BadParameter(
+                "Sidecar metadata: pass all of --meta-dataframe, --meta-source-field, and --meta-fields, or omit all."
+            )
+        if _sidecar_n == 3:
+            assert meta_dataframe is not None and meta_source_field is not None and meta_fields is not None
+            cols = [c.strip() for c in meta_fields.split(",") if c.strip()]
+            if not cols:
+                raise typer.BadParameter("--meta-fields must list at least one column name.")
+            if meta_join_key not in ("auto", "source_id", "source_name"):
+                raise typer.BadParameter("--meta-join-key must be one of: auto, source_id, source_name.")
+            resolved_vdb_kwargs = {
+                **resolved_vdb_kwargs,
+                "meta_dataframe": str(meta_dataframe.expanduser().resolve()),
+                "meta_source_field": meta_source_field.strip(),
+                "meta_fields": cols,
+                "meta_join_key": meta_join_key,
+            }
 
         remote_api_key = resolve_remote_api_key(api_key)
         extract_remote_api_key = remote_api_key
@@ -1140,6 +1302,9 @@ def run(
             video_frame_text_dedup=video_frame_text_dedup,
             video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
             video_av_fuse=video_av_fuse,
+            service_url=service_url,
+            service_concurrency=service_concurrency,
+            service_api_token=service_api_token,
         )
 
         # --- Execute ---------------------------------------------------
@@ -1148,25 +1313,41 @@ def run(
         raw_result = ingestor.ingest()
         ingestion_only_total_time = time.perf_counter() - ingest_start
         ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
-        uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
-        if uploadable_vdb_records == 0:
-            logger.warning(
-                "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
-                evaluation_mode,
+
+        if run_mode == "service":
+            # The service writes embeddings to LanceDB server-side during
+            # processing (via LanceDBWriteOperator); embedding vectors are
+            # stripped from SSE results to keep payloads small.  Client-side
+            # VDB upload is therefore skipped.
+            logger.info(
+                "Service-mode ingestion complete (%d results from %d input(s), %.1fs). "
+                "VDB writes are handled server-side.",
+                len(ingest_local_results),
+                num_rows,
+                ingestion_only_total_time,
             )
+            uploadable_vdb_records = len(ingest_local_results)
             vdb_upload_time = 0.0
         else:
-            logger.info(
-                "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
-                len(ingest_local_results),
-                uploadable_vdb_records,
-                resolved_vdb_op,
-            )
-            vdb_upload_time = _upload_vdb_records(
-                ingest_local_results,
-                vdb_op=resolved_vdb_op,
-                vdb_kwargs=resolved_vdb_kwargs,
-            )
+            uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+            if uploadable_vdb_records == 0:
+                logger.warning(
+                    "No uploadable VDB records produced; skipping VDB upload and %s evaluation.",
+                    evaluation_mode,
+                )
+                vdb_upload_time = 0.0
+            else:
+                logger.info(
+                    "Uploading %s graph records (%s VDB records) to VDB backend %s ...",
+                    len(ingest_local_results),
+                    uploadable_vdb_records,
+                    resolved_vdb_op,
+                )
+                vdb_upload_time = _upload_vdb_records(
+                    ingest_local_results,
+                    vdb_op=resolved_vdb_op,
+                    vdb_kwargs=resolved_vdb_kwargs,
+                )
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()
@@ -1186,7 +1367,7 @@ def run(
                 collect_detection_summary_from_df(result_df),
             )
 
-        if uploadable_vdb_records == 0:
+        if uploadable_vdb_records == 0 and run_mode != "service":
             if run_mode == "batch":
                 import ray
 
