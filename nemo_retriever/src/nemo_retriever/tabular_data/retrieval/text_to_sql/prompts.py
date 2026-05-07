@@ -405,8 +405,7 @@ def create_entity_extraction_prompt(question: str, custom_prompts: str = "") -> 
     if custom_prompts:
         domain_section = (
             "\nDomain-specific rules (use these to identify relevant database "
-            "concepts and item names for item_search_queries, and to decide "
-            "which rules are relevant via relevant_rule_names):\n"
+            "concepts and item names for item_search_queries):\n"
             f"{custom_prompts}\n"
         )
 
@@ -434,10 +433,6 @@ Extract:
 - Each phrase should target a different aspect of the question.
 - Example: For "Who is blocking progress?" with domain rules mentioning collaborators →
   ["request task collaborators blocking", "request tasks status in_progress", "users assigned to tasks"]
-
-4) relevant_rule_names: from the domain rules above, list the NAMES (## headings) of rules
-   that are relevant to answering this question. Only include rules whose guidance is needed.
-   Return an empty list if no domain rules are provided or none apply.
 """
 
 
@@ -461,10 +456,4 @@ User's question:
 Candidate tables:
 {tables_summary}
 
-You MUST provide your reasoning FIRST — think step-by-step:
-1. What does the question ask for?
-2. Which tables are needed and why?
-3. What join chains connect them?
-4. Which tables are irrelevant and can be removed?
-
-Then return the names of tables that should be KEPT."""
+Provide brief reasoning (1-2 sentences) then return the names of tables to KEEP."""

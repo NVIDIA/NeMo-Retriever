@@ -104,15 +104,31 @@ class CandidatePreparationAgent(BaseAgent):
         candidates = list(path_state.get("retrieved_candidates") or [])
 
         relevant_tables = get_relevant_tables_from_candidates(candidates)
+        self.logger.info("Tables from candidates: %s", [t["name"] for t in relevant_tables])
 
-        additional_tables = get_relevant_tables(
-            state["retriever"],
-            question,
-            k=15,
-        )
+        additional_tables = []
+        search_queries = [question] + path_state.get("entities", [])
+        # Each query gets at least 1 result, total capped at ~10 after dedupe
+        k_per_query = max(1, 10 // len(search_queries))
+        for query in search_queries:
+            try:
+                tables = get_relevant_tables(
+                    state["retriever"],
+                    query,
+                    k=k_per_query,
+                )
+                additional_tables.extend(tables)
+            except Exception:
+                self.logger.warning("Table retrieval failed for query: %s", query, exc_info=True)
+        additional_tables = dedupe_merge_relevant_tables(additional_tables)[:10]
         relevant_tables.extend(additional_tables)
+
         relevant_tables = dedupe_merge_relevant_tables(relevant_tables)[:20]
-        self.logger.info(f"Found {len(relevant_tables)} relevant tables (after dedupe, capped at 20)")
+        self.logger.info(
+            "Found %d relevant tables (after dedupe, capped at 20): %s",
+            len(relevant_tables),
+            [t["name"] for t in relevant_tables],
+        )
 
         relevant_tables, table_relevance_reasoning = self._filter_tables_by_relevance(
             state, question, relevant_tables,

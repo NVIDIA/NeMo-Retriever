@@ -468,7 +468,10 @@ def evaluate(
                                 "The first half selects primary responsible users (pic_id), "
                                 "the second half selects collaborators (user_id). "
                                 "Only skip the second half if the question explicitly asks "
-                                "for the primary responsible user only."
+                                "for the primary responsible user only.\n"
+                                "When the question mentions 'blocking progress', filter to "
+                                "request_tasks.status = 'in_progress' since only in-progress "
+                                "tasks can block."
                             ),
                         },
                         {
@@ -516,6 +519,21 @@ def evaluate(
                             "description": (
                                 "GPU MODS version values are stored in the request_attribute_values table "
                                 "where field_name = 'modsVersion'. The actual version value is in the text_value column."
+                            ),
+                        },
+                        {
+                            "name": "Percentage / Ratio Calculations with JOINs",
+                            "description": (
+                                "When computing percentages or ratios using a LEFT JOIN, "
+                                "NEVER use COUNT(*) as the denominator — a LEFT JOIN can multiply rows "
+                                "when the right table has multiple matches per left row. "
+                                "Always use COUNT(DISTINCT <left_table>.id) for both numerator and denominator. "
+                                "Prefer the FILTER pattern:\n"
+                                "  SELECT 100.0 * COUNT(DISTINCT t.id) FILTER (WHERE joined.id IS NOT NULL)\n"
+                                "         / COUNT(DISTINCT t.id) AS percentage\n"
+                                "  FROM main_table t LEFT JOIN other_table joined ON ...\n"
+                                "This ensures the denominator is the true row count of the base table "
+                                "and the numerator only counts rows with a match."
                             ),
                         },
                     ],

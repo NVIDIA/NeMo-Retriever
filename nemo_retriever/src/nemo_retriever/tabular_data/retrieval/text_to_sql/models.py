@@ -49,12 +49,8 @@ class TableRelevanceModel(BaseModel):
     """LLM output for table relevance filtering."""
 
     reasoning: str = Field(
-        ...,
-        description=(
-            "REQUIRED. Think step-by-step: what does the question ask for, "
-            "which tables are needed, and what join chains connect them. "
-            "Then list which tables to keep and which to remove."
-        ),
+        default="",
+        description="Brief reasoning (1-2 sentences max) on which tables are relevant.",
     )
     relevant_table_names: list[str] = Field(
         description="Names of tables that are needed to answer the question.",
