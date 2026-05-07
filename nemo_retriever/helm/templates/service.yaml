@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-retriever.fullname" . }}
+  labels:
+    {{- include "nemo-retriever.labels" . | nindent 4 }}
+    {{- with .Values.networkService.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.networkService.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.networkService.type }}
+  selector:
+    {{- include "nemo-retriever.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.networkService.port }}
+      targetPort: {{ .Values.networkService.targetPort }}
+      {{- if and (eq .Values.networkService.type "NodePort") .Values.networkService.nodePort }}
+      nodePort: {{ .Values.networkService.nodePort }}
+      {{- end }}

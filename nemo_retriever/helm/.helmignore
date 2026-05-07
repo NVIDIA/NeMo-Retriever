@@ -1,0 +1,21 @@
+# Patterns to ignore when building Helm packages.
+# Operates on the same rules as .gitignore (one pattern per line).
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.hg/
+.svn/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.project
+.idea/
+*.tmproj
+.vscode/
+# Render output and tests we don't want bundled.
+ci/
+tests/
+README.md.tpl

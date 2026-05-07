@@ -29,7 +29,7 @@ from nemo_retriever.text_embed.main_text_embed import (
 # in lightweight CI (only pytest, pandas, pydantic, pyyaml).
 #
 # The ``nemo_retriever.ingest_modes`` __init__.py eagerly imports batch/fused/online
-# which pull in ray, torch, nemotron_*, nv_ingest_api, etc.  And inprocess.py
+# which pull in ray, torch, nemotron_*, nemo_retriever.api, etc.  And inprocess.py
 # itself imports model/local (torch, nemotron_*), page_elements, ocr, and
 # pdf.extract — each with their own heavy transitive deps.
 #
@@ -41,7 +41,6 @@ _HEAVY_INTERNAL = [
     # -- sibling ingest modes (prevents batch.py/fused.py from loading) ------
     "nemo_retriever.ingest_modes.batch",
     "nemo_retriever.ingest_modes.fused",
-    "nemo_retriever.ingest_modes.online",
     # -- model / ML packages (torch, nemotron_*, transformers) ---------------
     "nemo_retriever.model.local",
     "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder",
@@ -54,21 +53,21 @@ _HEAVY_INTERNAL = [
     "nemo_retriever.page_elements.page_elements",
     "nemo_retriever.ocr",
     "nemo_retriever.ocr.ocr",
-    # -- chart (nv_ingest_api → cv2) ----------------------------------------
+    # -- chart (nemo_retriever.api → cv2) ----------------------------------------
     "nemo_retriever.chart",
     "nemo_retriever.chart.chart_detection",
     "nemo_retriever.chart.commands",
     "nemo_retriever.chart.processor",
     "nemo_retriever.chart.config",
     "nemo_retriever.chart.stage",
-    # -- table (nv_ingest_api → cv2) ----------------------------------------
+    # -- table (nemo_retriever.api → cv2) ----------------------------------------
     "nemo_retriever.table",
     "nemo_retriever.table.table_detection",
     "nemo_retriever.table.config",
     "nemo_retriever.table.stage",
     "nemo_retriever.table.commands",
     "nemo_retriever.table.processor",
-    # -- PDF (pypdfium2, nv_ingest_api via pdf/__init__ → __main__ → stage) --
+    # -- PDF (pypdfium2, nemo_retriever.api via pdf/__init__ → __main__ → stage) --
     "nemo_retriever.pdf",
     "nemo_retriever.pdf.__main__",
     "nemo_retriever.pdf.config",

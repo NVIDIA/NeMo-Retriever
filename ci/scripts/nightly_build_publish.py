@@ -22,7 +22,24 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
+
+
+_PATCHABLE_TEXT_SUFFIXES = {
+    ".cfg",
+    ".ini",
+    ".json",
+    ".md",
+    ".py",
+    ".pyi",
+    ".rst",
+    ".toml",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+_PYTHON_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
 def _run(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
@@ -144,6 +161,119 @@ def _patch_pyproject_version(
     text2 = text[: m.start(1)] + new_version + text[m.end(1) :]
     _write_text(pyproject, text2)
     print(f"Patched pyproject.toml version: {old_version} -> {new_version}")
+    return True
+
+
+def _patch_pyproject_project_name(repo_dir: Path, project_name: str) -> bool:
+    pyproject = repo_dir / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+
+    text = _read_text(pyproject)
+    bounds = _project_table_bounds(text)
+    if bounds is None:
+        return False
+
+    project_start, project_end = bounds
+    project_text = text[project_start:project_end]
+    m = re.search(r'(?m)^(\s*name\s*=\s*")([^"]+)(")\s*$', project_text)
+    if not m:
+        return False
+
+    old_name = m.group(2)
+    if old_name == project_name:
+        return False
+
+    patched_project_text = project_text[: m.start(2)] + project_name + project_text[m.end(2) :]
+    patched_text = text[:project_start] + patched_project_text + text[project_end:]
+    _write_text(pyproject, patched_text)
+    print(f"Patched pyproject.toml project name: {old_name} -> {project_name}")
+    return True
+
+
+def _patch_setup_cfg_project_name(repo_dir: Path, project_name: str) -> bool:
+    setup_cfg = repo_dir / "setup.cfg"
+    if not setup_cfg.exists():
+        return False
+
+    text = _read_text(setup_cfg)
+    m = re.search(r"(?ms)^\[metadata\]\s.*?^(\s*name\s*=\s*)([^\s#]+)(\s*(?:#.*)?)$", text)
+    if not m:
+        return False
+
+    old_name = m.group(2).strip().strip('"').strip("'")
+    if old_name == project_name:
+        return False
+
+    text2 = text[: m.start(2)] + project_name + text[m.end(2) :]
+    _write_text(setup_cfg, text2)
+    print(f"Patched setup.cfg project name: {old_name} -> {project_name}")
+    return True
+
+
+def _parse_package_rename(spec: str) -> tuple[str, str]:
+    if "=" not in spec:
+        raise ValueError(f"--rename-python-package must be OLD=NEW, got: {spec!r}")
+    old_name, new_name = (part.strip() for part in spec.split("=", 1))
+    if not old_name or not new_name:
+        raise ValueError(f"--rename-python-package must be OLD=NEW, got: {spec!r}")
+    if not _PYTHON_IDENTIFIER_RE.fullmatch(old_name) or not _PYTHON_IDENTIFIER_RE.fullmatch(new_name):
+        raise ValueError(f"--rename-python-package values must be Python package names, got: {spec!r}")
+    return old_name, new_name
+
+
+def _iter_patchable_text_files(project_dir: Path) -> list[Path]:
+    skip_parts = {".git", ".venv", "__pycache__", "build", "dist"}
+    files: list[Path] = []
+    for path in project_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        if skip_parts.intersection(path.relative_to(project_dir).parts):
+            continue
+        if path.suffix in _PATCHABLE_TEXT_SUFFIXES:
+            files.append(path)
+    return files
+
+
+def _rename_python_package(project_dir: Path, old_name: str, new_name: str) -> bool:
+    if old_name == new_name:
+        return False
+
+    old_rel = Path(*old_name.split("."))
+    new_rel = Path(*new_name.split("."))
+    renamed = False
+    for root in (project_dir / "src", project_dir):
+        old_path = root / old_rel
+        if not old_path.is_dir():
+            continue
+        new_path = root / new_rel
+        if new_path.exists():
+            raise RuntimeError(f"Cannot rename Python package: destination already exists: {new_path}")
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old_path), str(new_path))
+        print(
+            "Renamed Python package directory: "
+            f"{old_path.relative_to(project_dir)} -> {new_path.relative_to(project_dir)}"
+        )
+        renamed = True
+
+    if not renamed:
+        raise RuntimeError(f"Cannot rename Python package: {old_name!r} was not found under {project_dir}")
+
+    token = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(old_name)}(?![A-Za-z0-9_])")
+    patched_files = 0
+    for path in _iter_patchable_text_files(project_dir):
+        try:
+            text = _read_text(path)
+        except UnicodeDecodeError:
+            continue
+        patched, count = token.subn(new_name, text)
+        if count == 0:
+            continue
+        _write_text(path, patched)
+        patched_files += 1
+
+    print(f"Patched Python package references: {old_name} -> {new_name} in {patched_files} file(s)")
     return True
 
 
@@ -400,6 +530,18 @@ def _pip_install(py: Path, packages: list[str], *, cwd: Path, env: dict[str, str
     _run([str(py), "-m", "pip", "install", "--upgrade", *packages], cwd=cwd, env=env)
 
 
+def _pyproject_build_system_requires(project_dir: Path) -> list[str]:
+    pyproject = project_dir / "pyproject.toml"
+    if not pyproject.exists():
+        return []
+
+    data = tomllib.loads(_read_text(pyproject))
+    requires = data.get("build-system", {}).get("requires", [])
+    if not isinstance(requires, list) or not all(isinstance(req, str) for req in requires):
+        raise RuntimeError("Invalid pyproject.toml [build-system].requires; expected a list of strings")
+    return requires
+
+
 def _installed_distribution_public_version(
     py: Path,
     package: str,
@@ -452,6 +594,10 @@ def _build(
             shutil.rmtree(p)
 
     _pip_install(py, ["build"], cwd=project_dir, env=env)
+    if no_isolation:
+        build_system_requires = _pyproject_build_system_requires(project_dir)
+        if build_system_requires:
+            _pip_install(py, build_system_requires, cwd=project_dir, env=env)
     _pip_install(py, venv_pip_install, cwd=project_dir, env=env)
 
     if pin_runtime_dependencies:
@@ -578,6 +724,19 @@ def main() -> int:
         "(e.g. build 1.0.2.devYYYYMMDD from a source tree still declaring 1.0.0).",
     )
     ap.add_argument(
+        "--project-name",
+        default=None,
+        help="Patch the source Python project/distribution name before building "
+        "(e.g. publish a source tree declaring 'nemotron-ocr' as 'nemotron-ocr-v2').",
+    )
+    ap.add_argument(
+        "--rename-python-package",
+        action="append",
+        default=[],
+        help="Rename a Python import package before building, as OLD=NEW "
+        "(e.g. nemotron_ocr=nemotron_ocr_v2; repeatable).",
+    )
+    ap.add_argument(
         "--build-env",
         action="append",
         default=[],
@@ -669,6 +828,21 @@ def main() -> int:
     )
     if not patched:
         print("No static version field found to patch (continuing).")
+
+    if args.project_name:
+        patched_name = _patch_pyproject_project_name(
+            project_dir,
+            args.project_name,
+        ) or _patch_setup_cfg_project_name(
+            project_dir,
+            args.project_name,
+        )
+        if not patched_name:
+            print(f"Project name already set to {args.project_name!r} or no static project name found.")
+
+    for rename_spec in args.rename_python_package:
+        old_name, new_name = _parse_package_rename(rename_spec)
+        _rename_python_package(project_dir, old_name, new_name)
 
     if args.hatch_force_platform_wheel:
         if not _patch_hatch_build_force_platform_wheel(project_dir):

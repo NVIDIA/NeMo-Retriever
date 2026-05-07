@@ -38,7 +38,7 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
+uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0
 ```
 
 For **remote NIM inference only** (no local GPU required), the base package is sufficient:
@@ -47,7 +47,7 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0 nv-ingest-api==26.3.0
+uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0
 ```
 
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
@@ -404,7 +404,7 @@ ingestor = (
 )
 ```
 
-*Note:* the `split()` task uses a tokenizer to split texts by a max_token length
+*Note:* the `split_config` keyword on `.extract()` uses a tokenizer to split texts by a max_token length
 ### Render results as markdown
 
 If you want a readable markdown view of extracted results, pass the full in-process result list
@@ -414,15 +414,14 @@ headers, so both single-document and multi-document runs follow the same contrac
 
 PDF text is split at the page level.
 
-HTML and .txt files have no natural page delimiters, so they almost always need to be paired with the `.split()` task.
+HTML and .txt files have no natural page delimiters, so they almost always need to be paired with the `split_config` keyword.
 
 ```python
-# html and text files - include a split task to prevent texts from exceeding the embedder's max sequence length
+# html and text files - include split_config to prevent texts from exceeding the embedder's max sequence length
 documents = [str(Path(f"../data/*{ext}")) for ext in [".txt", ".html"]]
 ingestor = (
   ingestor.files(documents)
-  .extract()
-  .split(max_tokens=5) #1024 by default, set low here to demonstrate chunking
+  .extract(split_config={"text": {"max_tokens": 5}, "html": {"max_tokens": 5}}) # 1024 by default, set low here to demonstrate chunking
 )
 results = ingestor.ingest()
 markdown_docs = to_markdown(results)
@@ -443,21 +442,19 @@ ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
 ```
 
-### Store extracted images and text
+### Store row images
 
-Use `.store()` to persist extracted images, tables, charts, and text to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame so downstream stages (embed, VDB upload) can reference them. By default, base64 payloads are stripped after writing to reduce memory pressure.
+Use `.store()` after `.embed()` to persist row-level image payloads to local disk or object storage (S3, MinIO, GCS via fsspec). Stored URIs are written back to the DataFrame for VDB upload and reranking.
 
 ```python
 ingestor = (
   ingestor.files(documents)
   .extract()
+  .embed()
   .store(
     storage_uri="s3://my-bucket/citation-assets",  # or a local path
     storage_options={"key": "...", "secret": "..."},  # fsspec auth for S3/MinIO
-    store_text=True,       # also write .txt files for page text and structured content
-    strip_base64=True,     # free image payloads after writing (default)
   )
-  .embed()
   .vdb_upload()
 )
 ```

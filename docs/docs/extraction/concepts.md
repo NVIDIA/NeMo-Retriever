@@ -8,7 +8,7 @@ A **job** is a unit of work you submit with a JSON description: a document paylo
 
 ## Pipeline and tasks
 
-NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Customize your pipeline](user-defined-functions.md), [user-defined stages](user-defined-stages.md).
+NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md), [user-defined stages](user-defined-stages.md).
 
 ## Extraction metadata
 
@@ -20,7 +20,7 @@ Optionally, the library can compute **embeddings** for extracted content and sto
 
 ## Deployment modes
 
-- **Library mode** — Run without the full container stack where appropriate ([quickstart](quickstart-library-mode.md)).
+- **Library mode** — Run without the full container stack where appropriate; see [Deployment options](deployment-options.md).
 - **Kubernetes / Helm (self-hosted)** — See [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
 - **Notebooks** — [Jupyter examples](notebooks.md) for experimentation and RAG demos.
 

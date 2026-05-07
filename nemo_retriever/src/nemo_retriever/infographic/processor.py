@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 
-from nv_ingest_api.internal.extract.image.infographic_extractor import extract_infographic_data_from_image_internal
-from nv_ingest_api.internal.primitives.tracing.tagging import traceable_func
-from nv_ingest_api.internal.schemas.extract.extract_infographic_schema import InfographicExtractorSchema
+from nemo_retriever.api.internal.extract.image.infographic_extractor import extract_infographic_data_from_image_internal
+from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.api.internal.schemas.extract.extract_infographic_schema import InfographicExtractorSchema
 
 from nemo_retriever.io.dataframe import validate_primitives_dataframe
 

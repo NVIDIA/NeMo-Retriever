@@ -1,10 +1,21 @@
 # nv-ingest Integration Testing Framework
 
-A configurable, dataset-agnostic testing framework for end-to-end validation of nv-ingest pipelines. This framework uses structured YAML configuration for type safety, validation, and parameter management.
-
 ## Unsupported Developer Docs
 
-Anything under [`nemo_retriever/developer_docs/`](../../nemo_retriever/developer_docs/) is **internal developer documentation**, not a supported or stable part of NeMo Retriever Library. It may cover experiments, refactors, or one-off workflows and can change or be removed without notice—do not treat it as a public API or product guarantee. For an index of those notes, see [`nemo_retriever/developer_docs/README.md`](../../nemo_retriever/developer_docs/README.md).
+The harness in `tools/harness/` and everything documented in this README are
+internal developer tooling for nv-ingest integration testing. They are
+not a supported or stable feature of NeMo Retriever Library; commands,
+configuration, and defaults may change or be removed without notice—do not rely
+on them as a public API or product guarantee.
+
+Anything under [`nemo_retriever/developer_docs/`](../../nemo_retriever/developer_docs/)
+is likewise internal developer documentation (experiments, refactors, or
+one-off workflows). For an index of those notes, see
+[`nemo_retriever/developer_docs/README.md`](../../nemo_retriever/developer_docs/README.md).
+
+A configurable, dataset-agnostic testing framework for end-to-end validation of
+nv-ingest pipelines. This framework uses structured YAML configuration for type
+safety, validation, and parameter management.
 
 ## Quick Start
 

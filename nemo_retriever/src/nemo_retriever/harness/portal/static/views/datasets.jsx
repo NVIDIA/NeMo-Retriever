@@ -151,7 +151,7 @@ function DatasetsView({ managedDatasets, loading, onRefresh }) {
                   </td>
                   <td className="mono" style={{fontSize:'12px',color:'var(--nv-text-muted)',maxWidth:'250px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.path}>{ds.path}</td>
                   <td><span className="badge badge-na">{ds.input_type}</span></td>
-                  <td><span className="badge" style={{background: ds.evaluation_mode==='beir' ? 'rgba(118,185,0,0.15)' : 'rgba(100,180,255,0.1)', color: ds.evaluation_mode==='beir' ? 'var(--nv-green)' : 'rgb(100,180,255)', border: ds.evaluation_mode==='beir' ? '1px solid rgba(118,185,0,0.3)' : '1px solid rgba(100,180,255,0.2)'}}>{ds.evaluation_mode || "recall"}</span></td>
+                  <td><span className="badge" style={{background: ds.evaluation_mode==='beir' ? 'rgba(118,185,0,0.15)' : 'rgba(100,180,255,0.1)', color: ds.evaluation_mode==='beir' ? 'var(--nv-green)' : 'rgb(100,180,255)', border: ds.evaluation_mode==='beir' ? '1px solid rgba(118,185,0,0.3)' : '1px solid rgba(100,180,255,0.2)'}}>{ds.evaluation_mode || "beir"}</span></td>
                   <td className="mono" style={{fontSize:'11px',color:'var(--nv-text-dim)',maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={ds.query_csv||''}>{ds.query_csv || "\u2014"}</td>
                   <td>{ds.recall_required ? <span className="badge badge-pass">Yes</span> : <span className="badge badge-na">No</span>}</td>
                   <td>
@@ -194,10 +194,10 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
     query_csv: dataset?.query_csv || "",
     input_type: dataset?.input_type || "pdf",
     recall_required: dataset?.recall_required || false,
-    recall_match_mode: dataset?.recall_match_mode || "pdf_page",
+    recall_match_mode: dataset?.recall_match_mode || "audio_segment",
     recall_adapter: dataset?.recall_adapter || "none",
-    evaluation_mode: dataset?.evaluation_mode || "recall",
-    beir_loader: dataset?.beir_loader || "vidore_hf",
+    evaluation_mode: dataset?.evaluation_mode || "beir",
+    beir_loader: dataset?.beir_loader || "",
     beir_dataset_name: dataset?.beir_dataset_name || "",
     beir_split: dataset?.beir_split || "test",
     beir_query_language: dataset?.beir_query_language || "",
@@ -216,6 +216,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
   const [error, setError] = useState("");
 
   const isBeir = form.evaluation_mode === "beir";
+  const beirLoaderOptions = ["bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"];
 
   function set(field, val) { setForm(f=>({...f,[field]:val})); }
 
@@ -228,6 +229,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
     const payload = {
       ...form,
       query_csv: form.query_csv || null,
+      beir_loader: isBeir ? (form.beir_loader || null) : null,
       beir_dataset_name: form.beir_dataset_name || null,
       beir_query_language: form.beir_query_language || null,
       beir_ks: (isBeir && parsedKs && parsedKs.length > 0) ? parsedKs : null,
@@ -288,6 +290,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                   <option value="pdf">pdf</option>
                   <option value="image">image</option>
                   <option value="text">text</option>
+                  <option value="audio">audio</option>
                 </select>
               </div>
               <div>
@@ -295,6 +298,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                 <select className="select" style={{width:'100%'}} value={form.evaluation_mode} onChange={e=>set('evaluation_mode',e.target.value)}>
                   <option value="recall">recall</option>
                   <option value="beir">beir</option>
+                  <option value="none">none</option>
                 </select>
               </div>
             </div>
@@ -312,8 +316,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                   <div>
                     <label style={labelStyle}>Match Mode</label>
                     <select className="select" style={{width:'100%'}} value={form.recall_match_mode} onChange={e=>set('recall_match_mode',e.target.value)}>
-                      <option value="pdf_page">pdf_page</option>
-                      <option value="pdf_only">pdf_only</option>
+                      <option value="audio_segment">audio_segment</option>
                     </select>
                   </div>
                 </div>
@@ -321,8 +324,6 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                   <label style={labelStyle}>Recall Adapter</label>
                   <select className="select" style={{width:'100%'}} value={form.recall_adapter} onChange={e=>set('recall_adapter',e.target.value)}>
                     <option value="none">none</option>
-                    <option value="page_plus_one">page_plus_one</option>
-                    <option value="financebench_json">financebench_json</option>
                   </select>
                 </div>
               </>
@@ -334,8 +335,9 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
                   <div>
                     <label style={labelStyle}>BEIR Loader</label>
-                    <select className="select" style={{width:'100%'}} value={form.beir_loader} onChange={e=>set('beir_loader',e.target.value)}>
-                      <option value="vidore_hf">vidore_hf</option>
+                    <select className="select" style={{width:'100%'}} value={form.beir_loader} onChange={e=>set('beir_loader',e.target.value)} required>
+                      <option value="">Select loader...</option>
+                      {beirLoaderOptions.map(loader => <option key={loader} value={loader}>{loader}</option>)}
                     </select>
                   </div>
                   <div>

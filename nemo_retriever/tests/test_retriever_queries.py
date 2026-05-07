@@ -158,7 +158,7 @@ class TestQueriesVdbDelegation:
         )
 
         with (
-            patch("nv_ingest_api.util.nim.infer_microservice", return_value=[[0.5, 0.6]]) as mock_embed,
+            patch("nemo_retriever.api.util.nim.infer_microservice", return_value=[[0.5, 0.6]]) as mock_embed,
             patch.object(retriever, "_embed_queries_local_hf") as mock_local_embed,
         ):
             retriever.queries(["q"], embedder="query-model")

@@ -5,7 +5,7 @@
 """
 Audio pipeline: media chunking (MediaChunkActor) and ASR (ASRActor).
 
-Provides the same semantics as nv-ingest-api dataloader + Parakeet for
+Provides the same semantics as `nemo_retriever.api` dataloader + Parakeet for
 batch, inprocess, fused, and online run modes.
 """
 

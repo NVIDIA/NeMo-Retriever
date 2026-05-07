@@ -226,6 +226,9 @@ class TriggerRequest(BaseModel):
     git_commit: str | None = None
     nsys_profile: bool = False
     graph_id: int | None = None
+    run_mode: str | None = None
+    service_url: str | None = None
+    service_max_concurrency: int | None = None
 
 
 class TriggerResponse(BaseModel):
@@ -381,15 +384,17 @@ class DatasetCreateRequest(BaseModel):
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = False
-    recall_match_mode: str = "pdf_page"
+    recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
-    evaluation_mode: str = "recall"
+    evaluation_mode: str = "beir"
     beir_loader: str | None = None
     beir_dataset_name: str | None = None
     beir_split: str = "test"
     beir_query_language: str | None = None
     beir_doc_id_field: str = "pdf_basename"
     beir_ks: list[int] | None = None
+    ocr_version: str | None = None
+    lancedb_table_name: str | None = None
     embed_model_name: str | None = None
     embed_modality: str = "text"
     embed_granularity: str = "element"
@@ -415,6 +420,8 @@ class DatasetUpdateRequest(BaseModel):
     beir_query_language: str | None = None
     beir_doc_id_field: str | None = None
     beir_ks: list[int] | None = None
+    ocr_version: str | None = None
+    lancedb_table_name: str | None = None
     embed_model_name: str | None = None
     embed_modality: str | None = None
     embed_granularity: str | None = None
@@ -1545,6 +1552,8 @@ async def list_managed_datasets():
 
 @app.post("/api/managed-datasets")
 async def create_managed_dataset(req: DatasetCreateRequest):
+    if req.evaluation_mode == "beir" and not str(req.beir_loader or "").strip():
+        raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
     data = req.model_dump(exclude_none=True)
     try:
         ds = history.create_dataset(data)
@@ -1633,6 +1642,18 @@ async def get_managed_dataset(dataset_id: int):
 
 @app.put("/api/managed-datasets/{dataset_id}")
 async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
+    existing = history.get_dataset_by_id(dataset_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    requested = req.model_dump()
+    effective_mode = requested.get("evaluation_mode") or existing.get("evaluation_mode")
+    effective_loader = (
+        requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
+    )
+    if effective_mode == "beir" and not str(effective_loader or "").strip():
+        raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
+
     data = {k: v for k, v in req.model_dump().items() if v is not None}
     row = history.update_dataset(dataset_id, data)
     if row is None:
@@ -2136,6 +2157,10 @@ def _resolve_dataset_config(
         beir_ks = managed.get("beir_ks")
         if beir_ks and isinstance(beir_ks, list):
             overrides["beir_ks"] = beir_ks
+        if managed.get("ocr_version"):
+            overrides["ocr_version"] = managed["ocr_version"]
+        if managed.get("lancedb_table_name"):
+            overrides["lancedb_table_name"] = managed["lancedb_table_name"]
         if managed.get("embed_model_name"):
             overrides["embed_model_name"] = managed["embed_model_name"]
         if managed.get("embed_modality"):
@@ -2195,6 +2220,13 @@ async def trigger_run(req: TriggerRequest):
         req.git_ref,
         req.git_commit,
     )
+
+    if req.run_mode == "service":
+        merged_overrides["run_mode"] = "service"
+        if req.service_url:
+            merged_overrides["service_url"] = req.service_url
+        if req.service_max_concurrency:
+            merged_overrides["service_max_concurrency"] = req.service_max_concurrency
 
     base_job: dict[str, Any] = {
         "dataset": req.dataset,
@@ -3151,6 +3183,7 @@ class PortalSettingsUpdateRequest(BaseModel):
     mcp_allowed_origins: str | None = None
     slack_webhook_url: str | None = None
     portal_base_url: str | None = None
+    service_url: str | None = None
 
 
 @app.put("/api/portal-settings")
@@ -3163,6 +3196,7 @@ async def update_portal_settings(req: PortalSettingsUpdateRequest):
         "mcp_allowed_origins",
         "slack_webhook_url",
         "portal_base_url",
+        "service_url",
     ):
         value = getattr(req, key, None)
         if value is not None:
