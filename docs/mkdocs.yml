@@ -82,7 +82,9 @@ nav:
       - "Pre-Requisites & Support Matrix": extraction/prerequisites-support-matrix.md
       - "Quickstart: NeMo Retriever Library": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
       - "Authentication and API keys": extraction/api-keys.md
-  - "3. Deployment options": extraction/deployment-options.md
+  - "3. Deployment options":
+      - "Compare deployment options": extraction/deployment-options.md
+      - "Helm chart (Kubernetes)": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm
   - "4. Core workflows":
       - "Workflow: Ingest documents into a searchable VDB collection": extraction/workflow-document-ingestion.md
       - "Workflow: Audio & Video Ingestion":
@@ -117,6 +119,7 @@ nav:
       - "API guide": extraction/nemo-retriever-api-reference.md
       # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
       - "CLI reference": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
+      - "Quickstart: retriever CLI": reference/retriever-cli-quickstart.md
       - Environment variables: extraction/environment-config.md
       - "Metadata reference": extraction/content-metadata.md
   - "13. Support & community":
@@ -159,7 +162,7 @@ plugins:
         # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
         extraction/nv-ingest_cli.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
         extraction/helm.md: extraction/deployment-options.md
-        extraction/quickstart-guide.md: extraction/deployment-options.md
+        extraction/quickstart-guide.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm
         extraction/choose-your-path.md: extraction/deployment-options.md
         extraction/hosted-nims-when-to-use.md: extraction/deployment-options.md
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
@@ -209,7 +212,6 @@ markdown_extensions:
 exclude_docs: |
   index.md
   extraction/helm.md
-  extraction/quickstart-guide.md
   extraction/choose-your-path.md
   extraction/hosted-nims-when-to-use.md
   extraction/workflow-e2e-blueprints.md

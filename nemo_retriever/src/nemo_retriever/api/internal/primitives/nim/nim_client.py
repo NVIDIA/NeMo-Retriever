@@ -17,13 +17,20 @@ from typing import Tuple, Union
 
 import numpy as np
 import requests
-import tritonclient.grpc as grpcclient
 
 from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
 from nemo_retriever.api.util.string_processing import generate_url
 
 
 logger = logging.getLogger(__name__)
+
+
+def _triton_grpc():
+    """Load Triton gRPC client only when gRPC inference is used (slim installs skip tritonclient)."""
+    import tritonclient.grpc as grpcclient  # noqa: PLC0415
+
+    return grpcclient
+
 
 # Regex pattern to detect CUDA-related errors in Triton gRPC responses
 CUDA_ERROR_REGEX = re.compile(
@@ -93,7 +100,8 @@ class NimClient:
             if not self._grpc_endpoint:
                 raise ValueError("gRPC endpoint must be provided for gRPC protocol")
             logger.debug(f"Creating gRPC client with {self._grpc_endpoint}")
-            self.client = grpcclient.InferenceServerClient(url=self._grpc_endpoint)
+            grpc = _triton_grpc()
+            self.client = grpc.InferenceServerClient(url=self._grpc_endpoint)
         elif self.protocol == "http":
             if not self._http_endpoint:
                 raise ValueError("HTTP endpoint must be provided for HTTP protocol")
@@ -321,14 +329,15 @@ class NimClient:
         dtypes = kwargs.get("dtypes", ["FP32"])
         input_names = kwargs.get("input_names", ["input"])
 
+        grpc = _triton_grpc()
         input_tensors = []
         for input_name, input_data, dtype in zip(input_names, formatted_input, dtypes):
-            input_tensors.append(grpcclient.InferInput(input_name, input_data.shape, datatype=dtype))
+            input_tensors.append(grpc.InferInput(input_name, input_data.shape, datatype=dtype))
 
         for idx, input_data in enumerate(formatted_input):
             input_tensors[idx].set_data_from_numpy(input_data)
 
-        outputs = [grpcclient.InferRequestedOutput(output_name) for output_name in output_names]
+        outputs = [grpc.InferRequestedOutput(output_name) for output_name in output_names]
 
         base_delay = 2.0
         attempt = 0
@@ -348,7 +357,7 @@ class NimClient:
                 else:
                     return [response.as_numpy(output.name()) for output in outputs]
 
-            except grpcclient.InferenceServerException as e:
+            except grpc.InferenceServerException as e:
                 status = str(e.status())
                 message = e.message()
 
@@ -747,14 +756,14 @@ def get_nim_client_manager(*args, **kwargs) -> NimClientManager:
     return NimClientManager(*args, **kwargs)
 
 
-def reload_models(client: grpcclient.InferenceServerClient, exclude: list[str] = [], client_timeout: int = 120) -> bool:
+def reload_models(client: Any, exclude: list[str] = [], client_timeout: int = 120) -> bool:
     """
     Reloads all models in the Triton server except for the models in the exclude list.
 
     Parameters
     ----------
-    client : grpcclient.InferenceServerClient
-        The gRPC client connected to the Triton server.
+    client
+        The gRPC client connected to the Triton server (``tritonclient.grpc``).
     exclude : list[str], optional
         A list of model names to exclude from reloading.
     client_timeout : int, optional
@@ -765,6 +774,7 @@ def reload_models(client: grpcclient.InferenceServerClient, exclude: list[str] =
     bool
         True if all models were successfully reloaded, False otherwise.
     """
+    grpc = _triton_grpc()
     model_index = client.get_model_repository_index()
     exclude = set(exclude)
     names = [m.name for m in model_index.models if m.name not in exclude]
@@ -775,7 +785,7 @@ def reload_models(client: grpcclient.InferenceServerClient, exclude: list[str] =
     for name in names:
         try:
             client.unload_model(name)
-        except grpcclient.InferenceServerException as e:
+        except grpc.InferenceServerException as e:
             msg = e.message()
             if "explicit model load / unload" in msg.lower():
                 status = e.status()

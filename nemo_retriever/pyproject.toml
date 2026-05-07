@@ -29,6 +29,7 @@ classifiers = [
 ]
 dependencies = [
   # Core orchestration and framework
+  "backoff",
   "ray[data,serve]>=2.49.0",
   "ffmpeg-python",
   "pandas>=2.0,<3",
@@ -69,10 +70,15 @@ dependencies = [
 
 [project.optional-dependencies]
 
+# Core ``pip install nemo-retriever`` (no extras) supports remote HTTP NIM and the
+# ``retriever pipeline`` CLI without ``tritonclient``. Triton gRPC is imported only
+# when a gRPC client is constructed; install ``nemo-retriever[local]`` for on-box
+# Triton + GPU stacks (``tritonclient`` is listed under ``local``).
+
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
 # Adds HuggingFace transformers, torch, nemotron models, GPU monitoring, and vLLM.
 local = [
-  "backoff",
+
   "glom",
   "transformers>=4.57.6,<5",
   "tokenizers>=0.20.3",

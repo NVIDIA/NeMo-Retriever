@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,8 @@ from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
+logger = logging.getLogger(__name__)
+
 # Define file type mappings
 PDF_EXTENSIONS = {".pdf", ".docx", ".pptx"}
 TEXT_EXTENSIONS = {".txt"}
@@ -57,6 +60,14 @@ HTML_EXTENSIONS = {".html"}
 AUDIO_EXTENSIONS = {".mp3", ".wav"}
 IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
+
+
+def _unsupported_extension_message(ext: str) -> str:
+    display_ext = ext or "<none>"
+    return (
+        f"Unsupported file extension '{display_ext}' for extraction_mode='auto'. "
+        "Provide a supported extension or set extraction_mode explicitly."
+    )
 
 
 def _has_endpoint(*values: Any) -> bool:
@@ -196,6 +207,12 @@ class _MultiTypeExtractBase(AbstractOperator):
             path = str(row.get("path") or "")
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            if explicit_mode == "auto" and target == "":
+                logger.warning(
+                    _unsupported_extension_message(ext),
+                    extra={"path": path},
+                )
+                continue
             if target in grouped:
                 grouped[target].append(idx)
 
@@ -237,6 +254,12 @@ class _MultiTypeExtractBase(AbstractOperator):
         for path in files:
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            if explicit_mode == "auto" and target == "":
+                logger.warning(
+                    _unsupported_extension_message(ext),
+                    extra={"path": path},
+                )
+                continue
             if target in grouped:
                 grouped[target].append(path)
 

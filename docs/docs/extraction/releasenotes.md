@@ -6,7 +6,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 NVIDIA® NeMo Retriever Library version 26.03 adds broader hardware and software support along with many pipeline, evaluation, and deployment enhancements.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 Highlights for the 26.03 release include:
 
@@ -46,4 +46,4 @@ Highlights for the 26.03 release include:
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
