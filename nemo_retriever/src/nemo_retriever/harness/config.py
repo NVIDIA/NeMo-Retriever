@@ -16,7 +16,7 @@ REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
 VALID_RUN_MODES = {"batch", "inprocess", "service"}
-VALID_EVALUATION_MODES = {"recall", "beir"}
+VALID_EVALUATION_MODES = {"none", "recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none"}
 VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -174,7 +174,7 @@ class HarnessConfig:
                 errors.append("video_frame_fps must be > 0.0")
             if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
                 errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
-        else:
+        elif self.evaluation_mode == "beir":
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
             if self.beir_doc_id_field not in VALID_BEIR_DOC_ID_FIELDS:
@@ -472,6 +472,10 @@ def load_harness_config(
     merged["preset"] = str(merged.get("preset") or "single_gpu")
     if merged.get("evaluation_mode") == "beir" and merged.get("beir_dataset_name") is None:
         merged["beir_dataset_name"] = merged["dataset_label"]
+    if merged.get("evaluation_mode") != "beir":
+        merged["beir_loader"] = None
+        merged["beir_dataset_name"] = None
+        merged["beir_query_language"] = None
     for removed_key in sorted(REMOVED_HARNESS_KEYS):
         if removed_key in merged:
             raise ValueError(f"{removed_key} is no longer supported by the harness; use embed_modality instead")

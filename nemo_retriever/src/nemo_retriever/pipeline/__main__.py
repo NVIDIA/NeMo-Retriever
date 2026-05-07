@@ -640,6 +640,9 @@ def _run_evaluation(
     should skip metric recording.
     """
 
+    if evaluation_mode == "none":
+        return "None", 0.0, {}, None, False
+
     from nemo_retriever.model import resolve_embed_model
 
     embed_model = resolve_embed_model(str(embed_model_name))
@@ -1135,7 +1138,7 @@ def run(
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode not in {"recall", "beir", "qa"}:
+        if evaluation_mode not in {"none", "recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
         if evaluation_mode == "recall":
             if input_type != "audio":

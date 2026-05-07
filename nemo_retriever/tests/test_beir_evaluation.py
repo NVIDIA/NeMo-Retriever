@@ -71,6 +71,17 @@ def test_build_queries_by_id_warns_when_all_queries_filtered(caplog) -> None:
     assert "skipped_language=1" in caplog.text
 
 
+def test_build_queries_by_id_warning_logs_normalized_query_language(caplog) -> None:
+    rows = [{"query_id": 1, "query": "hello", "language": "english"}]
+
+    with caplog.at_level("WARNING", logger="nemo_retriever.recall.beir"):
+        query_ids, queries = build_queries_by_id(rows, query_language="Français")
+
+    assert query_ids == []
+    assert queries == []
+    assert "query_language='fr'" in caplog.text
+
+
 def test_build_qrels_by_query_id_formats_nested_dict() -> None:
     rows = [
         {"query_id": 1, "corpus_id": "doc_a", "score": 1},

@@ -47,6 +47,13 @@ def test_evaluate_run_outcome_fails_when_beir_metrics_missing() -> None:
     assert success is False
 
 
+def test_evaluate_run_outcome_allows_no_evaluation_metrics() -> None:
+    rc, reason, success = _evaluate_run_outcome(0, "none", False, {}, {})
+    assert rc == 0
+    assert reason == ""
+    assert success is True
+
+
 def test_evaluate_run_outcome_uses_subprocess_error_code() -> None:
     rc, reason, success = _evaluate_run_outcome(2, "recall", True, {"recall@5": 0.9})
     assert rc == 2
@@ -266,6 +273,27 @@ def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     assert "--recall-match-mode" not in cmd
     vdb_kwargs = json.loads(cmd[cmd.index("--vdb-kwargs-json") + 1])
     assert vdb_kwargs["table_name"] == "custom-table"
+    assert effective_query_csv is None
+
+
+def test_build_command_supports_no_evaluation_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="bo20",
+        preset="single_gpu",
+        evaluation_mode="none",
+        recall_required=False,
+    )
+
+    cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "none"
+    assert "--beir-loader" not in cmd
+    assert "--query-csv" not in cmd
+    assert "--recall-match-mode" not in cmd
     assert effective_query_csv is None
 
 

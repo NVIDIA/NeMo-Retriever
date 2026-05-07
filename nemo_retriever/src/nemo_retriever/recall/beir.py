@@ -387,7 +387,7 @@ def _load_financebench_json_dataset(*, dataset_name: str, doc_id_field: str) -> 
 
 def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = None) -> tuple[list[str], list[str]]:
     """Normalize iterable rows into ordered ``(query_ids, queries)``."""
-    normalized_language = str(query_language).strip() if query_language is not None else None
+    normalized_language = _normalize_language(query_language) if query_language is not None else None
     if not normalized_language:
         normalized_language = None
     query_ids: list[str] = []

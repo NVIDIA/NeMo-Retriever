@@ -766,6 +766,26 @@ def test_load_harness_config_supports_financebench_beir_defaults(monkeypatch: py
     assert cfg.beir_doc_id_field == "pdf_basename"
 
 
+def test_load_harness_config_supports_bo20_ingestion_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_exists = Path.exists
+    expected_dataset_dir = Path("/datasets/nv-ingest/bo20").resolve()
+
+    def _fake_exists(path_self: Path) -> bool:
+        if path_self == expected_dataset_dir:
+            return True
+        return real_exists(path_self)
+
+    monkeypatch.setattr(harness_config.Path, "exists", _fake_exists)
+
+    cfg = load_harness_config(dataset="bo20", preset="single_gpu")
+
+    assert cfg.dataset_dir == str(expected_dataset_dir)
+    assert cfg.query_csv is None
+    assert cfg.recall_required is False
+    assert cfg.evaluation_mode == "none"
+    assert cfg.beir_loader is None
+
+
 def test_load_harness_config_supports_bo767_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     real_exists = Path.exists
     expected_dataset_dir = Path("/datasets/nv-ingest/bo767").resolve()

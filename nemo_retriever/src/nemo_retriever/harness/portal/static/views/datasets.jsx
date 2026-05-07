@@ -298,6 +298,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                 <select className="select" style={{width:'100%'}} value={form.evaluation_mode} onChange={e=>set('evaluation_mode',e.target.value)}>
                   <option value="recall">recall</option>
                   <option value="beir">beir</option>
+                  <option value="none">none</option>
                 </select>
               </div>
             </div>

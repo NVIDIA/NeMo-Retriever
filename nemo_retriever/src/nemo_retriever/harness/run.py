@@ -425,7 +425,7 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             cmd += ["--beir-query-language", cfg.beir_query_language]
         for k in cfg.beir_ks:
             cmd += ["--beir-k", str(int(k))]
-    else:
+    elif cfg.evaluation_mode == "recall":
         if cfg.input_type != "audio":
             raise ValueError("Legacy recall evaluation is only supported for audio input")
         if cfg.recall_match_mode != "audio_segment" or cfg.recall_adapter != "none":
@@ -442,6 +442,8 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             str(cfg.audio_match_tolerance_secs),
             "--no-recall-details",
         ]
+    else:
+        effective_query_csv = None
 
     if cfg.api_key:
         cmd += ["--api-key", cfg.api_key]

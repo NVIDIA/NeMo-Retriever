@@ -316,11 +316,17 @@ CREATE TABLE IF NOT EXISTS _applied_data_migrations (
 """
 
 _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR = "non_audio_recall_datasets_to_beir"
+_MIGRATE_BO20_DATASETS_TO_NONE = "bo20_datasets_to_none"
 _DATA_MIGRATIONS = (
     (
         _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR,
-        "UPDATE datasets SET evaluation_mode = 'beir' "
+        "UPDATE datasets SET evaluation_mode = CASE WHEN name = 'bo20' THEN 'none' ELSE 'beir' END "
         "WHERE evaluation_mode = 'recall' AND COALESCE(input_type, 'pdf') != 'audio'",
+    ),
+    (
+        _MIGRATE_BO20_DATASETS_TO_NONE,
+        "UPDATE datasets SET evaluation_mode = 'none' "
+        "WHERE name = 'bo20' AND COALESCE(input_type, 'pdf') != 'audio'",
     ),
 )
 
@@ -934,7 +940,8 @@ _HASH_AFFECTING_FIELDS = (
 
 
 def _dataset_config_fields_for_hash(data: dict[str, Any]) -> dict[str, Any] | None:
-    fields = {key: data.get(key) for key in _HASH_AFFECTING_FIELDS if data.get(key) is not None}
+    # Include None values so clearing optional filters changes the hash.
+    fields = {key: data.get(key) for key in _HASH_AFFECTING_FIELDS}
     return fields or None
 
 

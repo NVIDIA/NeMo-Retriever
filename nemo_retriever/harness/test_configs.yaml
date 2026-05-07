@@ -202,6 +202,7 @@ datasets:
     query_csv: null
     input_type: pdf
     recall_required: false
+    evaluation_mode: none
 
   bo767:
     path: /datasets/nv-ingest/bo767
