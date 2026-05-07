@@ -17,9 +17,7 @@ Phases
 """
 
 import logging
-import os
 
-from nemo_retriever.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.deep_agent.context import RetrievalContext
 from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.agent_runtime import (
     create_sql_agent,
@@ -31,10 +29,7 @@ from nemo_retriever.tabular_data.retrieval.deep_agent.retrieve_candidates.agent_
 )
 from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload
 from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.tools import ExecutionStore
-from nemo_retriever.tabular_data.retrieval.utils import (
-    _semantic_retriever_init_kwargs,
-    get_llm_client,
-)
+from nemo_retriever.tabular_data.retrieval.utils import get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -44,34 +39,13 @@ except ValueError as e:
     logger.error("Failed to initialize LLM client: %s", e)
     llm_client = None
 
-try:
-    _uri = os.environ.get("OMNI_SEMANTIC_LANCEDB_URI", "lancedb")
-    _table = os.environ.get("OMNI_SEMANTIC_LANCEDB_TABLE", "nv-ingest-tabular")
-    # top_k=30 covers the highest k used anywhere; per-call limits are applied
-    # downstream by _hits_to_semantic_rows so no results are wasted.
-    # Translate the legacy ``lancedb_uri``/``lancedb_table`` keys produced by
-    # ``_semantic_retriever_init_kwargs`` (kept as-is for the text_to_sql pipeline)
-    # into the ``vdb`` / ``vdb_kwargs`` shape that ``Retriever.__init__`` expects.
-    _kwargs = _semantic_retriever_init_kwargs(_uri, _table, top_k=30)
-    _lancedb_uri = _kwargs.pop("lancedb_uri")
-    _lancedb_table = _kwargs.pop("lancedb_table")
-    retriever_client = Retriever(
-        vdb="lancedb",
-        vdb_kwargs={"uri": _lancedb_uri, "table_name": _lancedb_table},
-        **_kwargs,
-    )
-    logger.info("Retriever initialised once at startup (uri=%s table=%s)", _lancedb_uri, _lancedb_table)
-except Exception as e:
-    logger.error("Failed to initialize Retriever: %s", e)
-    retriever_client = None
-
 
 # ---------------------------------------------------------------------------
 # Phase 3 — plain execute function
 # ---------------------------------------------------------------------------
 
 
-def _execute_sql(sql: str, db_connector, store: ExecutionStore) -> list | None:
+def _execute_sql(sql: str, connector, store: ExecutionStore) -> list | None:
     """Execute validated SQL and return rows.
 
     Prefers ``store.sql`` (the SQL captured by ``validate_sql``) over the
@@ -79,7 +53,7 @@ def _execute_sql(sql: str, db_connector, store: ExecutionStore) -> list | None:
 
     Args:
         sql: SQL string from the Phase 2 agent's final message.
-        db_connector: Database connector (e.g. DuckDB) with an ``execute``
+        connector: Database connector (e.g. DuckDB) with an ``execute``
             method that returns a DataFrame.
         store: ``ExecutionStore`` from Phase 2 (``store.sql`` holds the last
             validated SQL).
@@ -91,11 +65,11 @@ def _execute_sql(sql: str, db_connector, store: ExecutionStore) -> list | None:
     if not effective_sql:
         logger.warning("_execute_sql: no SQL to execute")
         return None
-    if db_connector is None:
-        logger.warning("_execute_sql: no db_connector provided — skipping execution")
+    if connector is None:
+        logger.warning("_execute_sql: no connector provided — skipping execution")
         return None
     try:
-        df = db_connector.execute(effective_sql)
+        df = connector.execute(effective_sql)
         if df is not None and not df.empty:
             return df.to_dict(orient="records")
         return []
@@ -131,8 +105,7 @@ def _run_sql_agent(
 
     prompt = format_sql_user_prompt(
         question=payload["question"],
-        history=payload.get("history"),
-        dialects=payload.get("dialects"),
+        dialect=payload.get("dialect"),
     )
 
     last_error: Exception | None = None
@@ -178,19 +151,27 @@ def get_agent_response(payload: AgentPayload) -> dict:
     3. Execute         → result rows
 
     Args:
-        payload: Caller-supplied payload.  Required: ``question``.
-            Optional: ``history``, ``dialects``, ``db_connector``, ``path_state``.
+        payload: Caller-supplied payload.  Required: ``question``, ``retriever``.
+            Optional: ``connector``, ``dialect``, ``acronyms``, ``custom_prompts``,
+            ``path_state``.
 
     Returns:
         dict with keys ``sql_code``, ``answer``, ``result``,
         ``semantic_elements``.
     """
     question = payload["question"]
-    db_connector = payload.get("db_connector")
+    connector = payload.get("connector")
+
+    retriever = payload.get("retriever")
+    if retriever is None:
+        raise ValueError(
+            "AgentPayload is missing required 'retriever' (nemo_retriever.retriever.Retriever "
+            "instance). Construct a Retriever once at startup and pass it in the payload."
+        )
 
     # ── Phase 1: Retrieval ─────────────────────────────────────────────────
     logger.info("Phase 1 — Retrieval Agent starting for question: %s …", question[:80])
-    retrieval_ctx = run_retrieval_agent(payload, llm=llm_client, retriever=retriever_client)
+    retrieval_ctx = run_retrieval_agent(payload, llm=llm_client, retriever=retriever)
     logger.info(
         "Phase 1 — complete | entities=%d | coverage_complete=%s",
         len(retrieval_ctx.get("entity_coverage", [])),
@@ -204,7 +185,7 @@ def get_agent_response(payload: AgentPayload) -> dict:
 
     # ── Phase 3: Execute ───────────────────────────────────────────────────
     logger.info("Phase 3 — executing SQL")
-    result = _execute_sql(sql, db_connector, store)
+    result = _execute_sql(sql, connector, store)
     logger.info(
         "Phase 3 — complete | rows=%s",
         len(result) if isinstance(result, list) else result,
@@ -218,4 +199,4 @@ def get_agent_response(payload: AgentPayload) -> dict:
     }
 
 
-__all__ = ["get_agent_response", "llm_client", "retriever_client"]
+__all__ = ["get_agent_response", "llm_client"]

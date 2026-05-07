@@ -123,17 +123,17 @@ def _build_system_prompt(payload: AgentPayload, retrieval_ctx: RetrievalContext)
 
     The full RetrievalContext is stored in the ``SqlGenerationStore`` and
     accessed by the tools directly — the system prompt carries only a brief
-    orientation so the agent knows its role and the allowed dialects.
+    orientation so the agent knows its role and the allowed dialect.
     """
     now = datetime.now()
-    dialects = payload.get("dialects") or []
+    dialect = payload.get("dialect")
 
     lines: list[str] = [
         f"Today's date: {now.year}-{now.month:02d}-{now.day:02d} " f"{now.hour:02d}:{now.minute:02d}:{now.second:02d}.",
     ]
 
-    if dialects:
-        lines.append(f"Allowed SQL dialects: {', '.join(str(d) for d in dialects)}.")
+    if dialect:
+        lines.append(f"Allowed SQL dialect: {dialect}.")
 
     lines.append("")
     lines.append(
@@ -166,18 +166,13 @@ def _build_system_prompt(payload: AgentPayload, retrieval_ctx: RetrievalContext)
 
 def format_sql_user_prompt(
     question: str,
-    history: list[dict[str, str]] | None = None,
-    dialects: list[str] | None = None,
+    dialect: str | None = None,
 ) -> str:
     """Format the user-turn message sent to the Phase 2 SQL Deep Agent.
 
-    Conversation history is inlined as plain text so the agent's flat
-    messages list receives a single user turn.
-
     Args:
         question: The current user question.
-        history: Optional list of ``{"question": ..., "response": ...}`` dicts.
-        dialects: Optional list of allowed SQL dialect names (informational;
+        dialect: Optional allowed SQL dialect name (informational;
             also injected via system prompt).
 
     Returns:
@@ -185,15 +180,8 @@ def format_sql_user_prompt(
     """
     parts: list[str] = []
 
-    if history:
-        parts.append("### Conversation History (most recent last)")
-        for turn in history:
-            parts.append(f"User: {turn.get('question', '')}")
-            parts.append(f"Assistant: {turn.get('response', '')}")
-        parts.append("")
-
-    if dialects:
-        parts.append(f"Allowed SQL dialects: {', '.join(dialects)}.")
+    if dialect:
+        parts.append(f"Allowed SQL dialect: {dialect}.")
 
     parts.append(f"User question: {question.strip()}")
     parts.append("")
