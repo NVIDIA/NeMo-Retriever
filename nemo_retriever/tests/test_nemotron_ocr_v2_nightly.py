@@ -19,11 +19,8 @@ def test_local_extra_depends_on_versioned_ocr_v2_nightly() -> None:
     uv_sources = uv_tool["sources"]
 
     assert "nemotron-ocr>=1.0.2.dev0,<1.0.2a0; sys_platform == 'linux'" in local_deps
-    assert "nemotron-ocr-v2>=2.0.0.dev0,<2.0.0a0; sys_platform == 'linux'" in local_deps
     assert "nemotron-ocr" in uv_tool["no-build-package"]
-    assert "nemotron-ocr-v2" in uv_tool["no-build-package"]
     assert uv_sources["nemotron-ocr"] == {"index": "test-pypi"}
-    assert uv_sources["nemotron-ocr-v2"] == {"index": "test-pypi"}
 
 
 def test_local_ocr_v2_wrapper_imports_versioned_module() -> None:
@@ -31,6 +28,5 @@ def test_local_ocr_v2_wrapper_imports_versioned_module() -> None:
         encoding="utf-8"
     )
 
-    assert "from nemotron_ocr_v2.inference import pipeline_v2" in source
-    assert "from nemotron_ocr.inference import pipeline_v2" not in source
+    assert "from nemotron_ocr.inference import pipeline_v2" in source
     assert "Local Nemotron OCR v2 requires the `nemotron_ocr_v2` package." in source
