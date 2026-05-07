@@ -44,7 +44,6 @@ When you create an NGC key, select the following for **Services Included**.
 
 ![Generate Personal Key](images/generate_personal_key.png)
 
-
 ## Using your NGC key with Helm
 
 Configure your key through the chart values and flags described in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md): for example `ngcImagePullSecret` and `ngcApiSecret` on `helm upgrade --install`, Helm repo authentication with username `$oauthtoken` and your key as the password, or equivalent pre-created Kubernetes `Secret` resources if your organization manages credentials outside the chart.
