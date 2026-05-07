@@ -27,20 +27,19 @@ jobs:
 
       - uses: pre-commit/action@v3.0.1
 
-  # Docker build + test for x86_64 (single job so built image is available locally)
+  # Prebuilt NRL image + bind-mounted checkout (no local Docker build)
   docker-build-and-test:
-    name: Build & Test Docker (amd64)
+    name: Prebuilt image test (amd64)
     uses: ./.github/workflows/reusable-docker-build-and-test.yml
     with:
       platform: 'linux/amd64'
-      target: 'service'
-      tags: 'nrl-service:pr-${{ github.event.pull_request.number }}'
-      base-image: 'ubuntu'
-      base-image-tag: 'jammy-20250415.1'
       test-selection: 'full'
       pytest-markers: 'not integration'
       coverage: true
       runner: 'linux-large-disk'
+    secrets:
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
 
   # Summary job
   pr-validation-complete:

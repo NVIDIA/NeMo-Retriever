@@ -7,13 +7,20 @@ inputs:
     required: false
     default: 'nvcr.io'
   password:
-    description: 'NGC API token'
-    required: true
+    description: 'NGC API token (omit or empty to skip login)'
+    required: false
+    default: ''
 
 runs:
   using: composite
   steps:
     - name: Log in to NGC Registry
       shell: bash
+      env:
+        NGC_PW: ${{ inputs.password }}
       run: |
-        echo "${{ inputs.password }}" | docker login ${{ inputs.registry }} --username "\$oauthtoken" --password-stdin
+        if [ -z "${NGC_PW}" ]; then
+          echo "::warning::Skipping NGC docker login: no password/token provided."
+          exit 0
+        fi
+        echo "${NGC_PW}" | docker login ${{ inputs.registry }} --username "\$oauthtoken" --password-stdin
