@@ -353,7 +353,7 @@
     ]
   },
   "processes": {
-    "description": "Table containing process options",
+    "description": "Table containing process options. Referenced by request_processes.process_id and requests.process_ids. Use this table to get process names when questions mention process, process frequency, or most common processes.",
     "columns": [
       {
         "name": "id",
@@ -607,7 +607,7 @@
     ]
   },
   "quality_levels": {
-    "description": "Table containing quality level options",
+    "description": "Table containing quality level options. Referenced by requests.quality_level_id. Use this table to get quality level names when questions mention quality level or quality.",
     "columns": [
       {
         "name": "id",
@@ -713,7 +713,7 @@
     ]
   },
   "trainstops": {
-    "description": "Table containing train stop (milestone) options",
+    "description": "Table containing train stop (milestone) options. Referenced by requests.trainstop_id. Use this table to get trainstop names when questions mention trainstop, milestone, or train stop.",
     "columns": [
       {
         "name": "id",
@@ -1165,7 +1165,7 @@
     ]
   },
   "tasks": {
-    "description": "Table containing task information. the base unit of work is a task - a task corresponds to a manual item of work who's outputs must be verified and recorded before the workflow can continue. Some common tasks include: (1) Choosing a log file path in P4 (2) Selecting a diag file in SharePoint (3) Signing off and leaving an optional comment on the log files from a previous task (4) Choosing a Nautilus branch and version, etc. Because all our tasks collect some form of input from the user, we can imagine them as HTML forms. react-jsonschema-form is a library for generating a React form for any data, simply given a JSON schema. This makes it a perfect choice for representing our library of tasks in a serializable and standardized way in the database. The @rjsf packages also give us the ability to define custom widgets for handling the presentation and interaction of individual form controls. This means that we could build a custom 'SharePoint File Selector' widget that actually browses SharePoint as opposed to using a plain text field. This makes our input collection less susceptible to typos or errors.",
+    "description": "Table containing task information. the base unit of work is a task - a task corresponds to a manual item of work who's outputs must be verified and recorded before the workflow can continue. Some common tasks include: (1) Choosing a log file path in P4 (2) Selecting a diag file in SharePoint (3) Signing off and leaving an optional comment on the log files from a previous task (4) Choosing a Nautilus branch and version, etc. Because all our tasks collect some form of input from the user, we can imagine them as HTML forms. react-jsonschema-form is a library for generating a React form for any data, simply given a JSON schema. This makes it a perfect choice for representing our library of tasks in a serializable and standardized way in the database. The @rjsf packages also give us the ability to define custom widgets for handling the presentation and interaction of individual form controls. This means that we could build a custom 'SharePoint File Selector' widget that actually browses SharePoint as opposed to using a plain text field. This makes our input collection less susceptible to typos or errors. This is the task definitions table (task types/templates). Referenced by workflow_tasks.task_id. When questions ask about 'tasks' generically (e.g. task frequency, rollback counts, most common tasks), aggregate here using tasks.name. Join chain from events: request_task_events → request_tasks → filter_rule_group_tasks → workflow_tasks → tasks.",
     "columns": [
       {
         "name": "id",
@@ -1518,7 +1518,7 @@
     ]
   },
   "workflow_tasks": {
-    "description": "A workflow task represents an instance of a task within a workflow and in particular, tells us which cell (i.e. row/department + column/stage) in the workflow matrix the task belongs. The workflow is divided into rows and columns, where the rows represent the workflow's relevant departments and the columns represent workflow's discrete stages",
+    "description": "A workflow task represents an instance of a task within a workflow and in particular, tells us which cell (i.e. row/department + column/stage) in the workflow matrix the task belongs. The workflow is divided into rows and columns, where the rows represent the workflow's relevant departments and the columns represent workflow's discrete stages. References tasks.id via task_id. Part of the join chain from request-level data to task definitions: filter_rule_group_tasks.workflow_task_id → workflow_tasks.task_id → tasks.id.",
     "columns": [
       {
         "name": "id",
@@ -1738,7 +1738,7 @@
     ]
   },
   "filter_rule_group_tasks": {
-    "description": "A filter rule group task adds an additional layer of detail on top of the workflow_task (which itself is another layer on top of task). In particular, these values include the default PIC (person-in-charge), weight, and time cost estimate. For instance, two different filter rule groups could have the exact same workflow DAG, but they might choose to have different default PICs or may choose to measure the weight of the same tasks in a different way. It is possible that a user can change which workflow the a rule group is configured to use, but this will not result in deleting it's filter rule group tasks. Rather, the user will be required to create new tasks and the existing tasks will remain in place to ensure that any requests that previously used this rule group can reconstruct their state",
+    "description": "A filter rule group task adds an additional layer of detail on top of the workflow_task (which itself is another layer on top of task). In particular, these values include the default PIC (person-in-charge), weight, and time cost estimate. For instance, two different filter rule groups could have the exact same workflow DAG, but they might choose to have different default PICs or may choose to measure the weight of the same tasks in a different way. It is possible that a user can change which workflow the a rule group is configured to use, but this will not result in deleting it's filter rule group tasks. Rather, the user will be required to create new tasks and the existing tasks will remain in place to ensure that any requests that previously used this rule group can reconstruct their state. References workflow_tasks.id via workflow_task_id. Part of the join chain: request_tasks.filter_rule_group_task_id → filter_rule_group_tasks.workflow_task_id → workflow_tasks.",
     "columns": [
       {
         "name": "id",
@@ -1905,7 +1905,7 @@
     ]
   },
   "requests": {
-    "description": "Table containing request information. Requests are the primary entity in the system. They are also referred to as DORs which stands for Diag-on-Request",
+    "description": "Table containing request information. Requests are the primary entity in the system. They are also referred to as DORs which stands for Diag-on-Request. Central table linking to trainstops (via trainstop_id), quality_levels (via quality_level_id), processes (via process_ids), and filter_rule_groups (via filter_rule_group_id). Join through this table to get trainstop names, quality level names, or process names for a request.",
     "columns": [
       {
         "name": "id",
@@ -2030,7 +2030,7 @@
     ]
   },
   "request_tasks": {
-    "description": "Table containing tasks associated with requests. When a request is created, we create a new row in this table for every filter rule group task belonging to the filter rule group template used for the request. The filter rule group task tells us the task weight, estimated time cost, and PIC. Of these values, only the PIC is changeable once the request is in flight",
+    "description": "Table containing tasks associated with requests. When a request is created, we create a new row in this table for every filter rule group task belonging to the filter rule group template used for the request. The filter rule group task tells us the task weight, estimated time cost, and PIC. Of these values, only the PIC is changeable once the request is in flight. Each row is a task instance for a specific request. References filter_rule_group_tasks.id via filter_rule_group_task_id, and requests.id via request_id. To reach task definitions: request_tasks.filter_rule_group_task_id → filter_rule_group_tasks → workflow_tasks → tasks.",
     "columns": [
       {
         "name": "id",
@@ -2150,7 +2150,7 @@
     ]
   },
   "request_task_events": {
-    "description": "Table containing events associated with request tasks. Not all task event types are related to a status change in the request task itself",
+    "description": "Table containing events associated with request tasks. Not all task event types are related to a status change in the request task itself. The event_type column indicates the kind of event (e.g. 'rollback', 'complete', 'start'). Use for rollback frequency, event counts, and status tracking. To map events to task definitions: request_task_events.request_task_id → request_tasks → filter_rule_group_tasks → workflow_tasks → tasks.",
     "columns": [
       {
         "name": "id",
