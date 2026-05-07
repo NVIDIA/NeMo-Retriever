@@ -14,7 +14,7 @@ Follow these steps:
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md). Default chunking behavior is summarized under [Chunking](concepts.md#chunking).
 
-Vector persistence is still the `vdb_upload` task: when you build an `Ingestor` in Python, you chain `.vdb_upload()` (with the right `vdb_op` / LanceDB settings; see [Vector databases](vdbs.md)) if you want chunks written to a vector store—it does not run implicitly. The Python snippet below and the CLI `graph_pipeline` flow already include that stage together with `.embed()`, so you get extraction → embedding → upload in one run without a separate “after ingestion, go configure chunking and indexing” step. Omit `.vdb_upload()` when you only need extraction or in-memory embeddings.
+`create_ingestor(...)` returns a **`GraphIngestor`**, which chains `.extract()` and `.embed()` but does **not** implement `.vdb_upload()` yet (the base method records the intent only and raises `NotImplementedError` if you call it). To write embeddings into LanceDB after graph ingest, use the **`graph_pipeline` CLI** below (it performs upload via an internal helper, not the fluent builder) or follow the storage patterns in [Vector databases](vdbs.md). The Python example stops after `.embed()` and returns a dataset you can index in a separate step.
 
 ## Choose how you call the library
 
@@ -22,7 +22,7 @@ The following examples match the [NeMo Retriever Library README](https://github.
 
 ### Ingest a test PDF (Python)
 
-The [test PDF](https://github.com/NVIDIA/NeMo-Retriever/blob/main/data/multimodal_test.pdf) contains text, tables, charts, and images. The pipeline below explicitly chains `.extract()`, `.embed()`, and `.vdb_upload()` so chunks are embedded and written to your configured vector store in one `ingest()` call.
+The [test PDF](https://github.com/NVIDIA/NeMo-Retriever/blob/main/data/multimodal_test.pdf) contains text, tables, charts, and images. The pipeline below chains `.extract()` and `.embed()` only—**do not** append `.vdb_upload()` on `GraphIngestor`; it is not implemented on this code path.
 
 ```python
 from nemo_retriever import create_ingestor
@@ -40,7 +40,6 @@ ingestor = (
         extract_infographics=True,
     )
     .embed()
-    .vdb_upload()
 )
 
 dataset = ingestor.ingest()  # ``run_mode='batch'`` → ``ray.data.Dataset``; ``inprocess`` → ``pandas.DataFrame``
