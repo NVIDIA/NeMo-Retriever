@@ -6,6 +6,7 @@ It runs before SQL generation agents to gather all necessary context.
 
 Responsibilities:
 - Fetch relevant tables from candidates
+- Filter tables by LLM-based relevance check
 - Retrieve relevant queries for context
 - Filter and process complex candidates (custom analyses)
 - Store all prepared data in path_state for downstream agents
@@ -14,11 +15,17 @@ Design Decisions:
 - Runs before SQL generation to separate data fetching from SQL construction logic
 - Stores fetched data in path_state for reusability across multiple SQL agents
 - Handles embeddings and conversation history lookup
+- LLM relevance filter removes noise tables before SQL construction
 """
 
 import logging
 from typing import Dict, Any
 
+from langchain_core.messages import SystemMessage, HumanMessage
+
+from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.text_to_sql.models import TableRelevanceModel
+from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import TABLE_RELEVANCE_FILTER_PROMPT
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     AgentState,
     get_question_for_processing,
@@ -105,7 +112,12 @@ class CandidatePreparationAgent(BaseAgent):
 
         relevant_tables.extend(additional_tables)
         relevant_tables = dedupe_merge_relevant_tables(relevant_tables)
-        self.logger.info(f"Found {len(relevant_tables)} relevant tables")
+        self.logger.info(f"Found {len(relevant_tables)} relevant tables (before relevance filter)")
+
+        relevant_tables, table_relevance_reasoning = self._filter_tables_by_relevance(
+            state, question, relevant_tables,
+        )
+        self.logger.info(f"Kept {len(relevant_tables)} relevant tables (after relevance filter)")
 
         relevant_queries = _extract_relevant_queries(
             candidates,
@@ -125,8 +137,81 @@ class CandidatePreparationAgent(BaseAgent):
                 "relevant_queries": relevant_queries,
                 "custom_analyses": custom_analyses,
                 "custom_analyses_str": custom_analyses_str,
+                "table_relevance_reasoning": table_relevance_reasoning,
             }
         }
+
+    def _filter_tables_by_relevance(
+        self,
+        state: AgentState,
+        question: str,
+        tables: list[dict],
+    ) -> tuple[list[dict], str]:
+        """Use the LLM to decide which candidate tables are actually needed.
+
+        Sends table names and descriptions to the LLM alongside the user's
+        question and domain rules.  Returns ``(filtered_tables, reasoning)``.
+        On any failure the full list is returned unchanged with empty reasoning.
+        """
+        if len(tables) <= 2:
+            return tables, ""
+
+        try:
+            llm = state["llm"]
+        except KeyError:
+            self.logger.warning("No LLM in state — skipping relevance filter")
+            return tables, ""
+
+        tables_summary = "\n".join(
+            f"- {t['name']}: {t.get('description', '(no description)')}"
+            for t in tables
+        )
+
+        custom_prompts = state.get("custom_prompts", "")
+        domain_rules = ""
+        if custom_prompts:
+            domain_rules = (
+                "Domain-specific rules (use these to decide relevance):\n"
+                f"{custom_prompts}\n"
+            )
+
+        prompt_text = TABLE_RELEVANCE_FILTER_PROMPT.format(
+            question=question,
+            tables_summary=tables_summary,
+            domain_rules=domain_rules,
+        )
+
+        messages = [
+            SystemMessage(content="You are a database schema expert that filters candidate tables."),
+            HumanMessage(content=prompt_text),
+        ]
+
+        try:
+            result = invoke_with_structured_output(llm, messages, TableRelevanceModel)
+        except Exception as e:
+            self.logger.warning(f"Table relevance LLM call failed: {e} — keeping all tables")
+            return tables, ""
+
+        if result is None:
+            self.logger.warning("Table relevance filter returned None — keeping all tables")
+            return tables, ""
+
+        reasoning = result.reasoning or ""
+        kept_names = {name.lower() for name in result.relevant_table_names}
+
+        filtered = [t for t in tables if t["name"].lower() in kept_names]
+
+        removed = [t["name"] for t in tables if t["name"].lower() not in kept_names]
+        if removed:
+            self.logger.info(f"Relevance filter removed tables: {removed}")
+        if reasoning:
+            self.logger.info(f"Relevance filter reasoning: {reasoning}")
+
+        if not filtered:
+            self.logger.warning("Relevance filter removed ALL tables — keeping originals")
+            return tables, reasoning
+
+        return filtered, reasoning
 
     def _build_custom_analyses_str(self, custom_analyses: list) -> list[str]:
         """Build string representation of custom analyses for prompts."""

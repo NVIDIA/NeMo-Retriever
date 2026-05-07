@@ -185,7 +185,11 @@ class SQLFromCandidatesAgent(BaseAgent):
             Includes semantic candidate context, similar questions, and optionally
             extracted file data or file excerpts.
             """
-            observation_block = f"\nlist of important semantic entities with sql snippets:\n{custom_analyses_str}\n"
+            relevance_reasoning = path_state.get("table_relevance_reasoning", "")
+            observation_block = ""
+            if relevance_reasoning:
+                observation_block += f"\nTable selection reasoning:\n{relevance_reasoning}\n"
+            observation_block += f"\nlist of important semantic entities with sql snippets:\n{custom_analyses_str}\n"
 
             # Build user prompt with formatted tables
             user_prompt = create_sql_user_prompt.format(

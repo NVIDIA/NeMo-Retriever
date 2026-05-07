@@ -413,3 +413,26 @@ Extract:
    - Keep the structure and intent
    - Example: "What is the average order value in 2023?" → "What is the average order value?"
 """
+
+
+TABLE_RELEVANCE_FILTER_PROMPT = """You are a database schema expert.
+Given a user's question and a list of candidate tables, decide which tables
+are actually needed to answer the question.
+
+Rules:
+- Keep ONLY tables that are directly needed in the SQL query.
+- If table A must be joined through table B to reach table C, keep ALL
+  tables in the join chain (A, B, and C).
+- Remove tables that are unrelated to the question even if they share
+  similar column names.
+- When in doubt, keep the table — it is safer to include an extra table
+  than to remove a necessary one.
+
+{domain_rules}
+User's question:
+{question}
+
+Candidate tables:
+{tables_summary}
+
+Return the names of tables that should be KEPT."""

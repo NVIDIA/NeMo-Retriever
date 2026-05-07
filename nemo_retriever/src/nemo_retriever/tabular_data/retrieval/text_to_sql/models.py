@@ -45,6 +45,22 @@ NonEmptyItemScoreList = Annotated[
 ]
 
 
+class TableRelevanceModel(BaseModel):
+    """LLM output for table relevance filtering."""
+
+    reasoning: str = Field(
+        min_length=1,
+        description=(
+            "Think step-by-step: what does the question ask for, "
+            "which tables are needed, and what join chains connect them. "
+            "Then list which tables to keep and which to remove."
+        ),
+    )
+    relevant_table_names: list[str] = Field(
+        description="Names of tables that are needed to answer the question.",
+    )
+
+
 class SQLGenerationModel(StrictModel):
     """Model for SQL generation without formatting requirements.
 
