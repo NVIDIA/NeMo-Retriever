@@ -1,4 +1,4 @@
-# Self-hosted NeMo Retriever Library (Helm)
+﻿# Self-hosted NeMo Retriever Library (Helm)
 
 !!! note
 
@@ -58,7 +58,7 @@ f. Install or upgrade the release. The documented path uses LanceDB as the vecto
 
     !!! tip
 
-        The default chart values might not fit on a single GPU for some hardware targets. Use chart overrides (for example files under [`nemo_retriever/helm/overrides/`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm/overrides)) or custom `values.yaml` fragments to lower per-service memory, batch sizes, or concurrency. See [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+        The default chart values might not fit on a single GPU for some hardware targets. Tune resources via your own values fragment merged with [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml) (`helm upgrade … -f my-values.yaml`), following the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). The chart lives under [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub.
 
 g. When core services have fully started, `nvidia-smi` on a GPU node should show NIM / Triton processes similar to the following:
 
@@ -388,29 +388,25 @@ Enable the VLM / captioning NIM and the retrieval (embedding) stack your values 
 
 ## Air-gapped deployment (Kubernetes)
 
-When deploying without internet or NGC registry access from the cluster, follow [Air-Gapped Deployment (Kubernetes)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) in the Helm chart documentation and the [NVIDIA NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html): mirror images to your registry, load secrets, then install or upgrade the chart with those private references. Keep the same image tags and values between staging and production so configuration stays consistent.
+When deploying without internet or NGC registry access from the cluster, mirror images to your registry, load pull secrets, and point `service.image` / `nims.*.image` overrides at your mirrors—see the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and the [NVIDIA NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html). Keep the same image tags and values between staging and production so configuration stays consistent.
 
-## Helm values and GPU-specific overrides
+## Helm values and GPU-specific tuning
 
-Default chart settings might exceed VRAM on a single GPU for some hardware targets. Use **values fragments** or the checked-in examples under [`nemo_retriever/helm/overrides/`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm/overrides) (for example A10G, A100 40GB, L40S) to lower per-service memory, batch sizes, or concurrency. Merge the override file with `-f` when you run `helm upgrade`, or maintain a single consolidated `values.yaml` per environment.
+The chart source is [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm). Defaults and the full values schema live in [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml) (and optional [`values-prod.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values-prod.yaml)); highlights and recipes are in the [README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
-| Example override asset (repo) | GPU target |
-|--------------------------------|------------|
-| `nemo_retriever/helm/overrides/values-a10g.yaml` | NVIDIA A10G |
-| `nemo_retriever/helm/overrides/values-a100-40gb.yaml` | NVIDIA A100-SXM4-40GB |
-| `nemo_retriever/helm/overrides/values-l40s.yaml` | NVIDIA L40S |
+Default settings for **`service.resources`** or **`nims.defaults`** (and per-NIM blocks such as **`nims.pageElements`**) might exceed VRAM on a single GPU. Maintain a small values fragment that lowers CPU/memory/GPU requests and limits, then merge it on install or upgrade.
 
-For RTX Pro 6000 Server Edition and other GPUs with limited VRAM, start from the override that best matches your GPU memory, then tune further.
+### Example: merge custom values with `helm upgrade`
 
-### Example: merge a GPU override with `helm upgrade`
+From the repository root, install or upgrade using the chart directory (same layout as the README quick start):
 
 ```shell
-helm upgrade --install nemo-retriever <chart-or-tgz> -n "${NAMESPACE}" \
+helm upgrade --install retriever ./nemo_retriever/helm -n "${NAMESPACE}" \
   -f my-base-values.yaml \
-  -f nemo_retriever/helm/overrides/values-a100-40gb.yaml
+  -f my-gpu-tuned-values.yaml
 ```
 
-Use the same pattern for other override files, substituting the path that matches your GPU.
+Use `helm template` locally to validate renders before applying—see **Validation** in the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 
 ## Specify MIG slices for NIM models
@@ -419,27 +415,30 @@ When you deploy the pipeline with NIM models on MIG‑enabled GPUs, MIG device s
 
 To target a specific MIG profile—for example, a 3g.20gb slice on an A100, which is a hardware-partitioned virtual GPU instance that gives your workload a fixed mid-sized share of the A100’s compute plus 20 GB of dedicated GPU memory and behaves like a smaller independent GPU—for a given NIM, configure the `resources` and `nodeSelector` under that NIM’s values path in `values.yaml`.
 
-The following example shows the pattern. Paths vary by NIM, such as `nvingest.nvidiaNim.nemoretrieverPageElements` instead of the generic `nvingest.nim` placeholder. For details refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and the chart listing on [NGC](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/containers).
-Set `resources.requests` and `resources.limits` to the name of the MIG resource that you want (for example, `nvidia.com/mig-3g.20gb`).
-```shell
-nvingest:
-  nvidiaNim:
-    nemoretrieverPageElements:
-      modelName: "nvidia/nemotron-page-elements-v3"  # Page-elements NIM (not a text LLM)
-      resources:
-        limits:
-          nvidia.com/mig-3g.20gb: 1               # MIG profile resource
-        requests:
-          nvidia.com/mig-3g.20gb: 1
-      nodeSelector:
-        nvidia.com/gpu.product: A100-SXM4-40GB-MIG-3g.20gb
+The following example shows the pattern for the current chart: each NIM under **`nims.*`** inherits **`nims.defaults`** and can override `resources` and `nodeSelector`. For the page-elements NIM, adjust `nims.pageElements` (not a legacy `nvingest` path). For details refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md), [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml), and image listings on [NGC](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/containers).
+
+Set `resources.requests` and `resources.limits` to the MIG resource you want (for example, `nvidia.com/mig-3g.20gb`).
+
+```yaml
+nims:
+  enabled: true
+  pageElements:
+    resources:
+      limits:
+        nvidia.com/mig-3g.20gb: 1
+      requests:
+        nvidia.com/mig-3g.20gb: 1
+    nodeSelector:
+      nvidia.com/gpu.product: A100-SXM4-40GB-MIG-3g.20gb
 ```
+
 Key points:
 
- * Use the appropriate NIM‑specific values path (for example, `nvingest.nvidiaNim.nemoretrieverPageElements.resources`) rather than the generic `nvingest.nim` placeholder.
- * Set `resources.requests` and `resources.limits` to the desired MIG resource name (for example, `nvidia.com/mig-3g.20gb`).
- * Use `nodeSelector` (or tolerations/affinity, if you prefer) to target nodes labeled with the corresponding MIG‑enabled GPU product (for example, `nvidia.com/gpu.product: A100-SXM4-40GB-MIG-3g.20gb`).
-This syntax and structure can be repeated for each NIM model used by CAS, ensuring that each NeMo Retriever Library NIM pod is mapped to the correct MIG slice type and scheduled onto compatible nodes.
+- Use the per-NIM values path under **`nims.<nim>`** (for example, `nims.pageElements.resources`) as defined in [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml).
+- Set `resources.requests` and `resources.limits` to the desired MIG resource name (for example, `nvidia.com/mig-3g.20gb`).
+- Use `nodeSelector` (or tolerations or affinity) to target nodes labeled for the MIG profile you need.
+
+Repeat for each NIM your deployment runs in-cluster.
 
 !!! important
 
