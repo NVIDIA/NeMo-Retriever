@@ -79,7 +79,11 @@ def test_local_ocr_v2_wrapper_rejects_invalid_lang_selector(monkeypatch: pytest.
 
 
 def test_huggingface_ocr_nightly_does_not_carry_namespace_patch_knobs() -> None:
-    workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml"
+    if not workflow_path.exists():
+        pytest.skip("Hugging Face nightly workflow is not available in this checkout")
+
+    workflow = workflow_path.read_text(encoding="utf-8")
     v2_stanza = workflow.split("- id: nemotron-ocr-v2", 1)[1].split("container:", 1)[0]
 
     assert 'nightly_base_version: "2.0.0"' in v2_stanza
