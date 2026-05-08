@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 
 from nemo_retriever.graph_ingestor import GraphIngestor
@@ -10,6 +11,7 @@ from nemo_retriever.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    RemoteRetryParams,
     TextChunkParams,
 )
 
@@ -32,6 +34,12 @@ def test_create_ingestor_parses_kwargs_and_returns_graph_ingestor() -> None:
     assert isinstance(ingestor, GraphIngestor)
     assert ingestor._run_mode == "inprocess"
     assert ingestor._documents == ["doc.pdf"]
+
+
+def test_create_ingestor_passes_error_policy_to_graph_ingestor() -> None:
+    ingestor = create_ingestor(run_mode="inprocess", error_policy="collect")
+    assert isinstance(ingestor, GraphIngestor)
+    assert ingestor._error_policy == "collect"
 
 
 def test_create_ingestor_rejects_unknown_kwargs() -> None:
@@ -96,3 +104,82 @@ def test_typed_shortcuts_preserve_legacy_no_default_chunking() -> None:
     txt_ingestor = GraphIngestor(run_mode="inprocess").extract_txt(custom)
     assert txt_ingestor._split_config["text"] is None
     assert txt_ingestor._text_params is custom
+
+
+def test_graph_ingestor_raises_for_explicit_remote_stage_errors() -> None:
+    ingestor = GraphIngestor(
+        run_mode="inprocess",
+        documents=["data/test.pdf"],
+        show_progress=False,
+    ).extract(
+        page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+        inference_batch_size=1,
+        remote_retry=RemoteRetryParams(
+            remote_max_pool_workers=1,
+            remote_max_retries=1,
+            remote_max_429_retries=1,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="page_elements_v3"):
+        ingestor.ingest()
+
+
+def test_graph_ingestor_collect_policy_returns_explicit_remote_stage_errors() -> None:
+    result = (
+        GraphIngestor(
+            run_mode="inprocess",
+            documents=["data/test.pdf"],
+            show_progress=False,
+            error_policy="collect",
+        )
+        .extract(
+            page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
+            extract_text=False,
+            extract_images=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            inference_batch_size=1,
+            remote_retry=RemoteRetryParams(
+                remote_max_pool_workers=1,
+                remote_max_retries=1,
+                remote_max_429_retries=1,
+            ),
+        )
+        .ingest()
+    )
+
+    assert "page_elements_v3" in result.columns
+    payload = result.iloc[0]["page_elements_v3"]
+    assert payload["error"]["type"] == "ConnectionError"
+
+
+def test_get_error_rows_accepts_inprocess_dataframe_stage_error_columns() -> None:
+    ingestor = GraphIngestor(run_mode="inprocess")
+    df = pd.DataFrame(
+        {
+            "table_structure_ocr_v1": [
+                {
+                    "timing": None,
+                    "error": {
+                        "stage": "remote_inference",
+                        "type": "ConnectionError",
+                        "message": "connection refused",
+                    },
+                },
+                {"timing": None, "error": None},
+            ],
+            "text": ["first page", "second page"],
+        }
+    )
+
+    errors = ingestor.get_error_rows(df)
+
+    assert len(errors) == 1
+    assert errors.iloc[0]["text"] == "first page"

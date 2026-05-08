@@ -56,6 +56,62 @@ from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env, re
 from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
 
 
+_ERROR_FIELD_KEYS = ("error", "errors", "exception", "traceback", "failed")
+_REMOTE_EXTRACT_ENDPOINT_FIELDS = (
+    "invoke_url",
+    "page_elements_invoke_url",
+    "ocr_invoke_url",
+    "graphic_elements_invoke_url",
+    "table_structure_invoke_url",
+    "nemotron_parse_invoke_url",
+)
+_REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
+
+
+class GraphIngestionError(RuntimeError):
+    """Raised when graph ingestion stages report structured row-level errors."""
+
+    def __init__(self, records: list[dict[str, Any]]) -> None:
+        self.records = records
+        super().__init__(_format_stage_error_message(records))
+
+
+def _format_stage_error_message(records: list[dict[str, Any]]) -> str:
+    limit = 5
+    details = []
+    for record in records[:limit]:
+        details.append(
+            "row {row_index}, column {column}, path {path}: {summary}".format(
+                row_index=record.get("row_index"),
+                column=record.get("column"),
+                path=record.get("path"),
+                summary=_summarize_error_payload(record.get("error")),
+            )
+        )
+    more = "" if len(records) <= limit else f" ({len(records) - limit} more)"
+    return (
+        "Graph ingestion detected row-level errors from an explicitly configured remote NIM endpoint"
+        f"{more}. " + "; ".join(details)
+    )
+
+
+def _summarize_error_payload(error: Any) -> str:
+    if isinstance(error, dict):
+        parts = []
+        stage = error.get("stage")
+        err_type = error.get("type") or error.get("error_type")
+        message = error.get("message") or error.get("detail")
+        if stage:
+            parts.append(str(stage))
+        if err_type:
+            parts.append(str(err_type))
+        if message:
+            parts.append(str(message))
+        if parts:
+            return ": ".join(parts)
+    return str(error)
+
+
 def _resolve_api_key(params: Any) -> Any:
     """Auto-resolve api_key from NVIDIA_API_KEY / NGC_API_KEY if not explicitly set."""
     if params is None:
@@ -109,6 +165,10 @@ class GraphIngestor(ingestor):
         ``RayDataExecutor.__init__`` (``num_gpus``, ``batch_size``, etc.).
     show_progress
         Show a tqdm progress bar when running in inprocess mode.
+    error_policy
+        ``"raise"`` raises when explicitly configured remote NIM stages report
+        row-level errors. ``"collect"`` returns partial results with the stage
+        error payloads preserved.
     """
 
     RUN_MODE = "graph"
@@ -127,10 +187,13 @@ class GraphIngestor(ingestor):
         num_gpus: float = 0,
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
         show_progress: bool = True,
+        error_policy: str = "raise",
     ) -> None:
         super().__init__(documents=documents)
         if run_mode not in {"batch", "inprocess"}:
             raise ValueError(f"run_mode must be 'batch' or 'inprocess', got {run_mode!r}")
+        if error_policy not in {"raise", "collect"}:
+            raise ValueError(f"error_policy must be 'raise' or 'collect', got {error_policy!r}")
         self._run_mode = run_mode
         self._ray_address = ray_address
         self._ray_log_to_driver = ray_log_to_driver
@@ -141,6 +204,7 @@ class GraphIngestor(ingestor):
         self._num_gpus = num_gpus
         self._node_overrides: Dict[str, Dict[str, Any]] = node_overrides or {}
         self._show_progress = show_progress
+        self._error_policy = error_policy
         self._rd_dataset: Any = None
 
         # Pipeline configuration accumulated by fluent methods
@@ -443,6 +507,7 @@ class GraphIngestor(ingestor):
             self._rd_dataset = None
             result = executor.ingest(self._documents)
 
+        self._raise_for_stage_errors(result)
         return result
 
     # ------------------------------------------------------------------
@@ -450,39 +515,113 @@ class GraphIngestor(ingestor):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _has_error(v: Any) -> bool:
-        def _is_populated_error_field(key: str, value: Any) -> bool:
-            if value is None:
-                return False
-            if key == "failed" and isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                return bool(value.strip())
-            if isinstance(value, (list, tuple, set, dict)):
-                return len(value) > 0
-            return bool(value)
-
-        if v is None:
+    def _is_populated_error_field(key: str, value: Any) -> bool:
+        if value is None:
             return False
-        if isinstance(v, dict):
-            for k in ("error", "errors", "exception", "traceback", "failed"):
-                if k in v and _is_populated_error_field(k, v.get(k)):
-                    return True
-            return any(GraphIngestor._has_error(x) for x in v.values())
-        if isinstance(v, list):
-            return any(GraphIngestor._has_error(x) for x in v)
-        if isinstance(v, str):
-            s = v.strip()
-            if not s:
-                return False
-            if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
-                try:
-                    return GraphIngestor._has_error(json.loads(s))
-                except Exception:
-                    pass
-            low = s.lower()
-            return any(tok in low for tok in ("error", "exception", "traceback", "failed"))
-        return False
+        if key == "failed" and isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set, dict)):
+            return len(value) > 0
+        return bool(value)
+
+    @staticmethod
+    def _jsonish(value: str) -> Any:
+        s = value.strip()
+        if not s:
+            return None
+        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+            try:
+                return json.loads(s)
+            except Exception:
+                return None
+        return None
+
+    @classmethod
+    def _iter_stage_errors_from_value(cls, value: Any, *, path: str = "") -> Any:
+        if isinstance(value, dict):
+            for key in _ERROR_FIELD_KEYS:
+                if key in value and cls._is_populated_error_field(key, value.get(key)):
+                    yield {
+                        "path": f"{path}.{key}" if path else key,
+                        "error": value.get(key),
+                    }
+            for key, child in value.items():
+                if key in _ERROR_FIELD_KEYS and cls._is_populated_error_field(key, child):
+                    continue
+                child_path = f"{path}.{key}" if path else str(key)
+                yield from cls._iter_stage_errors_from_value(child, path=child_path)
+            return
+        if isinstance(value, (list, tuple)):
+            for i, child in enumerate(value):
+                child_path = f"{path}[{i}]" if path else f"[{i}]"
+                yield from cls._iter_stage_errors_from_value(child, path=child_path)
+            return
+        if isinstance(value, str):
+            parsed = cls._jsonish(value)
+            if parsed is not None:
+                yield from cls._iter_stage_errors_from_value(parsed, path=path)
+
+    @classmethod
+    def _stage_error_records(cls, batch: Any) -> list[dict[str, Any]]:
+        columns = getattr(batch, "columns", None)
+        if columns is None:
+            return []
+
+        records: list[dict[str, Any]] = []
+        for row_index, row in batch.iterrows():
+            for column in columns:
+                for record in cls._iter_stage_errors_from_value(row[column]):
+                    records.append(
+                        {
+                            "row_index": row_index,
+                            "column": column,
+                            **record,
+                        }
+                    )
+        return records
+
+    @staticmethod
+    def _has_error(v: Any) -> bool:
+        return any(GraphIngestor._iter_stage_errors_from_value(v))
+
+    @staticmethod
+    def _param_value(params: Any, field: str) -> Any:
+        if params is None:
+            return None
+        if isinstance(params, dict):
+            return params.get(field)
+        return getattr(params, field, None)
+
+    @classmethod
+    def _is_configured(cls, value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set)):
+            return any(cls._is_configured(v) for v in value)
+        return bool(value)
+
+    @classmethod
+    def _params_has_configured_field(cls, params: Any, fields: tuple[str, ...]) -> bool:
+        return any(cls._is_configured(cls._param_value(params, field)) for field in fields)
+
+    def _has_explicit_remote_nim_endpoint(self) -> bool:
+        return (
+            self._params_has_configured_field(self._extract_params, _REMOTE_EXTRACT_ENDPOINT_FIELDS)
+            or self._params_has_configured_field(self._embed_params, _REMOTE_EMBED_ENDPOINT_FIELDS)
+            or self._params_has_configured_field(self._caption_params, ("endpoint_url",))
+            or self._params_has_configured_field(self._asr_params, ("audio_endpoints",))
+        )
+
+    def _raise_for_stage_errors(self, result: Any) -> None:
+        if self._error_policy == "collect" or not self._has_explicit_remote_nim_endpoint():
+            return
+        records = self._stage_error_records(result)
+        if records:
+            raise GraphIngestionError(records)
 
     @staticmethod
     def extract_error_rows(batch: Any) -> Any:
@@ -491,21 +630,11 @@ class GraphIngestor(ingestor):
         columns = getattr(batch, "columns", None)
         if columns is None:
             return batch
-        error_candidate_columns = (
-            "error",
-            "errors",
-            "exception",
-            "traceback",
-            "metadata",
-            "source",
-            "embedding",
-        )
-        cols = [c for c in error_candidate_columns if c in columns]
-        if not cols:
+        if len(columns) == 0:
             return batch.iloc[0:0]
 
-        mask = batch[cols[0]].apply(GraphIngestor._has_error).astype(bool)
-        for c in cols[1:]:
+        mask = batch[columns[0]].apply(GraphIngestor._has_error).astype(bool)
+        for c in columns[1:]:
             mask = mask | batch[c].apply(GraphIngestor._has_error).astype(bool)
         return batch[mask]
 
@@ -513,6 +642,8 @@ class GraphIngestor(ingestor):
         target = dataset if dataset is not None else self._rd_dataset
         if target is None:
             raise RuntimeError("No Ray Dataset available to inspect for errors.")
+        if getattr(target, "columns", None) is not None:
+            return self.extract_error_rows(target)
         return target.map_batches(self.extract_error_rows, batch_format="pandas")
 
     def get_dataset(self) -> Any:
