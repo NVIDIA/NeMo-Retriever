@@ -93,11 +93,18 @@ def embed_with_vllm_llm(
     *,
     batch_size: int = 256,
     prefix: Optional[str] = None,
+    use_activation: Optional[bool] = None,
 ) -> List[List[float]]:
     """
     Compute embeddings using an existing vLLM LLM instance (no new model load).
     Use this when the caller holds a shared LLM (e.g. one per Ray actor).
     """
+    pooling_params = None
+    if use_activation is not None:
+        from vllm.pooling_params import PoolingParams
+
+        pooling_params = PoolingParams(use_activation=bool(use_activation))
+
     if prefix:
         prompts = [str(prefix) + p for p in prompts]
     if not prompts:
@@ -106,7 +113,10 @@ def embed_with_vllm_llm(
     all_embeddings: List[List[float]] = []
     for i in range(0, len(prompts), max(1, batch_size)):
         batch = prompts[i : i + max(1, batch_size)]
-        outputs = llm.embed(batch)
+        if pooling_params is None:
+            outputs = llm.embed(batch)
+        else:
+            outputs = llm.embed(batch, pooling_params=pooling_params)
         for out in outputs:
             emb = getattr(getattr(out, "outputs", None), "embedding", None)
             if emb is not None:
