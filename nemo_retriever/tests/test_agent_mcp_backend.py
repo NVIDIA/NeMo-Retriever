@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 import pytest
@@ -218,6 +219,35 @@ def test_ingest_appends_from_first_group_for_queryable_collection(tmp_path: Path
     assert overwrite_flags == [False]
 
 
+def test_concurrent_ingests_append_after_first_empty_collection_write(tmp_path: Path) -> None:
+    backend = _ingest_backend(tmp_path, max_workers=2)
+    first = tmp_path / "first.pdf"
+    second = tmp_path / "second.pdf"
+    first.write_text("first")
+    second.write_text("second")
+    upload_started = Event()
+    release_first_upload = Event()
+    overwrite_flags: list[bool] = []
+
+    def fake_upload(record: Any, result: Any, *, overwrite: bool) -> None:
+        overwrite_flags.append(overwrite)
+        if len(overwrite_flags) == 1:
+            upload_started.set()
+            release_first_upload.wait(timeout=5)
+
+    backend._upload_records = fake_upload
+
+    first_job = backend.start_ingestion("docs", [first])
+    assert upload_started.wait(timeout=5)
+    second_job = backend.start_ingestion("docs", [second])
+    release_first_upload.set()
+
+    backend._futures[first_job.job_id].result(timeout=5)
+    backend._futures[second_job.job_id].result(timeout=5)
+
+    assert overwrite_flags == [True, False]
+
+
 def test_ingest_with_skipped_files_finishes_partial_with_warnings(tmp_path: Path) -> None:
     backend = _ingest_backend(tmp_path)
     doc = tmp_path / "manual.pdf"
@@ -249,7 +279,7 @@ def test_ingest_skipped_only_finishes_partial_without_marking_queryable(tmp_path
     assert [name for name, _value in FakeIngestor.calls if name.startswith("extract")] == []
 
 
-def test_ingest_failure_after_success_finishes_partial_and_reraises(tmp_path: Path) -> None:
+def test_ingest_failure_after_success_returns_partial_job_status(tmp_path: Path) -> None:
     FakeIngestor.calls = []
     backend = _backend(tmp_path, ingestor_factory=FailingTextIngestor)
     backend._upload_records = lambda record, result, **kwargs: None
@@ -258,15 +288,32 @@ def test_ingest_failure_after_success_finishes_partial_and_reraises(tmp_path: Pa
     pdf.write_text("pdf-ish")
     txt.write_text("text")
 
-    with pytest.raises(RuntimeError, match="text extraction failed"):
-        backend.ingest_local_paths("docs", [pdf, txt], wait=True)
+    job = backend.ingest_local_paths("docs", [pdf, txt], wait=True)
 
-    job = backend.registry.list_jobs("docs")[0]
     assert job.status is JobStatus.PARTIAL
     assert job.accepted_count == 1
     assert job.row_count == 1
     assert job.errors[0]["code"] == AgentMcpErrorCode.BACKEND_ERROR.value
     assert backend.registry.get_collection("docs").queryable is True
+
+
+def test_ingest_wait_timeout_returns_current_job_status(tmp_path: Path) -> None:
+    backend = _ingest_backend(tmp_path)
+    doc = tmp_path / "manual.pdf"
+    doc.write_text("pdf-ish")
+    release_upload = Event()
+
+    def fake_upload(record: Any, result: Any, *, overwrite: bool) -> None:
+        release_upload.wait(timeout=5)
+
+    backend._upload_records = fake_upload
+
+    job = backend.ingest_local_paths("docs", [doc], wait=True, timeout_s=0.01)
+
+    assert job.status in {JobStatus.QUEUED, JobStatus.RUNNING}
+    release_upload.set()
+    backend._futures[job.job_id].result(timeout=5)
+    assert backend.get_ingestion_status(job.job_id).status is JobStatus.COMPLETE
 
 
 def test_query_rejects_unqueryable_collection(tmp_path: Path) -> None:

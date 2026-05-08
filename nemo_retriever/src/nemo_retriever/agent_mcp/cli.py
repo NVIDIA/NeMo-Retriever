@@ -42,6 +42,7 @@ def start(
         help="Uvicorn log level.",
     ),
 ) -> None:
-    roots = allowed_root or [Path.cwd()]
-    application = build_asgi_app(data_root=data_root, allowed_roots=roots)
+    if not allowed_root:
+        raise typer.BadParameter("At least one --allowed-root is required.", param_hint="--allowed-root")
+    application = build_asgi_app(data_root=data_root, allowed_roots=allowed_root)
     uvicorn.run(application, host=host, port=port, log_level=log_level)

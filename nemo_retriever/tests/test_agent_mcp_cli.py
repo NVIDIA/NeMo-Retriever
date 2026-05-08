@@ -32,6 +32,27 @@ def test_agent_mcp_help_runs_via_package_module(tmp_path: Path) -> None:
     assert "Start the NeMo Retriever agent MCP server" in result.stdout
 
 
+def test_agent_mcp_start_requires_allowed_root(tmp_path: Path) -> None:
+    with (
+        patch("nemo_retriever.agent_mcp.cli.build_asgi_app") as build_app,
+        patch("nemo_retriever.agent_mcp.cli.uvicorn.run") as run,
+    ):
+        result = CliRunner().invoke(
+            app,
+            [
+                "agent-mcp",
+                "start",
+                "--data-root",
+                str(tmp_path / "mcp"),
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "At least one --allowed-root is required" in result.output
+    build_app.assert_not_called()
+    run.assert_not_called()
+
+
 def test_agent_mcp_start_builds_app_and_runs_uvicorn(tmp_path: Path) -> None:
     application = object()
     data_root = tmp_path / "mcp"

@@ -4,10 +4,11 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import json
 import shutil
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable, Protocol
 
 from nemo_retriever.agent_mcp.evidence import normalize_hits
@@ -128,6 +129,8 @@ class InProcessRetrieverBackend:
         self.max_workers = max_workers
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="agent-mcp-ingest")
         self._futures: dict[str, Future[Any]] = {}
+        self._collection_locks_guard = Lock()
+        self._collection_locks: dict[str, Any] = {}
 
     @property
     def retriever_factory(self) -> Callable[..., Any]:
@@ -293,11 +296,22 @@ class InProcessRetrieverBackend:
             return self.registry.get_job(job.job_id)
 
         future = self._futures[job.job_id]
-        future.result(timeout=timeout_s)
+        try:
+            future.result(timeout=timeout_s)
+        except FutureTimeoutError:
+            return self.registry.get_job(job.job_id)
+        except Exception:
+            return self.registry.get_job(job.job_id)
         return self.registry.get_job(job.job_id)
 
     def get_ingestion_status(self, job_id: str) -> IngestJobRecord:
         return self.registry.get_job(job_id)
+
+    def _collection_lock(self, collection: str) -> Any:
+        with self._collection_locks_guard:
+            if collection not in self._collection_locks:
+                self._collection_locks[collection] = Lock()
+            return self._collection_locks[collection]
 
     def _run_ingestion_job(
         self,
@@ -306,51 +320,52 @@ class InProcessRetrieverBackend:
         files: list[Path],
         run_mode: str,
     ) -> None:
-        self.registry.update_job(job_id, status=JobStatus.RUNNING)
-        initial_record = self.registry.get_collection(collection)
-        accepted_count = 0
-        try:
-            grouped = group_paths_by_media_type(files)
-            ordered_media_types = [
-                media_type
-                for media_type in CANONICAL_MEDIA_ORDER
-                if media_type in grouped
-            ]
-            ordered_media_types.extend(sorted(set(grouped) - set(CANONICAL_MEDIA_ORDER)))
+        with self._collection_lock(collection):
+            self.registry.update_job(job_id, status=JobStatus.RUNNING)
+            initial_record = self.registry.get_collection(collection)
+            accepted_count = 0
+            try:
+                grouped = group_paths_by_media_type(files)
+                ordered_media_types = [
+                    media_type
+                    for media_type in CANONICAL_MEDIA_ORDER
+                    if media_type in grouped
+                ]
+                ordered_media_types.extend(sorted(set(grouped) - set(CANONICAL_MEDIA_ORDER)))
 
-            for media_type in ordered_media_types:
-                media_files = grouped[media_type]
-                overwrite = accepted_count == 0 and not initial_record.queryable
-                self._run_media_group(collection, media_type, media_files, run_mode, overwrite=overwrite)
-                accepted_count += len(media_files)
+                for media_type in ordered_media_types:
+                    media_files = grouped[media_type]
+                    overwrite = accepted_count == 0 and not initial_record.queryable
+                    self._run_media_group(collection, media_type, media_files, run_mode, overwrite=overwrite)
+                    accepted_count += len(media_files)
 
-            current_job = self.registry.get_job(job_id)
-            final_status = JobStatus.PARTIAL if current_job.skipped_count else JobStatus.COMPLETE
-            self.registry.update_job(
-                job_id,
-                status=final_status,
-                accepted_count=accepted_count,
-                row_count=accepted_count if accepted_count else None,
-            )
-            if accepted_count:
-                self.registry.mark_collection_queryable(collection, row_count=accepted_count)
-        except Exception as exc:
-            error = AgentMcpError(
-                AgentMcpErrorCode.BACKEND_ERROR,
-                f"Ingestion job '{job_id}' failed.",
-                details={"job_id": job_id, "collection": collection, "cause": str(exc)},
-            )
-            final_status = JobStatus.PARTIAL if accepted_count else JobStatus.FAILED
-            self.registry.update_job(
-                job_id,
-                status=final_status,
-                accepted_count=accepted_count,
-                row_count=accepted_count if accepted_count else None,
-                errors=[error.to_dict()],
-            )
-            if accepted_count:
-                self.registry.mark_collection_queryable(collection, row_count=accepted_count)
-            raise
+                current_job = self.registry.get_job(job_id)
+                final_status = JobStatus.PARTIAL if current_job.skipped_count else JobStatus.COMPLETE
+                self.registry.update_job(
+                    job_id,
+                    status=final_status,
+                    accepted_count=accepted_count,
+                    row_count=accepted_count if accepted_count else None,
+                )
+                if accepted_count:
+                    self.registry.mark_collection_queryable(collection, row_count=accepted_count)
+            except Exception as exc:
+                error = AgentMcpError(
+                    AgentMcpErrorCode.BACKEND_ERROR,
+                    f"Ingestion job '{job_id}' failed.",
+                    details={"job_id": job_id, "collection": collection, "cause": str(exc)},
+                )
+                final_status = JobStatus.PARTIAL if accepted_count else JobStatus.FAILED
+                self.registry.update_job(
+                    job_id,
+                    status=final_status,
+                    accepted_count=accepted_count,
+                    row_count=accepted_count if accepted_count else None,
+                    errors=[error.to_dict()],
+                )
+                if accepted_count:
+                    self.registry.mark_collection_queryable(collection, row_count=accepted_count)
+                raise
 
     def _run_media_group(
         self,

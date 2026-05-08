@@ -40,15 +40,13 @@ Query and rerank tools return normalized evidence objects that agents can inspec
   "media_type": "video",
   "content_type": "transcript",
   "locator": {
-    "start_time": 192.4,
-    "end_time": 246.8
+    "timestamp_start_s": 192.4,
+    "timestamp_end_s": 246.8,
+    "frame_index": 18
   },
-  "artifacts": [
-    {
-      "type": "thumbnail",
-      "path": ".nemo-retriever-mcp/collections/default/artifacts/review-frame-192.jpg"
-    }
-  ],
+  "artifacts": {
+    "thumbnail_uri": ".nemo-retriever-mcp/collections/default/artifacts/review-frame-192.jpg"
+  },
   "metadata": {
     "collection": "default",
     "chunk_id": "review-mp4-transcript-0007",
