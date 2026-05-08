@@ -41,7 +41,9 @@ repos:
 
       - id: uv-lock
         name: uv lock (regenerate and verify)
-        entry: ci/scripts/check_uv_lock.sh
-        language: system
+        # language: python + uv avoids Windows PATH issues (WSL bash vs Git Bash, stripped PATH).
+        entry: ci/scripts/check_uv_lock.py
+        language: python
+        additional_dependencies: [uv]
         files: (pyproject\.toml|uv\.lock)
         pass_filenames: false
