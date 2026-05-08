@@ -38,6 +38,10 @@ def _construct_vdb(
 class IngestVdbOperator(AbstractOperator):
     """Upload already-embedded graph output through an nv-ingest-client VDB."""
 
+    #: Ray batch mode: repartition to one block and one ``map_batches`` call so
+    #: ``VDB.run`` sees the full dataset once (matches historical post-graph upload).
+    REQUIRES_GLOBAL_BATCH: bool = True
+
     def __init__(
         self,
         *,
@@ -74,7 +78,8 @@ class IngestVdbOperator(AbstractOperator):
                 meta_fields=self._sidecar_spec["meta_fields"],
                 join_key=self._sidecar_spec["meta_join_key"],
             )
-        self._vdb.run(records)
+        if records and any(batch for batch in records):
+            self._vdb.run(records)
         return data
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

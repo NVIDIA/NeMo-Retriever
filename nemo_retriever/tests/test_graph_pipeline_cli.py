@@ -89,6 +89,11 @@ class _FakeIngestor:
         self.embed_params = params
         return self
 
+    def vdb_upload(self, params):
+        """In-graph VDB stage; real :class:`GraphIngestor` chains this before :meth:`ingest`."""
+        self.vdb_upload_params = params
+        return self
+
     def ingest(self, params=None):
         return _FakeDataset()
 
@@ -234,7 +239,6 @@ def test_graph_pipeline_cli_routes_beir_mode_to_evaluator(tmp_path, monkeypatch)
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
     monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
-    monkeypatch.setattr(pipeline_main, "_upload_vdb_records", lambda *args, **kwargs: 0.0)
     monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
 
     class _FakeTable:
@@ -315,7 +319,6 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
     monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
     monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
-    monkeypatch.setattr(pipeline_main, "_upload_vdb_records", lambda *args, **kwargs: 0.0)
     monkeypatch.setattr(
         pipeline_main,
         "_run_evaluation",

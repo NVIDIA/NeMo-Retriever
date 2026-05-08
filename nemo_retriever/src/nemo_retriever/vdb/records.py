@@ -92,15 +92,25 @@ def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    """Convert graph-pipeline rows into the nested record shape expected by client VDBs."""
-    records: list[dict[str, Any]] = []
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        record = _client_record_from_graph_row(row)
-        if record is not None:
-            records.append(record)
-    return [records] if records else []
+    """Convert graph-pipeline rows into the nested record shape expected by client VDBs.
+
+    When no row survives conversion (empty input or all rows lack text/embedding),
+    returns ``[]`` — a falsy value so ``if not records`` skips :meth:`~nemo_retriever.vdb.adt_vdb.VDB.run`.
+    When at least one row converts, returns ``[batch]`` with a single non-empty inner list
+    (never ``[[]]``, which would be truthy and could trip backends on an empty insert).
+    """
+    if hasattr(rows, "to_dict"):
+        rows = rows.to_dict("records")
+    # Walrus: bind conversion once per row — a plain ``if f(row)`` + ``f(row)`` list comp
+    # would call _client_record_from_graph_row twice per row on large datasets.
+    # isinstance(row, dict): plain lists are not normalized like DataFrame rows; skip None/Series/etc.
+    inner = [
+        record
+        for row in rows or []
+        if isinstance(row, dict) and (record := _client_record_from_graph_row(row)) is not None
+    ]
+    # Preserve legacy contract: no uploadable rows → [], not [[]].
+    return [inner] if inner else []
 
 
 def _mapping(value: Any) -> dict[str, Any]:
