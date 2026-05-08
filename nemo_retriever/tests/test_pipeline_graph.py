@@ -930,6 +930,72 @@ class TestRayDataExecutor:
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
 
+    def test_ingest_rejects_missing_input_path_before_ray_read(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        class _FakeDataset:
+            pass
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            raise AssertionError("read_binary_files should not be called for missing local paths")
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
+        missing_path = tmp_path / "missing.pdf"
+        executor = RayDataExecutor(Graph())
+
+        with pytest.raises(FileNotFoundError) as exc:
+            executor.ingest([str(missing_path)])
+        assert str(exc.value) == f"Input path does not exist: {missing_path}"
+
+    def test_ingest_normalizes_ray_file_not_found(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        class _FakeDataset:
+            pass
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            raise FileNotFoundError(paths[0])
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        remote_path = "s3://bucket/missing.pdf"
+        executor = RayDataExecutor(Graph())
+
+        with pytest.raises(FileNotFoundError) as exc:
+            executor.ingest([remote_path])
+        assert str(exc.value) == f"Input path does not exist: {remote_path}"
+
 
 # ---------------------------------------------------------------------------
 # InprocessExecutor tests
@@ -1036,6 +1102,22 @@ class TestInprocessExecutor:
         executor = InprocessExecutor(g)
         with pytest.raises(TypeError, match="data must be"):
             executor.ingest(12345)
+
+    def test_ingest_rejects_missing_input_path(self, tmp_path):
+        missing_path = tmp_path / "missing.pdf"
+        executor = InprocessExecutor(Graph())
+
+        with pytest.raises(FileNotFoundError) as exc:
+            executor.ingest([str(missing_path)])
+        assert str(exc.value) == f"Input path does not exist: {missing_path}"
+
+    def test_ingest_allows_unmatched_glob_pattern(self, tmp_path):
+        executor = InprocessExecutor(Graph())
+
+        result = executor.ingest([str(tmp_path / "*.pdf")])
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
 
     def test_ingest_file_paths(self, tmp_path):
         """Test ingest loads files from paths into a DataFrame with bytes/path columns."""
