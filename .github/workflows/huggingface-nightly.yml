@@ -156,10 +156,10 @@ jobs:
             nightly_base_version: "1.0.2"
           - id: nemotron-ocr-v2
             url: https://huggingface.co/nvidia/nemotron-ocr-v2
-            project_name: nemotron-ocr-v2
-            expected_project_name: nemotron-ocr-v2
-            package_rename: nemotron_ocr=nemotron_ocr_v2
-            expected_package: nemotron_ocr_v2
+            project_name: ""
+            expected_project_name: nemotron-ocr
+            package_rename: ""
+            expected_package: nemotron_ocr
             nightly_base_version: "2.0.0"
     container:
       image: ${{ matrix.platform.cuda_image }}
