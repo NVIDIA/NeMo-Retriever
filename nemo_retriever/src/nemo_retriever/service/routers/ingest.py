@@ -839,6 +839,7 @@ async def ingest_whole_job(
             total_pages = len(doc)
             doc.close()
         except Exception:
+            logger.warning("Failed to count pages for %s, defaulting to 1", filename, exc_info=True)
             total_pages = 1
     else:
         total_pages = 1
