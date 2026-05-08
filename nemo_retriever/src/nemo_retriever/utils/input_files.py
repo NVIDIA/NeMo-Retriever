@@ -55,7 +55,7 @@ def expand_input_file_patterns(input_paths: InputPath | Iterable[InputPath]) -> 
             raise IsADirectoryError(f"Input path is a directory, not a file or glob pattern: {local_path}")
 
         pattern = str(local_path)
-        matches = glob.glob(pattern, recursive=True)
+        matches = [match for match in glob.glob(pattern, recursive=True) if Path(match).is_file()]
         if matches:
             expanded.extend(sorted(matches))
         elif _is_explicit_glob_path(pattern):

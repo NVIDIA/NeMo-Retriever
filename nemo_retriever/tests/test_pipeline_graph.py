@@ -1151,6 +1151,18 @@ class TestInprocessExecutor:
         assert isinstance(result, pd.DataFrame)
         assert result.empty
 
+    def test_ingest_glob_pattern_ignores_matched_directories(self, tmp_path):
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+        (nested_dir / "a.txt").write_text("aaa")
+
+        executor = InprocessExecutor(Graph())
+        result = executor.ingest([str(tmp_path / "**")])
+
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 1
+        assert result.iloc[0]["path"] == str((nested_dir / "a.txt").resolve())
+
     def test_ingest_file_paths(self, tmp_path):
         """Test ingest loads files from paths into a DataFrame with bytes/path columns."""
         import pandas as pd
