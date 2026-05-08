@@ -67,7 +67,9 @@ source "$profile"
 : "${TIME_LIMIT:?profile must set TIME_LIMIT}"
 
 [[ "$CLUSTER_ALIAS" =~ ^[A-Za-z0-9_.-]+$ ]] || die "CLUSTER_ALIAS may contain only letters, numbers, dot, underscore, and dash"
+[[ "$CLUSTER_ALIAS" != -* ]] || die "CLUSTER_ALIAS must not start with dash"
 [[ "$SCRATCH_ROOT" != *[[:space:]]* ]] || die "SCRATCH_ROOT must not contain whitespace"
+[[ "$SCRATCH_ROOT" != *"'"* ]] || die "SCRATCH_ROOT must not contain single quotes"
 [[ "$NODES" =~ ^[0-9]+$ ]] || die "NODES must be an integer"
 [[ "$NTASKS_PER_NODE" =~ ^[0-9]+$ ]] || die "NTASKS_PER_NODE must be an integer"
 [[ "$CPUS_PER_TASK" =~ ^[0-9]+$ ]] || die "CPUS_PER_TASK must be an integer"
@@ -88,6 +90,7 @@ done
 source_root="${SOURCE_ROOT:-$repo_root/nemo_retriever}"
 [[ -f "$source_root/pyproject.toml" ]] || die "nemo_retriever/pyproject.toml not found under source root: $source_root"
 [[ -d "$kit_dir/smokes" ]] || die "missing smoke directory: $kit_dir/smokes"
+source_root="$(cd "$source_root" && pwd)"
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-${CLUSTER_ALIAS}-nemo-intracluster-ray"
 run_dir="${SCRATCH_ROOT%/}/nemo-intracluster/runs/${run_id}"
@@ -102,12 +105,14 @@ source_tar="$tmp_dir/nemo_retriever-src.tar.gz"
 smokes_tar="$tmp_dir/smokes.tar.gz"
 local_job="$tmp_dir/job.sbatch"
 
-tar -C "$repo_root" \
+tar -C "$source_root" \
   --exclude='.git' \
   --exclude='.venv' \
   --exclude='__pycache__' \
+  --transform='s|^\./|nemo_retriever/|' \
+  --transform='s|^\.$|nemo_retriever|' \
   -czf "$source_tar" \
-  nemo_retriever
+  .
 
 tar -C "$kit_dir" -czf "$smokes_tar" smokes
 
