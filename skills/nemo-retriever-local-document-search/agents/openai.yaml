@@ -1,0 +1,11 @@
+interface:
+  display_name: "NeMo Retriever Local Search"
+  short_description: "Ask questions over a small local document folder with NeMo Retriever."
+  default_prompt: "Use NeMo Retriever local document search to answer questions over a local file or folder, citing retrieved evidence."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "nemo_retriever_local"
+      description: "Repo-local NeMo Retriever document search MCP server."
+      transport: "stdio"

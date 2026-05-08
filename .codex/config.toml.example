@@ -1,0 +1,7 @@
+[mcp_servers.nemo_retriever_local]
+command = "/absolute/path/to/repo/nemo_retriever/.venv/bin/retriever-local-mcp"
+args = []
+# Omit cwd so the MCP server inherits the Codex project/session directory.
+startup_timeout_sec = 60
+tool_timeout_sec = 3600
+enabled_tools = ["local_document_ask", "local_document_search", "local_document_status"]

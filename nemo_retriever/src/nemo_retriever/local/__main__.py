@@ -4,10 +4,7 @@
 
 from __future__ import annotations
 
-import typer
-
-
-app = typer.Typer(help="Simple non-distributed pipeline for local development, debugging, and research.")
+from nemo_retriever.local.document_search import app
 
 
 def main():
