@@ -930,6 +930,59 @@ class TestRayDataExecutor:
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
 
+    def test_ingest_expands_directory_paths_before_ray_read(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+        pdf_path = nested_dir / "sample.pdf"
+        pdf_path.write_bytes(b"pdf")
+
+        class _FakeDataset:
+            def materialize(self):
+                return self
+
+            def to_pandas(self):
+                return pd.DataFrame()
+
+        captured: dict[str, object] = {}
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            captured["paths"] = list(paths)
+            captured["include_paths"] = include_paths
+            return _FakeDataset()
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        executor = RayDataExecutor(Graph())
+        result = executor.ingest([str(tmp_path)])
+
+        assert isinstance(result, pd.DataFrame)
+        assert captured["paths"] == [str(pdf_path)]
+        assert captured["include_paths"] is True
+
     def test_ingest_rejects_missing_input_path_before_ray_read(self, tmp_path, monkeypatch):
         import sys
         from types import SimpleNamespace
@@ -1232,6 +1285,41 @@ class TestInprocessExecutor:
 
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 2
+
+    def test_ingest_expands_directory_paths(self, tmp_path):
+        import pandas as pd
+
+        class IdentityOperator(AbstractOperator):
+            def preprocess(self, data, **kw):
+                return data
+
+            def process(self, data, **kw):
+                return data
+
+            def postprocess(self, data, **kw):
+                return data
+
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+        top_level_file = tmp_path / "a.txt"
+        nested_file = nested_dir / "b.txt"
+        top_level_file.write_text("aaa")
+        nested_file.write_text("bbb")
+
+        g = Graph()
+        n = Node(
+            IdentityOperator(),
+            name="Identity",
+            operator_class=IdentityOperator,
+            operator_kwargs={},
+        )
+        g.add_root(n)
+
+        executor = InprocessExecutor(g)
+        result = executor.ingest([str(tmp_path)])
+
+        assert isinstance(result, pd.DataFrame)
+        assert sorted(result["path"].tolist()) == sorted([str(top_level_file.resolve()), str(nested_file.resolve())])
 
     def test_uses_operator_kwargs_for_construction(self):
         """Test that InprocessExecutor constructs operators from operator_kwargs, not the instance."""
