@@ -727,14 +727,13 @@ def main() -> int:
         "--project-name",
         default=None,
         help="Patch the source Python project/distribution name before building "
-        "(e.g. publish a source tree declaring 'nemotron-ocr' as 'nemotron-ocr-v2').",
+        "(e.g. publish a source tree under an alternate distribution name).",
     )
     ap.add_argument(
         "--rename-python-package",
         action="append",
         default=[],
-        help="Rename a Python import package before building, as OLD=NEW "
-        "(e.g. nemotron_ocr=nemotron_ocr_v2; repeatable).",
+        help="Rename a Python import package before building, as OLD=NEW " "(repeatable).",
     )
     ap.add_argument(
         "--build-env",

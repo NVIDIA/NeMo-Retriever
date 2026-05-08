@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [tool.uv]
 managed = true
 package = true
-no-build-package = ["nemotron-ocr", "nemotron-ocr-v2"]
+no-build-package = ["nemotron-ocr"]
 # fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
@@ -95,10 +95,8 @@ local = [
   "nemotron-page-elements-v3>=0.dev0",
   "nemotron-graphic-elements-v1>=0.dev0",
   "nemotron-table-structure-v1>=0.dev0",
-  # Stay on the 1.0.2 OCR dev train and exclude older PyPI finals.
-  "nemotron-ocr>=1.0.2.dev0,<1.0.2a0; sys_platform == 'linux'",
-  # Stay on the 2.0.0 OCR v2 dev train and exclude older PyPI finals.
-  "nemotron-ocr-v2>=2.0.0.dev0,<2.0.0a0; sys_platform == 'linux'",
+  # Stay on the 2.0.0 OCR dev train and exclude older PyPI finals.
+  "nemotron-ocr>=2.0.0.dev0,<2.0.0a0; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
   "nvidia-ml-py",
   "apscheduler>=3.10",
   "psutil>=5.9.0",
@@ -166,7 +164,6 @@ nemotron-page-elements-v3 = { index = "test-pypi" }
 nemotron-graphic-elements-v1 = { index = "test-pypi" }
 nemotron-table-structure-v1 = { index = "test-pypi" }
 nemotron-ocr = { index = "test-pypi" }
-nemotron-ocr-v2 = { index = "test-pypi" }
 # On Linux, resolve torch/torchvision from the CUDA wheel index.
 # On Mac, fall through to PyPI to get CPU wheels.
 torch = [
@@ -200,3 +197,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 # So ``from tests import …`` resolves to ``nemo_retriever/tests`` when pytest rootdir is this project.
 pythonpath = ["."]
+addopts = "-m 'not integration'"
+markers = [
+  "integration: mark a test as an integration test",
+]

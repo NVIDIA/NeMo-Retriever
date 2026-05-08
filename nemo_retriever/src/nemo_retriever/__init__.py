@@ -21,7 +21,15 @@ for _finder in sys.meta_path:
 
 from .retriever import retriever as _retriever_cls
 
-__all__ = ["__version__", "create_ingestor", "get_version", "get_version_info", "ingestor", "retriever"]
+__all__ = [
+    "__version__",
+    "create_ingestor",
+    "get_version",
+    "get_version_info",
+    "GraphIngestionError",
+    "ingestor",
+    "retriever",
+]
 
 retriever = _retriever_cls()
 
@@ -43,4 +51,8 @@ def __getattr__(name: str):
         from .ingestor import ingestor
 
         return ingestor
+    if name == "GraphIngestionError":
+        from .graph_ingestor import GraphIngestionError
+
+        return GraphIngestionError
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
