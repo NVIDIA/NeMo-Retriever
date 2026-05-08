@@ -101,9 +101,16 @@ def embed_with_vllm_llm(
     """
     pooling_params = None
     if use_activation is not None:
-        from vllm.pooling_params import PoolingParams
+        try:
+            from vllm.pooling_params import PoolingParams
 
-        pooling_params = PoolingParams(use_activation=bool(use_activation))
+            pooling_params = PoolingParams(use_activation=bool(use_activation))
+        except (ImportError, TypeError) as e:
+            raise RuntimeError(
+                f"Failed to create PoolingParams with use_activation={use_activation}: {e}. "
+                "Ensure your vLLM installation supports PoolingParams "
+                "(install with: uv pip install -e '.[local]')."
+            ) from e
 
     if prefix:
         prompts = [str(prefix) + p for p in prompts]
