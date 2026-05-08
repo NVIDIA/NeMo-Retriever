@@ -18,7 +18,7 @@ from retrieval_bench.pipeline_evaluation import (
     BasePipeline,
     aggregate_results,
     evaluate_retrieval,
-    load_vidore_dataset,
+    load_benchmark_dataset,
     print_dataset_info,
 )
 from retrieval_bench.pipeline_evaluation.tracing import dataset_trace_dir, default_trace_run_name
@@ -162,9 +162,15 @@ def _run_evaluation(
 
     # Load dataset
     try:
-        query_ids, queries, corpus_ids, corpus_images, corpus_texts, qrels, query_languages, excluded_ids_by_query = (
-            load_vidore_dataset(dataset_name=dataset_name, split=split, language=language)
-        )
+        dataset = load_benchmark_dataset(dataset_name=dataset_name, split=split, language=language)
+        query_ids = dataset.query_ids
+        queries = dataset.queries
+        corpus_ids = dataset.corpus_ids
+        corpus_images = dataset.corpus_images
+        corpus_texts = dataset.corpus_texts
+        qrels = dataset.qrels
+        query_languages = dataset.query_languages
+        excluded_ids_by_query = dataset.excluded_ids_by_query
     except Exception as e:
         print(f"\nError loading dataset: {e}\n")
         raise typer.Exit(code=1)

@@ -15,7 +15,7 @@ from .pipeline_evaluation import (  # noqa: F401
     aggregate_results,
     evaluate_retrieval,
     get_available_datasets,
-    load_vidore_dataset,
+    load_benchmark_dataset,
     print_dataset_info,
 )
 
@@ -23,7 +23,7 @@ __all__ = [
     "BasePipeline",
     "evaluate_retrieval",
     "aggregate_results",
-    "load_vidore_dataset",
+    "load_benchmark_dataset",
     "get_available_datasets",
     "print_dataset_info",
 ]

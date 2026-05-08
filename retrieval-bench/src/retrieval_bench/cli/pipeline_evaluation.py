@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer(
     help="""
-    CLI for evaluating abstract pipelines on ViDoRe v3 datasets.
+    CLI for evaluating abstract pipelines on vidore v3 datasets and BRIGHT datasets.
 
     Evaluate custom retrieval pipelines that inherit from BasePipeline.
     Supports built-in pipelines (random, file-based) and custom Python implementations.
@@ -454,7 +454,7 @@ def _load_pipeline_from_module(module_path: str, class_name: str, **kwargs) -> B
 @app.command()
 def list_datasets():
     """
-    List all available ViDoRe v3 datasets.
+    List all available benchmark datasets.
 
     Example:
         retrieval-bench pipeline list-datasets
@@ -462,7 +462,7 @@ def list_datasets():
     datasets = get_available_datasets()
 
     print("\n" + "=" * 70)
-    print("Available ViDoRe v3 Datasets")
+    print("Available Benchmark Datasets")
     print("=" * 70)
     for i, dataset_name in enumerate(datasets, 1):
         print(f"{i:2d}. {dataset_name}")
@@ -592,15 +592,16 @@ def compare_results(
         typer.Option(
             "--all-datasets",
             "--all",
-            help="Report across all available ViDoRe v3 datasets (overrides --datasets).",
+            help="Report across all available benchmark datasets (overrides --datasets).",
         ),
     ] = False,
     datasets: Annotated[
         Optional[str],
         typer.Option(
             "--datasets",
-            help="Optional comma-separated dataset filter (accepts either full names like 'vidore/vidore_v3_hr' "
-            "or shorts like 'vidore_v3_hr'). Defaults to all datasets.",
+            help="Optional comma-separated dataset filter (accepts full names like 'bright/biology' "
+            "or 'vidore/vidore_v3_hr', plus shorts like 'bright__biology' or 'vidore_v3_hr'). "
+            "Defaults to all datasets.",
         ),
     ] = None,
     metric: Annotated[
@@ -735,15 +736,16 @@ def report_llm_usage(
         typer.Option(
             "--all-datasets",
             "--all",
-            help="Report across all available ViDoRe v3 datasets (overrides --datasets).",
+            help="Report across all available benchmark datasets (overrides --datasets).",
         ),
     ] = False,
     datasets: Annotated[
         Optional[str],
         typer.Option(
             "--datasets",
-            help="Optional comma-separated dataset filter (accepts either full names like 'vidore/vidore_v3_hr' "
-            "or shorts like 'vidore_v3_hr'). Defaults to all datasets.",
+            help="Optional comma-separated dataset filter (accepts full names like 'bright/biology' "
+            "or 'vidore/vidore_v3_hr', plus shorts like 'bright_biology' or 'vidore_v3_hr'). "
+            "Defaults to all datasets.",
         ),
     ] = None,
     traces_dir: Annotated[
@@ -1033,15 +1035,16 @@ def purge_llm_error_traces(
         typer.Option(
             "--all-datasets",
             "--all",
-            help="Purge across all available ViDoRe v3 datasets (overrides --datasets).",
+            help="Purge across all available benchmark datasets (overrides --datasets).",
         ),
     ] = False,
     datasets: Annotated[
         Optional[str],
         typer.Option(
             "--datasets",
-            help="Optional comma-separated dataset filter (accepts either full names like 'vidore/vidore_v3_hr' "
-            "or shorts like 'vidore_v3_hr'). Defaults to all datasets.",
+            help="Optional comma-separated dataset filter (accepts full names like 'bright/biology' "
+            "or 'vidore/vidore_v3_hr', plus shorts like 'bright__biology' or 'vidore_v3_hr'). "
+            "Defaults to all datasets.",
         ),
     ] = None,
     traces_dir: Annotated[
