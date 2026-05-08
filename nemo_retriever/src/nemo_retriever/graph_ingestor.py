@@ -47,6 +47,7 @@ from nemo_retriever.params import (
     TextChunkParams,
     VideoFrameParams,
     VideoFrameTextDedupParams,
+    VdbUploadParams,
     WebhookParams,
     SPLIT_CONFIG_VALID_KEYS,
     resolve_split_params,
@@ -158,6 +159,7 @@ class GraphIngestor(ingestor):
         self._caption_params: Any = None
         self._dedup_params: Any = None
         self._store_params: Any = None
+        self._vdb_upload_params: Any = None
         self._webhook_params: Any = None
         # Ordered list of stage names; "extract" is tracked but excluded from
         # the post-extraction stage_order passed to graph builders.
@@ -312,6 +314,18 @@ class GraphIngestor(ingestor):
         self._record_stage("embed")
         return self
 
+    def vdb_upload(self, params: Optional[VdbUploadParams] = None, **kwargs: Any) -> "GraphIngestor":
+        """Record a vector DB upload **sink** (in-graph after embed/store, before webhook).
+
+        Does not call :meth:`_record_stage`: ``stage_order`` only lists
+        ``dedup`` / ``caption`` / ``store`` / ``embed`` for reordering; VDB is
+        always appended from ``_vdb_upload_params`` in
+        :func:`~nemo_retriever.graph.ingestor_runtime._append_ordered_transform_stages`.
+        Plan builders that round-trip sinks use :meth:`~nemo_retriever.ingest_plans.BaseIngestPlan.record_sink`.
+        """
+        self._vdb_upload_params = _coerce(params, kwargs, default_factory=VdbUploadParams)
+        return self
+
     def webhook(self, params: Optional[WebhookParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Record a webhook notification stage (always runs last).
 
@@ -389,6 +403,7 @@ class GraphIngestor(ingestor):
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                vdb_upload_params=self._vdb_upload_params,
                 webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
@@ -436,6 +451,7 @@ class GraphIngestor(ingestor):
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                vdb_upload_params=self._vdb_upload_params,
                 webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
