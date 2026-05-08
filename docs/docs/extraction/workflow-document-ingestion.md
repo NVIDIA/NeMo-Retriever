@@ -14,7 +14,7 @@ Follow these steps:
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md). Default chunking behavior is summarized under [Chunking](concepts.md#chunking).
 
-`create_ingestor(...)` returns a **`GraphIngestor`**, which chains `.extract()` and `.embed()` but does **not** implement `.vdb_upload()` yet (the base method records the intent only and raises `NotImplementedError` if you call it). To write embeddings into LanceDB after graph ingest, use the **`graph_pipeline` CLI** below (it performs upload via an internal helper, not the fluent builder) or follow the storage patterns in [Vector databases](vdbs.md). The Python example stops after `.embed()` and returns a dataset you can index in a separate step.
+`create_ingestor(...)` returns a `GraphIngestor`, which chains `.extract()` and `.embed()` but does **not** implement `.vdb_upload()` yet (the base method records the intent only and raises `NotImplementedError` if you call it). To write embeddings into LanceDB after graph ingest, use the `graph_pipeline` CLI below (it performs upload via an internal helper, not the fluent builder) or follow the storage patterns in [Vector databases](vdbs.md). The Python example stops after `.embed()` and returns a dataset you can index in a separate step.
 
 ## Choose how you call the library
 
