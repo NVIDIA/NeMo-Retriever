@@ -39,7 +39,7 @@ mapfile -t ALLOC_NODES < <(scontrol show hostnames "$SLURM_JOB_NODELIST")
 HEAD_NODE="${ALLOC_NODES[0]}"
 WORKER_NODES=("${ALLOC_NODES[@]:1}")
 
-HEAD_IP="$(srun --overlap --nodes=1 --ntasks=1 -w "$HEAD_NODE" hostname --ip-address | awk '{print $1}')"
+HEAD_IP="$(srun --overlap --nodes=1 --ntasks=1 -w "$HEAD_NODE" hostname -I | awk '{print $1}')"
 RAY_ADDRESS="${HEAD_IP}:${RAY_PORT}"
 export HEAD_NODE HEAD_IP RAY_ADDRESS
 
@@ -129,7 +129,26 @@ chmod +x "$RUN_DIR/ray_worker.sh"
 
 printf '[ray] starting head on %s (%s)\n' "$HEAD_NODE" "$HEAD_IP" | tee "$LOG_DIR/ray-start.log"
 srun --overlap --nodes=1 --ntasks=1 --cpus-per-task="$SLURM_CPUS_PER_TASK" -w "$HEAD_NODE" "$RUN_DIR/ray_head.sh" > "$LOG_DIR/ray-head.log" 2>&1 &
-ray_head_pid=$!
+
+wait_for_ray_head() {
+  for attempt in $(seq 1 120); do
+    if "$VENV_DIR/bin/python" - <<'PY' >> "$LOG_DIR/ray-head-ready.log" 2>&1; then
+import os
+import ray
+
+ray.init(address=os.environ["RAY_ADDRESS"], ignore_reinit_error=True)
+resources = ray.cluster_resources()
+assert resources.get("nemo_head", 0) >= 1, resources
+ray.shutdown()
+PY
+      return 0
+    fi
+    sleep 5
+  done
+  return 1
+}
+
+wait_for_ray_head
 
 for worker_node in "${WORKER_NODES[@]}"; do
   printf '[ray] starting worker on %s\n' "$worker_node" | tee -a "$LOG_DIR/ray-start.log"
@@ -148,7 +167,7 @@ alive = [node for node in ray.nodes() if node.get("Alive")]
 resources = ray.cluster_resources()
 assert len(alive) >= expected_nodes, (len(alive), expected_nodes)
 assert resources.get("nemo_head", 0) >= 1, resources
-assert resources.get("nemo_worker", 0) >= 1, resources
+assert resources.get("nemo_worker", 0) >= max(1, expected_nodes - 1), resources
 ray.shutdown()
 PY
       return 0
