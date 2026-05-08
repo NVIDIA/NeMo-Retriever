@@ -60,4 +60,4 @@ On success, inspect these files under `run_dir`:
 
 ## Known Baseline
 
-ComputeLab job `2090092` completed on `ipp1-1211` and `ipp1-1212`. The direct smoke produced three rows with split work on `ipp1-1212`, chunk work on `ipp1-1211`, and both custom resources present.
+ComputeLab kit validation job `2091090` completed on `ipp1-1135` and `ipp1-1136`. The direct smoke produced three rows with split work on `ipp1-1136`, chunk work on `ipp1-1135`, and both custom resources present.
