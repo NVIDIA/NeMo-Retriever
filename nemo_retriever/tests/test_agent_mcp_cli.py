@@ -2,6 +2,8 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +17,19 @@ def test_agent_mcp_command_is_registered() -> None:
 
     assert result.exit_code == 0
     assert "Start the NeMo Retriever agent MCP server" in result.output
+
+
+def test_agent_mcp_help_runs_via_package_module(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "nemo_retriever", "agent-mcp", "--help"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Start the NeMo Retriever agent MCP server" in result.stdout
 
 
 def test_agent_mcp_start_builds_app_and_runs_uvicorn(tmp_path: Path) -> None:
