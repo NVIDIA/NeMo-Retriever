@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import typer
 
+from nemo_retriever.agent_mcp.cli import app as agent_mcp_app
 from nemo_retriever.audio import app as audio_app
 from nemo_retriever.utils.benchmark import app as benchmark_app
 from nemo_retriever.chart import app as chart_app
@@ -36,6 +37,7 @@ app.add_typer(harness_app, name="harness")
 app.add_typer(vector_store_app, name="vector-store")
 app.add_typer(recall_app, name="recall")
 app.add_typer(service_app, name="service")
+app.add_typer(agent_mcp_app, name="agent-mcp")
 app.add_typer(txt_main.app, name="txt")
 app.add_typer(html_main.app, name="html")
 app.add_typer(pipeline_main.app, name="pipeline")
