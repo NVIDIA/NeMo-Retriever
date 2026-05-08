@@ -54,7 +54,7 @@ class TestEmbedWithVllmLlm:
         called_batch = llm.embed.call_args[0][0]
         assert called_batch == ["query: world"]
 
-    def test_use_activation_forwarded_to_pooling_params(self, monkeypatch):
+    def test_normalize_false_translates_to_pooling_params(self, monkeypatch):
         class FakePoolingParams:
             def __init__(self, *, use_activation):
                 self.use_activation = use_activation
@@ -68,12 +68,18 @@ class TestEmbedWithVllmLlm:
 
         llm = MagicMock()
         llm.embed.return_value = [_make_output([0.0])]
-        embed_with_vllm_llm(["world"], llm, use_activation=False)
+        embed_with_vllm_llm(["world"], llm, normalize=False)
         pooling_params = llm.embed.call_args.kwargs["pooling_params"]
         assert isinstance(pooling_params, FakePoolingParams)
         assert pooling_params.use_activation is False
 
-    def test_use_activation_import_error_raises_runtime_error(self, monkeypatch):
+    def test_normalize_true_preserves_vllm_defaults(self):
+        llm = MagicMock()
+        llm.embed.return_value = [_make_output([0.0])]
+        embed_with_vllm_llm(["world"], llm, normalize=True)
+        assert "pooling_params" not in llm.embed.call_args.kwargs
+
+    def test_normalize_false_import_error_raises_runtime_error(self, monkeypatch):
         fake_vllm = ModuleType("vllm")
         fake_vllm.__path__ = []
         monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
@@ -81,7 +87,7 @@ class TestEmbedWithVllmLlm:
 
         llm = MagicMock()
         with pytest.raises(RuntimeError, match="Failed to create PoolingParams"):
-            embed_with_vllm_llm(["world"], llm, use_activation=False)
+            embed_with_vllm_llm(["world"], llm, normalize=False)
         llm.embed.assert_not_called()
 
     def test_empty_prompts_early_return(self):
@@ -269,12 +275,14 @@ class TestLlamaNemotronEmbed1BV2Embedder:
             self.embedder.embed(["hello"])
         assert mock_fn.call_args[1].get("prefix") == "passage: "
         assert "use_activation" not in mock_fn.call_args[1]
+        assert mock_fn.call_args[1].get("normalize") is True
 
     def test_embed_queries_uses_query_prefix(self):
         with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
             self.embedder.embed_queries(["hello"])
         assert mock_fn.call_args[1].get("prefix") == "query: "
         assert "use_activation" not in mock_fn.call_args[1]
+        assert mock_fn.call_args[1].get("normalize") is True
 
     def test_embed_empty_input_returns_empty_tensor(self):
         result = self.embedder.embed(["", "  "])
@@ -298,7 +306,7 @@ class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
         embedder.normalize = False
         with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
             result = embedder.embed(["text"])
-        assert mock_fn.call_args[1].get("use_activation") is False
+        assert mock_fn.call_args[1].get("normalize") is False
         assert abs(float(result[0][0].item()) - 3.0) < 1e-5
 
     def test_query_output_unnormalized_when_normalize_false(self):
@@ -306,7 +314,7 @@ class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
         embedder.normalize = False
         with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
             result = embedder.embed_queries(["text"])
-        assert mock_fn.call_args[1].get("use_activation") is False
+        assert mock_fn.call_args[1].get("normalize") is False
         assert abs(float(result[0][0].item()) - 3.0) < 1e-5
 
 

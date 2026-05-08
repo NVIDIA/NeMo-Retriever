@@ -93,7 +93,7 @@ def embed_with_vllm_llm(
     *,
     batch_size: int = 256,
     prefix: Optional[str] = None,
-    use_activation: Optional[bool] = None,
+    normalize: Optional[bool] = None,
 ) -> List[List[float]]:
     """
     Compute embeddings using an existing vLLM LLM instance (no new model load).
@@ -104,20 +104,20 @@ def embed_with_vllm_llm(
         llm: A vLLM LLM instance created with ``runner="pooling"``.
         batch_size: Number of prompts per vLLM call.
         prefix: Optional string prepended to every prompt before encoding.
-        use_activation: When set, pass ``PoolingParams(use_activation=...)`` to
-            ``llm.embed()``. Set to ``False`` to skip pooler activation, such as
-            L2 normalization. ``None`` omits ``PoolingParams`` and preserves
-            vLLM's compiled defaults.
+        normalize: Whether to request normalized embeddings. ``False`` passes
+            ``PoolingParams(use_activation=False)`` to ``llm.embed()`` to skip
+            pooler activation, such as L2 normalization. ``True`` and ``None``
+            omit ``PoolingParams`` and preserve vLLM's compiled defaults.
     """
     pooling_params = None
-    if use_activation is not None:
+    if normalize is False:
         try:
             from vllm.pooling_params import PoolingParams
 
-            pooling_params = PoolingParams(use_activation=bool(use_activation))
+            pooling_params = PoolingParams(use_activation=False)
         except (ImportError, TypeError) as e:
             raise RuntimeError(
-                f"Failed to create PoolingParams with use_activation={use_activation}: {e}. "
+                f"Failed to create PoolingParams for normalize=False: {e}. "
                 "Ensure your vLLM installation supports PoolingParams "
                 "(install with: uv pip install -e '.[local]')."
             ) from e
