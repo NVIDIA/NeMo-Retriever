@@ -4,15 +4,26 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
 import json
 import shutil
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from nemo_retriever.agent_mcp.evidence import normalize_hits
-from nemo_retriever.agent_mcp.models import AgentMcpError, AgentMcpErrorCode, CollectionRecord, EvidenceHit
-from nemo_retriever.agent_mcp.paths import PathPolicy
+from nemo_retriever.agent_mcp.models import (
+    AgentMcpError,
+    AgentMcpErrorCode,
+    CollectionRecord,
+    EvidenceHit,
+    IngestJobRecord,
+    JobStatus,
+)
+from nemo_retriever.agent_mcp.paths import PathPolicy, expand_local_paths, group_paths_by_media_type
 from nemo_retriever.agent_mcp.registry import CollectionRegistry
+
+
+CANONICAL_MEDIA_ORDER = ("document", "image", "text", "html", "audio", "video")
 
 
 class RetrieverBackend(Protocol):
@@ -41,6 +52,29 @@ class RetrieverBackend(Protocol):
         hits: list[EvidenceHit],
         top_n: int | None = None,
     ) -> list[EvidenceHit]:
+        ...
+
+    def start_ingestion(
+        self,
+        collection: str,
+        paths: list[str | Path],
+        *,
+        run_mode: str = "inprocess",
+    ) -> IngestJobRecord:
+        ...
+
+    def ingest_local_paths(
+        self,
+        collection: str,
+        paths: list[str | Path],
+        *,
+        wait: bool = True,
+        timeout_s: float | None = None,
+        run_mode: str = "inprocess",
+    ) -> IngestJobRecord:
+        ...
+
+    def get_ingestion_status(self, job_id: str) -> IngestJobRecord:
         ...
 
 
@@ -83,6 +117,8 @@ class InProcessRetrieverBackend:
         self.local_hf_cache_dir = Path(local_hf_cache_dir) if local_hf_cache_dir else None
         self.reranker_gpu_memory_utilization = reranker_gpu_memory_utilization
         self.max_workers = max_workers
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="agent-mcp-ingest")
+        self._futures: dict[str, Future[Any]] = {}
 
     @property
     def retriever_factory(self) -> Callable[..., Any]:
@@ -149,6 +185,9 @@ class InProcessRetrieverBackend:
             self._delete_collection_root(record)
         return self.registry.delete_collection(name)
 
+    def shutdown(self, wait: bool = True) -> None:
+        self._executor.shutdown(wait=wait)
+
     def _delete_collection_root(self, record: CollectionRecord) -> None:
         data_root = self.registry.data_root.expanduser().resolve()
         root_path = Path(record.root_path).expanduser().resolve()
@@ -210,6 +249,153 @@ class InProcessRetrieverBackend:
                 details={"collection": collection},
             ) from exc
         return normalize_hits(raw_hits)
+
+    def start_ingestion(
+        self,
+        collection: str,
+        paths: list[str | Path],
+        *,
+        run_mode: str = "inprocess",
+    ) -> IngestJobRecord:
+        self.registry.get_or_create_collection(collection)
+        expanded = expand_local_paths(paths, policy=self.path_policy)
+        job = self.registry.create_job(collection, source_count=len(expanded.files) + len(expanded.skipped))
+        if expanded.skipped:
+            job = self.registry.update_job(
+                job.job_id,
+                skipped_count=len(expanded.skipped),
+                warnings=list(expanded.skipped),
+            )
+        future = self._executor.submit(self._run_ingestion_job, job.job_id, collection, expanded.files, run_mode)
+        self._futures[job.job_id] = future
+        return job
+
+    def ingest_local_paths(
+        self,
+        collection: str,
+        paths: list[str | Path],
+        *,
+        wait: bool = True,
+        timeout_s: float | None = None,
+        run_mode: str = "inprocess",
+    ) -> IngestJobRecord:
+        job = self.start_ingestion(collection, paths, run_mode=run_mode)
+        if not wait:
+            return self.registry.get_job(job.job_id)
+
+        future = self._futures[job.job_id]
+        future.result(timeout=timeout_s)
+        return self.registry.get_job(job.job_id)
+
+    def get_ingestion_status(self, job_id: str) -> IngestJobRecord:
+        return self.registry.get_job(job_id)
+
+    def _run_ingestion_job(
+        self,
+        job_id: str,
+        collection: str,
+        files: list[Path],
+        run_mode: str,
+    ) -> None:
+        self.registry.update_job(job_id, status=JobStatus.RUNNING)
+        initial_record = self.registry.get_collection(collection)
+        accepted_count = 0
+        try:
+            grouped = group_paths_by_media_type(files)
+            ordered_media_types = [
+                media_type
+                for media_type in CANONICAL_MEDIA_ORDER
+                if media_type in grouped
+            ]
+            ordered_media_types.extend(sorted(set(grouped) - set(CANONICAL_MEDIA_ORDER)))
+
+            for media_type in ordered_media_types:
+                media_files = grouped[media_type]
+                overwrite = accepted_count == 0 and not initial_record.queryable
+                self._run_media_group(collection, media_type, media_files, run_mode, overwrite=overwrite)
+                accepted_count += len(media_files)
+
+            current_job = self.registry.get_job(job_id)
+            final_status = JobStatus.PARTIAL if current_job.skipped_count else JobStatus.COMPLETE
+            self.registry.update_job(
+                job_id,
+                status=final_status,
+                accepted_count=accepted_count,
+                row_count=accepted_count if accepted_count else None,
+            )
+            if accepted_count:
+                self.registry.mark_collection_queryable(collection, row_count=accepted_count)
+        except Exception as exc:
+            error = AgentMcpError(
+                AgentMcpErrorCode.BACKEND_ERROR,
+                f"Ingestion job '{job_id}' failed.",
+                details={"job_id": job_id, "collection": collection, "cause": str(exc)},
+            )
+            final_status = JobStatus.PARTIAL if accepted_count else JobStatus.FAILED
+            self.registry.update_job(
+                job_id,
+                status=final_status,
+                accepted_count=accepted_count,
+                row_count=accepted_count if accepted_count else None,
+                errors=[error.to_dict()],
+            )
+            if accepted_count:
+                self.registry.mark_collection_queryable(collection, row_count=accepted_count)
+            raise
+
+    def _run_media_group(
+        self,
+        collection: str,
+        media_type: str,
+        files: list[Path],
+        run_mode: str,
+        *,
+        overwrite: bool,
+    ) -> None:
+        record = self.registry.get_collection(collection)
+        ingestor = self.ingestor_factory(run_mode=run_mode)
+        ingestor = ingestor.files([str(path) for path in files])
+
+        extract_methods = {
+            "document": "extract",
+            "image": "extract_image_files",
+            "text": "extract_txt",
+            "html": "extract_html",
+            "audio": "extract_audio",
+            "video": "extract_video",
+        }
+        try:
+            extract_method = extract_methods[media_type]
+        except KeyError as exc:
+            raise AgentMcpError(
+                AgentMcpErrorCode.UNSUPPORTED_MEDIA_TYPE,
+                f"Unsupported media type '{media_type}'.",
+                details={"collection": collection, "media_type": media_type},
+            ) from exc
+
+        ingestor = getattr(ingestor, extract_method)()
+        ingestor = ingestor.embed(
+            model_name=record.embedding_model,
+            embedding_endpoint=record.embedding_endpoint,
+        )
+        if record.artifact_root:
+            ingestor = ingestor.store(storage_uri=record.artifact_root)
+        result = ingestor.ingest()
+        self._upload_records(record, result, overwrite=overwrite)
+
+    def _upload_records(self, record: CollectionRecord, result: Any, *, overwrite: bool) -> None:
+        from nemo_retriever.vdb import IngestVdbOperator
+
+        operator = IngestVdbOperator(
+            vdb_op=record.vdb_backend,
+            vdb_kwargs={
+                "uri": record.vdb_uri,
+                "table_name": record.vdb_table,
+                "hybrid": record.hybrid,
+                "overwrite": overwrite,
+            },
+        )
+        operator.process(result)
 
     def rerank_results(
         self,
