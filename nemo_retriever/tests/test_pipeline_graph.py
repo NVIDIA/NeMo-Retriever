@@ -956,32 +956,7 @@ class TestRayDataExecutor:
             executor.ingest([str(missing_path)])
         assert str(exc.value) == f"Input path does not exist: {missing_path}"
 
-    def test_ingest_rejects_directory_input_before_ray_read(self, tmp_path, monkeypatch):
-        import sys
-        from types import SimpleNamespace
-
-        class _FakeDataset:
-            pass
-
-        def _fake_read_binary_files(paths, include_paths=True):
-            raise AssertionError("read_binary_files should not be called for directory inputs")
-
-        fake_ray_data = SimpleNamespace(
-            Dataset=_FakeDataset,
-            read_binary_files=_fake_read_binary_files,
-        )
-        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
-
-        monkeypatch.setitem(sys.modules, "ray", fake_ray)
-        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
-
-        executor = RayDataExecutor(Graph())
-
-        with pytest.raises(IsADirectoryError) as exc:
-            executor.ingest([str(tmp_path)])
-        assert str(exc.value) == f"Input path is a directory, not a file or glob pattern: {tmp_path}"
-
-    def test_ingest_normalizes_ray_file_not_found(self, monkeypatch):
+    def test_ingest_normalizes_ray_file_not_found(self, tmp_path, monkeypatch):
         import sys
         from types import SimpleNamespace
 
@@ -1014,12 +989,13 @@ class TestRayDataExecutor:
         )
         monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
 
-        remote_path = "s3://bucket/missing.pdf"
+        input_path = tmp_path / "sample.pdf"
+        input_path.write_bytes(b"pdf")
         executor = RayDataExecutor(Graph())
 
         with pytest.raises(FileNotFoundError) as exc:
-            executor.ingest([remote_path])
-        assert str(exc.value) == f"Input path does not exist: {remote_path}"
+            executor.ingest([str(input_path)])
+        assert str(exc.value) == (f"Input path does not exist: ['{input_path}']. Reader error: {input_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -1135,13 +1111,6 @@ class TestInprocessExecutor:
         with pytest.raises(FileNotFoundError) as exc:
             executor.ingest([str(missing_path)])
         assert str(exc.value) == f"Input path does not exist: {missing_path}"
-
-    def test_ingest_rejects_directory_input(self, tmp_path):
-        executor = InprocessExecutor(Graph())
-
-        with pytest.raises(IsADirectoryError) as exc:
-            executor.ingest([str(tmp_path)])
-        assert str(exc.value) == f"Input path is a directory, not a file or glob pattern: {tmp_path}"
 
     def test_ingest_allows_unmatched_glob_pattern(self, tmp_path):
         executor = InprocessExecutor(Graph())

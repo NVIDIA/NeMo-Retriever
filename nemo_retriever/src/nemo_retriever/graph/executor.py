@@ -18,9 +18,8 @@ from nemo_retriever.graph.operator_resolution import resolve_graph
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 from nemo_retriever.utils.input_files import (
     _is_explicit_glob_path,
-    _raise_input_path_not_found,
     expand_input_file_patterns,
-    normalize_read_file_not_found,
+    raise_input_path_not_found,
 )
 from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 from nemo_retriever.utils.ray_resource_hueristics import (
@@ -153,7 +152,7 @@ class InprocessExecutor(AbstractExecutor):
             if fp.is_file():
                 rows.append({"bytes": fp.read_bytes(), "path": str(fp.resolve())})
             elif not _is_explicit_glob_path(p):
-                _raise_input_path_not_found(p)
+                raise_input_path_not_found(p)
         if not rows:
             return pd.DataFrame(columns=["bytes", "path"])
         return pd.DataFrame(rows)
@@ -272,7 +271,7 @@ class RayDataExecutor(AbstractExecutor):
             try:
                 ds = rd.read_binary_files(input_paths, include_paths=True)
             except FileNotFoundError as exc:
-                normalize_read_file_not_found(input_paths or [], exc)
+                raise_input_path_not_found(input_paths or [], exc)
         nodes = self._linearize(resolved_graph)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
