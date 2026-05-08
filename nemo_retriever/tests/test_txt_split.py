@@ -6,19 +6,13 @@
 Unit tests for nemo_retriever.txt.split: split_text_by_tokens and txt_file_to_chunks_df.
 """
 
-import builtins
 import tempfile  # noqa: F401
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from nemo_retriever.txt.split import (
-    TextChunkParams,
-    split_text_by_tokens,
-    txt_bytes_to_chunks_df,
-    txt_file_to_chunks_df,
-)
+from nemo_retriever.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
 
 
 class _MockTokenizer:
@@ -89,24 +83,3 @@ def test_txt_file_to_chunks_df_empty_file(tmp_path: Path):
     assert isinstance(df, pd.DataFrame)
     assert list(df.columns) == ["text", "path", "page_number", "metadata"]
     assert len(df) == 0
-
-
-def test_txt_bytes_to_chunks_df_falls_back_without_transformers(monkeypatch):
-    real_import = builtins.__import__
-
-    def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "transformers":
-            raise ModuleNotFoundError("No module named 'transformers'")
-        return real_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", guarded_import)
-
-    df = txt_bytes_to_chunks_df(
-        b"renewal date July 15 2026",
-        "/tmp/contract.txt",
-        params=TextChunkParams(max_tokens=512, overlap_tokens=0),
-    )
-
-    assert isinstance(df, pd.DataFrame)
-    assert len(df) == 1
-    assert df["text"].iloc[0] == "renewal date July 15 2026"

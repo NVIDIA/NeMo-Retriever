@@ -22,24 +22,9 @@ DEFAULT_MAX_TOKENS = 1024
 DEFAULT_OVERLAP_TOKENS = 0
 
 
-class _WhitespaceTokenizer:
-    """Small fallback tokenizer for slim installs without transformers."""
-
-    def encode(self, text: str, add_special_tokens: bool = False) -> list[str]:
-        _ = add_special_tokens
-        return text.split()
-
-    def decode(self, ids: list[str], skip_special_tokens: bool = True) -> str:
-        _ = skip_special_tokens
-        return " ".join(str(token) for token in ids)
-
-
 def _get_tokenizer(model_id: str, cache_dir: Optional[str] = None):  # noqa: ANN201
     """Lazy-load HuggingFace tokenizer."""
-    try:
-        from transformers import AutoTokenizer
-    except ModuleNotFoundError:
-        return _WhitespaceTokenizer()
+    from transformers import AutoTokenizer
 
     from nemo_retriever.utils.hf_model_registry import get_hf_revision
 
