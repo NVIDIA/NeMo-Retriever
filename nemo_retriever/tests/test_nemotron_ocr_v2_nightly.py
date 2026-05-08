@@ -62,7 +62,7 @@ def test_local_ocr_v2_wrapper_uses_original_namespace_and_lang_selector() -> Non
     )
 
     assert "from nemotron_ocr.inference import pipeline_v2" in source
-    assert 'lang: str = "v2_multi"' in source
+    assert 'lang: str = "v2_english"' in source
     assert "_NemotronOCRV2(model_dir=model_dir, lang=lang)" in source
     assert "_NemotronOCRV2(lang=lang)" in source
     assert "nemotron_ocr_v2" not in source
