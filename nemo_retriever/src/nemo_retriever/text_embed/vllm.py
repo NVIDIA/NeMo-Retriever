@@ -98,6 +98,16 @@ def embed_with_vllm_llm(
     """
     Compute embeddings using an existing vLLM LLM instance (no new model load).
     Use this when the caller holds a shared LLM (e.g. one per Ray actor).
+
+    Args:
+        prompts: Input strings to embed.
+        llm: A vLLM LLM instance created with ``runner="pooling"``.
+        batch_size: Number of prompts per vLLM call.
+        prefix: Optional string prepended to every prompt before encoding.
+        use_activation: When set, pass ``PoolingParams(use_activation=...)`` to
+            ``llm.embed()``. Set to ``False`` to skip pooler activation, such as
+            L2 normalization. ``None`` omits ``PoolingParams`` and preserves
+            vLLM's compiled defaults.
     """
     pooling_params = None
     if use_activation is not None:
