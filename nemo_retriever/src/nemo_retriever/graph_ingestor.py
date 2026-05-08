@@ -26,7 +26,6 @@ Usage::
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
@@ -550,18 +549,6 @@ class GraphIngestor(ingestor):
             return len(value) > 0
         return bool(value)
 
-    @staticmethod
-    def _jsonish(value: str) -> Any:
-        s = value.strip()
-        if not s:
-            return None
-        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
-            try:
-                return json.loads(s)
-            except Exception:
-                return None
-        return None
-
     @classmethod
     def _iter_stage_errors_from_value(cls, value: Any, *, path: str = "") -> Iterator[dict[str, Any]]:
         if isinstance(value, dict):
@@ -582,10 +569,6 @@ class GraphIngestor(ingestor):
                 child_path = f"{path}[{i}]" if path else f"[{i}]"
                 yield from cls._iter_stage_errors_from_value(child, path=child_path)
             return
-        if isinstance(value, str):
-            parsed = cls._jsonish(value)
-            if parsed is not None:
-                yield from cls._iter_stage_errors_from_value(parsed, path=path)
 
     @classmethod
     def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:
