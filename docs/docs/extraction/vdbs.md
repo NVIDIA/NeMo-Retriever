@@ -73,13 +73,13 @@ vdb.run(results)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
-With `hybrid=False`, `vdb.retrieval()` runs dense vector search. With **`hybrid=True`**, `vdb.run(results)` also builds the BM25/FTS index for hybrid ingest, but **`LanceDB.retrieval()` does not implement hybrid queries** and raises `NotImplementedError` if the operator was created with `hybrid=True`. For hybrid (dense + BM25 + RRF) **queries**, import and call **`lancedb_hybrid_retrieval()`** from `nv_ingest_client.util.vdb.lancedb` (same `table_path` / `table_name` as the `LanceDB` instance)—see [Hybrid search (LanceDB)](#hybrid-search-lancedb).
+With `hybrid=False`, `vdb.retrieval()` runs dense vector search. With `hybrid=True`, `vdb.run(results)` also builds the BM25/FTS index for hybrid ingest, but `LanceDB.retrieval()` does not implement hybrid queries** and raises `NotImplementedError` if the operator was created with `hybrid=True`. For hybrid (dense + BM25 + RRF) queries, import and call `lancedb_hybrid_retrieval()` from `nv_ingest_client.util.vdb.lancedb` (same `table_path` / `table_name` as the `LanceDB` instance)—see [Hybrid search (LanceDB)](#hybrid-search-lancedb).
 
 When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB. If you omit `vdb_op`, nv-ingest-client still defaults the string argument to `"milvus"` for backward compatibility, which is not the LanceDB operator—always pass `vdb_op="lancedb"` when you intend LanceDB.
 
 ## Semantic and hybrid retrieval { #semantic-and-hybrid-retrieval }
 
-**Semantic retrieval** uses dense embeddings to find content that is similar in meaning to a query. **Hybrid retrieval** combines dense vectors with sparse or lexical signals (for example, BM25-style full-text) and fuses ranked lists for better recall on keyword-heavy queries.
+Semantic retrieval uses dense embeddings to find content that is similar in meaning to a query. Hybrid retrieval combines dense vectors with sparse or lexical signals (for example, BM25-style full-text) and fuses ranked lists for better recall on keyword-heavy queries.
 
 In NeMo Retriever Library, the default vector path is LanceDB. Use these resources together with the sections on this page:
 
