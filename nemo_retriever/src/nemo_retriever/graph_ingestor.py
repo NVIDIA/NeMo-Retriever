@@ -589,22 +589,36 @@ class GraphIngestor(ingestor):
 
     @classmethod
     def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:
-        available_columns = getattr(batch, "columns", None)
-        if available_columns is None:
+        iter_batches = getattr(batch, "iter_batches", None)
+        if getattr(batch, "columns", None) is None and not callable(iter_batches):
             return []
-        target_columns = list(available_columns) if columns is None else [c for c in columns if c in available_columns]
+        requested_columns = list(columns) if columns is not None else None
+
+        if callable(iter_batches):
+            batches = iter_batches(batch_format="pandas")
+        else:
+            batches = (batch,)
 
         records: list[dict[str, Any]] = []
-        for row_index, row in batch.iterrows():
-            for column in target_columns:
-                for record in cls._iter_stage_errors_from_value(row[column]):
-                    records.append(
-                        {
-                            "row_index": row_index,
-                            "column": column,
-                            **record,
-                        }
-                    )
+        for batch_df in batches:
+            available_columns = getattr(batch_df, "columns", None)
+            if available_columns is None:
+                continue
+            target_columns = (
+                list(available_columns)
+                if requested_columns is None
+                else [c for c in requested_columns if c in available_columns]
+            )
+            for row_index, row in batch_df.iterrows():
+                for column in target_columns:
+                    for record in cls._iter_stage_errors_from_value(row[column]):
+                        records.append(
+                            {
+                                "row_index": row_index,
+                                "column": column,
+                                **record,
+                            }
+                        )
         return records
 
     @staticmethod

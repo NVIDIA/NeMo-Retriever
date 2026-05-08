@@ -195,6 +195,43 @@ def test_strict_remote_error_policy_ignores_unrelated_error_columns() -> None:
     ingestor._raise_for_stage_errors(result)
 
 
+def test_strict_remote_error_policy_accepts_batch_dataset_rows() -> None:
+    class RayLikeDataset:
+        columns = ["page_elements_v3", "metadata"]
+
+        def iter_batches(self, *, batch_format: str):
+            assert batch_format == "pandas"
+            yield pd.DataFrame(
+                {
+                    "page_elements_v3": [
+                        {
+                            "timing": None,
+                            "error": {
+                                "stage": "remote_inference",
+                                "type": "ConnectionError",
+                                "message": "connection refused",
+                            },
+                        }
+                    ],
+                    "metadata": [{"source": "test.pdf"}],
+                }
+            )
+
+    ingestor = GraphIngestor(run_mode="batch").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+
+    with pytest.raises(GraphIngestionError, match="page_elements_v3") as exc_info:
+        ingestor._raise_for_stage_errors(RayLikeDataset())
+
+    assert exc_info.value.records[0]["row_index"] == 0
+
+
 def test_graph_ingestion_error_sanitizes_remote_message_fields() -> None:
     sensitive_tail = "TAIL_SHOULD_NOT_APPEAR"
     long_message = "π" + ("x" * 600) + sensitive_tail
