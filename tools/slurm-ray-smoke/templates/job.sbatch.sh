@@ -190,13 +190,13 @@ export PYTHONPATH="$RUN_DIR/smokes:$SRC_DIR/src:${PYTHONPATH:-}"
 mkdir -p "$INPUT_DIR" "$TOKENIZER_DIR"
 
 cat > "$INPUT_DIR/doc-1.txt" <<'DOC'
-alpha beta gamma delta epsilon zeta eta theta
+alpha beta gamma delta epsilon zeta
 DOC
 cat > "$INPUT_DIR/doc-2.txt" <<'DOC'
-iota kappa lambda mu nu xi omicron pi
+iota kappa lambda mu nu xi
 DOC
 cat > "$INPUT_DIR/doc-3.txt" <<'DOC'
-rho sigma tau upsilon phi chi psi omega
+rho sigma tau upsilon phi chi
 DOC
 
 python - <<'PY'
@@ -208,7 +208,7 @@ from transformers import PreTrainedTokenizerFast
 import os
 
 vocab = {"[UNK]": 0}
-for word in "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega".split():
+for word in "alpha beta gamma delta epsilon zeta iota kappa lambda mu nu xi rho sigma tau upsilon phi chi".split():
     vocab.setdefault(word, len(vocab))
 
 tokenizer = Tokenizer(WordLevel(vocab=vocab, unk_token="[UNK]"))
