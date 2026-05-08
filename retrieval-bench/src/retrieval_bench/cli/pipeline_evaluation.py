@@ -744,7 +744,7 @@ def report_llm_usage(
         typer.Option(
             "--datasets",
             help="Optional comma-separated dataset filter (accepts full names like 'bright/biology' "
-            "or 'vidore/vidore_v3_hr', plus shorts like 'bright_biology' or 'vidore_v3_hr'). "
+            "or 'vidore/vidore_v3_hr', plus shorts like 'bright__biology' or 'vidore_v3_hr'). "
             "Defaults to all datasets.",
         ),
     ] = None,

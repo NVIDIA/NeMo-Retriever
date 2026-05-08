@@ -168,7 +168,7 @@ def _load_bright_split(
 
 
 def load_benchmark_dataset(
-    dataset_name: str, split: str = "test", language: str = None
+    dataset_name: str, split: str = "test", language: Optional[str] = None
 ) -> BenchmarkDatasetBundle:
     """
     Load a dataset for the pipeline evaluator.
