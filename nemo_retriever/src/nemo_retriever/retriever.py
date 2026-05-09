@@ -1,24 +1,26 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence
 
-from tqdm import tqdm
+import pandas as pd
 
-import nemo_retriever.vdb as vdb_pkg
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.retriever_graph_utils import (
+    filter_retrieval_kwargs,
+    rerank_long_dataframe_to_hits,
+)
+from nemo_retriever.vdb.operators import RetrieveVdbOperator
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    import pandas as pd
-
     from nemo_retriever.llm.types import (
         AnswerJudge,
         AnswerResult,
@@ -26,507 +28,221 @@ if TYPE_CHECKING:
         RetrievalResult,
     )
 
-_KEEP_KEYS = frozenset(
-    {
-        "text",
-        "metadata",
-        "source",
-        "page_number",
-        "pdf_page",
-        "pdf_basename",
-        "source_id",
-        "path",
-        "stored_image_uri",
-        "content_type",
-        "bbox_xyxy_norm",
+
+def _coerce_vdb_init(user: dict[str, Any]) -> dict[str, Any]:
+    """Normalize ``vdb_kwargs`` into :class:`RetrieveVdbOperator` constructor kwargs."""
+    u = dict(user or {})
+    if "vdb" in u or "vdb_op" in u:
+        return u
+    return {"vdb_op": "lancedb", "vdb_kwargs": u}
+
+
+def _default_rerank_actor_kwargs() -> dict[str, Any]:
+    return {
+        "model_name": VL_RERANK_MODEL,
+        "query_column": "query",
+        "text_column": "text",
+        "score_column": "rerank_score",
+        "max_length": 10240,
+        "batch_size": 32,
+        "sort_results": False,
+        "api_key": "",
     }
-)
 
 
 @dataclass
 class Retriever:
-    """VDB-agnostic query helper over vector databases.
+    """Graph-based query helper: batch embed → VDB retrieve [→ Nemotron rerank].
 
-    Run modes
-    ---------
-    ``run_mode="local"`` (default)
-        Embed queries locally (NIM endpoint or HuggingFace model) and
-        search a local LanceDB directory.  All processing happens in
-        this process.
+    Configuration is passed through ``embed_kwargs`` (:class:`~nemo_retriever.params.EmbedParams`),
+    ``vdb_kwargs`` (constructor kwargs for :class:`~nemo_retriever.vdb.operators.RetrieveVdbOperator`),
+    and optional ``rerank_kwargs`` for :class:`~nemo_retriever.rerank.rerank.NemotronRerankActor`.
 
-    ``run_mode="service"``
-        Delegate embedding and vector search to a running
-        nemo-retriever service via ``POST /v1/query``.  Set
-        ``service_url`` to the base URL of the service (e.g.
-        ``"http://localhost:7670"``).  When ``reranker`` is enabled,
-        the service's ``POST /v1/rerank`` endpoint is called to
-        re-score and sort results.
-
-    Example — service mode::
-
-        retriever = Retriever(
-            run_mode="service",
-            service_url="http://localhost:7670",
-        )
-        results = retriever.query("What is machine learning?")
-
-    Retrieval pipeline (local mode)
-    -------------------------------
-    1. Embed query strings with a local query embedder, or with a configured
-       embedding endpoint.
-    2. Search the configured vector database.
-    3. Optionally rerank the results with ``nvidia/llama-nemotron-rerank-1b-v2``
-       (NIM/vLLM endpoint or local HuggingFace model).
-
-    Reranking
-    ---------
-    Set ``reranker`` to a model name (e.g.
-    ``"nvidia/llama-nemotron-rerank-1b-v2"``) to enable post-retrieval
-    reranking.  Results are re-sorted by the cross-encoder score and a
-    ``"_rerank_score"`` key is added to each hit dict.
-
-    Use ``reranker_endpoint`` to delegate to a running vLLM (>=0.14) or NIM
-    server instead of loading the model locally::
-
-        retriever = Retriever(
-            vdb="lancedb",
-            vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
-            reranker="nvidia/llama-nemotron-rerank-1b-v2",
-            reranker_endpoint="http://localhost:8000",
-        )
-        results = retriever.query("What is machine learning?")
-
-    LanceDB SQL filters
-    --------------------
-    Pass a Lance / DataFusion predicate via ``where`` (or ``_filter``) in
-    ``vdb_kwargs``, or per call to ``query`` / ``queries``, to pre-filter
-    vector search (see ``LanceDB.retrieval`` in ``nemo_retriever.vdb.lancedb``).
+    See ``retriever.md`` for examples.
     """
 
-    # Run-mode selection ---------------------------------------------------
     run_mode: Literal["local", "service"] = "local"
-    """``'local'`` for direct LanceDB + NIM/HF embedding; ``'service'`` to
-    delegate to a running nemo-retriever service."""
-    service_url: Optional[str] = None
-    """Base URL of the nemo-retriever service (e.g. ``http://localhost:7670``).
-    Required when ``run_mode='service'``."""
-    service_api_token: Optional[str] = None
-    """Optional bearer token for authenticating with the service."""
+    """``local`` uses archetype batch embed resolution; ``service`` forces CPU HTTP embed."""
 
-    # Local-mode settings --------------------------------------------------
-    vdb: Any = "lancedb"
-    vdb_kwargs: dict[str, Any] = field(default_factory=dict)
-    embedder: str = VL_EMBED_MODEL
     top_k: int = 10
-    embedding_endpoint: Optional[str] = None
-    """Optional query embedding endpoint. If unset, query embedding uses local HuggingFace."""
-    embedding_http_endpoint: Optional[str] = None
-    """Back-compat HTTP query embedding endpoint alias."""
-    embedding_grpc_endpoint: Optional[str] = None
-    """Back-compat gRPC query embedding endpoint alias."""
-    embedding_api_key: str = ""
-    """Bearer token/API key for the query embedding endpoint."""
-    embedding_use_grpc: Optional[bool] = None
-    """Whether the query embedding endpoint is gRPC. If unset, infer from the endpoint string."""
-    local_hf_device: Optional[str] = None
-    local_hf_cache_dir: Optional[Path] = None
-    local_hf_batch_size: int = 32
-    #: When embedding queries locally (no HTTP endpoint): ``"hf"`` (default) uses
-    #: HuggingFace; ``"vllm"`` uses vLLM (same model as ingest).
-    local_query_embed_backend: str = "hf"
-    # Reranking -----------------------------------------------------------
-    reranker: Optional[bool] = False
-    """True to enable reranking with the default model, will use the reranker_model_name as hf model"""
-    reranker_model_name: Optional[str] = VL_RERANK_MODEL
-    """HuggingFace model ID for local reranking (e.g. 'nvidia/llama-nemotron-rerank-1b-v2')."""
-    reranker_endpoint: Optional[str] = None
-    """Base URL of a vLLM / NIM ranking endpoint. Appends ``/v1/ranking`` unless already using ``/reranking``."""
-    reranker_api_key: str = ""
-    """Bearer token for the remote rerank endpoint."""
-    reranker_max_length: int = 10240
-    """Tokenizer truncation length for local reranking (max 8 192)."""
-    reranker_batch_size: int = 32
-    """GPU micro-batch size for local reranking."""
-    reranker_refine_factor: int = 4
-    """Number of candidates to rerank = top_k * reranker_refine_factor.
-    Set to 1 to rerank only the top_k results."""
-    rerank_modality: str = "text"
-    """Reranking modality, typically matches embed_modality. Set to 'text_image'
-    to enable multimodal reranking with images."""
-    local_reranker_backend: str = "vllm"
-    """Backend for local VL reranking: ``"vllm"`` (default) or ``"hf"``."""
-    reranker_gpu_memory_utilization: float = 0.5
-    """Fraction of GPU memory for the vLLM reranker engine."""
-    # Internal cache for the local rerank model (not part of the public API).
-    _reranker_model: Any = field(default=None, init=False, repr=False, compare=False)
-    # Internal cache for local text embedders, keyed by model name.
-    _embedder_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
-    # Internal cache for the VDB retrieval operator.
-    _retrieve_operator: Any = field(default=None, init=False, repr=False, compare=False)
+    rerank: bool = False
+    """When ``True``, append :class:`~nemo_retriever.rerank.rerank.NemotronRerankActor` after retrieval."""
+
+    graph: Any = None
+    """Custom :class:`~nemo_retriever.graph.pipeline_graph.Graph`. When set, ``embed_kwargs`` /
+    ``vdb_kwargs`` default-graph fields are ignored for construction (you still pass execute kwargs)."""
+
+    embed_kwargs: dict[str, Any] = field(default_factory=dict)
+    vdb_kwargs: dict[str, Any] = field(default_factory=dict)
+    rerank_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    _cached_graph: Any = field(default=None, init=False, repr=False, compare=False)
+    _cache_key: Any = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        from nemo_retriever.model import (
-            _LOCAL_QUERY_BACKENDS,
-            _LOCAL_RERANKER_BACKENDS,
-            normalize_backend,
-        )
+        if self.run_mode not in ("local", "service"):
+            raise ValueError("run_mode must be 'local' or 'service'")
 
-        self.local_query_embed_backend = normalize_backend(
-            self.local_query_embed_backend,
-            _LOCAL_QUERY_BACKENDS,
-            field_name="local_query_embed_backend",
-            default="hf",
-        )
-        self.local_reranker_backend = normalize_backend(
-            self.local_reranker_backend,
-            _LOCAL_RERANKER_BACKENDS,
-            field_name="local_reranker_backend",
-            default="vllm",
-        )
+    def _merge_embed_params(self, extra: Optional[dict[str, Any]] = None) -> Any:
+        from nemo_retriever.model import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+        from nemo_retriever.params import EmbedParams
 
-    def _get_local_embedder(self, model_name: str) -> Any:
-        """Lazily load and cache the local embedder for *model_name*."""
-        from nemo_retriever.model import (
-            create_local_query_embedder,
-            resolve_embed_model,
-        )
-
-        resolved = resolve_embed_model(model_name)
-        backend_raw = self.local_query_embed_backend
-        cache_key: tuple[str, str] = (resolved, backend_raw)
-
-        if cache_key not in self._embedder_cache:
-            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            dev = str(self.local_hf_device) if self.local_hf_device else None
-            self._embedder_cache[cache_key] = create_local_query_embedder(
-                resolved,
-                backend=backend_raw,
-                device=dev,
-                hf_cache_dir=cache_dir,
-            )
-        return self._embedder_cache[cache_key]
-
-    def _embed_queries_local(self, query_texts: list[str], *, model_name: str) -> list[list[float]]:
-        embedder = self._get_local_embedder(model_name)
-        vectors = embedder.embed_queries(query_texts, batch_size=int(self.local_hf_batch_size))
-        return vectors.detach().to("cpu").tolist()
-
-    def _embed_queries_local_hf(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
-        """Compatibility wrapper for the local-HF default query embedding path."""
-        return self._embed_queries_local(query_texts, model_name=str(model_name or self.embedder))
-
-    def _resolve_embedding_endpoint(self) -> tuple[str | None, bool | None]:
-        http_ep = (self.embedding_http_endpoint or "").strip()
-        grpc_ep = (self.embedding_grpc_endpoint or "").strip()
-        endpoint = (self.embedding_endpoint or "").strip()
-        if http_ep:
-            return http_ep, False
-        if grpc_ep:
-            return grpc_ep, True
-        if self.embedding_use_grpc is not None:
-            return (endpoint, bool(self.embedding_use_grpc)) if endpoint else (None, None)
-        if not endpoint:
-            return None, None
-        return endpoint, not endpoint.lower().startswith("http")
-
-    def _embed_queries_remote(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
-        endpoint, use_grpc = self._resolve_embedding_endpoint()
-        if endpoint is None or use_grpc is None:
-            raise ValueError("Remote query embedding requires embedding_endpoint.")
-
-        from nemo_retriever.api.util.nim import infer_microservice
-
-        embeddings = infer_microservice(
-            query_texts,
-            model_name=str(model_name or self.embedder),
-            embedding_endpoint=endpoint,
-            nvidia_api_key=(self.embedding_api_key or "").strip(),
-            grpc=bool(use_grpc),
-            input_type="query",
-        )
-        vectors: list[list[float]] = []
-        for embedding in embeddings:
-            tolist = getattr(embedding, "tolist", None)
-            values = tolist() if callable(tolist) else embedding
-            vectors.append(list(values))
-        return vectors
-
-    def _embed_queries(self, query_texts: list[str], *, model_name: Optional[str] = None) -> list[list[float]]:
-        endpoint, _use_grpc = self._resolve_embedding_endpoint()
-        if endpoint is not None:
-            return self._embed_queries_remote(query_texts, model_name=model_name)
-        return self._embed_queries_local_hf(query_texts, model_name=model_name)
-
-    def _get_retrieve_operator(self) -> Any:
-        """Lazily construct the VDB retrieval operator for this Retriever."""
-        if self._retrieve_operator is None:
-            operator_kwargs: dict[str, Any] = {"vdb_kwargs": dict(self.vdb_kwargs or {})}
-            if isinstance(self.vdb, str):
-                operator_kwargs["vdb_op"] = self.vdb
-            else:
-                operator_kwargs["vdb"] = self.vdb
-            self._retrieve_operator = vdb_pkg.RetrieveVdbOperator(**operator_kwargs)
-        return self._retrieve_operator
-
-    # ------------------------------------------------------------------
-    # Reranking helpers
-    # ------------------------------------------------------------------
-
-    def _get_reranker_model(self) -> Any:
-        """Lazily load and cache the local reranker model (text-only or VL)."""
-        if self._reranker_model is None and self.reranker:
-            from nemo_retriever.model import create_local_reranker
-
-            cache_dir = str(self.local_hf_cache_dir) if self.local_hf_cache_dir else None
-            self._reranker_model = create_local_reranker(
-                model_name=self.reranker_model_name,
-                device=self.local_hf_device,
-                hf_cache_dir=cache_dir,
-                backend=self.local_reranker_backend,
-                gpu_memory_utilization=self.reranker_gpu_memory_utilization,
-            )
-        return self._reranker_model
-
-    def _rerank_results(
-        self,
-        query_texts: list[str],
-        results: list[list[dict[str, Any]]],
-        *,
-        top_k: int,
-    ) -> list[list[dict[str, Any]]]:
-        """Rerank each per-query result list using the configured reranker."""
-        from nemo_retriever.rerank import rerank_hits
-
-        reranker_endpoint = (self.reranker_endpoint or "").strip() or None
-        model = None if reranker_endpoint else self._get_reranker_model()
-
-        reranked: list[list[dict[str, Any]]] = []
-        for query, hits in tqdm(zip(query_texts, results), desc="Reranking", unit="query", total=len(query_texts)):
-            reranked.append(
-                rerank_hits(
-                    query,
-                    hits,
-                    model=model,
-                    invoke_url=reranker_endpoint,
-                    model_name=str(self.reranker_model_name),
-                    api_key=(self.reranker_api_key or "").strip(),
-                    max_length=int(self.reranker_max_length),
-                    batch_size=int(self.reranker_batch_size),
-                    top_n=int(top_k),
-                    modality=self.rerank_modality,
-                )
-            )
-        return reranked
-
-    # ------------------------------------------------------------------
-    # Service-mode helpers
-    # ------------------------------------------------------------------
-
-    def _validate_service_config(self) -> str:
-        """Return the normalized service base URL, or raise."""
-        url = (self.service_url or "").strip().rstrip("/")
-        if not url:
-            raise ValueError(
-                "service_url is required when run_mode='service'. "
-                "Set it to the base URL of the nemo-retriever service "
-                "(e.g. 'http://localhost:7670')."
-            )
-        if not url.lower().startswith("http"):
-            raise ValueError(f"service_url must be an HTTP(S) URL, got: {url!r}")
-        return url
-
-    def _service_headers(self) -> dict[str, str]:
-        """Build HTTP headers for service requests (auth + content-type)."""
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        token = (self.service_api_token or "").strip()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        return headers
-
-    def _service_post(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST JSON to a service endpoint with standard error handling."""
-        import httpx
-
-        base_url = self._validate_service_config()
-        full_url = f"{base_url}{url}"
-
-        try:
-            with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0)) as client:
-                resp = client.post(full_url, json=payload, headers=self._service_headers())
-        except httpx.ConnectError as exc:
-            raise ConnectionError(
-                f"Failed to connect to the nemo-retriever service at {base_url!r}: " f"{type(exc).__name__}: {exc}"
-            ) from exc
-        except httpx.TimeoutException as exc:
-            raise TimeoutError(
-                f"Request to nemo-retriever service timed out ({base_url!r}): " f"{type(exc).__name__}: {exc}"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise RuntimeError(
-                f"HTTP error communicating with nemo-retriever service ({base_url!r}): " f"{type(exc).__name__}: {exc}"
-            ) from exc
-
-        if resp.status_code != 200:
-            detail = ""
-            try:
-                detail = resp.json().get("detail", resp.text)
-            except Exception:
-                detail = resp.text
-            raise RuntimeError(f"Service request to {url} failed with HTTP {resp.status_code}: {detail}")
-
-        return resp.json()
-
-    def _queries_via_service(
-        self,
-        query_texts: list[str],
-        *,
-        lancedb_uri: Optional[str] = None,
-        lancedb_table: Optional[str] = None,
-    ) -> list[list[dict[str, Any]]]:
-        """Delegate retrieval to the nemo-retriever service ``POST /v1/query``."""
-        payload: dict[str, Any] = {
-            "query": query_texts if len(query_texts) > 1 else query_texts[0],
-            "top_k": self.top_k if not self.reranker else self.top_k * self.reranker_refine_factor,
-            "hybrid": self.hybrid,
+        base: dict[str, Any] = {
+            "model_name": VL_EMBED_MODEL,
+            "embed_model_name": VL_EMBED_MODEL,
+            "input_type": "query",
+            "text_column": "text",
+            "inference_batch_size": 32,
+            "embed_inference_batch_size": 32,
         }
-        if lancedb_uri is not None:
-            payload["lancedb_uri"] = lancedb_uri
-        if lancedb_table is not None:
-            payload["lancedb_table"] = lancedb_table
+        merged = {**base, **dict(self.embed_kwargs or {}), **dict(extra or {})}
+        if "local_ingest_embed_backend" in merged and merged["local_ingest_embed_backend"] is not None:
+            merged["local_ingest_embed_backend"] = normalize_backend(
+                str(merged["local_ingest_embed_backend"]),
+                _LOCAL_INGEST_EMBED_BACKENDS,
+                field_name="local_ingest_embed_backend",
+                default="vllm",
+            )
+        params = EmbedParams.model_validate(merged)
+        if self.run_mode == "service":
+            url = (params.embedding_endpoint or params.embed_invoke_url or "").strip()
+            if not url:
+                raise ValueError(
+                    "run_mode='service' requires a non-empty HTTP embedding URL. "
+                    "Set ``embedding_endpoint`` or ``embed_invoke_url`` inside ``embed_kwargs``."
+                )
+        return params
 
-        logger.debug("Service query: %d queries", len(query_texts))
-        body = self._service_post("/v1/query", payload)
+    def _merge_rerank_actor_kwargs(self) -> dict[str, Any]:
+        return {**_default_rerank_actor_kwargs(), **dict(self.rerank_kwargs or {})}
 
-        all_results: list[list[dict[str, Any]]] = []
-        for result_set in body.get("results", []):
-            hits: list[dict[str, Any]] = []
-            for hit in result_set.get("hits", []):
-                row: dict[str, Any] = {}
-                for key in _KEEP_KEYS:
-                    if key in hit:
-                        row[key] = hit[key]
-                hits.append(row)
-            all_results.append(hits)
+    def _refine_factor(self) -> int:
+        if not self.rerank:
+            return 1
+        return int(self._merge_rerank_actor_kwargs().get("refine_factor", 4))
 
-        return all_results
+    def _build_default_graph(self, *, embed_extra: Optional[dict[str, Any]] = None) -> Any:
+        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.text_embed.cpu_operator import _BatchEmbedCPUActor
+        from nemo_retriever.text_embed.operators import _BatchEmbedActor
 
-    def _rerank_via_service(
+        embed_params = self._merge_embed_params(embed_extra)
+        if self.run_mode == "service":
+            embed_op = _BatchEmbedCPUActor(params=embed_params)
+        else:
+            embed_op = _BatchEmbedActor(params=embed_params)
+
+        vdb_init = _coerce_vdb_init(self.vdb_kwargs)
+        retrieve = RetrieveVdbOperator(
+            explode_for_rerank=self.rerank,
+            **vdb_init,
+        )
+
+        chain = embed_op >> retrieve
+        if self.rerank:
+            rk = self._merge_rerank_actor_kwargs()
+            rk.pop("refine_factor", None)
+            chain = chain >> NemotronRerankActor(**rk)
+
+        return chain
+
+    def _get_graph(self, *, embed_extra: Optional[dict[str, Any]] = None) -> Any:
+        if self.graph is not None:
+            return self.graph
+
+        key = (
+            self.run_mode,
+            self.rerank,
+            json.dumps(self.vdb_kwargs, sort_keys=True, default=str),
+            json.dumps(self.embed_kwargs, sort_keys=True, default=str),
+            json.dumps(self.rerank_kwargs, sort_keys=True, default=str),
+            json.dumps(embed_extra or {}, sort_keys=True, default=str),
+        )
+        if self._cached_graph is not None and self._cache_key == key:
+            return self._cached_graph
+        g = self._build_default_graph(embed_extra=embed_extra)
+        self._cached_graph = g
+        self._cache_key = key
+        return g
+
+    def _execute_queries_graph(
         self,
         query_texts: list[str],
-        results: list[list[dict[str, Any]]],
+        *,
+        effective_top_k: int,
+        retrieval_top_k: int,
+        vdb_call_kwargs: Optional[dict[str, Any]],
+        embed_extra: Optional[dict[str, Any]],
     ) -> list[list[dict[str, Any]]]:
-        """Rerank each per-query result list via ``POST /v1/rerank``."""
-        reranked: list[list[dict[str, Any]]] = []
-        for query_text, hits in zip(query_texts, results):
-            if not hits:
-                reranked.append([])
-                continue
+        embed_params = self._merge_embed_params(embed_extra)
+        text_col = str(embed_params.text_column)
+        df = pd.DataFrame({text_col: query_texts})
 
-            payload: dict[str, Any] = {
-                "query": query_text,
-                "passages": hits,
-                "top_n": self.top_k,
-            }
-            if self.reranker_model_name:
-                payload["model_name"] = self.reranker_model_name
+        graph = self._get_graph(embed_extra=embed_extra)
+        if not callable(getattr(graph, "resolve_for_local_execution", None)):
+            raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
 
-            logger.debug("Service rerank: query=%r, %d passages", query_text[:80], len(hits))
-            body = self._service_post("/v1/rerank", payload)
+        exec_kwargs: dict[str, Any] = {
+            **filter_retrieval_kwargs(dict(vdb_call_kwargs or {})),
+            "top_k": int(retrieval_top_k),
+            "query_texts": query_texts,
+        }
+        resolved = graph.resolve_for_local_execution()
+        leaves = resolved.execute(df, **exec_kwargs)
+        if len(leaves) != 1:
+            raise RuntimeError(
+                f"Retriever query graph must yield exactly one leaf output; got {len(leaves)}. "
+                "Use a linear graph or adjust your custom ``graph``."
+            )
+        out = leaves[0]
 
-            ranked_hits: list[dict[str, Any]] = []
-            for hit in body.get("results", []):
-                row: dict[str, Any] = {"_rerank_score": hit.get("rerank_score", 0.0)}
-                for key in _KEEP_KEYS:
-                    if key in hit:
-                        row[key] = hit[key]
-                ranked_hits.append(row)
-            reranked.append(ranked_hits)
-
-        return reranked
-
-    # ------------------------------------------------------------------
-    # Public query API
-    # ------------------------------------------------------------------
+        if isinstance(out, pd.DataFrame):
+            if not self.rerank:
+                raise TypeError(
+                    "Graph returned a DataFrame but ``rerank`` is False; expected list[list[dict]] from retrieval."
+                )
+            rk = self._merge_rerank_actor_kwargs()
+            score_col = str(rk.get("score_column", "rerank_score"))
+            return rerank_long_dataframe_to_hits(
+                out, query_texts=query_texts, top_k=int(effective_top_k), score_column=score_col
+            )
+        if not isinstance(out, list):
+            raise TypeError(f"Unexpected query graph output type: {type(out).__name__}")
+        return out
 
     def query(
         self,
         query: str,
         *,
         top_k: Optional[int] = None,
-        embedder: Optional[str] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
+        embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
-        """Run retrieval for a single query string.
-
-        Args:
-            query: The natural-language query.
-            top_k: Per-call override of ``self.top_k``; passed as a local
-                value so the instance attribute is never mutated.
-            embedder: Per-call query embedding model override.
-            vdb_kwargs: Per-call VDB retrieval kwargs. These override
-                instance-level ``self.vdb_kwargs`` for this call.
-        """
-        return self.queries([query], top_k=top_k, embedder=embedder, vdb_kwargs=vdb_kwargs)[0]
+        return self.queries([query], top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)[0]
 
     def queries(
         self,
         queries: Sequence[str],
         *,
         top_k: Optional[int] = None,
-        embedder: Optional[str] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
+        embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[list[dict[str, Any]]]:
-        """Run retrieval for multiple query strings.
-
-        When ``run_mode='local'``:
-            Embeds locally, searches the configured VDB directly, and
-            optionally reranks with the configured reranker.
-
-        When ``run_mode='service'``:
-            Delegates embedding and vector search to the nemo-retriever
-            service at ``service_url``.  When ``reranker`` is set the
-            service's ``/v1/rerank`` endpoint is called to re-score and
-            sort the results; each hit gains a ``"_rerank_score"`` key.
-
-        If ``reranker`` is set on this instance (local mode) the initial
-        vector-search results are re-scored with
-        ``nvidia/llama-nemotron-rerank-1b-v2`` (or the configured endpoint)
-        and returned sorted by cross-encoder score.  Each hit gains a
-        ``"_rerank_score"`` key.
-
-        The ``top_k`` kwarg is threaded through the search + rerank stack
-        as a local value so concurrent callers never race on ``self.top_k``.
-        """
         query_texts = [str(q) for q in queries]
         if not query_texts:
             return []
 
-        if self.run_mode == "service":
-            results = self._queries_via_service(query_texts)
-            if self.reranker:
-                results = self._rerank_via_service(query_texts, results)
-            return results
-
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
-        retrieval_top_k = effective_top_k
-        if self.reranker:
-            retrieval_top_k = effective_top_k * int(self.reranker_refine_factor)
+        refine = self._refine_factor()
+        retrieval_top_k = effective_top_k * refine if self.rerank else effective_top_k
 
-        resolved_embedder = str(embedder or self.embedder)
-        vectors = self._embed_queries(query_texts, model_name=resolved_embedder)
-
-        retrieval_kwargs = dict(vdb_kwargs or {})
-        retrieval_kwargs["top_k"] = int(retrieval_top_k)
-        results = self._get_retrieve_operator().process(vectors, **retrieval_kwargs)
-
-        if self.reranker:
-            results = self._rerank_results(query_texts, results, top_k=effective_top_k)
-
-        return results
-
-    # ------------------------------------------------------------------
-    # Live RAG API (structured retrieval + generation)
-    # ------------------------------------------------------------------
+        return self._execute_queries_graph(
+            query_texts,
+            effective_top_k=effective_top_k,
+            retrieval_top_k=retrieval_top_k,
+            vdb_call_kwargs=vdb_kwargs,
+            embed_extra=embed_kwargs,
+        )
 
     def retrieve(
         self,
@@ -534,35 +250,11 @@ class Retriever:
         top_k: Optional[int] = None,
         *,
         vdb_kwargs: Optional[dict[str, Any]] = None,
+        embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> "RetrievalResult":
-        """Run retrieval for a single query and return a structured result.
-
-        Thin adapter over :meth:`query` that reshapes the raw VDB hits
-        into a :class:`~nemo_retriever.llm.RetrievalResult` with ``chunks``
-        (the retrieved text, in rank order) and aligned ``metadata``
-        (source, page_number, etc.).  Satisfies the
-        :class:`~nemo_retriever.llm.RetrieverStrategy` Protocol.
-
-        Args:
-            query: The natural-language query.
-            top_k: Per-call override of ``self.top_k``; passed as a local
-                value so the instance attribute is never mutated.
-            vdb_kwargs: Per-call VDB retrieval kwargs.
-
-        Returns:
-            A :class:`~nemo_retriever.llm.RetrievalResult` whose ``chunks``
-            and ``metadata`` lists have the same length.
-
-        Example:
-            >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})
-            >>> result = retriever.retrieve("What is RAG?", top_k=3)
-            >>> import itertools
-            >>> "".join(itertools.islice(result.chunks[0], 40))  # doctest: +SKIP
-            'Retrieval augmented generation combines...'
-        """
         from nemo_retriever.llm.types import RetrievalResult
 
-        hits = self.query(query, top_k=top_k, vdb_kwargs=vdb_kwargs)
+        hits = self.query(query, top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)
 
         chunks: list[str] = []
         metadata: list[dict[str, Any]] = []
@@ -577,32 +269,15 @@ class Retriever:
         *,
         top_k: Optional[int] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
+        embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list["RetrievalResult"]:
-        """Run retrieval for a batch of queries in one VDB call.
-
-        Funnels the whole query list through :meth:`queries`, which delegates
-        embedding and backend-specific search to the configured VDB.
-
-        Args:
-            queries: Iterable of natural-language query strings.  Order
-                is preserved in the returned list.
-            top_k: Per-call override of ``self.top_k``; passed as a local
-                value so the instance attribute is never mutated.
-            vdb_kwargs: Per-call VDB retrieval kwargs.
-
-        Returns:
-            A list of :class:`~nemo_retriever.llm.RetrievalResult`,
-            aligned one-to-one with ``queries``.  Empty input returns an
-            empty list.
-        """
-
         from nemo_retriever.llm.types import RetrievalResult
 
         query_texts = [str(q) for q in queries]
         if not query_texts:
             return []
 
-        hits_per_query = self.queries(query_texts, top_k=top_k, vdb_kwargs=vdb_kwargs)
+        hits_per_query = self.queries(query_texts, top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)
 
         results: list[RetrievalResult] = []
         for hits in hits_per_query:
@@ -620,64 +295,14 @@ class Retriever:
         reference: Optional[str] = None,
         top_k: Optional[int] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
+        embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> "AnswerResult":
-        """Run live RAG for a single query and optionally score the answer.
-
-        Performs ``retrieve -> llm.generate`` and, when a ``reference`` answer
-        (for token-level scoring) and/or a ``judge`` (for LLM-as-judge
-        scoring) are supplied, fans those out concurrently on a small thread
-        pool so the judge network call and the local token-F1 computation do
-        not serialize.
-
-        Scoring tiers that can be populated on the returned
-        :class:`~nemo_retriever.llm.AnswerResult`:
-
-          * Tier 1 -- ``answer_in_context`` (requires ``reference``)
-          * Tier 2 -- ``token_f1``, ``exact_match`` (requires ``reference``)
-          * Tier 3 -- ``judge_score``, ``judge_reasoning`` (requires ``judge``
-            and ``reference``); also populates ``failure_mode``
-
-        When generation fails the returned result has ``error`` populated
-        and all scoring/judge fields remain ``None`` -- scoring is skipped
-        to avoid misleading metrics on an empty answer.
-
-        Args:
-            query: Natural-language question.
-            llm: Any object satisfying the
-                :class:`~nemo_retriever.llm.LLMClient` Protocol (typically
-                :class:`~nemo_retriever.llm.LiteLLMClient`).
-            judge: Optional LLM-as-judge.  Requires ``reference``.
-            reference: Ground-truth answer for token-F1 and judge scoring.
-            top_k: Per-call override of ``self.top_k``.
-            vdb_kwargs: Per-call VDB retrieval kwargs.
-
-        Returns:
-            An :class:`~nemo_retriever.llm.AnswerResult` carrying the
-            generated answer, the retrieved context, and any scoring
-            artefacts that were requested.
-
-        Raises:
-            ValueError: If ``judge`` is supplied without ``reference``.
-
-        Example:
-            >>> from nemo_retriever.llm import LiteLLMClient
-            >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})
-            >>> llm = LiteLLMClient.from_kwargs(
-            ...     model="nvidia_nim/meta/llama-3.3-70b-instruct",
-            ... )
-            >>> result = retriever.answer(  # doctest: +SKIP
-            ...     "What did Q4 revenue look like?",
-            ...     llm=llm,
-            ... )
-            >>> result.answer  # doctest: +SKIP
-            'Revenue grew 12% YoY to $4.2B...'
-        """
         from nemo_retriever.llm.types import AnswerResult
 
         if judge is not None and reference is None:
             raise ValueError("judge requires reference")
 
-        retrieved = self.retrieve(query, top_k=top_k, vdb_kwargs=vdb_kwargs)
+        retrieved = self.retrieve(query, top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)
 
         gen = llm.generate(query, retrieved.chunks)
 
@@ -715,14 +340,6 @@ class Retriever:
         judge: Optional["AnswerJudge"],
         gen_error: Optional[str],
     ) -> None:
-        """Populate scoring tiers on ``result`` in-place.
-
-        Runs Tier-1 + Tier-2 (pure CPU, sub-millisecond) alongside the Tier-3
-        judge API call (network-bound) on a two-worker thread pool so the
-        judge latency is not extended by scoring.  After both complete,
-        ``failure_mode`` is derived from the combined signals via
-        :func:`~nemo_retriever.evaluation.scoring.classify_failure`.
-        """
         from concurrent.futures import ThreadPoolExecutor
 
         from nemo_retriever.evaluation.scoring import (
@@ -766,47 +383,10 @@ class Retriever:
             )
 
     def pipeline(self, *, top_k: Optional[int] = None) -> "RetrieverPipelineBuilder":
-        """Return a fluent builder for a batch live-RAG operator graph.
-
-        The builder composes existing evaluation operators -- live retrieval
-        (via :class:`~nemo_retriever.evaluation.live_retrieval.LiveRetrievalOperator`),
-        :class:`~nemo_retriever.evaluation.generation.QAGenerationOperator`,
-        :class:`~nemo_retriever.evaluation.scoring_operator.ScoringOperator`,
-        and :class:`~nemo_retriever.evaluation.judging.JudgingOperator` --
-        using the existing ``>>`` chaining from
-        :mod:`nemo_retriever.graph.pipeline_graph`.  No new graph primitives
-        are introduced; this method is sugar for building and executing that
-        graph against a list of queries.
-
-        Steps are optional and independent.  Call only the ones you want, in
-        any order (retrieval always runs first since it is the source).
-
-        Args:
-            top_k: Override ``self.top_k`` for retrieval within this
-                pipeline.  Defaults to the instance attribute.
-
-        Returns:
-            A :class:`RetrieverPipelineBuilder` whose ``.run(queries)`` method
-            executes the composed graph and returns a ``pandas.DataFrame``.
-
-        Example:
-            >>> from nemo_retriever.llm import LiteLLMClient, LLMJudge
-            >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})
-            >>> llm = LiteLLMClient.from_kwargs(model="nvidia_nim/meta/llama-3.3-70b-instruct")
-            >>> judge = LLMJudge.from_kwargs(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
-            >>> df = (  # doctest: +SKIP
-            ...     retriever.pipeline()
-            ...     .generate(llm)
-            ...     .score()
-            ...     .judge(judge)
-            ...     .run(queries=["What is RAG?"], reference=["Retrieval-augmented generation..."])
-            ... )
-        """
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
         return RetrieverPipelineBuilder(self, top_k=effective_top_k)
 
     def generate_sql(self, query: str) -> str:
-        """Generate a SQL query for a given natural language query."""
         from nemo_retriever.tabular_data.retrieval import generate_sql
 
         return generate_sql(query)
