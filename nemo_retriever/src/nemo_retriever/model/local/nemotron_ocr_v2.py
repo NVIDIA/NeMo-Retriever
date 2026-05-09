@@ -27,22 +27,34 @@ class NemotronOCRV2(BaseModel):
     - Text recognizer for transcription (pre-norm Transformer)
     - Relational model for layout and reading order analysis
 
-    Supports both English-only (v2_english) and multilingual variants
-    (v2_multilingual: EN, ZH, JA, KO, RU).
+    Supports the upstream ``lang`` selector:
+    - v1
+    - v2_english
+    - v2_multi
     """
+
+    _VALID_LANG_SELECTORS: frozenset[str] = frozenset({"v1", "v2_english", "v2_multi"})
 
     def __init__(
         self,
         model_dir: Optional[str] = None,
+        lang: str = "v2_english",
     ) -> None:
+        if lang not in self._VALID_LANG_SELECTORS:
+            raise ValueError(
+                f"Invalid lang selector {lang!r}. "
+                f"Supported values: {sorted(self._VALID_LANG_SELECTORS)}. "
+                "Pass lang='v2_english' for English-only, 'v2_multi' for multilingual, "
+                "or 'v1' to run the v1 model through the v2 package."
+            )
         super().__init__()
         configure_global_hf_cache_base()
         try:
             from nemotron_ocr.inference import pipeline_v2 as _nemotron_ocr_pipeline_v2  # local-only import
         except ImportError as exc:
             raise ImportError(
-                "Local Nemotron OCR v2 requires the `nemotron_ocr_v2` package. "
-                "Install `nemotron-ocr-v2` from TestPyPI, or install from source via: "
+                "Local Nemotron OCR v2 requires the `nemotron_ocr` package. "
+                "Install `nemotron-ocr` 2.0 nightlies from TestPyPI, or install from source via: "
                 "git clone https://huggingface.co/nvidia/nemotron-ocr-v2 && "
                 "cd nemotron-ocr-v2/nemotron-ocr && pip install --no-build-isolation -v . "
                 "Alternatively, run with --ocr-invoke-url pointed at a v2 endpoint, "
@@ -53,9 +65,9 @@ class NemotronOCRV2(BaseModel):
         _NemotronOCRV2 = _nemotron_ocr_pipeline_v2.NemotronOCRV2
 
         if model_dir:
-            self._model = _NemotronOCRV2(model_dir=model_dir)
+            self._model = _NemotronOCRV2(model_dir=model_dir, lang=lang)
         else:
-            self._model = _NemotronOCRV2()
+            self._model = _NemotronOCRV2(lang=lang)
         self._enable_trt = os.getenv("RETRIEVER_ENABLE_TORCH_TRT", "").strip().lower() in {"1", "true", "yes", "on"}
         if self._enable_trt and self._model is not None:
             self._maybe_compile_submodules()

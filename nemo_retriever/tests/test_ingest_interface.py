@@ -1,6 +1,8 @@
+import pandas as pd
 import pytest
 
-from nemo_retriever.graph_ingestor import GraphIngestor
+import nemo_retriever
+from nemo_retriever.graph_ingestor import GraphIngestionError, GraphIngestor
 from nemo_retriever.ingestor import IngestorCreateParams, _merge_params, create_ingestor
 from nemo_retriever.params import (
     ASRParams,
@@ -10,6 +12,7 @@ from nemo_retriever.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    RemoteRetryParams,
     TextChunkParams,
 )
 
@@ -32,6 +35,17 @@ def test_create_ingestor_parses_kwargs_and_returns_graph_ingestor() -> None:
     assert isinstance(ingestor, GraphIngestor)
     assert ingestor._run_mode == "inprocess"
     assert ingestor._documents == ["doc.pdf"]
+
+
+def test_create_ingestor_passes_error_policy_to_graph_ingestor() -> None:
+    ingestor = create_ingestor(run_mode="inprocess", error_policy="collect")
+    assert isinstance(ingestor, GraphIngestor)
+    assert ingestor._error_policy == "collect"
+
+
+def test_graph_ingestion_error_is_exported_from_top_level_package() -> None:
+    assert "GraphIngestionError" in nemo_retriever.__all__
+    assert nemo_retriever.GraphIngestionError is GraphIngestionError
 
 
 def test_create_ingestor_rejects_unknown_kwargs() -> None:
@@ -96,3 +110,240 @@ def test_typed_shortcuts_preserve_legacy_no_default_chunking() -> None:
     txt_ingestor = GraphIngestor(run_mode="inprocess").extract_txt(custom)
     assert txt_ingestor._split_config["text"] is None
     assert txt_ingestor._text_params is custom
+
+
+@pytest.mark.integration
+def test_graph_ingestor_raises_for_explicit_remote_stage_errors() -> None:
+    ingestor = GraphIngestor(
+        run_mode="inprocess",
+        documents=["data/test.pdf"],
+        show_progress=False,
+    ).extract(
+        page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+        inference_batch_size=1,
+        remote_retry=RemoteRetryParams(
+            remote_max_pool_workers=1,
+            remote_max_retries=1,
+            remote_max_429_retries=1,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="page_elements_v3"):
+        ingestor.ingest()
+
+
+@pytest.mark.integration
+def test_graph_ingestor_collect_policy_returns_explicit_remote_stage_errors() -> None:
+    result = (
+        GraphIngestor(
+            run_mode="inprocess",
+            documents=["data/test.pdf"],
+            show_progress=False,
+            error_policy="collect",
+        )
+        .extract(
+            page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
+            extract_text=False,
+            extract_images=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            inference_batch_size=1,
+            remote_retry=RemoteRetryParams(
+                remote_max_pool_workers=1,
+                remote_max_retries=1,
+                remote_max_429_retries=1,
+            ),
+        )
+        .ingest()
+    )
+
+    assert "page_elements_v3" in result.columns
+    payload = result.iloc[0]["page_elements_v3"]
+    assert payload["error"]["type"] == "ConnectionError"
+
+
+def test_strict_remote_error_policy_ignores_unrelated_error_columns() -> None:
+    ingestor = GraphIngestor(run_mode="inprocess").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+    result = pd.DataFrame(
+        {
+            "page_elements_v3": [{"detections": [], "error": None}],
+            "metadata": [
+                {
+                    "error": {
+                        "stage": "local_postprocess",
+                        "type": "ValueError",
+                        "message": "local stage failed",
+                    }
+                }
+            ],
+        }
+    )
+
+    ingestor._raise_for_stage_errors(result)
+
+
+def test_strict_remote_error_policy_accepts_batch_dataset_rows() -> None:
+    class RayLikeDataset:
+        columns = ["page_elements_v3", "metadata"]
+
+        def iter_batches(self, *, batch_format: str):
+            assert batch_format == "pandas"
+            yield pd.DataFrame(
+                {
+                    "page_elements_v3": [
+                        {
+                            "timing": None,
+                            "error": {
+                                "stage": "remote_inference",
+                                "type": "ConnectionError",
+                                "message": "connection refused",
+                            },
+                        }
+                    ],
+                    "metadata": [{"source": "test.pdf"}],
+                }
+            )
+
+    ingestor = GraphIngestor(run_mode="batch").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+
+    with pytest.raises(GraphIngestionError, match="page_elements_v3") as exc_info:
+        ingestor._raise_for_stage_errors(RayLikeDataset())
+
+    assert exc_info.value.records[0]["row_index"] == 0
+
+
+def test_graph_ingestion_error_sanitizes_remote_message_fields() -> None:
+    sensitive_tail = "TAIL_SHOULD_NOT_APPEAR"
+    long_message = "π" + ("x" * 600) + sensitive_tail
+
+    err = GraphIngestionError(
+        [
+            {
+                "row_index": 0,
+                "column": "page_elements_v3",
+                "path": "error",
+                "error": {
+                    "stage": "remote_inference",
+                    "type": "BadRequest",
+                    "message": long_message,
+                },
+            }
+        ]
+    )
+
+    rendered = str(err)
+    assert "π" not in rendered
+    assert sensitive_tail not in rendered
+
+    raw_string_err = GraphIngestionError(
+        [
+            {
+                "row_index": 0,
+                "column": "text_embeddings_1b_v2",
+                "path": "error",
+                "error": long_message,
+            }
+        ]
+    )
+    raw_rendered = str(raw_string_err)
+    assert "π" not in raw_rendered
+    assert sensitive_tail not in raw_rendered
+
+
+def test_graph_ingestion_error_preserves_readable_remote_message_text() -> None:
+    err = GraphIngestionError(
+        [
+            {
+                "row_index": 0,
+                "column": "page_elements_v3",
+                "path": "error",
+                "error": {
+                    "stage": "remote_inference",
+                    "type": "ConnectionError",
+                    "message": "connection\nrefused",
+                },
+            }
+        ]
+    )
+
+    rendered = str(err)
+    assert "connection refused" in rendered
+    assert "c o n n e c t i o n" not in rendered
+
+
+def test_get_error_rows_accepts_inprocess_dataframe_stage_error_columns() -> None:
+    ingestor = GraphIngestor(run_mode="inprocess")
+    df = pd.DataFrame(
+        {
+            "table_structure_ocr_v1": [
+                {
+                    "timing": None,
+                    "error": {
+                        "stage": "remote_inference",
+                        "type": "ConnectionError",
+                        "message": "connection refused",
+                    },
+                },
+                {"timing": None, "error": None},
+            ],
+            "text": ["first page", "second page"],
+        }
+    )
+
+    errors = ingestor.get_error_rows(df)
+
+    assert len(errors) == 1
+    assert errors.iloc[0]["text"] == "first page"
+
+
+def test_get_error_rows_maps_batch_dataset_with_columns_property() -> None:
+    class RayLikeDataset:
+        columns = ["page_elements_v3", "text"]
+
+        def __getitem__(self, key: str):
+            raise AssertionError(f"expected map_batches path, got pandas access for {key}")
+
+        def map_batches(self, fn, *, batch_format: str):
+            assert batch_format == "pandas"
+            batch = pd.DataFrame(
+                {
+                    "page_elements_v3": [
+                        {
+                            "timing": None,
+                            "error": {
+                                "stage": "remote_inference",
+                                "type": "ConnectionError",
+                                "message": "connection refused",
+                            },
+                        },
+                        {"timing": None, "error": None},
+                    ],
+                    "text": ["first page", "second page"],
+                }
+            )
+            return fn(batch)
+
+    errors = GraphIngestor(run_mode="batch").get_error_rows(RayLikeDataset())
+
+    assert len(errors) == 1
+    assert errors.iloc[0]["text"] == "first page"
