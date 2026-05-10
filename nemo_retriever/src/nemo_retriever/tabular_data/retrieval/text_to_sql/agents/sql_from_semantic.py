@@ -64,7 +64,6 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         table_name = table.get("name", "UNKNOWN")
         table_label = table.get("label", "")
         table_description = table.get("description", "")
-        table_id = table.get("id", "")
 
         # Database and schema info
         db_name = table.get("db_name", "")
@@ -81,7 +80,6 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
             table_parts.append(f"  Label: {table_label}")
         if table_description:
             table_parts.append(f"  Description: {table_description}")
-        table_parts.append(f"  ID: {table_id}")
 
         # Primary key
         if "primary_key" in table:
@@ -204,9 +202,7 @@ class SQLFromCandidatesAgent(BaseAgent):
             )
 
             # Choose system prompt based on context
-            system_prompt = create_sql_from_candidates_prompt(
-                custom_analyses, rules_to_text(state.get("custom_prompts_rules", []))
-            )
+            system_prompt = create_sql_from_candidates_prompt(custom_analyses)
 
             messages = state["messages"] + [
                 SystemMessage(content=system_prompt),

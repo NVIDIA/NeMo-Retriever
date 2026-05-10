@@ -52,8 +52,9 @@ class TableRelevanceModel(BaseModel):
         default="",
         description="Brief reasoning (1-2 sentences max) on which tables are relevant.",
     )
-    relevant_table_names: list[str] = Field(
-        description="Names of tables that are needed to answer the question.",
+    tables_to_remove: list[str] = Field(
+        default_factory=list,
+        description="Names of tables that can be safely removed. Leave empty if unsure.",
     )
 
 
@@ -72,11 +73,6 @@ class SQLGenerationModel(StrictModel):
             "present (use file contents as constants/filters within the SQL)."
         ),
     )
-    tables_ids: list[str] = Field(
-        default_factory=list,
-        description="A valid python list with ids of all tables selected in the SQL query.",
-    )
-
     response: NonEmptyStr = Field(
         ...,
         description=(

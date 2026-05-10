@@ -228,22 +228,18 @@ class CandidatePreparationAgent(BaseAgent):
             return top_n, ""
 
         reasoning = (result.reasoning or "").strip()
-        kept_names = {name.lower() for name in result.relevant_table_names}
+        names_to_remove = {name.lower() for name in result.tables_to_remove}
 
-        filtered = [t for t in tables if t["name"].lower() in kept_names]
+        filtered = [t for t in tables if t["name"].lower() not in names_to_remove]
+        removed = [t["name"] for t in tables if t["name"].lower() in names_to_remove]
 
-        removed = [t["name"] for t in tables if t["name"].lower() not in kept_names]
         self.logger.info("Relevance filter reasoning: %s", reasoning if reasoning else "(empty)")
         if removed:
             self.logger.info("Relevance filter removed tables: %s", removed)
 
         if not filtered:
-            top_n = tables[:10]
-            self.logger.warning(
-                "Relevance filter removed ALL tables — falling back to top %d/%d tables",
-                len(top_n), len(tables),
-            )
-            return top_n, reasoning
+            self.logger.warning("Relevance filter removed ALL tables — keeping all")
+            return tables, reasoning
 
         return filtered, reasoning
 

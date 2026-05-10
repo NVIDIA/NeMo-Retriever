@@ -272,6 +272,8 @@ def _score_answer(expected_raw: str, returned_db_str: str) -> Dict[str, Any]:
     3. Fall back to fuzzy text similarity.
     """
     expected_df = _parse_markdown_table(expected_raw)
+    if expected_df is None:
+        expected_df = _db_result_to_df(expected_raw)
     actual_df = _db_result_to_df(returned_db_str)
 
     structural_match = 0
@@ -282,7 +284,10 @@ def _score_answer(expected_raw: str, returned_db_str: str) -> Dict[str, Any]:
 
     expected_nums = sorted(round(n, 4) for n in _extract_numbers(expected_raw))
     actual_nums = sorted(round(n, 4) for n in _extract_numbers(haystack))
-    nums_match = 1 if expected_nums and expected_nums == actual_nums else 0
+    if not expected_nums and not actual_nums:
+        nums_match = 1
+    else:
+        nums_match = 1 if expected_nums and expected_nums == actual_nums else 0
 
     sim = (
         difflib.SequenceMatcher(None, _normalize_text(expected_raw), _normalize_text(haystack)).ratio()
@@ -477,18 +482,18 @@ def evaluate(
                         {
                             "name": "Task vs Request Task",
                             "description": (
-                                "When a question refers to 'tasks' generically "
-                                "(e.g. 'all tasks', 'tasks by frequency', 'task rollback'), "
-                                "it means task definitions from the `tasks` table "
-                                "(which has `name`, `id`), NOT individual request_tasks. "
-                                "To connect events or request-level data back to task definitions, "
-                                "use the join chain:\n"
+                                "The `tasks` table holds task *definitions* (name, id). "
+                                "The `request_tasks` table holds task *instances* (one per request). "
+                                "Use the `tasks` table only when the question asks about task types/names "
+                                "(e.g. 'tasks by frequency', 'task rollback', 'list all task names'). "
+                                "In that case, join through:\n"
                                 "  request_task_events → request_tasks (via request_task_id)\n"
                                 "    → filter_rule_group_tasks (via filter_rule_group_task_id)\n"
                                 "    → workflow_tasks (via workflow_task_id)\n"
                                 "    → tasks (via task_id)\n"
-                                "A `request_task` is a specific instance of a task for a specific request. "
-                                "Always GROUP BY tasks.id and SELECT tasks.name when aggregating across task types."
+                                "When the question asks about task instances, collaborators, "
+                                "assignees, or individual task properties (e.g. 'tasks with collaborators', "
+                                "'percentage of tasks'), use `request_tasks` directly — do NOT join to `tasks`."
                             ),
                         },
                         {
