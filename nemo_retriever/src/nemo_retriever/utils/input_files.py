@@ -46,7 +46,7 @@ def raise_input_path_not_found(input_path: object, cause: BaseException | None =
 
 
 def expand_input_file_patterns(input_paths: InputPath | Iterable[InputPath]) -> list[str]:
-    """Expand local path/glob inputs and reject missing local literal paths.
+    """Expand local path/glob inputs and reject missing or directory local literal paths.
 
     Empty explicit glob matches are allowed so callers can intentionally
     describe optional file sets.
@@ -64,6 +64,12 @@ def expand_input_file_patterns(input_paths: InputPath | Iterable[InputPath]) -> 
             expanded.append(pattern)
         elif not Path(pattern).exists():
             raise_input_path_not_found(pattern)
+        elif Path(pattern).is_dir():
+            raise IsADirectoryError(
+                f"Input path is a directory: {pattern}. "
+                "Pass a file path or a glob pattern such as '<dir>/**/*.pdf' or '<dir>/**/*' "
+                "to select files inside the directory."
+            )
         else:
             expanded.append(pattern)
 
