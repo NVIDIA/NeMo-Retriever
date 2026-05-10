@@ -189,6 +189,7 @@ def _score_sql(connector: PostgresDatabase, expected: str, actual: str) -> Dict[
         "sql_exec_match": exec_match,
         "expected_sql_error": expected_err,
         "returned_sql_error": actual_err,
+        "expected_sql_result": _stringify_db_result(expected_df) if expected_df is not None else "",
     }
 
 
@@ -345,6 +346,7 @@ CSV_FIELDS = [
     "sql_exec_match",
     "expected_sql_error",
     "returned_sql_error",
+    "expected_sql_result",
     "expected_answer_raw",
     "returned_answer",
     "answer_text_similarity",
