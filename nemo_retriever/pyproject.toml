@@ -195,8 +195,10 @@ where = ["src"]
 "nemo_retriever.service" = ["retriever-service.yaml"]
 
 [tool.pytest.ini_options]
-# So ``from tests import …`` resolves to ``nemo_retriever/tests`` when pytest rootdir is this project.
-pythonpath = ["."]
+# ``src`` exposes the ``nemo_retriever`` package (src layout). ``.`` keeps ``from tests import …``
+# working when pytest rootdir is this project. Editable install (``pip install -e .``) is still
+# recommended for scripts and non-pytest entry points.
+pythonpath = ["src", "."]
 addopts = "-m 'not integration'"
 markers = [
   "integration: mark a test as an integration test",

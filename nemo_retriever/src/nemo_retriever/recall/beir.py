@@ -713,30 +713,49 @@ def evaluate_lancedb_beir(
         doc_id_field=cfg.doc_id_field,
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
+    from nemo_retriever.params.models import ModelRuntimeParams
+
+    embed_kwargs: dict[str, Any] = {
+        "model_name": str(cfg.embedding_model),
+        "embed_model_name": str(cfg.embedding_model),
+        "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
+        "inference_batch_size": int(cfg.local_hf_batch_size),
+        "embed_inference_batch_size": int(cfg.local_hf_batch_size),
+    }
+    if cfg.embedding_http_endpoint:
+        embed_kwargs["embedding_endpoint"] = cfg.embedding_http_endpoint
+        embed_kwargs["embed_invoke_url"] = cfg.embedding_http_endpoint
+    if (cfg.embedding_api_key or "").strip():
+        embed_kwargs["api_key"] = (cfg.embedding_api_key or "").strip()
+    if cfg.local_hf_device or cfg.local_hf_cache_dir:
+        embed_kwargs["runtime"] = ModelRuntimeParams(
+            device=cfg.local_hf_device,
+            hf_cache_dir=str(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
+        )
+
+    rerank_kw = {
+        "model_name": str(cfg.reranker_model_name),
+        "invoke_url": (cfg.reranker_endpoint or "").strip() or None,
+        "api_key": (cfg.reranker_api_key or "").strip(),
+        "batch_size": int(cfg.reranker_batch_size),
+        "local_reranker_backend": str(cfg.local_reranker_backend),
+    }
+
     retriever = Retriever(
-        vdb="lancedb",
         vdb_kwargs={
-            "uri": str(cfg.lancedb_uri),
-            "table_name": str(cfg.lancedb_table),
-            "hybrid": bool(cfg.hybrid),
-            "nprobes": int(cfg.nprobes),
-            "refine_factor": int(cfg.refine_factor),
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {
+                "uri": str(cfg.lancedb_uri),
+                "table_name": str(cfg.lancedb_table),
+                "hybrid": bool(cfg.hybrid),
+                "nprobes": int(cfg.nprobes),
+                "refine_factor": int(cfg.refine_factor),
+            },
         },
-        embedder=str(cfg.embedding_model),
-        embedding_endpoint=cfg.embedding_http_endpoint,
-        embedding_api_key=(cfg.embedding_api_key or "").strip(),
-        embedding_use_grpc=False if cfg.embedding_http_endpoint else None,
+        embed_kwargs=embed_kwargs,
         top_k=max(ks),
-        local_hf_device=cfg.local_hf_device,
-        local_hf_cache_dir=Path(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
-        local_hf_batch_size=int(cfg.local_hf_batch_size),
-        reranker=bool(cfg.reranker),
-        reranker_model_name=str(cfg.reranker_model_name),
-        reranker_endpoint=cfg.reranker_endpoint,
-        reranker_api_key=(cfg.reranker_api_key or "").strip(),
-        reranker_batch_size=int(cfg.reranker_batch_size),
-        local_reranker_backend=str(cfg.local_reranker_backend),
-        local_query_embed_backend=str(cfg.local_query_embed_backend),
+        rerank=bool(cfg.reranker),
+        rerank_kwargs=rerank_kw,
     )
     raw_hits = retriever.queries(dataset.queries)
     run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)
