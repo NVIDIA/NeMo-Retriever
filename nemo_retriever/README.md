@@ -112,9 +112,9 @@ uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path
 
 ```python
 # ingestor.ingest() actually executes the pipeline
-# results are returned as a ray dataset and inspectable as chunks
-ray_dataset = ingestor.ingest()
-chunks = ray_dataset.get_dataset().take_all()
+# batch run_mode returns a ray.data.Dataset; inprocess returns a pandas DataFrame
+dataset = ingestor.ingest()
+chunks = dataset.take_all()  # Ray Dataset API (batch mode)
 ```
 
 ### Ingest a test corpus (CLI)

@@ -57,9 +57,9 @@ ingestor = (
 )
 
 # ingestor.ingest() actually executes the pipeline
-# results are returned as a ray dataset and inspectable as chunks
-ray_dataset = ingestor.ingest()
-chunks = ray_dataset.get_dataset().take_all()
+# batch run_mode returns a ray.data.Dataset; inprocess returns a pandas DataFrame
+dataset = ingestor.ingest()
+chunks = dataset.take_all()  # Ray Dataset API (batch mode)
 ```
 
 You can see the extracted text that represents the content of the ingested test document.
