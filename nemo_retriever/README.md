@@ -8,6 +8,10 @@ This quick start guide shows how to run NeMo Retriever Library as a library all 
 
 You’ll set up a CUDA 13–compatible environment, install the library and its dependencies, and run GPU‑accelerated ingestion pipelines that convert PDFs, HTML, plain text, audio, or video into vector embeddings stored in LanceDB (on local disk), with Ray‑based scaling and built‑in recall benchmarking.
 
+## Documentation
+
+- **[Agent MCP server](docs/agent-mcp.md)** - Expose a local NeMo Retriever installation to MCP-capable agents for collection ingestion and evidence retrieval.
+
 ## Prerequisites
 
 Before starting, make sure your system meets the following requirements:
