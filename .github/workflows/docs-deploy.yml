@@ -32,6 +32,7 @@ jobs:
       - name: Build Documentation Docker Image
         run: |
           docker build \
+            -f Dockerfile \
             --target docs \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             -t nv-ingest-docs:latest \
