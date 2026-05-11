@@ -82,7 +82,6 @@ ingestor = (
             uri=lancedb_uri,
             table_name=table_name,
             hybrid=False,
-            dense_dim=2048,
         )
 )
 results = ingestor.ingest_async().result()
