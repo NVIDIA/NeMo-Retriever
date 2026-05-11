@@ -272,3 +272,11 @@ nemo_retriever/tabular-dev-tools/benchmarks/**/*.sql
 nemo_retriever/tabular-dev-tools/benchmarks/**/*.json
 
 spool/
+
+# Local document search indexes
+.nemo-retriever/
+.hf-modules/
+
+# Machine-local Codex MCP config
+.codex/config.toml
+!.codex/config.toml.example
