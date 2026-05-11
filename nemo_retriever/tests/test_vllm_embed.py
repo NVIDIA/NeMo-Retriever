@@ -6,7 +6,8 @@
 
 import base64
 import io
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -52,6 +53,42 @@ class TestEmbedWithVllmLlm:
         embed_with_vllm_llm(["world"], llm, prefix="query: ")
         called_batch = llm.embed.call_args[0][0]
         assert called_batch == ["query: world"]
+
+    def test_normalize_false_translates_to_pooling_params(self, monkeypatch):
+        class FakePoolingParams:
+            def __init__(self, *, use_activation):
+                self.use_activation = use_activation
+
+        fake_vllm = ModuleType("vllm")
+        fake_vllm.__path__ = []
+        fake_pooling_params = ModuleType("vllm.pooling_params")
+        fake_pooling_params.PoolingParams = FakePoolingParams
+        monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
+        monkeypatch.setitem(sys.modules, "vllm.pooling_params", fake_pooling_params)
+
+        llm = MagicMock()
+        llm.embed.return_value = [_make_output([0.0])]
+        embed_with_vllm_llm(["world"], llm, normalize=False)
+        pooling_params = llm.embed.call_args.kwargs["pooling_params"]
+        assert isinstance(pooling_params, FakePoolingParams)
+        assert pooling_params.use_activation is False
+
+    def test_normalize_true_preserves_vllm_defaults(self):
+        llm = MagicMock()
+        llm.embed.return_value = [_make_output([0.0])]
+        embed_with_vllm_llm(["world"], llm, normalize=True)
+        assert "pooling_params" not in llm.embed.call_args.kwargs
+
+    def test_normalize_false_import_error_raises_runtime_error(self, monkeypatch):
+        fake_vllm = ModuleType("vllm")
+        fake_vllm.__path__ = []
+        monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
+        monkeypatch.delitem(sys.modules, "vllm.pooling_params", raising=False)
+
+        llm = MagicMock()
+        with pytest.raises(RuntimeError, match="Failed to create PoolingParams"):
+            embed_with_vllm_llm(["world"], llm, normalize=False)
+        llm.embed.assert_not_called()
 
     def test_empty_prompts_early_return(self):
         llm = MagicMock()
@@ -237,11 +274,15 @@ class TestLlamaNemotronEmbed1BV2Embedder:
         with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
             self.embedder.embed(["hello"])
         assert mock_fn.call_args[1].get("prefix") == "passage: "
+        assert "use_activation" not in mock_fn.call_args[1]
+        assert mock_fn.call_args[1].get("normalize") is True
 
     def test_embed_queries_uses_query_prefix(self):
         with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
             self.embedder.embed_queries(["hello"])
         assert mock_fn.call_args[1].get("prefix") == "query: "
+        assert "use_activation" not in mock_fn.call_args[1]
+        assert mock_fn.call_args[1].get("normalize") is True
 
     def test_embed_empty_input_returns_empty_tensor(self):
         result = self.embedder.embed(["", "  "])
@@ -263,8 +304,17 @@ class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
     def test_output_unnormalized_when_normalize_false(self):
         embedder = _make_text_embedder()
         embedder.normalize = False
-        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]):
+        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
             result = embedder.embed(["text"])
+        assert mock_fn.call_args[1].get("normalize") is False
+        assert abs(float(result[0][0].item()) - 3.0) < 1e-5
+
+    def test_query_output_unnormalized_when_normalize_false(self):
+        embedder = _make_text_embedder()
+        embedder.normalize = False
+        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
+            result = embedder.embed_queries(["text"])
+        assert mock_fn.call_args[1].get("normalize") is False
         assert abs(float(result[0][0].item()) - 3.0) < 1e-5
 
 

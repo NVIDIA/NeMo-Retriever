@@ -470,28 +470,50 @@ def retrieve_and_score(
 
     queries = df_query["query"].astype(str).tolist()
     gold = df_query["golden_answer"].astype(str).tolist()
-    vdb_kwargs = dict(cfg.vdb_kwargs or {})
+    vdb_inner = dict(cfg.vdb_kwargs or {})
     query_embedder = str(cfg.query_embedder or VL_EMBED_MODEL)
     embedding_endpoint, embedding_use_grpc = _resolve_embedding_endpoint(cfg)
+    if embedding_use_grpc:
+        raise ValueError(
+            "RecallConfig gRPC query embedding is not supported with the graph-based Retriever. "
+            "Use embedding_http_endpoint or an http(s) embedding_endpoint."
+        )
+
+    from nemo_retriever.params.models import ModelRuntimeParams
+
+    embed_kwargs: dict[str, Any] = {
+        "model_name": query_embedder,
+        "embed_model_name": query_embedder,
+        "inference_batch_size": int(cfg.local_hf_batch_size),
+        "embed_inference_batch_size": int(cfg.local_hf_batch_size),
+        "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
+        "embed_modality": str(cfg.embed_modality),
+    }
+    if embedding_endpoint:
+        embed_kwargs["embedding_endpoint"] = embedding_endpoint
+        embed_kwargs["embed_invoke_url"] = embedding_endpoint
+    if (cfg.embedding_api_key or "").strip():
+        embed_kwargs["api_key"] = (cfg.embedding_api_key or "").strip()
+    if cfg.local_hf_device or cfg.local_hf_cache_dir:
+        embed_kwargs["runtime"] = ModelRuntimeParams(
+            device=str(cfg.local_hf_device) if cfg.local_hf_device else None,
+            hf_cache_dir=str(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
+        )
+
+    rerank_kw: dict[str, Any] = {
+        "model_name": str(cfg.reranker or VL_RERANK_MODEL),
+        "invoke_url": (cfg.reranker_endpoint or "").strip() or None,
+        "api_key": (cfg.reranker_api_key or "").strip(),
+        "batch_size": int(cfg.reranker_batch_size),
+        "local_reranker_backend": str(cfg.local_reranker_backend),
+    }
+
     retriever = Retriever(
-        vdb=str(cfg.vdb_op),
-        vdb_kwargs=vdb_kwargs,
-        embedder=query_embedder,
-        embedding_endpoint=embedding_endpoint,
-        embedding_api_key=cfg.embedding_api_key,
-        embedding_use_grpc=embedding_use_grpc,
+        vdb_kwargs={"vdb_op": str(cfg.vdb_op), "vdb_kwargs": vdb_inner},
+        embed_kwargs=embed_kwargs,
         top_k=cfg.top_k,
-        local_hf_device=cfg.local_hf_device,
-        local_hf_cache_dir=cfg.local_hf_cache_dir,
-        local_hf_batch_size=int(cfg.local_hf_batch_size),
-        local_query_embed_backend=cfg.local_query_embed_backend,
-        reranker=bool(cfg.reranker),
-        reranker_model_name=cfg.reranker or VL_RERANK_MODEL,
-        reranker_endpoint=cfg.reranker_endpoint,
-        reranker_api_key=cfg.reranker_api_key,
-        reranker_batch_size=cfg.reranker_batch_size,
-        local_reranker_backend=cfg.local_reranker_backend,
-        rerank_modality=cfg.embed_modality,
+        rerank=bool(cfg.reranker),
+        rerank_kwargs=rerank_kw,
     )
     start = time.time()
     raw_hits = retriever.queries(queries)
