@@ -103,15 +103,21 @@ def run_ingest() -> None:
 def run_retrieve() -> None:
     """Run the text-to-SQL agent against the previously ingested LanceDB."""
     lancedb_kwargs = VDB_PARAMS.vdb_kwargs
+    embed_url = EMBED_PARAMS.embed_invoke_url or ""
     retriever = Retriever(
-        vdb="lancedb",
         vdb_kwargs={
-            "uri": lancedb_kwargs["uri"],
-            "table_name": lancedb_kwargs["table_name"],
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {
+                "uri": lancedb_kwargs["uri"],
+                "table_name": lancedb_kwargs["table_name"],
+            },
+        },
+        embed_kwargs={
+            "api_key": _NVIDIA_API_KEY,
+            "embed_invoke_url": embed_url,
+            "embedding_endpoint": embed_url,
         },
         top_k=15,
-        embedding_api_key=_NVIDIA_API_KEY,
-        embedding_http_endpoint=EMBED_PARAMS.embed_invoke_url,
     )
 
     question = "List aircraft codes"

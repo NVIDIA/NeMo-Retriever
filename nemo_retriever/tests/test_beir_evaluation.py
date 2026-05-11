@@ -406,29 +406,35 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     class _FakeRetriever:
         def __init__(self, **kwargs):
             expected_kwargs = {
-                "vdb": "lancedb",
                 "vdb_kwargs": {
-                    "uri": "/tmp/lancedb",
-                    "table_name": "nv-ingest",
-                    "hybrid": False,
-                    "nprobes": 0,
-                    "refine_factor": 10,
+                    "vdb_op": "lancedb",
+                    "vdb_kwargs": {
+                        "uri": "/tmp/lancedb",
+                        "table_name": "nv-ingest",
+                        "hybrid": False,
+                        "nprobes": 0,
+                        "refine_factor": 10,
+                    },
                 },
-                "embedder": "embedder",
-                "embedding_endpoint": "http://embed.example/v1",
-                "embedding_api_key": "secret",
-                "embedding_use_grpc": False,
+                "embed_kwargs": {
+                    "model_name": "embedder",
+                    "embed_model_name": "embedder",
+                    "local_ingest_embed_backend": "hf",
+                    "inference_batch_size": 32,
+                    "embed_inference_batch_size": 32,
+                    "embedding_endpoint": "http://embed.example/v1",
+                    "embed_invoke_url": "http://embed.example/v1",
+                    "api_key": "secret",
+                },
                 "top_k": 10,
-                "local_hf_device": None,
-                "local_hf_cache_dir": None,
-                "local_hf_batch_size": 32,
-                "local_query_embed_backend": "hf",
-                "reranker": False,
-                "reranker_model_name": "nvidia/llama-nemotron-rerank-1b-v2",
-                "reranker_endpoint": None,
-                "reranker_api_key": "",
-                "reranker_batch_size": 32,
-                "local_reranker_backend": "vllm",
+                "rerank": False,
+                "rerank_kwargs": {
+                    "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+                    "invoke_url": None,
+                    "api_key": "",
+                    "batch_size": 32,
+                    "local_reranker_backend": "vllm",
+                },
             }
             missing_keys = set(expected_kwargs) - set(kwargs)
             assert not missing_keys
@@ -458,5 +464,5 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     assert metrics["ndcg@10"] == 1.0
     assert metrics["recall@5"] == 1.0
     assert "embed_use_vllm" not in retriever_instances[0].kwargs
-    assert retriever_instances[0].kwargs.get("local_query_embed_backend") == "hf"
-    assert retriever_instances[0].kwargs.get("local_reranker_backend") == "vllm"
+    assert retriever_instances[0].kwargs["embed_kwargs"].get("local_ingest_embed_backend") == "hf"
+    assert retriever_instances[0].kwargs["rerank_kwargs"].get("local_reranker_backend") == "vllm"

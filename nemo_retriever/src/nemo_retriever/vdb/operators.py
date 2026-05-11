@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
+
 from nemo_retriever.vdb.adt_vdb import VDB
 from nemo_retriever.vdb.factory import get_vdb_op_cls
 
@@ -35,8 +37,41 @@ def _construct_vdb(
     return vdb if vdb is not None else get_vdb_op_cls(str(vdb_op))(**dict(vdb_kwargs or {}))
 
 
+def query_vectors_from_embedded_dataframe(df: pd.DataFrame) -> list[list[float]]:
+    """Extract one query vector per row from batch-embed output (metadata or payload columns)."""
+    vectors: list[list[float]] = []
+    for _, row in df.iterrows():
+        vec: list[float] | None = None
+        md = row.get("metadata")
+        if isinstance(md, dict):
+            emb = md.get("embedding")
+            if isinstance(emb, list) and emb:
+                vec = [float(x) for x in emb]
+        if vec is None:
+            for col in df.columns:
+                if col == "metadata":
+                    continue
+                val = row.get(col)
+                if isinstance(val, dict):
+                    inner = val.get("embedding")
+                    if isinstance(inner, list) and inner:
+                        vec = [float(x) for x in inner]
+                        break
+        if vec is None:
+            raise ValueError(
+                "Expected query embeddings in each row's metadata['embedding'] or a payload column "
+                f"with key 'embedding'; columns={list(df.columns)}"
+            )
+        vectors.append(vec)
+    return vectors
+
+
 class IngestVdbOperator(AbstractOperator):
     """Upload already-embedded graph output through an nv-ingest-client VDB."""
+
+    #: Ray batch mode: repartition to one block and one ``map_batches`` call so
+    #: ``VDB.run`` sees the full dataset once (matches historical post-graph upload).
+    REQUIRES_GLOBAL_BATCH: bool = True
 
     def __init__(
         self,
@@ -74,7 +109,8 @@ class IngestVdbOperator(AbstractOperator):
                 meta_fields=self._sidecar_spec["meta_fields"],
                 join_key=self._sidecar_spec["meta_join_key"],
             )
-        self._vdb.run(records)
+        if records and any(batch for batch in records):
+            self._vdb.run(records)
         return data
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
@@ -90,20 +126,35 @@ class RetrieveVdbOperator(AbstractOperator):
         vdb: VDB | None = None,
         vdb_op: str | None = None,
         vdb_kwargs: dict[str, Any] | None = None,
+        explode_for_rerank: bool = False,
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, _sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs, explode_for_rerank=explode_for_rerank)
         self._vdb_kwargs = clean_kwargs
         self._retrieval_vdb_kwargs = clean_kwargs
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        self._explode_for_rerank = bool(explode_for_rerank)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        if isinstance(data, pd.DataFrame):
+            return query_vectors_from_embedded_dataframe(data)
         return data
 
     def process(self, data: Any, **kwargs: Any) -> list[list[dict[str, Any]]]:
-        retrieval_kwargs = {**self._retrieval_vdb_kwargs, **kwargs}
+        from nemo_retriever.retriever_graph_utils import filter_retrieval_kwargs
+
+        retrieval_kwargs = {**self._retrieval_vdb_kwargs, **filter_retrieval_kwargs(kwargs)}
         return normalize_retrieval_results(self._vdb.retrieval(data, **retrieval_kwargs))
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
-        return data
+        if not self._explode_for_rerank:
+            return data
+        query_texts = kwargs.get("query_texts")
+        if not query_texts:
+            return data
+        from nemo_retriever.retriever_graph_utils import hits_lists_to_rerank_dataframe
+
+        if not isinstance(data, list):
+            return data
+        return hits_lists_to_rerank_dataframe(list(query_texts), data)

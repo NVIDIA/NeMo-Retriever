@@ -244,6 +244,13 @@ def test_collect_results_accepts_inprocess_dataframe() -> None:
     assert num_units == 2
 
 
+def test_to_client_vdb_records_returns_empty_list_when_nothing_uploadable() -> None:
+    from nemo_retriever.vdb.records import to_client_vdb_records
+
+    assert to_client_vdb_records([]) == []
+    assert to_client_vdb_records([{"text": "no embedding"}]) == []
+
+
 def test_count_uploadable_vdb_records_filters_rows_without_embedding_or_text() -> None:
     rows = [
         {

@@ -209,20 +209,19 @@ jobs:
           fi
 
           if [ "${{ inputs.coverage }}" = "true" ]; then
-            COV_ARGS="--cov-report term --cov-report xml:/tmp/coverage.xml"
+            COV_ARGS="--cov=nemo_retriever/src/nemo_retriever --cov-report term --cov-report xml:/tmp/coverage.xml"
           else
             COV_ARGS=""
           fi
 
-          # Use pip (not uv): the service image runs as user `nemo`, which cannot execute
-          # binaries under /root/.local/bin because /root is not traversable (mode 0700).
+          # Use uv so pyproject uv sources are honored for nightly Nemotron packages.
           if [ "${{ inputs.test-selection }}" = "full" ]; then
-            CMD="source /opt/retriever_runtime/bin/activate; pip install -e \"./nemo_retriever[all,dev]\" && pip install pytest && python -m pytest nemo_retriever/tests"
+            CMD="set -euo pipefail; source /opt/retriever_runtime/bin/activate; uv pip install -e \"./nemo_retriever[all,dev]\" && uv pip install pytest pytest-cov && python -m pytest -m \"$MARKERS\" $COV_ARGS nemo_retriever/tests"
           else
             N="${{ inputs.random-count }}"
             CMD="set -euo pipefail; \
               source /opt/retriever_runtime/bin/activate; \
-              pip install -e \"./nemo_retriever[all,dev]\" && pip install pytest; \
+              uv pip install -e \"./nemo_retriever[all,dev]\" && uv pip install pytest pytest-cov; \
               python -m pytest --collect-only -q $TEST_PATHS | grep '::' | shuf -n \"$N\" > /tmp/selected-tests.txt; \
               python -m pytest -rs -m \"$MARKERS\" $COV_ARGS \$(cat /tmp/selected-tests.txt)"
           fi

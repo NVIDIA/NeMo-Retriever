@@ -63,9 +63,9 @@ RUN sed -i 's/# deb-src/deb-src/' /etc/apt/sources.list \
        done \
     && apt-get clean
 
+ENV UV_INSTALL_DIR=/usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-ENV PATH=/root/.local/bin:$PATH
 ENV UV_LINK_MODE=copy
 # Keep uv-managed Python outside /root so the non-root service user can execute
 # venv console-script interpreters.
@@ -112,7 +112,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Activate venv by default so CLI and python see nemo_retriever; mount over /workspace for dev.
 ENV VIRTUAL_ENV=/opt/retriever_runtime
-ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
+ENV PATH=/opt/retriever_runtime/bin:$PATH
 
 # Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]
@@ -148,7 +148,8 @@ ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
 
 ENV PATH=/opt/retriever_runtime/bin:$PATH
 
-RUN chmod -R a+rX /root/.local /opt/uv \
+RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx \
+    && chmod -R a+rX /opt/uv \
     && groupadd -r nemo && useradd -r -g nemo -d /workspace -s /sbin/nologin nemo \
     && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \

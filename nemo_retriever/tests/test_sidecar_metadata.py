@@ -104,6 +104,10 @@ def test_apply_sidecar_merges_into_content_metadata(tmp_path: Path) -> None:
     assert cm["type"] == "text"
 
 
+def test_ingest_vdb_operator_marks_global_batch_for_ray() -> None:
+    assert IngestVdbOperator.REQUIRES_GLOBAL_BATCH is True
+
+
 def test_vdb_upload_params_triplet_validation() -> None:
     with pytest.raises(ValueError, match="all be set together"):
         VdbUploadParams(meta_dataframe="x.csv", meta_source_field="s", meta_fields=None)  # type: ignore[arg-type]

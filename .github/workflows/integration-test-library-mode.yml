@@ -69,12 +69,4 @@ jobs:
           python -m nemo_retriever.examples.graph_pipeline ./data \
             --run-mode inprocess \
             --input-type pdf \
-            --api-key "${{ secrets.NVIDIA_BUILD_API_KEY }}" \
-            --page-elements-invoke-url "$PAGE_ELEMENTS_INVOKE_URL" \
-            --ocr-invoke-url "$OCR_INVOKE_URL" \
-            --use-graphic-elements \
-            --graphic-elements-invoke-url "$GRAPHIC_ELEMENTS_INVOKE_URL" \
-            --use-table-structure \
-            --table-structure-invoke-url "$TABLE_STRUCTURE_INVOKE_URL" \
-            --embed-invoke-url "$EMBED_INVOKE_URL" \
-            --embed-model-name "$EMBED_MODEL_NAME"
+            --api-key "${{ secrets.NVIDIA_BUILD_API_KEY }}"
