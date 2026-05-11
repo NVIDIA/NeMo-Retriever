@@ -615,8 +615,65 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _write_consistency_csv(
+    csv_path: Path,
+    questions: list,
+    results: Dict[int, list],
+    completed_runs: int,
+    start_index: int,
+) -> None:
+    """Write/overwrite the consistency CSV with all data collected so far."""
+    fieldnames = ["question_id", "question"]
+    for r in range(1, completed_runs + 1):
+        fieldnames.extend([f"sql_run_{r}", f"answer_run_{r}"])
+    fieldnames.extend(["sql_consistency", "answer_consistency"])
+
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for q_idx, item in enumerate(questions):
+            qid = item.get("question_id", start_index + q_idx)
+            question = item.get("question", "")
+            run_results = results[q_idx]
+
+            row: Dict[str, Any] = {"question_id": qid, "question": question}
+
+            first_sql: Dict[str, int] = {}
+            first_answer: Dict[str, int] = {}
+
+            for r_idx, r in enumerate(run_results):
+                run_num = r_idx + 1
+                sql_val = r["sql"]
+                ans_val = r["answer"]
+
+                if sql_val in first_sql:
+                    row[f"sql_run_{run_num}"] = f"same as run {first_sql[sql_val]}"
+                else:
+                    first_sql[sql_val] = run_num
+                    row[f"sql_run_{run_num}"] = sql_val
+
+                if ans_val in first_answer:
+                    row[f"answer_run_{run_num}"] = f"same as run {first_answer[ans_val]}"
+                else:
+                    first_answer[ans_val] = run_num
+                    row[f"answer_run_{run_num}"] = ans_val
+
+            sql_counts = {}
+            answer_counts = {}
+            for r in run_results:
+                sql_counts[r["sql"]] = sql_counts.get(r["sql"], 0) + 1
+                answer_counts[r["answer"]] = answer_counts.get(r["answer"], 0) + 1
+            row["sql_consistency"] = f"{max(sql_counts.values())}/{completed_runs}" if sql_counts else ""
+            row["answer_consistency"] = f"{max(answer_counts.values())}/{completed_runs}" if answer_counts else ""
+
+            writer.writerow(row)
+
+
 def evaluate_consistency(
     input_path: Path,
+    output_path: Path,
     agent: str = "langgraph",
     start_index: int = 0,
     end_index: int | None = None,
@@ -632,8 +689,8 @@ def evaluate_consistency(
     all_questions = _load_questions(input_path)
     questions = all_questions[start_index:end_index]
     logger.info(
-        "Consistency eval: agent=%s, %d questions, %d runs each",
-        agent, len(questions), runs,
+        "Consistency eval: agent=%s, %d questions, %d runs each, output=%s",
+        agent, len(questions), runs, output_path,
     )
 
     connector = PostgresDatabase(_conn_string(DATABASE))
@@ -683,6 +740,9 @@ def evaluate_consistency(
                 f"{len(set(answers))} unique answers"
             )
 
+        _write_consistency_csv(output_path, questions, results, run_num, start_index)
+        logger.info("Updated consistency CSV: %s (after run %d)", output_path, run_num)
+
     print(f"\n{'='*60}")
     print(f"  CONSISTENCY SUMMARY ({runs} runs)")
     print(f"{'='*60}")
@@ -704,15 +764,16 @@ def evaluate_consistency(
         print(f"\n  q{qid}: {question}")
         print(f"  {'─'*50}")
         for sql, count in sorted(sql_counts.items(), key=lambda x: -x[1]):
-            answer_preview = sql_to_answer[sql][:120]
-            print(f"    SQL ({count}/{runs}): {sql[:200]}")
-            print(f"    Answer: {answer_preview}")
+            print(f"    SQL ({count}/{runs}): {sql[:500]}")
+            print(f"    Answer: {sql_to_answer[sql][:500]}")
             print()
 
         most_common_sql = max(sql_counts.values())
         most_common_answer = max(answer_counts.values())
         print(f"    -> SQL consistency:    {most_common_sql}/{runs}")
         print(f"    -> Answer consistency: {most_common_answer}/{runs}")
+
+    logger.info("Final consistency CSV: %s", output_path)
 
 
 START_INDEX = 0
@@ -728,8 +789,9 @@ if __name__ == "__main__":
     args = _parse_args()
     if RUN_CONSISTENCY or args.consistency:
         num_runs = args.runs if args.consistency else CONSISTENCY_RUNS
+        consistency_output = Path(__file__).parent / "chatbot_consistency_scores.csv"
         evaluate_consistency(
-            args.input, args.agent, START_INDEX, END_INDEX, num_runs,
+            args.input, consistency_output, args.agent, START_INDEX, END_INDEX, num_runs,
         )
     else:
         output_path = args.output if args.output is not None else _default_output_for(args.agent)
