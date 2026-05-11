@@ -335,6 +335,101 @@ def _stringify_db_result(value: Any) -> str:
     return str(value)
 
 
+_CUSTOM_PROMPTS = [
+    {
+        "name": "Responsible Users",
+        "description": (
+            "When asked who is responsible, involved, assigned, working on, "
+            "or blocking a request or request task, "
+            "always use this UNION pattern to get ALL assigned users:\n"
+            "  SELECT users.name FROM request_tasks\n"
+            "    JOIN users ON request_tasks.pic_id = users.id\n"
+            "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
+            "  UNION\n"
+            "  SELECT users.name FROM request_tasks\n"
+            "    JOIN request_task_collaborators "
+            "ON request_task_collaborators.request_task_id = request_tasks.id\n"
+            "    JOIN users ON request_task_collaborators.user_id = users.id\n"
+            "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
+            "The first half selects primary responsible users (pic_id), "
+            "the second half selects collaborators (user_id). "
+            "Only skip the second half if the question explicitly asks "
+            "for the primary responsible user only.\n"
+            "When the question mentions 'blocking progress', filter to "
+            "request_tasks.status = 'in_progress' since only in-progress "
+            "tasks can block."
+        ),
+    },
+    {
+        "name": "Task vs Request Task",
+        "description": (
+            "The `tasks` table holds task *definitions* (name, id). "
+            "The `request_tasks` table holds task *instances* (one per request). "
+            "Use the `tasks` table only when the question asks about task types/names "
+            "(e.g. 'tasks by frequency', 'task rollback', 'list all task names'). "
+            "In that case, join through:\n"
+            "  request_task_events → request_tasks (via request_task_id)\n"
+            "    → filter_rule_group_tasks (via filter_rule_group_task_id)\n"
+            "    → workflow_tasks (via workflow_task_id)\n"
+            "    → tasks (via task_id)\n"
+            "When the question asks about task instances, collaborators, "
+            "assignees, or individual task properties (e.g. 'tasks with collaborators', "
+            "'percentage of tasks'), use `request_tasks` directly — do NOT join to `tasks`."
+        ),
+    },
+    {
+        "name": "Request Attributes",
+        "description": (
+            "When a question mentions trainstop, quality level, or process by name, "
+            "the actual names live in separate lookup tables, not in the requests table itself. "
+            "The requests table only stores foreign key IDs. You must JOIN to get names:\n"
+            "- Trainstop: JOIN trainstops ON requests.trainstop_id = trainstops.id → use trainstops.name\n"
+            "- Quality level: JOIN quality_levels "
+            "ON requests.quality_level_id = quality_levels.id → use quality_levels.name\n"
+            "- Process: JOIN request_processes ON request_processes.request_id = requests.id "
+            "JOIN processes ON request_processes.process_id = processes.id → use processes.name"
+        ),
+    },
+    {
+        "name": "Product Hierarchy",
+        "description": (
+            "Pcodes, products, and business units form a hierarchy:\n"
+            "- A pcode belongs to a product: JOIN products ON pcodes.product_id = products.id\n"
+            "- A product belongs to a business unit (BU): JOIN bus ON products.bu_id = bus.id\n"
+            "When a question asks about pcodes and business units together, "
+            "always join through products.\n"
+            "IMPORTANT: The same pcode name can exist as multiple records "
+            "with different IDs, each linked to a different product and BU. "
+            "When aggregating pcodes across business units, "
+            "GROUP BY pcodes.name — NOT by pcodes.id. "
+            "Grouping by id treats each record separately and hides cross-BU matches."
+        ),
+    },
+    {
+        "name": "GPU MODS Version",
+        "description": (
+            "GPU MODS version values are stored in the request_attribute_values table "
+            "where field_name = 'modsVersion'. The actual version value is in the text_value column."
+        ),
+    },
+    {
+        "name": "Percentage / Ratio Calculations with JOINs",
+        "description": (
+            "When computing percentages or ratios using a LEFT JOIN, "
+            "NEVER use COUNT(*) as the denominator — a LEFT JOIN can multiply rows "
+            "when the right table has multiple matches per left row. "
+            "Always use COUNT(DISTINCT <left_table>.id) for both numerator and denominator. "
+            "Prefer the FILTER pattern:\n"
+            "  SELECT 100.0 * COUNT(DISTINCT t.id) FILTER (WHERE joined.id IS NOT NULL)\n"
+            "         / COUNT(DISTINCT t.id) AS percentage\n"
+            "  FROM main_table t LEFT JOIN other_table joined ON ...\n"
+            "This ensures the denominator is the true row count of the base table "
+            "and the numerator only counts rows with a match."
+        ),
+    },
+]
+
+
 CSV_FIELDS = [
     "row_index",
     "question_id",
@@ -456,94 +551,7 @@ def evaluate(
                     "retriever": retriever,
                     "connector": connector,
                     "path_state": {},
-                    "custom_prompts": [
-                        {
-                            "name": "Responsible Users",
-                            "description": (
-                                "When asked who is responsible, involved, assigned, working on, "
-                                "or blocking a request or request task, "
-                                "always use this UNION pattern to get ALL assigned users:\n"
-                                "  SELECT users.name FROM request_tasks\n"
-                                "    JOIN users ON request_tasks.pic_id = users.id\n"
-                                "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
-                                "  UNION\n"
-                                "  SELECT users.name FROM request_tasks\n"
-                                "    JOIN request_task_collaborators "
-                                "ON request_task_collaborators.request_task_id = request_tasks.id\n"
-                                "    JOIN users ON request_task_collaborators.user_id = users.id\n"
-                                "    WHERE request_tasks.request_id = <ID> AND <filters>\n"
-                                "The first half selects primary responsible users (pic_id), "
-                                "the second half selects collaborators (user_id). "
-                                "Only skip the second half if the question explicitly asks "
-                                "for the primary responsible user only.\n"
-                                "When the question mentions 'blocking progress', filter to "
-                                "request_tasks.status = 'in_progress' since only in-progress "
-                                "tasks can block."
-                            ),
-                        },
-                        {
-                            "name": "Task vs Request Task",
-                            "description": (
-                                "The `tasks` table holds task *definitions* (name, id). "
-                                "The `request_tasks` table holds task *instances* (one per request). "
-                                "Use the `tasks` table only when the question asks about task types/names "
-                                "(e.g. 'tasks by frequency', 'task rollback', 'list all task names'). "
-                                "In that case, join through:\n"
-                                "  request_task_events → request_tasks (via request_task_id)\n"
-                                "    → filter_rule_group_tasks (via filter_rule_group_task_id)\n"
-                                "    → workflow_tasks (via workflow_task_id)\n"
-                                "    → tasks (via task_id)\n"
-                                "When the question asks about task instances, collaborators, "
-                                "assignees, or individual task properties (e.g. 'tasks with collaborators', "
-                                "'percentage of tasks'), use `request_tasks` directly — do NOT join to `tasks`."
-                            ),
-                        },
-                        {
-                            "name": "Request Attributes",
-                            "description": (
-                                "When a question mentions trainstop, quality level, or process by name, "
-                                "the actual names live in separate lookup tables, not in the requests table itself. "
-                                "The requests table only stores foreign key IDs. You must JOIN to get names:\n"
-                                "- Trainstop: JOIN trainstops ON requests.trainstop_id = trainstops.id → use trainstops.name\n"
-                                "- Quality level: JOIN quality_levels "
-                                "ON requests.quality_level_id = quality_levels.id → use quality_levels.name\n"
-                                "- Process: JOIN request_processes ON request_processes.request_id = requests.id "
-                                "JOIN processes ON request_processes.process_id = processes.id → use processes.name"
-                            ),
-                        },
-                        {
-                            "name": "Product Hierarchy",
-                            "description": (
-                                "Pcodes, products, and business units form a hierarchy:\n"
-                                "- A pcode belongs to a product: JOIN products ON pcodes.product_id = products.id\n"
-                                "- A product belongs to a business unit (BU): JOIN bus ON products.bu_id = bus.id\n"
-                                "When a question asks about pcodes and business units together, "
-                                "always join through products."
-                            ),
-                        },
-                        {
-                            "name": "GPU MODS Version",
-                            "description": (
-                                "GPU MODS version values are stored in the request_attribute_values table "
-                                "where field_name = 'modsVersion'. The actual version value is in the text_value column."
-                            ),
-                        },
-                        {
-                            "name": "Percentage / Ratio Calculations with JOINs",
-                            "description": (
-                                "When computing percentages or ratios using a LEFT JOIN, "
-                                "NEVER use COUNT(*) as the denominator — a LEFT JOIN can multiply rows "
-                                "when the right table has multiple matches per left row. "
-                                "Always use COUNT(DISTINCT <left_table>.id) for both numerator and denominator. "
-                                "Prefer the FILTER pattern:\n"
-                                "  SELECT 100.0 * COUNT(DISTINCT t.id) FILTER (WHERE joined.id IS NOT NULL)\n"
-                                "         / COUNT(DISTINCT t.id) AS percentage\n"
-                                "  FROM main_table t LEFT JOIN other_table joined ON ...\n"
-                                "This ensures the denominator is the true row count of the base table "
-                                "and the numerator only counts rows with a match."
-                            ),
-                        },
-                    ],
+                    "custom_prompts": _CUSTOM_PROMPTS,
                     "acronyms": "",
                 }
                 agent_result = get_agent_response(payload)
@@ -592,11 +600,125 @@ def _parse_args() -> argparse.Namespace:
         "chatbot_evaluation_scores.csv for langgraph, "
         "chatbot_evaluation_scores_deep.csv for deep).",
     )
+    parser.add_argument(
+        "--consistency",
+        action="store_true",
+        default=False,
+        help="Run consistency evaluation (repeat N times and report SQL/answer stability).",
+    )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=10,
+        help="Number of runs for consistency evaluation (default: 10).",
+    )
     return parser.parse_args()
+
+
+def evaluate_consistency(
+    input_path: Path,
+    agent: str = "langgraph",
+    start_index: int = 0,
+    end_index: int | None = None,
+    runs: int = 10,
+) -> None:
+    """Run each question multiple times and report SQL/answer consistency."""
+    if agent not in _AGENT_DISPATCH:
+        raise ValueError(f"Unknown agent {agent!r}. Choose one of {sorted(_AGENT_DISPATCH)}")
+
+    get_agent_response = _AGENT_DISPATCH[agent]
+    db_result_key = _DB_RESULT_KEY[agent]
+
+    all_questions = _load_questions(input_path)
+    questions = all_questions[start_index:end_index]
+    logger.info(
+        "Consistency eval: agent=%s, %d questions, %d runs each",
+        agent, len(questions), runs,
+    )
+
+    connector = PostgresDatabase(_conn_string(DATABASE))
+    retriever = _build_retriever()
+
+    results: Dict[int, list] = {i: [] for i in range(len(questions))}
+
+    for run_num in range(1, runs + 1):
+        print(f"\n{'='*60}")
+        print(f"  RUN {run_num}/{runs}")
+        print(f"{'='*60}")
+
+        for q_idx, item in enumerate(questions):
+            qid = item.get("question_id", start_index + q_idx)
+            question = item.get("question", "")
+            logger.info("[Run %d] q%s: %s", run_num, qid, question)
+
+            try:
+                payload: AgentPayload = {
+                    "question": question,
+                    "retriever": retriever,
+                    "connector": connector,
+                    "path_state": {},
+                    "custom_prompts": _CUSTOM_PROMPTS,
+                    "acronyms": "",
+                }
+                agent_result = get_agent_response(payload)
+                returned_sql = _normalize_text((agent_result or {}).get("sql_code", "") or "")
+                returned_db = (agent_result or {}).get(db_result_key)
+                returned_db_str = _stringify_db_result(returned_db)
+            except Exception as exc:
+                logger.exception("Run %d, question %s failed", run_num, qid)
+                returned_sql = f"ERROR: {exc}"
+                returned_db_str = ""
+
+            results[q_idx].append({"sql": returned_sql, "answer": returned_db_str})
+
+        print(f"\n--- After run {run_num} ---")
+        for q_idx, item in enumerate(questions):
+            qid = item.get("question_id", start_index + q_idx)
+            run_results = results[q_idx]
+            sqls = [r["sql"] for r in run_results]
+            answers = [r["answer"] for r in run_results]
+            print(
+                f"  q{qid}: {len(sqls)} runs -> "
+                f"{len(set(sqls))} unique SQLs, "
+                f"{len(set(answers))} unique answers"
+            )
+
+    print(f"\n{'='*60}")
+    print(f"  CONSISTENCY SUMMARY ({runs} runs)")
+    print(f"{'='*60}")
+
+    for q_idx, item in enumerate(questions):
+        qid = item.get("question_id", start_index + q_idx)
+        question = item.get("question", "")
+        run_results = results[q_idx]
+
+        sql_counts: Dict[str, int] = {}
+        answer_counts: Dict[str, int] = {}
+        sql_to_answer: Dict[str, str] = {}
+
+        for r in run_results:
+            sql_counts[r["sql"]] = sql_counts.get(r["sql"], 0) + 1
+            answer_counts[r["answer"]] = answer_counts.get(r["answer"], 0) + 1
+            sql_to_answer[r["sql"]] = r["answer"]
+
+        print(f"\n  q{qid}: {question}")
+        print(f"  {'─'*50}")
+        for sql, count in sorted(sql_counts.items(), key=lambda x: -x[1]):
+            answer_preview = sql_to_answer[sql][:120]
+            print(f"    SQL ({count}/{runs}): {sql[:200]}")
+            print(f"    Answer: {answer_preview}")
+            print()
+
+        most_common_sql = max(sql_counts.values())
+        most_common_answer = max(answer_counts.values())
+        print(f"    -> SQL consistency:    {most_common_sql}/{runs}")
+        print(f"    -> Answer consistency: {most_common_answer}/{runs}")
 
 
 START_INDEX = 0
 END_INDEX = None  # None = run to the end
+CONSISTENCY_RUNS = 10
+RUN_CONSISTENCY = False
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -604,5 +726,11 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     args = _parse_args()
-    output_path = args.output if args.output is not None else _default_output_for(args.agent)
-    evaluate(args.input, output_path, args.agent, START_INDEX, END_INDEX)
+    if RUN_CONSISTENCY or args.consistency:
+        num_runs = args.runs if args.consistency else CONSISTENCY_RUNS
+        evaluate_consistency(
+            args.input, args.agent, START_INDEX, END_INDEX, num_runs,
+        )
+    else:
+        output_path = args.output if args.output is not None else _default_output_for(args.agent)
+        evaluate(args.input, output_path, args.agent, START_INDEX, END_INDEX)
