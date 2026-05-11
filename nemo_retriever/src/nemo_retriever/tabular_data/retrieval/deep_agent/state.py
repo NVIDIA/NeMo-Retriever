@@ -56,6 +56,14 @@ class AgentState(TypedDict):
     custom_prompts: str
 
 
+def get_dialect(payload: AgentPayload) -> str | None:
+    """Return the SQL dialect from the payload's connector, if available."""
+    connector = payload.get("connector")
+    if connector is None:
+        return None
+    return getattr(connector, "dialect", None)
+
+
 def get_question_for_processing(state: AgentState) -> str:
     """
     Question string for retrieval, SQL, and validation.
@@ -77,5 +85,6 @@ __all__ = [
     "AgentState",
     "EntityCoverage",
     "RetrievalContext",
+    "get_dialect",
     "get_question_for_processing",
 ]

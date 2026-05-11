@@ -29,7 +29,7 @@ from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.query_valid
 )
 from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.deep_agent.context import RetrievalContext
-from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload
+from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload, get_dialect
 
 logger = logging.getLogger(__name__)
 
@@ -509,7 +509,7 @@ def build_sql_tools(
         ``(tools, store)`` — tools list and the ``SqlGenerationStore`` that will
         be populated as the agent runs.
     """
-    dialect = payload.get("dialect")
+    dialect = get_dialect(payload)
     dialects = [dialect] if dialect else []
     question = payload.get("question") or ""
     ctx: RetrievalContext = retrieval_ctx or {
