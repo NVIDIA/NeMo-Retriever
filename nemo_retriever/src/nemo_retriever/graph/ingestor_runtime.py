@@ -48,6 +48,9 @@ from nemo_retriever.utils.ray_resource_hueristics import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_STORE_WORKERS = 4
+DEFAULT_STORE_CPUS_PER_ACTOR = 0.1
+
 
 def _batch_tuning(params: Any) -> Any:
     return getattr(params, "batch_tuning", None)
@@ -77,8 +80,9 @@ def batch_tuning_to_node_overrides(
     caption_params: Any | None = None,
     caption_gpus_per_actor: float | None = None,
     video_frame_params: Any | None = None,
+    store_params: Any | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
+    """Translate BatchTuningParams from stage params into RayDataExecutor node_overrides.
 
     Explicit (non-zero) values from BatchTuningParams always win.  When a field
     is absent or zero, the heuristic default from ``resolve_requested_plan`` is
@@ -351,6 +355,15 @@ def batch_tuning_to_node_overrides(
         cpus = cluster_resources.total_cpu_count() if cluster_resources is not None else 0
         if cpus > 0:
             _set(VideoSplitActor.__name__, "concurrency", max(1, min(cpus // 4, 8)))
+
+    if store_params is not None:
+        store_tuning = _batch_tuning(store_params)
+        store_workers = _positive(getattr(store_tuning, "store_workers", None) if store_tuning is not None else None)
+        store_workers = int(store_workers or DEFAULT_STORE_WORKERS)
+        store_override = overrides.setdefault(StoreOperator.__name__, {})
+        # Ray actor pool tuple is (min, max, initial); keep store lazy at startup.
+        store_override["concurrency"] = (1, store_workers, 1) if store_workers > 1 else 1
+        store_override["num_cpus"] = DEFAULT_STORE_CPUS_PER_ACTOR
 
     return overrides
 

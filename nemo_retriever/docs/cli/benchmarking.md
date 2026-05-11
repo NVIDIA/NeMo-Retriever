@@ -38,25 +38,12 @@ retriever harness summary --help
 retriever harness compare --help
 ```
 
-### Harness with image / text storage
+### Image storage
 
-Old:
-
-```bash
-retriever harness run --dataset bo20 --preset single_gpu \
-  --override store_images_uri=stored_images --override store_text=true
-```
-
-New (unchanged — this form is already the `retriever` CLI):
-
-```bash
-retriever harness run --dataset bo20 --preset single_gpu \
-  --override store_images_uri=stored_images --override store_text=true
-```
-
-When `store_images_uri` is a relative path it resolves to
-`artifact_dir/stored_images/` per run; absolute paths and fsspec URIs
-(e.g. `s3://bucket/prefix`) are passed through unchanged.
+Store is configured through `retriever pipeline run`, not through the harness.
+Use `--store-images-uri <uri>` with a local path or fsspec-compatible URI. The
+stored assets follow the configured embed granularity: page granularity stores
+page images, and element granularity stores element images.
 
 ## Per-stage micro-benchmarks
 

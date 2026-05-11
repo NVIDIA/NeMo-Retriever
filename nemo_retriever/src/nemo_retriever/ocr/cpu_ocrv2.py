@@ -19,11 +19,12 @@ from nemo_retriever.ocr.shared import ocr_page_elements
 class OCRV2CPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`OCRV2Actor`.
 
-    Defaults to the build.nvidia.com endpoint for ``nemotron-ocr-v2``.
+    Defaults to the build.nvidia.com endpoint for ``nemotron-ocr-v1`` (same hosted
+    path as :class:`~nemo_retriever.ocr.cpu_ocr.OCRCPUActor`).
     No local GPU model is loaded.
     """
 
-    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)

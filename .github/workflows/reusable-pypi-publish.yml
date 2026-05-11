@@ -40,7 +40,4 @@ jobs:
             --repository-url $ARTIFACTORY_URL \
             -u $ARTIFACTORY_USERNAME \
             -p $ARTIFACTORY_PASSWORD \
-            ./dist/api/dist/* \
-            ./dist/client/dist/* \
-            ./dist/src/dist/* \
             ./dist/nemo_retriever/dist/*

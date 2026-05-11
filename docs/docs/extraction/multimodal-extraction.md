@@ -30,7 +30,7 @@ For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with
 
 - [What is NeMo Retriever Library?](overview.md)
 - [OCR and scanned documents](#ocr-and-scanned-documents)
-- [Chunking and splitting](chunking.md)
+- [Chunking](concepts.md#chunking)
 
 ## Tables { #tables }
 

@@ -401,6 +401,7 @@ def _build_ingestor(
     caption_top_p: Optional[float],
     caption_max_tokens: int,
     store_images_uri: Optional[str],
+    store_actors: Optional[int],
     segment_audio: bool,
     audio_split_type: str,
     audio_split_interval: int,
@@ -422,6 +423,9 @@ def _build_ingestor(
     remote retriever service; otherwise returns a :class:`GraphIngestor` for
     local ``batch`` or ``inprocess`` execution.
     """
+
+    if store_actors and store_images_uri is None:
+        logger.warning("Ignoring --store-actors because --store-images-uri was not provided.")
 
     if run_mode == "service":
         from nemo_retriever.service_ingestor import ServiceIngestor
@@ -555,9 +559,13 @@ def _build_ingestor(
     ingestor = ingestor.embed(embed_params)
 
     if store_images_uri is not None:
+        store_batch_tuning = BatchTuningParams()
+        if store_actors:
+            store_batch_tuning.store_workers = store_actors
         ingestor = ingestor.store(
             StoreParams(
                 storage_uri=store_images_uri,
+                batch_tuning=store_batch_tuning,
             )
         )
 
@@ -884,6 +892,16 @@ def run(
     embed_cpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-cpus-per-actor", rich_help_panel=_PANEL_RAY),
     embed_gpus_per_actor: Optional[float] = typer.Option(
         None, "--embed-gpus-per-actor", max=1.0, rich_help_panel=_PANEL_RAY
+    ),
+    store_actors: Optional[int] = typer.Option(
+        0,
+        "--store-actors",
+        min=0,
+        help=(
+            "Maximum StoreOperator Ray actors. Store sinks autoscale from one actor to this cap; "
+            "0 uses the default cap."
+        ),
+        rich_help_panel=_PANEL_RAY,
     ),
     pdf_split_batch_size: int = typer.Option(1, "--pdf-split-batch-size", min=1, rich_help_panel=_PANEL_RAY),
     pdf_extract_batch_size: Optional[int] = typer.Option(0, "--pdf-extract-batch-size", rich_help_panel=_PANEL_RAY),
@@ -1315,6 +1333,7 @@ def run(
             caption_top_p=caption_top_p,
             caption_max_tokens=caption_max_tokens,
             store_images_uri=store_images_uri,
+            store_actors=store_actors,
             segment_audio=segment_audio,
             audio_split_type=audio_split_type,
             audio_split_interval=audio_split_interval,
