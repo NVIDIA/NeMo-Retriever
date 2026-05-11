@@ -31,6 +31,7 @@ def _embed_group(
     output_column: str,
     resolved_model_name: str,
     nim_http_max_concurrent: int = 32,
+    input_type: str = "passage",
 ) -> pd.DataFrame:
     """Embed a single modality group via ``create_text_embeddings_for_df``."""
     embedder = None
@@ -66,7 +67,7 @@ def _embed_group(
         metadata_column="metadata",
         batch_size=int(effective_batch_size),
         encoding_format="float",
-        input_type="passage",
+        input_type=str(input_type),
         truncate="END",
         dimensions=None,
         embedding_nim_endpoint=endpoint or "http://localhost:8012/v1",
@@ -105,7 +106,8 @@ def embed_text_main_text_embed(
     has_embedding_column: str = "text_embeddings_1b_v2_has_embedding",
     embed_modality: str = "text",
     nim_http_max_concurrent: int = 32,
-    **_: Any,
+    input_type: str = "passage",
+    **_extras: Any,
 ) -> Any:
     """Embed graph batches while preserving the legacy output columns."""
     if not isinstance(batch_df, pd.DataFrame):
@@ -138,6 +140,7 @@ def embed_text_main_text_embed(
                 output_column=output_column,
                 resolved_model_name=resolved_model_name,
                 nim_http_max_concurrent=nim_http_max_concurrent,
+                input_type=input_type,
             )
         else:
             parts: List[pd.DataFrame] = []
@@ -157,6 +160,7 @@ def embed_text_main_text_embed(
                     output_column=output_column,
                     resolved_model_name=resolved_model_name,
                     nim_http_max_concurrent=nim_http_max_concurrent,
+                    input_type=input_type,
                 )
                 parts.append(part)
             out_df = pd.concat(parts).sort_index()
