@@ -2,14 +2,17 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the VDB-backed Retriever query surface."""
+"""Unit tests for the graph-based :class:`~nemo_retriever.retriever.Retriever` query surface."""
 
 from __future__ import annotations
 
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
+
+from nemo_retriever.retriever import Retriever
 
 
 def _make_hits(n: int, base_score: float = 0.5) -> list[dict[str, Any]]:
@@ -25,322 +28,129 @@ def _make_hits(n: int, base_score: float = 0.5) -> list[dict[str, Any]]:
     ]
 
 
-def _make_retriever(**overrides: Any):
-    from nemo_retriever.retriever import Retriever
-
-    defaults = dict(
-        reranker=None,
-        top_k=5,
-        vdb="fake",
-        embedder="embedder",
-        vdb_kwargs={"collection_name": "docs", "model_name": "embedder"},
-    )
+def _make_retriever(**overrides: Any) -> Retriever:
+    defaults: dict[str, Any] = {
+        "rerank": False,
+        "top_k": 5,
+        "vdb_kwargs": {"vdb_op": "lancedb", "vdb_kwargs": {"uri": "/tmp/r", "table_name": "t"}},
+        "embed_kwargs": {"model_name": "embedder", "embed_model_name": "embedder"},
+    }
     defaults.update(overrides)
     return Retriever(**defaults)
 
 
-class _FakeRetrieveVdbOperator:
-    instances: list["_FakeRetrieveVdbOperator"] = []
-    next_result: list[list[dict[str, Any]]] = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
+def _install_mock_graph(monkeypatch: pytest.MonkeyPatch, hits: list[list[dict[str, Any]]]) -> MagicMock:
+    """Avoid constructing real LanceDB / embed operators."""
+    resolved = MagicMock()
+    # :meth:`Graph.execute` returns one entry per graph leaf; retrieval output is ``list[list[dict]]``.
+    resolved.execute.return_value = [hits]
 
-    def __init__(self, **kwargs: Any) -> None:
-        self.constructor_kwargs = kwargs
-        self.process_calls: list[tuple[Any, dict[str, Any]]] = []
-        self.__class__.instances.append(self)
+    graph = MagicMock()
+    graph.resolve_for_local_execution.return_value = resolved
 
-    def process(self, data: Any, **kwargs: Any) -> list[list[dict[str, Any]]]:
-        self.process_calls.append((data, kwargs))
-        return self.__class__.next_result
+    monkeypatch.setattr(Retriever, "_build_default_graph", lambda self: graph)
 
+    # bypass instance cache from other tests
+    def fresh_get(self: Retriever, *, embed_extra: Any = None) -> MagicMock:
+        graph.resolve_for_local_execution.return_value = resolved
+        return graph
 
-@pytest.fixture(autouse=True)
-def _reset_fake_operator() -> None:
-    _FakeRetrieveVdbOperator.instances = []
-    _FakeRetrieveVdbOperator.next_result = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
+    monkeypatch.setattr(Retriever, "_get_graph", fresh_get)
+    return resolved
 
 
-class TestQueriesVdbDelegation:
-    def test_empty_queries_returns_empty_without_operator(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", MagicMock())
+class TestQueriesGraphExecution:
+    def test_empty_queries_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock_get = MagicMock()
+        monkeypatch.setattr(Retriever, "_get_graph", mock_get)
         assert _make_retriever().queries([]) == []
-        vdb_pkg.RetrieveVdbOperator.assert_not_called()
+        mock_get.assert_not_called()
 
-    def test_queries_use_instance_top_k_when_not_overridden(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
+    def test_queries_thread_top_k_and_vdb_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        hit = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
+        resolved = _install_mock_graph(monkeypatch, hit)
         retriever = _make_retriever(top_k=11)
-        with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]):
-            retriever.queries(["q"])
+        out = retriever.queries(["q"], vdb_kwargs={"where": "x"})
+        assert out == hit
+        resolved.execute.assert_called_once()
+        _args, kw = resolved.execute.call_args
+        assert kw["top_k"] == 11
+        assert kw["query_texts"] == ["q"]
+        assert kw["where"] == "x"
+        df = _args[0]
+        assert isinstance(df, pd.DataFrame)
+        assert list(df.columns) == ["text"]
+        assert df["text"].tolist() == ["q"]
 
-        operator = _FakeRetrieveVdbOperator.instances[0]
-        assert operator.process_calls[0][1]["top_k"] == 11
+    def test_merge_embed_params_per_call_overrides(self) -> None:
+        r = _make_retriever(embed_kwargs={"model_name": "base", "embed_model_name": "base"})
+        p = r._merge_embed_params({"model_name": "call"})
+        assert p.model_name == "call"
 
-    def test_queries_accept_prebuilt_vdb(self) -> None:
-        from nemo_retriever.retriever import Retriever
+    def test_rerank_inflates_retrieval_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        resolved = _install_mock_graph(monkeypatch, [[{"text": "x"}]])
+        retriever = _make_retriever(top_k=3, rerank=True, rerank_kwargs={"refine_factor": 4})
+        retriever._cached_graph = None
+        retriever._cache_key = None
+        retriever.queries(["q"])
+        assert resolved.execute.call_args.kwargs["top_k"] == 12
 
-        class FakeVDB:
-            def __init__(self) -> None:
-                self.calls: list[tuple[Any, dict[str, Any]]] = []
-
-            def retrieval(self, vectors: list[list[float]], **kwargs: Any) -> list[list[dict[str, Any]]]:
-                self.calls.append((vectors, kwargs))
-                return [
-                    [
-                        {
-                            "text": "direct hit",
-                            "source": "doc-a.pdf",
-                            "content_metadata": {"page_number": 2},
-                        }
-                    ]
-                ]
-
-        vdb = FakeVDB()
-        retriever = Retriever(
-            vdb=vdb,
-            embedder="embedder",
-            vdb_kwargs={"collection_name": "docs", "model_name": "embedder"},
-            top_k=4,
-        )
-
-        with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]) as mock_embed:
-            result = retriever.queries(["q"], vdb_kwargs={"_filter": "content_type == 'text'"})
-
-        mock_embed.assert_called_once_with(["q"], model_name="embedder")
-        assert vdb.calls == [
-            (
-                [[0.1, 0.2]],
-                {
-                    "collection_name": "docs",
-                    "model_name": "embedder",
-                    "_filter": "content_type == 'text'",
-                    "top_k": 4,
-                },
-            )
-        ]
-        assert result[0][0]["text"] == "direct hit"
-        assert result[0][0]["pdf_page"] == "doc-a_2"
-
-    def test_queries_accept_embedder_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-        from nemo_retriever.retriever import Retriever
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
-
-        retriever = Retriever(vdb="lancedb", embedder="instance-embedder", vdb_kwargs={"uri": "/tmp/lancedb"}, top_k=6)
-        with patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]) as mock_embed:
-            result = retriever.queries(["q"], embedder="call-embedder", vdb_kwargs={"table_name": "nv-ingest"})
-
-        mock_embed.assert_called_once_with(["q"], model_name="call-embedder")
-        operator = _FakeRetrieveVdbOperator.instances[0]
-        assert operator.constructor_kwargs == {
-            "vdb_op": "lancedb",
-            "vdb_kwargs": {"uri": "/tmp/lancedb"},
-        }
-        assert operator.process_calls == [
-            (
-                [[0.1, 0.2]],
-                {"table_name": "nv-ingest", "top_k": 6},
-            )
-        ]
-        assert result == _FakeRetrieveVdbOperator.next_result
-
-    def test_queries_use_remote_embedding_endpoint_when_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
-        retriever = _make_retriever(
-            embedding_endpoint="http://embed.example/v1",
-            embedding_api_key="secret",
-            embedding_use_grpc=False,
-        )
-
-        with (
-            patch("nemo_retriever.api.util.nim.infer_microservice", return_value=[[0.5, 0.6]]) as mock_embed,
-            patch.object(retriever, "_embed_queries_local_hf") as mock_local_embed,
-        ):
-            retriever.queries(["q"], embedder="query-model")
-
-        mock_embed.assert_called_once_with(
-            ["q"],
-            model_name="query-model",
-            embedding_endpoint="http://embed.example/v1",
-            nvidia_api_key="secret",
-            grpc=False,
-            input_type="query",
-        )
-        mock_local_embed.assert_not_called()
-        operator = _FakeRetrieveVdbOperator.instances[0]
-        assert operator.process_calls == [([[0.5, 0.6]], {"top_k": 5})]
-
-    def test_queries_reuse_retrieve_operator(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
+    def test_query_delegates_to_queries(self) -> None:
         retriever = _make_retriever()
-
-        with patch.object(retriever, "_embed_queries_local_hf", side_effect=[[[0.1, 0.2]], [[0.3, 0.4]]]):
-            retriever.queries(["q1"], vdb_kwargs={"refine_factor": 50})
-            retriever.queries(["q2"], vdb_kwargs={"refine_factor": 21})
-
-        assert len(_FakeRetrieveVdbOperator.instances) == 1
-        operator = _FakeRetrieveVdbOperator.instances[0]
-        assert operator.process_calls == [
-            ([[0.1, 0.2]], {"refine_factor": 50, "top_k": 5}),
-            ([[0.3, 0.4]], {"refine_factor": 21, "top_k": 5}),
-        ]
-
-    def test_reranker_requests_fanout_and_reranks_to_requested_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
-        initial = [_make_hits(12)]
-        reranked = [_make_hits(3)]
-        _FakeRetrieveVdbOperator.next_result = initial
-        retriever = _make_retriever(
-            top_k=3,
-            reranker="nvidia/llama-nemotron-rerank-1b-v2",
-            reranker_refine_factor=4,
-        )
-
-        with (
-            patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]),
-            patch.object(retriever, "_rerank_results", return_value=reranked) as mock_rerank,
-        ):
-            result = retriever.queries(["q"])
-
-        operator = _FakeRetrieveVdbOperator.instances[0]
-        assert operator.process_calls[0][1]["top_k"] == 12
-        mock_rerank.assert_called_once_with(["q"], initial, top_k=3)
-        assert result is reranked
-
-
-class TestQuerySingleConvenience:
-    def test_query_delegates_to_queries_and_returns_first_element(self) -> None:
-        retriever = _make_retriever()
-        expected = _make_hits(5)
-        with patch.object(retriever, "queries", return_value=[expected]) as mock_queries:
-            result = retriever.query("find something", top_k=4, vdb_kwargs={"collection_name": "docs"})
-
-        mock_queries.assert_called_once_with(
-            ["find something"], top_k=4, embedder=None, vdb_kwargs={"collection_name": "docs"}
-        )
+        expected = _make_hits(2)
+        with patch.object(retriever, "queries", return_value=[expected]) as mock_q:
+            result = retriever.query("find", top_k=4, vdb_kwargs={"uri": "x"})
+        mock_q.assert_called_once_with(["find"], top_k=4, vdb_kwargs={"uri": "x"}, embed_kwargs=None)
         assert result is expected
 
 
-class TestQueriesWithEndpointReranking:
-    def test_reranked_results_are_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import nemo_retriever.vdb as vdb_pkg
-
-        monkeypatch.setattr(vdb_pkg, "RetrieveVdbOperator", _FakeRetrieveVdbOperator)
-        initial = [_make_hits(8)]
-        reranked = [_make_hits(2)]
-        _FakeRetrieveVdbOperator.next_result = initial
-        retriever = _make_retriever(
-            reranker="nvidia/llama-nemotron-rerank-1b-v2",
-            reranker_endpoint="http://rerank.example.com",
-            top_k=2,
-        )
-
-        with (
-            patch.object(retriever, "_embed_queries_local_hf", return_value=[[0.1, 0.2]]),
-            patch.object(retriever, "_rerank_results", return_value=reranked),
-        ):
-            out = retriever.queries(["q"])
-
-        assert out is reranked
-
-    def test_rerank_results_uses_endpoint_not_local_model(self) -> None:
-        retriever = _make_retriever(
-            reranker="nvidia/llama-nemotron-rerank-1b-v2",
-            reranker_endpoint="http://rerank.example.com",
-            top_k=3,
-        )
-        fake_hits = _make_hits(4)
-
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.json.return_value = {
-            "results": [{"index": i, "relevance_score": float(len(fake_hits) - i)} for i in range(len(fake_hits))]
-        }
-
-        with patch("requests.post", return_value=mock_resp) as mock_post:
-            out = retriever._rerank_results(["q"], [fake_hits], top_k=retriever.top_k)
-
-        mock_post.assert_called()
-        scores = [h["_rerank_score"] for h in out[0]]
-        assert scores == sorted(scores, reverse=True)
-
-
-class TestQueriesWithLocalReranking:
-    def test_rerank_results_with_local_model(self) -> None:
-        retriever = _make_retriever(reranker="nvidia/llama-nemotron-rerank-1b-v2")
-        hits = _make_hits(4)
-        fake_model = MagicMock()
-        fake_model.score.return_value = [0.1, 0.9, 0.5, 0.3]
-
-        with patch.object(retriever, "_get_reranker_model", return_value=fake_model):
-            out = retriever._rerank_results(["q"], [hits], top_k=retriever.top_k)
-
-        scores = [h["_rerank_score"] for h in out[0]]
-        assert scores == sorted(scores, reverse=True)
-        assert max(scores) == 0.9
-
-    def test_rerank_results_respects_top_k(self) -> None:
-        retriever = _make_retriever(reranker="nvidia/llama-nemotron-rerank-1b-v2", top_k=2)
-        hits = _make_hits(4)
-        fake_model = MagicMock()
-        fake_model.score.return_value = [0.1, 0.9, 0.5, 0.3]
-
-        with patch.object(retriever, "_get_reranker_model", return_value=fake_model):
-            out = retriever._rerank_results(["q"], [hits], top_k=retriever.top_k)
-
-        assert len(out[0]) == 2
-
-    def test_rerank_results_multiple_queries(self) -> None:
-        retriever = _make_retriever(reranker="nvidia/llama-nemotron-rerank-1b-v2", top_k=2)
-        hits_a = _make_hits(2)
-        hits_b = _make_hits(2)
-        fake_model = MagicMock()
-        fake_model.score.side_effect = [[0.2, 0.8], [0.6, 0.4]]
-
-        with patch.object(retriever, "_get_reranker_model", return_value=fake_model):
-            out = retriever._rerank_results(["q1", "q2"], [hits_a, hits_b], top_k=retriever.top_k)
-
-        assert len(out) == 2
-        for per_query in out:
-            scores = [h["_rerank_score"] for h in per_query]
-            assert scores == sorted(scores, reverse=True)
-
-
 class TestRetrieverDefaults:
-    def test_default_vdb_is_lancedb(self) -> None:
-        from nemo_retriever.retriever import Retriever
+    def test_default_top_k(self) -> None:
+        assert Retriever().top_k == 10
 
-        retriever = Retriever()
-        assert retriever.vdb == "lancedb"
-        assert retriever.vdb_kwargs == {}
+    def test_rerank_disabled_by_default(self) -> None:
+        assert Retriever().rerank is False
 
-    def test_default_reranker_is_nemotron_model(self) -> None:
-        from nemo_retriever.retriever import Retriever
-
-        retriever = Retriever()
-        assert retriever.reranker_model_name == "nvidia/llama-nemotron-rerank-vl-1b-v2"
-
-    def test_reranker_can_be_disabled(self) -> None:
-        retriever = _make_retriever(reranker=None)
-        assert retriever.reranker is None
-
-    def test_reranker_model_not_initialized_at_construction(self) -> None:
-        from nemo_retriever.retriever import Retriever
-
-        retriever = Retriever()
-        assert retriever._reranker_model is None
-        assert retriever._retrieve_operator is None
-
-    def test_retriever_alias_is_retriever_class(self) -> None:
-        from nemo_retriever.retriever import Retriever, retriever
+    def test_retriever_alias_is_class(self) -> None:
+        from nemo_retriever.retriever import retriever
 
         assert retriever is Retriever
+
+
+class TestRunModeServiceRequiresHttpEmbed:
+    def test_service_mode_errors_without_url(self) -> None:
+        with pytest.raises(ValueError, match="run_mode='service'"):
+            Retriever(run_mode="service", embed_kwargs={})._merge_embed_params()
+
+
+class TestRetrieveVdbOperatorPreprocess:
+    def test_dataframe_to_vectors(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "metadata": [{"embedding": [0.1, 0.2]}],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.1, 0.2]]
+
+
+class TestRerankLongDataframe:
+    def test_groups_by_query_order(self) -> None:
+        from nemo_retriever.retriever_graph_utils import rerank_long_dataframe_to_hits
+
+        df = pd.DataFrame(
+            [
+                {"query": "q1", "text": "b", "_hit": {"text": "b"}, "rerank_score": 0.5},
+                {"query": "q1", "text": "a", "_hit": {"text": "a"}, "rerank_score": 0.9},
+                {"query": "q2", "text": "c", "_hit": {"text": "c"}, "rerank_score": 0.3},
+            ]
+        )
+        out = rerank_long_dataframe_to_hits(df, query_texts=["q1", "q2"], top_k=1, score_column="rerank_score")
+        assert len(out) == 2
+        assert out[0][0]["text"] == "a"
+        assert out[0][0]["_rerank_score"] == 0.9
+        assert out[1][0]["text"] == "c"

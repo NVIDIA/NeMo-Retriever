@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,9 +47,30 @@ def parse_csv_ints(value: str, *, name: str) -> List[int]:
     return sorted(set(out))
 
 
+def _dev_nemo_retriever_src_dir() -> Optional[str]:
+    """If ``nemo_retriever`` is imported from a source tree (not site-packages), return ``.../src`` for workers."""
+    import nemo_retriever
+
+    init_path = Path(nemo_retriever.__file__).resolve()
+    if "site-packages" in init_path.parts:
+        return None
+    src_dir = init_path.parent.parent
+    if src_dir.name == "src" and (src_dir / "nemo_retriever").is_dir():
+        return str(src_dir)
+    return None
+
+
 def maybe_init_ray(ray_address: Optional[str]) -> None:
-    if not ray.is_initialized():
-        ray.init(address=ray_address or "local", ignore_reinit_error=True)
+    if ray.is_initialized():
+        return
+    extra_src = _dev_nemo_retriever_src_dir()
+    runtime_env: dict[str, Any] | None = None
+    if extra_src:
+        merged = extra_src
+        if existing := os.environ.get("PYTHONPATH"):
+            merged = f"{extra_src}{os.pathsep}{existing}"
+        runtime_env = {"env_vars": {"PYTHONPATH": merged}}
+    ray.init(address=ray_address or "local", ignore_reinit_error=True, runtime_env=runtime_env)
 
 
 def read_pdf_bytes(pdf_path: Path) -> bytes:

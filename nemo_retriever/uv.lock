@@ -2404,8 +2404,7 @@ all = [
     { name = "librosa" },
     { name = "litellm" },
     { name = "nemotron-graphic-elements-v1" },
-    { name = "nemotron-ocr", marker = "sys_platform == 'linux'" },
-    { name = "nemotron-ocr-v2", marker = "sys_platform == 'linux'" },
+    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
     { name = "neo4j" },
@@ -2449,8 +2448,7 @@ local = [
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
     { name = "glom" },
     { name = "nemotron-graphic-elements-v1" },
-    { name = "nemotron-ocr", marker = "sys_platform == 'linux'" },
-    { name = "nemotron-ocr-v2", marker = "sys_platform == 'linux'" },
+    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
     { name = "nvidia-ml-py" },
@@ -2513,8 +2511,7 @@ requires-dist = [
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "tabular"], marker = "extra == 'all'" },
     { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
-    { name = "nemotron-ocr", marker = "sys_platform == 'linux' and extra == 'local'", specifier = ">=1.0.2.dev0,<1.0.2a0", index = "https://test.pypi.org/simple/" },
-    { name = "nemotron-ocr-v2", marker = "sys_platform == 'linux' and extra == 'local'", specifier = ">=2.0.0.dev0,<2.0.0a0", index = "https://test.pypi.org/simple/" },
+    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.0.0.dev0,<2.0.0a0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "neo4j", marker = "extra == 'tabular'", specifier = ">=5.0" },
@@ -2578,39 +2575,20 @@ wheels = [
 
 [[package]]
 name = "nemotron-ocr"
-version = "1.0.2.dev20260508042302"
+version = "2.0.0.dev20260508175030"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
-    { name = "huggingface-hub", marker = "sys_platform == 'linux'" },
-    { name = "pandas", marker = "sys_platform == 'linux'" },
-    { name = "pillow", marker = "sys_platform == 'linux'" },
-    { name = "scikit-learn", marker = "sys_platform == 'linux'" },
-    { name = "shapely", marker = "sys_platform == 'linux'" },
-    { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
-    { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
+    { name = "huggingface-hub", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pillow", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "shapely", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/9e/ec/077a6a9db0c9b668fbee4b515e26e0bf7e43eefa489109e85a75fb16e863/nemotron_ocr-1.0.2.dev20260508042302.tar.gz", hash = "sha256:df7f0ecf02eaf39f97ea1608606a3b0f8d827fd1b9a723c547d9b5248600a31f", size = 153236, upload-time = "2026-05-08T04:32:55.015Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/26/5f/0a121fcd2cc2e2e8873b946e0cca4fb28b32778705f16e544694a3a2a105/nemotron_ocr-2.0.0.dev20260508175030.tar.gz", hash = "sha256:639e5181b5c5d4a928813de9f397af4628cb05cc660cf4b972e0ffc619b3e928", size = 155961, upload-time = "2026-05-08T18:01:04.331Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/c6/39/20c38a7d8804282eb2cf19dc785d0170d2df5514fb1507d27c51a2c2fae5/nemotron_ocr-1.0.2.dev20260508042302-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:e87c11fd93ed0b3b8695a9c2929c22811b5be4556cba797308418e9289eeb9c4", size = 36094365, upload-time = "2026-05-08T04:32:52.087Z" },
-    { url = "https://test-files.pythonhosted.org/packages/b3/d2/96012ecd220e9057ab0c6ac4bc974c6c5d0d7c1aa8a47adf4cdc865cb7ed/nemotron_ocr-1.0.2.dev20260508042302-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:29c32ce4046c62c77600bf5304717835f48a0a8bafe9b3127f98235acbf38495", size = 36800007, upload-time = "2026-05-08T04:33:54.954Z" },
-]
-
-[[package]]
-name = "nemotron-ocr-v2"
-version = "2.0.0.dev20260508042302"
-source = { registry = "https://test.pypi.org/simple/" }
-dependencies = [
-    { name = "huggingface-hub", marker = "sys_platform == 'linux'" },
-    { name = "numpy", marker = "sys_platform == 'linux'" },
-    { name = "pillow", marker = "sys_platform == 'linux'" },
-    { name = "shapely", marker = "sys_platform == 'linux'" },
-    { name = "torch", version = "2.10.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
-    { name = "torchvision", version = "0.25.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
-]
-sdist = { url = "https://test-files.pythonhosted.org/packages/23/20/af72598b73cad8742fe78f595c7bc93e17d0db92ae004d2d1a72b4cb0756/nemotron_ocr_v2-2.0.0.dev20260508042302.tar.gz", hash = "sha256:2d6129f2a182e960d1a22237d235319e9cbcf2d25b58ad229b9dfa40e2730703", size = 156174, upload-time = "2026-05-08T04:33:08.297Z" }
-wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/20/3d/f01c5d5f38d6fc59612c1f5444d940c40ad32d6403f5df2c7e10d954f2c2/nemotron_ocr_v2-2.0.0.dev20260508042302-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:6aecb444b9e2ef2a919e94fb197b7bc4568a9de976e28b8ae9254ac9a565f235", size = 36097259, upload-time = "2026-05-08T04:33:05.835Z" },
-    { url = "https://test-files.pythonhosted.org/packages/7f/41/712a074c6b58c952a79b0e66287525dfed2252b43187b4b99f7c939b4a19/nemotron_ocr_v2-2.0.0.dev20260508042302-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:3c81a38afdb097d4c7e0759ab1b0c1c7198a00fd5a4d77799ffec8dd475ab063", size = 36802723, upload-time = "2026-05-08T04:34:47.88Z" },
+    { url = "https://test-files.pythonhosted.org/packages/fa/7b/98d461288d72aff10e084128fdabaf3410097c8113200449ba37d7a6e385/nemotron_ocr-2.0.0.dev20260508175030-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:1f6b7b8d1f9d3f327dd176035db43e0c6fb58a4c2f2879d969cfb779a20ec717", size = 36096949, upload-time = "2026-05-08T18:01:02.201Z" },
+    { url = "https://test-files.pythonhosted.org/packages/de/9b/5d111a0c665e7bbac52e86da16ccde0329b6469dd0ff79644b0185bdd988/nemotron_ocr-2.0.0.dev20260508175030-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:ef71916f024938bf685986a23af51cb044f303b1875f09373fcc227caf4881de", size = 36802428, upload-time = "2026-05-08T18:01:28.484Z" },
 ]
 
 [[package]]
@@ -4340,7 +4318,7 @@ name = "shapely"
 version = "2.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'linux'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/4d/bc/0989043118a27cccb4e906a46b7565ce36ca7b57f5a18b78f4f1b0f72d9d/shapely-2.1.2.tar.gz", hash = "sha256:2ed4ecb28320a433db18a5bf029986aa8afcfd740745e78847e330d5d94922a9", size = 315489, upload-time = "2025-09-24T13:51:41.432Z" }
 wheels = [
