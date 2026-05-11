@@ -31,6 +31,28 @@ Before writing SQL, assess whether the retrieved context is sufficient:
 
 Use this path when `complex_candidates_str` or `table_groups` contain useful context.
 
+### 0. Honour the question's shape
+
+Before writing any SQL, decide whether the user asked for an aggregate
+or a row list, and translate the plan accordingly. Do NOT fall back to a
+row-listing `SELECT <columns>` when the question asks for a count, sum,
+average, or extreme:
+
+| Question wording                                              | Shape                                                              |
+|---------------------------------------------------------------|--------------------------------------------------------------------|
+| "how many", "count of", "number of"                           | `SELECT COUNT(...)` — single scalar row                            |
+| "total", "sum of", "what is the total"                        | `SELECT SUM(...)`                                                  |
+| "average", "mean", "avg"                                      | `SELECT AVG(...)`                                                  |
+| "max", "min", "highest", "lowest", "most", "least"            | `SELECT MAX(...)` / `SELECT MIN(...)` (or `ORDER BY ... LIMIT 1`)  |
+| "per <X>", "by <X>", "for each <X>", "breakdown by <X>"       | aggregate + `GROUP BY <X>`                                          |
+| "list", "show", "which", "what are", no aggregate keyword     | `SELECT <columns>` (row-listing)                                   |
+
+If the plan's `select_expressions` doesn't match the wording (e.g. the
+question says "how many DORs were created in Q4 2025?" but the plan
+selects raw columns), rewrite the SELECT to be the correct aggregate.
+Aggregate questions return a single scalar row; never emit a list of
+rows for them.
+
 ### 1. Select the best candidates
 
 - Prefer `[CERTIFIED]` snippets in `complex_candidates_str` — they encode validated business logic.
