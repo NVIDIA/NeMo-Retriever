@@ -4,7 +4,7 @@
 """
 Dataset loader for benchmark datasets.
 
-Handles downloading and preparing ViDoRe and BRIGHT datasets from HuggingFace,
+Handles downloading and preparing ViDoRe v3 and BRIGHT datasets from HuggingFace,
 including queries, corpus images, and ground truth relevance judgments.
 """
 
