@@ -73,8 +73,7 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv python install 3.12 \
-    && uv venv --python 3.12 /opt/retriever_runtime \
-    && chmod -R a+rX /opt/uv/python
+    && uv venv --python 3.12 /opt/retriever_runtime
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
