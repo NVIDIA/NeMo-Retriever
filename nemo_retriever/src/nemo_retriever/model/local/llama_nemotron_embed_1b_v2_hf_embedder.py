@@ -34,6 +34,7 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
     hf_cache_dir: Optional[str] = None
     normalize: bool = True
     max_length: int = 8192
+    query_max_length: int = 128
     model_id: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -72,23 +73,27 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
     def is_remote(self) -> bool:
         return False
 
-    def _embed_local(self, texts: List[str], *, batch_size: int) -> torch.Tensor:
+    def _embed_local(
+        self,
+        texts: List[str],
+        *,
+        batch_size: int,
+        padding: bool | str = True,
+        max_length: int | None = None,
+    ) -> torch.Tensor:
         self._ensure_loaded()
         dev = self._device
         bs = max(1, int(batch_size))
-        max_len = max(1, int(self.max_length))
+        max_len = max(1, int(max_length if max_length is not None else self.max_length))
 
         outs: List[torch.Tensor] = []
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
-            # Tokenize per chunk (same as vLLM microbatches) so padding length matches
-            # within-batch max, not global max over all strings — bidirectional attention
-            # can otherwise shift vectors vs vLLM ingest / recall.
             for i in range(0, len(texts), bs):
                 chunk = texts[i : i + bs]
                 batch = self._tokenizer(
                     chunk,
-                    padding=True,
+                    padding=padding,
                     truncation=True,
                     max_length=max_len,
                     return_tensors="pt",
@@ -141,7 +146,14 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
             texts_list.append(raw)
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
-        return self._embed_local(texts_list, batch_size=batch_size)
+        # The Nemotron text embedder is sensitive to padding length. Use fixed
+        # query padding so retrieval vectors do not change with batch grouping.
+        return self._embed_local(
+            texts_list,
+            batch_size=batch_size,
+            padding="max_length",
+            max_length=max(1, int(self.query_max_length)),
+        )
 
     def unload(self) -> None:
         """Release GPU memory held by the HF model."""

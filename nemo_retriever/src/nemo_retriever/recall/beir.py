@@ -30,6 +30,74 @@ BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.c
 EARNINGS_ANNOTATIONS_PATH = REPO_ROOT / "data" / "earnings_consulting_multimodal.csv"
 FINANCEBENCH_ANNOTATIONS_PATH = REPO_ROOT / "data" / "financebench_train.json"
 JP20_ANNOTATIONS_PATH = REPO_ROOT / "data" / "jp20_query_gt.csv"
+
+
+@dataclass(frozen=True)
+class BeirDatasetOptions:
+    loader: str | None = None
+    dataset_name: str | None = None
+    doc_id_field: str | None = None
+    ks: tuple[int, ...] = DEFAULT_BEIR_KS
+
+
+_FIRST_CLASS_BEIR_DATASETS: dict[str, BeirDatasetOptions] = {
+    "bo767": BeirDatasetOptions(
+        loader="bo767_csv",
+        dataset_name=str(BO767_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "bo10k": BeirDatasetOptions(
+        loader="bo10k_csv",
+        dataset_name=str(BO10K_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "jp20": BeirDatasetOptions(
+        loader="jp20_csv",
+        dataset_name=str(JP20_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "earnings": BeirDatasetOptions(
+        loader="earnings_csv",
+        dataset_name=str(EARNINGS_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "financebench": BeirDatasetOptions(
+        loader="financebench_json",
+        dataset_name=str(FINANCEBENCH_ANNOTATIONS_PATH),
+        doc_id_field="pdf_basename",
+    ),
+}
+
+
+def resolve_beir_dataset_options(
+    *,
+    dataset_name: str | None,
+    loader: str | None = None,
+    doc_id_field: str | None = None,
+    ks: Sequence[int] | None = None,
+) -> BeirDatasetOptions:
+    """Resolve shorthand first-class BEIR dataset names into concrete options."""
+    normalized_name = str(dataset_name).strip() if dataset_name is not None else None
+    defaults = None
+    if normalized_name:
+        lookup_key = normalized_name.lower()
+        defaults = _FIRST_CLASS_BEIR_DATASETS.get(lookup_key)
+        if defaults is None and lookup_key.startswith("vidore_v3_"):
+            defaults = BeirDatasetOptions(
+                loader="vidore_hf",
+                dataset_name=normalized_name,
+                doc_id_field="pdf_basename",
+            )
+
+    resolved_ks = tuple(int(k) for k in ks) if ks else (defaults.ks if defaults else DEFAULT_BEIR_KS)
+    return BeirDatasetOptions(
+        loader=loader or (defaults.loader if defaults else None),
+        dataset_name=(defaults.dataset_name if defaults else normalized_name),
+        doc_id_field=doc_id_field or (defaults.doc_id_field if defaults else None),
+        ks=resolved_ks,
+    )
+
+
 _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "caption": "image",
     "chart": "chart",

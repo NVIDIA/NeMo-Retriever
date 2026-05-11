@@ -632,7 +632,7 @@ def _run_evaluation(
     beir_dataset_name: Optional[str],
     beir_split: str,
     beir_query_language: Optional[str],
-    beir_doc_id_field: str,
+    beir_doc_id_field: Optional[str],
     beir_k: list[int],
     local_query_embed_backend: str = "hf",
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
@@ -654,12 +654,20 @@ def _run_evaluation(
     if evaluation_mode == "beir":
         if str(vdb_op).strip().lower() != "lancedb":
             raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
-        if not beir_loader:
-            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
-        if not beir_dataset_name:
-            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
+        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir, resolve_beir_dataset_options
 
-        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
+        beir_options = resolve_beir_dataset_options(
+            dataset_name=beir_dataset_name,
+            loader=beir_loader,
+            doc_id_field=beir_doc_id_field,
+            ks=beir_k,
+        )
+        if not beir_options.loader:
+            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
+        if not beir_options.dataset_name:
+            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
+        if not beir_options.doc_id_field:
+            raise ValueError("--beir-doc-id-field is required when --evaluation-mode=beir")
 
         lancedb_uri = str(eval_vdb_kwargs.get("uri") or eval_vdb_kwargs.get("lancedb_uri") or "lancedb")
         lancedb_table = str(eval_vdb_kwargs.get("table_name") or eval_vdb_kwargs.get("lancedb_table") or "nv-ingest")
@@ -668,12 +676,12 @@ def _run_evaluation(
             lancedb_uri=lancedb_uri,
             lancedb_table=lancedb_table,
             embedding_model=embed_model,
-            loader=str(beir_loader),
-            dataset_name=str(beir_dataset_name),
+            loader=str(beir_options.loader),
+            dataset_name=str(beir_options.dataset_name),
             split=str(beir_split),
             query_language=beir_query_language,
-            doc_id_field=str(beir_doc_id_field),
-            ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
+            doc_id_field=str(beir_options.doc_id_field),
+            ks=beir_options.ks,
             embedding_http_endpoint=embed_invoke_url,
             embedding_api_key=embed_remote_api_key or "",
             hybrid=bool(eval_vdb_kwargs.get("hybrid", False)),
@@ -1129,7 +1137,7 @@ def run(
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name", rich_help_panel=_PANEL_EVAL),
     beir_split: str = typer.Option("test", "--beir-split", rich_help_panel=_PANEL_EVAL),
     beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language", rich_help_panel=_PANEL_EVAL),
-    beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field", rich_help_panel=_PANEL_EVAL),
+    beir_doc_id_field: Optional[str] = typer.Option(None, "--beir-doc-id-field", rich_help_panel=_PANEL_EVAL),
     beir_k: list[int] = typer.Option([], "--beir-k", rich_help_panel=_PANEL_EVAL),
     eval_config: Optional[Path] = typer.Option(
         None,
