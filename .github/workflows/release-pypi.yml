@@ -101,7 +101,4 @@ jobs:
           echo "  Source: ${{ needs.determine-version.outputs.source-ref }}"
           echo ""
           echo "Packages:"
-          echo "  - nv-ingest-api"
-          echo "  - nv-ingest-client"
-          echo "  - nv-ingest"
           echo "  - nemo-retriever"

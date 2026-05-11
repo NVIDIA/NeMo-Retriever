@@ -70,7 +70,7 @@ Prefer **`summary_metrics`** for dashboards (small set: pages, ingest timing, re
 - `recall_required: true` without recall metrics → harness failure (`missing_recall_metrics`).
 - Relative `query_csv` resolves next to the YAML file, then repo root.
 - Dataset paths under `/datasets/nv-ingest/...` may resolve to `/raid/$USER/...` when the former is missing.
-- Optional **store** options (`store_images_uri`, `store_text`, `strip_base64`) map to graph CLI flags; relative `store_images_uri` is resolved under the run artifact directory. See `config.py` for env overrides (`HARNESS_STORE_*`).
+- Store is not configured through the harness. Use `retriever pipeline run --store-images-uri <uri>` for local or object-storage image assets.
 
 ## Backlog (maintainers / agents)
 

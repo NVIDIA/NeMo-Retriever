@@ -162,7 +162,7 @@ class ingestor:
         self._not_implemented("filter")
 
     def store(self, params: StoreParams | None = None, **kwargs: Any) -> "ingestor":
-        """Record a store task configuration."""
+        """Record a store task configuration for extracted image assets."""
         _ = _merge_params(params, kwargs)
         self._not_implemented("store")
 

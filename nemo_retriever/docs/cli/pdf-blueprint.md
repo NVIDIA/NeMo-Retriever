@@ -37,8 +37,8 @@ retriever pipeline run nv-ingest/data/multimodal_test.pdf \
   extracted images) is produced.
 - Text / table / chart rows land in LanceDB at `./lancedb/nv-ingest.lance`.
 - Parquet extraction rows are written under `./processed_docs/`.
-- Extracted images are written under `./processed_docs/images/`, referenced by
-  `content_url` in the row metadata.
+- Extracted image assets are written under `./processed_docs/images/`, and the
+  stored asset URI is written to row metadata.
 
 ### Notebook-friendly form
 

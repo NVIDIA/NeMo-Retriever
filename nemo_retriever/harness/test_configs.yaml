@@ -24,9 +24,6 @@ active:
   extract_page_as_image: false
   extract_infographics: false
   write_detection_file: false
-  store_images_uri: null
-  store_text: false
-  strip_base64: true
 
 presets:
   PE_GE_OCR_TE_DENSE:

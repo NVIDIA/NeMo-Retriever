@@ -16,6 +16,11 @@ from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+from nemo_retriever.utils.input_files import (
+    _is_explicit_glob_path,
+    expand_input_file_patterns,
+    raise_input_path_not_found,
+)
 from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
@@ -101,21 +106,12 @@ class InprocessExecutor(AbstractExecutor):
         pandas.DataFrame
             The result after all operators have been applied.
         """
-        import glob as _glob
-
         import pandas as pd
 
         if isinstance(data, pd.DataFrame):
             df = data
-        elif isinstance(data, str):
-            df = self._load_files([data])
-        elif isinstance(data, list):
-            # Expand globs
-            expanded: List[str] = []
-            for pattern in data:
-                matches = _glob.glob(pattern, recursive=True)
-                expanded.extend(sorted(matches) if matches else [pattern])
-            df = self._load_files(expanded)
+        elif isinstance(data, (str, list)):
+            df = self._load_files(expand_input_file_patterns(data))
         else:
             raise TypeError(
                 f"data must be a pandas.DataFrame, file path, or list of paths, " f"got {type(data).__name__}"
@@ -155,6 +151,8 @@ class InprocessExecutor(AbstractExecutor):
             fp = Path(p)
             if fp.is_file():
                 rows.append({"bytes": fp.read_bytes(), "path": str(fp.resolve())})
+            elif not _is_explicit_glob_path(p):
+                raise_input_path_not_found(p)
         if not rows:
             return pd.DataFrame(columns=["bytes", "path"])
         return pd.DataFrame(rows)
@@ -228,8 +226,6 @@ class RayDataExecutor(AbstractExecutor):
         ray.data.Dataset
             The materialized result dataset.
         """
-        import glob as _glob
-
         import ray
         import ray.data as rd
 
@@ -237,6 +233,10 @@ class RayDataExecutor(AbstractExecutor):
             raise TypeError(
                 f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
             )
+
+        input_paths: Optional[List[str]] = None
+        if isinstance(data, (str, list)):
+            input_paths = expand_input_file_patterns(data)
 
         if self._ray_address or not ray.is_initialized():
             venv = os.path.dirname(os.path.dirname(sys.executable))
@@ -267,13 +267,11 @@ class RayDataExecutor(AbstractExecutor):
 
         if isinstance(data, rd.Dataset):
             ds = data
-        elif isinstance(data, (str, list)):
-            paths = [data] if isinstance(data, str) else list(data)
-            expanded: List[str] = []
-            for pattern in paths:
-                matches = _glob.glob(pattern, recursive=True)
-                expanded.extend(sorted(matches) if matches else [pattern])
-            ds = rd.read_binary_files(expanded, include_paths=True)
+        else:
+            try:
+                ds = rd.read_binary_files(input_paths, include_paths=True)
+            except FileNotFoundError as exc:
+                raise_input_path_not_found(input_paths or [], exc)
         nodes = self._linearize(resolved_graph)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))

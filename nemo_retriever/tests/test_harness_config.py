@@ -743,6 +743,37 @@ def test_load_harness_config_rejects_removed_image_elements_modality_key(tmp_pat
         load_harness_config(config_file=str(cfg_path))
 
 
+def test_load_harness_config_rejects_removed_store_key(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    recall_required: false",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    store_text: true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="store_text is no longer supported by the harness"):
+        load_harness_config(config_file=str(cfg_path))
+
+
 def test_load_harness_config_supports_financebench_beir_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     real_exists = Path.exists
     expected_dataset_dir = Path("/datasets/nv-ingest/financebench").resolve()
@@ -880,38 +911,3 @@ def test_load_harness_config_supports_earnings_beir_defaults(monkeypatch: pytest
     assert cfg.evaluation_mode == "beir"
     assert cfg.beir_loader == "earnings_csv"
     assert cfg.beir_doc_id_field == "pdf_page"
-
-
-def test_load_harness_config_supports_store_options(tmp_path: Path) -> None:
-    dataset_dir = tmp_path / "dataset"
-    dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
-    cfg_path = tmp_path / "test_configs.yaml"
-    cfg_path.write_text(
-        "\n".join(
-            [
-                "active:",
-                "  dataset: tiny",
-                "  preset: base",
-                "presets:",
-                "  base: {}",
-                "datasets:",
-                "  tiny:",
-                f"    path: {dataset_dir}",
-                f"    query_csv: {query_csv}",
-                "    recall_required: false",
-                "    evaluation_mode: beir",
-                "    beir_loader: vidore_hf",
-                "    store_images_uri: stored_images",
-                "    store_text: true",
-                "    strip_base64: false",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    cfg = load_harness_config(config_file=str(cfg_path))
-    assert cfg.store_images_uri == "stored_images"
-    assert cfg.store_text is True
-    assert cfg.strip_base64 is False
