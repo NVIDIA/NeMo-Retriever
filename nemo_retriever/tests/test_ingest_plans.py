@@ -19,6 +19,7 @@ from nemo_retriever.params import BatchTuningParams
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
 from nemo_retriever.params import VdbUploadParams
 from nemo_retriever.params import WebhookParams
@@ -311,6 +312,31 @@ def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus(ocr_version: 
     assert overrides[expected_actor_name]["concurrency"] == 4
     assert overrides["PageElementDetectionActor"]["concurrency"] == 3
     assert overrides["NemotronParseActor"]["concurrency"] == 2
+
+
+def test_batch_tuning_to_node_overrides_adds_default_store_tuning() -> None:
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=None,
+        embed_params=None,
+        store_params=StoreParams(storage_uri="memory://stored"),
+    )
+
+    assert overrides["StoreOperator"] == {"concurrency": (1, 4, 1), "num_cpus": 0.1}
+
+
+def test_batch_tuning_to_node_overrides_honors_store_tuning() -> None:
+    store_params = StoreParams(
+        storage_uri="memory://stored",
+        batch_tuning=BatchTuningParams(store_workers=1),
+    )
+
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=None,
+        embed_params=None,
+        store_params=store_params,
+    )
+
+    assert overrides["StoreOperator"] == {"concurrency": 1, "num_cpus": 0.1}
 
 
 def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> None:

@@ -66,8 +66,9 @@ for these cases:
   directory (or point at absolute paths).
 - `--save-intermediate <dir>` writes the extraction DataFrame as Parquet for
   inspection. LanceDB output goes to `--lancedb-uri` (defaults to `./lancedb`).
-- `--store-images-uri <uri>` stores extracted images to a local path or an
-  fsspec URI (e.g. `s3://bucket/prefix`).
+- `--store-images-uri <uri>` stores extracted image assets to a local path or
+  an fsspec URI (e.g. `s3://bucket/prefix`). Page granularity stores page
+  images; element granularity stores element images.
 - `--run-mode inprocess` skips Ray and is ideal for single-file demos and CI;
   `--run-mode batch` (the default) uses Ray Data for throughput.
 

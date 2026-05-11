@@ -36,8 +36,8 @@ retriever pipeline run ./data/multimodal_test.pdf \
   LanceDB table at `./lancedb/nv-ingest.lance` (default `--lancedb-uri`).
 - Per-document extraction rows as Parquet under `./processed_docs/` (from
   `--save-intermediate`).
-- Extracted images on disk under `./processed_docs/images/` (from
-  `--store-images-uri`). The `content_url` column points at these paths.
+- Extracted image assets on disk under `./processed_docs/images/` (from
+  `--store-images-uri`). The stored asset URI is written to row metadata.
 - Progress, timing, and stage-level logs on stderr.
 
 ### Inspect the results

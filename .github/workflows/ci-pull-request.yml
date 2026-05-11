@@ -52,6 +52,37 @@ jobs:
           python -c "import importlib.util; import sys; sys.exit(0 if importlib.util.find_spec('tritonclient') is None else 1)"
           python -m pytest tests/test_slim_imports_no_triton.py -q
 
+  # Hosted NIM ingest + Retriever query (CPU; requires NVIDIA_BUILD_API_KEY on the repo)
+  multimodal-ingest-retriever-integration:
+    name: Multimodal ingest + Retriever (integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_BUILD_API_KEY }}
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install nemo-retriever and run multimodal PDF integration test
+        working-directory: nemo_retriever
+        run: |
+          set -euo pipefail
+          uv venv .venv-integration
+          source .venv-integration/bin/activate
+          uv pip install -e ".[dev]"
+          uv pip install pytest
+          pytest tests/test_ingest_retrieve_multimodal_pdf_integration.py \
+            -m integration \
+            --override-ini="addopts=" \
+            -v
+
   # Docker build + test for x86_64 (single job so built image is available locally)
   docker-build-and-test:
     name: Build & Test Docker (amd64)
@@ -73,6 +104,7 @@ jobs:
     needs:
       - pre-commit
       - slim-import-contract
+      - multimodal-ingest-retriever-integration
       - docker-build-and-test
     runs-on: ubuntu-latest
     if: always()
@@ -80,6 +112,8 @@ jobs:
       - name: Check job results
         run: |
           if [[ "${{ needs.pre-commit.result }}" != "success" ]] || \
+             [[ "${{ needs.slim-import-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.multimodal-ingest-retriever-integration.result }}" != "success" ]] || \
              [[ "${{ needs.docker-build-and-test.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1

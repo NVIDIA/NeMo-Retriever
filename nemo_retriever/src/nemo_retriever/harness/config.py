@@ -22,7 +22,24 @@ VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_js
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
 VALID_EMBED_GRANULARITIES = {"element", "page"}
-REMOVED_HARNESS_KEYS = {"image_elements_modality"}
+# The harness should eventually integrate these pipeline storage settings directly.
+REMOVED_HARNESS_KEY_MESSAGES = {
+    "image_elements_modality": (
+        "image_elements_modality is no longer supported by the harness; use embed_modality instead"
+    ),
+    "store_images_uri": (
+        "store_images_uri is no longer supported by the harness; use the pipeline CLI store flags instead"
+    ),
+    "store_text": "store_text is no longer supported by the harness; use the pipeline CLI store flags instead",
+    "strip_base64": "strip_base64 is no longer supported by the harness; use the pipeline CLI store flags instead",
+}
+REMOVED_HARNESS_KEYS = set(REMOVED_HARNESS_KEY_MESSAGES)
+REMOVED_HARNESS_ENV_KEYS = {
+    "HARNESS_IMAGE_ELEMENTS_MODALITY": "image_elements_modality",
+    "HARNESS_STORE_IMAGES_URI": "store_images_uri",
+    "HARNESS_STORE_TEXT": "store_text",
+    "HARNESS_STRIP_BASE64": "strip_base64",
+}
 DEFAULT_NIGHTLY_SLACK_METRIC_KEYS = [
     "pages",
     "ingest_secs",
@@ -95,9 +112,6 @@ class HarnessConfig:
     extract_infographics: bool = False
     write_detection_file: bool = False
     use_heuristics: bool = False
-    store_images_uri: str | None = None
-    store_text: bool = False
-    strip_base64: bool = True
 
     service_url: str | None = None
     service_max_concurrency: int = 8
@@ -303,8 +317,9 @@ def _resolve_query_csv_path(value: str | None, *, config_path: Path) -> str | No
 
 
 def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
-    if os.getenv("HARNESS_IMAGE_ELEMENTS_MODALITY") not in {None, ""}:
-        raise ValueError("image_elements_modality is no longer supported by the harness; use embed_modality instead")
+    for env_key, removed_key in REMOVED_HARNESS_ENV_KEYS.items():
+        if os.getenv(env_key) not in {None, ""}:
+            raise ValueError(REMOVED_HARNESS_KEY_MESSAGES[removed_key])
 
     env_map: dict[str, tuple[str, Any]] = {
         "HARNESS_DATASET": ("dataset", str),
@@ -349,9 +364,6 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
-        "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
-        "HARNESS_STORE_TEXT": ("store_text", _parse_bool),
-        "HARNESS_STRIP_BASE64": ("strip_base64", _parse_bool),
         "HARNESS_SERVICE_URL": ("service_url", str),
         "HARNESS_SERVICE_MAX_CONCURRENCY": ("service_max_concurrency", _parse_number),
         "HARNESS_API_KEY": ("api_key", str),
@@ -384,7 +396,7 @@ def _parse_cli_overrides(overrides: list[str] | None) -> dict[str, Any]:
         if not key:
             raise ValueError(f"Invalid override key in: {item}")
         if key in REMOVED_HARNESS_KEYS:
-            raise ValueError(f"{key} is no longer supported by the harness; use embed_modality instead")
+            raise ValueError(REMOVED_HARNESS_KEY_MESSAGES[key])
 
         low = raw_val.lower()
         if low in {"true", "false"}:
@@ -478,7 +490,7 @@ def load_harness_config(
         merged["beir_query_language"] = None
     for removed_key in sorted(REMOVED_HARNESS_KEYS):
         if removed_key in merged:
-            raise ValueError(f"{removed_key} is no longer supported by the harness; use embed_modality instead")
+            raise ValueError(REMOVED_HARNESS_KEY_MESSAGES[removed_key])
 
     if "query_csv" not in merged:
         merged["query_csv"] = None

@@ -374,7 +374,7 @@ class GraphIngestor(ingestor):
         return self
 
     def store(self, params: Optional[StoreParams] = None, **kwargs: Any) -> "GraphIngestor":
-        """Record a store stage for persisting extracted images/text to storage."""
+        """Record a store stage for persisting extracted image assets to storage."""
         self._store_params = _coerce(params, kwargs, default_factory=StoreParams)
         self._record_stage("store")
         return self
@@ -485,6 +485,7 @@ class GraphIngestor(ingestor):
             derived_overrides = batch_tuning_to_node_overrides(
                 self._extract_params,
                 self._embed_params,
+                store_params=self._store_params,
                 cluster_resources=cluster_resources,
                 allow_no_gpu=effective_allow_no_gpu,
                 caption_params=self._caption_params,
