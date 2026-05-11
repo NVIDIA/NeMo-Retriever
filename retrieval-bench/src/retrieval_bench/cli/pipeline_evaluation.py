@@ -434,7 +434,9 @@ def _resolve_selected_datasets(*, all_datasets: bool, datasets: Optional[str]) -
             elif tok in full_by_short:
                 selected.append(full_by_short[tok])
             else:
-                raise typer.BadParameter(f"Unknown dataset '{tok}'. Expected one of: {', '.join(short_by_full.values())}")
+                raise typer.BadParameter(
+                    f"Unknown dataset '{tok}'. Expected one of: {', '.join(short_by_full.values())}"
+                )
 
     return selected, short_by_full
 
