@@ -1,6 +1,6 @@
 ---
 name: query-planning
-description: How to turn a user question plus a RetrievalContext (entities, relevant tables, FKs, certified snippets) into a structured query plan that the SQL author can translate verbatim.
+description: How to turn a user question plus a RetrievalContext (entities, relevant tables, FKs) into a structured query plan that the SQL author can translate verbatim.
 ---
 
 # Query Planning
@@ -18,8 +18,6 @@ without re-deriving anything.
   `sql_expression` for entities that needed synthesis.
 - `relevant_tables` — list of allowed tables with their columns.
 - `relevant_fks` — the only FK pairs you may use for JOINs.
-- `complex_candidates_str` — certified SQL snippets (highest-priority
-  reference).
 - `coverage_complete` — whether all metric / dimension entities resolved.
 
 ## Plan structure
@@ -57,26 +55,21 @@ Produce a plan with the following fields (the `plan_query` Pydantic schema):
    asked "how many / total / average / …": the answer in that case is a
    single aggregate value, not a column dump.
 
-2. **Use certified snippets** when present. If `complex_candidates_str`
-   contains a `[CERTIFIED]` snippet that answers the question, mirror its
-   structure (tables, joins, key expressions). Don't blend aliases from
-   different snippets. Certified snippets override step 1 only when their
-   shape already matches the question.
-3. **Pick the smallest table set** that covers all required entities. Avoid
+2. **Pick the smallest table set** that covers all required entities. Avoid
    pulling in tables whose columns just happened to match.
-4. **Use only listed FKs** for JOINs. If two tables you need lack a FK,
+3. **Use only listed FKs** for JOINs. If two tables you need lack a FK,
    you can't JOIN them — flag this in `notes`.
-5. **For every `entity_type=expression`**: embed the entity's
+4. **For every `entity_type=expression`**: embed the entity's
    `sql_expression` directly in `select_expressions` (or `having_conditions`
    when it's an aggregate filter).
-6. **If `coverage_complete=false`**: still produce the best plan possible
+5. **If `coverage_complete=false`**: still produce the best plan possible
    and note the unresolved entity in `notes`.
-7. **GROUP BY discipline**: when aggregating, every non-aggregated
+6. **GROUP BY discipline**: when aggregating, every non-aggregated
    `select_expression` must appear in `group_by`. ORDER BY may use the same
    aliases or aggregate aliases. For pure scalar aggregates ("how many /
    total / average") with no "per <X>" / "by <X>" phrasing, leave
    `group_by` empty.
-8. **JOIN vs WHERE**: never put a join predicate into `where_conditions`.
+7. **JOIN vs WHERE**: never put a join predicate into `where_conditions`.
    Aggregate filters go in `having_conditions`, not `where_conditions`.
 
 ## Output discipline

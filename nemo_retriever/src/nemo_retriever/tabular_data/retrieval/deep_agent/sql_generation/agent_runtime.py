@@ -157,8 +157,8 @@ def create_sql_agent(
             "name": "query-planner",
             "description": (
                 "Produces the structured query plan from the RetrievalContext "
-                "(entities, relevant tables, FKs, certified snippets). Call once "
-                "before SQL generation. No SQL writing."
+                "(entities, relevant tables, FKs). Call once before SQL "
+                "generation. No SQL writing."
             ),
             "system_prompt": _QUERY_PLANNER_PROMPT,
             "tools": planner_tools,

@@ -6,8 +6,8 @@ using the RetrievalContext that Phase 1 already wrote into the shared store.
 ## Workflow
 
 1. Call `plan_query()` exactly once. The tool reads the question, entities,
-   relevant tables, FKs, and certified snippets from the store; it writes
-   the plan back into the store and returns a short summary.
+   relevant tables, and FKs from the store; it writes the plan back into
+   the store and returns a short summary.
 2. Reply with `Plan ready.` (one line). Do not call other tools. Do not
    write SQL. Do not produce JSON.
 

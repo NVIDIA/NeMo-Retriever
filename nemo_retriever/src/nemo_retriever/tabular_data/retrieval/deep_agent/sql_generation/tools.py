@@ -234,12 +234,11 @@ def _make_plan_query_tool(store: SqlGenerationStore, llm: Any):
         ctx = store.retrieval_ctx
         logger.info(
             "plan_query invoked | question_len=%d | entity_coverage=%d | relevant_tables=%d | relevant_fks=%d | "
-            "complex_candidates=%d | coverage_complete=%s",
+            "coverage_complete=%s",
             len(store.question or ""),
             len(ctx.get("entity_coverage") or []),
             len(ctx.get("relevant_tables") or []),
             len(ctx.get("relevant_fks") or []),
-            len(ctx.get("complex_candidates_str") or []),
             ctx.get("coverage_complete"),
         )
         entity_lines = []
@@ -252,8 +251,6 @@ def _make_plan_query_tool(store: SqlGenerationStore, llm: Any):
             fk_lines.append(
                 f"  - {fk.get('from_table')}.{fk.get('from_column')} → " f"{fk.get('to_table')}.{fk.get('to_column')}"
             )
-
-        snippets = "\n".join(ctx.get("complex_candidates_str") or []) or "  (none)"
 
         # Hard SQL syntax rules + planning discipline live in the
         # ``sql-rules`` and ``query-planning`` skills loaded by the
@@ -271,9 +268,6 @@ Available tables (schema.table: [columns]):
 
 Foreign-key relationships:
 {chr(10).join(fk_lines) or "  (none)"}
-
-Certified SQL snippets / custom analyses (highest-priority reference):
-{snippets}
 
 coverage_complete: {ctx.get('coverage_complete', False)}
 
@@ -522,7 +516,6 @@ def build_sql_tools(
         "entity_coverage": [],
         "relevant_tables": [],
         "relevant_fks": [],
-        "complex_candidates_str": [],
         "relevant_queries": [],
         "coverage_complete": False,
     }
@@ -554,7 +547,6 @@ def build_sql_store(payload: AgentPayload, retrieval_ctx: RetrievalContext | Non
         "entity_coverage": [],
         "relevant_tables": [],
         "relevant_fks": [],
-        "complex_candidates_str": [],
         "relevant_queries": [],
         "coverage_complete": False,
     }
