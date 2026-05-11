@@ -99,6 +99,8 @@ app = typer.Typer(
 )
 
 DEFAULT_VDB_OP = "lancedb"
+AGENTIC_LLM_MODEL_ENV = "NEMO_RETRIEVER_AGENTIC_LLM_MODEL"
+AGENTIC_INVOKE_URL_ENV = "NEMO_RETRIEVER_AGENTIC_INVOKE_URL"
 
 # Help panel labels (keep stable so --help groupings read consistently).
 _PANEL_IO = "I/O and Execution"
@@ -818,6 +820,76 @@ def _run_evaluation(
     return "Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
 
 
+def _run_agentic_recall_evaluation(
+    *,
+    vdb_op: str,
+    vdb_kwargs: dict[str, Any],
+    embed_model_name: str,
+    embed_invoke_url: Optional[str],
+    embed_remote_api_key: Optional[str],
+    embed_modality: str,
+    query_csv: Path,
+    recall_match_mode: str,
+    reranker: Optional[bool],
+    reranker_model_name: str,
+    reranker_invoke_url: Optional[str],
+    reranker_api_key: str,
+    local_reranker_backend: str,
+    local_hf_batch_size: int,
+    local_query_embed_backend: str,
+    agentic_llm_model: str,
+    agentic_invoke_url: Optional[str],
+    agentic_api_key: Optional[str],
+    agentic_react_max_steps: int,
+) -> tuple[str, float, dict[str, float], Optional[int], bool]:
+    """Run recall evaluation using graph-backed agentic retrieval."""
+
+    query_csv_path = Path(query_csv)
+    if not query_csv_path.exists():
+        logger.warning("Query CSV not found at %s; skipping agentic recall evaluation.", query_csv_path)
+        return "Agentic Recall", 0.0, {}, None, False
+
+    from nemo_retriever.agentic.retrieval import AgenticRetrievalConfig, run_agentic_recall_evaluation
+    from nemo_retriever.model import resolve_embed_model
+
+    embed_model = resolve_embed_model(str(embed_model_name))
+    cfg = AgenticRetrievalConfig(
+        vdb_op=str(vdb_op),
+        vdb_kwargs=dict(vdb_kwargs or {}),
+        query_embedder=embed_model,
+        embedding_endpoint=embed_invoke_url,
+        embedding_api_key=embed_remote_api_key or "",
+        embedding_use_grpc=False if embed_invoke_url else None,
+        local_hf_batch_size=int(local_hf_batch_size),
+        local_query_embed_backend=local_query_embed_backend,
+        reranker=reranker_model_name if reranker else None,
+        reranker_endpoint=reranker_invoke_url,
+        reranker_api_key=reranker_api_key,
+        local_reranker_backend=local_reranker_backend,
+        embed_modality=embed_modality,
+        llm_model=agentic_llm_model,
+        invoke_url=agentic_invoke_url,
+        api_key=agentic_api_key,
+        react_max_steps=int(agentic_react_max_steps),
+    )
+    evaluation_start = time.perf_counter()
+    df_query, _result, _qrels, _run, metrics = run_agentic_recall_evaluation(
+        query_csv=query_csv_path,
+        cfg=cfg,
+        match_mode=recall_match_mode,
+        ks=(1, 5, 10),
+    )
+    logger.info("Agentic recall gold ids: %s", {qid: list(docs.keys()) for qid, docs in _qrels.items()})
+    logger.info("Agentic recall retrieved ids: %s", {qid: list(docs.keys())[:10] for qid, docs in _run.items()})
+    logger.info("Agentic recall result columns: %s", list(_result.columns))
+    if {"query_id", "doc_id", "rank"}.issubset(_result.columns):
+        logger.info(
+            "Agentic recall top result rows:\n%s",
+            _result[["query_id", "doc_id", "rank"]].head(20).to_string(index=False),
+        )
+    return "Agentic Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
+
+
 # ---------------------------------------------------------------------------
 # Typer command: `retriever pipeline run`
 # ---------------------------------------------------------------------------
@@ -1219,6 +1291,12 @@ def run(
         help="Post-ingest evaluation: none (default), audio_recall, beir, or qa.",
         rich_help_panel=_PANEL_EVAL,
     ),
+    retrieval_mode: str = typer.Option(
+        "standard",
+        "--retrieval-mode",
+        help="Retrieval strategy for evaluation: 'standard' (default) or 'agentic' for recall evaluation.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     query_csv: Path = typer.Option(
         "./data/bo767_query_gt.csv",
         "--query-csv",
@@ -1265,6 +1343,28 @@ def run(
         "--local-query-max-length",
         min=1,
         help="Fixed token length for local HF query embeddings; longer queries are truncated.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    agentic_llm_model: Optional[str] = typer.Option(
+        None,
+        "--agentic-llm-model",
+        help=f"Chat model for --retrieval-mode=agentic; may also be set with {AGENTIC_LLM_MODEL_ENV}.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    agentic_invoke_url: Optional[str] = typer.Option(
+        None,
+        "--agentic-invoke-url",
+        help=(
+            "OpenAI-compatible chat completions endpoint for --retrieval-mode=agentic; "
+            f"may also be set with {AGENTIC_INVOKE_URL_ENV}."
+        ),
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    agentic_react_max_steps: int = typer.Option(
+        10,
+        "--agentic-react-max-steps",
+        min=1,
+        help="Maximum ReAct loop iterations per query for --retrieval-mode=agentic.",
         rich_help_panel=_PANEL_EVAL,
     ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader", rich_help_panel=_PANEL_EVAL),
@@ -1325,6 +1425,12 @@ def run(
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+        if retrieval_mode not in {"standard", "agentic"}:
+            raise ValueError(f"Unsupported --retrieval-mode: {retrieval_mode!r}")
+        if retrieval_mode == "agentic" and evaluation_mode != "audio_recall":
+            raise typer.BadParameter(
+                "--retrieval-mode=agentic is currently supported only with --evaluation-mode=audio_recall."
+            )
         if evaluation_mode == "audio_recall":
             if input_type != "audio":
                 raise ValueError("--evaluation-mode=audio_recall is only supported with --input-type=audio")
@@ -1334,6 +1440,12 @@ def run(
             raise typer.BadParameter(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
                 "Use the same file format as `retriever eval run --config` (dataset, retrieval, models, ...)."
+            )
+        resolved_agentic_llm_model = (agentic_llm_model or os.environ.get(AGENTIC_LLM_MODEL_ENV) or "").strip()
+        resolved_agentic_invoke_url = (agentic_invoke_url or os.environ.get(AGENTIC_INVOKE_URL_ENV) or "").strip() or None
+        if retrieval_mode == "agentic" and not resolved_agentic_llm_model:
+            raise typer.BadParameter(
+                f"--retrieval-mode=agentic requires --agentic-llm-model or {AGENTIC_LLM_MODEL_ENV}."
             )
 
         if run_mode == "batch":
@@ -1742,6 +1854,7 @@ def run(
                     "evaluation_secs": float(evaluation_total_time),
                     "total_secs": float(total_time),
                     "evaluation_mode": "qa",
+                    "retrieval_mode": retrieval_mode,
                     "evaluation_metrics": {},
                     "evaluation_count": None,
                     "recall_details": bool(recall_details),
@@ -1778,35 +1891,60 @@ def run(
                 raise typer.Exit(code=qa_code)
             return
 
-        evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = _run_evaluation(
-            evaluation_mode=evaluation_mode,
-            vdb_op=resolved_vdb_op,
-            vdb_kwargs=resolved_vdb_kwargs,
-            embed_model_name=embed_model_name,
-            embed_invoke_url=embed_invoke_url,
-            embed_remote_api_key=embed_remote_api_key,
-            embed_modality=embed_modality,
-            query_csv=query_csv,
-            recall_match_mode=recall_match_mode,
-            audio_match_tolerance_secs=audio_match_tolerance_secs,
-            reranker=reranker,
-            reranker_model_name=reranker_model_name,
-            reranker_invoke_url=reranker_invoke_url,
-            reranker_api_key=reranker_bearer,
-            local_reranker_backend=local_reranker_backend,
-            local_hf_batch_size=local_hf_batch_size,
-            local_query_max_length=local_query_max_length,
-            beir_loader=beir_loader,
-            beir_dataset_name=beir_dataset_name,
-            beir_split=beir_split,
-            beir_query_language=beir_query_language,
-            beir_doc_id_field=beir_doc_id_field,
-            beir_k=beir_k,
-            local_query_embed_backend=local_query_embed_backend,
-            run_mode=run_mode,
-            service_url=service_url,
-            service_api_token=service_api_token,
-        )
+        if retrieval_mode == "agentic":
+            evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = (
+                _run_agentic_recall_evaluation(
+                    vdb_op=resolved_vdb_op,
+                    vdb_kwargs=resolved_vdb_kwargs,
+                    embed_model_name=embed_model_name,
+                    embed_invoke_url=embed_invoke_url,
+                    embed_remote_api_key=embed_remote_api_key,
+                    embed_modality=embed_modality,
+                    query_csv=query_csv,
+                    recall_match_mode=recall_match_mode,
+                    reranker=reranker,
+                    reranker_model_name=reranker_model_name,
+                    reranker_invoke_url=reranker_invoke_url,
+                    reranker_api_key=reranker_bearer,
+                    local_reranker_backend=local_reranker_backend,
+                    local_hf_batch_size=local_hf_batch_size,
+                    local_query_embed_backend=local_query_embed_backend,
+                    agentic_llm_model=resolved_agentic_llm_model,
+                    agentic_invoke_url=resolved_agentic_invoke_url,
+                    agentic_api_key=remote_api_key,
+                    agentic_react_max_steps=agentic_react_max_steps,
+                )
+            )
+        else:
+            evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = _run_evaluation(
+                evaluation_mode=evaluation_mode,
+                vdb_op=resolved_vdb_op,
+                vdb_kwargs=resolved_vdb_kwargs,
+                embed_model_name=embed_model_name,
+                embed_invoke_url=embed_invoke_url,
+                embed_remote_api_key=embed_remote_api_key,
+                embed_modality=embed_modality,
+                query_csv=query_csv,
+                recall_match_mode=recall_match_mode,
+                audio_match_tolerance_secs=audio_match_tolerance_secs,
+                reranker=reranker,
+                reranker_model_name=reranker_model_name,
+                reranker_invoke_url=reranker_invoke_url,
+                reranker_api_key=reranker_bearer,
+                local_reranker_backend=local_reranker_backend,
+                local_hf_batch_size=local_hf_batch_size,
+                local_query_max_length=local_query_max_length,
+                beir_loader=beir_loader,
+                beir_dataset_name=beir_dataset_name,
+                beir_split=beir_split,
+                beir_query_language=beir_query_language,
+                beir_doc_id_field=beir_doc_id_field,
+                beir_k=beir_k,
+                local_query_embed_backend=local_query_embed_backend,
+                run_mode=run_mode,
+                service_url=service_url,
+                service_api_token=service_api_token,
+            )
 
         if not ran:
             no_eval_total_time = time.perf_counter() - ingest_start
@@ -1825,6 +1963,7 @@ def run(
                     "evaluation_secs": 0.0,
                     "total_secs": float(no_eval_total_time),
                     "evaluation_mode": evaluation_mode,
+                    "retrieval_mode": retrieval_mode,
                     "evaluation_metrics": {},
                     "recall_details": bool(recall_details),
                     "vdb_op": str(resolved_vdb_op),
@@ -1857,6 +1996,7 @@ def run(
                 "evaluation_secs": float(evaluation_total_time),
                 "total_secs": float(total_time),
                 "evaluation_mode": evaluation_mode,
+                "retrieval_mode": retrieval_mode,
                 "evaluation_metrics": dict(evaluation_metrics),
                 "evaluation_count": evaluation_query_count,
                 "recall_details": bool(recall_details),
