@@ -147,6 +147,7 @@ jobs:
           fi
 
           docker buildx build \
+            -f Dockerfile \
             --platform "${{ inputs.platform }}" \
             --load \
             --target "${{ inputs.target }}" \

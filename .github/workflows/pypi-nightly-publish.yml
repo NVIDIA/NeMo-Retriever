@@ -102,21 +102,6 @@ jobs:
         run: |
           pip install build twine
 
-      - name: Build nv-ingest-api wheel
-        shell: bash
-        run: |
-          cd api && NV_INGEST_RELEASE_TYPE=${{ env.RELEASE_TYPE }} NV_INGEST_VERSION=${{ env.VERSION }} python -m build
-
-      - name: Build nv-ingest-client wheel
-        shell: bash
-        run: |
-          cd client && NV_INGEST_RELEASE_TYPE=${{ env.RELEASE_TYPE }} NV_INGEST_VERSION=${{ env.VERSION }} python -m build
-
-      - name: Build nv-ingest service wheel
-        shell: bash
-        run: |
-          cd src && NV_INGEST_RELEASE_TYPE=${{ env.RELEASE_TYPE }} NV_INGEST_VERSION=${{ env.VERSION }} python -m build
-
       - name: Build nemo-retriever wheel
         run: |
           cd nemo_retriever
@@ -163,7 +148,4 @@ jobs:
             skip_existing_flag="--skip-existing"
           fi
 
-          twine upload ${skip_existing_flag} --repository-url "${repository_url}" -u __token__ -p "${token}" api/dist/* \
-          && twine upload ${skip_existing_flag} --repository-url "${repository_url}" -u __token__ -p "${token}" client/dist/* \
-          && twine upload ${skip_existing_flag} --repository-url "${repository_url}" -u __token__ -p "${token}" src/dist/* \
-          && twine upload ${skip_existing_flag} --repository-url "${repository_url}" -u __token__ -p "${token}" nemo_retriever/dist/*
+          twine upload ${skip_existing_flag} --repository-url "${repository_url}" -u __token__ -p "${token}" nemo_retriever/dist/*

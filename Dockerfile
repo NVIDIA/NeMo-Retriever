@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # syntax=docker/dockerfile:1.3
 #
-# Build from repo root: docker build -f nemo_retriever/Dockerfile -t nemo-retriever .
+# Build from repo root: docker build -f Dockerfile -t nemo-retriever .
 # Run: docker run nemo-retriever  (shell with venv active)
 # Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
 # Run with data:     docker run -v /host/docs:/data nemo-retriever /data
@@ -127,7 +127,7 @@ CMD ["/bin/bash"]
 # ---------------------------------------------------------------------------
 # Service profile: run the FastAPI ingest service.
 #
-# Build:  docker build -f nemo_retriever/Dockerfile --target service \
+# Build:  docker build -f Dockerfile --target service \
 #             -t nemo-retriever-service .
 #
 # Run with the bundled default config:

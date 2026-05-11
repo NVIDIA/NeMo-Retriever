@@ -49,7 +49,7 @@ jobs:
         if: ${{ inputs.workflow-ref != '' && inputs.workflow-ref != inputs.source-ref }}
         run: |
           git fetch --depth=1 origin "${{ inputs.workflow-ref }}"
-          git checkout FETCH_HEAD -- api/pyproject.toml client/pyproject.toml src/pyproject.toml nemo_retriever/pyproject.toml
+          git checkout FETCH_HEAD -- nemo_retriever/pyproject.toml
 
       - name: Determine version
         id: set-version
@@ -77,27 +77,6 @@ jobs:
       - name: Install build dependencies
         run: pip install build twine
 
-      - name: Build nv-ingest-api wheel
-        run: |
-          cd api
-          NV_INGEST_RELEASE_TYPE=${{ inputs.release-type }} \
-          NV_INGEST_VERSION=${{ steps.set-version.outputs.version }} \
-          python -m build
-
-      - name: Build nv-ingest-client wheel
-        run: |
-          cd client
-          NV_INGEST_RELEASE_TYPE=${{ inputs.release-type }} \
-          NV_INGEST_VERSION=${{ steps.set-version.outputs.version }} \
-          python -m build
-
-      - name: Build nv-ingest service wheel
-        run: |
-          cd src
-          NV_INGEST_RELEASE_TYPE=${{ inputs.release-type }} \
-          NV_INGEST_VERSION=${{ steps.set-version.outputs.version }} \
-          python -m build
-
       - name: Build nemo-retriever wheel
         run: |
           cd nemo_retriever
@@ -123,12 +102,6 @@ jobs:
         with:
           name: python-wheels
           path: |
-            api/dist/*.whl
-            api/dist/*.tar.gz
-            client/dist/*.whl
-            client/dist/*.tar.gz
-            src/dist/*.whl
-            src/dist/*.tar.gz
             nemo_retriever/dist/*.whl
             nemo_retriever/dist/*.tar.gz
           retention-days: 7
