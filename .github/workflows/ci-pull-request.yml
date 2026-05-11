@@ -76,7 +76,7 @@ jobs:
           set -euo pipefail
           uv venv .venv-integration
           source .venv-integration/bin/activate
-          uv pip install -e "."
+          uv pip install -e ".[dev]"
           pytest tests/test_ingest_retrieve_multimodal_pdf_integration.py \
             -m integration \
             --override-ini="addopts=" \
