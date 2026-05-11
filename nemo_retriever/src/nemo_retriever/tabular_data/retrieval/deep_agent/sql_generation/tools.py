@@ -191,6 +191,24 @@ def _compact_schema(retrieval_ctx: RetrievalContext) -> str:
     return "\n".join(lines) if lines else "  (no tables)"
 
 
+def _compact_schema_for_sql(retrieval_ctx: RetrievalContext, sql: str) -> str:
+    """Compact schema filtered to tables actually referenced in *sql*.
+
+    Falls back to the full ``_compact_schema`` when no table name matches —
+    typically because the draft SQL is empty or completely off-schema.
+    """
+    sql_lc = (sql or "").lower()
+    tables = retrieval_ctx.get("relevant_tables") or []
+    matched = []
+    for t in tables:
+        name = (t.get("table_name") or t.get("name") or "").lower()
+        if name and name in sql_lc:
+            matched.append(t)
+    if not matched:
+        return _compact_schema(retrieval_ctx)
+    return _compact_schema({**retrieval_ctx, "relevant_tables": matched})  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------------------------
 # Tool 1 — plan_query
 # ---------------------------------------------------------------------------
@@ -214,6 +232,15 @@ def _make_plan_query_tool(store: SqlGenerationStore, llm: Any):
             A summary of the query plan.
         """
         ctx = store.retrieval_ctx
+        logger.info(
+            "plan_query invoked | question_len=%d | entity_coverage=%d | relevant_tables=%d | relevant_fks=%d | "
+            "coverage_complete=%s",
+            len(store.question or ""),
+            len(ctx.get("entity_coverage") or []),
+            len(ctx.get("relevant_tables") or []),
+            len(ctx.get("relevant_fks") or []),
+            ctx.get("coverage_complete"),
+        )
         entity_lines = []
         for ec in ctx.get("entity_coverage") or []:
             expr = f" → sql_expression: {ec['sql_expression']}" if ec.get("sql_expression") else ""
@@ -225,9 +252,11 @@ def _make_plan_query_tool(store: SqlGenerationStore, llm: Any):
                 f"  - {fk.get('from_table')}.{fk.get('from_column')} → " f"{fk.get('to_table')}.{fk.get('to_column')}"
             )
 
-        snippets = "\n".join(ctx.get("complex_candidates_str") or []) or "  (none)"
-
-        prompt = f"""You are planning a SQL query from a pre-analyzed database context.
+        # Hard SQL syntax rules + planning discipline live in the
+        # ``sql-rules`` and ``query-planning`` skills loaded by the
+        # ``query-planner`` subagent.  This prompt only carries the inputs
+        # specific to this question.
+        prompt = f"""You are producing a structured SQL query plan.
 
 User question: "{store.question}"
 
@@ -240,35 +269,11 @@ Available tables (schema.table: [columns]):
 Foreign-key relationships:
 {chr(10).join(fk_lines) or "  (none)"}
 
-Certified SQL snippets / custom analyses (highest-priority reference):
-{snippets}
-
 coverage_complete: {ctx.get('coverage_complete', False)}
 
-Rules:
-- Use ONLY tables listed above.  Never reference unlisted tables.
-- For entities with resolved_as="expression", embed their sql_expression directly.
-- If coverage_complete=false, note which entity is unresolved in the notes field.
-- Prefer certified SQL snippets as structural references when available.
-- JOIN vs WHERE: whenever more than one table is involved, link them with an
-  explicit JOIN ... ON ... clause and put the FK predicate in `join_conditions`.
-  NEVER place a join predicate (e.g. t1.id = t2.id) in `where_conditions`.
-  `where_conditions` is exclusively for row-level filters.
-- No correlated subqueries for joinable conditions. If a related table is used
-  to compute a COUNT / SUM / EXISTS / comparison against the main table's row,
-  add it to `tables_to_use`, declare the FK predicate in `join_conditions`,
-  group by the main-table key in `group_by`, and put the comparison in
-  `having_conditions` (NOT `where_conditions`). Do not emit
-  `(SELECT ... WHERE outer.col = inner.col) <op> ...` patterns.
-
-MANDATORY — Fully-Qualified Identifiers (apply in every expression you write in the plan):
-- Every table reference MUST be SCHEMA.TABLE AS alias  (e.g. school_scheduling.Students AS s).
-- Every column reference MUST be alias.column           (e.g. s.StudentCity).
-- join_conditions must use alias.col = alias.col        (e.g. s.DeptID = d.DeptID).
-- select_expressions, where_conditions, group_by, order_by must all use alias.column.
-- Never write a bare table name, bare column name, or column without an alias prefix.
-
-Produce a structured query plan."""
+Apply the planning rules from your skills. Produce a structured plan
+whose strings are already fully qualified ("SCHEMA.TABLE AS alias",
+"alias.column") so the SQL author can translate it verbatim."""
 
         messages = [SystemMessage(content=prompt)]
         result = invoke_with_structured_output(llm, messages, _QueryPlan)
@@ -319,36 +324,27 @@ def _make_generate_sql_tool(store: SqlGenerationStore, llm: Any):
             return "generate_sql: no plan in store — call plan_query first."
 
         plan = store.plan
-        ctx = store.retrieval_ctx
 
-        prompt = f"""You are writing a SQL query from a structured plan.
+        # Hard SQL syntax rules and constructability heuristics live in the
+        # ``sql-rules`` and ``sql-generation`` skills loaded by the
+        # ``sql-author`` subagent.  The plan already lists fully-qualified
+        # identifiers and the only valid FKs / tables, so this prompt does
+        # not re-ship the schema or FK list.
+        prompt = f"""You are translating a structured plan into a single SELECT statement.
 
 User question: "{store.question}"
 
-Query plan:
+Query plan (use ONLY tables_to_use, join_conditions, and select / where /
+group / having / order / having_conditions present in this plan):
 {json.dumps(plan, indent=2)}
 
-Full table schema (schema.table: [columns]):
-{_compact_schema(ctx)}
-
-Foreign keys:
-{json.dumps(ctx.get('relevant_fks') or [], indent=2)}
-
-MANDATORY RULES — every violation causes a validation failure:
-1. Every table MUST be written as SCHEMA.TABLE AS alias.
-2. Every column MUST be prefixed with its alias: alias.column.
-3. Every alias in SELECT/WHERE/GROUP BY/HAVING/ORDER BY MUST be defined in FROM/JOIN.
-4. Use ONLY tables from the plan's tables_to_use list.
-5. Use ONLY FK conditions listed in the plan for JOIN predicates. Place every
-   join predicate in an explicit JOIN ... ON ... clause — NEVER in WHERE.
-6. Translate the plan's having_conditions verbatim into a HAVING clause. Do
-   NOT rewrite aggregate filters as correlated subqueries in WHERE.
-7. For entities with a sql_expression in the plan, embed that expression directly.
-8. String literals MUST use single quotes.  Never use double quotes for values.
-9. No SQL comments.  No markdown fences.
-10. SELECT-only — no INSERT/UPDATE/DELETE/DROP/ALTER/CREATE.
-
-Write the complete SQL query."""
+Apply your skills:
+- Every identifier in the plan is already fully qualified — preserve that.
+- Place every join predicate from join_conditions in an explicit JOIN ... ON,
+  never in WHERE.
+- Translate having_conditions verbatim into HAVING.
+- Embed any sql_expression fragments verbatim in SELECT / HAVING.
+- SELECT-only. No SQL comments. No markdown fences."""
 
         messages = [SystemMessage(content=prompt)]
         result = invoke_with_structured_output(llm, messages, _GeneratedSQL)
@@ -456,6 +452,10 @@ def _make_fix_sql_tool(store: SqlGenerationStore, llm: Any):
                 "different schema in the available schema list, or remove the column."
             )
 
+        # Hard SQL syntax rules live in the ``sql-rules`` skill loaded by
+        # the ``sql-author`` subagent.  Schema is filtered to the tables
+        # actually referenced in the failing SQL — anything else is just
+        # noise for a targeted fix.
         prompt = f"""You are fixing a SQL query that failed validation.
 
 User question: "{store.question}"
@@ -466,14 +466,12 @@ Failing SQL:
 Validation error:
 {error}{hint}
 
-Available schema (schema.table: [columns]):
-{_compact_schema(store.retrieval_ctx)}
+Schema for tables referenced in the failing SQL (schema.table: [columns]):
+{_compact_schema_for_sql(store.retrieval_ctx, store.draft_sql)}
 
-Rules:
-- Fix ONLY what the error describes.  Do not rewrite unrelated parts.
-- Fully-qualified identifiers (SCHEMA.TABLE AS alias, alias.column) are mandatory.
-- String literals MUST use single quotes.
-- Return a corrected SQL that is different from the failing SQL.
+Apply your skills:
+- Fix ONLY what the error describes; do not rewrite unrelated parts.
+- Return SQL that is different from the failing SQL.
 - No markdown fences, no comments."""
 
         messages = [SystemMessage(content=prompt)]
@@ -518,22 +516,52 @@ def build_sql_tools(
         "entity_coverage": [],
         "relevant_tables": [],
         "relevant_fks": [],
-        "complex_candidates_str": [],
         "relevant_queries": [],
         "coverage_complete": False,
     }
 
     store = SqlGenerationStore(question=question, retrieval_ctx=ctx)
+    planner_tools = build_planner_tools(store, llm)
+    author_tools = build_author_tools(store, llm, dialects)
+    return planner_tools + author_tools, store
 
+
+def build_planner_tools(store: SqlGenerationStore, llm: Any) -> list:
+    """Tools owned by the ``query-planner`` subagent."""
+    return [_make_plan_query_tool(store, llm)]
+
+
+def build_author_tools(store: SqlGenerationStore, llm: Any, dialects: list[str] | None) -> list:
+    """Tools owned by the ``sql-author`` subagent (generate / validate / fix loop)."""
     return [
-        _make_plan_query_tool(store, llm),
         _make_generate_sql_tool(store, llm),
         _make_validate_sql_tool(dialects, store),
         _make_fix_sql_tool(store, llm),
-    ], store
+    ]
+
+
+def build_sql_store(payload: AgentPayload, retrieval_ctx: RetrievalContext | None = None) -> SqlGenerationStore:
+    """Build just the per-request store, without instantiating any tools."""
+    question = payload.get("question") or ""
+    ctx: RetrievalContext = retrieval_ctx or {
+        "entity_coverage": [],
+        "relevant_tables": [],
+        "relevant_fks": [],
+        "relevant_queries": [],
+        "coverage_complete": False,
+    }
+    return SqlGenerationStore(question=question, retrieval_ctx=ctx)
 
 
 # Keep ExecutionStore as a thin alias so any existing imports don't break
 ExecutionStore = SqlGenerationStore
 
-__all__ = ["build_sql_tools", "SqlGenerationStore", "ExecutionStore", "_strip_sql_fences"]
+__all__ = [
+    "build_sql_tools",
+    "build_planner_tools",
+    "build_author_tools",
+    "build_sql_store",
+    "SqlGenerationStore",
+    "ExecutionStore",
+    "_strip_sql_fences",
+]

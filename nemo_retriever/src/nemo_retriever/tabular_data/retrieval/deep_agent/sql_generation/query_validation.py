@@ -7,7 +7,21 @@ from nemo_retriever.tabular_data.neo4j.neo4j_connection import get_neo4j_conn
 # from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 
 logger = logging.getLogger(__name__)
-neo4j_conn = get_neo4j_conn()
+
+
+# Lazy Neo4j connection — the active query_validation() path bypasses
+# validation entirely, so we defer the connection until something actually
+# needs it (e.g. _get_column_breadcrumbs).  This avoids a heavy connect at
+# every import of sql_generation.tools.
+_neo4j_conn = None
+
+
+def _get_neo4j_conn():
+    global _neo4j_conn
+    if _neo4j_conn is None:
+        _neo4j_conn = get_neo4j_conn()
+    return _neo4j_conn
+
 
 base_error_patterns = [
     # Snowflake
@@ -97,7 +111,7 @@ def _get_column_breadcrumbs(column_ids: list) -> dict:
                conn.id as connection,
                conn.type as connection_type
     """
-    rows = get_neo4j_conn().query_read(
+    rows = _get_neo4j_conn().query_read(
         query=query,
         parameters={"column_ids": column_ids},
     )

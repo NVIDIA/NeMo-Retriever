@@ -32,7 +32,7 @@ This skill defines exactly how to construct it.
 | `sql_code` | string | The exact SQL passed to `execute_sql`. No markdown fences inside the value. If no SQL was generated, use `""`. |
 | `answer` | string | Plain text, 1–3 sentences. Directly answers the user question using the DB result. |
 | `result` | any | The `result` value from `execute_sql` response. Use `null` if execution was skipped or returned nothing. |
-| `semantic_elements` | array | Each custom analysis / certified candidate referenced while building the SQL. Use `[]` if none were used. |
+| `semantic_elements` | array | Each custom analysis referenced while building the SQL. Use `[]` if none were used. |
 
 ---
 

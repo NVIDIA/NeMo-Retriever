@@ -1,6 +1,6 @@
 ---
 name: sql-generation
-description: How to generate, validate, and self-correct SQL from retrieved semantic candidates. Covers constructability decisions, FK join rules, alias verification, and the fallback path.
+description: How to generate, validate, and self-correct SQL from the query plan. Covers constructability decisions, FK join rules, and alias verification.
 ---
 
 # SQL Generation Skill
@@ -27,20 +27,36 @@ Before writing SQL, assess whether the retrieved context is sufficient:
 
 ---
 
-## Primary SQL Generation Path (Semantic)
+## SQL Generation Path
 
-Use this path when `complex_candidates_str` or `table_groups` contain useful context.
+### 0. Honour the question's shape
 
-### 1. Select the best candidates
+Before writing any SQL, decide whether the user asked for an aggregate
+or a row list, and translate the plan accordingly. Do NOT fall back to a
+row-listing `SELECT <columns>` when the question asks for a count, sum,
+average, or extreme:
 
-- Prefer `[CERTIFIED]` snippets in `complex_candidates_str` — they encode validated business logic.
-- If multiple snippets could answer the question, pick the most relevant one; do NOT blend aliases
-  from different snippets.
+| Question wording                                              | Shape                                                              |
+|---------------------------------------------------------------|--------------------------------------------------------------------|
+| "how many", "count of", "number of"                           | `SELECT COUNT(...)` — single scalar row                            |
+| "total", "sum of", "what is the total"                        | `SELECT SUM(...)`                                                  |
+| "average", "mean", "avg"                                      | `SELECT AVG(...)`                                                  |
+| "max", "min", "highest", "lowest", "most", "least"            | `SELECT MAX(...)` / `SELECT MIN(...)` (or `ORDER BY ... LIMIT 1`)  |
+| "per <X>", "by <X>", "for each <X>", "breakdown by <X>"       | aggregate + `GROUP BY <X>`                                          |
+| "list", "show", "which", "what are", no aggregate keyword     | `SELECT <columns>` (row-listing)                                   |
+
+If the plan's `select_expressions` doesn't match the wording (e.g. the
+question says "how many DORs were created in Q4 2025?" but the plan
+selects raw columns), rewrite the SELECT to be the correct aggregate.
+Aggregate questions return a single scalar row; never emit a list of
+rows for them.
+
+### 1. Reference idiomatic patterns
+
 - Use `relevant_queries` for idiomatic patterns (date functions, aggregation style).
 
 ### 2. Build the FROM / JOIN clause
 
-- Use `table_groups` to pick the connected component whose tables cover the question.
 - Use `relevant_fks` as the authoritative JOIN condition source.
 - **Never invent a JOIN** not present in `relevant_fks`.
 - Prefer INNER JOIN unless the question requires preserving unmatched rows (LEFT / RIGHT JOIN).
@@ -77,22 +93,11 @@ After generating SQL, call `validate_sql(sql)`.
 | `valid` | `error` field | Action |
 |---------|--------------|--------|
 | `true` | — | Proceed to `execute_sql` |
-| `false` | syntax / schema error | Fix and retry (max 4 attempts on semantic path) |
+| `false` | syntax / schema error | Fix and retry (max 4 attempts) |
 | `false` | "not authorized" / SELECT-only violation | Do not retry; report unconstructable |
 
-**At 4 failed semantic attempts**, switch to the fallback path (see below).
-
----
-
-## Fallback Path (Table-Only)
-
-Use when the semantic path exhausts retries or `complex_candidates_str` is empty.
-
-1. Use the full `relevant_tables` list as the schema source.
-2. Build SQL using only the tables and columns listed there.
-3. Apply `relevant_fks` for JOIN conditions.
-4. Validate and execute as normal.
-5. If the fallback also fails after 4 attempts, set `sql_code: ""` and explain in `answer`.
+**At 4 failed attempts**, accept the latest draft; if it is still invalid,
+set `sql_code: ""` and explain in `answer`.
 
 ---
 
@@ -138,8 +143,6 @@ LIMIT 5
 
 ## What NOT to Do
 
-- Do NOT write SQL before calling `retrieve_semantic_candidates`.
 - Do NOT use table or column names not present in the retrieval output.
-- Do NOT copy aliases verbatim from `sql_snippet` examples.
-- Do NOT JOIN tables from different `table_groups` without a FK linking them.
+- Do NOT JOIN two tables without a FK from `relevant_fks` linking them.
 - Do NOT emit explanatory text mixed with the SQL — SQL goes only in `sql_code`.

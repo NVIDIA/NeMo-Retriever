@@ -34,7 +34,12 @@ from deepagents.backends import FilesystemBackend
 
 from nemo_retriever.tabular_data.retrieval.deep_agent.context import RetrievalContext
 from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload
-from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.tools import SqlGenerationStore, build_sql_tools
+from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.tools import (
+    SqlGenerationStore,
+    build_author_tools,
+    build_planner_tools,
+    build_sql_store,
+)
 from nemo_retriever.tabular_data.retrieval.utils import get_llm_client
 
 logger = logging.getLogger(__name__)
@@ -43,6 +48,68 @@ _BASE_DIR = Path(__file__).resolve().parent
 
 # Required keys in the final JSON answer
 _REQUIRED_ANSWER_KEYS = frozenset({"sql_code", "answer", "result"})
+
+
+def _resolve_skill_dirs(names: list[str]) -> list[str]:
+    """Return skill directory paths under ``_BASE_DIR/skills`` that exist on disk."""
+    dirs: list[str] = []
+    for name in names:
+        path = _BASE_DIR / "skills" / name
+        if path.is_dir():
+            dirs.append(str(path))
+        else:
+            logger.debug("Skill directory not found, skipping: %s", path)
+    return dirs
+
+
+def _read_text_if_exists(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Could not read %s: %s", path, exc)
+        return ""
+
+
+# Cached at module import — these never change at runtime, so re-reading them
+# per question wastes I/O and slows agent creation.
+_AGENTS_MD_PATH = _BASE_DIR / "AGENTS.md"
+_AGENTS_MD_PATH_STR = str(_AGENTS_MD_PATH)
+_AGENTS_MD_EXISTS = _AGENTS_MD_PATH.exists()
+
+
+def _resolve_skill_dir(name: str) -> str | None:
+    """Return a single skill dir path or None when missing."""
+    path = _BASE_DIR / "skills" / name
+    return str(path) if path.is_dir() else None
+
+
+# Resolve every skill dir we may want exactly once.  Subagents pick the
+# subset they need from this map — orchestrator gets nothing (it delegates).
+_SKILL_PATHS: dict[str, str] = {
+    name: path
+    for name, path in (
+        (n, _resolve_skill_dir(n)) for n in ("sql-generation", "answer-formatting", "sql-rules", "query-planning")
+    )
+    if path is not None
+}
+
+
+def _skills_for(*names: str) -> list[str] | None:
+    """Pick the resolved skill paths for the requested names (preserves order)."""
+    paths = [_SKILL_PATHS[n] for n in names if n in _SKILL_PATHS]
+    return paths or None
+
+
+# Subagent system prompts — read once at import.
+_QUERY_PLANNER_PROMPT = _read_text_if_exists(_BASE_DIR / "subagents" / "query_planner.md") or (
+    "You are the query-planner subagent. Call plan_query() exactly once and reply 'Plan ready.'."
+)
+_SQL_AUTHOR_PROMPT = _read_text_if_exists(_BASE_DIR / "subagents" / "sql_author.md") or (
+    "You are the sql-author subagent. Loop generate_sql -> validate_sql -> fix_sql up to 4 times "
+    "and reply with 'SQL: <validated SQL>'."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -78,18 +145,44 @@ def create_sql_agent(
     if llm is None:
         llm = get_llm_client()
 
-    tools, store = build_sql_tools(payload, llm, retrieval_ctx=retrieval_ctx)
+    store = build_sql_store(payload, retrieval_ctx=retrieval_ctx)
+    dialect = payload.get("dialect")
+    dialects = [dialect] if dialect else []
 
-    skill_dirs = _load_skill_dirs()
-    agents_md = str(_BASE_DIR / "AGENTS.md")
-    memory = [agents_md] if Path(agents_md).exists() else []
+    planner_tools = build_planner_tools(store, llm)
+    author_tools = build_author_tools(store, llm, dialects)
 
+    subagents = [
+        {
+            "name": "query-planner",
+            "description": (
+                "Produces the structured query plan from the RetrievalContext "
+                "(entities, relevant tables, FKs). Call once before SQL "
+                "generation. No SQL writing."
+            ),
+            "system_prompt": _QUERY_PLANNER_PROMPT,
+            "tools": planner_tools,
+            "skills": _skills_for("query-planning", "sql-rules"),
+        },
+        {
+            "name": "sql-author",
+            "description": (
+                "Generates, validates, and self-corrects the SQL using the plan "
+                "in the store. Owns the generate -> validate -> fix loop up to "
+                "4 iterations and returns the final validated SQL."
+            ),
+            "system_prompt": _SQL_AUTHOR_PROMPT,
+            "tools": author_tools,
+            "skills": _skills_for("sql-generation", "sql-rules", "answer-formatting"),
+        },
+    ]
+
+    memory = [_AGENTS_MD_PATH_STR] if _AGENTS_MD_EXISTS else []
     system_prompt = _build_system_prompt(payload, retrieval_ctx)
 
     logger.info(
-        "Creating SQL Deep Agent (Phase 2) | tools=%s | skills=%s | memory=%s",
-        [getattr(t, "name", "?") for t in tools],
-        skill_dirs,
+        "Creating SQL Deep Agent (Phase 2) | subagents=%s | memory=%s",
+        [s["name"] for s in subagents],
         memory,
     )
 
@@ -97,33 +190,21 @@ def create_sql_agent(
         model=llm,
         system_prompt=system_prompt,
         memory=memory,
-        skills=skill_dirs or None,
-        tools=tools,
-        subagents=[],
+        skills=None,
+        tools=[],
+        subagents=subagents,
         backend=FilesystemBackend(root_dir=str(_BASE_DIR)),
     )
     return agent, store
 
 
-def _load_skill_dirs() -> list[str]:
-    """Return skill directory paths that exist on disk."""
-    skill_names = ["sql-generation", "answer-formatting"]
-    dirs = []
-    for name in skill_names:
-        path = _BASE_DIR / "skills" / name
-        if path.is_dir():
-            dirs.append(str(path))
-        else:
-            logger.debug("Skill directory not found, skipping: %s", path)
-    return dirs
-
-
 def _build_system_prompt(payload: AgentPayload, retrieval_ctx: RetrievalContext) -> str:
-    """Build the system prompt for the Phase 2 SQL Deep Agent.
+    """Build the system prompt for the Phase 2 orchestrator.
 
-    The full RetrievalContext is stored in the ``SqlGenerationStore`` and
-    accessed by the tools directly — the system prompt carries only a brief
-    orientation so the agent knows its role and the allowed dialect.
+    The orchestrator delegates to subagents via the framework's ``task``
+    tool — it does not call SQL tools directly.  The full
+    ``RetrievalContext`` lives in the shared ``SqlGenerationStore`` and is
+    accessed by subagent tools, not the orchestrator.
     """
     now = datetime.now()
     dialect = payload.get("dialect")
@@ -137,15 +218,19 @@ def _build_system_prompt(payload: AgentPayload, retrieval_ctx: RetrievalContext)
 
     lines.append("")
     lines.append(
-        "You are the SQL Deep Agent (Phase 2).  Phase 1 has already retrieved the schema "
-        "context — it is available to your tools via the store.  "
-        "Call tools in order: plan_query → generate_sql → validate_sql → fix_sql (if needed)."
+        "You are the Phase 2 SQL orchestrator.  You do NOT call SQL tools yourself; "
+        "you delegate via the framework's `task` tool to two subagents:\n"
+        "  1. `query-planner` — produces the structured plan.\n"
+        "  2. `sql-author` — generates, validates, and self-corrects the SQL.\n"
+        "Phase 1's RetrievalContext is already in the shared store; the subagents' "
+        "tools read it directly, so you do NOT need to repeat schema, entities, or FKs "
+        "in the task descriptions."
     )
 
     entities = retrieval_ctx.get("entity_coverage") or []
     if entities:
         lines.append("")
-        lines.append("Entities resolved by Phase 1:")
+        lines.append("Entities resolved by Phase 1 (informational only):")
         for ec in entities:
             expr = f"  sql_expression={ec['sql_expression']}" if ec.get("sql_expression") else ""
             lines.append(f"  - {ec['entity']} ({ec['entity_type']}, resolved_as={ec['resolved_as']}){expr}")
@@ -153,7 +238,7 @@ def _build_system_prompt(payload: AgentPayload, retrieval_ctx: RetrievalContext)
     if not retrieval_ctx.get("coverage_complete"):
         lines.append(
             "\nNote: coverage_complete=false — one or more entities were unresolved by Phase 1. "
-            "Construct the best SQL possible and note limitations in your final answer."
+            "Tell `sql-author` to construct the best SQL possible and note limitations in the final answer."
         )
 
     return "\n".join(lines)
@@ -186,15 +271,20 @@ def format_sql_user_prompt(
     parts.append(f"User question: {question.strip()}")
     parts.append("")
     parts.append(
-        "Follow these steps exactly:\n\n"
-        "Step 1 — call plan_query() to produce a structured query plan.\n\n"
-        "Step 2 — call generate_sql() to write SQL from the plan.\n\n"
-        "Step 3 — call validate_sql() to validate the SQL.\n"
-        "  If result.valid is false, proceed to Step 4.\n"
-        "  If result.valid is true, proceed to Step 5.\n\n"
-        "Step 4 — call fix_sql(error=<exact error from Step 3>), then call validate_sql() again.\n"
-        "  Repeat up to 4 times total.  After 4 failures proceed to Step 5 with best SQL.\n\n"
-        "Step 5 — emit your final answer as a single JSON object (nothing before { or after }):\n"
+        "Delegate via the `task` tool — never call SQL tools directly. "
+        "The shared store already holds Phase 1's RetrievalContext; the "
+        "subagents' tools read it themselves, so a one-line task description "
+        "is enough.\n\n"
+        'Step 1 — call `task` with `subagent_type="query-planner"` and a '
+        "description like: 'Produce the structured plan for the user question "
+        "using the RetrievalContext in the store.' The subagent will reply "
+        "`Plan ready.`.\n\n"
+        'Step 2 — call `task` with `subagent_type="sql-author"` and a '
+        "description like: 'Generate, validate, and (if needed) fix the SQL "
+        "for the plan now in the store. Return the validated SQL.' The "
+        "subagent will reply with `SQL: <validated SQL>`.\n\n"
+        "Step 3 — emit your final answer as a single JSON object (nothing "
+        "before { or after }):\n"
         '  {"sql_code": "<validated SQL>", "answer": "<1-3 sentence explanation>", '
         '"result": null, "semantic_elements": []}'
     )

@@ -139,7 +139,7 @@ def run_retrieve() -> None:
     retriever = _build_retriever()
 
     payload: AgentPayload = {
-        "question": "How many DORs were created in Q4 2025?",
+        "question": "What are three most frequently occurring processes across all requests?",
         "retriever": retriever,
         "connector": connector,
         "path_state": {},
@@ -157,7 +157,7 @@ def run_retrieve_deep() -> None:
     retriever = _build_retriever()
 
     payload: DeepAgentPayload = {
-        "question": "How many DORs were created in Q4 2025?",
+        "question": "What are three most frequently occurring processes across all requests?",
         "retriever": retriever,
         "connector": connector,
         "path_state": {},
