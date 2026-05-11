@@ -70,14 +70,11 @@ class CandidateRetrievalAgent(BaseAgent):
         question = get_question_for_processing(state)
 
         try:
-            # Semantic search: custom analyses + columns (see extract_candidates).
             entities = path_state.get("entities", [])
-            query_no_values = path_state.get("query_no_values", "")
 
             extracted = extract_candidates(
                 state["retriever"],
                 entities,
-                query_no_values,
                 question,
             )
 

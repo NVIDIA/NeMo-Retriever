@@ -27,6 +27,13 @@ from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structu
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import TableRelevanceModel
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import TABLE_RELEVANCE_FILTER_PROMPT
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import rules_to_text
+
+
+def _qualified_name(t: dict) -> str:
+    """Build schema-qualified table name (e.g. 'public.users') for dedup/filtering."""
+    schema = t.get("schema_name", "")
+    name = t.get("name", "")
+    return f"{schema}.{name}" if schema else name
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     AgentState,
     get_question_for_processing,
@@ -183,7 +190,7 @@ class CandidatePreparationAgent(BaseAgent):
             return tables, ""
 
         tables_summary = "\n".join(
-            f"- {t['name']}: {t.get('description', '(no description)')}"
+            f"- {_qualified_name(t)}: {t.get('description', '(no description)')}"
             for t in tables
         )
 
@@ -230,8 +237,8 @@ class CandidatePreparationAgent(BaseAgent):
         reasoning = (result.reasoning or "").strip()
         names_to_remove = {name.lower() for name in result.tables_to_remove}
 
-        filtered = [t for t in tables if t["name"].lower() not in names_to_remove]
-        removed = [t["name"] for t in tables if t["name"].lower() in names_to_remove]
+        filtered = [t for t in tables if _qualified_name(t).lower() not in names_to_remove]
+        removed = [_qualified_name(t) for t in tables if _qualified_name(t).lower() in names_to_remove]
 
         self.logger.info("Relevance filter reasoning: %s", reasoning if reasoning else "(empty)")
         if removed:

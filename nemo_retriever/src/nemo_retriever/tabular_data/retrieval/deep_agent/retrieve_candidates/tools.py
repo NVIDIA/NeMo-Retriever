@@ -281,7 +281,6 @@ def _make_retrieve_for_entity_tool(store: RetrievalStore):
             custom_raw, column_raw = extract_candidates(
                 retriever=store.retriever,
                 entities=[entity_term],
-                query_no_values=entity_term,
                 query_with_values=entity_term,
             )
             custom_candidates = clean_results(list(custom_raw or []))

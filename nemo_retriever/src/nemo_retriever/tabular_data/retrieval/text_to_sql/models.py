@@ -63,21 +63,30 @@ class SQLGenerationModel(StrictModel):
 
     This model is used by SQL generation agents to return structured SQL data.
     Formatting is handled separately by SQLResponseFormattingAgent.
+
+    Field order matters: the LLM fills fields sequentially, so ``thought``
+    comes first to drain reasoning before it writes the clean output fields.
     """
 
+    thought: str = Field(
+        ...,
+        description=(
+            "Internal reasoning (1-2 sentences): briefly explain your approach "
+            "and key decisions. This is NOT shown to the user."
+        ),
+    )
     sql_code: NonEmptyStr = Field(
         ...,
         description=(
-            "The SQL code that answers the user's question based on chosen snippet/s and appropriate joins. "
-            "This field is REQUIRED and must not be empty. Always construct SQL even if file contents are "
-            "present (use file contents as constants/filters within the SQL)."
+            "The complete, executable SQL query. No comments, no delimiters, no explanation."
         ),
     )
     response: NonEmptyStr = Field(
         ...,
         description=(
-            "A short explanation of the answer and SQL parts: what the query does, which tables/columns "
-            "are used, and how the SQL components work together to answer the question."
+            "User-facing summary (1-2 sentences): what the query calculates and "
+            "which tables it uses. Do NOT include reasoning, self-corrections, "
+            "formatting notes, or internal thoughts."
         ),
     )
 

@@ -33,10 +33,6 @@ class EntitiesExtractionModel(BaseModel):
         description="List of primary entities or concepts mentioned in the question. "
         "Ignore time frames, quantities, or constants. Must contain at least one entity.",
     )
-    query_no_values: str = Field(
-        ...,
-        description="The user's query with all specific values stripped out (dates, numbers, names, etc.).",
-    )
     item_search_queries: list[str] = Field(
         ...,
         min_length=1,
@@ -92,7 +88,6 @@ class EntitiesExtractionAgent(BaseAgent):
 
             if extraction_result is None:
                 self.logger.warning("Entity extraction returned None, using fallback")
-                path_state["query_no_values"] = question
                 path_state["entities"] = []
                 return {"path_state": path_state}
 
@@ -105,7 +100,6 @@ class EntitiesExtractionAgent(BaseAgent):
                 self.logger.warning("LLM returned empty entities and search queries — using question as fallback entity")
                 combined = [question]
 
-            path_state["query_no_values"] = extraction_result.query_no_values or question
             path_state["entities"] = combined
 
             self.logger.info(
@@ -117,7 +111,6 @@ class EntitiesExtractionAgent(BaseAgent):
             )
         except Exception as e:
             self.logger.warning(f"Entity extraction failed: {e}, using fallback values")
-            path_state["query_no_values"] = question
             path_state["entities"] = []
             return {"path_state": path_state}
 

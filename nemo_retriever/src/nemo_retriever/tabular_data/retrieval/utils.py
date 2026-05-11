@@ -96,8 +96,8 @@ def expand_info(ids_and_labels):
                             WITH n, collect(distinct {{sql_code: sql.sql_full_query}}) as sql
                             RETURN apoc.map.setKey(properties(n), "sql", sql) as item',
                         n:{Labels.COLUMN},
-                            'MATCH(n)<-[:{Edges.CONTAINS}]-(parent)
-                            WITH n, parent,
+                            'MATCH(n)<-[:{Edges.CONTAINS}]-(parent)<-[:{Edges.CONTAINS}]-(schema:{Labels.SCHEMA})
+                            WITH n, parent, schema,
                                  [(parent)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
                                   {{name: c.name,
                                     data_type: toString(coalesce(c.data_type, "")),
@@ -106,12 +106,13 @@ def expand_info(ids_and_labels):
                                     sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
                                                         THEN c.sample_values ELSE null END
                                   }}] AS column_list
-                            WITH n, parent, column_list,
+                            WITH n, parent, schema, column_list,
                                  apoc.map.merge(
                                      properties(parent),
                                      {{label: coalesce(parent.label,
                                       toLower(head(labels(parent))), "{Labels.TABLE}"),
-                                      columns: column_list}}
+                                      columns: column_list,
+                                      schema_name: schema.name}}
                                  ) AS t0
                             RETURN apoc.map.merge(
                                      apoc.map.setPairs(properties(n),[
@@ -304,13 +305,12 @@ def _dedupe_best_score_sort_cap(combined: list[dict]) -> list[dict]:
 def extract_candidates(
     retriever: "Retriever",
     entities: list[str],
-    query_no_values: str,
     query_with_values: str = "",
 ) -> tuple[list[dict], list[dict]]:
     """
-    One semantic search per pull string (``query_no_values``, ``query_with_values``
-    if distinct, and each entity name). Each search fetches both custom-analysis
-    and column candidates in a single LanceDB call, then splits by label in Python.
+    One semantic search per pull string (``query_with_values`` and each entity name).
+    Each search fetches both custom-analysis and column candidates in a single
+    LanceDB call, then splits by label in Python.
 
     Merge streams, dedupe by (label, id) keeping the lowest vector distance
     (``score``), sort ascending by distance, cap at ``MAX_CALCULATION_CANDIDATES``
@@ -321,11 +321,8 @@ def extract_candidates(
     """
     target_labels = [Labels.CUSTOM_ANALYSIS, Labels.COLUMN]
 
-    qnv = (query_no_values or "").strip()
     pulls: list[str] = []
-    if qnv:
-        pulls.append(qnv)
-    if (qwv := (query_with_values or "").strip()) and qwv != qnv:
+    if qwv := (query_with_values or "").strip():
         pulls.append(qwv)
     for ent in entities or []:
         if t := (ent or "").strip():

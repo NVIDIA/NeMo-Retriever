@@ -57,13 +57,16 @@ Key rules:
 - File contents (if present) are inputs only — use them as literals, filters,
   or CASE logic within the SQL.
 
-Output:
+Output (fill fields in this exact order):
+- thought: 1-2 sentence internal reasoning — your approach and key decisions.
 - sql_code: the complete SQL, no comments or delimiters.
-- response: brief explanation of the query approach.
-- thought: one-sentence reasoning summary.
-- All fields are required. Use "" or [] for non-applicable fields.
+- response: 1-2 sentence user-facing summary of what the query does. No reasoning or meta-commentary.
+- All fields are required.
 
 Example:
+
+thought:
+Join sales and customers, filter last full quarter, aggregate by country.
 
 sql_code:
 SELECT c.country_name, SUM(s.sales_amount) AS total_sales
@@ -77,9 +80,6 @@ ORDER BY total_sales DESC;
 
 response:
 Calculates total sales by country for the most recently completed quarter.
-
-thought:
-Join sales and customers, filter last full quarter, aggregate by country.
 """
 
 
@@ -148,35 +148,21 @@ def create_entity_extraction_prompt(question: str, custom_prompts: str = "") -> 
     domain_section = ""
     if custom_prompts:
         domain_section = (
-            "\nDomain-specific rules (use these to identify relevant database "
-            "concepts and item names for item_search_queries):\n"
+            "\nDomain-specific rules:\n"
             f"{custom_prompts}\n"
         )
 
-    return f"""
-You are extracting entities and concepts from a user question for SQL calculation.
-
-User Question:
-{question}
+    return f"""Extract database entities from this question.
 {domain_section}
-Extract:
-1) required_entity_name: list of entities/concepts mentioned in the question.
-- extract ALL entities that most likely refer to a specific entity in the database.
-   - Ignore time frames, quantities, or constants.
-   - Examples: ["Customer", "Order"], ["Product", "Price"]
+Question: {question}
 
-2) query_no_values: same question with specific values stripped.
-- Remove dates, numbers, names, specific identifiers
-   - Keep the structure and intent
-   - Example: "What is the average order value in 2023?" → "What is the average order value?"
+Return:
+1) required_entity_name: all database concepts from the question
+   (table names, column names, relationships). Ignore values, dates, numbers.
 
-3) item_search_queries: 2-4 short search phrases to find relevant database items (tables, columns, relationships, etc.).
-- Rephrase the question from different angles using database concepts.
-- If domain rules mention specific item/table names or concepts relevant to the question,
-  include those names as search phrases.
-- Each phrase should target a different aspect of the question.
-- Example: For "Who is blocking progress?" with domain rules mentioning collaborators →
-  ["request task collaborators blocking", "request tasks status in_progress", "users assigned to tasks"]
+2) item_search_queries: table and column names from the domain rules above
+   that are relevant to answering this question. Use exact names as they
+   appear in the rules.
 """
 
 
