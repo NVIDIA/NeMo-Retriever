@@ -61,6 +61,16 @@ def start(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
     db_path: Optional[str] = typer.Option(None, "--db-path", help="SQLite database path (overrides YAML)."),
+    results_dir: Optional[str] = typer.Option(
+        None,
+        "--results-dir",
+        help="Directory for per-job result JSON files (overrides YAML).",
+    ),
+    lancedb_uri: Optional[str] = typer.Option(
+        None,
+        "--lancedb-uri",
+        help="LanceDB URI for the embeddings table (overrides YAML).",
+    ),
     api_token: Optional[str] = typer.Option(
         None,
         "--api-token",
@@ -108,6 +118,10 @@ def start(
         overrides["resources.gpu_devices"] = [d.strip() for d in gpu_devices.split(",") if d.strip()]
     if db_path is not None:
         overrides["database.path"] = db_path
+    if results_dir is not None:
+        overrides["processing.results_dir"] = results_dir
+    if lancedb_uri is not None:
+        overrides["vector_store.lancedb_uri"] = lancedb_uri
     if api_token is not None:
         overrides["auth.api_token"] = api_token
     if drain_timeout_s is not None:

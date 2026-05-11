@@ -55,6 +55,7 @@ class ProcessingConfig(BaseModel):
     num_workers: int = 16
     batch_size: int = 32
     batch_timeout_s: float = 2.0
+    # Relative paths resolve against the current working directory.
     results_dir: str = "retriever_results"
 
 
@@ -128,7 +129,8 @@ class VectorStoreConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    lancedb_uri: str = "/var/lib/nemo-retriever/lancedb"
+    # Relative paths resolve against the current working directory.
+    lancedb_uri: str = "lancedb"
     lancedb_table: str = "nv-ingest"
     top_k: int = 10
     vector_column_name: str = "vector"

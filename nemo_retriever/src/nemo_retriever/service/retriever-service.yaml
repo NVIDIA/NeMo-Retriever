@@ -37,7 +37,11 @@ processing:
   # Directory where per-job page results are written as JSON files.
   # Each job gets a subdirectory: {results_dir}/{job_id}/.  The results
   # endpoint reads from here instead of SQLite for faster retrieval.
-  results_dir: "/home/local/jdyer/datasets/retriever_results"
+  #
+  # Relative paths resolve against the current working directory so
+  # `retriever service start` works out of the box on any host.  The
+  # Helm chart overrides this to a path on the persistent volume.
+  results_dir: "retriever_results"
 
 # Remote NIM microservice endpoints.  When set, the pipeline calls these
 # HTTP endpoints instead of loading GPU models locally.  All four must
@@ -105,10 +109,11 @@ spool:
 # to this table after every batch; the /v1/query endpoint reads from it.
 # Both sides MUST point at the same URI + table for query to work.
 #
-# Override lancedb_uri for local development — the container default
-# (/var/lib/nemo-retriever/lancedb) won't exist on the host.
+# Relative paths resolve against the current working directory.
+# Override via ./retriever-service.yaml or `--lancedb-uri` for any
+# deployment that should keep its embeddings on a different volume.
 vector_store:
-  lancedb_uri: "/home/local/jdyer/Development/NeMo-Retriever/lancedb"
+  lancedb_uri: "lancedb"
   lancedb_table: "nv-ingest"
   top_k: 10
   vector_column_name: "vector"
