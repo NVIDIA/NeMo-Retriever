@@ -150,7 +150,9 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
                     input_ids = encode(str(text), add_special_tokens=True, truncation=False)
                 else:
                     encoded = tokenizer(str(text), add_special_tokens=True, truncation=False)
-                    input_ids = encoded.get("input_ids") if isinstance(encoded, dict) else getattr(encoded, "input_ids", None)
+                    input_ids = (
+                        encoded.get("input_ids") if isinstance(encoded, dict) else getattr(encoded, "input_ids", None)
+                    )
             except Exception:  # noqa: BLE001 - best-effort warning only
                 return
 
