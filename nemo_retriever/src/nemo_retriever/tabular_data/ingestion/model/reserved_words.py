@@ -28,6 +28,7 @@ class Edges:
     UNION = "UNION"
     SQL = "SQL"
     ANALYSIS_OF = "ANALYSIS_OF"
+    HAS_SQL = "HAS_SQL"
 
 
 class Props:

@@ -23,8 +23,8 @@ class AgentPayload(TypedDict):
     path_state: NotRequired[dict]
     dialect: NotRequired[str]
     connector: NotRequired[Any]
-    acronyms: NotRequired[str]
-    custom_prompts: NotRequired[list[dict[str, str]] | str]
+    acronyms: NotRequired[list[dict[str, str]]]
+    custom_prompts: NotRequired[str]
 
 
 class AgentState(TypedDict):
@@ -38,7 +38,7 @@ class AgentState(TypedDict):
     connector: Any
     path_state: dict
     retriever: Retriever
-    custom_prompts_rules: list[dict[str, str]]
+    domain_rules: list[dict[str, str]]
 
 
 def get_question_for_processing(state: AgentState) -> str:

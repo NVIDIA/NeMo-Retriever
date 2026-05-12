@@ -43,6 +43,39 @@ def get_llm_client() -> ChatNVIDIA:
     )
 
 
+def fetch_custom_analyses() -> list[dict[str, str]]:
+    """Fetch all CustomAnalysis nodes from Neo4j and return as domain rules.
+
+    Each analysis becomes ``{"name": <name>, "description": <sql>}``.
+    """
+    query = (
+        f"MATCH (n:{Labels.CUSTOM_ANALYSIS})-[:{Edges.HAS_SQL}]->(sql:{Labels.SQL}) "
+        "RETURN n.name AS name, n.description AS description, sql.sql_full_query AS sql_code"
+    )
+    try:
+        results = get_neo4j_conn().query_read(query=query, parameters={})
+    except Exception as e:
+        logger.warning("Failed to fetch custom analyses from Neo4j: %s", e)
+        return []
+
+    rules: list[dict[str, str]] = []
+    for row in results or []:
+        name = row.get("name", "")
+        description = row.get("description", "")
+        sql_code = row.get("sql_code", "")
+        if not name:
+            continue
+        parts = []
+        if description:
+            parts.append(description)
+        if sql_code:
+            parts.append(f"SQL: {sql_code}")
+        if parts:
+            rules.append({"name": name, "description": "\n".join(parts)})
+    logger.info("Fetched %d custom analyses from Neo4j as domain rules", len(rules))
+    return rules
+
+
 def clean_results(raw_candidates: list[dict]) -> list[dict]:
     """
     Normalize raw semantic hits: require id, dedupe by (label, id), preserve order.

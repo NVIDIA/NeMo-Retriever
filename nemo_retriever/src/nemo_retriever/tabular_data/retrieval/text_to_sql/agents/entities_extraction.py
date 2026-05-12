@@ -90,22 +90,22 @@ class EntitiesExtractionAgent(BaseAgent):
         llm = state["llm"]
         path_state = state.get("path_state", {})
         question = get_question_for_processing(state)
-        custom_prompts_rules = state.get("custom_prompts_rules", [])
-        custom_prompts_text = rules_to_text(custom_prompts_rules)
+        domain_rules = state.get("domain_rules", [])
+        domain_rules_text = rules_to_text(domain_rules)
 
         result: Dict[str, Any] = {"path_state": path_state}
 
         # --- Step 1: Filter domain rules based on question alone ---
         kept_rules_text = ""
-        if custom_prompts_rules:
+        if domain_rules:
             filtered = self._filter_custom_prompts(
-                llm, question, custom_prompts_rules, custom_prompts_text,
+                llm, question, domain_rules, domain_rules_text,
             )
             if filtered:
-                result["custom_prompts_rules"] = filtered
+                result["domain_rules"] = filtered
                 kept_rules_text = rules_to_text(filtered)
             else:
-                result["custom_prompts_rules"] = []
+                result["domain_rules"] = []
 
         # --- Step 2: Extract entities (schema depends on whether rules exist) ---
         model_cls = EntitiesWithRulesModel if kept_rules_text else EntitiesExtractionModel
@@ -196,7 +196,7 @@ class EntitiesExtractionAgent(BaseAgent):
             return None
 
         self.logger.info(
-            "Filtered custom_prompts_rules: kept %d/%d rules: %s",
+            "Filtered domain_rules: kept %d/%d rules: %s",
             len(filtered),
             len(rules),
             [r["name"] for r in filtered],

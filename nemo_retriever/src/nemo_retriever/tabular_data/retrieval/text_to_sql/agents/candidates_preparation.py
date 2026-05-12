@@ -194,18 +194,18 @@ class CandidatePreparationAgent(BaseAgent):
             for t in tables
         )
 
-        custom_prompts_text = rules_to_text(state.get("custom_prompts_rules", []))
-        domain_rules = ""
-        if custom_prompts_text:
-            domain_rules = (
+        domain_rules_text = rules_to_text(state.get("domain_rules", []))
+        domain_rules_section = ""
+        if domain_rules_text:
+            domain_rules_section = (
                 "Domain-specific rules (use these to decide relevance):\n"
-                f"{custom_prompts_text}\n"
+                f"{domain_rules_text}\n"
             )
 
         prompt_text = TABLE_RELEVANCE_FILTER_PROMPT.format(
             question=question,
             tables_summary=tables_summary,
-            domain_rules=domain_rules,
+            domain_rules=domain_rules_section,
         )
 
         messages = [

@@ -6,9 +6,9 @@ from typing import Generator
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from nemo_retriever.tabular_data.retrieval.text_to_sql.text_to_sql_graph import create_graph
-from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload, AgentState, rules_to_text
+from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload, AgentState
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import main_system_prompt_template
-from nemo_retriever.tabular_data.retrieval.utils import get_llm_client
+from nemo_retriever.tabular_data.retrieval.utils import fetch_custom_analyses, get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,8 @@ app = graph.compile()
 
 
 def _build_state(payload: AgentPayload) -> AgentState:
-    acronyms = payload.get("acronyms", "")
-    custom_prompts_raw = payload.get("custom_prompts", "")
+    custom_prompts = payload.get("custom_prompts", "")
+    acronyms = payload.get("acronyms", [])
     connector = payload.get("connector")
     if connector is None:
         raise ValueError(
@@ -39,20 +39,13 @@ def _build_state(payload: AgentPayload) -> AgentState:
             "instance). Construct a Retriever once at startup and pass it in the payload."
         )
 
-    acronyms_text = f"Acronyms:\n{acronyms}\n\n" if acronyms else ""
-
-    if isinstance(custom_prompts_raw, list):
-        custom_prompts_rules = custom_prompts_raw
-        custom_prompts_text = rules_to_text(custom_prompts_rules)
-    else:
-        custom_prompts_rules = []
-        custom_prompts_text = f"{custom_prompts_raw}\n\n" if custom_prompts_raw else ""
+    custom_prompts_text = f"{custom_prompts}\n\n" if custom_prompts else ""
+    domain_rules = fetch_custom_analyses() + list(acronyms or [])
 
     initial_path_state = dict(payload.get("path_state") or {})
 
     main_system_prompt = main_system_prompt_template.format(
         date=datetime.now(),
-        acronyms=acronyms_text,
         custom_prompts=custom_prompts_text,
         dialect=connector.dialect,
     )
@@ -69,7 +62,7 @@ def _build_state(payload: AgentPayload) -> AgentState:
         "path_state": initial_path_state,
         "retriever": retriever,
         "decision": "",
-        "custom_prompts_rules": custom_prompts_rules,
+        "domain_rules": domain_rules,
     }
 
 

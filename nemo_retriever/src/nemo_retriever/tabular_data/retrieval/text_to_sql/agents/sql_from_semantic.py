@@ -198,7 +198,7 @@ class SQLFromCandidatesAgent(BaseAgent):
                 queries=relevant_queries,
                 qa_from_conversations=similar_questions_txt,
                 tables=format_tables_for_prompt(relevant_tables),
-                custom_prompts=rules_to_text(state.get("custom_prompts_rules", [])),
+                custom_prompts=rules_to_text(state.get("domain_rules", [])),
             )
 
             # Choose system prompt based on context

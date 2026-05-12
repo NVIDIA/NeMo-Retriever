@@ -94,7 +94,7 @@ class SQLFromTablesAgent(BaseAgent):
             queries=[],
             tables=format_tables_for_prompt(relevant_tables),
             qa_from_conversations=similar_questions,
-            custom_prompts=rules_to_text(state.get("custom_prompts_rules", [])),
+            custom_prompts=rules_to_text(state.get("domain_rules", [])),
         )
 
         messages = state["messages"] + [
