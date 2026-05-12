@@ -41,11 +41,15 @@ def _embed_group(
         if group_modality in IMAGE_MODALITIES:
             multimodal_embedder = model
         else:
-            skip_prefix = hasattr(model, "embed_queries")
+            embed_queries = getattr(model, "embed_queries", None)
+            use_query_embedder = callable(embed_queries) and str(input_type).strip().lower() == "query"
 
             def embedder(texts: Sequence[str]) -> Sequence[Sequence[float]]:  # noqa
-                batch = texts if skip_prefix else [f"passage: {text}" for text in texts]
-                vectors = model.embed(batch, batch_size=int(inference_batch_size))
+                if use_query_embedder:
+                    vectors = embed_queries(texts, batch_size=int(inference_batch_size))
+                else:
+                    batch = texts if callable(embed_queries) else [f"{input_type}: {text}" for text in texts]
+                    vectors = model.embed(batch, batch_size=int(inference_batch_size))
                 tolist = getattr(vectors, "tolist", None)
                 if callable(tolist):
                     return tolist()

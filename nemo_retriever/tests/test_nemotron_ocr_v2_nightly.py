@@ -166,3 +166,14 @@ def test_huggingface_ocr_nightly_does_not_carry_namespace_patch_knobs() -> None:
     assert "expected_package:" not in workflow
     assert "--project-name" not in workflow
     assert "--rename-python-package" not in workflow
+
+
+def test_ocr_nightly_builds_and_verifies_vllm_compatible_torch_stack() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
+
+    assert 'OCR_TORCH_VERSION: "2.11.0"' in workflow
+    assert 'OCR_TORCHVISION_VERSION: "0.26.0"' in workflow
+    assert '--venv-pip-install "torch==${OCR_TORCH_VERSION}"' in workflow
+    assert '--venv-pip-install "torchvision==${OCR_TORCHVISION_VERSION}"' in workflow
+    assert "expected_runtime_dependencies" in workflow
+    assert 'expected = f"Requires-Dist: {package}{specifier}"' in workflow
