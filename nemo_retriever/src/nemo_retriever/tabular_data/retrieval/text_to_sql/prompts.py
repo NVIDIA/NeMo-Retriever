@@ -107,13 +107,10 @@ problems. Minor issues or alternative approaches are
 acceptable.
 
 Check for CRITICAL issues only:
-1. **Missing Critical Entities**: Are any ESSENTIAL
-entities completely missing? (It's OK if some optional
-entities are missing)
-2. **Seriously Wrong Joins**: Are there joins that would
+1. **Seriously Wrong Joins**: Are there joins that would
 produce completely wrong results? (Minor join variations
 are acceptable)
-3. **Clearly Wrong Aggregations**: Are aggregations
+2. **Clearly Wrong Aggregations**: Are aggregations
 completely incorrect? (e.g., COUNT when user explicitly
 asks for SUM) (Minor variations are acceptable)
 
@@ -126,18 +123,14 @@ would make the query unusable."""
 def create_intent_validation_prompt(question: str, entities_text: str, sql_code: str) -> str:
     return f"""User's Question: {question}
 
-Required Semantic Entities:
-{entities_text}
-
 Generated SQL Query:
 ```sql
 {sql_code}
 ```
 
 Check for CRITICAL issues ONLY (be lenient):
-1. Are any ESSENTIAL entities completely missing? (Minor omissions are OK)
-2. Are there any joins that would produce COMPLETELY WRONG results? (Alternative join approaches are OK)
-3. Are aggregations CLEARLY WRONG for the question? (e.g., COUNT when explicitly asking for SUM) (Variations are OK)
+1. Are there any joins that would produce COMPLETELY WRONG results? (Alternative join approaches are OK)
+2. Are aggregations CLEARLY WRONG for the question? (e.g., COUNT when explicitly asking for SUM) (Variations are OK)
 
 Only mark as invalid if there are SERIOUS problems. If the SQL could reasonably work, mark it as VALID.
 
@@ -145,24 +138,30 @@ Provide your analysis."""
 
 
 def create_entity_extraction_prompt(question: str, custom_prompts: str = "") -> str:
-    domain_section = ""
     if custom_prompts:
-        domain_section = (
-            "\nDomain-specific rules:\n"
-            f"{custom_prompts}\n"
-        )
+        return f"""Extract database entities from this question.
 
-    return f"""Extract database entities from this question.
-{domain_section}
+Domain-specific rules:
+{custom_prompts}
+
 Question: {question}
 
 Return:
 1) required_entity_name: all database concepts from the question
    (table names, column names, relationships). Ignore values, dates, numbers.
 
-2) item_search_queries: table and column names from the domain rules above
-   that are relevant to answering this question. Use exact names as they
-   appear in the rules.
+2) item_search_queries: 2-4 search phrases (1-3 words each) to find relevant database tables
+   and columns. Include exact table/column names from the domain rules above
+   that are relevant, plus rephrased angles from the question.
+"""
+
+    return f"""Extract database entities from this question.
+
+Question: {question}
+
+Return:
+- required_entity_name: all database concepts from the question
+   (table names, column names, relationships). Ignore values, dates, numbers.
 """
 
 
