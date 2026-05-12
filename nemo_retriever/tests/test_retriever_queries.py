@@ -137,6 +137,32 @@ class TestRetrieveVdbOperatorPreprocess:
         vec = op.preprocess(df)
         assert vec == [[0.1, 0.2]]
 
+    def test_dataframe_to_vectors_reads_payload_embedding_column(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "text_embeddings_1b_v2": [{"embedding": [0.3, 0.4]}],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.3, 0.4]]
+
+    def test_dataframe_to_vectors_reads_direct_embedding_column(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "text_embeddings_1b_v2": [[0.5, 0.6]],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.5, 0.6]]
+
 
 class TestRerankLongDataframe:
     def test_groups_by_query_order(self) -> None:

@@ -37,6 +37,18 @@ def _construct_vdb(
     return vdb if vdb is not None else get_vdb_op_cls(str(vdb_op))(**dict(vdb_kwargs or {}))
 
 
+def _coerce_embedding_vector(value: Any) -> list[float] | None:
+    if isinstance(value, dict):
+        value = value.get("embedding")
+    if not isinstance(value, list):
+        tolist = getattr(value, "tolist", None)
+        if callable(tolist):
+            value = tolist()
+    if isinstance(value, list) and value:
+        return [float(x) for x in value]
+    return None
+
+
 def query_vectors_from_embedded_dataframe(df: pd.DataFrame) -> list[list[float]]:
     """Extract one query vector per row from batch-embed output (metadata or payload columns)."""
     vectors: list[list[float]] = []
@@ -44,19 +56,14 @@ def query_vectors_from_embedded_dataframe(df: pd.DataFrame) -> list[list[float]]
         vec: list[float] | None = None
         md = row.get("metadata")
         if isinstance(md, dict):
-            emb = md.get("embedding")
-            if isinstance(emb, list) and emb:
-                vec = [float(x) for x in emb]
+            vec = _coerce_embedding_vector(md)
         if vec is None:
             for col in df.columns:
                 if col == "metadata":
                     continue
-                val = row.get(col)
-                if isinstance(val, dict):
-                    inner = val.get("embedding")
-                    if isinstance(inner, list) and inner:
-                        vec = [float(x) for x in inner]
-                        break
+                vec = _coerce_embedding_vector(row.get(col))
+                if vec is not None:
+                    break
         if vec is None:
             raise ValueError(
                 "Expected query embeddings in each row's metadata['embedding'] or a payload column "
