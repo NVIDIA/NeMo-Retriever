@@ -10,9 +10,21 @@ from typing import Literal, Mapping
 OCRVersion = Literal["v1", "v2"]
 OCRLang = Literal["multi", "english"]
 
+__all__ = ["OCRLang", "OCRVersion", "resolve_ocr_v2_lang", "resolve_ocr_v2_model_dir"]
 
-def _resolve_ocr_v2_model_dir(environ: Mapping[str, str] | None = None) -> str:
-    """Resolve a model directory that is compatible with ``NemotronOCRV2``."""
+
+def resolve_ocr_v2_model_dir(environ: Mapping[str, str] | None = None) -> str:
+    """Resolve a model directory that is compatible with ``NemotronOCRV2``.
+
+    Args:
+        environ: Optional environment mapping to read from. Defaults to
+            ``os.environ``.
+
+    Returns:
+        The first non-empty v2-compatible OCR model directory from
+        ``RETRIEVER_NEMOTRON_OCR_MODEL_DIR``, ``NEMOTRON_OCR_MODEL_DIR``, or
+        ``NEMOTRON_OCR_V2_MODEL_DIR``. Returns ``""`` when none are set.
+    """
     env = os.environ if environ is None else environ
     return (
         env.get("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()

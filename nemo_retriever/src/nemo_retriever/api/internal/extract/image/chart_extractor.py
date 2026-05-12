@@ -25,7 +25,7 @@ from nemo_retriever.api.internal.primitives.nim import NimClient
 from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import YoloxGraphicElementsModelInterface
 from nemo_retriever.api.util.image_processing.transforms import base64_to_numpy
 from nemo_retriever.api.util.nim import create_inference_client
-from nemo_retriever.ocr.config import _resolve_ocr_v2_model_dir
+from nemo_retriever.ocr.config import resolve_ocr_v2_model_dir
 
 PADDLE_MIN_WIDTH = 32
 PADDLE_MIN_HEIGHT = 32
@@ -45,7 +45,7 @@ def _local_nemotron_ocr_boxes_texts(
     Returns list aligned with base64_images:
       [bounding_boxes, text_predictions, conf_scores]
     """
-    model_dir = _resolve_ocr_v2_model_dir()
+    model_dir = resolve_ocr_v2_model_dir()
     ocr_version = os.getenv("NEMOTRON_OCR_VERSION", "v2").strip() or "v2"
     ocr_lang = os.getenv("NEMOTRON_OCR_LANG", "").strip() or None
 

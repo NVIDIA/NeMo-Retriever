@@ -21,7 +21,8 @@ import pytest
 from pydantic import ValidationError
 
 from nemo_retriever.graph.ingestor_runtime import build_graph
-from nemo_retriever.ocr.config import OCRLang, OCRVersion, _resolve_ocr_v2_model_dir, resolve_ocr_v2_lang
+from nemo_retriever.ocr import config as ocr_config
+from nemo_retriever.ocr.config import OCRLang, OCRVersion, resolve_ocr_v2_lang, resolve_ocr_v2_model_dir
 from nemo_retriever.ocr.ocr import OCRActor, OCRV2Actor, resolve_ocr_archetype
 from nemo_retriever.params import EmbedParams, ExtractParams
 
@@ -61,12 +62,12 @@ def test_v1_rejects_ocr_lang() -> None:
 
 
 def test_ocr_v2_model_dir_ignores_legacy_v1_env_var() -> None:
-    assert _resolve_ocr_v2_model_dir({"NEMOTRON_OCR_V1_MODEL_DIR": "/models/ocr-v1"}) == ""
+    assert resolve_ocr_v2_model_dir({"NEMOTRON_OCR_V1_MODEL_DIR": "/models/ocr-v1"}) == ""
 
 
 def test_ocr_v2_model_dir_accepts_v2_compatible_env_vars() -> None:
     assert (
-        _resolve_ocr_v2_model_dir(
+        resolve_ocr_v2_model_dir(
             {
                 "NEMOTRON_OCR_V1_MODEL_DIR": "/models/ocr-v1",
                 "NEMOTRON_OCR_V2_MODEL_DIR": "/models/ocr-v2",
@@ -74,6 +75,10 @@ def test_ocr_v2_model_dir_accepts_v2_compatible_env_vars() -> None:
         )
         == "/models/ocr-v2"
     )
+
+
+def test_resolve_ocr_v2_model_dir_is_public_api() -> None:
+    assert "resolve_ocr_v2_model_dir" in ocr_config.__all__
 
 
 def test_resolve_ocr_v2_lang_uses_public_selector_aliases() -> None:
