@@ -74,10 +74,18 @@ def _apply_resource_limits(config: ServiceConfig) -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Startup / shutdown lifecycle for the service."""
+    """Startup / shutdown lifecycle for the service.
+
+    Note:
+        The config object (`app.state.config`) is constructed prior to app startup,
+        typically via a factory that parses YAML, environment variables, or other
+        runtime configuration sources, and validates it as a `ServiceConfig` object.
+    """
+    # The config is built externally (before this function is called) and stored on `app.state.config`.
     config: ServiceConfig = app.state.config
     mode = config.mode
 
+    from nemo_retriever.service.services.job_tracker import init_job_tracker, shutdown_job_tracker
     from nemo_retriever.service.services.metrics import init_metrics, shutdown_metrics
     from nemo_retriever.service.services.pipeline_pool import init_pipeline_pool, shutdown_pipeline_pool
     from nemo_retriever.service.services.proxy import init_proxy, shutdown_proxy
@@ -91,8 +99,21 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.proxy = init_proxy(config.gateway)
         app.state.pipeline_pool = None
     else:
+        from nemo_retriever.service.services.pipeline_executor import (
+            create_batch_work_fn,
+            create_realtime_work_fn,
+        )
+
+        init_job_tracker()
+        rt_fn = create_realtime_work_fn(config) if mode in ("standalone", "realtime") else None
+        bt_fn = create_batch_work_fn(config) if mode in ("standalone", "batch") else None
         app.state.proxy = None
-        app.state.pipeline_pool = init_pipeline_pool(config.pipeline, mode=mode)
+        app.state.pipeline_pool = init_pipeline_pool(
+            config.pipeline,
+            mode=mode,
+            realtime_work_fn=rt_fn,
+            batch_work_fn=bt_fn,
+        )
 
     logger.info(
         "Retriever service started — mode=%s host=%s port=%d",
@@ -105,6 +126,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await shutdown_proxy()
     await shutdown_pipeline_pool()
+    shutdown_job_tracker()
     shutdown_metrics()
     logger.info("Retriever service stopped")
 

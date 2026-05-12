@@ -37,3 +37,16 @@ class DocumentIngestAccepted(RichModel):
     content_sha256: str
     status: str
     created_at: str
+
+
+class JobStatusResponse(RichModel):
+    """Response for ``GET /v1/ingest/*/status/{id}`` status polling endpoints."""
+
+    id: str
+    status: str
+    submitted_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    elapsed_s: float | None = None
+    result_rows: int | None = None
+    error: str | None = None

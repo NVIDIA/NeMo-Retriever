@@ -29,7 +29,8 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional, Union
+from io import BytesIO
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
@@ -170,6 +171,24 @@ class GraphIngestor(ingestor):
     def files(self, documents: Union[str, List[str]]) -> "GraphIngestor":
         """Set the input file paths or glob patterns."""
         self._documents = [documents] if isinstance(documents, str) else list(documents)
+        return self
+
+    def buffers(
+        self,
+        buffers: Union[Tuple[str, BytesIO], List[Tuple[str, BytesIO]]],
+    ) -> "GraphIngestor":
+        """Set in-memory buffers for processing.
+
+        Each buffer is a ``(name, BytesIO)`` pair where *name* carries the
+        original filename (including extension) so downstream operators can
+        detect file type.  Accepts a single tuple or a list of tuples.
+
+        Only supported for ``run_mode='inprocess'``.
+        """
+        if isinstance(buffers, tuple) and len(buffers) == 2 and isinstance(buffers[0], str):
+            self._buffers = [buffers]
+        else:
+            self._buffers = list(buffers)
         return self
 
     # ------------------------------------------------------------------
@@ -441,7 +460,13 @@ class GraphIngestor(ingestor):
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)
             self._rd_dataset = None
-            result = executor.ingest(self._documents)
+            if self._buffers:
+                import pandas as pd
+
+                df = pd.DataFrame([{"bytes": buf.read(), "path": name} for name, buf in self._buffers])
+                result = executor.ingest(df)
+            else:
+                result = executor.ingest(self._documents)
 
         return result
 

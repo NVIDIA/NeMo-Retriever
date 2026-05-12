@@ -2,6 +2,8 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -17,7 +19,11 @@ from typing import Tuple, Union
 
 import numpy as np
 import requests
-import tritonclient.grpc as grpcclient
+
+try:
+    import tritonclient.grpc as grpcclient
+except ModuleNotFoundError:
+    grpcclient = None  # type: ignore[assignment]
 
 from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
 from nemo_retriever.api.util.string_processing import generate_url
@@ -90,6 +96,11 @@ class NimClient:
         self._lock = threading.Lock()
 
         if self.protocol == "grpc":
+            if grpcclient is None:
+                raise ImportError(
+                    "tritonclient[grpc] is required for gRPC protocol. "
+                    "Install it with: pip install tritonclient[grpc]"
+                )
             if not self._grpc_endpoint:
                 raise ValueError("gRPC endpoint must be provided for gRPC protocol")
             logger.debug(f"Creating gRPC client with {self._grpc_endpoint}")

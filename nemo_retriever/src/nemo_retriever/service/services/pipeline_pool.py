@@ -48,6 +48,7 @@ class WorkItem(RichModel):
 
     id: str
     payload: Any = None
+    filename: str | None = None
     callback: Callable[[Any], None] | None = None
 
 
@@ -118,21 +119,55 @@ class _Pool:
 
     async def _worker_loop(self, worker_id: int) -> None:
         """Consume items until a ``None`` sentinel is received."""
-        assert self._queue is not None
+        from nemo_retriever.service.services.job_tracker import get_job_tracker
+
+        # This code defines the asynchronous worker loop within a worker pool for processing queued "work items".
+        #
+        # High-level function:
+        # Each worker runs this loop, repeatedly pulling items from an internal async queue.
+        # - The loop only exits (ending the worker) when it receives a sentinel value (None).
+        # - For each item:
+        #     1. It optionally interacts with a "job tracker" to update the processing status.
+        #     2. It invokes the provided work function (`self._work_fn`), supporting both sync and async functions.
+        #     3. It marks the item as completed or, on failure, as failed in the job tracker.
+        #     4. It increments the count of processed items for monitoring/stats.
+        #     5. It always marks the queue task as done, regardless of errors.
+        #
+        # Detailed logic:
+        assert self._queue is not None  # The queue must be initialized before workers run.
         while True:
+            # Wait for the next item from the queue (asynchronously, does not block other tasks).
             item = await self._queue.get()
             if item is None:
-                self._queue.task_done()
-                return
+                # If a None sentinel is received, this is a signal to shut down this worker:
+                self._queue.task_done()  # Mark the sentinel as "done" for queue accounting.
+                return  # Exit the loop, ending the worker task.
             try:
+                # Try to update job tracker that processing has started.
+                tracker = get_job_tracker()  # May return None if no tracker configured.
+                if tracker is not None:
+                    tracker.mark_processing(item.id)
+                # Invoke the work function on the dequeued item.
                 if self._work_fn is not None:
-                    result = self._work_fn(item)
+                    result = self._work_fn(item)  # Could be sync or an awaitable/coroutine.
                     if asyncio.iscoroutine(result):
-                        await result
+                        await result  # If the result is a coroutine, await its completion.
+                    print(f"result: {result}, type: {type(result)}")
+                    print(f"self._work_fn: {self._work_fn}, type: {type(self._work_fn)}")
+                # Mark completion in the job tracker upon success.
+                if tracker is not None:
+                    tracker.mark_completed(item.id)
+                # Increment this worker's processed item count (for stats).
                 self._processed += 1
-            except Exception:
+                print("tracker status for job id: {item.id} is: {tracker.get(item.id)}")
+            except Exception as exc:
+                # On error, update job tracker as failed, log error with details.
+                tracker = get_job_tracker()
+                if tracker is not None:
+                    tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
                 logger.exception("Pool '%s' worker %d failed on item %s", self._name, worker_id, item.id)
             finally:
+                # Always tell the queue this item is fully processed (to unblock task joiners).
                 self._queue.task_done()
 
     async def submit(self, item: WorkItem) -> bool:
@@ -182,7 +217,14 @@ class PipelinePool:
     is created; the other is ``None`` and submissions to it are rejected.
     """
 
-    def __init__(self, config: PipelinePoolConfig, *, mode: str = "standalone") -> None:
+    def __init__(
+        self,
+        config: PipelinePoolConfig,
+        *,
+        mode: str = "standalone",
+        realtime_work_fn: Callable[[WorkItem], Any] | None = None,
+        batch_work_fn: Callable[[WorkItem], Any] | None = None,
+    ) -> None:
         self._config = config
         self._mode = mode
         self._realtime: _Pool | None = None
@@ -193,12 +235,14 @@ class PipelinePool:
                 name="realtime",
                 num_workers=config.realtime_workers,
                 max_queue_size=config.realtime_queue_size,
+                work_fn=realtime_work_fn,
             )
         if mode in ("standalone", "batch"):
             self._batch = _Pool(
                 name="batch",
                 num_workers=config.batch_workers,
                 max_queue_size=config.batch_queue_size,
+                work_fn=batch_work_fn,
             )
 
     @property
@@ -252,6 +296,8 @@ def init_pipeline_pool(
     config: PipelinePoolConfig,
     *,
     mode: str = "standalone",
+    realtime_work_fn: Callable[[WorkItem], Any] | None = None,
+    batch_work_fn: Callable[[WorkItem], Any] | None = None,
 ) -> PipelinePool:
     """Create and start the global pipeline pool (call once at startup).
 
@@ -263,7 +309,12 @@ def init_pipeline_pool(
     * ``gateway`` — should not be called (gateway has no local pools).
     """
     global _instance
-    pool = PipelinePool(config, mode=mode)
+    pool = PipelinePool(
+        config,
+        mode=mode,
+        realtime_work_fn=realtime_work_fn,
+        batch_work_fn=batch_work_fn,
+    )
     pool.start()
     _instance = pool
     logger.info(

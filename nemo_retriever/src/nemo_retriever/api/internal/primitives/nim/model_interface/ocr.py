@@ -13,7 +13,11 @@ from typing import Tuple
 
 import backoff
 import numpy as np
-import tritonclient.grpc as grpcclient
+
+try:
+    import tritonclient.grpc as grpcclient
+except ModuleNotFoundError:
+    grpcclient = None  # type: ignore[assignment]
 
 from nemo_retriever.api.internal.primitives.nim import ModelInterface
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import global_cache

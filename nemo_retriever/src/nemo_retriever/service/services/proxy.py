@@ -162,6 +162,35 @@ class GatewayProxy:
             media_type=backend_resp.headers.get("content-type"),
         )
 
+    async def forward_get(
+        self,
+        request: Request,
+        pool_type: PoolType,
+        path: str,
+    ) -> Response:
+        """Forward a GET request to the backend for *pool_type*."""
+        client = self._client_for(pool_type)
+        backend_label = pool_type.value
+        fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host",)}
+
+        try:
+            backend_resp = await client.get(path, headers=fwd_headers)
+        except httpx.ConnectError as exc:
+            return _error_response(502, f"Gateway failed to connect to {backend_label}: {exc}")
+        except httpx.TimeoutException as exc:
+            return _error_response(504, f"Gateway timed out on {backend_label}: {exc}")
+        except httpx.HTTPError as exc:
+            return _error_response(502, f"Gateway transport error on {backend_label}: {type(exc).__name__}: {exc}")
+
+        excluded = {"transfer-encoding", "content-encoding", "content-length"}
+        resp_headers = {k: v for k, v in backend_resp.headers.items() if k.lower() not in excluded}
+        return Response(
+            content=backend_resp.content,
+            status_code=backend_resp.status_code,
+            headers=resp_headers,
+            media_type=backend_resp.headers.get("content-type"),
+        )
+
     async def check_backend(self, pool_type: PoolType) -> dict[str, Any]:
         """Quick health probe against a backend."""
         client = self._client_for(pool_type)

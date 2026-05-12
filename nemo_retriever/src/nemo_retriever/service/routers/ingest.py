@@ -23,14 +23,16 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from nemo_retriever.service.models.requests import IngestRequest
 from nemo_retriever.service.models.responses import (
     DocumentIngestAccepted,
     IngestAccepted,
+    JobStatusResponse,
     PageIngestAccepted,
 )
+from nemo_retriever.service.services.job_tracker import get_job_tracker
 from nemo_retriever.service.services.metrics import get_metrics
 from nemo_retriever.service.services.pipeline_pool import (
     PoolType,
@@ -99,6 +101,13 @@ def _record_prometheus(
         INGEST_PAGES_TOTAL.labels(role=role).inc()
     else:
         INGEST_DOCUMENTS_TOTAL.labels(role=role).inc()
+
+
+def _register_job(item_id: str) -> None:
+    """Register a work item in the job tracker (best-effort, no-op if tracker absent)."""
+    tracker = get_job_tracker()
+    if tracker is not None:
+        tracker.register(item_id)
 
 
 async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
@@ -232,7 +241,11 @@ async def ingest(
     now = datetime.now(timezone.utc).isoformat()
 
     if not dry_run:
-        await _enqueue_or_reject(route, WorkItem(id=document_id, payload=file_bytes))
+        _register_job(document_id)
+        await _enqueue_or_reject(
+            route,
+            WorkItem(id=document_id, payload=file_bytes, filename=file.filename),
+        )
 
     _record_prometheus(request, "/v1/ingest", "2xx", file_size=len(file_bytes))
 
@@ -315,7 +328,11 @@ async def ingest_page(
     now = datetime.now(timezone.utc).isoformat()
 
     if not dry_run:
-        await _enqueue_or_reject(PoolType.REALTIME, WorkItem(id=page_id, payload=file_bytes))
+        _register_job(page_id)
+        await _enqueue_or_reject(
+            PoolType.REALTIME,
+            WorkItem(id=page_id, payload=file_bytes, filename=file.filename),
+        )
 
     _record_prometheus(request, "/v1/ingest/page", "2xx", file_size=len(file_bytes), is_page=True)
 
@@ -396,7 +413,11 @@ async def ingest_document(
     now = datetime.now(timezone.utc).isoformat()
 
     if not dry_run:
-        await _enqueue_or_reject(PoolType.BATCH, WorkItem(id=document_id, payload=file_bytes))
+        _register_job(document_id)
+        await _enqueue_or_reject(
+            PoolType.BATCH,
+            WorkItem(id=document_id, payload=file_bytes, filename=file.filename),
+        )
 
     _record_prometheus(request, "/v1/ingest/document", "2xx", file_size=len(file_bytes))
 
@@ -422,3 +443,89 @@ async def ingest_document(
         status="accepted",
         created_at=now,
     )
+
+
+# ------------------------------------------------------------------
+# GET /v1/ingest/status/{item_id}  — status for general ingest items
+# GET /v1/ingest/page/status/{page_id}  — status for page items
+# GET /v1/ingest/document/status/{document_id}  — status for document items
+# ------------------------------------------------------------------
+
+
+def _status_response(request: Request, item_id: str) -> JSONResponse:
+    """Look up job status and return the appropriate HTTP code.
+
+    Returns 200 for completed/failed, 202 for pending/processing, 404 if unknown.
+    """
+    from nemo_retriever.service.services.job_tracker import JobStatus
+
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Job tracker is not available on this pod. In split topology, query the worker pod directly.",
+        )
+    rec = tracker.get(item_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail=f"No tracked job with id={item_id!r}")
+
+    body = JobStatusResponse(
+        id=rec.id,
+        status=rec.status.value,
+        submitted_at=rec.submitted_at,
+        started_at=rec.started_at,
+        completed_at=rec.completed_at,
+        elapsed_s=rec.elapsed_s,
+        result_rows=rec.result_rows,
+        error=rec.error,
+    ).model_dump()
+
+    if rec.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+        return JSONResponse(content=body, status_code=200)
+    return JSONResponse(content=body, status_code=202)
+
+
+@router.get(
+    "/ingest/status/{item_id}",
+    summary="Check processing status of a general ingest submission",
+    responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
+)
+async def ingest_status(request: Request, item_id: str) -> JSONResponse:
+    if _is_gateway(request):
+        proxy = get_proxy()
+        if proxy is None:
+            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
+        for pool_type in (PoolType.REALTIME, PoolType.BATCH):
+            resp = await proxy.forward_get(request, pool_type, f"/v1/ingest/status/{item_id}")
+            if resp.status_code != 404:
+                return resp
+        raise HTTPException(status_code=404, detail=f"No tracked job with id={item_id!r}")
+    return _status_response(request, item_id)
+
+
+@router.get(
+    "/ingest/page/status/{page_id}",
+    summary="Check processing status of a page ingest submission",
+    responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
+)
+async def ingest_page_status(request: Request, page_id: str) -> JSONResponse:
+    if _is_gateway(request):
+        proxy = get_proxy()
+        if proxy is None:
+            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
+        return await proxy.forward_get(request, PoolType.REALTIME, f"/v1/ingest/page/status/{page_id}")
+    return _status_response(request, page_id)
+
+
+@router.get(
+    "/ingest/document/status/{document_id}",
+    summary="Check processing status of a document ingest submission",
+    responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
+)
+async def ingest_document_status(request: Request, document_id: str) -> JSONResponse:
+    if _is_gateway(request):
+        proxy = get_proxy()
+        if proxy is None:
+            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
+        return await proxy.forward_get(request, PoolType.BATCH, f"/v1/ingest/document/status/{document_id}")
+    return _status_response(request, document_id)

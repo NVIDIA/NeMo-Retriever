@@ -19,7 +19,11 @@ import json
 import pandas as pd
 
 from nemo_retriever.api.internal.primitives.nim import ModelInterface
-import tritonclient.grpc as grpcclient
+
+try:
+    import tritonclient.grpc as grpcclient
+except ModuleNotFoundError:
+    grpcclient = None  # type: ignore[assignment]
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import global_cache
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import lock
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import multiprocessing_cache

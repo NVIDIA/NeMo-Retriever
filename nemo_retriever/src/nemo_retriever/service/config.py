@@ -173,4 +173,20 @@ def load_config(
                 target = target.setdefault(part, {})
             target[parts[-1]] = value
 
-    return ServiceConfig(**raw)
+    config = ServiceConfig(**raw)
+
+    from rich.console import Console
+    from rich.tree import Tree
+
+    console = Console(stderr=True)
+    tree = Tree(f"[bold]ServiceConfig[/bold]  (source: {path or 'defaults'})")
+    for section_name, section_value in config:
+        if isinstance(section_value, RichModel):
+            branch = tree.add(f"[cyan]{section_name}[/cyan]")
+            for field_name, field_value in section_value:
+                branch.add(f"[dim]{field_name}[/dim] = [white]{field_value!r}[/white]")
+        else:
+            tree.add(f"[cyan]{section_name}[/cyan] = [white]{section_value!r}[/white]")
+    console.print(tree)
+
+    return config
