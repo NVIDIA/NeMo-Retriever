@@ -758,14 +758,17 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             logger.warning("ReActAgentOperator: retriever_fn failed for query %r: %s", query_text, exc, exc_info=True)
             return []
 
-        # Filter already-seen and normalise keys
+        # Filter already-seen and normalise keys. Track this batch separately
+        # so duplicate rows from the vector DB do not reduce the effective top-k.
         results: List[Dict[str, Any]] = []
+        batch_doc_ids: set[str] = set()
         for item in raw:
             doc_id = str(item.get("doc_id", item.get("id", "")))
             text = str(item.get("text", ""))
             score = float(item.get("score", 0.0))
-            if doc_id and doc_id not in seen_doc_ids:
+            if doc_id and doc_id not in seen_doc_ids and doc_id not in batch_doc_ids:
                 results.append({"doc_id": doc_id, "text": text, "score": score})
+                batch_doc_ids.add(doc_id)
             if len(results) >= self._retriever_top_k:
                 break
 
@@ -827,8 +830,32 @@ def _build_output_rows(
             )
 
     # If final_results was called, also emit those as a synthetic final step
-    # (step_idx = len(retrieval_log)) so RRF can optionally weight it.
-    # These are already covered by the existing steps, so we skip deduplication
-    # here — RRF will naturally up-weight docs that appeared in final_results
-    # because they were retrieved in earlier steps.
+    # (step_idx = len(retrieval_log)) so RRF can weight the agent's final
+    # judgment in addition to the raw retrieval history.
+    if final_doc_ids:
+        first_doc_by_id: Dict[str, Dict[str, Any]] = {}
+        for step_docs in retrieval_log:
+            for doc in step_docs:
+                doc_id = str(doc.get("doc_id", ""))
+                if doc_id and doc_id not in first_doc_by_id:
+                    first_doc_by_id[doc_id] = doc
+
+        emitted: set[str] = set()
+        final_step_idx = len(retrieval_log)
+        for rank, doc_id in enumerate(final_doc_ids, 1):
+            doc_id = str(doc_id)
+            if not doc_id or doc_id in emitted:
+                continue
+            emitted.add(doc_id)
+            doc = first_doc_by_id.get(doc_id, {})
+            rows.append(
+                {
+                    "query_id": query_id,
+                    "query_text": query_text,
+                    "step_idx": final_step_idx,
+                    "doc_id": doc_id,
+                    "text": doc.get("text", ""),
+                    "rank": rank,
+                }
+            )
     return rows
