@@ -1657,6 +1657,7 @@ async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     requested = req.model_dump()
+    requested_fields = req.model_fields_set
     effective_mode = requested.get("evaluation_mode") or existing.get("evaluation_mode")
     effective_loader = (
         requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
@@ -1664,13 +1665,13 @@ async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
     if effective_mode == "beir" and not str(effective_loader or "").strip():
         raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
     effective_ocr_version = requested.get("ocr_version") or existing.get("ocr_version")
-    effective_ocr_lang = (
-        requested.get("ocr_lang") if requested.get("ocr_lang") is not None else existing.get("ocr_lang")
-    )
+    effective_ocr_lang = requested.get("ocr_lang") if "ocr_lang" in requested_fields else existing.get("ocr_lang")
     if effective_ocr_version == "v1" and effective_ocr_lang is not None:
         raise HTTPException(status_code=422, detail="ocr_lang is only supported when ocr_version='v2'")
 
-    data = {k: v for k, v in req.model_dump().items() if v is not None}
+    data = {k: v for k, v in requested.items() if v is not None}
+    if "ocr_lang" in requested_fields:
+        data["ocr_lang"] = requested.get("ocr_lang")
     row = history.update_dataset(dataset_id, data)
     if row is None:
         raise HTTPException(status_code=404, detail="Dataset not found")
