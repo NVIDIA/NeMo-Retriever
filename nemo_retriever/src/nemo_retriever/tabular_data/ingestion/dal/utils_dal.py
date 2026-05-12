@@ -75,6 +75,8 @@ def _get_edge_label(edge):
         return Edges.UNION
     elif Props.SQL_ID in edge[2]:
         return Edges.SQL
+    elif Props.ANALYSIS_ID in edge[2]:
+        return Edges.HAS_SQL
     else:
         return next(iter(edge[2]))
 

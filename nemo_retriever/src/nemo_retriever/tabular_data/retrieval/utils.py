@@ -125,7 +125,7 @@ def expand_info(ids_and_labels):
                     MATCH (n:{label} {{id: label_id.id}})
                     CALL apoc.case([
                         n:{Labels.CUSTOM_ANALYSIS},
-                            'MATCH(n)-[:{Edges.ANALYSIS_OF}]->(sql:{Labels.SQL})
+                            'MATCH(n)-[:{Edges.HAS_SQL}]->(sql:{Labels.SQL})
                             WITH n, collect(distinct {{sql_code: sql.sql_full_query}}) as sql
                             RETURN apoc.map.setKey(properties(n), "sql", sql) as item',
                         n:{Labels.COLUMN},

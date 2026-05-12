@@ -13,7 +13,10 @@ import argparse
 import logging
 import os
 
-from nemo_retriever.tabular_data.dev_tools.apply_metadata import apply_metadata
+from nemo_retriever.tabular_data.dev_tools.apply_metadata import (
+    add_custom_analyses,
+    apply_metadata,
+)
 from nemo_retriever.tabular_data.dev_tools.postgres_connector import PostgresDatabase
 from nemo_retriever.graph import Graph
 from nemo_retriever.graph.tabular_schema_extract_operator import TabularSchemaExtractOp
@@ -99,6 +102,7 @@ def run_ingest() -> None:
     extract_graph.execute(None)
 
     apply_metadata(connector.database_name)
+    add_custom_analyses(connector.database_name, connector.dialect)
 
     embed_graph = (
         Graph()
