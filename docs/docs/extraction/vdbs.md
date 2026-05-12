@@ -163,7 +163,7 @@ For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` 
 
 ### RAG Blueprint and partner vector stores {#rag-blueprint-and-partner-vector-stores}
 
-Some deployments use a different vector store than the default LanceDB path on this page—for example the **[NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/index.html)** (Docker Compose or Helm) or a **partner** package that subclasses the same [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface. Use the following public references when you wire those stacks to ingestion and retrieval:
+Some deployments use a different vector store than the default LanceDB path on this page—for example the [NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/index.html) (Docker Compose or Helm) or a partner package that subclasses the same [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface. Use the following public references when you wire those stacks to ingestion and retrieval:
 
 | Vector store | Where to configure or implement |
 |--------------|--------------------------------|
@@ -173,7 +173,7 @@ Some deployments use a different vector store than the default LanceDB path on t
 
 Testing and release cadence for these integrations follow the owning project (RAG Blueprint, Pinecone sample repo, or Teradata Generative AI package), not the first-party LanceDB operator validated for NeMo Retriever Library on this page.
 
-**Related**
+### More information 
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
@@ -184,8 +184,6 @@ Testing and release cadence for these integrations follow the owning project (RA
     NVIDIA documents and validates the first-party LanceDB operator for this library. If you integrate a different vector store, you are responsible for testing and maintaining that integration.
 
 To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
-
-
 
 ## Related Topics { #related-topics }
 
