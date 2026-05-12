@@ -17,11 +17,6 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentState
 from nemo_retriever.tabular_data.retrieval.utils import (
     format_response,
-    # TODO: re-enable these imports when clickable table/analysis link
-    # highlighting is needed in the future.
-    # Labels,
-    # get_custom_analyses_ids,
-    # prepare_link,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,4 +115,3 @@ class ResponseAgent(BaseAgent):
         parts.append(sql_code)
         parts.append("%%%")
         return "\n".join(parts)
-        
