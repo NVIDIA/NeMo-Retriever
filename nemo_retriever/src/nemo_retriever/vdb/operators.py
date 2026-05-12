@@ -45,7 +45,10 @@ def _coerce_embedding_vector(value: Any) -> list[float] | None:
         if callable(tolist):
             value = tolist()
     if isinstance(value, list) and value:
-        return [float(x) for x in value]
+        try:
+            return [float(x) for x in value]
+        except (TypeError, ValueError):
+            return None
     return None
 
 

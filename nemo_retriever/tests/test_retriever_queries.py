@@ -163,6 +163,20 @@ class TestRetrieveVdbOperatorPreprocess:
         vec = op.preprocess(df)
         assert vec == [[0.5, 0.6]]
 
+    def test_dataframe_to_vectors_skips_non_numeric_list_columns(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "tags": [["finance", "annual"]],
+                "text_embeddings_1b_v2": [[0.7, 0.8]],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.7, 0.8]]
+
 
 class TestRerankLongDataframe:
     def test_groups_by_query_order(self) -> None:

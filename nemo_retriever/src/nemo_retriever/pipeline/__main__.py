@@ -1137,7 +1137,12 @@ def run(
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name", rich_help_panel=_PANEL_EVAL),
     beir_split: str = typer.Option("test", "--beir-split", rich_help_panel=_PANEL_EVAL),
     beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language", rich_help_panel=_PANEL_EVAL),
-    beir_doc_id_field: Optional[str] = typer.Option(None, "--beir-doc-id-field", rich_help_panel=_PANEL_EVAL),
+    beir_doc_id_field: Optional[str] = typer.Option(
+        None,
+        "--beir-doc-id-field",
+        help="BEIR document ID field. Defaults to the known dataset setting, or pdf_basename for custom datasets.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     beir_k: list[int] = typer.Option([], "--beir-k", rich_help_panel=_PANEL_EVAL),
     eval_config: Optional[Path] = typer.Option(
         None,

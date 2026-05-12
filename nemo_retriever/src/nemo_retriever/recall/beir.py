@@ -90,10 +90,12 @@ def resolve_beir_dataset_options(
             )
 
     resolved_ks = tuple(int(k) for k in ks) if ks else (defaults.ks if defaults else DEFAULT_BEIR_KS)
+    # Preserve the historical CLI default for custom/non-first-class BEIR datasets.
+    resolved_doc_id_field = doc_id_field or (defaults.doc_id_field if defaults else "pdf_basename")
     return BeirDatasetOptions(
         loader=loader or (defaults.loader if defaults else None),
         dataset_name=(defaults.dataset_name if defaults else normalized_name),
-        doc_id_field=doc_id_field or (defaults.doc_id_field if defaults else None),
+        doc_id_field=resolved_doc_id_field,
         ks=resolved_ks,
     )
 

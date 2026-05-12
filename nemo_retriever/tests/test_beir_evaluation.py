@@ -151,8 +151,58 @@ def test_resolve_beir_dataset_options_does_not_guess_unknown_dataset() -> None:
 
     assert options.loader is None
     assert options.dataset_name == "custom_dataset"
-    assert options.doc_id_field is None
+    assert options.doc_id_field == "pdf_basename"
     assert options.ks == DEFAULT_BEIR_KS
+
+
+def test_pipeline_beir_evaluation_keeps_custom_dataset_doc_id_default(monkeypatch) -> None:
+    import nemo_retriever.model as model_module
+    import nemo_retriever.recall.beir as beir_module
+
+    captured: dict[str, BeirConfig] = {}
+
+    def _fake_evaluate_lancedb_beir(cfg: BeirConfig):
+        captured["cfg"] = cfg
+        return (
+            BeirDataset(dataset_name=cfg.dataset_name, query_ids=["q1"], queries=["query"], qrels={"q1": {"doc": 1}}),
+            [],
+            {},
+            {"recall@5": 1.0},
+        )
+
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda model_name: model_name)
+    monkeypatch.setattr(beir_module, "evaluate_lancedb_beir", _fake_evaluate_lancedb_beir)
+
+    label, _elapsed, _metrics, _query_count, ran = pipeline_main._run_evaluation(
+        evaluation_mode="beir",
+        vdb_op="lancedb",
+        vdb_kwargs={"uri": "lancedb", "table_name": "nv-ingest"},
+        embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
+        embed_invoke_url=None,
+        embed_remote_api_key=None,
+        embed_modality="text",
+        query_csv=Path("unused.csv"),
+        recall_match_mode="audio_segment",
+        audio_match_tolerance_secs=2.0,
+        reranker=False,
+        reranker_model_name="reranker",
+        reranker_invoke_url=None,
+        reranker_api_key="",
+        local_reranker_backend="vllm",
+        local_hf_batch_size=32,
+        beir_loader="custom_csv",
+        beir_dataset_name="custom_dataset",
+        beir_split="test",
+        beir_query_language=None,
+        beir_doc_id_field=None,
+        beir_k=[],
+    )
+
+    assert label == "BEIR"
+    assert ran is True
+    assert captured["cfg"].loader == "custom_csv"
+    assert captured["cfg"].dataset_name == "custom_dataset"
+    assert captured["cfg"].doc_id_field == "pdf_basename"
 
 
 def test_pipeline_beir_evaluation_resolves_known_dataset_name(monkeypatch) -> None:
