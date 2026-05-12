@@ -190,6 +190,7 @@ def test_pipeline_beir_evaluation_keeps_custom_dataset_doc_id_default(monkeypatc
         reranker_api_key="",
         local_reranker_backend="vllm",
         local_hf_batch_size=32,
+        local_query_max_length=128,
         beir_loader="custom_csv",
         beir_dataset_name="custom_dataset",
         beir_split="test",
@@ -240,6 +241,7 @@ def test_pipeline_beir_evaluation_resolves_known_dataset_name(monkeypatch) -> No
         reranker_api_key="",
         local_reranker_backend="vllm",
         local_hf_batch_size=32,
+        local_query_max_length=256,
         beir_loader=None,
         beir_dataset_name="bo767",
         beir_split="validation",
@@ -258,6 +260,7 @@ def test_pipeline_beir_evaluation_resolves_known_dataset_name(monkeypatch) -> No
     assert captured["cfg"].query_language == "fr"
     assert captured["cfg"].doc_id_field == "pdf_page"
     assert tuple(captured["cfg"].ks) == (3, 7)
+    assert captured["cfg"].local_query_max_length == 256
 
 
 def test_load_beir_dataset_supports_bo767_csv_pdf_page_modality(tmp_path: Path) -> None:
@@ -573,6 +576,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
                     "local_ingest_embed_backend": "hf",
                     "inference_batch_size": 32,
                     "embed_inference_batch_size": 32,
+                    "query_max_length": 128,
                     "embedding_endpoint": "http://embed.example/v1",
                     "embed_invoke_url": "http://embed.example/v1",
                     "api_key": "secret",

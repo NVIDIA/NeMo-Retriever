@@ -162,6 +162,7 @@ class BeirConfig:
     local_hf_device: str | None = None
     local_hf_cache_dir: str | None = None
     local_hf_batch_size: int = 32
+    local_query_max_length: int = 128
     reranker: bool = False
     reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
     reranker_endpoint: str | None = None
@@ -791,6 +792,7 @@ def evaluate_lancedb_beir(
         "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
         "inference_batch_size": int(cfg.local_hf_batch_size),
         "embed_inference_batch_size": int(cfg.local_hf_batch_size),
+        "query_max_length": int(cfg.local_query_max_length),
     }
     if cfg.embedding_http_endpoint:
         embed_kwargs["embedding_endpoint"] = cfg.embedding_http_endpoint

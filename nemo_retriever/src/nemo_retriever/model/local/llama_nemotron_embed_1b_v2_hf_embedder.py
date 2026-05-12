@@ -164,7 +164,8 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
         if truncated:
             logger.warning(
                 "Truncating %d/%d HF query embeddings to query_max_length=%d tokens; "
-                "increase query_max_length if long queries lose recall.",
+                "increase query_max_length (or --local-query-max-length in pipeline eval) "
+                "if long queries lose recall.",
                 truncated,
                 len(texts),
                 max_length,

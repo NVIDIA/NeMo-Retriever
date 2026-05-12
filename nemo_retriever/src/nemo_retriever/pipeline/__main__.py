@@ -628,6 +628,7 @@ def _run_evaluation(
     reranker_api_key: str,
     local_reranker_backend: str,
     local_hf_batch_size: int,
+    local_query_max_length: int,
     beir_loader: Optional[str],
     beir_dataset_name: Optional[str],
     beir_split: str,
@@ -693,6 +694,7 @@ def _run_evaluation(
             reranker_api_key=reranker_api_key,
             local_reranker_backend=local_reranker_backend,
             local_hf_batch_size=int(local_hf_batch_size),
+            local_query_max_length=int(local_query_max_length),
             local_query_embed_backend=local_query_embed_backend,
         )
         evaluation_start = time.perf_counter()
@@ -726,6 +728,7 @@ def _run_evaluation(
         reranker_api_key=reranker_api_key,
         local_reranker_backend=local_reranker_backend,
         local_hf_batch_size=int(local_hf_batch_size),
+        local_query_max_length=int(local_query_max_length),
         embed_modality=embed_modality,
         local_query_embed_backend=local_query_embed_backend,
     )
@@ -1133,6 +1136,13 @@ def run(
         help="Batch size for local HF query embedding during retrieval/reranking.",
         rich_help_panel=_PANEL_EVAL,
     ),
+    local_query_max_length: int = typer.Option(
+        128,
+        "--local-query-max-length",
+        min=1,
+        help="Fixed token length for local HF query embeddings; longer queries are truncated.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader", rich_help_panel=_PANEL_EVAL),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name", rich_help_panel=_PANEL_EVAL),
     beir_split: str = typer.Option("test", "--beir-split", rich_help_panel=_PANEL_EVAL),
@@ -1507,6 +1517,7 @@ def run(
             reranker_api_key=reranker_bearer,
             local_reranker_backend=local_reranker_backend,
             local_hf_batch_size=local_hf_batch_size,
+            local_query_max_length=local_query_max_length,
             beir_loader=beir_loader,
             beir_dataset_name=beir_dataset_name,
             beir_split=beir_split,
