@@ -66,7 +66,7 @@ RUN sed -i 's/# deb-src/deb-src/' /etc/apt/sources.list \
 ENV UV_INSTALL_DIR=/opt/uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-ENV PATH=/opt/uv/bin:$PATH
+ENV PATH=/opt/uv:$PATH
 ENV UV_LINK_MODE=copy
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
 
@@ -108,7 +108,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Activate venv by default so CLI and python see nemo_retriever; mount over /workspace for dev.
 ENV VIRTUAL_ENV=/opt/retriever_runtime
-ENV PATH=/opt/retriever_runtime/bin:/opt/uv/bin:$PATH
+ENV PATH=/opt/retriever_runtime/bin:/opt/uv:$PATH
 
 # Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]
