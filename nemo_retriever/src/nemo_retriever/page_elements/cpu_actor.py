@@ -11,6 +11,7 @@ import pandas as pd
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.nim.nim import NIMClient
+from nemo_retriever.nim.probe import probe_endpoint
 from nemo_retriever.page_elements.shared import _error_payload, detect_page_elements_v3
 
 
@@ -36,6 +37,12 @@ class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
         self._model = None
         self._nim_client = NIMClient(
             max_pool_workers=int(self.detect_kwargs.get("remote_max_pool_workers", 24)),
+        )
+        probe_endpoint(
+            invoke_url,
+            name="page-elements",
+            prefix="PageElementDetectionCPUActor",
+            api_key=str(self.detect_kwargs.get("api_key") or "") or None,
         )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

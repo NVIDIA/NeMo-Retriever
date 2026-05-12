@@ -116,6 +116,28 @@ vector_store:
   refine_factor: 10
   embedding_model: "nvidia/llama-nemotron-embed-1b-v2"
 
+# OpenTelemetry tracing/metrics export.  When enabled, the service
+# installs global TracerProvider and MeterProvider instances at startup
+# and instruments FastAPI + outbound httpx/requests + SQLite.  Install
+# the optional dependencies with `pip install nemo-retriever[otel]`.
+#
+# Standard OTEL_* environment variables (typically injected by Helm via
+# the `otelEnvVars` block) override values supplied here, so prod
+# deployments centralise endpoint/service-name config in one place.
+otel:
+  enabled: false
+  service_name: "nemo-retriever-service"
+  # Override OTLP collector endpoint.  null = read OTEL_EXPORTER_OTLP_ENDPOINT.
+  endpoint: null
+  # otlp (default), console (stdout, debugging), or none.
+  exporter: "otlp"
+  # Parent-based trace ratio sampler.  1.0 = always sample, 0.0 = never.
+  sampling_ratio: 1.0
+  # Auto-instrument outbound httpx/requests, sqlite3, and logging.
+  auto_instrument: true
+  # Extra resource attributes appended to the SDK Resource.
+  resource_attributes: {}
+
 # SSE event-bus back-pressure policy.
 #
 # - drop_low_priority (default): silently shed page_complete events

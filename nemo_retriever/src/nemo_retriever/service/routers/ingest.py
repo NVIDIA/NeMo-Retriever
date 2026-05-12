@@ -15,6 +15,9 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
+from nemo_retriever.observability import attributes as otel_attrs
+from nemo_retriever.observability.spans import tag_document, tag_job, tag_upload
+from nemo_retriever.observability.tracer import jobs_failed_counter, jobs_submitted_counter, safe_add
 from nemo_retriever.service.db.repository import Repository
 from nemo_retriever.service.event_logger import record_event
 from nemo_retriever.service.failure_types import EventCategory
@@ -125,6 +128,8 @@ async def ingest_document(
     except (json.JSONDecodeError, Exception) as exc:
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
+    tag_job(meta.job_id)
+
     file_bytes = await file.read()
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
 
@@ -132,6 +137,7 @@ async def ingest_document(
 
     existing = repo.get_document_by_sha(content_sha256)
     if existing is not None:
+        tag_document(existing.id)
         logger.info("Duplicate document detected (sha=%s), returning existing record", content_sha256[:12])
         record_event(
             repo,
@@ -214,6 +220,7 @@ async def ingest_document(
 
     filename = meta.filename or file.filename or "unknown"
     content_type = meta.content_type or file.content_type or "application/octet-stream"
+    tag_upload(filename=filename, total_pages=meta.total_pages)
 
     # Handle job creation / update when the client pre-splits pages
     job_id = meta.job_id
@@ -228,6 +235,13 @@ async def ingest_document(
             )
             repo.insert_job(job)
             repo.update_job_status(job_id, ProcessingStatus.PROCESSING)
+            safe_add(jobs_submitted_counter(), 1, {"endpoint": "/v1/ingest"})
+            logger.info(
+                "[job submitted] job=%s filename=%s total_pages=%d",
+                job_id[:8],
+                filename,
+                meta.total_pages or 0,
+            )
 
         repo.increment_job_pages_submitted(job_id)
         logger.info("[job %s] Received page %s/%s of %s", job_id[:8], meta.page_number, meta.total_pages, filename)
@@ -242,6 +256,7 @@ async def ingest_document(
         metadata_json=json.dumps(meta.metadata),
     )
     doc, lost_race = repo.insert_document_or_get(new_doc)
+    tag_document(doc.id)
     if lost_race:
         # Another concurrent request inserted the same SHA between our
         # get_document_by_sha() check above and the INSERT here.  Treat
@@ -402,6 +417,7 @@ async def get_ingest_status(
     request: Request,
     document_id: str,
 ) -> IngestStatus | IngestComplete:
+    tag_document(document_id)
     repo: Repository = request.app.state.repository
     doc = await asyncio.to_thread(repo.get_document, document_id)
     if doc is None:
@@ -509,6 +525,7 @@ async def get_job_status(
     request: Request,
     job_id: str,
 ) -> JobStatus:
+    tag_job(job_id)
     repo: Repository = request.app.state.repository
     job = await asyncio.to_thread(repo.get_job, job_id)
     if job is None:
@@ -553,6 +570,7 @@ async def get_job_page(
     ``/v1/ingest/job/{job_id}/results`` to fetch all output rows for every
     input page in one call.
     """
+    tag_job(job_id)
     from pathlib import Path
 
     repo: Repository = request.app.state.repository
@@ -598,6 +616,7 @@ async def get_job_results(
     Results are read from the filesystem at ``{results_dir}/{job_id}/``.
     Each JSON file corresponds to one output row produced by the pipeline.
     """
+    tag_job(job_id)
     from pathlib import Path
 
     repo: Repository = request.app.state.repository
@@ -844,13 +863,27 @@ async def ingest_whole_job(
         total_pages = 1
 
     job_id = meta.job_id or uuid.uuid4().hex
+    tag_job(job_id)
+    tag_upload(filename=filename, total_pages=total_pages)
 
     job = Job(id=job_id, filename=filename, content_sha256="", total_pages=total_pages)
+    inserted = False
     try:
         repo.insert_job(job)
         repo.update_job_status(job_id, ProcessingStatus.PROCESSING)
+        inserted = True
     except Exception:  # noqa: BLE001 — job_id may already exist
         pass
+    if inserted:
+        safe_add(jobs_submitted_counter(), 1, {"endpoint": "/v1/ingest/job"})
+        logger.info("[job submitted] job=%s filename=%s total_pages=%d", job_id[:8], filename, total_pages)
+    # Whole-job upload produces exactly one ``WorkerResult`` (the entire
+    # PDF goes through the pipeline as a single input document).  Tell
+    # the pool so ``jobs.completed`` / ``jobs.failed`` fires once the
+    # single result returns — without this override, terminal detection
+    # compares against ``total_pages`` (the PDF page count) and never
+    # fires for whole-job uploads.
+    pool.expect_results(job_id, 1)
 
     ok, payload = await asyncio.to_thread(
         _enqueue_one_page,
@@ -963,13 +996,22 @@ async def ingest_batch(
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
     job_id = meta.job_id or uuid.uuid4().hex
+    tag_job(job_id)
+    tag_upload(filename=meta.filename or "batch", total_pages=len(files))
     if not meta.job_id:
         job = Job(id=job_id, filename=meta.filename or "batch", content_sha256="", total_pages=len(files))
+        inserted = False
         try:
             await asyncio.to_thread(repo.insert_job, job)
             await asyncio.to_thread(repo.update_job_status, job_id, ProcessingStatus.PROCESSING)
-        except Exception:  # noqa: BLE001
+            inserted = True
+        except Exception:  # noqa: BLE001 — job_id may already exist
             pass
+        if inserted:
+            safe_add(jobs_submitted_counter(), 1, {"endpoint": "/v1/ingest/batch"})
+            logger.info(
+                "[job submitted] job=%s filename=%s total_pages=%d", job_id[:8], meta.filename or "batch", len(files)
+            )
 
     accepted: list[IngestAccepted] = []
     rejected: list[dict] = []
@@ -1015,6 +1057,7 @@ async def cancel_job(
     completion, but any subsequent batches that contain pages of the
     cancelled job are skipped before they're dispatched.
     """
+    tag_job(job_id)
     repo: Repository = request.app.state.repository
     pool = request.app.state.processing_pool
 
@@ -1023,6 +1066,15 @@ async def cancel_job(
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
     pool.cancel_job(job_id)
+    if not info.get("already_terminal"):
+        # One increment per job cancellation; don't double-count when
+        # the user cancels a job that's already in a terminal state.
+        safe_add(jobs_failed_counter(), 1, {otel_attrs.STATUS: "cancelled"})
+        logger.info(
+            "[job failed] job=%s reason=cancelled docs_cancelled=%d",
+            job_id[:8],
+            int(info.get("documents_cancelled", 0)),
+        )
 
     job = await asyncio.to_thread(repo.get_job, job_id)
     return JobCancelResponse(
@@ -1057,6 +1109,7 @@ async def delete_job(
     Pass ``?force=true`` to delete a queued or in-flight job (the pipeline will
     discard any remaining buffered pages silently).
     """
+    tag_job(job_id)
     repo: Repository = request.app.state.repository
     job = await asyncio.to_thread(repo.get_job, job_id)
     if job is None:
@@ -1144,6 +1197,7 @@ async def update_job(
     ``pages_completed`` counter is reset to 0 and every document's status
     is set back to ``queued``.
     """
+    tag_job(job_id)
     if action != "requeue":
         raise HTTPException(status_code=400, detail=f"Unknown action '{action}'. Supported: requeue")
 

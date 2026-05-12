@@ -61,6 +61,16 @@ def start(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
     db_path: Optional[str] = typer.Option(None, "--db-path", help="SQLite database path (overrides YAML)."),
+    results_dir: Optional[str] = typer.Option(
+        None,
+        "--results-dir",
+        help="Directory for per-job page-result JSON files (overrides YAML).",
+    ),
+    lancedb_uri: Optional[str] = typer.Option(
+        None,
+        "--lancedb-uri",
+        help="LanceDB directory URI used by /v1/query (overrides YAML).",
+    ),
     api_token: Optional[str] = typer.Option(
         None,
         "--api-token",
@@ -74,6 +84,26 @@ def start(
         None,
         "--drain-timeout-s",
         help="Seconds to wait for in-flight batches to finish on shutdown (overrides YAML).",
+    ),
+    otel: Optional[bool] = typer.Option(
+        None,
+        "--otel/--no-otel",
+        help="Enable OpenTelemetry tracing/metrics export (overrides YAML).",
+    ),
+    otel_endpoint: Optional[str] = typer.Option(
+        None,
+        "--otel-endpoint",
+        help="OTLP collector endpoint, e.g. http://localhost:4317 (overrides YAML / $OTEL_EXPORTER_OTLP_ENDPOINT).",
+    ),
+    otel_service_name: Optional[str] = typer.Option(
+        None,
+        "--otel-service-name",
+        help="OTEL service.name resource attribute (overrides YAML).",
+    ),
+    otel_exporter: Optional[str] = typer.Option(
+        None,
+        "--otel-exporter",
+        help="One of otlp (default), console (stdout for debugging), or none.",
     ),
 ) -> None:
     """Start the retriever ingest web server."""
@@ -108,10 +138,22 @@ def start(
         overrides["resources.gpu_devices"] = [d.strip() for d in gpu_devices.split(",") if d.strip()]
     if db_path is not None:
         overrides["database.path"] = db_path
+    if results_dir is not None:
+        overrides["processing.results_dir"] = results_dir
+    if lancedb_uri is not None:
+        overrides["vector_store.lancedb_uri"] = lancedb_uri
     if api_token is not None:
         overrides["auth.api_token"] = api_token
     if drain_timeout_s is not None:
         overrides["drain.timeout_s"] = drain_timeout_s
+    if otel is not None:
+        overrides["otel.enabled"] = otel
+    if otel_endpoint is not None:
+        overrides["otel.endpoint"] = otel_endpoint
+    if otel_service_name is not None:
+        overrides["otel.service_name"] = otel_service_name
+    if otel_exporter is not None:
+        overrides["otel.exporter"] = otel_exporter
 
     cfg = load_config(config_path=str(config) if config else None, overrides=overrides or None)
 

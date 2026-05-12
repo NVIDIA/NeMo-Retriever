@@ -8,11 +8,59 @@ import dataclasses
 import logging
 import time
 import urllib.parse
+from contextlib import contextmanager
 from typing import Optional
 
 import requests
 
+from opentelemetry import trace as _trace_api
+
+from nemo_retriever.observability import attributes as _otel_attrs
+from nemo_retriever.observability.tracer import get_tracer
+
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _probe_span(name: str, kind: str, url: str):
+    """Open a span around one NIM probe.
+
+    Status / detail are filled in *after* the probe finishes (the caller
+    sets ``probe_status`` on the span before exit).  When no provider is
+    registered the span is a no-op.
+    """
+    tracer = get_tracer()
+    attrs = {
+        _otel_attrs.NIM_KIND: kind,
+        _otel_attrs.NIM_NAME: name,
+        _otel_attrs.NIM_URL: url,
+    }
+    with tracer.start_as_current_span(
+        "nim.probe",
+        attributes=attrs,
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        yield span
+
+
+def _finalize_probe_span(span, status: str, error: str | None = None) -> None:
+    """Tag *span* with its terminal ``probe_status``, optionally with an error."""
+    span.set_attribute(_otel_attrs.NIM_PROBE_STATUS, status)
+    if error is not None:
+        span.set_status(_trace_api.Status(_trace_api.StatusCode.ERROR, error))
+
+
+def _kind_from_name(name: str) -> str:
+    """Normalize the canonical NIM role passed via ``name`` to a snake_case kind label.
+
+    Callers pass roles like ``"ocr"``, ``"page-elements"``, ``"graphic-elements"``,
+    ``"table-structure"``, ``"embed"`` — the prefix arg holds the actor class
+    name, not the role, so we cannot derive kind from it.
+    """
+    if not name:
+        return "unknown"
+    return name.replace("-", "_").lower()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -67,63 +115,70 @@ def probe_endpoint(
     """
     parsed = urllib.parse.urlparse(url)
     health_url = f"{parsed.scheme}://{parsed.netloc}/v1/health/ready"
+    nim_kind = _kind_from_name(name)
 
     # Step 1: unauthenticated health check
-    try:
-        t0 = time.perf_counter()
-        resp = requests.get(health_url, timeout=timeout)
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-        logger.info(
-            "%s: %s endpoint %s responded %d in %.0fms",
-            prefix,
-            name,
-            health_url,
-            resp.status_code,
-            elapsed_ms,
-        )
-        if resp.ok:
-            _probe_results.append(ProbeResult(url=health_url, name=name, prefix=prefix, status="ok"))
-            return
-    except requests.ConnectionError:
-        logger.warning(
-            "%s: %s endpoint %s is UNREACHABLE (connection refused). "
-            "Processing will stall until this endpoint becomes available.",
-            prefix,
-            name,
-            health_url,
-        )
-        _probe_results.append(
-            ProbeResult(
-                url=health_url,
-                name=name,
-                prefix=prefix,
-                status="unreachable",
-                detail=f"{name} endpoint {health_url} is UNREACHABLE (connection refused). "
+    with _probe_span(name=name, kind=nim_kind, url=health_url) as span:
+        try:
+            t0 = time.perf_counter()
+            resp = requests.get(health_url, timeout=timeout)
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            logger.info(
+                "%s: %s endpoint %s responded %d in %.0fms",
+                prefix,
+                name,
+                health_url,
+                resp.status_code,
+                elapsed_ms,
+            )
+            span.set_attribute("http.status_code", int(resp.status_code))
+            if resp.ok:
+                _finalize_probe_span(span, "ok")
+                _probe_results.append(ProbeResult(url=health_url, name=name, prefix=prefix, status="ok"))
+                return
+        except requests.ConnectionError:
+            logger.warning(
+                "%s: %s endpoint %s is UNREACHABLE (connection refused). "
                 "Processing will stall until this endpoint becomes available.",
+                prefix,
+                name,
+                health_url,
             )
-        )
-        return
-    except requests.Timeout:
-        logger.warning(
-            "%s: %s endpoint %s timed out after %.1fs. " "The endpoint may be overloaded or not ready.",
-            prefix,
-            name,
-            health_url,
-            timeout,
-        )
-        _probe_results.append(
-            ProbeResult(
-                url=health_url,
-                name=name,
-                prefix=prefix,
-                status="timeout",
-                detail=f"{name} endpoint {health_url} timed out after {timeout:.1f}s. "
-                "The endpoint may be overloaded or not ready.",
+            _finalize_probe_span(span, "unreachable", "connection refused")
+            _probe_results.append(
+                ProbeResult(
+                    url=health_url,
+                    name=name,
+                    prefix=prefix,
+                    status="unreachable",
+                    detail=f"{name} endpoint {health_url} is UNREACHABLE (connection refused). "
+                    "Processing will stall until this endpoint becomes available.",
+                )
             )
-        )
-        return
-    except Exception as exc:
-        logger.debug("%s: %s endpoint probe %s failed: %s", prefix, name, health_url, exc)
+            return
+        except requests.Timeout:
+            logger.warning(
+                "%s: %s endpoint %s timed out after %.1fs. " "The endpoint may be overloaded or not ready.",
+                prefix,
+                name,
+                health_url,
+                timeout,
+            )
+            _finalize_probe_span(span, "timeout", f"timeout after {timeout:.1f}s")
+            _probe_results.append(
+                ProbeResult(
+                    url=health_url,
+                    name=name,
+                    prefix=prefix,
+                    status="timeout",
+                    detail=f"{name} endpoint {health_url} timed out after {timeout:.1f}s. "
+                    "The endpoint may be overloaded or not ready.",
+                )
+            )
+            return
+        except Exception as exc:
+            _finalize_probe_span(span, "error", type(exc).__name__)
+            logger.debug("%s: %s endpoint probe %s failed: %s", prefix, name, health_url, exc)
 
     # Step 2: authenticated probe of the actual endpoint URL.
     # Only reached when the health path returned non-2xx (e.g. 404 on
@@ -141,57 +196,64 @@ def probe_endpoint(
     target = post_url or url
     body = post_body if post_body is not None else {}
     headers = {"Authorization": f"Bearer {api_key}"}
-    try:
-        t0 = time.perf_counter()
-        resp = requests.post(target, headers=headers, json=body, timeout=timeout)
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-        logger.info(
-            "%s: %s endpoint %s responded %d in %.0fms",
-            prefix,
-            name,
-            target,
-            resp.status_code,
-            elapsed_ms,
-        )
-        if resp.status_code in (401, 403):
-            raise RuntimeError(
-                f"{prefix}: authentication failed for {name} endpoint {target} "
-                f"(HTTP {resp.status_code}) — verify the API key is valid."
+    with _probe_span(name=name, kind=nim_kind, url=target) as span:
+        try:
+            t0 = time.perf_counter()
+            resp = requests.post(target, headers=headers, json=body, timeout=timeout)
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            logger.info(
+                "%s: %s endpoint %s responded %d in %.0fms",
+                prefix,
+                name,
+                target,
+                resp.status_code,
+                elapsed_ms,
             )
-    except RuntimeError:
-        raise
-    except requests.ConnectionError:
-        logger.warning(
-            "%s: %s endpoint %s is UNREACHABLE (connection refused).",
-            prefix,
-            name,
-            target,
-        )
-        _probe_results.append(
-            ProbeResult(
-                url=target,
-                name=name,
-                prefix=prefix,
-                status="unreachable",
-                detail=f"{name} endpoint {target} is UNREACHABLE (connection refused).",
+            span.set_attribute("http.status_code", int(resp.status_code))
+            if resp.status_code in (401, 403):
+                _finalize_probe_span(span, "auth_failed", f"http {resp.status_code}")
+                raise RuntimeError(
+                    f"{prefix}: authentication failed for {name} endpoint {target} "
+                    f"(HTTP {resp.status_code}) — verify the API key is valid."
+                )
+            _finalize_probe_span(span, "ok")
+        except RuntimeError:
+            raise
+        except requests.ConnectionError:
+            logger.warning(
+                "%s: %s endpoint %s is UNREACHABLE (connection refused).",
+                prefix,
+                name,
+                target,
             )
-        )
-    except requests.Timeout:
-        logger.warning(
-            "%s: %s endpoint %s timed out after %.1fs.",
-            prefix,
-            name,
-            target,
-            timeout,
-        )
-        _probe_results.append(
-            ProbeResult(
-                url=target,
-                name=name,
-                prefix=prefix,
-                status="timeout",
-                detail=f"{name} endpoint {target} timed out after {timeout:.1f}s.",
+            _finalize_probe_span(span, "unreachable", "connection refused")
+            _probe_results.append(
+                ProbeResult(
+                    url=target,
+                    name=name,
+                    prefix=prefix,
+                    status="unreachable",
+                    detail=f"{name} endpoint {target} is UNREACHABLE (connection refused).",
+                )
             )
-        )
-    except Exception as exc:
-        logger.debug("%s: %s endpoint probe %s failed: %s", prefix, name, target, exc)
+        except requests.Timeout:
+            logger.warning(
+                "%s: %s endpoint %s timed out after %.1fs.",
+                prefix,
+                name,
+                target,
+                timeout,
+            )
+            _finalize_probe_span(span, "timeout", f"timeout after {timeout:.1f}s")
+            _probe_results.append(
+                ProbeResult(
+                    url=target,
+                    name=name,
+                    prefix=prefix,
+                    status="timeout",
+                    detail=f"{name} endpoint {target} timed out after {timeout:.1f}s.",
+                )
+            )
+        except Exception as exc:
+            _finalize_probe_span(span, "error", type(exc).__name__)
+            logger.debug("%s: %s endpoint probe %s failed: %s", prefix, name, target, exc)

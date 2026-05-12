@@ -18,6 +18,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from nemo_retriever.observability import OTELConfig
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import DedupParams
 from nemo_retriever.params import EmbedParams
@@ -44,10 +45,17 @@ def create_ingestor(
     *,
     run_mode: RunMode = "inprocess",
     params: IngestorCreateParams | None = None,
+    otel: OTELConfig | None = None,
     **kwargs: Any,
 ) -> "Ingestor":
     """
     Graph-only ingestion factory.
+
+    Pass ``otel=OTELConfig(...)`` to install global OpenTelemetry providers
+    when the host application has not already configured them.  When
+    ``otel`` is ``None`` (default), instrumentation defers to whatever
+    provider is already registered — meaning embedded library use inside
+    an OTEL-instrumented host needs no extra wiring.
     """
     merged = _merge_params(params, kwargs)
     if isinstance(merged, IngestorCreateParams):
@@ -80,6 +88,7 @@ def create_ingestor(
         debug=parsed.debug,
         allow_no_gpu=parsed.allow_no_gpu,
         error_policy=parsed.error_policy,
+        otel=otel,
     )
 
 

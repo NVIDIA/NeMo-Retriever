@@ -23,7 +23,9 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 from pathlib import Path
 
-from nemo_retriever.service.config import ServiceConfig
+from nemo_retriever.observability import OTELConfig, attributes as otel_attrs, tag_current_span
+from nemo_retriever.observability.configure import apply_otel_env_defaults, configure as configure_otel
+from nemo_retriever.service.config import OTELServiceConfig, ServiceConfig
 from nemo_retriever.service.db.engine import DatabaseEngine
 from nemo_retriever.service.db.repository import Repository
 from nemo_retriever.service.event_bus import EventBus
@@ -91,6 +93,14 @@ def _resolve_spool_root(config: ServiceConfig) -> Path:
     if config.spool.path:
         return Path(config.spool.path)
     return Path(config.database.path).resolve().parent / "spool"
+
+
+def _to_otel_config(cfg: OTELServiceConfig) -> OTELConfig:
+    """Convert the YAML-driven service config into the library's :class:`OTELConfig`."""
+    data = cfg.model_dump()
+    if not data.get("resource_attributes"):
+        data["resource_attributes"] = None
+    return OTELConfig(**data)
 
 
 @asynccontextmanager
@@ -193,6 +203,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     pool.shutdown()
     db_engine.close()
+    otel_shutdown = getattr(app.state, "otel_shutdown", None)
+    if otel_shutdown is not None:
+        try:
+            otel_shutdown()
+        except Exception:  # noqa: BLE001 — best-effort flush on the way out
+            logger.exception("OpenTelemetry shutdown raised; ignoring")
     logger.info("Retriever service stopped")
 
 
@@ -202,18 +218,32 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
     Routers read ``request.state.request_id`` and pass it to
     :func:`record_event` so all provenance events from one HTTP call
     can be correlated in the event log.
+
+    Also tags the active OTEL span with ``nemo_retriever.request_id``
+    so traces and the SQLite event log can be cross-referenced — when
+    no provider is registered the call is a no-op on the
+    ``NonRecordingSpan``.
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request.state.request_id = uuid.uuid4().hex
-        response = await call_next(request)
-        return response
+        request_id = uuid.uuid4().hex
+        request.state.request_id = request_id
+        tag_current_span(**{otel_attrs.REQUEST_ID: request_id})
+        return await call_next(request)
 
 
 def create_app(config: ServiceConfig) -> FastAPI:
     """Build and return a fully-configured :class:`FastAPI` application."""
     _configure_logging(config)
     _apply_resource_limits(config)
+
+    # OTEL setup must run before lifespan: FastAPIInstrumentor adds a
+    # middleware, and Starlette locks the middleware stack once lifespan begins.
+    # Env defaults precede configure_otel so the requests instrumentor sees
+    # the HF exclude list at instrument-time and worker subprocesses inherit
+    # the service name from os.environ.
+    apply_otel_env_defaults(default_service_name=config.otel.service_name)
+    app_state_otel_shutdown = configure_otel(_to_otel_config(config.otel))
 
     app = FastAPI(
         title="Retriever Service",
@@ -223,6 +253,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
         lifespan=_lifespan,
     )
     app.state.config = config
+    app.state.otel_shutdown = app_state_otel_shutdown
 
     app.add_middleware(_RequestIdMiddleware)
 
@@ -237,6 +268,40 @@ def create_app(config: ServiceConfig) -> FastAPI:
         )
     else:
         logger.info("Bearer-token authentication DISABLED (no api_token configured)")
+
+    # FastAPI instrumentation must register AFTER app-level middlewares so the
+    # OTEL HTTP span ends up outermost — _RequestIdMiddleware then runs inside
+    # it and its tag_current_span call attaches to the inbound HTTP span.
+    if config.otel.enabled:
+        try:
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+            # Patterns match the full URL via re.search, so anchor with $
+            # (not ^) against the terminal id segment. CLI polls
+            # /v1/ingest/{job,status}/<id> every 2s — without exclusion a
+            # 200-sec job produces ~100 spans of poll noise. Override via
+            # OTEL_PYTHON_FASTAPI_EXCLUDED_URLS.
+            default_excludes = ",".join(
+                [
+                    "/v1/health",
+                    "/metrics",
+                    r"/v1/ingest/job/[^/]+$",
+                    r"/v1/ingest/status/[^/]+$",
+                ]
+            )
+            FastAPIInstrumentor.instrument_app(
+                app,
+                excluded_urls=default_excludes,
+            )
+            logger.info(
+                "FastAPI auto-instrumentation enabled "
+                "(excluding health/metrics and per-job/per-document status-poll endpoints)"
+            )
+        except ImportError:
+            logger.info(
+                "OTEL enabled but opentelemetry-instrumentation-fastapi is missing — "
+                "install nemo-retriever[otel] to capture HTTP spans"
+            )
 
     from nemo_retriever.service.routers import events, ingest, internal, metrics, query, rerank, stream, system
 

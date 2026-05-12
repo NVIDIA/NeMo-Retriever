@@ -50,6 +50,19 @@ from typing import Any
 
 import pandas as pd
 
+from nemo_retriever.observability import OTELConfig
+from nemo_retriever.observability import attributes as otel_attrs
+from nemo_retriever.observability.configure import configure as configure_otel
+from nemo_retriever.observability.propagate import extract_context, inject_current_context
+from nemo_retriever.observability.spans import operator_span
+from nemo_retriever.observability.tracer import (
+    get_tracer,
+    jobs_completed_counter,
+    jobs_failed_counter,
+    pages_completed_counter,
+    pages_failed_counter,
+    safe_add,
+)
 from nemo_retriever.service.config import NimEndpointsConfig, ServiceConfig
 from nemo_retriever.service.db.engine import DatabaseEngine
 from nemo_retriever.service.db.repository import Repository
@@ -320,6 +333,7 @@ def _build_operator_chain(
 
 _worker_chain: list[tuple[str, Any]] | None = None
 _worker_db_path: str | None = None
+_worker_otel_shutdown: typing.Callable[[], None] | None = None
 
 
 def _record_probe_events(db_path: str) -> None:
@@ -360,6 +374,7 @@ def _worker_initializer(
     nim_config_queue: multiprocessing.Queue,  # type: ignore[type-arg]
     fallback_nim_config: dict[str, Any],
     vector_store_config: dict[str, Any] | None = None,
+    otel_config: dict[str, Any] | None = None,
 ) -> None:
     """Called exactly once per worker process by ProcessPoolExecutor.
 
@@ -367,8 +382,14 @@ def _worker_initializer(
     multi-endpoint URLs are distributed round-robin.  If the queue is
     empty (more processes than configs — shouldn't happen) the fallback
     config is used so the worker still functions.
+
+    The ``otel_config`` dict (when supplied) installs a fresh
+    ``TracerProvider`` / ``MeterProvider`` inside the worker subprocess.
+    A subprocess does NOT inherit the parent's in-memory provider state,
+    so each worker must initialise its own — without this, spans built
+    inside ``_run_pipeline_batch`` would silently no-op.
     """
-    global _worker_chain, _worker_db_path
+    global _worker_chain, _worker_db_path, _worker_otel_shutdown
 
     # Workers should not handle SIGINT — the main process owns shutdown.
     # Without this, Ctrl+C causes noisy KeyboardInterrupt tracebacks from
@@ -381,6 +402,17 @@ def _worker_initializer(
         setproctitle.setproctitle("nemo-retriever-worker")
     except ImportError:
         pass
+
+    if otel_config is not None:
+        try:
+            _worker_otel_shutdown = configure_otel(OTELConfig(**otel_config))
+            if _worker_otel_shutdown is not None:
+                import atexit
+
+                atexit.register(_worker_otel_shutdown)
+        except Exception:  # noqa: BLE001 — never block worker startup on telemetry
+            logger.exception("[pid %d] Worker OTEL configure failed", os.getpid())
+            _worker_otel_shutdown = None
 
     _worker_db_path = db_path
     try:
@@ -417,6 +449,7 @@ class PageDescriptor:
     job_id: str | None = None
     page_number: int = 1
     spool_path: str | None = None
+    trace_context: dict[str, str] | None = None
 
 
 @dataclasses.dataclass
@@ -441,6 +474,16 @@ class WorkerResult:
     # the main process so it can publish ``page_result`` SSE events without
     # making clients re-fetch the data over REST.
     page_contents: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass
+class _JobProgress:
+    """Per-job result counters + terminal-fired flag (pool-internal)."""
+
+    seen: int = 0
+    failed: int = 0
+    expected: int | None = None
+    fired: bool = False
 
 
 @dataclasses.dataclass
@@ -475,6 +518,79 @@ def _run_pipeline_batch(
     pipeline once, then splits the output back into per-page results
     using the ``_page_document_id`` provenance column.
     """
+    pid = os.getpid()
+
+    span_attrs: dict[str, Any] = {
+        otel_attrs.RUN_MODE: "service",
+        otel_attrs.WORKER_PID: pid,
+        otel_attrs.BATCH_SIZE: len(page_descriptors),
+    }
+
+    job_ids = {p.get("job_id") for p in page_descriptors if p.get("job_id")}
+    doc_ids = {p.get("document_id") for p in page_descriptors if p.get("document_id")}
+    if len(job_ids) == 1:
+        span_attrs[otel_attrs.JOB_ID] = next(iter(job_ids))
+    if len(doc_ids) == 1:
+        span_attrs[otel_attrs.DOCUMENT_ID] = next(iter(doc_ids))
+    span_attrs[otel_attrs.BATCH_JOB_COUNT] = len(job_ids)
+    span_attrs[otel_attrs.BATCH_DOCUMENT_COUNT] = len(doc_ids)
+
+    parent_ctx, links = _resolve_batch_span_parents(page_descriptors)
+    if links:
+        span_attrs["nemo_retriever.batch.link_count"] = len(links)
+
+    with get_tracer().start_as_current_span(
+        "pool.run_pipeline_batch",
+        context=parent_ctx,
+        links=links or None,
+        attributes=span_attrs,
+        record_exception=True,
+        set_status_on_exception=True,
+    ):
+        return _run_pipeline_batch_impl(page_descriptors, db_path=db_path)
+
+
+def _resolve_batch_span_parents(
+    page_descriptors: list[dict[str, Any]],
+) -> tuple[Any, list[Any]]:
+    """Pick a parent ``Context`` and ``Link`` list from per-page descriptors.
+
+    Returns ``(parent_ctx, links)``.  Pages that share the same
+    ``trace_id`` collapse to a single Link/Context (no point duplicating).
+    When no per-page carrier yields a valid context (e.g. OTEL was not
+    configured at submit time) the batch span becomes a fresh root.
+    """
+    from opentelemetry import trace as _trace_api
+
+    seen_trace_ids: set[int] = set()
+    contexts_in_order: list[Any] = []
+    for d in page_descriptors:
+        carrier = d.get("trace_context") if isinstance(d, dict) else None
+        if not carrier:
+            continue
+        ctx = extract_context(carrier)
+        span = _trace_api.get_current_span(ctx)
+        sc = span.get_span_context()
+        if not sc.is_valid:
+            continue
+        if sc.trace_id in seen_trace_ids:
+            continue
+        seen_trace_ids.add(sc.trace_id)
+        contexts_in_order.append((ctx, sc))
+
+    if not contexts_in_order:
+        return extract_context(None), []
+
+    parent_ctx = contexts_in_order[0][0]
+    links = [_trace_api.Link(sc) for _ctx, sc in contexts_in_order[1:]]
+    return parent_ctx, links
+
+
+def _run_pipeline_batch_impl(
+    page_descriptors: list[dict[str, Any]],
+    *,
+    db_path: str,
+) -> BatchWorkerResult:
     pid = os.getpid()
     engine = DatabaseEngine(db_path)
     repo = Repository(engine)
@@ -604,13 +720,20 @@ def _run_pipeline_batch(
 
     failed_stage: str | None = None
     failed_exc: BaseException | None = None
-    for stage_name, op in _worker_chain:
+    for stage_index, (stage_name, op) in enumerate(_worker_chain):
         try:
-            df = op.run(df)
-            if df is None:
-                raise RuntimeError(
-                    f"Operator '{stage_name}' ({type(op).__name__}) returned None instead of a DataFrame"
-                )
+            with operator_span(
+                stage_name,
+                run_mode="service",
+                operator_class=type(op).__name__,
+                operator_index=stage_index,
+                batch_size=len(df) if df is not None else None,
+            ):
+                df = op.run(df)
+                if df is None:
+                    raise RuntimeError(
+                        f"Operator '{stage_name}' ({type(op).__name__}) returned None instead of a DataFrame"
+                    )
         except BaseException as exc:
             failed_stage = stage_name
             failed_exc = exc
@@ -1244,8 +1367,8 @@ class ProcessingPool:
         self._draining = threading.Event()
         # In-memory job page counters for immediate SSE job_complete
         # detection without waiting for the DB writer thread.
-        self._job_page_counts: dict[str, int] = {}
-        self._job_page_counts_lock = threading.Lock()
+        self._job_progress: dict[str, _JobProgress] = {}
+        self._job_progress_lock = threading.Lock()
         # Background spool sweeper (started in start()).
         self._spool_cleanup_task: asyncio.Task | None = None
 
@@ -1284,12 +1407,19 @@ class ProcessingPool:
         if self._config.vector_store is not None:
             vs_dict = self._config.vector_store.model_dump()
 
+        otel_dict: dict[str, Any] | None = None
+        otel_cfg = getattr(self._config, "otel", None)
+        if otel_cfg is not None and otel_cfg.enabled:
+            otel_dict = otel_cfg.model_dump()
+            if not otel_dict.get("resource_attributes"):
+                otel_dict["resource_attributes"] = None
+
         logger.info("Initialising %d worker(s) — building operator chains", self._num_workers)
         self._executor = ProcessPoolExecutor(
             max_workers=self._num_workers,
             mp_context=ctx,
             initializer=_worker_initializer,
-            initargs=(db_path, nim_config_queue, fallback_nim_config, vs_dict),
+            initargs=(db_path, nim_config_queue, fallback_nim_config, vs_dict, otel_dict),
         )
 
         warmup_futures = [self._executor.submit(os.getpid) for _ in range(self._num_workers)]
@@ -1640,7 +1770,7 @@ class ProcessingPool:
         )
 
         if job_id:
-            self._handle_job_completion(job_id)
+            self._handle_job_completion(job_id, success=False)
 
     # ------------------------------------------------------------------
     # Result callback (runs in main process on a callback thread)
@@ -1679,6 +1809,37 @@ class ProcessingPool:
         """Process one per-page result: publish SSE events immediately, then enqueue DB writes."""
         doc_id = result.document_id
         job_id = result.job_id
+
+        # Per-page lifecycle counter — distinct from the per-operator
+        # ``documents.processed`` counter, which fires per stage.  This
+        # one increments exactly once per page so dashboards can simply
+        # graph the rate.
+        if result.success:
+            safe_add(pages_completed_counter(), 1)
+        else:
+            safe_add(
+                pages_failed_counter(),
+                1,
+                {otel_attrs.ERROR_CLASS: result.failure_type or "unknown"},
+            )
+
+        if result.success:
+            logger.info(
+                "[page complete] doc=%s job=%s page=%s duration_ms=%.0f",
+                doc_id[:8],
+                (job_id or "")[:8],
+                result.page_number,
+                result.processing_duration_ms,
+            )
+        else:
+            logger.warning(
+                "[page failed] doc=%s job=%s page=%s failure_type=%s error=%s",
+                doc_id[:8],
+                (job_id or "")[:8],
+                result.page_number,
+                result.failure_type,
+                (result.error_message or "")[:160],
+            )
 
         if result.success:
             page_complete_payload: dict[str, Any] = {
@@ -1783,39 +1944,89 @@ class ProcessingPool:
             self._db_writer.enqueue(write_item)
 
         if job_id:
-            self._handle_job_completion(job_id)
+            self._handle_job_completion(job_id, success=result.success)
 
-    def _handle_job_completion(self, job_id: str) -> None:
-        """Track page completion in-memory and publish job_complete SSE immediately.
+    def expect_results(self, job_id: str, n: int) -> None:
+        """Override the expected ``WorkerResult`` count for *job_id*.
 
-        Uses an in-memory counter so the SSE fires as soon as the last
-        page result arrives, without waiting for the DB writer thread.
+        Required for whole-job uploads where ``job.total_pages`` is the
+        PDF page count, not the number of input documents.
         """
-        with self._job_page_counts_lock:
-            self._job_page_counts[job_id] = self._job_page_counts.get(job_id, 0) + 1
-            pages_completed = self._job_page_counts[job_id]
+        if n <= 0:
+            return
+        with self._job_progress_lock:
+            self._job_progress.setdefault(job_id, _JobProgress()).expected = n
+
+    def _handle_job_completion(self, job_id: str, *, success: bool = True) -> None:
+        """Track per-result state; fire ``job_complete`` SSE + lifecycle
+        counter exactly once when ``seen >= expected``."""
+        with self._job_progress_lock:
+            progress = self._job_progress.setdefault(job_id, _JobProgress())
+            if progress.fired:
+                return
+            progress.seen += 1
+            if not success:
+                progress.failed += 1
+            # Snapshot inside the lock so the SSE payload reflects the
+            # result count at *this* call's threshold crossing, not
+            # whatever extra results other threads stack on while we
+            # release the lock to do the DB lookup below.
+            seen, failed, expected = progress.seen, progress.failed, progress.expected
+            # Fast path: ``expect_results`` declared a known target.
+            # Skip the DB lookup for the N-1 non-terminal results.
+            if expected is not None and seen < expected:
+                return
 
         repo = Repository(self._db_engine)
         job = repo.get_job(job_id)
         if job is None:
             return
 
-        if pages_completed >= job.total_pages and job.total_pages > 0:
-            with self._job_page_counts_lock:
-                self._job_page_counts.pop(job_id, None)
-            logger.info("[job %s] All %d pages of %s complete", job_id[:8], job.total_pages, job.filename)
-            asyncio.run_coroutine_threadsafe(
-                self._event_bus.publish(
-                    job_id,
-                    {
-                        "event": "job_complete",
-                        "job_id": job_id,
-                        "filename": job.filename,
-                        "total_pages": job.total_pages,
-                    },
-                ),
-                self._event_loop,
+        with self._job_progress_lock:
+            progress = self._job_progress.get(job_id)
+            if progress is None or progress.fired:
+                return
+            target = expected if expected is not None else job.total_pages
+            if target <= 0 or seen < target:
+                return
+            progress.fired = True
+            self._job_progress.pop(job_id, None)
+
+        any_success = failed < seen
+        if any_success:
+            logger.info(
+                "[job complete] job=%s filename=%s total_pages=%d failed_results=%d",
+                job_id[:8],
+                job.filename,
+                job.total_pages,
+                failed,
             )
+            safe_add(jobs_completed_counter(), 1)
+        else:
+            # Skip the natural-terminal counter when the cancel route
+            # already fired ``jobs.failed`` — avoids double-counting.
+            if not self.is_job_cancelled(job_id):
+                logger.warning(
+                    "[job failed] job=%s filename=%s total_pages=%d reason=all_pages_failed",
+                    job_id[:8],
+                    job.filename,
+                    job.total_pages,
+                )
+                safe_add(jobs_failed_counter(), 1, {otel_attrs.STATUS: "failed"})
+
+        asyncio.run_coroutine_threadsafe(
+            self._event_bus.publish(
+                job_id,
+                {
+                    "event": "job_complete",
+                    "job_id": job_id,
+                    "filename": job.filename,
+                    "total_pages": job.total_pages,
+                    "failed_pages": failed,
+                },
+            ),
+            self._event_loop,
+        )
 
     # ------------------------------------------------------------------
     # Submit (public API — enqueues into the batch buffer)
@@ -1854,6 +2065,8 @@ class ProcessingPool:
         if self.is_job_cancelled(job_id):
             return False
 
+        trace_context = inject_current_context() or None
+
         # When the bytes have been spooled, do NOT also pickle them into
         # the descriptor — the worker will read them from disk.
         descriptor = PageDescriptor(
@@ -1864,5 +2077,6 @@ class ProcessingPool:
             job_id=job_id,
             page_number=page_number,
             spool_path=spool_path,
+            trace_context=trace_context,
         )
         return self._buffer.enqueue(dataclasses.asdict(descriptor))

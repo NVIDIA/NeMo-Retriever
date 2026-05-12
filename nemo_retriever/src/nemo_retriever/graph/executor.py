@@ -15,6 +15,9 @@ import pandas as pd
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.observability.propagate import inject_current_context
+from nemo_retriever.observability.ray_integration import RayOperatorSpanWrapper, collect_otel_env
+from nemo_retriever.observability.spans import operator_span
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
 from nemo_retriever.utils.input_files import (
     _is_explicit_glob_path,
@@ -131,12 +134,26 @@ class InprocessExecutor(AbstractExecutor):
 
         if self._show_progress and tqdm is not None:
             pbar = tqdm(operators, desc="Pipeline stages", unit="stage")
-            for name, op in pbar:
+            for index, (name, op) in enumerate(pbar):
                 pbar.set_postfix_str(name)
-                df = op.run(df)
+                with operator_span(
+                    name,
+                    run_mode="inprocess",
+                    operator_class=type(op).__name__,
+                    operator_index=index,
+                    batch_size=len(df) if df is not None else None,
+                ):
+                    df = op.run(df)
         else:
-            for _name, op in operators:
-                df = op.run(df)
+            for index, (name, op) in enumerate(operators):
+                with operator_span(
+                    name,
+                    run_mode="inprocess",
+                    operator_class=type(op).__name__,
+                    operator_index=index,
+                    batch_size=len(df) if df is not None else None,
+                ):
+                    df = op.run(df)
 
         return df
 
@@ -249,6 +266,7 @@ class RayDataExecutor(AbstractExecutor):
             }
             ray_env_vars.update(collect_hf_runtime_env())
             ray_env_vars.update(collect_remote_auth_runtime_env())
+            ray_env_vars.update(collect_otel_env())
             os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
             runtime_env = {"env_vars": ray_env_vars}
             ray.init(
@@ -272,8 +290,13 @@ class RayDataExecutor(AbstractExecutor):
                 ds = rd.read_binary_files(input_paths, include_paths=True)
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
+
+        # Snapshot the driver's pipeline_span so actor operator spans can
+        # attach as children rather than become orphan roots.
+        otel_parent_carrier = inject_current_context()
+
         nodes = self._linearize(resolved_graph)
-        for node in nodes:
+        for node_index, node in enumerate(nodes):
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
             batch_size = overrides.pop("batch_size", self._default_batch_size)
@@ -366,17 +389,20 @@ class RayDataExecutor(AbstractExecutor):
             elif target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
                 ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
 
-            # Pass the operator class directly to map_batches with
-            # fn_constructor_kwargs for deferred construction on workers.
-            # AbstractOperator.__call__ delegates to run(), so each stage
-            # executes the full preprocess -> process -> postprocess chain.
+            wrapped_kwargs = {
+                "_otel_operator_class": node.operator_class,
+                "_otel_node_name": node.name,
+                "_otel_node_index": node_index,
+                "_otel_parent_carrier": otel_parent_carrier or None,
+                "_otel_operator_kwargs": dict(node.operator_kwargs or {}),
+            }
             ds = ds.map_batches(
-                node.operator_class,
+                RayOperatorSpanWrapper,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
-                fn_constructor_kwargs=node.operator_kwargs,
+                fn_constructor_kwargs=wrapped_kwargs,
                 **overrides,
             )
 

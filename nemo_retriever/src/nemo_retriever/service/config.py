@@ -137,6 +137,41 @@ class VectorStoreConfig(BaseModel):
     embedding_model: str = "nvidia/llama-nemotron-embed-1b-v2"
 
 
+class OTELServiceConfig(BaseModel):
+    """OpenTelemetry tracing/metrics export for the service.
+
+    When ``enabled`` is true, the service installs global ``TracerProvider``
+    and ``MeterProvider`` instances at startup and instruments FastAPI,
+    httpx/requests, and SQLite via the corresponding ``opentelemetry-
+    instrumentation-*`` packages (install them via the ``[otel]`` extra).
+
+    Standard ``OTEL_*`` environment variables — populated by Helm's
+    ``otelEnvVars`` block — take precedence over fields supplied here, so
+    a Kubernetes deployment can centralise endpoint/service-name config
+    in one place.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    service_name: str = "nemo-retriever-service"
+    # OTLP collector endpoint.  ``null`` falls back to the
+    # ``OTEL_EXPORTER_OTLP_ENDPOINT`` environment variable.
+    endpoint: str | None = None
+    # ``otlp`` (gRPC or HTTP, picked from endpoint scheme), ``console``
+    # (stdout — useful for local debugging), or ``none`` (disable export
+    # while still collecting in-process spans for tests).
+    exporter: Literal["otlp", "console", "none"] = "otlp"
+    # Parent-based ratio sampler.  1.0 = always sample, 0.0 = never.
+    sampling_ratio: float = 1.0
+    # Auto-instrument outbound httpx/requests, sqlite3, and logging.
+    auto_instrument: bool = True
+    # Free-form resource attribute dict appended to the SDK Resource —
+    # use for ``deployment.environment`` style labels not driven by
+    # ``OTEL_RESOURCE_ATTRIBUTES``.
+    resource_attributes: dict[str, str] = Field(default_factory=dict)
+
+
 class EventBusConfig(BaseModel):
     """SSE event-bus back-pressure policy.
 
@@ -194,6 +229,7 @@ class ServiceConfig(BaseModel):
     event_bus: EventBusConfig = Field(default_factory=EventBusConfig)
     vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     reranker: RerankerConfig = Field(default_factory=RerankerConfig)
+    otel: OTELServiceConfig = Field(default_factory=OTELServiceConfig)
 
 
 def _bundled_yaml_path() -> Path:

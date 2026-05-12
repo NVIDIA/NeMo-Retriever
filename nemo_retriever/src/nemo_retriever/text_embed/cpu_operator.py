@@ -34,7 +34,7 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
         self._model = None
 
         api_key = self._kwargs.get("api_key")
-        if endpoint and api_key:
+        if endpoint:
             # Probe the /embeddings path with a model-name-only body — auth is
             # checked before body validation so a bad key returns 401 without
             # triggering inference. A valid key with an empty input returns 400.
