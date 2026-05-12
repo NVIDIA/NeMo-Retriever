@@ -27,7 +27,7 @@ from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.agent_runti
 from nemo_retriever.tabular_data.retrieval.deep_agent.retrieve_candidates.agent_runtime import (
     run_retrieval_agent,
 )
-from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload
+from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload, get_dialect
 from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.tools import ExecutionStore
 from nemo_retriever.tabular_data.retrieval.utils import get_llm_client
 
@@ -105,7 +105,7 @@ def _run_sql_agent(
 
     prompt = format_sql_user_prompt(
         question=payload["question"],
-        dialect=payload.get("dialect"),
+        dialect=get_dialect(payload),
     )
 
     last_error: Exception | None = None

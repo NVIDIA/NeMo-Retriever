@@ -33,7 +33,7 @@ from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
 
 from nemo_retriever.tabular_data.retrieval.deep_agent.context import RetrievalContext
-from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload
+from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload, get_dialect
 from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.tools import (
     SqlGenerationStore,
     build_author_tools,
@@ -146,7 +146,7 @@ def create_sql_agent(
         llm = get_llm_client()
 
     store = build_sql_store(payload, retrieval_ctx=retrieval_ctx)
-    dialect = payload.get("dialect")
+    dialect = get_dialect(payload)
     dialects = [dialect] if dialect else []
 
     planner_tools = build_planner_tools(store, llm)
@@ -207,7 +207,7 @@ def _build_system_prompt(payload: AgentPayload, retrieval_ctx: RetrievalContext)
     accessed by subagent tools, not the orchestrator.
     """
     now = datetime.now()
-    dialect = payload.get("dialect")
+    dialect = get_dialect(payload)
 
     lines: list[str] = [
         f"Today's date: {now.year}-{now.month:02d}-{now.day:02d} " f"{now.hour:02d}:{now.minute:02d}:{now.second:02d}.",
