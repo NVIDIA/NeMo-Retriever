@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS datasets (
     query_csv TEXT,
     input_type TEXT DEFAULT 'pdf',
     recall_required INTEGER DEFAULT 0,
-    recall_match_mode TEXT DEFAULT 'pdf_page',
+    recall_match_mode TEXT DEFAULT 'audio_segment',
     recall_adapter TEXT DEFAULT 'none',
     description TEXT,
     tags TEXT,
@@ -273,7 +273,7 @@ _MIGRATIONS = [
     "ALTER TABLE preset_matrices ADD COLUMN preferred_runner_id INTEGER",
     "ALTER TABLE preset_matrices ADD COLUMN gpu_type_filter TEXT",
     "ALTER TABLE schedules ADD COLUMN preferred_runner_ids TEXT",
-    "ALTER TABLE datasets ADD COLUMN evaluation_mode TEXT DEFAULT 'recall'",
+    "ALTER TABLE datasets ADD COLUMN evaluation_mode TEXT DEFAULT 'beir'",
     "ALTER TABLE datasets ADD COLUMN beir_loader TEXT",
     "ALTER TABLE datasets ADD COLUMN beir_dataset_name TEXT",
     "ALTER TABLE datasets ADD COLUMN beir_split TEXT DEFAULT 'test'",
@@ -300,11 +300,57 @@ _MIGRATIONS = [
     "ALTER TABLE datasets ADD COLUMN distribute INTEGER DEFAULT 1",
     "ALTER TABLE datasets ADD COLUMN active INTEGER DEFAULT 1",
     "ALTER TABLE datasets ADD COLUMN config_hash TEXT",
+    "ALTER TABLE datasets ADD COLUMN ocr_version TEXT",
+    "ALTER TABLE datasets ADD COLUMN lancedb_table_name TEXT DEFAULT 'nv-ingest'",
     "ALTER TABLE jobs ADD COLUMN dataset_id INTEGER",
     "ALTER TABLE jobs ADD COLUMN dataset_config_hash TEXT",
     "ALTER TABLE runs ADD COLUMN dataset_id INTEGER",
     "ALTER TABLE runs ADD COLUMN dataset_config_hash TEXT",
 ]
+
+CREATE_DATA_MIGRATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS _applied_data_migrations (
+    key TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+"""
+
+_MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR = "non_audio_recall_datasets_to_beir"
+_MIGRATE_BO20_DATASETS_TO_NONE = "bo20_datasets_to_none"
+_MIGRATE_KNOWN_BEIR_DATASET_LOADERS = "known_beir_dataset_loaders"
+_MIGRATE_UNKNOWN_BEIR_DATASETS_WITHOUT_LOADERS_TO_NONE = "unknown_beir_datasets_without_loaders_to_none"
+_DATA_MIGRATIONS = (
+    (
+        _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR,
+        "UPDATE datasets SET evaluation_mode = CASE "
+        "WHEN name = 'bo20' THEN 'none' "
+        "WHEN name IN ('jp20', 'bo767', 'bo10k', 'earnings', 'financebench') OR name LIKE 'vidore%' THEN 'beir' "
+        "ELSE 'none' END "
+        "WHERE evaluation_mode = 'recall' AND COALESCE(input_type, 'pdf') != 'audio'",
+    ),
+    (
+        _MIGRATE_BO20_DATASETS_TO_NONE,
+        "UPDATE datasets SET evaluation_mode = 'none' "
+        "WHERE name = 'bo20' AND COALESCE(input_type, 'pdf') != 'audio'",
+    ),
+    (
+        _MIGRATE_KNOWN_BEIR_DATASET_LOADERS,
+        "UPDATE datasets SET beir_loader = CASE "
+        "WHEN name = 'jp20' THEN 'jp20_csv' "
+        "WHEN name = 'bo767' THEN 'bo767_csv' "
+        "WHEN name = 'bo10k' THEN 'bo10k_csv' "
+        "WHEN name = 'earnings' THEN 'earnings_csv' "
+        "WHEN name = 'financebench' THEN 'financebench_json' "
+        "WHEN name LIKE 'vidore%' THEN 'vidore_hf' "
+        "ELSE beir_loader END "
+        "WHERE evaluation_mode = 'beir' AND beir_loader IS NULL",
+    ),
+    (
+        _MIGRATE_UNKNOWN_BEIR_DATASETS_WITHOUT_LOADERS_TO_NONE,
+        "UPDATE datasets SET evaluation_mode = 'none' "
+        "WHERE evaluation_mode = 'beir' AND beir_loader IS NULL AND COALESCE(input_type, 'pdf') != 'audio'",
+    ),
+)
 
 RUNNER_MISSED_HEARTBEATS_THRESHOLD = 4
 
@@ -350,6 +396,15 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+    conn.execute(CREATE_DATA_MIGRATIONS_TABLE_SQL)
+    for key, stmt in _DATA_MIGRATIONS:
+        if conn.execute("SELECT 1 FROM _applied_data_migrations WHERE key = ?", (key,)).fetchone():
+            continue
+        conn.execute(stmt)
+        conn.execute(
+            "INSERT INTO _applied_data_migrations (key, applied_at) VALUES (?, ?)",
+            (key, datetime.now(timezone.utc).isoformat()),
+        )
     conn.commit()
     return conn
 
@@ -877,9 +932,39 @@ _DATASET_FIELDS = (
     "embed_granularity",
     "extract_page_as_image",
     "extract_infographics",
+    "ocr_version",
+    "lancedb_table_name",
     "distribute",
     "description",
 )
+
+_HASH_AFFECTING_FIELDS = (
+    "query_csv",
+    "input_type",
+    "recall_required",
+    "recall_match_mode",
+    "recall_adapter",
+    "evaluation_mode",
+    "beir_loader",
+    "beir_dataset_name",
+    "beir_split",
+    "beir_query_language",
+    "beir_doc_id_field",
+    "beir_ks",
+    "embed_model_name",
+    "embed_modality",
+    "embed_granularity",
+    "extract_page_as_image",
+    "extract_infographics",
+    "ocr_version",
+    "lancedb_table_name",
+)
+
+
+def _dataset_config_fields_for_hash(data: dict[str, Any]) -> dict[str, Any] | None:
+    # Include None values so clearing optional filters changes the hash.
+    fields = {key: data.get(key) for key in _HASH_AFFECTING_FIELDS}
+    return fields or None
 
 
 def _deserialize_dataset_row(row: sqlite3.Row) -> dict[str, Any]:
@@ -939,18 +1024,18 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
             " recall_match_mode, recall_adapter, evaluation_mode, beir_loader,"
             " beir_dataset_name, beir_split, beir_query_language, beir_doc_id_field,"
             " beir_ks, embed_model_name, embed_modality, embed_granularity,"
-            " extract_page_as_image, extract_infographics, distribute,"
+            " extract_page_as_image, extract_infographics, ocr_version, lancedb_table_name, distribute,"
             " description, tags, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["name"],
                 data["path"],
                 data.get("query_csv") or None,
                 data.get("input_type", "pdf"),
                 1 if data.get("recall_required") else 0,
-                data.get("recall_match_mode", "pdf_page"),
+                data.get("recall_match_mode", "audio_segment"),
                 data.get("recall_adapter", "none"),
-                data.get("evaluation_mode", "recall"),
+                data.get("evaluation_mode", "beir"),
                 data.get("beir_loader") or None,
                 data.get("beir_dataset_name") or None,
                 data.get("beir_split", "test"),
@@ -962,6 +1047,8 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
                 data.get("embed_granularity", "element"),
                 1 if data.get("extract_page_as_image") else 0,
                 1 if data.get("extract_infographics") else 0,
+                data.get("ocr_version") or None,
+                data.get("lancedb_table_name", "nv-ingest") or "nv-ingest",
                 0 if data.get("distribute") is False else 1,
                 data.get("description") or None,
                 tags,
@@ -970,13 +1057,17 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
             ),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM datasets WHERE id = ?", (row_id,)).fetchone()
+        ds = dict(row) if row else data
 
-        config_fields = {
-            k: data.get(k)
-            for k in ("query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter")
-            if data.get(k) is not None
-        }
-        _compute_and_store_config_hash(conn, row_id, data["path"], data.get("query_csv"), config_fields or None)
+        _compute_and_store_config_hash(
+            conn,
+            row_id,
+            ds["path"],
+            ds.get("query_csv"),
+            _dataset_config_fields_for_hash(ds),
+        )
 
         conn.commit()
         return get_dataset_by_id(row_id, db_path)  # type: ignore[return-value]
@@ -1006,9 +1097,6 @@ def get_dataset_by_id(dataset_id: int, db_path: str | None = None) -> dict[str, 
         conn.close()
 
 
-_HASH_AFFECTING_FIELDS = {"path", "query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter"}
-
-
 def update_dataset(dataset_id: int, data: dict[str, Any], db_path: str | None = None) -> dict[str, Any] | None:
     _BOOL_DATASET_FIELDS = {"recall_required", "extract_page_as_image", "extract_infographics", "distribute"}
     conn = _connect(db_path)
@@ -1034,17 +1122,18 @@ def update_dataset(dataset_id: int, data: dict[str, Any], db_path: str | None = 
         vals.append(dataset_id)
         conn.execute(f"UPDATE datasets SET {', '.join(sets)} WHERE id = ?", vals)
 
-        if _HASH_AFFECTING_FIELDS & data.keys():
+        if {"path", *_HASH_AFFECTING_FIELDS} & data.keys():
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
             if row:
                 ds = dict(row)
-                config_fields = {
-                    k: ds.get(k)
-                    for k in ("query_csv", "input_type", "recall_required", "recall_match_mode", "recall_adapter")
-                    if ds.get(k) is not None
-                }
-                _compute_and_store_config_hash(conn, dataset_id, ds["path"], ds.get("query_csv"), config_fields or None)
+                _compute_and_store_config_hash(
+                    conn,
+                    dataset_id,
+                    ds["path"],
+                    ds.get("query_csv"),
+                    _dataset_config_fields_for_hash(ds),
+                )
 
         conn.commit()
         return get_dataset_by_id(dataset_id, db_path)
@@ -1164,16 +1253,16 @@ def import_yaml_datasets(yaml_datasets: dict[str, dict[str, Any]], db_path: str 
         existing = get_dataset_by_name(name, db_path)
         if existing:
             continue
-        data = {
+        data: dict[str, Any] = {
             "name": name,
             "path": cfg.get("path", ""),
-            "query_csv": cfg.get("query_csv"),
-            "input_type": cfg.get("input_type", "pdf"),
-            "recall_required": cfg.get("recall_required", False),
-            "recall_match_mode": cfg.get("recall_match_mode", "pdf_page"),
-            "recall_adapter": cfg.get("recall_adapter", "none"),
             "description": "Imported from test_configs.yaml",
         }
+        for field in _DATASET_FIELDS:
+            if field in {"name", "path", "description"}:
+                continue
+            if field in cfg and cfg[field] is not None:
+                data[field] = cfg[field]
         try:
             create_dataset(data, db_path)
             imported += 1

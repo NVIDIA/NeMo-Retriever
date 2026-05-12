@@ -1,0 +1,63 @@
+runs:
+  - name: jp20_te_dense
+    dataset: jp20
+    preset: PE_GE_OCR_TE_DENSE
+
+  - name: bo767_te_dense
+    dataset: bo767
+    preset: PE_GE_OCR_TE_DENSE
+
+  - name: bo10k_te_dense
+    dataset: bo10k
+    preset: PE_GE_OCR_TE_DENSE
+
+  - name: earnings_te_dense
+    dataset: earnings
+    preset: PE_GE_OCR_TE_DENSE
+
+  - name: financebench_te_dense
+    dataset: financebench
+    preset: PE_GE_OCR_TE_DENSE
+
+  - name: vidore_v3_computer_science_vl_image_text_dense
+    dataset: vidore_v3_computer_science
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+  - name: vidore_v3_energy_vl_image_text_dense
+    dataset: vidore_v3_energy
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+  - name: vidore_v3_finance_en_vl_image_text_dense
+    dataset: vidore_v3_finance_en
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+  - name: vidore_v3_finance_fr_vl_image_text_dense
+    dataset: vidore_v3_finance_fr
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+  - name: vidore_v3_hr_vl_image_text_dense
+    dataset: vidore_v3_hr
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+  - name: vidore_v3_industrial_vl_image_text_dense
+    dataset: vidore_v3_industrial
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+  - name: vidore_v3_pharmaceuticals_vl_image_text_dense
+    dataset: vidore_v3_pharmaceuticals
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+  - name: vidore_v3_physics_vl_image_text_dense
+    dataset: vidore_v3_physics
+    preset: PE_GE_OCR_VL_IMAGE_TEXT_DENSE
+
+slack:
+  enabled: false
+  title: BEIR Dense Dataset Sweep
+  post_artifact_paths: true
+  metric_keys:
+    - pages
+    - ingest_secs
+    - pages_per_sec_ingest
+    - ndcg_10
+    - recall_5

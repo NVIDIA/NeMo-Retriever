@@ -5,11 +5,7 @@
       "description": "Library dependencies, uv source configuration for inter-package editable installs, entry points, and Python version requirements."
     },
     {
-      "path": "docs/docs/extraction/quickstart-library-mode.md",
-      "description": "Library mode quickstart guide -- shows the intended user experience and API usage patterns."
-    },
-    {
-      "path": "docs/docs/extraction/python-api-reference.md",
+      "path": "docs/docs/extraction/nemo-retriever-api-reference.md",
       "description": "Python API reference for the library-mode interface."
     }
   ]

@@ -1,7 +1,8 @@
 # Quick Start — `retriever` CLI
 
-This page is the `retriever`-CLI counterpart to the CLI section of
-`nv-ingest/docs/docs/extraction/quickstart-guide.md`.
+This page is the `retriever`-CLI counterpart to the legacy `nv-ingest-cli`
+quickstart. Self-hosted Helm deployment docs live in the NeMo Retriever repo
+under [nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm).
 
 ## Replacement for the quickstart CLI example
 
@@ -35,8 +36,8 @@ retriever pipeline run ./data/multimodal_test.pdf \
   LanceDB table at `./lancedb/nv-ingest.lance` (default `--lancedb-uri`).
 - Per-document extraction rows as Parquet under `./processed_docs/` (from
   `--save-intermediate`).
-- Extracted images on disk under `./processed_docs/images/` (from
-  `--store-images-uri`). The `content_url` column points at these paths.
+- Extracted image assets on disk under `./processed_docs/images/` (from
+  `--store-images-uri`). The stored asset URI is written to row metadata.
 - Progress, timing, and stage-level logs on stderr.
 
 ### Inspect the results

@@ -19,7 +19,10 @@ from nemo_retriever.params import BatchTuningParams
 from nemo_retriever.params import CaptionParams
 from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import StoreParams
 from nemo_retriever.params import TextChunkParams
+from nemo_retriever.params import VdbUploadParams
+from nemo_retriever.params import WebhookParams
 from nemo_retriever.utils.ray_resource_hueristics import ClusterResources
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
@@ -90,6 +93,60 @@ def test_build_graph_accepts_execution_plan_with_split_config() -> None:
     # params is forwarded into TxtSplitActor inside the operator (no separate
     # TextChunkActor at graph level here).
     assert names == ["MultiTypeExtractOperator", "_BatchEmbedActor"]
+
+
+def test_build_graph_inserts_ingest_vdb_before_webhook() -> None:
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+        ),
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_invoke_url="http://embed.example/v1",
+        ),
+        vdb_upload_params=VdbUploadParams(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp/t"}),
+        webhook_params=WebhookParams(endpoint_url="http://webhook.example/hook"),
+        stage_order=(),
+    )
+
+    node = graph.roots[0]
+    names = []
+    while True:
+        names.append(node.name)
+        if not node.children:
+            break
+        node = node.children[0]
+
+    assert names[-2] == "IngestVdbOperator"
+    assert names[-1] == "WebhookNotifyOperator"
+
+
+def test_build_graph_vdb_from_execution_plan_sink() -> None:
+    plan = BaseIngestPlan()
+    plan.set_extraction(mode="text", text_params=TextChunkParams(max_tokens=64))
+    plan.embed_params = EmbedParams(
+        model_name="nvidia/llama-nemotron-embed-1b-v2",
+        embed_invoke_url="http://embed.example/v1",
+    )
+    plan.vdb_upload_params = VdbUploadParams(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp/p"})
+    plan.record_stage("embed")
+    plan.record_sink("vdb_upload")
+
+    graph = build_graph(execution_plan=plan.build_execution_plan())
+    node = graph.roots[0]
+    names = []
+    while True:
+        names.append(node.name)
+        if not node.children:
+            break
+        node = node.children[0]
+
+    assert "IngestVdbOperator" in names
+    assert names.index("IngestVdbOperator") > names.index("_BatchEmbedActor")
 
 
 @pytest.mark.parametrize(
@@ -255,6 +312,31 @@ def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus(ocr_version: 
     assert overrides[expected_actor_name]["concurrency"] == 4
     assert overrides["PageElementDetectionActor"]["concurrency"] == 3
     assert overrides["NemotronParseActor"]["concurrency"] == 2
+
+
+def test_batch_tuning_to_node_overrides_adds_default_store_tuning() -> None:
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=None,
+        embed_params=None,
+        store_params=StoreParams(storage_uri="memory://stored"),
+    )
+
+    assert overrides["StoreOperator"] == {"concurrency": (1, 4, 1), "num_cpus": 0.1}
+
+
+def test_batch_tuning_to_node_overrides_honors_store_tuning() -> None:
+    store_params = StoreParams(
+        storage_uri="memory://stored",
+        batch_tuning=BatchTuningParams(store_workers=1),
+    )
+
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=None,
+        embed_params=None,
+        store_params=store_params,
+    )
+
+    assert overrides["StoreOperator"] == {"concurrency": 1, "num_cpus": 0.1}
 
 
 def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> None:

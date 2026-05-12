@@ -84,6 +84,34 @@ def _maybe_parse_json(value):
         return value
 
 
+def _is_ivf_vector_index(index_type: object) -> bool:
+    """Return True if ``index_type`` names an IVF-style index (K-means partitions)."""
+    s = str(index_type or "").upper()
+    return s.startswith("IVF") or "IVF_" in s
+
+
+def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
+    """Compute a valid ``num_partitions`` for Lance IVF training.
+
+    K-means centroids must be strictly fewer than the number of training vectors
+    (``num_partitions < num_rows``). For empty or single-row tables, IVF
+    training is skipped (return ``None``).
+
+    Args:
+        num_rows: Row count in the table.
+        requested: Caller-configured ``num_partitions``.
+
+    Returns:
+        Clamped partition count, or ``None`` if vector index build should be skipped.
+    """
+    if num_rows <= 0:
+        return None
+    if num_rows == 1:
+        return None
+    cap = num_rows - 1
+    return min(int(requested), max(1, cap))
+
+
 def _record_timing(event: str, duration_s: float, extra: dict | None = None):
     timing_path = os.getenv("NV_INGEST_LANCEDB_TIMING_PATH")
     if not timing_path:
@@ -335,21 +363,58 @@ class LanceDB(VDB):
         fts_language: str = None,
         **kwargs,
     ):
-        """Create vector and optionally FTS indexes on the LanceDB table."""
+        """Create vector and optionally FTS indexes on the LanceDB table.
+
+        For IVF index types, ``num_partitions`` is clamped so that
+        ``num_partitions < row_count`` (Lance K-means requirement). Empty or
+        single-row tables skip the vector index; hybrid FTS may still be built.
+        """
         hybrid = hybrid if hybrid is not None else self.hybrid
         fts_language = fts_language or self.fts_language
 
+        num_rows = int(table.count_rows())
+        requested_partitions = int(num_partitions)
+        use_ivf = _is_ivf_vector_index(index_type)
+        effective_partitions: int | None
+        if use_ivf:
+            effective_partitions = _effective_ivf_num_partitions(num_rows, requested_partitions)
+        else:
+            effective_partitions = requested_partitions
+
         vector_index_start = time.perf_counter()
-        table.create_index(
-            index_type=index_type,
-            metric=metric,
-            num_partitions=num_partitions,
-            num_sub_vectors=num_sub_vectors,
-            vector_column_name="vector",
-        )
-        for index_stub in table.list_indices():
-            table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
-        _record_timing("lancedb.vector_index_ready", time.perf_counter() - vector_index_start)
+        if use_ivf and effective_partitions is None:
+            if num_rows == 0:
+                logger.warning(
+                    "Skipping LanceDB vector index: empty table (index_type=%s).",
+                    index_type,
+                )
+            else:
+                logger.info(
+                    "Skipping LanceDB vector index: IVF needs at least two rows (got %d; index_type=%s).",
+                    num_rows,
+                    index_type,
+                )
+        else:
+            partitions_for_index = (
+                int(effective_partitions) if effective_partitions is not None else requested_partitions
+            )
+            if use_ivf and partitions_for_index != requested_partitions:
+                logger.info(
+                    "Clamping num_partitions from %d to %d (table has %d rows; IVF requires partitions < row count).",
+                    requested_partitions,
+                    partitions_for_index,
+                    num_rows,
+                )
+            table.create_index(
+                index_type=index_type,
+                metric=metric,
+                num_partitions=partitions_for_index,
+                num_sub_vectors=num_sub_vectors,
+                vector_column_name="vector",
+            )
+            for index_stub in table.list_indices():
+                table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+            _record_timing("lancedb.vector_index_ready", time.perf_counter() - vector_index_start)
 
         if hybrid:
             fts_index_start = time.perf_counter()
@@ -375,14 +440,28 @@ class LanceDB(VDB):
         return records
 
     def retrieval(self, vectors, **kwargs):
-        """Search LanceDB with precomputed query vectors."""
+        """Search LanceDB with precomputed query vectors.
+
+        Keyword arguments
+        -----------------
+        where:
+            Optional SQL predicate (Lance / DataFusion) applied on the vector
+            query builder via ``.where(...)`` before ``limit``. Filter against
+            table columns: ``vector``, ``text``, ``metadata``, ``source``.
+            Note: ``metadata`` and ``source`` are JSON strings at rest.
+        _filter:
+            Alias for ``where`` when ``where`` is omitted (call-site parity).
+        search_kwargs:
+            Optional dict of extra keyword arguments forwarded to
+            ``table.search`` (e.g. ``query_type``, ``fts_columns``). Do not
+            pass ``vector_column_name`` here; use the top-level
+            ``vector_column_name`` retrieval argument instead.
+        """
         hybrid = kwargs.pop("hybrid", self.hybrid)
         if hybrid:
             raise NotImplementedError("LanceDB hybrid retrieval with precomputed vectors is not implemented yet.")
         table_path = kwargs.pop("table_path", self.uri)
         table_name = kwargs.pop("table_name", self.table_name)
-
-        table = lancedb.connect(uri=table_path).open_table(table_name)
 
         result_fields = kwargs.pop("result_fields", None)
         top_k = int(kwargs.pop("top_k", 10))
@@ -390,14 +469,29 @@ class LanceDB(VDB):
         n_probe = int(kwargs.pop("n_probe", kwargs.pop("nprobes", 64)))
         vector_column_name = str(kwargs.pop("vector_column_name", "vector"))
 
+        search_kwargs_raw = kwargs.pop("search_kwargs", None)
+        if search_kwargs_raw is None:
+            search_kwargs: dict[str, Any] = {}
+        elif not isinstance(search_kwargs_raw, dict):
+            raise TypeError(f"search_kwargs must be a dict or None; got {type(search_kwargs_raw).__name__}")
+        else:
+            search_kwargs = dict(search_kwargs_raw)
+
+        where_clause = kwargs.pop("where", None)
+        _filter_fallback = kwargs.pop("_filter", None)
+        if where_clause is None:
+            where_clause = _filter_fallback
+        if where_clause is not None:
+            where_clause = str(where_clause).strip() or None
+
+        table = lancedb.connect(uri=table_path).open_table(table_name)
+
         search_results = []
         for vector in vectors:
-            query = (
-                table.search([vector], vector_column_name=vector_column_name)
-                .limit(top_k)
-                .refine_factor(refine_factor)
-                .nprobes(n_probe)
-            )
+            query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
+            if where_clause is not None:
+                query = query.where(where_clause)
+            query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
             if result_fields is not None:
                 query = query.select(result_fields)
             results = query.to_list()

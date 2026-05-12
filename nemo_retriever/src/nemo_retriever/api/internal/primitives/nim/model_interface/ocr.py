@@ -14,11 +14,6 @@ from typing import Tuple
 import backoff
 import numpy as np
 
-try:
-    import tritonclient.grpc as grpcclient
-except ModuleNotFoundError:
-    grpcclient = None  # type: ignore[assignment]
-
 from nemo_retriever.api.internal.primitives.nim import ModelInterface
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import global_cache
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import lock
@@ -785,6 +780,8 @@ def get_ocr_model_name(ocr_grpc_endpoint=None, default_model_name=DEFAULT_OCR_MO
 
     # 4. Attempt to query the gRPC endpoint to discover the model name.
     try:
+        import tritonclient.grpc as grpcclient  # noqa: PLC0415
+
         client = grpcclient.InferenceServerClient(ocr_grpc_endpoint)
         model_index = client.get_model_repository_index(as_json=True)
         model_names = [x["name"] for x in model_index.get("models", [])]

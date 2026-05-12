@@ -23,7 +23,7 @@ The following diagram shows the NeMo Retriever Library pipeline.
 
 ![Pipeline Overview](https://docs.nvidia.com/nemo/retriever/extraction/images/overview-extraction.png)
 
-For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Kubernetes ([helm charts](helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
+For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Kubernetes ([helm charts](nemo_retriever/helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
 
 *Note*:
 Along with the recent repo name change, we're phasing out the nv-ingest APIs and simplifying the dependencies. You can follow this work and see the forward looking API via the [nemo_retriever](nemo_retriever) library subfolder.
@@ -57,9 +57,9 @@ ingestor = (
 )
 
 # ingestor.ingest() actually executes the pipeline
-# results are returned as a ray dataset and inspectable as chunks
-ray_dataset = ingestor.ingest()
-chunks = ray_dataset.get_dataset().take_all()
+# batch run_mode returns a ray.data.Dataset; inprocess returns a pandas DataFrame
+dataset = ingestor.ingest()
+chunks = dataset.take_all()  # Ray Dataset API (batch mode)
 ```
 
 You can see the extracted text that represents the content of the ingested test document.

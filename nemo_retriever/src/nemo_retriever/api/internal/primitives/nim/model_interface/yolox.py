@@ -2,7 +2,6 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import os
 import logging
 import warnings
 import threading
@@ -19,11 +18,7 @@ import json
 import pandas as pd
 
 from nemo_retriever.api.internal.primitives.nim import ModelInterface
-
-try:
-    import tritonclient.grpc as grpcclient
-except ModuleNotFoundError:
-    grpcclient = None  # type: ignore[assignment]
+from nemo_retriever.api.internal.primitives.nim.default_values import YOLOX_PAGE_IMAGE_FORMAT
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import global_cache
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import lock
 from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import multiprocessing_cache
@@ -45,7 +40,6 @@ YOLOX_PAGE_MIN_SCORE = 0.1
 YOLOX_PAGE_NIM_MAX_IMAGE_SIZE = 512_000
 YOLOX_PAGE_IMAGE_PREPROC_HEIGHT = 1024
 YOLOX_PAGE_IMAGE_PREPROC_WIDTH = 1024
-YOLOX_PAGE_IMAGE_FORMAT = os.getenv("YOLOX_PAGE_IMAGE_FORMAT", "PNG")
 
 # yolox-page-elements-v3 contants
 YOLOX_PAGE_FINAL_SCORE = YOLOX_PAGE_V3_FINAL_SCORE = {
@@ -2172,6 +2166,8 @@ def get_yolox_model_name(yolox_grpc_endpoint, default_model_name="yolox"):
             return global_cache[key]
 
     try:
+        import tritonclient.grpc as grpcclient  # noqa: PLC0415
+
         client = grpcclient.InferenceServerClient(yolox_grpc_endpoint)
         model_index = client.get_model_repository_index(as_json=True)
         model_names = [x.get("name") for x in model_index.get("models", []) if isinstance(x, dict)]

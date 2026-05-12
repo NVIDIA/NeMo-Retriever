@@ -5,10 +5,12 @@
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 
 import typer
 
+from nemo_retriever.adapters.cli.sdk_workflow import IngestRunModeValue, ingest_documents, query_documents
 from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,53 @@ def _version_callback(value: bool) -> None:
 
 def main() -> None:
     app()
+
+
+@app.command("ingest")
+def ingest_command(
+    documents: list[str] = typer.Argument(
+        ...,
+        help="One or more PDF file paths, directories containing PDFs, or PDF globs to ingest.",
+    ),
+    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    run_mode: IngestRunModeValue = typer.Option(
+        "inprocess",
+        "--run-mode",
+        help="Execution mode for the SDK ingestor.",
+    ),
+) -> None:
+    try:
+        summary = ingest_documents(
+            documents,
+            run_mode=run_mode,
+            lancedb_uri=lancedb_uri,
+            table_name=table_name,
+        )
+    except (FileNotFoundError, IsADirectoryError, RuntimeError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    typer.echo(
+        f"Ingested {len(summary['documents'])} document(s) into LanceDB "
+        f"{summary['lancedb_uri']}/{summary['table_name']}."
+    )
+
+
+@app.command("query")
+def query_command(
+    query: str = typer.Argument(..., help="Query text."),
+    top_k: int = typer.Option(10, "--top-k", min=1, help="Number of hits to retrieve."),
+    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+) -> None:
+    try:
+        hits = query_documents(query, top_k=top_k, lancedb_uri=lancedb_uri, table_name=table_name)
+    except (FileNotFoundError, IsADirectoryError, RuntimeError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    typer.echo(json.dumps(list(hits), indent=2, sort_keys=True, default=str))
 
 
 @app.callback()

@@ -49,11 +49,13 @@ For advanced scenarios, you might want to set environment variables for NIM cont
 
 ### Library Mode
 
-For production environments, you should use the provided Helm charts. For [library mode](quickstart-library-mode.md), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to arbitrary variables on your laptop or jump host unless you inject them into the workload (for example via Helm, `Secret`, or the client environment as documented for library mode).
+For production environments, you should use the provided Helm charts. When you run the NeMo Retriever Library from Python (without those charts), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to arbitrary variables on your laptop or jump host unless you inject them into the workload (for example via Helm, `Secret`, or the client environment as documented on [Deployment options](deployment-options.md) and [Authentication and API keys](api-keys.md)).
 
 For advanced scenarios, you might want to use library mode with self-hosted NIM instances. 
 You can set custom endpoints for each NIM. 
-For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
+For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+
+When you explicitly configure remote NIM endpoints in Python library mode, graph ingestion raises a `GraphIngestionError` if a stage reports row-level connection or inference errors. This makes unreachable services visible to callers instead of returning a DataFrame that looks successful. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`.
 
 
 
