@@ -75,6 +75,44 @@ def query_neo4j_columns_for_embedding(database_name: str) -> List[dict]:
     return result[0].get("docs") or []
 
 
+def query_neo4j_custom_analyses_for_embedding(database_name: str) -> List[dict]:
+    """Return one doc per ``CustomAnalysis`` node for embedding.
+
+    Filters to analyses whose SQL references at least one table belonging
+    to *database_name* via the path:
+    ``CustomAnalysis -[:HAS_SQL]-> Sql -[:SQL]-> Table <-[:CONTAINS]- Schema <-[:CONTAINS]- Database``.
+    """
+    neo4j_conn = get_neo4j_conn()
+    query = f"""
+        MATCH (ca:{Labels.CUSTOM_ANALYSIS})-[:{Edges.HAS_SQL}]->(sql:{Labels.SQL})
+              -[:{Edges.SQL}]->(t:{Labels.TABLE})<-[:{Edges.CONTAINS}]-(s:{Labels.SCHEMA})
+              <-[:{Edges.CONTAINS}]-(d:{Labels.DB}{{name: $database_name}})
+        WITH DISTINCT ca, sql,
+             CASE
+                 WHEN ca.description IS NOT NULL AND trim(toString(ca.description)) <> ''
+                 THEN ca.description
+                 ELSE ''
+             END AS desc,
+             CASE
+                 WHEN sql.sql_full_query IS NOT NULL
+                 THEN ', sql: ' + sql.sql_full_query
+                 ELSE ''
+             END AS sql_text
+        RETURN collect({{
+            text: 'custom_analysis: ' + ca.name +
+                  CASE WHEN desc <> '' THEN ', description: ' + desc ELSE '' END +
+                  sql_text,
+            name: ca.name,
+            label: labels(ca)[0],
+            id: ca.id
+        }}) AS docs
+    """
+    result = neo4j_conn.query_read(query, parameters={"database_name": database_name})
+    if not result:
+        return []
+    return result[0].get("docs") or []
+
+
 def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
     """Fetch all tabular entity docs from Neo4j and return a DataFrame ready for embedding.
 
@@ -85,7 +123,8 @@ def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
     _empty = pd.DataFrame(columns=["text", "_embed_modality", "path", "page_number", "metadata"])
     table_docs = query_neo4j_tables_for_embedding(database_name=database_name)
     column_docs = query_neo4j_columns_for_embedding(database_name=database_name)
-    docs = list(table_docs) + list(column_docs)
+    ca_docs = query_neo4j_custom_analyses_for_embedding(database_name=database_name)
+    docs = list(table_docs) + list(column_docs) + list(ca_docs)
     if not docs:
         return _empty
 
