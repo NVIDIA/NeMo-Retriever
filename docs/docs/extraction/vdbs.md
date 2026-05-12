@@ -109,7 +109,7 @@ Enable hybrid **ingest** by setting `hybrid=True` when creating the `LanceDB` op
 
 !!! note "Hybrid queries use `lancedb_hybrid_retrieval`, not `LanceDB.retrieval()`"
 
-    `LanceDB.retrieval()` only supports dense vector search. If the operator was created with `hybrid=True`, calling `vdb.retrieval(...)` raises `NotImplementedError` (“hybrid retrieval with precomputed vectors is not implemented yet”). For hybrid (dense + BM25 + RRF) **queries**, use **`lancedb_hybrid_retrieval()`** from the same module, with the same `table_path` / `table_name` as the `LanceDB` instance:
+    `LanceDB.retrieval()` only supports dense vector search. If the operator was created with `hybrid=True`, calling `vdb.retrieval(...)` raises `NotImplementedError` (“hybrid retrieval with precomputed vectors is not implemented yet”). For hybrid (dense + BM25 + RRF) **queries**, use `lancedb_hybrid_retrieval()` from the same module, with the same `table_path` / `table_name` as the `LanceDB` instance:
 
     ```python
     from nv_ingest_client.util.vdb.lancedb import LanceDB, lancedb_hybrid_retrieval
