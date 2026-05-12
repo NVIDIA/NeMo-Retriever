@@ -182,7 +182,7 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      terminationGracePeriodSeconds: {{ $svc.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ $roleCfg.terminationGracePeriodSeconds | default 15 }}
       {{- with $roleCfg.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

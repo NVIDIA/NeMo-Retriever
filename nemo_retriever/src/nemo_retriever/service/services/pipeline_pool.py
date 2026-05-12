@@ -143,23 +143,24 @@ class _Pool:
                 self._queue.task_done()  # Mark the sentinel as "done" for queue accounting.
                 return  # Exit the loop, ending the worker task.
             try:
-                # Try to update job tracker that processing has started.
-                tracker = get_job_tracker()  # May return None if no tracker configured.
+                tracker = get_job_tracker()
                 if tracker is not None:
                     tracker.mark_processing(item.id)
-                # Invoke the work function on the dequeued item.
+                result_rows = 0
+                result_data = None
                 if self._work_fn is not None:
-                    result = self._work_fn(item)  # Could be sync or an awaitable/coroutine.
+                    result = self._work_fn(item)
                     if asyncio.iscoroutine(result):
-                        await result  # If the result is a coroutine, await its completion.
-                    print(f"result: {result}, type: {type(result)}")
-                    print(f"self._work_fn: {self._work_fn}, type: {type(self._work_fn)}")
-                # Mark completion in the job tracker upon success.
+                        result = await result
+                    if isinstance(result, tuple) and len(result) == 2:
+                        result_rows, result_data = result
+                    elif isinstance(result, int):
+                        result_rows = result
                 if tracker is not None:
-                    tracker.mark_completed(item.id)
-                # Increment this worker's processed item count (for stats).
+                    tracker.mark_completed(
+                        item.id, result_rows=result_rows, result_data=result_data,
+                    )
                 self._processed += 1
-                print("tracker status for job id: {item.id} is: {tracker.get(item.id)}")
             except Exception as exc:
                 # On error, update job tracker as failed, log error with details.
                 tracker = get_job_tracker()
@@ -185,15 +186,32 @@ class _Pool:
             return False
         return not self._queue.full()
 
-    async def shutdown(self) -> None:
+    async def shutdown(self, timeout: float = 5.0) -> None:
         if not self._running:
             return
         self._running = False
-        if self._queue is not None:
-            for _ in self._workers:
-                await self._queue.put(None)
+
+        # Cancel all worker tasks immediately — don't bother draining
+        # the queue with sentinels since active workers may be blocked
+        # on long-running child processes.  The process executors are
+        # already shut down by the time we get here, so the blocked
+        # run_in_executor() futures will raise quickly.
         for task in self._workers:
             task.cancel()
+
+        if self._workers:
+            done, still_pending = await asyncio.wait(
+                self._workers, timeout=timeout,
+            )
+            if still_pending:
+                logger.warning(
+                    "Pool '%s': %d workers did not exit within %.1fs — "
+                    "force-cancelling",
+                    self._name, len(still_pending), timeout,
+                )
+                for task in still_pending:
+                    task.cancel()
+
         self._workers.clear()
         self._queue = None
         logger.info("Pool '%s' shut down (processed=%d)", self._name, self._processed)

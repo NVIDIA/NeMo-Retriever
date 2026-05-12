@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from nemo_retriever.service.models.base import RichModel
 
 
@@ -49,4 +51,5 @@ class JobStatusResponse(RichModel):
     completed_at: str | None = None
     elapsed_s: float | None = None
     result_rows: int | None = None
+    result_data: list[dict[str, Any]] | None = None
     error: str | None = None

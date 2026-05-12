@@ -124,6 +124,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
+    from nemo_retriever.service.services.pipeline_executor import shutdown_process_executors
+
+    shutdown_process_executors()
     await shutdown_proxy()
     await shutdown_pipeline_pool()
     shutdown_job_tracker()

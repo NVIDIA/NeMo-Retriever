@@ -188,11 +188,11 @@ topology:
     replicas: 2
     resources:
       requests:
-        cpu: "2"
-        memory: "2Gi"
-      limits:
         cpu: "4"
-        memory: "4Gi"
+        memory: "12Gi"
+      limits:
+        cpu: "16"
+        memory: "48Gi"
     nodeSelector: {}
     tolerations: []
     affinity: {}
@@ -202,10 +202,10 @@ topology:
     resources:
       requests:
         cpu: "8"
-        memory: "8Gi"
+        memory: "24Gi"
       limits:
         cpu: "16"
-        memory: "16Gi"
+        memory: "96Gi"
     gpu:
       enabled: false
       count: 0
@@ -223,10 +223,10 @@ topology:
     resources:
       requests:
         cpu: "16"
-        memory: "16Gi"
+        memory: "48Gi"
       limits:
         cpu: "32"
-        memory: "32Gi"
+        memory: "128Gi"
     gpu:
       enabled: true
       count: 1
@@ -238,6 +238,26 @@ topology:
       minReplicas: 1
       maxReplicas: 4
       targetCPUUtilizationPercentage: 80
+
+  vectordb:
+    replicas: 1
+    port: 7671
+    resources:
+      requests:
+        cpu: "2"
+        memory: "4Gi"
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    persistence:
+      enabled: true
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: "50Gi"
 
 # =============================================================================
 # retriever-service.yaml configuration
@@ -273,15 +293,24 @@ serviceConfig:
   # depends on whether they do local GPU work or fan out to remote NIMs.
   # For CPU-only NIM-forwarding nodes, higher worker counts are fine.
   pipeline:
-    realtimeWorkers: 8
+    realtimeWorkers: 24
     realtimeQueueSize: 2048
-    batchWorkers: 16
-    batchQueueSize: 4096
+    batchWorkers: 48
+    batchQueueSize: 8192
 
   resources:
     maxMemoryMb: null
     maxCpuCores: null
     gpuDevices: []
+
+  # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
+  # is deployed.  Workers POST embeddings to it; the gateway proxies
+  # /v1/query to it for retrieval.
+  vectordb:
+    enabled: true
+    lancedbUri: "/data/vectordb"
+    tableName: "nemo_retriever"
+    embedModel: "nvidia/llama-nemotron-embed-1b-v2"
 
   # Optional bearer-token authentication. When apiToken is set, every
   # request must carry "Authorization: Bearer <token>".
@@ -348,10 +377,10 @@ persistence:
   annotations: {}
 
 # =============================================================================
-# Ingress (off by default)
+# Ingress (on by default)
 # =============================================================================
 ingress:
-  enabled: false
+  enabled: true
   className: ""
   annotations: {}
   #   nginx.ingress.kubernetes.io/proxy-body-size: "200m"

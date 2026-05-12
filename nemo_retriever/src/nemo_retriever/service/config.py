@@ -96,6 +96,21 @@ class PipelinePoolConfig(RichModel):
     batch_queue_size: int = Field(default=4096, ge=1, description="Max queued items before batch pool rejects")
 
 
+class VectorDbConfig(RichModel):
+    """Configuration for the dedicated VectorDB pod (LanceDB + query endpoint)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    lancedb_uri: str = "/data/vectordb"
+    table_name: str = "nemo_retriever"
+    embed_model: str = "nvidia/llama-nemotron-embed-1b-v2"
+    vectordb_url: str = Field(
+        default="http://nemo-retriever-vectordb:7671",
+        description="URL of the vectordb service (for workers to POST embeddings to)",
+    )
+
+
 class ServiceConfig(RichModel):
     """Top-level configuration for the retriever service mode.
 
@@ -120,6 +135,7 @@ class ServiceConfig(RichModel):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
+    vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
 
 
 def _bundled_yaml_path() -> Path:

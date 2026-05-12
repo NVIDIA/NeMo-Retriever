@@ -48,8 +48,22 @@ auth:
   api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}
   header_name: {{ .Values.serviceConfig.auth.headerName | quote }}
   bypass_paths: {{ toJson .Values.serviceConfig.auth.bypassPaths }}
+
+{{- if .Values.serviceConfig.vectordb.enabled }}
+vectordb:
+  enabled: true
+  lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
+  table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
+  embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+  vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
+{{- else }}
+vectordb:
+  enabled: false
+{{- end }}
 {{- end -}}
 
+{{- $vectordbSvc := printf "%s-vectordb" (include "nemo-retriever.fullname" .) -}}
+{{- $vectordbPort := ((.Values.topology.vectordb).port | default 7671) -}}
 {{- if eq .Values.topology.mode "standalone" }}
 # =========================================================================
 # Standalone mode — single ConfigMap with mode: standalone
@@ -63,7 +77,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -91,6 +105,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

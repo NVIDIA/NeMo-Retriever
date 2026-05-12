@@ -456,6 +456,8 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
     """Look up job status and return the appropriate HTTP code.
 
     Returns 200 for completed/failed, 202 for pending/processing, 404 if unknown.
+    When returning a terminal (200) response, result_data is consumed from the
+    tracker so memory is freed after the client has retrieved it.
     """
     from nemo_retriever.service.services.job_tracker import JobStatus
 
@@ -469,6 +471,9 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
     if rec is None:
         raise HTTPException(status_code=404, detail=f"No tracked job with id={item_id!r}")
 
+    is_terminal = rec.status in (JobStatus.COMPLETED, JobStatus.FAILED)
+    result_data = tracker.consume_result_data(item_id) if is_terminal else None
+
     body = JobStatusResponse(
         id=rec.id,
         status=rec.status.value,
@@ -477,10 +482,11 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
         completed_at=rec.completed_at,
         elapsed_s=rec.elapsed_s,
         result_rows=rec.result_rows,
+        result_data=result_data,
         error=rec.error,
     ).model_dump()
 
-    if rec.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+    if is_terminal:
         return JSONResponse(content=body, status_code=200)
     return JSONResponse(content=body, status_code=202)
 
@@ -529,3 +535,114 @@ async def ingest_document_status(request: Request, document_id: str) -> JSONResp
             raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
         return await proxy.forward_get(request, PoolType.BATCH, f"/v1/ingest/document/status/{document_id}")
     return _status_response(request, document_id)
+
+
+# ------------------------------------------------------------------
+# GET /v1/ingest/pipeline-config  — introspect live pipeline setup
+# ------------------------------------------------------------------
+
+
+@router.get(
+    "/ingest/pipeline-config",
+    summary="Return the live pipeline configuration for this pod (or aggregated from backends via the gateway)",
+)
+async def pipeline_config(request: Request):
+    """Return redacted pipeline configuration.
+
+    * **worker / standalone** — returns the local pipeline configs directly.
+    * **gateway** — fans out GET requests to one realtime and one batch
+      backend pod, aggregates the responses, and returns them keyed by role.
+    """
+    mode = _mode(request)
+
+    if _is_gateway(request):
+        proxy = get_proxy()
+        if proxy is None:
+            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
+
+        aggregated: dict[str, object] = {"source": "gateway", "mode": mode}
+        for pool_type in (PoolType.REALTIME, PoolType.BATCH):
+            label = pool_type.value
+            try:
+                resp = await proxy.forward_get(request, pool_type, "/v1/ingest/pipeline-config")
+                if resp.status_code == 200:
+                    aggregated[label] = json.loads(resp.body)
+                else:
+                    aggregated[label] = {
+                        "error": f"HTTP {resp.status_code}",
+                        "body": resp.body.decode(errors="replace")[:500],
+                    }
+            except Exception as exc:
+                aggregated[label] = {"error": f"{type(exc).__name__}: {exc}"}
+
+        return JSONResponse(content=aggregated)
+
+    from nemo_retriever.service.services.pipeline_executor import get_pipeline_configs
+
+    pool = get_pipeline_pool()
+    pool_stats = pool.stats() if pool is not None else {}
+
+    return JSONResponse(content={
+        "source": mode,
+        "mode": mode,
+        "pipelines": get_pipeline_configs(),
+        "pool_stats": pool_stats,
+    })
+
+
+# ------------------------------------------------------------------
+# POST /v1/query  — vector search (proxied to vectordb pod)
+# ------------------------------------------------------------------
+
+
+@router.post(
+    "/query",
+    summary="Search ingested documents by semantic similarity",
+)
+async def query(request: Request) -> Response:
+    """Proxy a query request to the VectorDB service.
+
+    * **gateway / standalone** — forwards the JSON body to the vectordb pod.
+    * **worker** — returns 404 (workers don't handle queries).
+    """
+    import httpx
+
+    config = request.app.state.config
+
+    if not config.vectordb.enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="VectorDB is not enabled in the service configuration.",
+        )
+
+    mode = _mode(request)
+    if mode in ("realtime", "batch"):
+        raise HTTPException(
+            status_code=404,
+            detail="Query endpoint is not available on worker pods. Use the gateway.",
+        )
+
+    vectordb_url = config.vectordb.vectordb_url.rstrip("/")
+    target = f"{vectordb_url}/v1/query"
+
+    body = await request.body()
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                target,
+                content=body,
+                headers={"Content-Type": "application/json"},
+            )
+    except Exception as exc:
+        logger.exception("Failed to proxy query to vectordb at %s", target)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",
+        )
+
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type="application/json",
+    )

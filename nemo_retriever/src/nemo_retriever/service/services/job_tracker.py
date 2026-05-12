@@ -45,6 +45,7 @@ class JobRecord(RichModel):
     completed_at: str | None = None
     elapsed_s: float | None = None
     result_rows: int | None = None
+    result_data: list[dict[str, Any]] | None = None
     error: str | None = None
 
 
@@ -70,13 +71,20 @@ class JobTracker:
         rec.started_at = datetime.now(timezone.utc).isoformat()
         self._started_mono[job_id] = time.monotonic()
 
-    def mark_completed(self, job_id: str, *, result_rows: int = 0) -> None:
+    def mark_completed(
+        self,
+        job_id: str,
+        *,
+        result_rows: int = 0,
+        result_data: list[dict[str, Any]] | None = None,
+    ) -> None:
         rec = self._jobs.get(job_id)
         if rec is None:
             return
         rec.status = JobStatus.COMPLETED
         rec.completed_at = datetime.now(timezone.utc).isoformat()
         rec.result_rows = result_rows
+        rec.result_data = result_data
         t0 = self._started_mono.pop(job_id, None)
         rec.elapsed_s = round(time.monotonic() - t0, 4) if t0 is not None else None
 
@@ -92,6 +100,15 @@ class JobTracker:
 
     def get(self, job_id: str) -> JobRecord | None:
         return self._jobs.get(job_id)
+
+    def consume_result_data(self, job_id: str) -> list[dict[str, Any]] | None:
+        """Return result_data for *job_id* and clear it from memory."""
+        rec = self._jobs.get(job_id)
+        if rec is None:
+            return None
+        data = rec.result_data
+        rec.result_data = None
+        return data
 
     def summary(self) -> dict[str, Any]:
         total = len(self._jobs)
