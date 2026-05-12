@@ -127,9 +127,13 @@ def test_ingest_documents_validates_run_mode_before_creating_ingestor(monkeypatc
 def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     query_calls: list[str] = []
-    hits = [
-        {"text": "passage", "page_number": 1, "_distance": 0.2},
-        {"text": "other", "page_number": 2, "_distance": 0.4},
+    raw_hits = [
+        {"text": "passage", "source": "a.pdf", "page_number": 1, "_distance": 0.2},
+        {"text": "other", "source": "b.pdf", "page_number": 2, "_distance": 0.4},
+    ]
+    # query_documents exposes only text / source / page_number (no scores or extra keys).
+    public_hits = [
+        {"text": h["text"], "source": h["source"], "page_number": h["page_number"]} for h in raw_hits
     ]
 
     class FakeRetriever:
@@ -138,7 +142,7 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
 
         def query(self, query: str) -> list[dict[str, Any]]:
             query_calls.append(query)
-            return hits
+            return raw_hits
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
 
@@ -159,5 +163,5 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     assert result.exit_code == 0
     assert retriever_calls == [{"top_k": 3, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs"}}]
     assert query_calls == ["Which animal is responsible for typos?"]
-    assert json.loads(result.output) == hits
-    assert result.output == json.dumps(hits, indent=2, sort_keys=True, default=str) + "\n"
+    assert json.loads(result.output) == public_hits
+    assert result.output == json.dumps(public_hits, indent=2, sort_keys=True, default=str) + "\n"
