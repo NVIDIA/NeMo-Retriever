@@ -81,4 +81,6 @@ def query_documents(
 ) -> list[dict[str, Any]]:
     """Run the minimal SDK query path used by the root CLI."""
     retriever = Retriever(top_k=top_k, vdb_kwargs={"uri": lancedb_uri, "table_name": table_name})
-    return retriever.query(query)
+    hits = retriever.query(query)
+    hits = [{"text": hit["text"], "source": hit["source"], "page_number": hit["page_number"]} for hit in hits]
+    return hits
