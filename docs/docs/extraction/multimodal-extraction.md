@@ -105,7 +105,6 @@ The following two datasets can yield the reverse ranking if you evaluate by data
 ### What drives processing cost
 
 The following factors drive processing cost.
-
 !!! important
     None of the following factors correlate with file size.
 
