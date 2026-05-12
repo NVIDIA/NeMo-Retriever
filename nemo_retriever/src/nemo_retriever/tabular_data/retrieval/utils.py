@@ -614,7 +614,9 @@ def get_schemas_from_graph_by_ids(
        OR schema.id IN $relevant_schemas_ids
     RETURN collect({{
         column_name:  column.name,
+        column_id:    column.id,
         table_name:   table.name,
+        table_id:     table.id,
         db_name:      db.name,
         table_schema: schema.name,
         data_type:    column.data_type
@@ -654,8 +656,10 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
         db_node = Neo4jNode(name=db_name, label=Labels.DB, props={"name": db_name})
         dbs_nodes[db_name] = db_node
 
-    tables_df = data_df[["db_name", "table_schema", "table_name"]]
-    tables_df = tables_df.drop_duplicates()
+    tables_df = data_df[["db_name", "table_schema", "table_name", "table_id"]].drop_duplicates(
+        subset=["db_name", "table_schema", "table_name"]
+    )
+    tables_df = tables_df.rename(columns={"table_id": "id"})
 
     unique_schemas = data_df.table_schema.unique()
     for table_schema in unique_schemas:
@@ -663,7 +667,7 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
         schema_dfs[table_schema] = {"tables": schema_tables_df.to_dict(orient="records")}
 
     for table_schema in unique_schemas:
-        columns_df = data_df.loc[data_df["table_schema"] == table_schema]
+        columns_df = data_df.loc[data_df["table_schema"] == table_schema].rename(columns={"column_id": "id"})
         schema_dfs[table_schema]["columns"] = columns_df.to_dict(orient="records")
 
     before_modify_all = time.time()
