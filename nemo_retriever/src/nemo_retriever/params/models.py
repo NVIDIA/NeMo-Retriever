@@ -261,6 +261,7 @@ class BatchTuningParams(_ParamsModel):
     nemotron_parse_workers: Optional[int] = None
     gpu_nemotron_parse: Optional[float] = None
     nemotron_parse_batch_size: Optional[int] = None
+    store_workers: Optional[int] = None
     inference_batch_size: int = 8
 
 
@@ -463,6 +464,7 @@ class StoreParams(_ParamsModel):
     storage_options: dict[str, Any] = Field(default_factory=dict)
     image_format: str = "png"
     strip_base64: bool = True
+    batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
 
     @model_validator(mode="after")
     def _resolve_local_storage_uri(self) -> "StoreParams":

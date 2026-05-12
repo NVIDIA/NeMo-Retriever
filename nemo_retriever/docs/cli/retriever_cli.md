@@ -243,7 +243,10 @@ retriever pipeline run ./data/test.pdf \
   --save-intermediate ./processed_docs
 ```
 
-Stored image URIs are persisted in vector DB rows for VL reranking.
+Stored image URIs are persisted in vector DB row metadata for VL reranking.
+Page granularity stores page images; element granularity stores element images.
+Use `--store-actors` to tune the maximum store sink concurrency when
+object-storage writes are the bottleneck.
 
 ## Where results live
 
@@ -252,8 +255,10 @@ Stored image URIs are persisted in vector DB rows for VL reranking.
   Python class.
 - **Parquet (optional).** `--save-intermediate <dir>` writes the extraction
   DataFrame for inspection.
-- **Images (optional).** `--store-images-uri <uri>` writes extracted images to
-  a local path or object store.
+- **Images (optional).** `--store-images-uri <uri>` writes extracted image
+  assets to a local path or object store. What gets stored follows
+  `--embed-granularity`: page rows store page images, and element rows store
+  element images.
 
 ## Errors and exit codes
 

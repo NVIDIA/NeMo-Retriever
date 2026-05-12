@@ -112,9 +112,9 @@ uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path
 
 ```python
 # ingestor.ingest() actually executes the pipeline
-# results are returned as a ray dataset and inspectable as chunks
-ray_dataset = ingestor.ingest()
-chunks = ray_dataset.get_dataset().take_all()
+# batch run_mode returns a ray.data.Dataset; inprocess returns a pandas DataFrame
+dataset = ingestor.ingest()
+chunks = dataset.take_all()  # Ray Dataset API (batch mode)
 ```
 
 ### Ingest a test corpus (CLI)
@@ -638,13 +638,17 @@ retriever-harness sweep --runs-config harness/vidore_sweep.yaml
 
 The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
 
-### Harness with image/text storage
+### Pipeline image storage
 
-The harness can persist extracted images and text alongside other run artifacts. Set `store_images_uri` in `test_configs.yaml` (per-dataset or in `active:`) or via `--override`:
+Use the pipeline CLI to persist extracted image assets to local storage or any
+fsspec-compatible URI:
 
 ```bash
-retriever harness run --dataset bo20 --preset single_gpu \
-  --override store_images_uri=stored_images --override store_text=true
+retriever pipeline run ./data \
+  --store-images-uri ./processed_docs/images
 ```
 
-When `store_images_uri` is a relative path (like `stored_images`), it resolves to `artifact_dir/stored_images/` so each run is isolated. Absolute paths and fsspec URIs (e.g. `s3://bucket/prefix`) are passed through as-is.
+The store stage writes the image payloads produced by the configured pipeline.
+With `--embed-granularity page`, stored assets are page images. With
+`--embed-granularity element`, stored assets are element images. Store is not
+currently configured through the harness.
