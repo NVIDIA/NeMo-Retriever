@@ -67,32 +67,36 @@ When you explicitly configure remote NIM endpoints in Python library mode, graph
 
 Refer to [Evaluate on your data](evaluate-on-your-data.md) for extraction tuning and optimization guidance.
 
-You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](nemo-retriever-api-reference.md).
+You can configure the `extract`, `caption`, and other tasks by using the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `GraphIngestor`).
 
-To choose what types of content to extract, use code similar to the following. 
+To choose what types of content to extract, use code similar to the following.
 For more information, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md).
 
 ```python
-Ingestor(client=client)
-    .files("data/multimodal_test.pdf")
-    .extract(              
-        extract_text=True,
-        extract_tables=True,
-        extract_charts=True,
-        extract_images=True,
-        extract_infographics=True,
-        text_depth="page"
-    )
+from pathlib import Path
+
+from nemo_retriever import create_ingestor
+
+documents = [str(Path("data/multimodal_test.pdf"))]
+ingestor = create_ingestor(run_mode="batch")
+ingestor = ingestor.files(documents).extract(
+    extract_text=True,
+    extract_tables=True,
+    extract_charts=True,
+    extract_images=True,
+    extract_infographics=True,
+)
 ```
 
 To generate captions for images, use code similar to the following.
 For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 ```python
-Ingestor(client=client)
-    .files("data/multimodal_test.pdf")
-    .extract()
-    .embed()
-    .caption()
+from pathlib import Path
 
+from nemo_retriever import create_ingestor
+
+documents = [str(Path("data/multimodal_test.pdf"))]
+ingestor = create_ingestor(run_mode="batch")
+ingestor = ingestor.files(documents).extract().embed().caption()
 ```

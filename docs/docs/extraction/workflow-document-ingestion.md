@@ -14,7 +14,7 @@ Follow these steps:
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md). Default chunking behavior is summarized under [Chunking](concepts.md#chunking).
 
-`create_ingestor(...)` returns a `GraphIngestor`, which chains `.extract()` and `.embed()` but does **not** implement `.vdb_upload()` yet (the base method records the intent only and raises `NotImplementedError` if you call it). To write embeddings into LanceDB after graph ingest, use the `graph_pipeline` CLI below (it performs upload via an internal helper, not the fluent builder) or follow the storage patterns in [Vector databases](vdbs.md). The Python example stops after `.embed()` and returns a dataset you can index in a separate step.
+`create_ingestor(...)` returns a `GraphIngestor` for `run_mode` `"batch"` or `"inprocess"`. The abstract `ingestor` interface raises `NotImplementedError` for unimplemented methods, but **`GraphIngestor` implements `.vdb_upload()`**: it records `VdbUploadParams` (for example `vdb_op="lancedb"` and `vdb_kwargs` with `uri` / `table_name`) and runs in-graph vector DB upload after embed when you include that stage before `.ingest()`. The minimal Python example below stops after `.embed()` so you can inspect a `ray.data.Dataset` or `pandas.DataFrame` without writing a VDB; for LanceDB in one fluent chain, append `.vdb_upload(...)` then `.ingest()` or follow [Vector databases](vdbs.md). The `graph_pipeline` / `retriever pipeline run` CLI is another supported path that builds the same graph parameters for you.
 
 ## Choose how you call the library
 
@@ -22,7 +22,7 @@ The following examples match the [NeMo Retriever Library README](https://github.
 
 ### Ingest a test PDF (Python)
 
-The [test PDF](https://github.com/NVIDIA/NeMo-Retriever/blob/main/data/multimodal_test.pdf) contains text, tables, charts, and images. The pipeline below chains `.extract()` and `.embed()` only—**do not** append `.vdb_upload()` on `GraphIngestor`; it is not implemented on this code path.
+The [test PDF](https://github.com/NVIDIA/NeMo-Retriever/blob/main/data/multimodal_test.pdf) contains text, tables, charts, and images. The pipeline below chains `.extract()` and `.embed()` only so you can inspect embeddings in-process; you **may** append `.vdb_upload(VdbUploadParams(...))` before `.ingest()` when you want in-graph LanceDB (or another supported VDB) upload on the same fluent builder.
 
 ```python
 from nemo_retriever import create_ingestor
@@ -57,9 +57,9 @@ Run the above with your working directory at the repository root (so `data/multi
     LanceDB's default IVF index needs enough chunks to train its partitions (often on the order of tens of chunks). A single small PDF can be insufficient; use a directory with enough documents for your index settings. Replace `/your-example-dir` with your corpus path.
 
 ```bash
-python -m nemo_retriever.examples.graph_pipeline \
+python -m nemo_retriever.examples.graph_pipeline run \
   /your-example-dir \
-  --lancedb-uri lancedb
+  --vdb-kwargs-json '{"uri":"lancedb"}'
 ```
 
 For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) and pass the `--*-invoke-url` / `--embed-invoke-url` options shown in the [README remote inference section](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md#ingest-a-test-corpus-cli).
