@@ -259,6 +259,67 @@ topology:
         - ReadWriteOnce
       size: "50Gi"
 
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry Collector
+  # ---------------------------------------------------------------------------
+  # Deploys an in-cluster OpenTelemetry Collector for traces, metrics, and logs.
+  # Disable with `topology.otel.enabled: false`.  The collector exposes OTLP
+  # gRPC (4317) and OTLP HTTP (4318) receivers by default.
+  otel:
+    enabled: true
+    image:
+      repository: otel/opentelemetry-collector-contrib
+      tag: "0.127.0"
+      pullPolicy: IfNotPresent
+    replicas: 1
+    ports:
+      otlpGrpc: 4317
+      otlpHttp: 4318
+      prometheus: 8889
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    config:
+      extensions:
+        health_check:
+          endpoint: "0.0.0.0:13133"
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: "0.0.0.0:4317"
+            http:
+              endpoint: "0.0.0.0:4318"
+      processors:
+        batch:
+          timeout: 5s
+          send_batch_size: 1024
+      exporters:
+        debug:
+          verbosity: basic
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [debug]
+          metrics:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [debug]
+          logs:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [debug]
+
 # =============================================================================
 # retriever-service.yaml configuration
 # =============================================================================
