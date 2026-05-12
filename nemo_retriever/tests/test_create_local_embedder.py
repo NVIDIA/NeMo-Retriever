@@ -113,12 +113,14 @@ def test_kwargs_forwarded_to_text_hf_embedder(_patch_embedders):
         hf_cache_dir="/models",
         normalize=False,
         max_length=512,
+        query_max_length=256,
     )
     kw = fake_text_hf.call_args.kwargs
     assert kw["device"] == "cuda:0"
     assert kw["hf_cache_dir"] == "/models"
     assert kw["normalize"] is False
     assert kw["max_length"] == 512
+    assert kw["query_max_length"] == 256
 
 
 def test_unknown_model_passes_through(_patch_embedders):

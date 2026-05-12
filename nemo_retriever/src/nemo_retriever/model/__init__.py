@@ -66,6 +66,7 @@ def create_local_embedder(
     dimensions: int | None = None,
     normalize: bool = True,
     max_length: int = 8192,
+    query_max_length: int = 128,
 ) -> Any:
     """Create the appropriate local embedding model (VL or non-VL).
 
@@ -127,6 +128,7 @@ def create_local_embedder(
             hf_cache_dir=hf_cache_dir,
             normalize=normalize,
             max_length=int(max_length),
+            query_max_length=int(query_max_length),
             model_id=model_id,
         )
 
@@ -174,6 +176,7 @@ def create_local_query_embedder(
     dimensions: int | None = None,
     normalize: bool = True,
     max_length: int = 8192,
+    query_max_length: int = 128,
 ) -> Any:
     """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
 
@@ -194,6 +197,7 @@ def create_local_query_embedder(
         dimensions=dimensions,
         normalize=normalize,
         max_length=int(max_length),
+        query_max_length=int(query_max_length),
     )
 
 
