@@ -667,8 +667,6 @@ def _run_evaluation(
             raise ValueError("--beir-loader is required when --evaluation-mode=beir")
         if not beir_options.dataset_name:
             raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
-        if not beir_options.doc_id_field:
-            raise ValueError("--beir-doc-id-field is required when --evaluation-mode=beir")
 
         lancedb_uri = str(eval_vdb_kwargs.get("uri") or eval_vdb_kwargs.get("lancedb_uri") or "lancedb")
         lancedb_table = str(eval_vdb_kwargs.get("table_name") or eval_vdb_kwargs.get("lancedb_table") or "nv-ingest")

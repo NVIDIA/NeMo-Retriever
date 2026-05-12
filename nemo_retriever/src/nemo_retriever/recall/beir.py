@@ -34,6 +34,8 @@ JP20_ANNOTATIONS_PATH = REPO_ROOT / "data" / "jp20_query_gt.csv"
 
 @dataclass(frozen=True)
 class BeirDatasetOptions:
+    """Resolved BEIR dataset defaults: loader, dataset identifier/path, doc-id field, and metric cutoffs."""
+
     loader: str | None = None
     dataset_name: str | None = None
     doc_id_field: str | None = None
