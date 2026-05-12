@@ -22,6 +22,20 @@ from nemo_retriever.nim.chat_completions import invoke_chat_completion_step
 
 logger = logging.getLogger(__name__)
 
+_LOG_PREVIEW_CHARS = 300
+_LOG_DOC_ID_LIMIT = 10
+
+
+def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _preview_doc_ids(docs: List[Dict[str, Any]], *, limit: int = _LOG_DOC_ID_LIMIT) -> List[str]:
+    return [str(doc.get("doc_id", "")) for doc in docs[:limit]]
+
 
 # ---------------------------------------------------------------------------
 # Prompt rendering  (verbatim content of 02_v1.j2, rendered via Python)
@@ -502,6 +516,15 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         seen_doc_ids: set[str] = set()
         step_counter = 0
 
+        logger.info(
+            "ReActAgentOperator: query=%s start max_steps=%d retriever_top_k=%d target_top_k=%d query=%r",
+            query_id,
+            self._max_steps,
+            self._retriever_top_k,
+            self._target_top_k,
+            _preview_text(query_text),
+        )
+
         # ------ optional initial retrieval (with_results mode) ------
         if with_init_docs:
             init_docs = self._call_retriever(query_text, seen_doc_ids, api_key)
@@ -509,6 +532,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             step_counter += 1
             for d in init_docs:
                 seen_doc_ids.add(d["doc_id"])
+            logger.info(
+                "ReActAgentOperator: query=%s initial_retrieve docs=%d seen=%d doc_ids=%s",
+                query_id,
+                len(init_docs),
+                len(seen_doc_ids),
+                _preview_doc_ids(init_docs),
+            )
 
             doc_content = _docs_to_message_content(init_docs)
             user_msg_content: List[Dict[str, Any]] = [
@@ -522,7 +552,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
         # ------ main ReAct loop ------
         for _step in range(self._max_steps):
-            logger.debug("query=%r loop_step=%d seen_docs=%d", query_id, _step, len(seen_doc_ids))
+            logger.info("ReActAgentOperator: query=%s step=%d begin seen_docs=%d", query_id, _step, len(seen_doc_ids))
             try:
                 response = invoke_chat_completion_step(
                     invoke_url=self._invoke_url,
@@ -580,6 +610,20 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             msg = choice["message"]
             finish_reason = choice.get("finish_reason")
             tool_calls = msg.get("tool_calls") or []
+            if msg.get("content"):
+                logger.info(
+                    "ReActAgentOperator: query=%s step=%d assistant content=%r",
+                    query_id,
+                    _step,
+                    _preview_text(msg.get("content")),
+                )
+            logger.info(
+                "ReActAgentOperator: query=%s step=%d finish_reason=%s tool_calls=%s",
+                query_id,
+                _step,
+                finish_reason,
+                [((tc.get("function") or {}).get("name") or "") for tc in tool_calls],
+            )
 
             # Append assistant turn
             assistant_turn: Dict[str, Any] = {"role": "assistant"}
@@ -590,6 +634,11 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             messages.append(assistant_turn)
 
             if finish_reason == "stop" or not tool_calls:
+                logger.info(
+                    "ReActAgentOperator: query=%s step=%d no tool call; requesting continuation",
+                    query_id,
+                    _step,
+                )
                 messages.append({"role": "user", "content": _AUTO_USER_MSG})
                 continue
 
@@ -609,20 +658,38 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     continue
 
                 if fn_name == "think":
-                    logger.debug("query=%r step=%d [think] %s", query_id, _step, str(fn_args.get("thought", ""))[:120])
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d think=%r",
+                        query_id,
+                        _step,
+                        _preview_text(fn_args.get("thought")),
+                    )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Your thought has been logged."}
                     )
 
                 elif fn_name == "retrieve":
                     subquery = str(fn_args.get("query", query_text))
-                    logger.debug("query=%r step=%d [retrieve] subquery=%r", query_id, _step, subquery)
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d retrieve subquery=%r seen_before=%d",
+                        query_id,
+                        _step,
+                        _preview_text(subquery),
+                        len(seen_doc_ids),
+                    )
                     retrieved = self._call_retriever(subquery, seen_doc_ids, api_key)
-                    logger.debug("query=%r step=%d [retrieve] got %d new docs", query_id, _step, len(retrieved))
                     retrieval_log.append(retrieved)
                     step_counter += 1
                     for d in retrieved:
                         seen_doc_ids.add(d["doc_id"])
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d retrieve docs=%d seen_after=%d doc_ids=%s",
+                        query_id,
+                        _step,
+                        len(retrieved),
+                        len(seen_doc_ids),
+                        _preview_doc_ids(retrieved),
+                    )
                     doc_content = _docs_to_message_content(retrieved)
                     tool_content: List[Dict[str, Any]] = [
                         {"type": "text", "text": f"Retrieved {len(retrieved)} documents:"}
@@ -631,7 +698,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
                 elif fn_name == "final_results":
                     raw_ids: List[str] = fn_args.get("doc_ids", [])
-                    logger.debug("query=%r step=%d [final_results] doc_ids=%s", query_id, _step, raw_ids)
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d final_results doc_ids=%s message=%r",
+                        query_id,
+                        _step,
+                        raw_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_ids, list) else raw_ids,
+                        _preview_text(fn_args.get("message")),
+                    )
                     if isinstance(raw_ids, list) and raw_ids:
                         final_doc_ids = [str(d) for d in raw_ids]
                     tool_messages.append(
@@ -652,6 +725,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             if loop_done:
                 break
 
+        logger.info(
+            "ReActAgentOperator: query=%s done retrieval_steps=%d seen_docs=%d final_doc_ids=%s",
+            query_id,
+            len(retrieval_log),
+            len(seen_doc_ids),
+            final_doc_ids[:_LOG_DOC_ID_LIMIT] if final_doc_ids else [],
+        )
         return _build_output_rows(query_id, query_text, retrieval_log, final_doc_ids)
 
     def _call_retriever(

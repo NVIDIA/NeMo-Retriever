@@ -21,6 +21,16 @@ from nemo_retriever.nim.chat_completions import invoke_chat_completion_step
 
 logger = logging.getLogger(__name__)
 
+_LOG_PREVIEW_CHARS = 300
+_LOG_DOC_ID_LIMIT = 10
+
+
+def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
 # ---------------------------------------------------------------------------
 # Prompt rendering  (verbatim content of 01_v0.j2, rendered via Python)
 # ---------------------------------------------------------------------------
@@ -237,8 +247,21 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         for query_id, group in data.groupby("query_id", sort=False):
             query_text = str(group["query_text"].iloc[0])
             docs = [{"id": str(row["doc_id"]), "text": str(row["text"])} for _, row in group.iterrows()]
+            logger.info(
+                "SelectionAgentOperator: query=%s start candidates=%d unique_candidates=%d query=%r",
+                query_id,
+                len(docs),
+                len({doc["id"] for doc in docs}),
+                _preview_text(query_text),
+            )
             result = self._select_documents(query_text, docs)
             message = result.get("message", "")
+            logger.info(
+                "SelectionAgentOperator: query=%s selected=%s message=%r",
+                query_id,
+                result.get("doc_ids", [])[:_LOG_DOC_ID_LIMIT],
+                _preview_text(message),
+            )
             for rank, doc_id in enumerate(result.get("doc_ids", []), 1):
                 rows.append(
                     {
@@ -363,6 +386,12 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         """Run the agentic selection loop for a single query."""
         valid_ids = list(dict.fromkeys(d["id"] for d in docs))
         feasible_k = min(self._top_k, len(valid_ids))
+        logger.info(
+            "SelectionAgentOperator: selecting top_k=%d feasible_k=%d valid_doc_ids=%s",
+            self._top_k,
+            feasible_k,
+            valid_ids[:_LOG_DOC_ID_LIMIT],
+        )
 
         system_prompt = self._build_system_prompt(feasible_k)
         tools = self._build_tools(feasible_k, valid_ids)
@@ -379,6 +408,12 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             extra_body["parallel_tool_calls"] = False
 
         for _step in range(self._max_steps):
+            logger.info(
+                "SelectionAgentOperator: step=%d begin candidates=%d feasible_k=%d",
+                _step,
+                len(valid_ids),
+                feasible_k,
+            )
             try:
                 response = invoke_chat_completion_step(
                     invoke_url=self._invoke_url,
@@ -438,12 +473,24 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             assistant_turn: Dict[str, Any] = {"role": "assistant"}
             if msg.get("content"):
                 assistant_turn["content"] = msg["content"]
+                logger.info(
+                    "SelectionAgentOperator: step=%d assistant content=%r",
+                    _step,
+                    _preview_text(msg.get("content")),
+                )
             tool_calls = msg.get("tool_calls") or []
+            logger.info(
+                "SelectionAgentOperator: step=%d finish_reason=%s tool_calls=%s",
+                _step,
+                finish_reason,
+                [((tc.get("function") or {}).get("name") or "") for tc in tool_calls],
+            )
             if tool_calls:
                 assistant_turn["tool_calls"] = tool_calls
             messages.append(assistant_turn)
 
             if finish_reason == "stop" or not tool_calls:
+                logger.info("SelectionAgentOperator: step=%d no tool call; asking for final selection", _step)
                 messages.append(
                     {
                         "role": "user",
@@ -468,6 +515,11 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     continue
 
                 if fn.get("name") == "think":
+                    logger.info(
+                        "SelectionAgentOperator: step=%d think=%r",
+                        _step,
+                        _preview_text(fn_args.get("thought")),
+                    )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Your thought has been logged."}
                     )
@@ -480,6 +532,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         except json.JSONDecodeError:
                             raw_doc_ids = []
                     doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
+                    logger.info(
+                        "SelectionAgentOperator: step=%d log_selected_documents raw=%s accepted=%s message=%r",
+                        _step,
+                        raw_doc_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_doc_ids, list) else raw_doc_ids,
+                        doc_ids[:_LOG_DOC_ID_LIMIT],
+                        _preview_text(fn_args.get("message")),
+                    )
                     if not doc_ids and raw_doc_ids:
                         logger.warning(
                             "SelectionAgentOperator: LLM returned %d doc_id(s) for query %r "
