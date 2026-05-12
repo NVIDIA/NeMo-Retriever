@@ -17,6 +17,10 @@ class _FakeTokenizer:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
+    def encode(self, text, *, add_special_tokens=True, truncation=False):
+        extra = 2 if add_special_tokens else 0
+        return list(range(len(str(text).split()) + extra))
+
     def __call__(self, texts, *, padding, truncation, max_length, return_tensors):
         self.calls.append(
             {
@@ -59,6 +63,16 @@ def test_hf_query_embedder_uses_fixed_padding() -> None:
 
     assert [call["padding"] for call in tokenizer.calls] == ["max_length", "max_length"]
     assert [call["max_length"] for call in tokenizer.calls] == [128, 128]
+
+
+def test_hf_query_embedder_warns_when_query_truncated(caplog) -> None:
+    embedder, _tokenizer = _make_loaded_embedder()
+    embedder.query_max_length = 3
+
+    with caplog.at_level("WARNING", logger="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder"):
+        embedder.embed_queries(["one two three four"], batch_size=1)
+
+    assert "Truncating 1/1 HF query embeddings to query_max_length=3 tokens" in caplog.text
 
 
 def test_hf_passage_embedder_keeps_dynamic_padding() -> None:

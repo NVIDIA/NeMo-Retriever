@@ -177,6 +177,20 @@ class TestRetrieveVdbOperatorPreprocess:
         vec = op.preprocess(df)
         assert vec == [[0.7, 0.8]]
 
+    def test_dataframe_to_vectors_skips_numeric_non_embedding_list_columns(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "page_scores": [[9.9, 8.8]],
+                "text_embeddings_1b_v2": [[0.7, 0.8]],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.7, 0.8]]
+
 
 class TestRerankLongDataframe:
     def test_groups_by_query_order(self) -> None:

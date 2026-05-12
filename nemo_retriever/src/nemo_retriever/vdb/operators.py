@@ -52,6 +52,11 @@ def _coerce_embedding_vector(value: Any) -> list[float] | None:
     return None
 
 
+def _is_direct_embedding_column(column_name: object) -> bool:
+    name = str(column_name).strip().lower()
+    return "embedding" in name or name == "vector" or name.endswith("_vector")
+
+
 def query_vectors_from_embedded_dataframe(df: pd.DataFrame) -> list[list[float]]:
     """Extract one query vector per row from batch-embed output (metadata or payload columns)."""
     vectors: list[list[float]] = []
@@ -64,7 +69,9 @@ def query_vectors_from_embedded_dataframe(df: pd.DataFrame) -> list[list[float]]
             for col in df.columns:
                 if col == "metadata":
                     continue
-                vec = _coerce_embedding_vector(row.get(col))
+                val = row.get(col)
+                if isinstance(val, dict) or _is_direct_embedding_column(col):
+                    vec = _coerce_embedding_vector(val)
                 if vec is not None:
                     break
         if vec is None:
