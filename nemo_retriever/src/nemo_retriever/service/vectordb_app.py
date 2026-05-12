@@ -21,6 +21,7 @@ Run standalone::
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import threading
 from contextlib import asynccontextmanager
@@ -164,6 +165,9 @@ class VectorDBState:
 # ── FastAPI app ──────────────────────────────────────────────────────
 
 _state: VectorDBState | None = None
+_query_semaphore: asyncio.Semaphore | None = None
+
+MAX_CONCURRENT_QUERIES = 4
 
 
 def create_vectordb_app(
@@ -175,11 +179,11 @@ def create_vectordb_app(
 ) -> FastAPI:
     """Build the VectorDB FastAPI application."""
 
-    global _state
+    global _state, _query_semaphore
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        global _state
+        global _state, _query_semaphore
         _state = VectorDBState(
             lancedb_uri=lancedb_uri,
             table_name=table_name,
@@ -187,12 +191,14 @@ def create_vectordb_app(
             embed_model=embed_model,
             embed_api_key=embed_api_key,
         )
+        _query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
         logger.info(
-            "VectorDB service started: uri=%s table=%s embed=%s",
-            lancedb_uri, table_name, embed_endpoint or "(none)",
+            "VectorDB service started: uri=%s table=%s embed=%s max_concurrent_queries=%d",
+            lancedb_uri, table_name, embed_endpoint or "(none)", MAX_CONCURRENT_QUERIES,
         )
         yield
         _state = None
+        _query_semaphore = None
         logger.info("VectorDB service stopped")
 
     app = FastAPI(
@@ -216,7 +222,7 @@ def create_vectordb_app(
     async def write(req: WriteRequest) -> WriteResponse:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        written = _state.write_rows(req.rows)
+        written = await asyncio.to_thread(_state.write_rows, req.rows)
         return WriteResponse(written=written, total_rows=_state.total_rows())
 
     @app.post("/v1/query", response_model=QueryResponse, tags=["query"])
@@ -240,8 +246,9 @@ def create_vectordb_app(
         if not queries:
             return QueryResponse(results=[])
 
-        vectors = _state.embed_queries(queries)
-        hits_per_query = _state.search(vectors, top_k=req.top_k)
+        async with _query_semaphore:
+            vectors = await asyncio.to_thread(_state.embed_queries, queries)
+            hits_per_query = await asyncio.to_thread(_state.search, vectors, req.top_k)
 
         results = []
         for hits in hits_per_query:
