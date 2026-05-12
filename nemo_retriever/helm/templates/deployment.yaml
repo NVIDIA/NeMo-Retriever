@@ -229,6 +229,10 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             {{- if or $.Values.nimApiKey.value $.Values.nimApiKey.existingSecret }}
             - name: NVIDIA_API_KEY
               valueFrom:

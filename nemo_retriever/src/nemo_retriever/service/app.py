@@ -85,6 +85,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     config: ServiceConfig = app.state.config
     mode = config.mode
 
+    from nemo_retriever.service.services.event_bus import init_event_bus, shutdown_event_bus
     from nemo_retriever.service.services.job_tracker import init_job_tracker, shutdown_job_tracker
     from nemo_retriever.service.services.metrics import init_metrics, shutdown_metrics
     from nemo_retriever.service.services.pipeline_pool import init_pipeline_pool, shutdown_pipeline_pool
@@ -95,6 +96,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state.metrics = None
 
+    tracker = init_job_tracker()
+    event_bus = init_event_bus()
+    tracker.set_event_bus(event_bus)
+
     if mode == "gateway":
         app.state.proxy = init_proxy(config.gateway)
         app.state.pipeline_pool = None
@@ -104,7 +109,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             create_realtime_work_fn,
         )
 
-        init_job_tracker()
         rt_fn = create_realtime_work_fn(config) if mode in ("standalone", "realtime") else None
         bt_fn = create_batch_work_fn(config) if mode in ("standalone", "batch") else None
         app.state.proxy = None
@@ -129,6 +133,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     shutdown_process_executors()
     await shutdown_proxy()
     await shutdown_pipeline_pool()
+    shutdown_event_bus()
     shutdown_job_tracker()
     shutdown_metrics()
     logger.info("Retriever service stopped")

@@ -55,6 +55,11 @@ class JobTracker:
     def __init__(self) -> None:
         self._jobs: dict[str, JobRecord] = {}
         self._started_mono: dict[str, float] = {}
+        self._event_bus: Any = None
+
+    def set_event_bus(self, bus: Any) -> None:
+        """Attach an :class:`EventBus` so state transitions publish SSE events."""
+        self._event_bus = bus
 
     def register(self, job_id: str) -> None:
         """Register a newly submitted item as *pending*."""
@@ -77,6 +82,7 @@ class JobTracker:
         *,
         result_rows: int = 0,
         result_data: list[dict[str, Any]] | None = None,
+        elapsed_s: float | None = None,
     ) -> None:
         rec = self._jobs.get(job_id)
         if rec is None:
@@ -85,18 +91,38 @@ class JobTracker:
         rec.completed_at = datetime.now(timezone.utc).isoformat()
         rec.result_rows = result_rows
         rec.result_data = result_data
-        t0 = self._started_mono.pop(job_id, None)
-        rec.elapsed_s = round(time.monotonic() - t0, 4) if t0 is not None else None
+        if elapsed_s is not None:
+            rec.elapsed_s = elapsed_s
+        else:
+            t0 = self._started_mono.pop(job_id, None)
+            rec.elapsed_s = round(time.monotonic() - t0, 4) if t0 is not None else None
+        self._publish_event(rec)
 
-    def mark_failed(self, job_id: str, error: str) -> None:
+    def mark_failed(self, job_id: str, error: str, *, elapsed_s: float | None = None) -> None:
         rec = self._jobs.get(job_id)
         if rec is None:
             return
         rec.status = JobStatus.FAILED
         rec.completed_at = datetime.now(timezone.utc).isoformat()
         rec.error = error
-        t0 = self._started_mono.pop(job_id, None)
-        rec.elapsed_s = round(time.monotonic() - t0, 4) if t0 is not None else None
+        if elapsed_s is not None:
+            rec.elapsed_s = elapsed_s
+        else:
+            t0 = self._started_mono.pop(job_id, None)
+            rec.elapsed_s = round(time.monotonic() - t0, 4) if t0 is not None else None
+        self._publish_event(rec)
+
+    def _publish_event(self, rec: JobRecord) -> None:
+        if self._event_bus is None:
+            return
+        self._event_bus.publish_sync({
+            "type": rec.status.value,
+            "id": rec.id,
+            "status": rec.status.value,
+            "result_rows": rec.result_rows,
+            "elapsed_s": rec.elapsed_s,
+            "error": rec.error,
+        })
 
     def get(self, job_id: str) -> JobRecord | None:
         return self._jobs.get(job_id)

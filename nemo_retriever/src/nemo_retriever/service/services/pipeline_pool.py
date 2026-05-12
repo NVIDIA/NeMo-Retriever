@@ -50,6 +50,41 @@ class WorkItem(RichModel):
     payload: Any = None
     filename: str | None = None
     callback: Callable[[Any], None] | None = None
+    callback_url: str | None = None
+
+
+async def _fire_gateway_callback(
+    callback_url: str,
+    item_id: str,
+    status: str,
+    *,
+    result_rows: int = 0,
+    result_data: list[dict[str, Any]] | None = None,
+    error: str | None = None,
+) -> None:
+    """POST job completion data back to the originating gateway pod."""
+    import httpx
+
+    payload: dict[str, Any] = {
+        "id": item_id,
+        "status": status,
+        "result_rows": result_rows,
+    }
+    if result_data is not None:
+        payload["result_data"] = result_data
+    if error:
+        payload["error"] = error
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(callback_url, json=payload)
+            if resp.status_code != 200:
+                logger.warning(
+                    "Gateway callback returned HTTP %d for item %s",
+                    resp.status_code, item_id,
+                )
+    except Exception as exc:
+        logger.warning("Failed to fire gateway callback for item %s: %s", item_id, exc)
 
 
 class _Pool:
@@ -118,30 +153,21 @@ class _Pool:
         )
 
     async def _worker_loop(self, worker_id: int) -> None:
-        """Consume items until a ``None`` sentinel is received."""
+        """Consume items until a ``None`` sentinel is received.
+
+        When an item has a ``callback_url`` (set by the gateway), the
+        worker POSTs completion data back to the gateway instead of
+        updating a local job tracker.  In standalone mode (no callback),
+        the local tracker is updated directly.
+        """
         from nemo_retriever.service.services.job_tracker import get_job_tracker
 
-        # This code defines the asynchronous worker loop within a worker pool for processing queued "work items".
-        #
-        # High-level function:
-        # Each worker runs this loop, repeatedly pulling items from an internal async queue.
-        # - The loop only exits (ending the worker) when it receives a sentinel value (None).
-        # - For each item:
-        #     1. It optionally interacts with a "job tracker" to update the processing status.
-        #     2. It invokes the provided work function (`self._work_fn`), supporting both sync and async functions.
-        #     3. It marks the item as completed or, on failure, as failed in the job tracker.
-        #     4. It increments the count of processed items for monitoring/stats.
-        #     5. It always marks the queue task as done, regardless of errors.
-        #
-        # Detailed logic:
-        assert self._queue is not None  # The queue must be initialized before workers run.
+        assert self._queue is not None
         while True:
-            # Wait for the next item from the queue (asynchronously, does not block other tasks).
             item = await self._queue.get()
             if item is None:
-                # If a None sentinel is received, this is a signal to shut down this worker:
-                self._queue.task_done()  # Mark the sentinel as "done" for queue accounting.
-                return  # Exit the loop, ending the worker task.
+                self._queue.task_done()
+                return
             try:
                 tracker = get_job_tracker()
                 if tracker is not None:
@@ -156,19 +182,29 @@ class _Pool:
                         result_rows, result_data = result
                     elif isinstance(result, int):
                         result_rows = result
-                if tracker is not None:
+
+                if item.callback_url:
+                    await _fire_gateway_callback(
+                        item.callback_url, item.id, "completed",
+                        result_rows=result_rows, result_data=result_data,
+                    )
+                elif tracker is not None:
                     tracker.mark_completed(
                         item.id, result_rows=result_rows, result_data=result_data,
                     )
                 self._processed += 1
             except Exception as exc:
-                # On error, update job tracker as failed, log error with details.
-                tracker = get_job_tracker()
-                if tracker is not None:
-                    tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
+                if item.callback_url:
+                    await _fire_gateway_callback(
+                        item.callback_url, item.id, "failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                else:
+                    tracker = get_job_tracker()
+                    if tracker is not None:
+                        tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
                 logger.exception("Pool '%s' worker %d failed on item %s", self._name, worker_id, item.id)
             finally:
-                # Always tell the queue this item is fully processed (to unblock task joiners).
                 self._queue.task_done()
 
     async def submit(self, item: WorkItem) -> bool:

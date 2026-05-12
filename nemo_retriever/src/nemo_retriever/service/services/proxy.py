@@ -93,6 +93,8 @@ class GatewayProxy:
         self,
         request: Request,
         pool_type: PoolType,
+        *,
+        extra_headers: dict[str, str] | None = None,
     ) -> Response:
         """Stream the incoming *request* to the backend for *pool_type*.
 
@@ -114,6 +116,8 @@ class GatewayProxy:
             )
 
         fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "transfer-encoding")}
+        if extra_headers:
+            fwd_headers.update(extra_headers)
 
         try:
             backend_resp = await client.request(

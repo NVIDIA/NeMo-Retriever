@@ -16,14 +16,18 @@ Each endpoint is mode-aware:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
+from starlette.responses import StreamingResponse
 
 from nemo_retriever.service.models.requests import IngestRequest
 from nemo_retriever.service.models.responses import (
@@ -32,6 +36,7 @@ from nemo_retriever.service.models.responses import (
     JobStatusResponse,
     PageIngestAccepted,
 )
+from nemo_retriever.service.services.event_bus import get_event_bus
 from nemo_retriever.service.services.job_tracker import get_job_tracker
 from nemo_retriever.service.services.metrics import get_metrics
 from nemo_retriever.service.services.pipeline_pool import (
@@ -51,6 +56,9 @@ from nemo_retriever.service.utils.file_type import FileClassifier
 
 _RETRY_AFTER_SECONDS = "5"
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
+_GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
+_GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
+_PAGE_THRESHOLD_FOR_BATCH = 5
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +131,26 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
         )
 
 
-async def _gateway_forward(request: Request, pool_type: PoolType) -> Response:
+def _build_callback_url(request: Request) -> str:
+    """Build the internal callback URL pointing to THIS specific gateway pod.
+
+    Uses ``POD_IP`` env (Kubernetes downward API) so the worker calls
+    back to the exact gateway pod that accepted the upload, not the
+    Service VIP which might route to a different replica.
+    """
+    pod_ip = os.environ.get("POD_IP")
+    port = request.app.state.config.server.port
+    if pod_ip:
+        return f"http://{pod_ip}:{port}/v1/internal/job-callback"
+    return f"http://localhost:{port}/v1/internal/job-callback"
+
+
+async def _gateway_forward(
+    request: Request,
+    pool_type: PoolType,
+    *,
+    extra_headers: dict[str, str] | None = None,
+) -> Response:
     """Proxy the entire HTTP request to the backend for *pool_type*."""
     import time
 
@@ -132,7 +159,7 @@ async def _gateway_forward(request: Request, pool_type: PoolType) -> Response:
         raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
     t0 = time.monotonic()
     try:
-        resp = await proxy.forward(request, pool_type)
+        resp = await proxy.forward(request, pool_type, extra_headers=extra_headers)
     except Exception as exc:
         logger.exception(
             "Gateway forward to %s failed for %s %s",
@@ -176,6 +203,26 @@ def _file_size_from_upload(file: UploadFile, request: Request | None = None) -> 
     return 0
 
 
+def _count_pdf_pages(file_bytes: bytes) -> int:
+    """Return the number of pages in a PDF, or 1 for non-PDF / errors."""
+    try:
+        import pypdfium2 as pdfium
+        doc = pdfium.PdfDocument(file_bytes)
+        n = len(doc)
+        doc.close()
+        return n
+    except Exception:
+        return 1
+
+
+def _route_by_page_count(file_bytes: bytes, meta: IngestRequest) -> PoolType:
+    """Route to realtime for small docs (<threshold pages), batch for larger."""
+    if meta.page_number is not None:
+        return PoolType.REALTIME
+    pages = _count_pdf_pages(file_bytes)
+    return PoolType.REALTIME if pages < _PAGE_THRESHOLD_FOR_BATCH else PoolType.BATCH
+
+
 def _parse_backend_json(resp: Response) -> dict:
     """Attempt to decode the backend response body as JSON."""
     try:
@@ -205,47 +252,80 @@ async def ingest(
     except Exception:
         meta = IngestRequest()
 
-    route = PoolType.REALTIME if meta.page_number is not None else PoolType.BATCH
-
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         file_size = _file_size_from_upload(file, request)
 
-        resp = await _gateway_forward(request, route)
+        file_bytes = await file.read()
+        route = _route_by_page_count(file_bytes, meta)
 
-        if resp.status_code in (200, 202):
-            body = _parse_backend_json(resp)
-            _record_prometheus(request, "/v1/ingest", "2xx", file_size=file_size)
-            if (m := get_metrics()) is not None:
-                m.record_request("/v1/ingest")
-                if meta.job_id:
-                    m.record_job_created(meta.job_id)
-                m.record_document_accepted(
-                    document_id=body.get("document_id", "unknown"),
-                    job_id=meta.job_id,
-                    filename=classification.filename,
-                    file_category=classification.category.value,
-                    content_type=classification.content_type,
-                    file_size_bytes=file_size,
-                    endpoint="/v1/ingest",
-                )
-        return resp
+        document_id = uuid.uuid4().hex
+        content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+        now = datetime.now(timezone.utc).isoformat()
+
+        _register_job(document_id)
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.mark_processing(document_id)
+
+        callback_url = _build_callback_url(request)
+        resp = await _gateway_forward(request, route, extra_headers={
+            _GATEWAY_DOC_ID_HEADER: document_id,
+            _GATEWAY_CALLBACK_HEADER: callback_url,
+        })
+
+        if resp.status_code not in (200, 202):
+            if tracker is not None:
+                tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
+            return resp
+
+        _record_prometheus(request, "/v1/ingest", "2xx", file_size=file_size)
+        if (m := get_metrics()) is not None:
+            m.record_request("/v1/ingest")
+            if meta.job_id:
+                m.record_job_created(meta.job_id)
+            m.record_document_accepted(
+                document_id=document_id,
+                job_id=meta.job_id,
+                filename=classification.filename,
+                file_category=classification.category.value,
+                content_type=classification.content_type,
+                file_size_bytes=file_size,
+                endpoint="/v1/ingest",
+            )
+
+        return IngestAccepted(
+            document_id=document_id,
+            job_id=meta.job_id,
+            content_sha256=content_sha256,
+            status="accepted",
+            created_at=now,
+        )
 
     # ── worker / standalone ──────────────────────────────────────
-    dry_run = _is_dry_run(request)
     classification = FileClassifier.classify(file, filename_override=meta.filename or "")
 
     file_bytes = await file.read()
+    route = _route_by_page_count(file_bytes, meta)
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    document_id = uuid.uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
 
-    if not dry_run:
+    gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
+    gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+    document_id = gw_doc_id or uuid.uuid4().hex
+
+    if not gw_callback_url:
         _register_job(document_id)
-        await _enqueue_or_reject(
-            route,
-            WorkItem(id=document_id, payload=file_bytes, filename=file.filename),
-        )
+
+    await _enqueue_or_reject(
+        route,
+        WorkItem(
+            id=document_id,
+            payload=file_bytes,
+            filename=file.filename,
+            callback_url=gw_callback_url,
+        ),
+    )
 
     _record_prometheus(request, "/v1/ingest", "2xx", file_size=len(file_bytes))
 
@@ -294,29 +374,53 @@ async def ingest_page(
         classification = FileClassifier.classify(file, filename_override=filename)
         file_size = _file_size_from_upload(file, request)
 
-        resp = await _gateway_forward(request, PoolType.REALTIME)
+        page_id = uuid.uuid4().hex
+        content_sha256 = hashlib.sha256((await file.read()) or b"").hexdigest()
+        now = datetime.now(timezone.utc).isoformat()
 
-        if resp.status_code in (200, 202):
-            body = _parse_backend_json(resp)
-            _record_prometheus(
-                request,
-                "/v1/ingest/page",
-                "2xx",
-                file_size=file_size,
-                is_page=True,
+        _register_job(page_id)
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.mark_processing(page_id)
+
+        callback_url = _build_callback_url(request)
+        resp = await _gateway_forward(request, PoolType.REALTIME, extra_headers={
+            _GATEWAY_DOC_ID_HEADER: page_id,
+            _GATEWAY_CALLBACK_HEADER: callback_url,
+        })
+
+        if resp.status_code not in (200, 202):
+            if tracker is not None:
+                tracker.mark_failed(page_id, f"Worker returned HTTP {resp.status_code}")
+            return resp
+
+        _record_prometheus(
+            request,
+            "/v1/ingest/page",
+            "2xx",
+            file_size=file_size,
+            is_page=True,
+        )
+        if (m := get_metrics()) is not None:
+            m.record_request("/v1/ingest/page")
+            m.record_page_accepted(
+                page_id=page_id,
+                document_id=document_id,
+                endpoint="/v1/ingest/page",
+                page_number=page_number,
+                file_size_bytes=file_size,
+                file_category=classification.category.value,
+                content_type=classification.content_type,
             )
-            if (m := get_metrics()) is not None:
-                m.record_request("/v1/ingest/page")
-                m.record_page_accepted(
-                    page_id=body.get("page_id", "unknown"),
-                    document_id=document_id,
-                    endpoint="/v1/ingest/page",
-                    page_number=page_number,
-                    file_size_bytes=file_size,
-                    file_category=classification.category.value,
-                    content_type=classification.content_type,
-                )
-        return resp
+
+        return PageIngestAccepted(
+            page_id=page_id,
+            document_id=document_id,
+            page_number=page_number,
+            content_sha256=content_sha256,
+            status="accepted",
+            created_at=now,
+        )
 
     # ── worker / standalone ──────────────────────────────────────
     dry_run = _is_dry_run(request)
@@ -324,14 +428,18 @@ async def ingest_page(
 
     file_bytes = await file.read()
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    page_id = uuid.uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
 
+    gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
+    gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+    page_id = gw_doc_id or uuid.uuid4().hex
+
     if not dry_run:
-        _register_job(page_id)
+        if not gw_callback_url:
+            _register_job(page_id)
         await _enqueue_or_reject(
             PoolType.REALTIME,
-            WorkItem(id=page_id, payload=file_bytes, filename=file.filename),
+            WorkItem(id=page_id, payload=file_bytes, filename=file.filename, callback_url=gw_callback_url),
         )
 
     _record_prometheus(request, "/v1/ingest/page", "2xx", file_size=len(file_bytes), is_page=True)
@@ -383,25 +491,50 @@ async def ingest_document(
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         file_size = _file_size_from_upload(file, request)
 
-        resp = await _gateway_forward(request, PoolType.BATCH)
+        document_id = uuid.uuid4().hex
+        file_bytes = await file.read()
+        content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+        now = datetime.now(timezone.utc).isoformat()
 
-        if resp.status_code in (200, 202):
-            body = _parse_backend_json(resp)
-            _record_prometheus(request, "/v1/ingest/document", "2xx", file_size=file_size)
-            if (m := get_metrics()) is not None:
-                m.record_request("/v1/ingest/document")
-                if meta.job_id:
-                    m.record_job_created(meta.job_id)
-                m.record_document_accepted(
-                    document_id=body.get("document_id", "unknown"),
-                    job_id=meta.job_id,
-                    filename=classification.filename,
-                    file_category=classification.category.value,
-                    content_type=classification.content_type,
-                    file_size_bytes=file_size,
-                    endpoint="/v1/ingest/document",
-                )
-        return resp
+        _register_job(document_id)
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.mark_processing(document_id)
+
+        callback_url = _build_callback_url(request)
+        resp = await _gateway_forward(request, PoolType.BATCH, extra_headers={
+            _GATEWAY_DOC_ID_HEADER: document_id,
+            _GATEWAY_CALLBACK_HEADER: callback_url,
+        })
+
+        if resp.status_code not in (200, 202):
+            if tracker is not None:
+                tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
+            return resp
+
+        _record_prometheus(request, "/v1/ingest/document", "2xx", file_size=file_size)
+        if (m := get_metrics()) is not None:
+            m.record_request("/v1/ingest/document")
+            if meta.job_id:
+                m.record_job_created(meta.job_id)
+            m.record_document_accepted(
+                document_id=document_id,
+                job_id=meta.job_id,
+                filename=classification.filename,
+                file_category=classification.category.value,
+                content_type=classification.content_type,
+                file_size_bytes=file_size,
+                endpoint="/v1/ingest/document",
+            )
+
+        return DocumentIngestAccepted(
+            document_id=document_id,
+            filename=classification.filename,
+            file_size_bytes=len(file_bytes),
+            content_sha256=content_sha256,
+            status="accepted",
+            created_at=now,
+        )
 
     # ── worker / standalone ──────────────────────────────────────
     dry_run = _is_dry_run(request)
@@ -409,14 +542,18 @@ async def ingest_document(
 
     file_bytes = await file.read()
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    document_id = uuid.uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
 
+    gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
+    gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+    document_id = gw_doc_id or uuid.uuid4().hex
+
     if not dry_run:
-        _register_job(document_id)
+        if not gw_callback_url:
+            _register_job(document_id)
         await _enqueue_or_reject(
             PoolType.BATCH,
-            WorkItem(id=document_id, payload=file_bytes, filename=file.filename),
+            WorkItem(id=document_id, payload=file_bytes, filename=file.filename, callback_url=gw_callback_url),
         )
 
     _record_prometheus(request, "/v1/ingest/document", "2xx", file_size=len(file_bytes))
@@ -464,8 +601,8 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
     tracker = get_job_tracker()
     if tracker is None:
         raise HTTPException(
-            status_code=404,
-            detail="Job tracker is not available on this pod. In split topology, query the worker pod directly.",
+            status_code=503,
+            detail="Job tracker is not available on this pod.",
         )
     rec = tracker.get(item_id)
     if rec is None:
@@ -497,15 +634,6 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_status(request: Request, item_id: str) -> JSONResponse:
-    if _is_gateway(request):
-        proxy = get_proxy()
-        if proxy is None:
-            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-        for pool_type in (PoolType.REALTIME, PoolType.BATCH):
-            resp = await proxy.forward_get(request, pool_type, f"/v1/ingest/status/{item_id}")
-            if resp.status_code != 404:
-                return resp
-        raise HTTPException(status_code=404, detail=f"No tracked job with id={item_id!r}")
     return _status_response(request, item_id)
 
 
@@ -515,11 +643,6 @@ async def ingest_status(request: Request, item_id: str) -> JSONResponse:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_page_status(request: Request, page_id: str) -> JSONResponse:
-    if _is_gateway(request):
-        proxy = get_proxy()
-        if proxy is None:
-            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-        return await proxy.forward_get(request, PoolType.REALTIME, f"/v1/ingest/page/status/{page_id}")
     return _status_response(request, page_id)
 
 
@@ -529,11 +652,6 @@ async def ingest_page_status(request: Request, page_id: str) -> JSONResponse:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_document_status(request: Request, document_id: str) -> JSONResponse:
-    if _is_gateway(request):
-        proxy = get_proxy()
-        if proxy is None:
-            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-        return await proxy.forward_get(request, PoolType.BATCH, f"/v1/ingest/document/status/{document_id}")
     return _status_response(request, document_id)
 
 
@@ -646,3 +764,184 @@ async def query(request: Request) -> Response:
         status_code=resp.status_code,
         media_type="application/json",
     )
+
+
+# ------------------------------------------------------------------
+# POST /v1/internal/job-callback  — worker → gateway completion hook
+# ------------------------------------------------------------------
+
+
+@router.post(
+    "/internal/job-callback",
+    summary="Internal callback from worker pods to report job completion",
+    include_in_schema=False,
+)
+async def job_callback(request: Request) -> JSONResponse:
+    """Accept a completion notification from a worker pod.
+
+    The gateway's ``JobTracker`` is updated and an SSE event is published
+    so connected clients are notified instantly.
+    """
+    body = await request.json()
+    item_id = body.get("id")
+    if not item_id:
+        raise HTTPException(status_code=400, detail="Missing 'id' field")
+
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(status_code=503, detail="Job tracker not available")
+
+    status = body.get("status", "completed")
+    if status == "failed":
+        tracker.mark_failed(
+            item_id,
+            body.get("error", "unknown error"),
+            elapsed_s=body.get("elapsed_s"),
+        )
+    else:
+        tracker.mark_completed(
+            item_id,
+            result_rows=body.get("result_rows", 0),
+            result_data=body.get("result_data"),
+            elapsed_s=body.get("elapsed_s"),
+        )
+
+    bus = get_event_bus()
+    sub_count = bus.subscriber_count if bus else 0
+    logger.info(
+        "Gateway callback: id=%s status=%s rows=%s subscribers=%d",
+        item_id, status, body.get("result_rows", 0), sub_count,
+    )
+    return JSONResponse(content={"ok": True})
+
+
+# ------------------------------------------------------------------
+# GET /v1/ingest/events  — SSE stream for real-time status updates
+# ------------------------------------------------------------------
+
+
+@router.get(
+    "/ingest/events",
+    summary="SSE stream of job completion events",
+)
+async def ingest_events(request: Request) -> StreamingResponse:
+    """Server-Sent Events stream that pushes completion notifications.
+
+    Clients open this after uploading documents and receive real-time
+    ``completed`` / ``failed`` events as workers finish processing.
+    Sends a keepalive comment every 30 seconds to prevent proxies from
+    closing the connection.
+    """
+    bus = get_event_bus()
+    if bus is None:
+        raise HTTPException(status_code=503, detail="Event bus not available")
+
+    tracker = get_job_tracker()
+
+    async def event_generator():
+        sub_id, queue = bus.subscribe()
+        snapshot_count = 0
+        live_count = 0
+        logger.info("SSE subscriber %d connected", sub_id)
+        try:
+            if tracker is not None:
+                snapshot = _snapshot_terminal_jobs(tracker)
+                snapshot_count = len(snapshot)
+                for rec in snapshot:
+                    yield f"event: {rec['status']}\ndata: {json.dumps(rec)}\n\n"
+                logger.info(
+                    "SSE subscriber %d: sent %d snapshot events",
+                    sub_id, snapshot_count,
+                )
+
+            while True:
+                if await request.is_disconnected():
+                    logger.info("SSE subscriber %d: client disconnected", sub_id)
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    live_count += 1
+                    yield f"event: {event.get('type', 'status')}\ndata: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            bus.unsubscribe(sub_id)
+            logger.info(
+                "SSE subscriber %d closed (snapshot=%d live=%d)",
+                sub_id, snapshot_count, live_count,
+            )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _snapshot_terminal_jobs(tracker: Any) -> list[dict[str, Any]]:
+    """Return already-terminal jobs so SSE clients get caught up."""
+    from nemo_retriever.service.services.job_tracker import JobStatus
+
+    results: list[dict[str, Any]] = []
+    for rec in tracker._jobs.values():
+        if rec.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+            results.append({
+                "type": rec.status.value,
+                "id": rec.id,
+                "status": rec.status.value,
+                "result_rows": rec.result_rows,
+                "elapsed_s": rec.elapsed_s,
+                "error": rec.error,
+            })
+    return results
+
+
+# ------------------------------------------------------------------
+# POST /v1/ingest/status/batch  — bulk status query
+# ------------------------------------------------------------------
+
+
+@router.post(
+    "/ingest/status/batch",
+    summary="Bulk status check for multiple items",
+)
+async def ingest_status_batch(request: Request) -> JSONResponse:
+    """Return the status of many items in a single request.
+
+    Accepts ``{"ids": ["id1", "id2", ...]}`` and returns a dict keyed by
+    item id.  Works on the gateway's local tracker — no backend proxying.
+    """
+    body = await request.json()
+    ids = body.get("ids", [])
+    if not isinstance(ids, list):
+        raise HTTPException(status_code=400, detail="'ids' must be a list")
+
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(status_code=503, detail="Job tracker not available")
+
+    from nemo_retriever.service.services.job_tracker import JobStatus
+
+    results: dict[str, dict[str, Any]] = {}
+    for item_id in ids:
+        rec = tracker.get(item_id)
+        if rec is None:
+            results[item_id] = {"status": "unknown"}
+        else:
+            results[item_id] = {
+                "status": rec.status.value,
+                "result_rows": rec.result_rows,
+                "elapsed_s": rec.elapsed_s,
+                "error": rec.error,
+            }
+
+    terminal_count = sum(
+        1 for r in results.values()
+        if r["status"] in (JobStatus.COMPLETED.value, JobStatus.FAILED.value)
+    )
+    return JSONResponse(content={
+        "total": len(ids),
+        "terminal": terminal_count,
+        "pending": len(ids) - terminal_count,
+        "items": results,
+    })
