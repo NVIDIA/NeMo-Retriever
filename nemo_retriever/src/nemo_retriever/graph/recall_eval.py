@@ -44,7 +44,9 @@ class RecallEvaluatorActor:
 
     def __init__(
         self,
-        evaluation_mode: Annotated[str, Param(label="Evaluation Mode", choices=["audio_recall", "beir"])] = "audio_recall",
+        evaluation_mode: Annotated[
+            str, Param(label="Evaluation Mode", choices=["audio_recall", "beir"])
+        ] = "audio_recall",
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
         query_csv: Annotated[str, Param(label="Query CSV", placeholder="/path/to/query_gt.csv")] = "",
