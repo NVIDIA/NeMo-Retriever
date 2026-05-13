@@ -143,6 +143,22 @@ class JobTracker:
             by_status[rec.status.value] += 1
         return {"total_tracked": total, **by_status}
 
+    def all_records(self) -> list[dict[str, Any]]:
+        """Export every job record as a plain dict (excluding bulky result_data)."""
+        return [
+            {
+                "id": rec.id,
+                "status": rec.status.value,
+                "submitted_at": rec.submitted_at,
+                "started_at": rec.started_at,
+                "completed_at": rec.completed_at,
+                "elapsed_s": rec.elapsed_s,
+                "result_rows": rec.result_rows,
+                "error": rec.error,
+            }
+            for rec in self._jobs.values()
+        ]
+
 
 # ── Module-level singleton ───────────────────────────────────────────
 

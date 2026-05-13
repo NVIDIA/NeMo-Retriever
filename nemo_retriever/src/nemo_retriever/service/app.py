@@ -233,6 +233,22 @@ def create_app(config: ServiceConfig) -> FastAPI:
     app.include_router(metrics.router, prefix="/v1")
     instrument_app(app, role=config.mode)
 
+    if config.mode == "gateway":
+        from pathlib import Path as _Path
+
+        from fastapi.staticfiles import StaticFiles
+
+        from nemo_retriever.service.routers import dashboard
+
+        app.include_router(dashboard.router, prefix="/v1/dashboard")
+        _dashboard_static = _Path(__file__).parent / "dashboard" / "static"
+        if _dashboard_static.is_dir():
+            app.mount(
+                "/v1/dashboard/static",
+                StaticFiles(directory=str(_dashboard_static)),
+                name="dashboard-static",
+            )
+
     @app.get("/v1/health", tags=["system"], summary="Liveness / readiness probe")
     async def health() -> dict:
         base: dict = {"status": "ok", "mode": config.mode}
