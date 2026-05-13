@@ -22,6 +22,7 @@ VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_js
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
 VALID_EMBED_GRANULARITIES = {"element", "page"}
+VALID_OCR_LANGS = {"multi", "english"}
 # The harness should eventually integrate these pipeline storage settings directly.
 REMOVED_HARNESS_KEY_MESSAGES = {
     "image_elements_modality": (
@@ -108,6 +109,7 @@ class HarnessConfig:
     embed_modality: str = "text"
     embed_granularity: str = "element"
     ocr_version: str | None = None
+    ocr_lang: str | None = None
     extract_page_as_image: bool = True
     extract_infographics: bool = False
     write_detection_file: bool = False
@@ -217,6 +219,10 @@ class HarnessConfig:
 
         if self.ocr_version is not None and self.ocr_version not in {"v1", "v2"}:
             errors.append("ocr_version must be one of ['v1', 'v2'] when provided")
+        if self.ocr_lang is not None and self.ocr_lang not in VALID_OCR_LANGS:
+            errors.append(f"ocr_lang must be one of {sorted(VALID_OCR_LANGS)} when provided")
+        if self.ocr_version == "v1" and self.ocr_lang is not None:
+            errors.append("ocr_lang is only supported when ocr_version='v2'")
 
         if not str(self.lancedb_table_name).strip():
             errors.append("lancedb_table_name must be a non-empty string")
@@ -360,6 +366,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
         "HARNESS_OCR_VERSION": ("ocr_version", str),
+        "HARNESS_OCR_LANG": ("ocr_lang", str),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),

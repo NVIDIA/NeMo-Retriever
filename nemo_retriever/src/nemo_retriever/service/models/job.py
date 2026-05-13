@@ -8,43 +8,29 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import ConfigDict, Field
 
-class Job:
-    """Lightweight data object representing a row in the ``jobs`` table."""
+from nemo_retriever.service.models.base import RichModel
 
-    def __init__(
-        self,
-        *,
-        id: str | None = None,
-        filename: str = "unknown",
-        content_sha256: str = "",
-        total_pages: int = 0,
-        pages_submitted: int = 0,
-        pages_completed: int = 0,
-        processing_status: str = "queued",
-        created_at: str | None = None,
-        updated_at: str | None = None,
-    ) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        self.id = id or uuid.uuid4().hex
-        self.filename = filename
-        self.content_sha256 = content_sha256
-        self.total_pages = total_pages
-        self.pages_submitted = pages_submitted
-        self.pages_completed = pages_completed
-        self.processing_status = processing_status
-        self.created_at = created_at or now
-        self.updated_at = updated_at or now
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class Job(RichModel):
+    """Domain model representing a row in the ``jobs`` table."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    filename: str = "unknown"
+    content_sha256: str = ""
+    total_pages: int = 0
+    pages_submitted: int = 0
+    pages_completed: int = 0
+    processing_status: str = "queued"
+    created_at: str = Field(default_factory=_now_iso)
+    updated_at: str = Field(default_factory=_now_iso)
 
     def to_row(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "filename": self.filename,
-            "content_sha256": self.content_sha256,
-            "total_pages": self.total_pages,
-            "pages_submitted": self.pages_submitted,
-            "pages_completed": self.pages_completed,
-            "processing_status": self.processing_status,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
+        return self.model_dump()

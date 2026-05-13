@@ -12,14 +12,13 @@ worker processes and remote NIM endpoints.
 
 Three execution surfaces are exposed:
 
-1. :meth:`ServiceIngestor.ingest` — sync, blocks until every page of every
-   file has finished, returns a :class:`ServiceIngestResult` (a ``list``
-   subclass holding all per-page output rows in completion order, plus
-   ``failures`` / ``metrics`` / ``job_ids`` / ``elapsed_s`` attributes).
+1. :meth:`ServiceIngestor.ingest` — sync, blocks until every document has
+   finished, returns a :class:`ServiceIngestResult` (a ``list`` subclass
+   holding per-document completion events, plus ``failures`` /
+   ``document_ids`` / ``elapsed_s`` attributes).
 
 2. :meth:`ServiceIngestor.ingest_stream` — sync generator yielding one
-   ``dict`` per page as it lands.  Internally runs the async pipeline on a
-   background thread and bridges via ``queue.Queue``.
+   ``dict`` per event (upload_complete, document_complete, upload_failed).
 
 3. :meth:`ServiceIngestor.aingest_stream` — true async generator for
    callers already inside an event loop.
@@ -59,37 +58,30 @@ class ServiceIngestResult(list):
 
     Subclasses ``list`` so it satisfies the existing
     ``ingestor.ingest()`` return-type annotation (``List[Any]``); callers
-    can iterate it just like a normal list.  Additional metadata about
-    the run is attached as attributes.
+    can iterate it just like a normal list.  Each entry is a per-document
+    completion event dict.
 
     Attributes
     ----------
     failures
-        One entry per page that failed in the server pipeline.  Each
-        entry contains ``job_id``, ``source_file``, ``page_number`` and
-        ``error``.
-    metrics
-        Per-model aggregated detection / invocation counts, keyed by
-        model name.
-    job_ids
-        Job identifiers created on the server, in submission order
-        (one per input file).
+        ``(document_id_or_filename, error_message)`` pairs for documents
+        that failed during upload or pipeline processing.
+    document_ids
+        Document identifiers returned by the server, in upload order.
     elapsed_s
         Wall-clock seconds from first upload to last result.
     """
 
-    def __init__(self, pages: list[dict[str, Any]] | None = None) -> None:
-        super().__init__(pages or [])
-        self.failures: list[dict[str, Any]] = []
-        self.metrics: dict[str, dict[str, int]] = {}
-        self.job_ids: list[str] = []
+    def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
+        super().__init__(items or [])
+        self.failures: list[tuple[str, str]] = []
+        self.document_ids: list[str] = []
         self.elapsed_s: float = 0.0
-        self.total_pages: int = 0
 
     def __repr__(self) -> str:
         return (
-            f"ServiceIngestResult(pages={len(self)}, "
-            f"failures={len(self.failures)}, jobs={len(self.job_ids)}, "
+            f"ServiceIngestResult(documents={len(self)}, "
+            f"failures={len(self.failures)}, "
             f"elapsed_s={self.elapsed_s:.2f})"
         )
 
@@ -212,12 +204,11 @@ class ServiceIngestor(ingestor):
         Initial list of file paths to ingest; may also be set/extended via
         :meth:`files` and :meth:`buffers`.
     max_concurrency
-        Maximum concurrent page uploads (default 8).
+        Maximum concurrent document uploads (default 8).
     request_timeout_s
-        Per-request HTTP timeout (default 600s for large pages).
-    poll_interval_s
-        Used by :meth:`get_status` and the ``*_jobs`` counter methods to
-        avoid re-querying the server too aggressively.
+        Per-request HTTP timeout (default 600s for large documents).
+    api_token
+        Optional bearer token for service authentication.
     """
 
     RUN_MODE = "service"
@@ -229,16 +220,14 @@ class ServiceIngestor(ingestor):
         documents: Optional[List[str]] = None,
         max_concurrency: int = 8,
         request_timeout_s: float = 600.0,
-        poll_interval_s: float = 2.0,
         api_token: str | None = None,
     ) -> None:
         super().__init__(documents=documents)
         self._base_url = base_url.rstrip("/")
         self._max_concurrency = max_concurrency
         self._request_timeout_s = request_timeout_s
-        self._poll_interval_s = poll_interval_s
         self._api_token = (api_token or "").strip() or None
-        self._job_ids: list[str] = []
+        self._document_ids: list[str] = []
         self._last_run_elapsed_s: float = 0.0
 
     @property
@@ -264,9 +253,7 @@ class ServiceIngestor(ingestor):
         """Add in-memory buffers for processing.
 
         Each buffer must be ``(filename, BytesIO)`` so the server can record
-        a meaningful source filename.  Buffers are written to a temporary
-        file on disk before being uploaded so they share the same code
-        path as on-disk documents.
+        a meaningful source filename.
         """
         if isinstance(buffers, tuple):
             buffers = [buffers]
@@ -275,12 +262,7 @@ class ServiceIngestor(ingestor):
         return self
 
     def load(self) -> "ServiceIngestor":
-        """No-op for service mode.
-
-        Remote-URI fetching is not yet wired through the service ingestor;
-        callers are expected to materialize remote documents to local paths
-        before calling :meth:`files`.
-        """
+        """No-op for service mode."""
         return self
 
     # ------------------------------------------------------------------
@@ -358,80 +340,57 @@ class ServiceIngestor(ingestor):
         Returns
         -------
         ServiceIngestResult
-            A list (subclass of ``list[dict]``) of every per-page output row
-            in completion order, with extra ``failures`` / ``metrics`` /
-            ``job_ids`` / ``elapsed_s`` attributes.
-
-        Notes
-        -----
-        - ``params`` and ``kwargs`` are accepted for parity with the base
-          interface but ignored.
-        - Internally calls :meth:`ingest_stream` and collects results from
-          ``job_complete`` events (which carry full results fetched via REST).
+            A list of per-document completion events, with extra
+            ``failures`` / ``document_ids`` / ``elapsed_s`` attributes.
         """
         del params, kwargs
         result = ServiceIngestResult()
         t0 = time.monotonic()
 
-        total_documents = 0
         documents_completed = 0
-        total_pages = 0
-        pages_completed = 0
+        documents_failed = 0
+        total_uploaded = 0
 
         for evt in self.ingest_stream():
             event_type = evt.get("event")
 
-            if event_type == "job_started":
-                total_documents += 1
-                total_pages += evt.get("total_pages", 0)
+            if event_type == "upload_complete":
+                total_uploaded += 1
                 print(
-                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
-                    f"Documents: {documents_completed}/{total_documents}",
+                    f"\r  Uploaded: {total_uploaded}  |  "
+                    f"Completed: {documents_completed}  |  "
+                    f"Failed: {documents_failed}",
                     end="",
                     flush=True,
                 )
 
-            elif event_type == "job_complete":
-                documents_completed += 1
-                job_results = evt.get("results")
-                if job_results and isinstance(job_results, dict):
-                    pages_completed += job_results.get("pages_completed", 0)
-                    for input_page in job_results.get("pages", []):
-                        doc_id = input_page.get("document_id", "")
-                        page_num = input_page.get("page_number", 0)
-                        status = input_page.get("status", "")
-                        for output_row in input_page.get("pages", []):
-                            result.append(
-                                {
-                                    "job_id": evt.get("job_id"),
-                                    "document_id": doc_id,
-                                    "source_file": job_results.get("filename"),
-                                    "page_number": page_num,
-                                    "content": output_row.get("content", {}),
-                                }
-                            )
-                        if status == "failed":
-                            result.failures.append(
-                                {
-                                    "job_id": evt.get("job_id"),
-                                    "source_file": job_results.get("filename"),
-                                    "page_number": page_num,
-                                    "error": f"page processing failed (status={status})",
-                                }
-                            )
-
+            elif event_type == "document_complete":
+                status = evt.get("status", "completed")
+                if status == "failed":
+                    documents_failed += 1
+                    error = evt.get("error", "unknown error")
+                    doc_id = evt.get("document_id", "?")
+                    result.failures.append((doc_id, error))
+                else:
+                    documents_completed += 1
+                result.append(evt)
                 print(
-                    f"\r  Pages: {pages_completed}/{total_pages}  |  "
-                    f"Documents: {documents_completed}/{total_documents}",
+                    f"\r  Uploaded: {total_uploaded}  |  "
+                    f"Completed: {documents_completed}  |  "
+                    f"Failed: {documents_failed}",
                     end="",
                     flush=True,
                 )
 
-        if total_documents > 0:
+            elif event_type == "upload_failed":
+                fname = evt.get("filename", "?")
+                error = evt.get("error", "unknown")
+                result.failures.append((fname, f"upload failed: {error}"))
+
+        if total_uploaded > 0:
             print()
 
-        result.job_ids = list(self._job_ids)
-        result.total_pages = total_pages
+        result.document_ids = list(self._document_ids)
         result.elapsed_s = time.monotonic() - t0
         self._last_run_elapsed_s = result.elapsed_s
         return result
@@ -441,31 +400,28 @@ class ServiceIngestor(ingestor):
     # ------------------------------------------------------------------
 
     def ingest_stream(self) -> Iterator[dict[str, Any]]:
-        """Sync generator yielding events as jobs are processed.
+        """Sync generator yielding events as documents are processed.
 
-        See :meth:`aingest_stream` for the schema of yielded dicts.
+        Yields dicts with:
 
-        This wraps :meth:`aingest_stream` on a background thread so users
-        can write straightforward synchronous code:
-
-        >>> for evt in ingestor.ingest_stream():           # doctest: +SKIP
-        ...     if evt["event"] == "job_complete":
-        ...         print(evt["results"]["filename"])
+        * ``{"event": "upload_complete", "filename": ..., "document_id": ...}``
+        * ``{"event": "document_complete", "document_id": ..., "status": ..., ...}``
+        * ``{"event": "upload_failed", "filename": ..., "error": ...}``
         """
         files = self._collect_inputs()
         if not files:
-            return iter(())  # empty
+            return iter(())
 
-        self._job_ids.clear()
+        self._document_ids.clear()
 
-        def _record_job_id(evt: dict[str, Any]) -> None:
-            if evt.get("event") == "job_started":
-                jid = evt.get("job_id")
-                if jid:
-                    self._job_ids.append(jid)
+        def _record_doc_id(evt: dict[str, Any]) -> None:
+            if evt.get("event") == "upload_complete":
+                did = evt.get("document_id")
+                if did:
+                    self._document_ids.append(did)
 
         def _factory():
-            return self._wrap_for_job_capture(self._aingest_stream_impl(files), _record_job_id)
+            return self._wrap_for_capture(self._aingest_stream_impl(files), _record_doc_id)
 
         bridge = _AsyncToSyncBridge(_factory)
         return iter(bridge)
@@ -475,25 +431,17 @@ class ServiceIngestor(ingestor):
     # ------------------------------------------------------------------
 
     async def aingest_stream(self) -> AsyncIterator[dict[str, Any]]:
-        """Async generator yielding events as jobs are processed.
-
-        Yields one of:
-
-        * ``{"event": "job_started", "job_id": ..., "filename": ..., "total_pages": ...}``
-        * ``{"event": "page_complete", ...}``
-        * ``{"event": "document_complete", ...}``
-        * ``{"event": "job_complete", "job_id": ..., "results": {...}}``
-        """
+        """Async generator yielding events as documents are processed."""
         files = self._collect_inputs()
         if not files:
             return
 
-        self._job_ids.clear()
+        self._document_ids.clear()
         async for evt in self._aingest_stream_impl(files):
-            if evt.get("event") == "job_started":
-                jid = evt.get("job_id")
-                if jid:
-                    self._job_ids.append(jid)
+            if evt.get("event") == "upload_complete":
+                did = evt.get("document_id")
+                if did:
+                    self._document_ids.append(did)
             yield evt
 
     # ------------------------------------------------------------------
@@ -515,11 +463,11 @@ class ServiceIngestor(ingestor):
             yield evt
 
     @staticmethod
-    async def _wrap_for_job_capture(
+    async def _wrap_for_capture(
         agen: AsyncIterator[dict[str, Any]],
         on_event,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Pass-through wrapper that lets the sync bridge capture job_ids."""
+        """Pass-through wrapper that lets the sync bridge capture document_ids."""
         async for evt in agen:
             on_event(evt)
             yield evt
@@ -534,12 +482,7 @@ class ServiceIngestor(ingestor):
         return_failures: bool = False,
         return_traces: bool = False,
     ) -> Any:
-        """Run :meth:`ingest` on a background thread; return a ``Future``.
-
-        ``return_failures`` and ``return_traces`` are accepted for parity
-        with the base interface; failures and metrics are always available
-        via ``result.failures`` / ``result.metrics`` regardless.
-        """
+        """Run :meth:`ingest` on a background thread; return a ``Future``."""
         del return_failures, return_traces
         from concurrent.futures import ThreadPoolExecutor
 
@@ -547,75 +490,52 @@ class ServiceIngestor(ingestor):
         return executor.submit(self.ingest)
 
     # ------------------------------------------------------------------
-    # Status & job-counter accessors (use the new server endpoints)
+    # Status & document-counter accessors
     # ------------------------------------------------------------------
 
     def get_status(self) -> dict[str, str]:
-        """Return ``{job_id: status}`` for every job submitted so far."""
-        if not self._job_ids:
+        """Return ``{document_id: status}`` for every document submitted so far."""
+        if not self._document_ids:
             return {}
-        statuses: dict[str, str] = {}
-        with httpx.Client(base_url=self._base_url, timeout=30.0, headers=self._auth_headers) as client:
-            for jid in self._job_ids:
-                try:
-                    resp = client.get(f"/v1/ingest/job/{jid}")
-                    resp.raise_for_status()
-                    statuses[jid] = resp.json().get("status", "unknown")
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Could not fetch status for job %s: %s", jid[:8], exc)
-                    statuses[jid] = "unknown"
-        return statuses
+        url = f"{self._base_url}/v1/ingest/status/batch"
+        with httpx.Client(timeout=30.0, headers=self._auth_headers) as client:
+            try:
+                resp = client.post(url, json={"ids": self._document_ids})
+                resp.raise_for_status()
+                items = resp.json().get("items", {})
+                return {did: info.get("status", "unknown") for did, info in items.items()}
+            except Exception as exc:
+                logger.warning("Could not fetch bulk status: %s", exc)
+                return {did: "unknown" for did in self._document_ids}
 
     def completed_jobs(self) -> int:
-        return sum(1 for s in self.get_status().values() if s == "complete")
+        return sum(1 for s in self.get_status().values() if s == "completed")
 
     def failed_jobs(self) -> int:
         return sum(1 for s in self.get_status().values() if s == "failed")
 
     def cancelled_jobs(self) -> int:
-        return sum(1 for s in self.get_status().values() if s == "cancelled")
+        return 0
 
     def remaining_jobs(self) -> int:
-        return sum(1 for s in self.get_status().values() if s in ("queued", "processing", "unknown"))
+        return sum(1 for s in self.get_status().values() if s in ("processing", "unknown"))
 
     # ------------------------------------------------------------------
-    # Cancel — supported via POST /v1/ingest/job/{id}/cancel
+    # Cancel — not supported (no server endpoint)
     # ------------------------------------------------------------------
 
     def cancel(self, job_id: str | None = None) -> dict[str, Any]:
-        """Cancel one job (by id) or every job submitted by this ingestor.
-
-        Returns a dict ``{job_id: <server response>}``.  Pages already in
-        flight on the server cannot be interrupted; any pages still queued
-        or buffered are dropped before they reach a worker.
-        """
-        targets = [job_id] if job_id is not None else list(self._job_ids)
-        if not targets:
-            return {}
-
-        results: dict[str, Any] = {}
-        with httpx.Client(base_url=self._base_url, timeout=30.0, headers=self._auth_headers) as client:
-            for jid in targets:
-                try:
-                    resp = client.post(f"/v1/ingest/job/{jid}/cancel")
-                    resp.raise_for_status()
-                    results[jid] = resp.json()
-                except httpx.HTTPStatusError as exc:
-                    results[jid] = {"error": str(exc), "status_code": exc.response.status_code}
-                except Exception as exc:  # noqa: BLE001 — surfaces network errors
-                    results[jid] = {"error": str(exc)}
-        return results
+        """Not supported — the server does not expose a cancel endpoint."""
+        raise NotImplementedError(
+            "Cancel is not supported in service mode. " "The server does not currently expose a cancel endpoint."
+        )
 
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
 
     def _collect_inputs(self) -> list[Path]:
-        """Gather both file paths and any in-memory buffers into Paths.
-
-        Buffers are spilled to a temp directory; the temp directory lives
-        for the lifetime of the process (deleted by the OS).
-        """
+        """Gather both file paths and any in-memory buffers into Paths."""
         files = [Path(p) for p in self._documents]
 
         if self._buffers:

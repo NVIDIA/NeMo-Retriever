@@ -326,6 +326,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         ep = self.extract_params
         return {
             "ocr_invoke_url": ep.ocr_invoke_url,
+            "ocr_version": getattr(ep, "ocr_version", "v2"),
+            "ocr_lang": getattr(ep, "ocr_lang", None),
             "api_key": ep.ocr_api_key or ep.api_key,
             "inference_batch_size": int(ep.inference_batch_size),
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
@@ -340,7 +342,7 @@ class _MultiTypeExtractBase(AbstractOperator):
 
         Branch B: ``VideoFrameActor`` extracts frames at
         ``video_frame_params.fps``; optional content-hash dedup;
-        ``VideoFrameOCRActor`` (Nemotron OCR v1) runs full-frame OCR
+        ``VideoFrameOCRActor`` (Nemotron OCR) runs full-frame OCR
         directly — no page-elements detection; ``VideoFrameTextDedup``
         then collapses time-adjacent runs of identical OCR text per
         ``source_path`` (mirrors the Ray graph in ``build_graph``).
@@ -389,7 +391,8 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_detection_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
         tuning = getattr(extract_params, "batch_tuning", None)
-        load_ocr_v2 = getattr(extract_params, "ocr_version", "v2") == "v2"
+        ocr_version = getattr(extract_params, "ocr_version", "v2")
+        ocr_lang = getattr(extract_params, "ocr_lang", None)
 
         detect_kwargs: dict[str, Any] = {}
         if extract_params.page_elements_invoke_url:
@@ -404,7 +407,9 @@ class _MultiTypeExtractBase(AbstractOperator):
         batch_df = self._instantiate_resolved(PageElementDetectionActor, **detect_kwargs).run(batch_df)
 
         if extract_params.use_table_structure and extract_params.extract_tables:
-            table_kwargs: dict[str, Any] = {"load_ocr_v2": load_ocr_v2}
+            table_kwargs: dict[str, Any] = {"ocr_version": ocr_version}
+            if ocr_lang is not None:
+                table_kwargs["ocr_lang"] = ocr_lang
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
             if extract_params.ocr_invoke_url:
@@ -416,7 +421,9 @@ class _MultiTypeExtractBase(AbstractOperator):
             batch_df = self._instantiate_resolved(TableStructureActor, **table_kwargs).run(batch_df)
 
         if extract_params.use_graphic_elements and extract_params.extract_charts:
-            graphic_kwargs: dict[str, Any] = {"load_ocr_v2": load_ocr_v2}
+            graphic_kwargs: dict[str, Any] = {"ocr_version": ocr_version}
+            if ocr_lang is not None:
+                graphic_kwargs["ocr_lang"] = ocr_lang
             if extract_params.graphic_elements_invoke_url:
                 graphic_kwargs["graphic_elements_invoke_url"] = extract_params.graphic_elements_invoke_url
             if extract_params.ocr_invoke_url:
@@ -428,7 +435,10 @@ class _MultiTypeExtractBase(AbstractOperator):
         ocr_kwargs: dict[str, Any] = {
             "use_graphic_elements": extract_params.use_graphic_elements,
             "use_table_structure": extract_params.use_table_structure,
+            "ocr_version": ocr_version,
         }
+        if ocr_lang is not None:
+            ocr_kwargs["ocr_lang"] = ocr_lang
         if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
             ocr_kwargs["extract_text"] = True
         if extract_params.extract_tables:
@@ -490,6 +500,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         resolved_class = resolve_operator_class(
             operator_class, self._local_resources(), operator_kwargs=operator_kwargs
         )
+        if issubclass(operator_class, ArchetypeOperator):
+            operator_kwargs = operator_class.variant_operator_kwargs(resolved_class, operator_kwargs)
         return resolved_class(**operator_kwargs)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

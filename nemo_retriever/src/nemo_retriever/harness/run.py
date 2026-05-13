@@ -389,6 +389,8 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     ]
     if cfg.ocr_version:
         cmd += ["--ocr-version", cfg.ocr_version]
+    if cfg.ocr_lang:
+        cmd += ["--ocr-lang", cfg.ocr_lang]
 
     if cfg.evaluation_mode == "beir":
         beir_dataset_name = cfg.beir_dataset_name or cfg.dataset_label

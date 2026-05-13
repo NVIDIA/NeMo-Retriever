@@ -652,6 +652,13 @@ def test_load_harness_config_supports_optional_ocr_version_override(
     cfg = load_harness_config(config_file=str(cfg_path))
     assert cfg.ocr_version == "v2"
 
+    cfg = load_harness_config(config_file=str(cfg_path), cli_overrides=["ocr_lang=english"])
+    assert cfg.ocr_lang == "english"
+
+    monkeypatch.setenv("HARNESS_OCR_LANG", "multi")
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.ocr_lang == "multi"
+
 
 def test_load_harness_config_rejects_invalid_ocr_version(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
@@ -678,6 +685,35 @@ def test_load_harness_config_rejects_invalid_ocr_version(tmp_path: Path) -> None
     )
 
     with pytest.raises(ValueError, match="ocr_version must be one of"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_rejects_invalid_ocr_lang_combo(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    evaluation_mode: beir",
+                "    beir_loader: vidore_hf",
+                "    recall_required: false",
+                "    ocr_version: v1",
+                "    ocr_lang: english",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ocr_lang is only supported"):
         load_harness_config(config_file=str(cfg_path))
 
 

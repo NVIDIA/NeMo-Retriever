@@ -298,6 +298,7 @@ class ExtractParams(_ParamsModel):
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
     ocr_version: Literal["v1", "v2"] = "v2"
+    ocr_lang: Optional[Literal["multi", "english"]] = None
 
     # Service endpoints
     invoke_url: Optional[str] = None
@@ -339,6 +340,8 @@ class ExtractParams(_ParamsModel):
             self.use_table_structure = True
         if self.table_output_format is None:
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
+        if self.ocr_version == "v1" and self.ocr_lang is not None:
+            raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
         return self
 
 
