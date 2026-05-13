@@ -13,13 +13,7 @@ resolution-markers = [
 ]
 
 [manifest]
-overrides = [
-    { name = "fastparquet", specifier = ">=2024.11.0,<2026" },
-    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = "==2.11.0" },
-    { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = "==0.26.0" },
-    { name = "torchvision", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = "==0.26.0", index = "https://download.pytorch.org/whl/cu130" },
-]
+overrides = [{ name = "fastparquet", specifier = ">=2024.11.0,<2026" }]
 
 [[package]]
 name = "absl-py"
@@ -2593,10 +2587,10 @@ requires-dist = [
     { name = "sqlglot", specifier = ">=30.0.0" },
     { name = "timm", marker = "extra == 'local'", specifier = "==1.0.22" },
     { name = "tokenizers", marker = "extra == 'local'", specifier = ">=0.21.1" },
-    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'local'", specifier = "==2.11.0" },
-    { name = "torchvision", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = "==0.26.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'local'", specifier = "==0.26.0" },
+    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = "~=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'local'", specifier = "~=2.11.0" },
+    { name = "torchvision", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = ">=0.26.0,<0.27", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'local'", specifier = ">=0.26.0,<0.27" },
     { name = "tqdm", specifier = ">=4.66.0" },
     { name = "transformers", marker = "extra == 'local'", specifier = ">=4.57.6,<5" },
     { name = "tritonclient", marker = "extra == 'local'" },
@@ -2628,7 +2622,7 @@ wheels = [
 
 [[package]]
 name = "nemotron-ocr"
-version = "2.0.0.dev20260508175030"
+version = "2.0.0.dev20260512170901"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
     { name = "huggingface-hub", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -2638,10 +2632,10 @@ dependencies = [
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "torchvision", version = "0.26.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/26/5f/0a121fcd2cc2e2e8873b946e0cca4fb28b32778705f16e544694a3a2a105/nemotron_ocr-2.0.0.dev20260508175030.tar.gz", hash = "sha256:639e5181b5c5d4a928813de9f397af4628cb05cc660cf4b972e0ffc619b3e928", size = 155961, upload-time = "2026-05-08T18:01:04.331Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/42/21/6bda80c5b7d384a28f91582ba8faa91fe49ca591fa70eef69a1e85d1128e/nemotron_ocr-2.0.0.dev20260512170901.tar.gz", hash = "sha256:c88dc81a965cecdadf9f43248ccefed2db5807f5fdd9491b1f498111d483efe2", size = 155960, upload-time = "2026-05-12T17:19:39.383Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/fa/7b/98d461288d72aff10e084128fdabaf3410097c8113200449ba37d7a6e385/nemotron_ocr-2.0.0.dev20260508175030-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:1f6b7b8d1f9d3f327dd176035db43e0c6fb58a4c2f2879d969cfb779a20ec717", size = 36096949, upload-time = "2026-05-08T18:01:02.201Z" },
-    { url = "https://test-files.pythonhosted.org/packages/de/9b/5d111a0c665e7bbac52e86da16ccde0329b6469dd0ff79644b0185bdd988/nemotron_ocr-2.0.0.dev20260508175030-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:ef71916f024938bf685986a23af51cb044f303b1875f09373fcc227caf4881de", size = 36802428, upload-time = "2026-05-08T18:01:28.484Z" },
+    { url = "https://test-files.pythonhosted.org/packages/2e/75/c84b534b015386cec5046a36978689deb1b520a8d10a02154ad96180e8ae/nemotron_ocr-2.0.0.dev20260512170901-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:947778762a4d6f624c8f0d0262b9de079ba6cba0b2e9977ae25e3960768219ae", size = 36095211, upload-time = "2026-05-12T17:19:37.186Z" },
+    { url = "https://test-files.pythonhosted.org/packages/27/c2/de710d55ac881e30ed719e08d32b25730cba546679aa2987bf3093d510e2/nemotron_ocr-2.0.0.dev20260512170901-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:11602defaee6eb01fa4f41403fb93ad10dfd966ea12c32f839a44160ddb4cdc5", size = 36806573, upload-time = "2026-05-12T17:20:45.594Z" },
 ]
 
 [[package]]

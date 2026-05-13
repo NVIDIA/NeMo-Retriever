@@ -7,12 +7,8 @@ managed = true
 package = true
 no-build-package = ["nemotron-ocr"]
 # fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
-# vLLM 0.20.0 requires the torch 2.11 / torchvision 0.26 stack. The current
-# Nemotron OCR dev wheels still declare the previous 2.10 / 0.25 bounds.
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
-  "torch==2.11.0",
-  "torchvision==0.26.0",
 ]
 
 [project]
@@ -87,8 +83,8 @@ local = [
   "transformers>=4.57.6,<5",
   "tokenizers>=0.21.1",
   "accelerate==1.12.0",
-  "torch==2.11.0",
-  "torchvision==0.26.0",
+  "torch~=2.11.0",
+  "torchvision>=0.26.0,<0.27",
   "tritonclient",
   "einops",
   "easydict",
