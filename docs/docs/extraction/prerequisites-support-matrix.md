@@ -65,11 +65,12 @@ This includes the following:
 
 - [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — for transcript extraction from [audio and video](audio-video.md).
 - [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.nvidia.com/nim/vision-language-models/latest/overview.html) — for maximally accurate table extraction.
-- [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) [NIM](https://docs.nvidia.com/nim/vision-language-models/latest/overview.html) — for image captioning of unstructured (not charts, tables, infographics) images.
+- [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) [NIM](https://docs.nvidia.com/nim/vision-language-models/latest/overview.html) - default model family for image captioning of unstructured images.
+- [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) - opt-in model family for image captioning. Local BF16, FP8, and NVFP4 Hugging Face checkpoints are supported, and remote captioning uses the hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
     
     !!! note
     
-        While nemotron-nano-12b-v2-vl is the default VLM, you can configure and use other vision language models for image captioning based on your specific use case requirements. For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
+        Nemotron Nano 12B VL remains the default caption model. Nemotron 3 Nano Omni is available for opt-in image captioning; audio, video, OCR, and document-intelligence workflows are not routed through the caption stage in this release.
 
 - [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — for improved retrieval accuracy.
 

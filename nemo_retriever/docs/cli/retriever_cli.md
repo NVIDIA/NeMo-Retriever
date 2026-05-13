@@ -176,12 +176,14 @@ retriever pipeline run ./data/test.pdf \
   --input-type pdf \
   --method pdfium \
   --caption \
-  --caption-model-name nvidia/NVIDIA-Nemotron-Nano-VL-8B-V2 \
+  --caption-model-name nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16 \
   --caption-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
   --api-key "${NVIDIA_API_KEY}" \
   --store-images-uri ./processed_docs/images \
   --save-intermediate ./processed_docs
 ```
+
+For opt-in hosted Omni captioning, keep the same endpoint shape and set `--caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Local Omni captioning uses the normal local install path, `nemo_retriever[local]`, and one of the local Hugging Face IDs: `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8`, or `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4`.
 
 **Parity gaps.**
 
