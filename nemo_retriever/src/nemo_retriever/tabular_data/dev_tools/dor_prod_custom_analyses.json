@@ -11,8 +11,8 @@
   },
   {
     "name": "Request Attributes",
-    "description": "When a question mentions trainstop, quality level, or process by name, the actual names live in separate lookup tables, not in the requests table itself. The requests table only stores foreign key IDs (and process_ids as an array). You must JOIN to get names: trainstops via requests.trainstop_id = trainstops.id, quality_levels via requests.quality_level_id = quality_levels.id, processes via UNNEST(requests.process_ids) (since process_ids is a UUID[] array on requests).",
-    "sql": "SELECT requests.id AS request_id, trainstops.name AS trainstop, quality_levels.name AS quality_level, processes.name AS process FROM requests JOIN trainstops ON requests.trainstop_id = trainstops.id JOIN quality_levels ON requests.quality_level_id = quality_levels.id JOIN processes ON processes.id = ANY(requests.process_ids) WHERE requests.status = 'in_progress'"
+    "description": "When a question mentions trainstop, quality level, or process by name, the actual names live in separate lookup tables, not in the requests table itself. The requests table only stores foreign key IDs. You must JOIN to get names: trainstops via requests.trainstop_id = trainstops.id, quality_levels via requests.quality_level_id = quality_levels.id, processes via the request_processes join table (request_processes.request_id = requests.id AND request_processes.process_id = processes.id). IMPORTANT: there is NO process_ids column on requests — always use the request_processes join table to link requests to processes.",
+    "sql": "SELECT requests.id AS request_id, trainstops.name AS trainstop, quality_levels.name AS quality_level, processes.name AS process FROM requests JOIN trainstops ON requests.trainstop_id = trainstops.id JOIN quality_levels ON requests.quality_level_id = quality_levels.id JOIN request_processes ON request_processes.request_id = requests.id JOIN processes ON processes.id = request_processes.process_id WHERE requests.status = 'in_progress'"
   },
   {
     "name": "Product Hierarchy",
