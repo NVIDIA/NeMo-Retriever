@@ -27,7 +27,15 @@ from nemo_retriever.params import CaptionParams
 _DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
 _MAX_CONTEXT_TEXT_CHARS = 4096
 _MIN_IMAGE_DIMENSION = 32
-_cached_local_model = None
+_LOCAL_MODEL_CACHE_KEYS = (
+    "model_name",
+    "device",
+    "hf_cache_dir",
+    "max_tokens",
+    "tensor_parallel_size",
+    "gpu_memory_utilization",
+)
+_cached_local_model: dict[tuple[tuple[str, Any], ...], Any] | None = {}
 
 
 def _image_meets_min_size(b64: str) -> bool:
@@ -53,11 +61,27 @@ def _create_local_model(kwargs: dict) -> "Any":
     )
 
 
+def _local_model_cache_key(kwargs: dict) -> tuple[tuple[str, Any], ...]:
+    resolved_kwargs = {
+        "model_name": kwargs.get("model_name", _DEFAULT_MODEL_NAME),
+        "device": kwargs.get("device"),
+        "hf_cache_dir": kwargs.get("hf_cache_dir"),
+        "max_tokens": kwargs.get("max_tokens", 1024),
+        "tensor_parallel_size": kwargs.get("tensor_parallel_size", 1),
+        "gpu_memory_utilization": kwargs.get("gpu_memory_utilization", 0.5),
+    }
+    return tuple((key, resolved_kwargs[key]) for key in _LOCAL_MODEL_CACHE_KEYS)
+
+
 def _get_cached_local_model(kwargs: dict) -> "Any":
     global _cached_local_model
     if _cached_local_model is None:
-        _cached_local_model = _create_local_model(kwargs)
-    return _cached_local_model
+        _cached_local_model = {}
+
+    cache_key = _local_model_cache_key(kwargs)
+    if cache_key not in _cached_local_model:
+        _cached_local_model[cache_key] = _create_local_model(kwargs)
+    return _cached_local_model[cache_key]
 
 
 @designer_component(
@@ -307,13 +331,17 @@ def caption_images(
             request_extras = profile.request_extras_for("remote")
         request_extras = merge_request_extras(request_extras, extra_body or {})
         if extra_body is not None:
-            request_extras["extra_body"] = merge_request_extras({}, extra_body)
+            request_extras["extra_body"] = merge_request_extras(
+                {},
+                {key: value for key, value in request_extras.items() if key != "extra_body"},
+            )
     else:
         model_name = resolve_caption_model_name(model_name, target="local")
 
     if model is None and not endpoint_url:
         local_kwargs = dict(kwargs)
         local_kwargs["model_name"] = model_name
+        local_kwargs["max_tokens"] = max_tokens
         model = _get_cached_local_model(local_kwargs)
 
     nim_client = _create_remote_client(endpoint_url, api_key) if endpoint_url and model is None else None

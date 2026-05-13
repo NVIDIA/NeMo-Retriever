@@ -31,7 +31,7 @@ def _b64_to_pil(b64: str) -> Image.Image:
 
 class NemotronVLMCaptioner(BaseModel):
     """
-    Local VLM captioner wrapping Nemotron Nano 12B v2 VL variants.
+    Local VLM captioner wrapping supported Nemotron VLM caption profiles.
 
     Supported models:
 
@@ -39,6 +39,7 @@ class NemotronVLMCaptioner(BaseModel):
     * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8``  (FP8 quantised)
     * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD`` (NVFP4 quantised,
       requires GPU compute capability >= 8.9, e.g. Ada Lovelace / Hopper)
+    * Nemotron 3 Nano Omni BF16, FP8, and NVFP4 profiles and aliases
 
     Uses vLLM for inference with batched scheduling.
 

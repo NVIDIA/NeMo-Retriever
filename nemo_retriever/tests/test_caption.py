@@ -437,6 +437,38 @@ def test_remote_extra_body_arbitrary_keys_reach_formatted_payload(mock_create_cl
 
 
 @patch("nemo_retriever.caption.caption._create_remote_client")
+def test_remote_omni_partial_extra_body_preserves_profile_defaults_in_formatted_payload(mock_create_client):
+    from nemo_retriever.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.caption.caption import caption_images
+
+    formatted_payloads = []
+
+    class FormattingNimClient:
+        def infer(self, data, **kwargs):
+            payloads, _batch_data = VLMModelInterface().format_input(
+                data,
+                protocol="http",
+                max_batch_size=8,
+                **kwargs,
+            )
+            formatted_payloads.extend(payloads)
+            return ["remote cap"]
+
+    mock_create_client.return_value = FormattingNimClient()
+    user_extra_body = {"chat_template_kwargs": {"reasoning_budget": 32}}
+
+    caption_images(
+        _make_page_df(num_images=1),
+        endpoint_url="https://integrate.api.nvidia.com/v1/chat/completions",
+        model_name="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        extra_body=user_extra_body,
+    )
+
+    assert formatted_payloads[0]["chat_template_kwargs"] == {"enable_thinking": False, "reasoning_budget": 32}
+    assert user_extra_body == {"chat_template_kwargs": {"reasoning_budget": 32}}
+
+
+@patch("nemo_retriever.caption.caption._create_remote_client")
 def test_unknown_remote_model_passes_through_without_profile_extras(mock_create_client):
     from nemo_retriever.caption.caption import caption_images
 
@@ -478,6 +510,48 @@ def test_caption_images_threads_resolved_local_model_name_to_loader(monkeypatch)
 
     assert result.iloc[0]["images"][0]["text"] == "local cap"
     assert created_kwargs[0]["model_name"] == "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
+
+
+def test_caption_images_local_cache_keys_by_resolved_loader_kwargs(monkeypatch):
+    from nemo_retriever.caption import caption as caption_module
+
+    created_kwargs = []
+
+    class FakeLocalCaptioner:
+        def __init__(self, label):
+            self.label = label
+
+        def caption_batch(self, base64_images, **kwargs):
+            return [self.label for _ in base64_images]
+
+    def fake_create_local_model(kwargs):
+        created_kwargs.append(dict(kwargs))
+        return FakeLocalCaptioner(f"local cap {len(created_kwargs)}")
+
+    monkeypatch.setattr(caption_module, "_cached_local_model", None)
+    monkeypatch.setattr(caption_module, "_create_local_model", fake_create_local_model)
+
+    default_result = caption_module.caption_images(_make_page_df(num_images=1), max_tokens=512)
+    default_again = caption_module.caption_images(_make_page_df(num_images=1), max_tokens=512)
+    omni_result = caption_module.caption_images(
+        _make_page_df(num_images=1),
+        model_name="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning-fp8",
+        max_tokens=512,
+    )
+    omni_again = caption_module.caption_images(
+        _make_page_df(num_images=1),
+        model_name="nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8",
+        max_tokens=512,
+    )
+
+    assert default_result.iloc[0]["images"][0]["text"] == "local cap 1"
+    assert default_again.iloc[0]["images"][0]["text"] == "local cap 1"
+    assert omni_result.iloc[0]["images"][0]["text"] == "local cap 2"
+    assert omni_again.iloc[0]["images"][0]["text"] == "local cap 2"
+    assert [kwargs["model_name"] for kwargs in created_kwargs] == [
+        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8",
+    ]
 
 
 def test_caption_images_forwards_local_user_extra_body_only_when_supplied():
