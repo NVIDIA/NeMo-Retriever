@@ -23,11 +23,39 @@ Three execution surfaces are exposed:
 3. :meth:`ServiceIngestor.aingest_stream` — true async generator for
    callers already inside an event loop.
 
-The fluent pipeline-configuration methods (``.extract``, ``.embed``,
-``.dedup``, ``.split``, ``.store``, ``.caption``, ``.webhook``, ``.udf``,
-``.vdb_upload``, …) all raise :class:`NotImplementedError` with a clear
-message: the server pipeline is configured at startup via
-``retriever-service.yaml`` and cannot be overridden per-request today.
+Pipeline configuration in service run_mode goes through a
+:class:`~nemo_retriever.service.models.pipeline_spec.PipelineSpec`
+that travels alongside each upload. The server validates the spec
+against :class:`~nemo_retriever.service.policy.PipelineOverridesPolicy`
+(an audited allow-list keyed on parameter name + sink URL) before any
+worker sees it — the trust boundary lives on the server, never on the
+client.
+
+Fluent methods that *do* take effect by writing to the spec:
+
+* ``.extract(...)`` — per-request extraction knobs (DPI, OCR enable, …)
+* ``.embed(...)`` — embedding model/dim overrides bounded by the
+  operator's allow-list
+* ``.dedup(...)``, ``.split(...)``, ``.filter()`` — shape knobs
+* ``.store(StorageUri="s3://...")`` — remote object storage sink
+* ``.webhook(endpoint_url="https://hooks.example.com/...")`` — HTTP sink
+* ``.vdb_upload(...)`` — vector-DB sink, including sidecar metadata
+  via the dedicated ``POST /v1/ingest/sidecar`` upload endpoint
+* ``.caption(...)`` — remote VLM captioning when the operator has wired
+  ``nim_endpoints.caption_invoke_url``; trust-sensitive fields like
+  endpoint_url / api_key / model_name stay server-owned
+* ``.save_to_disk(output_directory="...")`` — client-side persistence:
+  fetches ``result_data`` from ``/v1/ingest/status/{id}`` for each
+  completed document and writes JSON or gzipped JSON locally
+
+Methods that intentionally remain unsupported in service run_mode:
+
+* ``.udf(...)`` — named UDFs deferred to a follow-up phase;
+  arbitrary-code execution is the canonical trust-boundary violation
+  and needs a server-side registry first
+* ``.store_embed()``, ``.save_intermediate_results()`` — by design,
+  in-process-only debugging helpers; use ``run_mode='inprocess'`` for
+  stage-by-stage introspection
 """
 
 from __future__ import annotations
@@ -45,6 +73,7 @@ import httpx
 
 from nemo_retriever.ingestor import _merge_params, ingestor
 from nemo_retriever.params import (
+    CaptionParams,
     DedupParams,
     EmbedParams,
     ExtractParams,
@@ -568,7 +597,11 @@ class ServiceIngestor(ingestor):
     def store_embed(self) -> "ServiceIngestor":
         _raise_unsupported(
             "store_embed",
-            phase_hint="Graph-mode semantics are still in flux; no service equivalent yet.",
+            phase_hint=(
+                "By design — service run_mode persists embeddings via "
+                ".store(...) / .vdb_upload(...) sinks, not the in-process "
+                "store_embed helper. Wire a remote storage_uri instead."
+            ),
         )
 
     def udf(
@@ -583,28 +616,48 @@ class ServiceIngestor(ingestor):
         _raise_unsupported(
             "udf",
             phase_hint=(
-                "Scheduled for Phase 5 (named UDFs). Operators will register "
-                "callables in retriever-service.yaml and clients reference them by name."
+                "Phase 5 deferred to a follow-up. Service run_mode requires "
+                "the operator to register Python callables in "
+                "retriever-service.yaml under 'udfs:' (clients reference "
+                "them by name; arbitrary code never crosses the trust "
+                "boundary). Until that ships, run UDFs locally via "
+                "run_mode='inprocess'."
             ),
         )
 
     def vdb_upload(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         """Record a vector-DB upload sink targeting a remote LanceDB URI.
 
-        Only ``vdb_op`` and ``vdb_kwargs`` are honored in this phase.
         ``vdb_kwargs.lancedb_uri`` must be a non-local URI matching the
-        server's ``sinks.vdb_uri_schemes`` allowlist. ``meta_dataframe``
-        sidecar metadata is rejected until Phase 6 lands the dedicated
-        sidecar-upload endpoint.
+        server's ``sinks.vdb_uri_schemes`` allowlist.
+
+        Sidecar metadata (``meta_dataframe`` + ``meta_source_field`` +
+        ``meta_fields``) is uploaded eagerly via ``POST /v1/ingest/sidecar``
+        and the returned id is shipped on the spec as ``meta_dataframe_id``.
+        The original ``meta_dataframe`` (path or in-memory DataFrame) is
+        never sent on the wire — the worker pod cannot read it.
         """
         merged = _merge_params(params, kwargs) if (params or kwargs) else VdbUploadParams()
         params_dict = _params_to_dict(merged)
-        if any(params_dict.get(k) for k in ("meta_dataframe", "meta_source_field", "meta_fields")):
-            raise NotImplementedError(
-                "ServiceIngestor.vdb_upload(): sidecar metadata "
-                "(meta_dataframe / meta_source_field / meta_fields) is scheduled "
-                "for Phase 6 via POST /v1/ingest/sidecar."
-            )
+
+        # Resolve sidecar metadata: if the caller supplied a path or an
+        # in-memory DataFrame, upload it now and substitute the returned id.
+        meta_df = params_dict.pop("meta_dataframe", None)
+        meta_source = params_dict.pop("meta_source_field", None)
+        meta_fields = params_dict.pop("meta_fields", None)
+        meta_join = params_dict.pop("meta_join_key", "auto")
+        if meta_df is not None or meta_source is not None or meta_fields is not None:
+            if meta_df is None or meta_source is None or not meta_fields:
+                raise ValueError(
+                    "ServiceIngestor.vdb_upload(): sidecar metadata requires all "
+                    "three of meta_dataframe / meta_source_field / meta_fields."
+                )
+            sidecar_id = self._upload_sidecar(meta_df)
+            params_dict["meta_dataframe_id"] = sidecar_id
+            params_dict["meta_source_field"] = str(meta_source)
+            params_dict["meta_fields"] = [str(x) for x in meta_fields]
+            params_dict["meta_join_key"] = meta_join
+
         vdb_kwargs = params_dict.get("vdb_kwargs") or {}
         if vdb_kwargs:
             uri = vdb_kwargs.get("lancedb_uri") or vdb_kwargs.get("uri")
@@ -613,12 +666,96 @@ class ServiceIngestor(ingestor):
         self._pipeline_spec["vdb_upload_params"] = params_dict
         return self
 
+    def _upload_sidecar(self, meta_df: Any) -> str:
+        """POST sidecar metadata to ``/v1/ingest/sidecar`` and return the id.
+
+        Accepts a path (string / PathLike) or an in-memory ``pandas.DataFrame``.
+        DataFrames are serialised as parquet to keep the payload compact;
+        local paths are streamed as their on-disk bytes with content-type
+        inferred from the suffix.
+        """
+        import io
+        import json as _json
+        import urllib.request
+
+        from pathlib import Path as _Path
+
+        filename: str
+        content_type: str
+        payload: bytes
+
+        # In-memory DataFrame (or duck-typed pandas-like) → parquet bytes.
+        if hasattr(meta_df, "to_parquet"):
+            buf = io.BytesIO()
+            try:
+                meta_df.to_parquet(buf, index=False)
+            except Exception as exc:
+                raise ValueError(
+                    f"ServiceIngestor.vdb_upload(): failed to serialise sidecar "
+                    f"DataFrame to parquet: {exc}"
+                ) from exc
+            payload = buf.getvalue()
+            filename = "sidecar.parquet"
+            content_type = "application/x-parquet"
+        else:
+            # Treat as filesystem path.
+            path = _Path(str(meta_df))
+            if not path.is_file():
+                raise FileNotFoundError(
+                    f"ServiceIngestor.vdb_upload(): sidecar metadata file not found: {path}"
+                )
+            payload = path.read_bytes()
+            filename = path.name
+            suf = path.suffix.lower()
+            if suf == ".parquet" or suf == ".pq":
+                content_type = "application/x-parquet"
+            elif suf in (".json", ".jsonl"):
+                content_type = "application/json"
+            else:
+                content_type = "text/csv"
+
+        # Build a minimal multipart/form-data request — avoids dragging in
+        # an httpx dependency where urllib already works.
+        boundary = "----nrlib-sidecar-" + filename
+        body = io.BytesIO()
+        body.write(f"--{boundary}\r\n".encode())
+        body.write(
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode()
+        )
+        body.write(f"Content-Type: {content_type}\r\n\r\n".encode())
+        body.write(payload)
+        body.write(f"\r\n--{boundary}--\r\n".encode())
+
+        url = f"{self._base_url}/v1/ingest/sidecar"
+        req = urllib.request.Request(url, data=body.getvalue(), method="POST")
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        if self._api_token:
+            req.add_header("Authorization", f"Bearer {self._api_token}")
+        try:
+            with urllib.request.urlopen(req, timeout=self._request_timeout_s) as resp:
+                body_json = _json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            raise RuntimeError(
+                f"ServiceIngestor.vdb_upload(): failed to upload sidecar to {url}: {exc}"
+            ) from exc
+
+        sidecar_id = body_json.get("sidecar_id")
+        if not sidecar_id:
+            raise RuntimeError(
+                f"ServiceIngestor.vdb_upload(): sidecar upload response missing sidecar_id: {body_json!r}"
+            )
+        logger.debug("Uploaded sidecar %s (%d bytes)", sidecar_id, len(payload))
+        return sidecar_id
+
     def save_intermediate_results(self, output_dir: str) -> "ServiceIngestor":
         _raise_unsupported(
             "save_intermediate_results",
             phase_hint=(
-                "Inherently in-process — the service runs stages in worker "
-                "pods. Use run_mode='inprocess' for stage-by-stage debugging."
+                "By design — service workers don't expose stage-by-stage "
+                "outputs; they run the whole pipeline to completion before "
+                "returning a result. For per-stage debugging use "
+                "run_mode='inprocess'. To capture final outputs use "
+                ".save_to_disk(output_directory=...) instead."
             ),
         )
 
@@ -663,13 +800,76 @@ class ServiceIngestor(ingestor):
         return self
 
     def caption(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported(
-            "caption",
-            phase_hint=(
-                "Scheduled for Phase 4 (remote caption endpoint). Local-GPU "
-                "captioning would not fit the CPU-only worker model."
-            ),
-        )
+        """Record a caption stage backed by the server's remote VLM endpoint.
+
+        Behavioural knobs — ``prompt``, ``system_prompt``, ``batch_size``,
+        ``context_text_max_chars``, ``caption_infographics``, and generic
+        sampling params (``temperature``, ``max_tokens``, ``top_p``,
+        ``top_k``) — are honored. Trust-sensitive fields
+        (``endpoint_url``, ``api_key``, ``model_name``) and
+        local-execution fields (``device``, ``hf_cache_dir``,
+        ``tensor_parallel_size``, ``gpu_memory_utilization``) are
+        rejected on the client; the operator-configured remote endpoint
+        is the only path to a caption NIM.
+
+        We use Pydantic's ``model_fields_set`` to distinguish fields
+        the caller *explicitly* set from fields carrying their
+        ``CaptionParams`` default — only the former are rejected.
+        """
+        trust_sensitive = {"endpoint_url", "api_key", "model_name"}
+        local_only = {
+            "device",
+            "hf_cache_dir",
+            "tensor_parallel_size",
+            "gpu_memory_utilization",
+        }
+
+        # Identify which keys the caller actually meant to pass. The
+        # signal for kwargs is unambiguous (any key in **kwargs is by
+        # definition caller-provided); for a passed-in CaptionParams
+        # instance we compare against class defaults, with one wrinkle:
+        # ``api_key`` is auto-populated by the model validator from the
+        # NVIDIA_API_KEY env var, so we cannot distinguish "caller set
+        # this" from "validator set this" — we conservatively strip the
+        # value either way and only raise when the caller used kwargs.
+        explicit_keys: set[str] = set(kwargs.keys())
+        if isinstance(params, CaptionParams):
+            class_defaults = {
+                name: field.default for name, field in CaptionParams.model_fields.items()
+            }
+            for k in trust_sensitive | local_only:
+                if k == "api_key":
+                    continue  # see comment above; the env-var auto-fill is ambiguous.
+                val = getattr(params, k, None)
+                if val is not None and val != class_defaults.get(k):
+                    explicit_keys.add(k)
+
+        bad_trust = sorted(explicit_keys & trust_sensitive)
+        if bad_trust:
+            raise ValueError(
+                f"ServiceIngestor.caption(): keys {bad_trust!r} are server-owned in "
+                "run_mode='service'. The operator configures the caption "
+                "endpoint via retriever-service.yaml (nim_endpoints.caption_invoke_url)."
+            )
+        bad_local = sorted(explicit_keys & local_only)
+        if bad_local:
+            raise ValueError(
+                f"ServiceIngestor.caption(): keys {bad_local!r} configure local "
+                "in-process GPU execution and have no effect against a remote "
+                "caption endpoint. Remove them and rely on the server-owned "
+                "model / endpoint."
+            )
+
+        merged = _merge_params(params, kwargs) if (params or kwargs) else CaptionParams()
+        params_dict = _params_to_dict(merged)
+        # Drop both classes of keys before the spec leaves the client —
+        # the server's allowlist rejects them anyway, but failing fast
+        # at the boundary keeps the network message small and the policy
+        # error rare in practice.
+        scrubbed = {k: v for k, v in params_dict.items() if k not in trust_sensitive | local_only}
+        self._pipeline_spec["caption_params"] = scrubbed
+        self._record_stage("caption")
+        return self
 
     def webhook(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         """Record a webhook-notification stage targeting a remote URL.

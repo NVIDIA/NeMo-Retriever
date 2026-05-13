@@ -35,6 +35,12 @@ nim_endpoints:
   table_structure_invoke_url: null
   ocr_invoke_url: null
   embed_invoke_url: null
+  # Remote VLM endpoint for the ``caption`` stage. When set, clients
+  # may submit caption_params overrides (prompt, system_prompt,
+  # batch_size, …). The endpoint URL, API key, and model name itself
+  # stay server-owned regardless of pipeline_overrides.mode.
+  caption_invoke_url: null
+  caption_model_name: null
   api_key: null
 
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
@@ -98,6 +104,9 @@ pipeline_overrides:
   extra_store_keys: []
   extra_webhook_keys: []
   extra_vdb_upload_keys: []
+  # extra_caption_keys only has effect when nim_endpoints.caption_invoke_url
+  # is set above — without an endpoint, the caption stage is rejected entirely.
+  extra_caption_keys: []
   sinks:
     storage_uri_schemes: []      # e.g. ["s3://", "gs://", "azure://"]
     webhook_url_prefixes: []     # e.g. ["https://hooks.example.com/"]

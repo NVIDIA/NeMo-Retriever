@@ -142,14 +142,16 @@ def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient)
     assert "trust-sensitive" in resp.json()["detail"]
 
 
-def test_ingest_rejects_caption_overrides_until_phase_4(app_with_stub_pool: TestClient) -> None:
+def test_ingest_rejects_caption_when_endpoint_not_configured(app_with_stub_pool: TestClient) -> None:
+    """Without ``nim_endpoints.caption_invoke_url``, caption overrides are 403."""
     metadata = {"pipeline": {"caption_params": {"prompt": "Describe"}}}
     resp = app_with_stub_pool.post(
         "/v1/ingest",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
-    assert resp.status_code == 501, resp.text
+    assert resp.status_code == 403, resp.text
+    assert "caption" in resp.json()["detail"].lower()
 
 
 def test_ingest_rejects_webhook_when_sinks_disabled(app_with_stub_pool: TestClient) -> None:

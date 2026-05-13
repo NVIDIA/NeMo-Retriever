@@ -145,17 +145,50 @@ _DEFAULT_ALLOWED_VDB_UPLOAD_KEYS: frozenset[str] = frozenset(
     {
         "vdb_op",
         "vdb_kwargs",
-        # ``meta_*`` sidecar fields stay disallowed until Phase 6 lands
-        # the /v1/ingest/sidecar endpoint; passing them today would fail
-        # in the worker anyway because the client process is no longer
-        # the one that reads the dataframe.
+        # Sidecar metadata (Phase 6) — the caller pre-uploads the
+        # dataframe via POST /v1/ingest/sidecar and references the
+        # returned opaque id here. ``meta_dataframe`` (the path /
+        # in-memory variant) is still rejected — only the id form
+        # works in service run_mode.
+        "meta_dataframe_id",
+        "meta_source_field",
+        "meta_fields",
+        "meta_join_key",
     }
 )
 
+# Caption-stage allowlist (Phase 4). The remote endpoint + API key +
+# model name are always server-owned (denylist below); these are the
+# behavioural knobs we let callers tune.
+_DEFAULT_ALLOWED_CAPTION_KEYS: frozenset[str] = frozenset(
+    {
+        "prompt",
+        "system_prompt",
+        "batch_size",
+        "context_text_max_chars",
+        "caption_infographics",
+        # LLMInferenceParams generic knobs that travel down to the inference call.
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "top_k",
+    }
+)
+
+# Keys we forbid even with mode='allow_all'. These configure the
+# *local* execution path (in-process GPU) which has no analog when the
+# worker is a CPU pod forwarding to a remote NIM. Accepting them would
+# silently mislead callers — better to fail fast with a clear message.
+_CAPTION_FORBIDDEN_LOCAL_EXECUTION_KEYS: frozenset[str] = frozenset(
+    {"device", "hf_cache_dir", "tensor_parallel_size", "gpu_memory_utilization"}
+)
+
 # Phase 1 baseline (no sinks). Phase 2 extends this set when at least
-# one sink type is enabled in retriever-service.yaml.
+# one sink type is enabled in retriever-service.yaml. Phase 4 adds
+# ``caption`` once an operator has configured a remote VLM endpoint.
 _PHASE_1_STAGES: frozenset[str] = frozenset({"extract", "dedup", "embed", "filter"})
 _SINK_STAGES: frozenset[str] = frozenset({"store", "webhook"})  # vdb_upload is a sink but not in stage_order
+_CAPTION_STAGE: frozenset[str] = frozenset({"caption"})
 
 
 class SinkUrlAllowlist:
@@ -321,7 +354,9 @@ class PipelineOverridesPolicy:
         extra_store_keys: frozenset[str] = frozenset(),
         extra_webhook_keys: frozenset[str] = frozenset(),
         extra_vdb_upload_keys: frozenset[str] = frozenset(),
+        extra_caption_keys: frozenset[str] = frozenset(),
         sinks: SinkUrlAllowlist | None = None,
+        caption_enabled: bool = False,
     ) -> None:
         if mode not in {"reject", "allow_list", "allow_all"}:
             raise ValueError(
@@ -329,8 +364,15 @@ class PipelineOverridesPolicy:
             )
         self.mode = mode
         self.sinks = sinks or SinkUrlAllowlist()
-        # The base stage set grows once the operator has enabled any sink.
-        base_stages = _PHASE_1_STAGES | _SINK_STAGES if self.sinks.has_any_sink_enabled() else _PHASE_1_STAGES
+        self.caption_enabled = caption_enabled
+        # The base stage set grows incrementally: sinks open up
+        # ``store``/``webhook``; a configured caption endpoint opens up
+        # ``caption``.
+        base_stages = _PHASE_1_STAGES
+        if self.sinks.has_any_sink_enabled():
+            base_stages = base_stages | _SINK_STAGES
+        if self.caption_enabled:
+            base_stages = base_stages | _CAPTION_STAGE
         self.allowed_stages = allowed_stages if allowed_stages is not None else base_stages
         self.allowed_extract_keys = _DEFAULT_ALLOWED_EXTRACT_KEYS | extra_extract_keys
         self.allowed_embed_keys = _DEFAULT_ALLOWED_EMBED_KEYS | extra_embed_keys
@@ -339,6 +381,7 @@ class PipelineOverridesPolicy:
         self.allowed_store_keys = _DEFAULT_ALLOWED_STORE_KEYS | extra_store_keys
         self.allowed_webhook_keys = _DEFAULT_ALLOWED_WEBHOOK_KEYS | extra_webhook_keys
         self.allowed_vdb_upload_keys = _DEFAULT_ALLOWED_VDB_UPLOAD_KEYS | extra_vdb_upload_keys
+        self.allowed_caption_keys = _DEFAULT_ALLOWED_CAPTION_KEYS | extra_caption_keys
 
     def describe(self) -> dict[str, Any]:
         """Render the policy as a JSON-safe dict for the introspection endpoint."""
@@ -352,6 +395,8 @@ class PipelineOverridesPolicy:
             "allowed_store_keys": sorted(self.allowed_store_keys),
             "allowed_webhook_keys": sorted(self.allowed_webhook_keys),
             "allowed_vdb_upload_keys": sorted(self.allowed_vdb_upload_keys),
+            "allowed_caption_keys": sorted(self.allowed_caption_keys),
+            "caption_enabled": self.caption_enabled,
             "denied_key_substrings": sorted(_DENYLIST_KEY_SUBSTRINGS),
             "sinks": self.sinks.describe(),
         }
@@ -462,13 +507,25 @@ def validate_pipeline_spec(
                 status_code=403,
             )
 
-    # caption_params remains gated until Phase 4 (needs CPU-worker validator).
+    # caption_params is admitted only when the operator has configured a
+    # remote VLM endpoint. We also reject local-execution keys outright
+    # because the CPU worker pod cannot honor them — surfacing the
+    # mismatch immediately is friendlier than silently ignoring them.
     if spec.caption_params is not None:
-        raise PolicyError(
-            "caption_params overrides are not yet supported in service run_mode "
-            "(scheduled for Phase 4). Configure captioning via retriever-service.yaml instead.",
-            status_code=501,
-        )
+        if not policy.caption_enabled:
+            raise PolicyError(
+                "caption_params overrides require an operator-configured caption "
+                "endpoint. Set caption.endpoint_url in retriever-service.yaml first.",
+                status_code=403,
+            )
+        forbidden = [k for k in spec.caption_params if k in _CAPTION_FORBIDDEN_LOCAL_EXECUTION_KEYS]
+        if forbidden:
+            raise PolicyError(
+                f"caption_params: keys {forbidden!r} configure local in-process GPU "
+                "execution and have no effect in service run_mode. Remove them and "
+                "rely on the operator-configured caption endpoint.",
+                status_code=403,
+            )
 
     # Endpoint/API-key denylist applies to every params block, even ones
     # we currently accept — defense in depth in case a new field name
@@ -476,6 +533,7 @@ def validate_pipeline_spec(
     _scrub_trust_sensitive(spec.extract_params, "extract")
     _scrub_trust_sensitive(spec.embed_params, "embed")
     _scrub_trust_sensitive(spec.dedup_params, "dedup")
+    _scrub_trust_sensitive(spec.caption_params, "caption")
     _scrub_trust_sensitive(spec.split_config, "split")
     # ``endpoint_url`` IS legitimate in webhook_params (it's the sink
     # destination). Strip the rest of the trust-sensitive surface but
@@ -485,6 +543,17 @@ def validate_pipeline_spec(
     _scrub_trust_sensitive_except(spec.store_params, "store", allow={"storage_uri"})
     _scrub_trust_sensitive_except(spec.vdb_upload_params, "vdb_upload", allow={"lancedb_uri"})
 
+    # Reject the local-path variant of sidecar metadata BEFORE the
+    # generic allowlist check so callers get a specific pointer at
+    # the upload endpoint instead of an "extra key" message.
+    if spec.vdb_upload_params is not None and spec.vdb_upload_params.get("meta_dataframe") is not None:
+        raise PolicyError(
+            "vdb_upload_params.meta_dataframe (path / in-memory DataFrame) is "
+            "not reachable from the worker pod. Pre-upload the file via POST "
+            "/v1/ingest/sidecar and pass the returned id as meta_dataframe_id.",
+            status_code=400,
+        )
+
     _enforce_allowlist(spec.extract_params, policy.allowed_extract_keys, "extract", mode=policy.mode)
     _enforce_allowlist(spec.embed_params, policy.allowed_embed_keys, "embed", mode=policy.mode)
     _enforce_allowlist(spec.dedup_params, policy.allowed_dedup_keys, "dedup", mode=policy.mode)
@@ -493,6 +562,7 @@ def validate_pipeline_spec(
     _enforce_allowlist(
         spec.vdb_upload_params, policy.allowed_vdb_upload_keys, "vdb_upload", mode=policy.mode
     )
+    _enforce_allowlist(spec.caption_params, policy.allowed_caption_keys, "caption", mode=policy.mode)
     if spec.split_config is not None:
         for source_type, cfg in spec.split_config.items():
             if not isinstance(cfg, dict):

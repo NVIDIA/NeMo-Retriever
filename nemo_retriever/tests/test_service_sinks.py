@@ -96,12 +96,18 @@ def test_vdb_upload_rejects_local_lancedb_path() -> None:
         ing.vdb_upload(VdbUploadParams(vdb_op="lancedb", vdb_kwargs={"lancedb_uri": "./lancedb"}))
 
 
-def test_vdb_upload_rejects_sidecar_until_phase_6() -> None:
+def test_vdb_upload_with_sidecar_requires_local_file(tmp_path) -> None:
+    """Phase 2 (no sidecar) path: a missing local sidecar file should fail clearly.
+
+    The actual sidecar upload + id substitution lives in
+    ``test_service_sidecar.py``; this test just confirms the bare-metal
+    error path when the caller points at a non-existent file.
+    """
     ing = ServiceIngestor(base_url="http://example:7670")
-    with pytest.raises(NotImplementedError, match="Phase 6"):
+    with pytest.raises(FileNotFoundError, match="not found"):
         ing.vdb_upload(
             VdbUploadParams(
-                meta_dataframe="s3://corpus/meta.csv",
+                meta_dataframe=str(tmp_path / "does-not-exist.csv"),
                 meta_source_field="source",
                 meta_fields=["title"],
                 vdb_kwargs={"lancedb_uri": "s3://corpus/lancedb"},

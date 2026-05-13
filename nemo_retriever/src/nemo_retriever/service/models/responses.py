@@ -53,3 +53,14 @@ class JobStatusResponse(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
+
+
+class SidecarUploadResponse(RichModel):
+    """Response for ``POST /v1/ingest/sidecar`` — opaque id for a stored payload."""
+
+    sidecar_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    expires_at: str
+    """ISO-8601 UTC timestamp after which the sidecar will be auto-evicted."""

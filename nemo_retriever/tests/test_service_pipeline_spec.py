@@ -107,14 +107,13 @@ def test_client_rejects_server_owned_keys() -> None:
 
 
 def test_future_phase_methods_raise_informative_error() -> None:
-    """Methods scheduled for later phases still produce a clear, phase-named error.
+    """Methods deferred to follow-up phases still produce a clear error.
 
-    ``store`` / ``webhook`` / ``vdb_upload`` moved out in Phase 2,
-    ``save_to_disk`` in Phase 3. They live in dedicated test modules now.
+    ``store`` / ``webhook`` / ``vdb_upload`` (sinks) moved out in Phase 2,
+    ``save_to_disk`` in Phase 3, ``caption`` in Phase 4, ``vdb_upload``
+    sidecar metadata in Phase 6. ``udf`` is the only remaining stub.
     """
     ing = ServiceIngestor(base_url="http://example:7670")
-    with pytest.raises(NotImplementedError, match="Phase 4"):
-        ing.caption()
     with pytest.raises(NotImplementedError, match="Phase 5"):
         ing.udf("noop")
 
@@ -193,13 +192,14 @@ def test_validate_allow_all_mode_still_blocks_endpoints() -> None:
         validate_pipeline_spec(spec2, policy)
 
 
-def test_validate_rejects_phase_blocked_stage_params() -> None:
+def test_validate_rejects_caption_without_endpoint() -> None:
+    """Without an operator-configured caption endpoint, the stage is forbidden."""
     cfg = PipelineOverridesConfig()
-    policy = cfg.to_policy()
+    policy = cfg.to_policy(caption_enabled=False)
     spec = PipelineSpec(caption_params={"prompt": "Describe"})
     with pytest.raises(PolicyError) as exc:
         validate_pipeline_spec(spec, policy)
-    assert exc.value.status_code == 501
+    assert exc.value.status_code == 403
 
 
 # ----------------------------------------------------------------------

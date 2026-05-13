@@ -44,6 +44,22 @@ class NimEndpointsConfig(RichModel):
     graphic_elements_invoke_url: str | None = None
     embed_invoke_url: str | None = None
     rerank_invoke_url: str | None = None
+    caption_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote VLM endpoint that fulfills .caption(...) requests. "
+            "When set, clients may submit caption_params overrides "
+            "(prompt, system_prompt, batch_size, etc.) without being able "
+            "to redirect the endpoint or API key."
+        ),
+    )
+    caption_model_name: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote caption endpoint. "
+            "Server-owned — clients cannot override the deployed VLM SKU."
+        ),
+    )
     api_key: str | None = None
 
 
@@ -179,10 +195,16 @@ class PipelineOverridesConfig(RichModel):
     extra_store_keys: list[str] = Field(default_factory=list)
     extra_webhook_keys: list[str] = Field(default_factory=list)
     extra_vdb_upload_keys: list[str] = Field(default_factory=list)
+    extra_caption_keys: list[str] = Field(default_factory=list)
     sinks: SinksConfig = Field(default_factory=SinksConfig)
 
-    def to_policy(self) -> "PipelineOverridesPolicy":  # noqa: F821 — forward-declared
-        """Return a :class:`PipelineOverridesPolicy` configured from this section."""
+    def to_policy(self, *, caption_enabled: bool = False) -> "PipelineOverridesPolicy":  # noqa: F821
+        """Return a :class:`PipelineOverridesPolicy` configured from this section.
+
+        ``caption_enabled`` is derived from ``NimEndpointsConfig.caption_invoke_url``
+        by the caller — clients can only override caption settings when the
+        operator has actually wired up a VLM endpoint.
+        """
         from nemo_retriever.service.policy import PipelineOverridesPolicy, SinkUrlAllowlist
 
         return PipelineOverridesPolicy(
@@ -194,11 +216,13 @@ class PipelineOverridesConfig(RichModel):
             extra_store_keys=frozenset(self.extra_store_keys),
             extra_webhook_keys=frozenset(self.extra_webhook_keys),
             extra_vdb_upload_keys=frozenset(self.extra_vdb_upload_keys),
+            extra_caption_keys=frozenset(self.extra_caption_keys),
             sinks=SinkUrlAllowlist(
                 storage_uri_schemes=list(self.sinks.storage_uri_schemes),
                 webhook_url_prefixes=list(self.sinks.webhook_url_prefixes),
                 vdb_uri_schemes=list(self.sinks.vdb_uri_schemes),
             ),
+            caption_enabled=caption_enabled,
         )
 
 

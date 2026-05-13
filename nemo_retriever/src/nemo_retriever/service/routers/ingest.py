@@ -36,6 +36,7 @@ from nemo_retriever.service.models.responses import (
     IngestAccepted,
     JobStatusResponse,
     PageIngestAccepted,
+    SidecarUploadResponse,
 )
 from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.event_bus import get_event_bus
@@ -251,6 +252,18 @@ def _route_by_page_count(file_bytes: bytes, meta: IngestRequest) -> PoolType:
     return PoolType.REALTIME if pages < _PAGE_THRESHOLD_FOR_BATCH else PoolType.BATCH
 
 
+def _build_policy(request: Request):  # -> PipelineOverridesPolicy
+    """Build a :class:`PipelineOverridesPolicy` from the live app config.
+
+    The ``caption_enabled`` flag is derived here so the trust boundary
+    stays in one place — clients can only override caption settings when
+    the operator has wired up ``nim_endpoints.caption_invoke_url``.
+    """
+    cfg = request.app.state.config
+    caption_enabled = bool(getattr(cfg.nim_endpoints, "caption_invoke_url", None))
+    return cfg.pipeline_overrides.to_policy(caption_enabled=caption_enabled)
+
+
 def _resolve_pipeline_spec(request: Request, meta: IngestRequest) -> PipelineSpec | None:
     """Validate ``meta.pipeline`` against the service's override policy.
 
@@ -260,7 +273,7 @@ def _resolve_pipeline_spec(request: Request, meta: IngestRequest) -> PipelineSpe
     """
     if meta.pipeline is None:
         return None
-    policy = request.app.state.config.pipeline_overrides.to_policy()
+    policy = _build_policy(request)
     try:
         return validate_pipeline_spec(meta.pipeline, policy)
     except PolicyError as exc:
@@ -285,7 +298,7 @@ def _spec_from_gateway_header(request: Request) -> PipelineSpec | None:
             status_code=400,
             detail=f"Malformed {_GATEWAY_PIPELINE_SPEC_HEADER!r} from gateway: {exc}",
         ) from exc
-    policy = request.app.state.config.pipeline_overrides.to_policy()
+    policy = _build_policy(request)
     try:
         return validate_pipeline_spec(spec, policy)
     except PolicyError as exc:
@@ -726,6 +739,130 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
     return JSONResponse(content=body, status_code=202)
 
 
+@router.post(
+    "/ingest/sidecar",
+    response_model=SidecarUploadResponse,
+    status_code=201,
+    summary="Upload a sidecar metadata file for use with vdb_upload",
+)
+async def ingest_sidecar(
+    request: Request,
+    file: UploadFile = File(
+        ..., description="Sidecar metadata payload (csv / json / parquet)."
+    ),
+    ttl_s: float = Form(
+        default=3600.0,
+        description="Time-to-live in seconds; the sidecar auto-evicts after this window.",
+    ),
+    consume_on_read: bool = Form(
+        default=True,
+        description=(
+            "When true (default) the worker removes the sidecar after its first read. "
+            "Set to false to reuse the same metadata across multiple ingest batches."
+        ),
+    ),
+) -> SidecarUploadResponse | Response:
+    """Stash sidecar metadata in the service's in-memory store.
+
+    Returns an opaque ``sidecar_id`` the caller passes through
+    ``vdb_upload_params.meta_dataframe_id`` on subsequent ingest
+    requests. Sidecars are scoped to the bearer token (when auth is
+    enabled) and auto-evicted after ``ttl_s`` seconds.
+    """
+    from datetime import datetime, timezone
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+
+    _check_upload_size(file, request)
+
+    # Forward to the gateway's backend so the realtime worker pool has
+    # the sidecar available when the matching ingest call arrives. We
+    # broadcast to both pools because the routing decision happens at
+    # ingest time, not at sidecar-upload time.
+    if _is_gateway(request):
+        from nemo_retriever.service.services.proxy import get_proxy
+
+        proxy = get_proxy()
+        if proxy is None:
+            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
+        # Pick the realtime backend for the canonical response, then
+        # mirror the upload to the batch backend so either worker pool
+        # can resolve the id. If the mirror fails we still return 201
+        # because the realtime store has the entry and most workloads
+        # land there.
+        realtime_resp = await proxy.forward(request, PoolType.REALTIME)
+        try:
+            await proxy.forward(request, PoolType.BATCH)
+        except Exception as exc:
+            logger.warning(
+                "Sidecar mirror to batch backend failed (id from realtime still valid): %s",
+                exc,
+            )
+        return realtime_resp
+
+    store = get_sidecar_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="Sidecar store not initialised")
+
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Sidecar upload is empty")
+
+    # Owner-token scoping: use the bearer token when auth is enabled.
+    auth_header = request.headers.get("Authorization", "")
+    owner_token = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
+
+    try:
+        entry = store.put(
+            filename=file.filename or "sidecar",
+            content_type=file.content_type or "application/octet-stream",
+            payload=payload,
+            owner_token=owner_token,
+            ttl_s=ttl_s,
+            consume_on_read=consume_on_read,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+
+    expires_iso = datetime.fromtimestamp(entry.expires_at, tz=timezone.utc).isoformat()
+    return SidecarUploadResponse(
+        sidecar_id=entry.sidecar_id,
+        filename=entry.filename,
+        content_type=entry.content_type,
+        size_bytes=len(entry.payload),
+        expires_at=expires_iso,
+    )
+
+
+@router.delete(
+    "/ingest/sidecar/{sidecar_id}",
+    status_code=204,
+    summary="Delete a previously uploaded sidecar",
+)
+async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
+    """Explicit deletion lets callers free server memory before the TTL elapses."""
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+
+    if _is_gateway(request):
+        from nemo_retriever.service.services.proxy import get_proxy
+
+        proxy = get_proxy()
+        if proxy is None:
+            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
+        # Mirror delete to both pools. We don't care which one had it.
+        for pool in (PoolType.REALTIME, PoolType.BATCH):
+            try:
+                await proxy.forward(request, pool)
+            except Exception as exc:
+                logger.debug("Sidecar delete forward to %s failed: %s", pool.value, exc)
+        return Response(status_code=204)
+
+    store = get_sidecar_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="Sidecar store not initialised")
+    store.delete(sidecar_id)
+    return Response(status_code=204)
+
+
 @router.get(
     "/ingest/status/{item_id}",
     summary="Check processing status of a general ingest submission",
@@ -798,7 +935,7 @@ async def pipeline_config(request: Request):
     pool = get_pipeline_pool()
     pool_stats = pool.stats() if pool is not None else {}
 
-    policy = request.app.state.config.pipeline_overrides.to_policy()
+    policy = _build_policy(request)
     return JSONResponse(
         content={
             "source": mode,
