@@ -58,6 +58,19 @@ class TableRelevanceModel(BaseModel):
     )
 
 
+class CustomAnalysisRelevanceModel(BaseModel):
+    """LLM output for custom analysis relevance filtering."""
+
+    reasoning: str = Field(
+        default="",
+        description="Brief reasoning (1-2 sentences max) on which custom analyses are relevant.",
+    )
+    analyses_to_remove: list[str] = Field(
+        default_factory=list,
+        description="Names of custom analyses that can be safely removed. Leave empty if unsure.",
+    )
+
+
 class SQLGenerationModel(StrictModel):
     """Model for SQL generation without formatting requirements.
 

@@ -110,12 +110,28 @@ class CandidatePreparationAgent(BaseAgent):
         question = get_question_for_processing(state)
         candidates = list(path_state.get("retrieved_candidates") or [])
 
+        # --- 1. Filter custom analyses first ---
+        custom_analyses = [x for x in candidates if x.get("label") == Labels.CUSTOM_ANALYSIS]
+        self.logger.info("Retrieved %d custom analyses", len(custom_analyses))
+
+        custom_analyses = self._filter_custom_analyses_by_relevance(state, custom_analyses)
+        self.logger.info(
+            "Kept %d custom analyses (after relevance filter): %s",
+            len(custom_analyses),
+            [x.get("name") for x in custom_analyses],
+        )
+
+        relevant_queries = _extract_relevant_queries(custom_analyses)
+        self.logger.info("Found %d relevant queries from custom analyses", len(relevant_queries))
+
+        custom_analyses_str = self._build_custom_analyses_str(custom_analyses)
+
+        # --- 2. Retrieve relevant tables ---
         relevant_tables = get_relevant_tables_from_candidates(candidates)
         self.logger.info("Tables from candidates: %s", [t["name"] for t in relevant_tables])
 
         additional_tables = []
         search_queries = [question] + path_state.get("entities", [])
-        # Each query gets at least 1 result, total capped at ~10 after dedupe
         k_per_query = max(1, 10 // len(search_queries))
         for query in search_queries:
             try:
@@ -137,6 +153,7 @@ class CandidatePreparationAgent(BaseAgent):
             [t["name"] for t in relevant_tables],
         )
 
+        # --- 3. Filter tables by relevance ---
         relevant_tables, table_relevance_reasoning = self._filter_tables_by_relevance(
             state, question, relevant_tables,
         )
@@ -145,17 +162,6 @@ class CandidatePreparationAgent(BaseAgent):
             len(relevant_tables),
             [t["name"] for t in relevant_tables],
         )
-
-        relevant_queries = _extract_relevant_queries(
-            candidates,
-        )
-        self.logger.info(f"Found {len(relevant_queries)} relevant queries")
-
-        custom_analyses = [x for x in candidates if x.get("label") == Labels.CUSTOM_ANALYSIS]
-        self.logger.info(f"Filtered {len(custom_analyses)} custom analyses")
-
-        custom_analyses_str = self._build_custom_analyses_str(custom_analyses)
-        self.logger.info(f"Built string representation with {len(custom_analyses_str)} entries")
 
         return {
             "path_state": {
@@ -167,6 +173,26 @@ class CandidatePreparationAgent(BaseAgent):
                 "table_relevance_reasoning": table_relevance_reasoning,
             }
         }
+
+    def _filter_custom_analyses_by_relevance(
+        self,
+        state: AgentState,
+        analyses: list[dict],
+    ) -> list[dict]:
+        """Keep only custom analyses whose name appears in the filtered domain_rules."""
+        domain_rules = state.get("domain_rules") or []
+        if not domain_rules:
+            self.logger.info("No domain rules — removing all custom analyses")
+            return []
+
+        kept_names = {(r.get("name") or "").lower() for r in domain_rules}
+        filtered = [a for a in analyses if (a.get("name") or "").lower() in kept_names]
+
+        removed = [a.get("name") for a in analyses if (a.get("name") or "").lower() not in kept_names]
+        if removed:
+            self.logger.info("Custom analysis filter removed (not in domain rules): %s", removed)
+
+        return filtered
 
     def _filter_tables_by_relevance(
         self,
@@ -254,31 +280,14 @@ class CandidatePreparationAgent(BaseAgent):
         """Build string representation of custom analyses for prompts."""
         sorted_analyses = sorted(custom_analyses, key=lambda c: -c.get("score", 0))
 
-        return [
-            f"name: {x['name']}, label: {x['label']}, id: {x['id']}"
-            + (f", sql_snippet: {p}" if (p := self._get_sql_preview_from_sql(x)) else "")
-            for x in sorted_analyses
-        ]
-
-    def _get_sql_preview_from_sql(self, candidate: dict) -> str:
-        """
-        Build a short, clean SQL preview for prompts.
-
-        - Uses the first sql snippet's `sql_code` when available.
-        - Avoids dumping full Python list/dict repr with heavy escaping.
-
-        Args:
-            candidate: Candidate dictionary
-
-        Returns:
-            Cleaned SQL string
-        """
-        sql_entries = candidate.get("sql") or []
-        if isinstance(sql_entries, list) and sql_entries:
-            raw = sql_entries[0].get("sql_code") or ""
-            if not isinstance(raw, str):
-                raw = str(raw)
-            # Light cleanup: reduce common escaping that confuses the model
-            cleaned = raw.replace('\\"', '"').replace("\n", " ")
-            return cleaned
-        return ""
+        parts_list: list[str] = []
+        for x in sorted_analyses:
+            entry = f"name: {x['name']}"
+            desc = (x.get("description") or "").strip()
+            if desc:
+                entry += f", description: {desc}"
+            sql = (x.get("sql") or "").strip()
+            if sql:
+                entry += f", sql: {sql}"
+            parts_list.append(entry)
+        return parts_list

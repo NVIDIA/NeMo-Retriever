@@ -203,31 +203,8 @@ class CandidatePreparationAgent(BaseAgent):
         return complex_candidates_str
 
     def _get_cleaned_sql(self, candidate: dict) -> str:
-        """
-        Build a short, clean SQL preview for prompts.
-
-        - Uses the first sql snippet's `sql_code` when available.
-        - Avoids dumping full Python list/dict repr with heavy escaping.
-
-        Args:
-            candidate: Candidate dictionary
-
-        Returns:
-            Cleaned SQL string
-        """
-        sql_entries = candidate.get("sql") or []
-        if isinstance(sql_entries, list) and sql_entries:
-            raw = (
-                sql_entries[0].get("sql_code")
-                or sql_entries[0].get("snippet")
-                or sql_entries[0].get("sql_snippet")
-                or ""
-            )
-            if not isinstance(raw, str):
-                raw = str(raw)
-            # Light cleanup: reduce common escaping that confuses the model
-            cleaned = raw.replace('\\"', '"')
-            # Turn escaped newlines into real newlines for readability
-            cleaned = cleaned.replace("\n", " ")
-            return cleaned
-        return ""
+        """Return the SQL string attached to a CustomAnalysis candidate."""
+        raw = candidate.get("sql") or ""
+        if not isinstance(raw, str):
+            raw = str(raw)
+        return raw.replace("\n", " ").strip()
