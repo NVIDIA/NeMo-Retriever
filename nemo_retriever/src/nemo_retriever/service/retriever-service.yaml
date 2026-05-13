@@ -70,3 +70,22 @@ auth:
     - "/docs"
     - "/openapi.json"
     - "/redoc"
+
+# Controls whether (and how widely) client-supplied PipelineSpec
+# overrides are honored on a per-request basis.
+#
+#   reject     — every client override is rejected; YAML-only config.
+#   allow_list — only audited "shape" keys may be overridden
+#                (chunk sizes, batch sizes, output flags, …).
+#                Endpoint URLs and API keys are ALWAYS denied.
+#   allow_all  — every key passes except the endpoint/api_key denylist.
+#                Convenient in dev clusters; UNSAFE in multi-tenant prod.
+#
+# The extra_*_keys lists let operators widen the allow_list with
+# additional params keys without dropping to allow_all.
+pipeline_overrides:
+  mode: allow_list
+  extra_extract_keys: []
+  extra_embed_keys: []
+  extra_dedup_keys: []
+  extra_split_keys: []

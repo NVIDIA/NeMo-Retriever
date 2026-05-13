@@ -43,7 +43,13 @@ from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
 
 import httpx
 
-from nemo_retriever.ingestor import ingestor
+from nemo_retriever.ingestor import _merge_params, ingestor
+from nemo_retriever.params import (
+    DedupParams,
+    EmbedParams,
+    ExtractParams,
+    PdfSplitParams,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,23 +97,85 @@ class ServiceIngestResult(list):
 # ----------------------------------------------------------------------
 
 _FLUENT_NOT_SUPPORTED_TEMPLATE = (
-    "ServiceIngestor.{method}() is not supported in run_mode='service'. "
-    "The server-side pipeline is configured at service startup via "
-    "retriever-service.yaml (see nim_endpoints + processing sections). "
-    "To change extraction / embedding / store behaviour, restart the "
-    "retriever service with an updated config; per-request overrides are "
-    "not implemented today."
+    "ServiceIngestor.{method}() is not yet supported in run_mode='service'. "
+    "{phase_hint}"
+    "See retriever-service.yaml or `retriever service describe` for the "
+    "current per-request override policy."
 )
 
 
-def _raise_unsupported(method: str) -> None:
-    raise NotImplementedError(_FLUENT_NOT_SUPPORTED_TEMPLATE.format(method=method))
+def _raise_unsupported(method: str, *, phase_hint: str = "") -> None:
+    raise NotImplementedError(
+        _FLUENT_NOT_SUPPORTED_TEMPLATE.format(method=method, phase_hint=phase_hint + " " if phase_hint else "")
+    )
 
 
 def _normalize_files(files: Union[str, List[str], List[Path]]) -> list[Path]:
     if isinstance(files, (str, Path)):
         return [Path(files)]
     return [Path(f) for f in files]
+
+
+# ----------------------------------------------------------------------
+# Client-side mirror of service.models.pipeline_spec.PipelineSpec
+# ----------------------------------------------------------------------
+
+# Keys this client treats as server-owned. Stripped from any params dict
+# before it goes on the wire so users get a clear error if they try.
+_SERVER_OWNED_KEYS: frozenset[str] = frozenset(
+    {
+        "invoke_url",
+        "api_key",
+        "page_elements_invoke_url",
+        "page_elements_api_key",
+        "ocr_invoke_url",
+        "ocr_api_key",
+        "graphic_elements_invoke_url",
+        "table_structure_invoke_url",
+        "nemotron_parse_invoke_url",
+        "embed_invoke_url",
+        "embedding_endpoint",
+        "endpoint_url",
+        "api_base",
+        "auth_token",
+        "lancedb_uri",
+        "storage_uri",
+    }
+)
+
+
+def _strip_server_owned(params_dict: dict[str, Any], method: str) -> dict[str, Any]:
+    """Raise if the caller set a server-owned key; otherwise return as-is.
+
+    We fail fast on the client so users see a useful message instead of
+    a generic 403 from the server.
+    """
+    rejected = [k for k in params_dict if k in _SERVER_OWNED_KEYS]
+    if rejected:
+        raise ValueError(
+            f"ServiceIngestor.{method}(): keys {rejected!r} are server-owned in "
+            "run_mode='service'. Endpoint URLs and API keys are configured by "
+            "the retriever service via retriever-service.yaml; they cannot be "
+            "set per-request."
+        )
+    return params_dict
+
+
+def _params_to_dict(value: Any) -> dict[str, Any]:
+    """Normalise a fluent-method argument (model | dict | None) to a dict.
+
+    Removes server-owned keys eagerly so they never leak into transport.
+    Drops ``None`` values so the server's defaults can fill them in.
+    """
+    if value is None:
+        return {}
+    if hasattr(value, "model_dump"):
+        d = value.model_dump(mode="json", exclude_none=True)
+    elif isinstance(value, dict):
+        d = {k: v for k, v in value.items() if v is not None}
+    else:
+        raise TypeError(f"Cannot serialise {type(value).__name__!r} to a params dict")
+    return d
 
 
 # ----------------------------------------------------------------------
@@ -229,6 +297,46 @@ class ServiceIngestor(ingestor):
         self._api_token = (api_token or "").strip() or None
         self._document_ids: list[str] = []
         self._last_run_elapsed_s: float = 0.0
+        self._pipeline_spec: dict[str, Any] = {
+            "extraction_mode": "pdf",
+            "stage_order": [],
+        }
+
+    # ------------------------------------------------------------------
+    # Pipeline-spec helpers
+    # ------------------------------------------------------------------
+
+    def _record_stage(self, name: str) -> None:
+        order = self._pipeline_spec["stage_order"]
+        if name not in order:
+            order.append(name)
+
+    def _pipeline_payload(self) -> dict[str, Any] | None:
+        """Return the spec dict to send on the wire, or ``None`` when empty.
+
+        The "empty" check mirrors :meth:`PipelineSpec.is_empty` server-side
+        so the worker can short-circuit identically.
+        """
+        spec = self._pipeline_spec
+        is_empty = (
+            spec.get("extraction_mode", "pdf") == "pdf"
+            and not spec.get("stage_order")
+            and not any(
+                spec.get(k)
+                for k in (
+                    "extract_params",
+                    "embed_params",
+                    "dedup_params",
+                    "caption_params",
+                    "store_params",
+                    "vdb_upload_params",
+                    "webhook_params",
+                    "split_config",
+                    "pdf_split",
+                )
+            )
+        )
+        return None if is_empty else dict(spec)
 
     @property
     def _auth_headers(self) -> dict[str, str]:
@@ -266,35 +374,126 @@ class ServiceIngestor(ingestor):
         return self
 
     # ------------------------------------------------------------------
-    # Pipeline configuration — server-side only, not overridable per-request
+    # Phase 1: pipeline-shape stages — sent via PipelineSpec
     # ------------------------------------------------------------------
 
-    def all_tasks(self) -> "ServiceIngestor":  # pragma: no cover - trivial
-        _raise_unsupported("all_tasks")
+    def all_tasks(self) -> "ServiceIngestor":
+        """Record the default chain: extract → dedup → embed.
+
+        Concrete params come from server config; ``all_tasks()`` only
+        controls *stage order* and is the closest in-process equivalent
+        of "run everything the server is configured to do".
+        """
+        self._record_stage("extract")
+        self._record_stage("dedup")
+        self._record_stage("embed")
+        return self
 
     def dedup(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("dedup")
+        """Record a dedup stage with optional :class:`DedupParams` overrides."""
+        merged = _merge_params(params, kwargs) if (params or kwargs) else DedupParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "dedup")
+        self._pipeline_spec["dedup_params"] = params_dict
+        self._record_stage("dedup")
+        return self
 
     def embed(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("embed")
+        """Record an embed stage with optional :class:`EmbedParams` overrides.
 
-    def extract(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("extract")
+        Embedding endpoint URL and API key are server-owned and will be
+        rejected if set here.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else EmbedParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "embed")
+        self._pipeline_spec["embed_params"] = params_dict
+        self._record_stage("embed")
+        return self
 
-    def extract_image_files(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("extract_image_files")
+    def extract(
+        self,
+        params: Any = None,
+        *,
+        split_config: Optional[dict[str, Any]] = None,
+        extraction_mode: str = "pdf",
+        **kwargs: Any,
+    ) -> "ServiceIngestor":
+        """Record a generic extraction stage.
+
+        ``extraction_mode`` selects the worker's extraction path
+        (``'pdf'`` default, ``'auto'`` for mixed inputs, etc.).
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else ExtractParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "extract")
+        self._pipeline_spec["extract_params"] = params_dict
+        self._pipeline_spec["extraction_mode"] = extraction_mode
+        if split_config is not None:
+            self._pipeline_spec["split_config"] = split_config
+        self._record_stage("extract")
+        return self
+
+    def extract_image_files(
+        self, params: Any = None, *, split_config: Optional[dict[str, Any]] = None, **kwargs: Any
+    ) -> "ServiceIngestor":
+        """Record image-file extraction (``extraction_mode='image'``)."""
+        merged = _merge_params(params, kwargs) if (params or kwargs) else ExtractParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "extract_image_files")
+        self._pipeline_spec["extract_params"] = params_dict
+        self._pipeline_spec["extraction_mode"] = "image"
+        if split_config is not None:
+            self._pipeline_spec["split_config"] = split_config
+        self._record_stage("extract")
+        return self
 
     def filter(self) -> "ServiceIngestor":
-        _raise_unsupported("filter")
+        """Record a filter stage."""
+        self._record_stage("filter")
+        return self
 
     def split(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("split")
+        """Record post-extract split / chunking configuration.
+
+        Accepts the same dict shape as :meth:`GraphIngestor.extract`'s
+        ``split_config`` keyword (``{"<source_type>": {"max_tokens": …}}``).
+        """
+        merged: dict[str, Any]
+        if isinstance(params, dict):
+            merged = dict(params)
+        elif params is None:
+            merged = {}
+        else:
+            merged = _params_to_dict(params)
+        merged.update(kwargs)
+        self._pipeline_spec["split_config"] = merged
+        return self
+
+    def pdf_split_config(self, pages_per_chunk: int = 32) -> "ServiceIngestor":
+        """Record PDF page-chunking config (per-request).
+
+        The gateway uses this to decide realtime-vs-batch routing
+        (chunked docs always go to batch).
+        """
+        PdfSplitParams.model_validate({})  # cheap sanity touch
+        self._pipeline_spec["pdf_split"] = {"pages_per_chunk": int(pages_per_chunk)}
+        return self
+
+    # ------------------------------------------------------------------
+    # Future-phase methods — informative errors only for now
+    # ------------------------------------------------------------------
 
     def store(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("store")
+        _raise_unsupported(
+            "store",
+            phase_hint=(
+                "Scheduled for Phase 2 (remote sinks). The service "
+                "today only writes image assets to its preconfigured store."
+            ),
+        )
 
     def store_embed(self) -> "ServiceIngestor":
-        _raise_unsupported("store_embed")
+        _raise_unsupported(
+            "store_embed",
+            phase_hint="Graph-mode semantics are still in flux; no service equivalent yet.",
+        )
 
     def udf(
         self,
@@ -305,13 +504,31 @@ class ServiceIngestor(ingestor):
         run_before: bool = False,
         run_after: bool = False,
     ) -> "ServiceIngestor":
-        _raise_unsupported("udf")
+        _raise_unsupported(
+            "udf",
+            phase_hint=(
+                "Scheduled for Phase 5 (named UDFs). Operators will register "
+                "callables in retriever-service.yaml and clients reference them by name."
+            ),
+        )
 
     def vdb_upload(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("vdb_upload")
+        _raise_unsupported(
+            "vdb_upload",
+            phase_hint=(
+                "Scheduled for Phase 2 (remote sinks). The service writes "
+                "to the vectordb pod configured via vectordb.vectordb_url."
+            ),
+        )
 
     def save_intermediate_results(self, output_dir: str) -> "ServiceIngestor":
-        _raise_unsupported("save_intermediate_results")
+        _raise_unsupported(
+            "save_intermediate_results",
+            phase_hint=(
+                "Inherently in-process — the service runs stages in worker "
+                "pods. Use run_mode='inprocess' for stage-by-stage debugging."
+            ),
+        )
 
     def save_to_disk(
         self,
@@ -319,16 +536,31 @@ class ServiceIngestor(ingestor):
         cleanup: bool = True,
         compression: Optional[str] = "gzip",
     ) -> "ServiceIngestor":
-        _raise_unsupported("save_to_disk")
+        _raise_unsupported(
+            "save_to_disk",
+            phase_hint=(
+                "Scheduled for Phase 3 — will stream per-document JSON to "
+                "the caller's output_directory via the existing SSE channel."
+            ),
+        )
 
     def caption(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("caption")
+        _raise_unsupported(
+            "caption",
+            phase_hint=(
+                "Scheduled for Phase 4 (remote caption endpoint). Local-GPU "
+                "captioning would not fit the CPU-only worker model."
+            ),
+        )
 
     def webhook(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("webhook")
-
-    def pdf_split_config(self, pages_per_chunk: int = 32) -> "ServiceIngestor":
-        _raise_unsupported("pdf_split_config")
+        _raise_unsupported(
+            "webhook",
+            phase_hint=(
+                "Scheduled for Phase 2 (remote sinks). Requires an operator-"
+                "configured URL allowlist before clients can drive egress."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Execution — sync materialized
@@ -459,7 +691,8 @@ class ServiceIngestor(ingestor):
             max_concurrency=self._max_concurrency,
             api_token=self._api_token,
         )
-        async for evt in client.aingest_documents_stream(files=files):
+        pipeline_payload = self._pipeline_payload()
+        async for evt in client.aingest_documents_stream(files=files, pipeline_spec=pipeline_payload):
             yield evt
 
     @staticmethod

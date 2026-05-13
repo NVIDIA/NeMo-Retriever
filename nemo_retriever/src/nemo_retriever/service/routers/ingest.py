@@ -29,6 +29,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from starlette.responses import StreamingResponse
 
+from nemo_retriever.service.models.pipeline_spec import PipelineSpec
 from nemo_retriever.service.models.requests import IngestRequest
 from nemo_retriever.service.models.responses import (
     DocumentIngestAccepted,
@@ -36,6 +37,7 @@ from nemo_retriever.service.models.responses import (
     JobStatusResponse,
     PageIngestAccepted,
 )
+from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.event_bus import get_event_bus
 from nemo_retriever.service.services.job_tracker import get_job_tracker
 from nemo_retriever.service.services.metrics import get_metrics
@@ -58,6 +60,7 @@ _RETRY_AFTER_SECONDS = "5"
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
 _GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
 _GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
+_GATEWAY_PIPELINE_SPEC_HEADER = "X-Gateway-Pipeline-Spec"
 _PAGE_THRESHOLD_FOR_BATCH = 5
 
 logger = logging.getLogger(__name__)
@@ -232,11 +235,61 @@ def _count_pdf_pages(file_bytes: bytes) -> int:
 
 
 def _route_by_page_count(file_bytes: bytes, meta: IngestRequest) -> PoolType:
-    """Route to realtime for small docs (<threshold pages), batch for larger."""
+    """Route to realtime for small docs (<threshold pages), batch for larger.
+
+    When the client requested PDF page-chunking via
+    :attr:`PipelineSpec.pdf_split`, we route to **batch** as soon as the
+    document has more than one chunk's worth of pages — chunking is
+    intrinsically a throughput-oriented operation.
+    """
     if meta.page_number is not None:
         return PoolType.REALTIME
     pages = _count_pdf_pages(file_bytes)
+    if meta.pipeline and meta.pipeline.pdf_split is not None:
+        if pages > meta.pipeline.pdf_split.pages_per_chunk:
+            return PoolType.BATCH
     return PoolType.REALTIME if pages < _PAGE_THRESHOLD_FOR_BATCH else PoolType.BATCH
+
+
+def _resolve_pipeline_spec(request: Request, meta: IngestRequest) -> PipelineSpec | None:
+    """Validate ``meta.pipeline`` against the service's override policy.
+
+    Returns ``None`` when the spec is missing or empty so the worker
+    short-circuits to the legacy startup-baked pipeline. Raises
+    :class:`HTTPException` (the FastAPI-native error) for policy denials.
+    """
+    if meta.pipeline is None:
+        return None
+    policy = request.app.state.config.pipeline_overrides.to_policy()
+    try:
+        return validate_pipeline_spec(meta.pipeline, policy)
+    except PolicyError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+def _spec_from_gateway_header(request: Request) -> PipelineSpec | None:
+    """Recover and re-validate the spec forwarded by the gateway pod.
+
+    The gateway has already validated against its own copy of the policy,
+    but we re-validate on the worker as defense-in-depth: a misconfigured
+    gateway or a pod with a different ``pipeline_overrides`` config will
+    still see consistent enforcement.
+    """
+    raw = request.headers.get(_GATEWAY_PIPELINE_SPEC_HEADER)
+    if not raw:
+        return None
+    try:
+        spec = PipelineSpec.model_validate_json(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed {_GATEWAY_PIPELINE_SPEC_HEADER!r} from gateway: {exc}",
+        ) from exc
+    policy = request.app.state.config.pipeline_overrides.to_policy()
+    try:
+        return validate_pipeline_spec(spec, policy)
+    except PolicyError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 def _parse_backend_json(resp: Response) -> dict:
@@ -269,6 +322,7 @@ async def ingest(
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
     _check_upload_size(file, request)
+    validated_spec = _resolve_pipeline_spec(request, meta)
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
@@ -287,14 +341,13 @@ async def ingest(
             tracker.mark_processing(document_id)
 
         callback_url = _build_callback_url(request)
-        resp = await _gateway_forward(
-            request,
-            route,
-            extra_headers={
-                _GATEWAY_DOC_ID_HEADER: document_id,
-                _GATEWAY_CALLBACK_HEADER: callback_url,
-            },
-        )
+        extra_headers = {
+            _GATEWAY_DOC_ID_HEADER: document_id,
+            _GATEWAY_CALLBACK_HEADER: callback_url,
+        }
+        if validated_spec is not None:
+            extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
+        resp = await _gateway_forward(request, route, extra_headers=extra_headers)
 
         if resp.status_code not in (200, 202):
             if tracker is not None:
@@ -336,6 +389,8 @@ async def ingest(
     gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
     document_id = gw_doc_id or uuid.uuid4().hex
 
+    worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
+
     if not gw_callback_url:
         _register_job(document_id)
 
@@ -346,6 +401,7 @@ async def ingest(
             payload=file_bytes,
             filename=file.filename,
             callback_url=gw_callback_url,
+            pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
         ),
     )
 
@@ -516,6 +572,7 @@ async def ingest_document(
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
     _check_upload_size(file, request)
+    validated_spec = _resolve_pipeline_spec(request, meta)
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
@@ -532,14 +589,13 @@ async def ingest_document(
             tracker.mark_processing(document_id)
 
         callback_url = _build_callback_url(request)
-        resp = await _gateway_forward(
-            request,
-            PoolType.BATCH,
-            extra_headers={
-                _GATEWAY_DOC_ID_HEADER: document_id,
-                _GATEWAY_CALLBACK_HEADER: callback_url,
-            },
-        )
+        extra_headers = {
+            _GATEWAY_DOC_ID_HEADER: document_id,
+            _GATEWAY_CALLBACK_HEADER: callback_url,
+        }
+        if validated_spec is not None:
+            extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
+        resp = await _gateway_forward(request, PoolType.BATCH, extra_headers=extra_headers)
 
         if resp.status_code not in (200, 202):
             if tracker is not None:
@@ -582,12 +638,20 @@ async def ingest_document(
     gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
     document_id = gw_doc_id or uuid.uuid4().hex
 
+    worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
+
     if not dry_run:
         if not gw_callback_url:
             _register_job(document_id)
         await _enqueue_or_reject(
             PoolType.BATCH,
-            WorkItem(id=document_id, payload=file_bytes, filename=file.filename, callback_url=gw_callback_url),
+            WorkItem(
+                id=document_id,
+                payload=file_bytes,
+                filename=file.filename,
+                callback_url=gw_callback_url,
+                pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
+            ),
         )
 
     _record_prometheus(request, "/v1/ingest/document", "2xx", file_size=len(file_bytes))
@@ -734,12 +798,14 @@ async def pipeline_config(request: Request):
     pool = get_pipeline_pool()
     pool_stats = pool.stats() if pool is not None else {}
 
+    policy = request.app.state.config.pipeline_overrides.to_policy()
     return JSONResponse(
         content={
             "source": mode,
             "mode": mode,
             "pipelines": get_pipeline_configs(),
             "pool_stats": pool_stats,
+            "allowed_overrides": policy.describe(),
         }
     )
 

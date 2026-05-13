@@ -192,32 +192,140 @@ def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filena
         )
 
 
+_TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
+    "invoke_url",
+    "api_key",
+    "page_elements_invoke_url",
+    "page_elements_api_key",
+    "ocr_invoke_url",
+    "ocr_api_key",
+    "graphic_elements_invoke_url",
+    "table_structure_invoke_url",
+    "nemotron_parse_invoke_url",
+)
+_TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
+    "embed_invoke_url",
+    "embedding_endpoint",
+    "api_key",
+)
+
+
+def _merge_server_owned(
+    base: dict[str, Any], override: dict[str, Any] | None, owned: tuple[str, ...]
+) -> dict[str, Any]:
+    """Merge *override* on top of *base* while preserving server-owned keys.
+
+    The denylist enforced by :mod:`nemo_retriever.service.policy` already
+    rejects requests with these keys, but we apply a belt-and-suspenders
+    overwrite here so a misconfigured policy can never cause a request
+    to redirect endpoint URLs or replace API keys.
+    """
+    merged = dict(base)
+    if override:
+        merged.update(override)
+    for k in owned:
+        if k in base:
+            merged[k] = base[k]
+    return merged
+
+
+def _build_graph_ingestor_from_spec(
+    filename: str,
+    payload: bytes,
+    base_extract: dict[str, Any],
+    base_embed: dict[str, Any] | None,
+    spec: dict[str, Any] | None,
+) -> "tuple[Any, str]":
+    """Construct a :class:`GraphIngestor` reflecting the per-request *spec*.
+
+    Returns the configured ingestor and the resolved extraction mode (used
+    by the caller for logging).
+    """
+    from nemo_retriever.graph_ingestor import GraphIngestor
+    from nemo_retriever.params import DedupParams, EmbedParams, ExtractParams
+
+    spec = spec or {}
+    extraction_mode = spec.get("extraction_mode", "pdf")
+
+    extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
+    extract_params = ExtractParams(**extract_kwargs)
+
+    embed_override = spec.get("embed_params")
+    if base_embed is None and embed_override is None:
+        embed_params = None
+    else:
+        embed_base = base_embed or {}
+        embed_kwargs = _merge_server_owned(embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS)
+        embed_params = EmbedParams(**embed_kwargs) if embed_kwargs.get("embed_invoke_url") else None
+
+    ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
+    ingestor = ingestor.buffers([(filename, BytesIO(payload))])
+
+    if extraction_mode == "image":
+        ingestor = ingestor.extract_image_files(extract_params, split_config=spec.get("split_config"))
+    else:
+        ingestor = ingestor.extract(
+            extract_params,
+            split_config=spec.get("split_config"),
+            extraction_mode=extraction_mode,
+        )
+
+    stage_order = spec.get("stage_order") or []
+    seen_post_extract: set[str] = set()
+    for stage_name in stage_order:
+        if stage_name in ("extract",) or stage_name in seen_post_extract:
+            continue
+        seen_post_extract.add(stage_name)
+        if stage_name == "dedup":
+            dedup_kwargs = spec.get("dedup_params") or {}
+            ingestor = ingestor.dedup(DedupParams(**dedup_kwargs))
+        elif stage_name == "embed":
+            if embed_params is not None:
+                ingestor = ingestor.embed(embed_params)
+        elif stage_name == "filter":
+            ingestor = ingestor.filter()
+
+    if embed_params is not None and "embed" not in seen_post_extract:
+        ingestor = ingestor.embed(embed_params)
+
+    return ingestor, extraction_mode
+
+
 def _run_pipeline_in_process(
     filename: str,
     payload: bytes,
     extract_params_dict: dict[str, Any],
     embed_params_dict: dict[str, Any] | None,
     vectordb_url: str | None = None,
+    pipeline_spec: dict[str, Any] | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
     This is a **top-level module function** so it can be pickled by
     :class:`ProcessPoolExecutor`.  All heavy imports happen here so
     that the parent process stays lightweight.
-    """
-    from nemo_retriever.graph_ingestor import GraphIngestor
-    from nemo_retriever.params import EmbedParams, ExtractParams
 
+    The pipeline shape comes from two layers:
+
+    * ``extract_params_dict`` / ``embed_params_dict`` — server-owned
+      defaults derived from :class:`ServiceConfig.nim_endpoints` at
+      startup. Carry the endpoint URLs and API keys.
+    * ``pipeline_spec`` — optional per-request override validated by
+      :func:`nemo_retriever.service.policy.validate_pipeline_spec`.
+      Carries "shape" knobs (chunk sizes, output flags, stage order, …).
+
+    When ``pipeline_spec`` is ``None`` (or empty) the behaviour exactly
+    matches the original closure-baked pipeline.
+    """
     t0 = time.monotonic()
 
-    extract_params = ExtractParams(**extract_params_dict)
-    embed_params = EmbedParams(**embed_params_dict) if embed_params_dict else None
-
-    ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
-    ingestor = ingestor.buffers([(filename, BytesIO(payload))])
-    ingestor = ingestor.extract(extract_params)
-    if embed_params is not None:
-        ingestor = ingestor.embed(embed_params)
+    ingestor, _extraction_mode = _build_graph_ingestor_from_spec(
+        filename,
+        payload,
+        extract_params_dict,
+        embed_params_dict,
+        pipeline_spec,
+    )
 
     result_df = ingestor.ingest()
     elapsed = time.monotonic() - t0
@@ -352,6 +460,7 @@ def _make_work_fn(
                 extract_params_dict,
                 embed_params_dict,
                 vectordb_url,
+                item.pipeline_spec,
             )
         except BrokenProcessPool:
             logger.error(

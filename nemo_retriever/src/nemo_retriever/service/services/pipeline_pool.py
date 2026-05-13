@@ -51,6 +51,9 @@ class WorkItem(RichModel):
     filename: str | None = None
     callback: Callable[[Any], None] | None = None
     callback_url: str | None = None
+    # Validated per-request pipeline overrides (PipelineSpec serialised
+    # to a dict). ``None`` means: run the legacy startup-baked pipeline.
+    pipeline_spec: dict[str, Any] | None = None
 
 
 async def _fire_gateway_callback(

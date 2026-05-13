@@ -116,6 +116,40 @@ class VectorDbConfig(RichModel):
     )
 
 
+class PipelineOverridesConfig(RichModel):
+    """How permissively to accept per-request ``PipelineSpec`` overrides.
+
+    * ``mode='reject'`` — clients may not override pipeline config at all.
+      Server-side YAML is the only source of truth.
+    * ``mode='allow_list'`` (default) — only the keys enumerated by the
+      built-in defaults plus the ``extra_*_keys`` extensions below are
+      accepted. Endpoint URLs and API keys are *always* denied.
+    * ``mode='allow_all'`` — every key is accepted **except** the
+      endpoint/api_key denylist. Useful in dev clusters but unsafe in
+      multi-tenant deployments.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["reject", "allow_list", "allow_all"] = "allow_list"
+    extra_extract_keys: list[str] = Field(default_factory=list)
+    extra_embed_keys: list[str] = Field(default_factory=list)
+    extra_dedup_keys: list[str] = Field(default_factory=list)
+    extra_split_keys: list[str] = Field(default_factory=list)
+
+    def to_policy(self) -> "PipelineOverridesPolicy":  # noqa: F821 — forward-declared
+        """Return a :class:`PipelineOverridesPolicy` configured from this section."""
+        from nemo_retriever.service.policy import PipelineOverridesPolicy
+
+        return PipelineOverridesPolicy(
+            mode=self.mode,
+            extra_extract_keys=frozenset(self.extra_extract_keys),
+            extra_embed_keys=frozenset(self.extra_embed_keys),
+            extra_dedup_keys=frozenset(self.extra_dedup_keys),
+            extra_split_keys=frozenset(self.extra_split_keys),
+        )
+
+
 class ServiceConfig(RichModel):
     """Top-level configuration for the retriever service mode.
 
@@ -141,6 +175,7 @@ class ServiceConfig(RichModel):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
+    pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
 
 
 def _bundled_yaml_path() -> Path:

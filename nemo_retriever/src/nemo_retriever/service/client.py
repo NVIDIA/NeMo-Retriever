@@ -137,14 +137,21 @@ class RetrieverServiceClient:
         client: httpx.AsyncClient,
         file_path: Path,
         metadata: dict[str, Any] | None = None,
+        pipeline_spec: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Upload a file to ``POST /v1/ingest`` with retry on 429 and transient errors.
+
+        ``pipeline_spec`` (when provided) is merged into ``metadata`` under
+        the ``pipeline`` key so the server can validate and apply it.
 
         Returns the parsed JSON response (contains ``document_id``).
         """
         file_bytes = file_path.read_bytes()
         filename = file_path.name
-        meta_json = json.dumps(metadata or {})
+        meta_payload: dict[str, Any] = dict(metadata or {})
+        if pipeline_spec is not None:
+            meta_payload["pipeline"] = pipeline_spec
+        meta_json = json.dumps(meta_payload)
         transport_attempts = 0
 
         for attempt in range(1, _MAX_UPLOAD_RETRIES + 1):
@@ -349,6 +356,7 @@ class RetrieverServiceClient:
         *,
         on_file_submitted: Callable[[str, str], Any] | None = None,
         show_progress: bool = True,
+        pipeline_spec: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Upload documents and wait for all to complete.
 
@@ -362,6 +370,10 @@ class RetrieverServiceClient:
             Called with ``(filename, document_id)`` after each upload.
         show_progress
             Show Rich progress bars during upload and SSE tracking.
+        pipeline_spec
+            Optional :class:`PipelineSpec` dict attached to every upload's
+            ``metadata`` form blob (see
+            :meth:`aingest_documents_stream` for details).
         """
         tracker = DocumentTracker()
         pending = tracker.pending
@@ -384,7 +396,7 @@ class RetrieverServiceClient:
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(client, fpath)
+                        resp_json = await self._upload_one(client, fpath, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
@@ -449,6 +461,8 @@ class RetrieverServiceClient:
     async def aingest_documents_stream(
         self,
         files: list[Path],
+        *,
+        pipeline_spec: dict[str, Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Async generator: upload files, yield events as documents complete.
 
@@ -457,6 +471,10 @@ class RetrieverServiceClient:
         * ``{"event": "upload_complete", "filename": ..., "document_id": ...}``
         * ``{"event": "document_complete", "document_id": ..., "status": ...,
               "result_rows": ..., "elapsed_s": ..., "error": ...}``
+
+        When *pipeline_spec* is provided it is attached to each upload's
+        ``metadata`` form blob under the ``pipeline`` key so the server can
+        validate and apply per-request pipeline overrides.
         """
         tracker = DocumentTracker()
         pending = tracker.pending
@@ -476,7 +494,7 @@ class RetrieverServiceClient:
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(client, fpath)
+                        resp_json = await self._upload_one(client, fpath, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
