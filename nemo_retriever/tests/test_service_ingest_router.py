@@ -142,14 +142,42 @@ def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient)
     assert "trust-sensitive" in resp.json()["detail"]
 
 
-def test_ingest_rejects_phase_2_stage_overrides(app_with_stub_pool: TestClient) -> None:
-    metadata = {"pipeline": {"webhook_params": {"endpoint_url": "http://x/"}}}
+def test_ingest_rejects_caption_overrides_until_phase_4(app_with_stub_pool: TestClient) -> None:
+    metadata = {"pipeline": {"caption_params": {"prompt": "Describe"}}}
     resp = app_with_stub_pool.post(
         "/v1/ingest",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
     assert resp.status_code == 501, resp.text
+
+
+def test_ingest_rejects_webhook_when_sinks_disabled(app_with_stub_pool: TestClient) -> None:
+    """Without ``sinks.webhook_url_prefixes`` set, the ``webhook`` stage is not allowed."""
+    metadata = {"pipeline": {"webhook_params": {"endpoint_url": "http://x/"}, "stage_order": ["webhook"]}}
+    resp = app_with_stub_pool.post(
+        "/v1/ingest",
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": json.dumps(metadata)},
+    )
+    assert resp.status_code == 403, resp.text
+    detail = resp.json()["detail"].lower()
+    assert "webhook" in detail
+    assert "allowed_stages" in detail or "not in" in detail
+
+
+def test_ingest_rejects_webhook_params_without_stage_when_sinks_disabled(
+    app_with_stub_pool: TestClient,
+) -> None:
+    """Bare ``webhook_params`` (no stage_order entry) still fails the sink allowlist check."""
+    metadata = {"pipeline": {"webhook_params": {"endpoint_url": "http://x/"}}}
+    resp = app_with_stub_pool.post(
+        "/v1/ingest",
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": json.dumps(metadata)},
+    )
+    assert resp.status_code == 403, resp.text
+    assert "disabled" in resp.json()["detail"].lower()
 
 
 def test_pipeline_config_endpoint_reports_allowed_overrides(

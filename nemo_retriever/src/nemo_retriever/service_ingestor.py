@@ -49,6 +49,9 @@ from nemo_retriever.params import (
     EmbedParams,
     ExtractParams,
     PdfSplitParams,
+    StoreParams,
+    VdbUploadParams,
+    WebhookParams,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,6 +162,21 @@ def _strip_server_owned(params_dict: dict[str, Any], method: str) -> dict[str, A
             "set per-request."
         )
     return params_dict
+
+
+def _require_remote_uri(uri: str, method: str, field: str) -> None:
+    """Reject local paths early on the client side.
+
+    The worker pod cannot see the caller's filesystem. A friendly error
+    here saves the user a round-trip to receive HTTP 403 from the sink
+    allowlist with the same message.
+    """
+    if "://" not in uri or uri.startswith("file://"):
+        raise ValueError(
+            f"ServiceIngestor.{method}(): {field}={uri!r} is a local path. "
+            "In service run_mode the worker writes from inside the cluster; "
+            "use a remote URI such as 's3://bucket/prefix/' instead."
+        )
 
 
 def _params_to_dict(value: Any) -> dict[str, Any]:
@@ -301,6 +319,10 @@ class ServiceIngestor(ingestor):
             "extraction_mode": "pdf",
             "stage_order": [],
         }
+        # save_to_disk state (populated by .save_to_disk(...); None when disabled)
+        self._save_to_disk_dir: Path | None = None
+        self._save_to_disk_compression: str | None = None
+        self._save_to_disk_cleanup: bool = True
 
     # ------------------------------------------------------------------
     # Pipeline-spec helpers
@@ -310,6 +332,44 @@ class ServiceIngestor(ingestor):
         order = self._pipeline_spec["stage_order"]
         if name not in order:
             order.append(name)
+
+    def _save_document_to_disk(self, document_id: str) -> Path:
+        """Fetch ``result_data`` for *document_id* and write a JSON artifact.
+
+        Returns the path that was written. Raises if the document_id is
+        missing or the fetch fails. The status endpoint consumes
+        ``result_data`` on first read, so callers must invoke this
+        exactly once per document.
+        """
+        import gzip
+        import json as _json
+        import urllib.request
+
+        if not document_id:
+            raise ValueError("_save_document_to_disk(): empty document_id")
+        if self._save_to_disk_dir is None:
+            raise RuntimeError("_save_document_to_disk(): save_to_disk was never enabled")
+
+        url = f"{self._base_url}/v1/ingest/status/{document_id}"
+        req = urllib.request.Request(url, method="GET")
+        if self._api_token:
+            req.add_header("Authorization", f"Bearer {self._api_token}")
+        with urllib.request.urlopen(req, timeout=self._request_timeout_s) as resp:
+            body = _json.loads(resp.read().decode("utf-8"))
+        result_data = body.get("result_data") or []
+
+        suffix = ".json.gz" if self._save_to_disk_compression == "gzip" else ".json"
+        out_path = self._save_to_disk_dir / f"{document_id}{suffix}"
+        payload = _json.dumps(
+            {"document_id": document_id, "rows": result_data},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        if self._save_to_disk_compression == "gzip":
+            with gzip.open(out_path, "wb") as fh:
+                fh.write(payload)
+        else:
+            out_path.write_bytes(payload)
+        return out_path
 
     def _pipeline_payload(self) -> dict[str, Any] | None:
         """Return the spec dict to send on the wire, or ``None`` when empty.
@@ -477,17 +537,33 @@ class ServiceIngestor(ingestor):
         return self
 
     # ------------------------------------------------------------------
-    # Future-phase methods — informative errors only for now
+    # Phase 2: remote sinks — sent via PipelineSpec, gated by SinkUrlAllowlist
     # ------------------------------------------------------------------
 
     def store(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported(
-            "store",
-            phase_hint=(
-                "Scheduled for Phase 2 (remote sinks). The service "
-                "today only writes image assets to its preconfigured store."
-            ),
-        )
+        """Record an image-asset store stage targeting a remote URI.
+
+        ``storage_uri`` must be a non-local URI (``s3://``, ``gs://``,
+        ``azure://``, …) — the worker pod has no view into the caller's
+        filesystem. The server's ``sinks.storage_uri_schemes`` allowlist
+        gates which schemes are admissible.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else StoreParams()
+        params_dict = _params_to_dict(merged)
+        uri = params_dict.get("storage_uri")
+        if uri is not None:
+            _require_remote_uri(uri, "store", "storage_uri")
+        # ``storage_uri`` is the legitimate sink destination, so we let
+        # it through the local denylist check.
+        for k in list(params_dict):
+            if k != "storage_uri" and k in _SERVER_OWNED_KEYS:
+                raise ValueError(
+                    f"ServiceIngestor.store(): key {k!r} is server-owned in "
+                    "run_mode='service'."
+                )
+        self._pipeline_spec["store_params"] = params_dict
+        self._record_stage("store")
+        return self
 
     def store_embed(self) -> "ServiceIngestor":
         _raise_unsupported(
@@ -513,13 +589,29 @@ class ServiceIngestor(ingestor):
         )
 
     def vdb_upload(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported(
-            "vdb_upload",
-            phase_hint=(
-                "Scheduled for Phase 2 (remote sinks). The service writes "
-                "to the vectordb pod configured via vectordb.vectordb_url."
-            ),
-        )
+        """Record a vector-DB upload sink targeting a remote LanceDB URI.
+
+        Only ``vdb_op`` and ``vdb_kwargs`` are honored in this phase.
+        ``vdb_kwargs.lancedb_uri`` must be a non-local URI matching the
+        server's ``sinks.vdb_uri_schemes`` allowlist. ``meta_dataframe``
+        sidecar metadata is rejected until Phase 6 lands the dedicated
+        sidecar-upload endpoint.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else VdbUploadParams()
+        params_dict = _params_to_dict(merged)
+        if any(params_dict.get(k) for k in ("meta_dataframe", "meta_source_field", "meta_fields")):
+            raise NotImplementedError(
+                "ServiceIngestor.vdb_upload(): sidecar metadata "
+                "(meta_dataframe / meta_source_field / meta_fields) is scheduled "
+                "for Phase 6 via POST /v1/ingest/sidecar."
+            )
+        vdb_kwargs = params_dict.get("vdb_kwargs") or {}
+        if vdb_kwargs:
+            uri = vdb_kwargs.get("lancedb_uri") or vdb_kwargs.get("uri")
+            if uri is not None:
+                _require_remote_uri(uri, "vdb_upload", "vdb_kwargs.lancedb_uri")
+        self._pipeline_spec["vdb_upload_params"] = params_dict
+        return self
 
     def save_intermediate_results(self, output_dir: str) -> "ServiceIngestor":
         _raise_unsupported(
@@ -536,13 +628,39 @@ class ServiceIngestor(ingestor):
         cleanup: bool = True,
         compression: Optional[str] = "gzip",
     ) -> "ServiceIngestor":
-        _raise_unsupported(
-            "save_to_disk",
-            phase_hint=(
-                "Scheduled for Phase 3 — will stream per-document JSON to "
-                "the caller's output_directory via the existing SSE channel."
-            ),
-        )
+        """Stream per-document results to ``output_directory`` as they finish.
+
+        Each completed document produces one JSON file (or ``.json.gz`` when
+        ``compression='gzip'``) named ``<document_id>.json[.gz]`` whose
+        contents are the worker's :func:`_sanitize_result_data` output —
+        the same rows reported via ``/v1/ingest/status/{id}``.
+
+        Important differences from graph mode:
+
+        * Large binary columns (``bytes``, ``page_image``, ``images``,
+          ``charts``, ``tables``) are stripped server-side before the
+          rows leave the worker. Use :meth:`store` to persist image
+          assets to a remote URI; the local-disk artifact only carries
+          the structured metadata.
+        * The client does the writing — the server has no view into the
+          caller's filesystem. ``cleanup`` is accepted for API parity
+          with graph mode but has no server-side effect today.
+        """
+        if output_directory is None:
+            raise ValueError(
+                "ServiceIngestor.save_to_disk(): output_directory is required."
+            )
+        if compression not in (None, "gzip"):
+            raise ValueError(
+                f"save_to_disk(compression={compression!r}): only None or 'gzip' "
+                "are supported in service run_mode."
+            )
+        target = Path(output_directory)
+        target.mkdir(parents=True, exist_ok=True)
+        self._save_to_disk_dir = target
+        self._save_to_disk_compression = compression
+        self._save_to_disk_cleanup = cleanup
+        return self
 
     def caption(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         _raise_unsupported(
@@ -554,13 +672,30 @@ class ServiceIngestor(ingestor):
         )
 
     def webhook(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported(
-            "webhook",
-            phase_hint=(
-                "Scheduled for Phase 2 (remote sinks). Requires an operator-"
-                "configured URL allowlist before clients can drive egress."
-            ),
-        )
+        """Record a webhook-notification stage targeting a remote URL.
+
+        ``endpoint_url`` must match one of the server's
+        ``sinks.webhook_url_prefixes``. Without that allowlist the
+        service rejects webhook requests entirely so worker egress
+        cannot be steered by clients.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else WebhookParams()
+        params_dict = _params_to_dict(merged)
+        endpoint = params_dict.get("endpoint_url")
+        if endpoint is None:
+            raise ValueError(
+                "ServiceIngestor.webhook(): endpoint_url is required "
+                "(unlike inprocess run_mode, an empty endpoint_url is treated "
+                "as misconfiguration in service mode)."
+            )
+        if not endpoint.startswith(("http://", "https://")):
+            raise ValueError(
+                "ServiceIngestor.webhook(): endpoint_url must be a fully-qualified "
+                f"http(s):// URL; got {endpoint!r}."
+            )
+        self._pipeline_spec["webhook_params"] = params_dict
+        self._record_stage("webhook")
+        return self
 
     # ------------------------------------------------------------------
     # Execution — sync materialized
@@ -605,6 +740,15 @@ class ServiceIngestor(ingestor):
                     result.failures.append((doc_id, error))
                 else:
                     documents_completed += 1
+                    if self._save_to_disk_dir is not None:
+                        doc_id = evt.get("document_id", "")
+                        try:
+                            self._save_document_to_disk(doc_id)
+                        except Exception as exc:
+                            logger.warning(
+                                "save_to_disk: failed to persist %s: %s", doc_id, exc
+                            )
+                            result.failures.append((doc_id, f"save_to_disk: {exc}"))
                 result.append(evt)
                 print(
                     f"\r  Uploaded: {total_uploaded}  |  "

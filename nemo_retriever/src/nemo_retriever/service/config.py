@@ -116,6 +116,46 @@ class VectorDbConfig(RichModel):
     )
 
 
+class SinksConfig(RichModel):
+    """Per-sink-type egress allowlists for client-driven pipeline stages.
+
+    Each list gates one of the three sinks (image store, webhook
+    notifier, vector-DB upload). Leaving a list empty disables that
+    sink — clients that ask for it receive HTTP 403 with a message
+    explaining how to enable it.
+
+    Use ``"*"`` as a wildcard entry to bypass enforcement entirely;
+    this is intended for dev clusters only and is highly unsafe in
+    multi-tenant deployments.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    storage_uri_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URI schemes (e.g. 's3://', 'gs://', 'azure://') the worker is "
+            "allowed to write extracted images to via .store(...). "
+            "Empty disables storage sinks."
+        ),
+    )
+    webhook_url_prefixes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URL prefixes (e.g. 'https://hooks.example.com/') the worker is "
+            "allowed to POST webhook notifications to. Empty disables webhooks."
+        ),
+    )
+    vdb_uri_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URI schemes the worker is allowed to write LanceDB tables to "
+            "via .vdb_upload(...). Empty disables per-request VDB overrides "
+            "(the server's preconfigured vectordb pod still receives writes)."
+        ),
+    )
+
+
 class PipelineOverridesConfig(RichModel):
     """How permissively to accept per-request ``PipelineSpec`` overrides.
 
@@ -136,10 +176,14 @@ class PipelineOverridesConfig(RichModel):
     extra_embed_keys: list[str] = Field(default_factory=list)
     extra_dedup_keys: list[str] = Field(default_factory=list)
     extra_split_keys: list[str] = Field(default_factory=list)
+    extra_store_keys: list[str] = Field(default_factory=list)
+    extra_webhook_keys: list[str] = Field(default_factory=list)
+    extra_vdb_upload_keys: list[str] = Field(default_factory=list)
+    sinks: SinksConfig = Field(default_factory=SinksConfig)
 
     def to_policy(self) -> "PipelineOverridesPolicy":  # noqa: F821 — forward-declared
         """Return a :class:`PipelineOverridesPolicy` configured from this section."""
-        from nemo_retriever.service.policy import PipelineOverridesPolicy
+        from nemo_retriever.service.policy import PipelineOverridesPolicy, SinkUrlAllowlist
 
         return PipelineOverridesPolicy(
             mode=self.mode,
@@ -147,6 +191,14 @@ class PipelineOverridesConfig(RichModel):
             extra_embed_keys=frozenset(self.extra_embed_keys),
             extra_dedup_keys=frozenset(self.extra_dedup_keys),
             extra_split_keys=frozenset(self.extra_split_keys),
+            extra_store_keys=frozenset(self.extra_store_keys),
+            extra_webhook_keys=frozenset(self.extra_webhook_keys),
+            extra_vdb_upload_keys=frozenset(self.extra_vdb_upload_keys),
+            sinks=SinkUrlAllowlist(
+                storage_uri_schemes=list(self.sinks.storage_uri_schemes),
+                webhook_url_prefixes=list(self.sinks.webhook_url_prefixes),
+                vdb_uri_schemes=list(self.sinks.vdb_uri_schemes),
+            ),
         )
 
 

@@ -107,9 +107,12 @@ def test_client_rejects_server_owned_keys() -> None:
 
 
 def test_future_phase_methods_raise_informative_error() -> None:
+    """Methods scheduled for later phases still produce a clear, phase-named error.
+
+    ``store`` / ``webhook`` / ``vdb_upload`` moved out in Phase 2,
+    ``save_to_disk`` in Phase 3. They live in dedicated test modules now.
+    """
     ing = ServiceIngestor(base_url="http://example:7670")
-    with pytest.raises(NotImplementedError, match="Phase 2"):
-        ing.store()
     with pytest.raises(NotImplementedError, match="Phase 4"):
         ing.caption()
     with pytest.raises(NotImplementedError, match="Phase 5"):
@@ -233,7 +236,7 @@ def test_build_graph_ingestor_applies_spec_extraction_mode(monkeypatch: pytest.M
     base_extract = {"page_elements_invoke_url": "http://server/page_elements"}
     spec = {"extraction_mode": "image", "extract_params": {"dpi": 300}, "stage_order": ["extract"]}
 
-    ingestor, mode = _build_graph_ingestor_from_spec(
+    ingestor, mode, has_vdb = _build_graph_ingestor_from_spec(
         "stub.png",
         b"\x89PNG\r\n",
         base_extract,
@@ -241,6 +244,7 @@ def test_build_graph_ingestor_applies_spec_extraction_mode(monkeypatch: pytest.M
         spec,
     )
     assert mode == "image"
+    assert has_vdb is False
     assert ingestor._extraction_mode == "image"
     assert ingestor._extract_params is not None
     assert ingestor._extract_params.dpi == 300

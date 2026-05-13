@@ -83,9 +83,22 @@ auth:
 #
 # The extra_*_keys lists let operators widen the allow_list with
 # additional params keys without dropping to allow_all.
+#
+# The sinks: subsection gates client-driven egress (store / webhook /
+# vdb_upload). Each list is empty by default which DISABLES that sink
+# in service mode; populate them with URI schemes or URL prefixes to
+# enable. Use "*" as a single wildcard entry to bypass enforcement
+# (dev clusters only — never in multi-tenant production).
 pipeline_overrides:
   mode: allow_list
   extra_extract_keys: []
   extra_embed_keys: []
   extra_dedup_keys: []
   extra_split_keys: []
+  extra_store_keys: []
+  extra_webhook_keys: []
+  extra_vdb_upload_keys: []
+  sinks:
+    storage_uri_schemes: []      # e.g. ["s3://", "gs://", "azure://"]
+    webhook_url_prefixes: []     # e.g. ["https://hooks.example.com/"]
+    vdb_uri_schemes: []          # e.g. ["s3://", "gs://"]

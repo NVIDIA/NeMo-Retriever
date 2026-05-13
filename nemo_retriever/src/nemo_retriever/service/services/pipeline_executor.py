@@ -235,14 +235,23 @@ def _build_graph_ingestor_from_spec(
     base_extract: dict[str, Any],
     base_embed: dict[str, Any] | None,
     spec: dict[str, Any] | None,
-) -> "tuple[Any, str]":
+) -> "tuple[Any, str, bool]":
     """Construct a :class:`GraphIngestor` reflecting the per-request *spec*.
 
-    Returns the configured ingestor and the resolved extraction mode (used
-    by the caller for logging).
+    Returns ``(ingestor, extraction_mode, has_per_request_vdb)``. The
+    last value tells the caller to skip the legacy out-of-graph
+    vectordb fan-out — the in-graph ``IngestVdbOperator`` already
+    handles persistence when ``vdb_upload_params`` is present.
     """
     from nemo_retriever.graph_ingestor import GraphIngestor
-    from nemo_retriever.params import DedupParams, EmbedParams, ExtractParams
+    from nemo_retriever.params import (
+        DedupParams,
+        EmbedParams,
+        ExtractParams,
+        StoreParams,
+        VdbUploadParams,
+        WebhookParams,
+    )
 
     spec = spec or {}
     extraction_mode = spec.get("extraction_mode", "pdf")
@@ -272,6 +281,19 @@ def _build_graph_ingestor_from_spec(
 
     stage_order = spec.get("stage_order") or []
     seen_post_extract: set[str] = set()
+
+    def _apply_store_if_requested() -> None:
+        nonlocal ingestor
+        store_kwargs = spec.get("store_params")
+        if store_kwargs is not None:
+            ingestor = ingestor.store(StoreParams(**store_kwargs))
+
+    def _apply_webhook_if_requested() -> None:
+        nonlocal ingestor
+        webhook_kwargs = spec.get("webhook_params")
+        if webhook_kwargs is not None:
+            ingestor = ingestor.webhook(WebhookParams(**webhook_kwargs))
+
     for stage_name in stage_order:
         if stage_name in ("extract",) or stage_name in seen_post_extract:
             continue
@@ -284,11 +306,30 @@ def _build_graph_ingestor_from_spec(
                 ingestor = ingestor.embed(embed_params)
         elif stage_name == "filter":
             ingestor = ingestor.filter()
+        elif stage_name == "store":
+            _apply_store_if_requested()
+        elif stage_name == "webhook":
+            _apply_webhook_if_requested()
 
     if embed_params is not None and "embed" not in seen_post_extract:
         ingestor = ingestor.embed(embed_params)
 
-    return ingestor, extraction_mode
+    # ``store`` / ``webhook`` may be present in params without an explicit
+    # stage_order entry (matches the GraphIngestor pattern). Auto-append.
+    if "store" not in seen_post_extract:
+        _apply_store_if_requested()
+    if "webhook" not in seen_post_extract:
+        _apply_webhook_if_requested()
+
+    # vdb_upload is not a stage_order entry in GraphIngestor either — the
+    # operator is always appended after embed/store from the params model.
+    has_per_request_vdb = False
+    vdb_kwargs = spec.get("vdb_upload_params")
+    if vdb_kwargs is not None:
+        ingestor = ingestor.vdb_upload(VdbUploadParams(**vdb_kwargs))
+        has_per_request_vdb = True
+
+    return ingestor, extraction_mode, has_per_request_vdb
 
 
 def _run_pipeline_in_process(
@@ -319,7 +360,7 @@ def _run_pipeline_in_process(
     """
     t0 = time.monotonic()
 
-    ingestor, _extraction_mode = _build_graph_ingestor_from_spec(
+    ingestor, _extraction_mode, has_per_request_vdb = _build_graph_ingestor_from_spec(
         filename,
         payload,
         extract_params_dict,
@@ -332,7 +373,10 @@ def _run_pipeline_in_process(
 
     row_count = len(result_df)
 
-    if vectordb_url and row_count > 0:
+    if vectordb_url and row_count > 0 and not has_per_request_vdb:
+        # Skip the out-of-graph fan-out when the client already wired
+        # IngestVdbOperator into the spec — that operator handles
+        # persistence itself.
         from nemo_retriever.vdb.lancedb_schema import build_lancedb_rows
 
         lancedb_rows = build_lancedb_rows(result_df)
