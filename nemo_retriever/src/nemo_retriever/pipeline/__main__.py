@@ -628,11 +628,12 @@ def _run_evaluation(
     reranker_api_key: str,
     local_reranker_backend: str,
     local_hf_batch_size: int,
+    local_query_max_length: int,
     beir_loader: Optional[str],
     beir_dataset_name: Optional[str],
     beir_split: str,
     beir_query_language: Optional[str],
-    beir_doc_id_field: str,
+    beir_doc_id_field: Optional[str],
     beir_k: list[int],
     local_query_embed_backend: str = "hf",
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
@@ -654,12 +655,18 @@ def _run_evaluation(
     if evaluation_mode == "beir":
         if str(vdb_op).strip().lower() != "lancedb":
             raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
-        if not beir_loader:
-            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
-        if not beir_dataset_name:
-            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
+        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir, resolve_beir_dataset_options
 
-        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
+        beir_options = resolve_beir_dataset_options(
+            dataset_name=beir_dataset_name,
+            loader=beir_loader,
+            doc_id_field=beir_doc_id_field,
+            ks=beir_k,
+        )
+        if not beir_options.loader:
+            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
+        if not beir_options.dataset_name:
+            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
 
         lancedb_uri = str(eval_vdb_kwargs.get("uri") or eval_vdb_kwargs.get("lancedb_uri") or "lancedb")
         lancedb_table = str(eval_vdb_kwargs.get("table_name") or eval_vdb_kwargs.get("lancedb_table") or "nv-ingest")
@@ -668,12 +675,12 @@ def _run_evaluation(
             lancedb_uri=lancedb_uri,
             lancedb_table=lancedb_table,
             embedding_model=embed_model,
-            loader=str(beir_loader),
-            dataset_name=str(beir_dataset_name),
+            loader=str(beir_options.loader),
+            dataset_name=str(beir_options.dataset_name),
             split=str(beir_split),
             query_language=beir_query_language,
-            doc_id_field=str(beir_doc_id_field),
-            ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
+            doc_id_field=str(beir_options.doc_id_field),
+            ks=beir_options.ks,
             embedding_http_endpoint=embed_invoke_url,
             embedding_api_key=embed_remote_api_key or "",
             hybrid=bool(eval_vdb_kwargs.get("hybrid", False)),
@@ -685,6 +692,7 @@ def _run_evaluation(
             reranker_api_key=reranker_api_key,
             local_reranker_backend=local_reranker_backend,
             local_hf_batch_size=int(local_hf_batch_size),
+            local_query_max_length=int(local_query_max_length),
             local_query_embed_backend=local_query_embed_backend,
         )
         evaluation_start = time.perf_counter()
@@ -718,6 +726,7 @@ def _run_evaluation(
         reranker_api_key=reranker_api_key,
         local_reranker_backend=local_reranker_backend,
         local_hf_batch_size=int(local_hf_batch_size),
+        local_query_max_length=int(local_query_max_length),
         embed_modality=embed_modality,
         local_query_embed_backend=local_query_embed_backend,
     )
@@ -1125,11 +1134,23 @@ def run(
         help="Batch size for local HF query embedding during retrieval/reranking.",
         rich_help_panel=_PANEL_EVAL,
     ),
+    local_query_max_length: int = typer.Option(
+        128,
+        "--local-query-max-length",
+        min=1,
+        help="Fixed token length for local HF query embeddings; longer queries are truncated.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader", rich_help_panel=_PANEL_EVAL),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name", rich_help_panel=_PANEL_EVAL),
     beir_split: str = typer.Option("test", "--beir-split", rich_help_panel=_PANEL_EVAL),
     beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language", rich_help_panel=_PANEL_EVAL),
-    beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field", rich_help_panel=_PANEL_EVAL),
+    beir_doc_id_field: Optional[str] = typer.Option(
+        None,
+        "--beir-doc-id-field",
+        help="BEIR document ID field. Defaults to the known dataset setting, or pdf_basename for custom datasets.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     beir_k: list[int] = typer.Option([], "--beir-k", rich_help_panel=_PANEL_EVAL),
     eval_config: Optional[Path] = typer.Option(
         None,
@@ -1494,6 +1515,7 @@ def run(
             reranker_api_key=reranker_bearer,
             local_reranker_backend=local_reranker_backend,
             local_hf_batch_size=local_hf_batch_size,
+            local_query_max_length=local_query_max_length,
             beir_loader=beir_loader,
             beir_dataset_name=beir_dataset_name,
             beir_split=beir_split,

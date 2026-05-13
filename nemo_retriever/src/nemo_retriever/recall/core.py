@@ -35,6 +35,7 @@ class RecallConfig:
     local_hf_device: Optional[str] = None
     local_hf_cache_dir: Optional[str] = None
     local_hf_batch_size: int = 32
+    local_query_max_length: int = 128
     # When using local query embedding (no HTTP endpoint), select backend for *queries* only.
     # ``hf`` (default) uses the HF mean-pooled text embedder (see ``LlamaNemotronEmbed1BV2HFEmbedder``);
     # ``vllm`` uses :func:`~nemo_retriever.model.create_local_embedder`. Ignored when an
@@ -488,6 +489,7 @@ def retrieve_and_score(
         "embed_inference_batch_size": int(cfg.local_hf_batch_size),
         "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
         "embed_modality": str(cfg.embed_modality),
+        "query_max_length": int(cfg.local_query_max_length),
     }
     if embedding_endpoint:
         embed_kwargs["embedding_endpoint"] = embedding_endpoint
