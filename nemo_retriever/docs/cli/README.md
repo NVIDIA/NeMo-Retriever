@@ -1,15 +1,15 @@
-# Retriever CLI — Replacement Examples for `nv-ingest-cli`
+# Retriever CLI — replacement examples for the legacy ingestion-service CLI
 
 This folder contains `retriever` command-line examples that deliver the same
-end-user outcomes as the `nv-ingest-cli` examples in
-`nv-ingest/docs/`, `nv-ingest/api/`, `nv-ingest/client/`, and `nv-ingest/deploy/`.
+end-user outcomes as the legacy **ingestion-service** CLI examples that used to
+live under `docs/`, `api/`, `client/`, and `deploy/` in older repository layouts.
 
-The original `nv-ingest-cli` documentation is **not removed** — these files sit
+The historical CLI documentation is **not removed** from the ecosystem — these files sit
 alongside it as a new-CLI counterpart you can link to or migrate to.
 
 ## Key shape difference
 
-`nv-ingest-cli` is a **single command that talks to a running REST service on
+The legacy **ingestion-service** CLI was a **single command that talks to a running REST service on
 `localhost:7670`** and composes work via repeated `--task extract|split|caption|embed|dedup|filter|udf`.
 
 `retriever` is a **multi-subcommand Typer app**. Most of the old CLI examples
@@ -33,26 +33,26 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 
 | New file | Replaces example(s) in |
 |----------|------------------------|
-| [`retriever_cli.md`](retriever_cli.md) | `nv-ingest/docs/docs/extraction/nv-ingest_cli.md` and the rebranded mirror `cli-reference.md` |
-| [`quickstart.md`](quickstart.md) | Legacy `nv-ingest-cli` service quickstart; supported **Helm** + **NeMo Retriever Library** deployment handoff in quickstart prose; **Docker Compose** (unsupported): [`docker.md`](../docker.md) |
-| [`pdf-split-tuning.md`](pdf-split-tuning.md) | `nv-ingest/docs/docs/extraction/v2-api-guide.md` (CLI example) |
-| [`smoke-test.md`](smoke-test.md) | `nv-ingest/api/api_tests/smoke_test.sh` |
-| [`cli-client-usage.md`](cli-client-usage.md) | `nv-ingest/client/client_examples/examples/cli_client_usage.ipynb` |
-| [`pdf-blueprint.md`](pdf-blueprint.md) | `nv-ingest/deploy/pdf-blueprint.ipynb` (CLI cell) |
-| [`benchmarking.md`](benchmarking.md) | `nv-ingest/docs/docs/extraction/benchmarking.md` and `nv-ingest/tools/harness/README.md` |
+| [`retriever_cli.md`](retriever_cli.md) | Prior `cli-reference` / CLI reference pages under `docs/docs/extraction/` |
+| [`quickstart.md`](quickstart.md) | Legacy service quickstart; supported **Helm** + **NeMo Retriever Library** deployment handoff in quickstart prose; **Docker Compose** (unsupported): [`docker.md`](../docker.md) |
+| [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` (CLI example) |
+| [`smoke-test.md`](smoke-test.md) | `api/api_tests/smoke_test.sh` |
+| [`cli-client-usage.md`](cli-client-usage.md) | `client/client_examples/examples/cli_client_usage.ipynb` |
+| [`pdf-blueprint.md`](pdf-blueprint.md) | `deploy/pdf-blueprint.ipynb` (CLI cell) |
+| [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
 
 ## Gaps with no retriever-CLI equivalent (kept out of this folder)
 
-The following `nv-ingest-cli` examples are **not** migrated here because the
-new CLI does not yet expose an equivalent — continue to use `nv-ingest-cli`
+The following legacy **ingestion-service** CLI examples are **not** migrated here because the
+new CLI does not yet expose an equivalent — continue to use the **ingestion-service** CLI
 for these cases:
 
 - `--task 'udf:{…}'` — user-defined functions
   (`nemo_retriever/src/nemo_retriever/graph/README.md`,
-  `nv-ingest/examples/udfs/README.md`). `retriever` does not expose UDFs.
+  [`examples/udfs/README.md`](../../../examples/udfs/README.md)). `retriever` does not expose UDFs.
 - `--task 'filter:{content_type:"image", min_size:…, min_aspect_ratio:…, max_aspect_ratio:…}'`.
   The image scale/aspect-ratio filter stage is not reproduced in the new CLI.
-- Bare service submission (`nv-ingest-cli --doc foo.pdf` with no extract tasks
+- Bare service submission (legacy CLI `--doc foo.pdf` with no extract tasks
   and full content-type metadata returned by the service). `retriever online submit`
   is currently a stub — only `retriever online stream-pdf` is implemented.
 - `gen_dataset.py` dataset creation with enumeration and sampling.
@@ -62,7 +62,7 @@ for these cases:
 
 ## Conventions used in the examples
 
-- Input paths assume you invoke `retriever` from the `nv-ingest/nemo_retriever`
+- Input paths assume you invoke `retriever` from the `nemo_retriever/`
   directory (or point at absolute paths).
 - `--save-intermediate <dir>` writes the extraction DataFrame as Parquet for
   inspection. LanceDB output goes to `--lancedb-uri` (defaults to `./lancedb`).

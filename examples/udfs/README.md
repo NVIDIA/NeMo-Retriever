@@ -1,6 +1,6 @@
-# NV-Ingest UDF Examples
+# NeMo Retriever UDF Examples
 
-User-Defined Functions (UDFs) let you inject custom processing logic into the NV-Ingest pipeline at specific stages. This directory demonstrates different UDF organizational patterns:
+User-Defined Functions (UDFs) let you inject custom processing logic into the NeMo Retriever extraction pipeline at specific stages. This directory demonstrates different UDF organizational patterns:
 
 ## 📁 UDF Organization
 
@@ -42,7 +42,7 @@ User-Defined Functions (UDFs) let you inject custom processing logic into the NV
 2. **Use with CLI**
    ```bash
    # For markdown files (.md) - process directly as text
-   nv-ingest-cli \
+   legacy-cli \
      --doc './my_markdown_docs/' \
      --task='extract:{"document_type":"text", "extract_text":true}' \
      --task='udf:{"udf_function": "./examples/udfs/structural_split_udf.py:structural_split", "target_stage": "text_splitter", "run_before": true}' \
@@ -74,7 +74,7 @@ User-Defined Functions (UDFs) let you inject custom processing logic into the NV
 **CLI Command (Tested):**
 ```bash
 # Test with the sample markdown file
-nv-ingest-cli \
+legacy-cli \
   --doc data/multimodal_test.md \
   --task='extract:{"document_type":"text", "extract_text":true}' \
   --task='udf:{"udf_function": "./examples/udfs/structural_split_udf.py:structural_split", "target_stage": "text_splitter", "run_before": true}' \
@@ -166,7 +166,7 @@ metadata["custom_content"]["markdown_variant"] = "github_flavored"
 2. **Use with CLI**
    ```bash
    # For HTML files - run UDF BEFORE html_extractor so it can see raw <table> tags
-   nv-ingest-cli \
+   legacy-cli \
      --doc './my_html_docs/' \
      --task='extract:{"document_type":"html"}' \
      --task='udf:{"udf_function": "./examples/udfs/html_to_markdown_udf.py:extract_html_tables_to_markdown", "target_stage": "html_extractor", "run_before": true}' \
@@ -233,10 +233,10 @@ An example configuration (`config/custom_summarization_pipeline.yaml`) demonstra
 
 **To enable custom pipeline loading** (unsupported **Docker Compose** developer workflow — see **[`nemo_retriever/docker.md`](../../nemo_retriever/docker.md)** for full Compose context, registry auth, and support posture):
 
-1. In the **`nv-ingest` repository root** `docker-compose.yaml`, under `nv-ingest-ms-runtime`, **uncomment** the `./config:/workspace/config` volume mount.
+1. In the **NeMo-Retriever repository root** `docker-compose.yaml`, under the **ingest runtime** service (see the file for the exact service name on your revision), **uncomment** the `./config:/workspace/config` volume mount.
 2. **Uncomment** `INGEST_CONFIG_PATH=/workspace/config/custom_summarization_pipeline.yaml` (or your YAML) in the same service’s `environment` list.
 3. Rebuild and restart that service, for example:  
-   `docker compose up -d --build nv-ingest-ms-runtime`
+   `docker compose up -d --build <ingest-runtime-service>`
 
 > **Important**: `INGEST_CONFIG_PATH` must point to a **YAML configuration file** inside the container (after volume mount). The file path is relative to the container's filesystem, not the host.
 
@@ -262,7 +262,7 @@ This approach is useful when you need a customized pipeline graph during **devel
 
 ### Setup & Configuration
 
-Before running the nv-ingest pipeline with the LLM Content Summarizer, set the following environment variables in your shell:
+Before running the extraction pipeline with the LLM Content Summarizer, set the following environment variables in your shell:
 
 ```bash
 export NVIDIA_API_KEY="your-nvidia-api-key"                                      # (required) API key for NVIDIA NIM endpoints
@@ -281,7 +281,7 @@ export LLM_MAX_CONTENT_LENGTH=12000                                             
 
 **CLI Example:**
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc 'my_documents/' \
   --task='extract:{"document_type":"pdf", "extract_text":true}' \
   --task='split' \

@@ -1,11 +1,11 @@
 # Multi-format Smoke Test with the `retriever` CLI
 
 This page is the `retriever`-CLI counterpart to
-`nv-ingest/api/api_tests/smoke_test.sh`.
+`api/api_tests/smoke_test.sh`.
 
 The original script loops over formats (pdf, jpeg, png, tiff, bmp, wav, pptx,
-docx) and submits each file to the running ingest service via
-`nv-ingest-cli`, counting PASS/FAIL and printing a table.
+docx) and submits each file to the running ingest service via the legacy
+**ingestion-service** CLI, counting PASS/FAIL and printing a table.
 
 With `retriever`, each format is driven by a single `--input-type` dispatch.
 The same `exit_code` logic works — `retriever` returns non-zero on failure.

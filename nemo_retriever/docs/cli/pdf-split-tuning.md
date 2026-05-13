@@ -1,7 +1,7 @@
 # PDF Page-Batch Tuning with the `retriever` CLI
 
 This page is the `retriever`-CLI counterpart to the CLI example in
-`nv-ingest/docs/docs/extraction/v2-api-guide.md`.
+`docs/docs/extraction/v2-api-guide.md`.
 
 ## Background
 
@@ -18,7 +18,7 @@ via `--pdf-split-batch-size` (pages per split batch).
 Old (V2 API with 64 pages per chunk):
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --api_version v2 \
   --pdf_split_page_count 64 \
   --doc large_document.pdf \

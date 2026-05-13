@@ -1,14 +1,13 @@
 # Quick Start — `retriever` CLI
 
-This page is the `retriever`-CLI counterpart to the legacy `nv-ingest-cli`
-quickstart.
+This page is the `retriever`-CLI counterpart to the legacy **ingestion-service** quickstart.
 
 Looking for local **Docker Compose** workflows? See
 [`docker.md`](../../docker.md) for **unsupported developer tooling** only.
 
 For **supported** deployment of NeMo Retriever / **NIM** containers, use the
 **Helm** documentation: [nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm)
-and the **NV-Ingest Helm** install guides in the
+and the **NeMo Retriever Library Helm** install guides in the
 [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
 ## Replacement for the quickstart CLI example
@@ -17,18 +16,7 @@ The original quickstart example submits a single PDF to the running service
 and asks for text, tables, charts, and images:
 
 ```bash
-nv-ingest-cli \
-  --doc ./data/multimodal_test.pdf \
-  --output_directory ./processed_docs \
-  --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_tables": "true", "extract_images": "true", "extract_charts": "true"}' \
-  --client_host=localhost \
-  --client_port=7670
-```
-
-The `retriever` equivalent runs the full pipeline locally — extraction,
-embedding, and LanceDB upload — and produces the same multimodal outputs:
-
-```bash
+# Legacy one-liner that targeted localhost:7670 is superseded by:
 retriever pipeline run ./data/multimodal_test.pdf \
   --input-type pdf \
   --method pdfium \
@@ -40,7 +28,7 @@ retriever pipeline run ./data/multimodal_test.pdf \
 ### What you get
 
 - Extracted text, table markdown, and chart descriptions as rows in the
-  LanceDB table at `./lancedb/nv-ingest.lance` (default `--lancedb-uri`).
+  LanceDB table at `./lancedb/nemo-retriever.lance` (default `--lancedb-uri`).
 - Per-document extraction rows as Parquet under `./processed_docs/` (from
   `--save-intermediate`).
 - Extracted image assets on disk under `./processed_docs/images/` (from
@@ -65,7 +53,7 @@ df = pq.read_table("./processed_docs").to_pandas()
 print(df.head())
 
 db = lancedb.connect("./lancedb")
-tbl = db.open_table("nv-ingest")
+tbl = db.open_table("nemo-retriever")
 print(tbl.to_pandas().head())
 ```
 
@@ -75,7 +63,7 @@ quickstart in `nemo_retriever/README.md`):
 ```python
 from nemo_retriever.retriever import Retriever
 
-retriever = Retriever(lancedb_uri="lancedb", lancedb_table="nv-ingest", top_k=5)
+retriever = Retriever(lancedb_uri="lancedb", lancedb_table="nemo-retriever", top_k=5)
 hits = retriever.query(
     "Given their activities, which animal is responsible for the typos?"
 )

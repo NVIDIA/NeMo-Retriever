@@ -2,12 +2,12 @@
 
 > **Warning — unsupported developer tooling.** This page describes **Docker Compose** workflows for **local development** and **internal experimentation**. This path is **unsupported** and should be treated as **developer tooling**, not a supported deployment method.
 >
-> **This is not a supported deployment method for NIM containers** or for production NeMo Retriever / NV-Ingest services.
+> **This is not a supported deployment method for NIM containers** or for production NeMo Retriever services.
 
 **Supported NIM and service deployment:** use **Kubernetes** and **Helm**:
 
 - **NeMo Retriever Helm chart** (retriever **service** + optional in-cluster **NIMs**): [`nemo_retriever/helm/README.md`](helm/README.md)
-- **NV-Ingest Helm charts** and published install procedures: [NeMo Retriever Library — prerequisites & getting started](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (chart names and versions track the NV-Ingest release you run)
+- **Published Library Helm charts** and install procedures: [NeMo Retriever Library — prerequisites & getting started](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (chart names and versions track the NeMo Retriever Library release you run)
 
 For **library-only** Python workflows (no local NIM containers), follow [`README.md`](README.md) instead of this page.
 
@@ -20,16 +20,16 @@ For **library-only** Python workflows (no local NIM containers), follow [`README
 | Compose layout, auth, `.env`, runtime, profiles | This page |
 | Building the retriever **service** image for Helm | [`helm/README.md` § Service image](helm/README.md#1-service-image) |
 | Kubernetes values, secrets, upgrades | [`helm/README.md`](helm/README.md) |
-| Harness SKU overrides (`docker-compose.<sku>.yaml`) | [`../tools/harness/plans/SERVICE_MANAGER.md`](../tools/harness/plans/SERVICE_MANAGER.md) (from `nv-ingest` repo root) |
+| Harness SKU overrides (`docker-compose.<sku>.yaml`) | [`../tools/harness/plans/SERVICE_MANAGER.md`](../tools/harness/plans/SERVICE_MANAGER.md) (from **NeMo-Retriever** repository root) |
 
 ---
 
 ## Repository and `docker-compose.yaml` location
 
-The canonical Compose file for NV-Ingest / NeMo Retriever extraction development lives at the root of the **`nv-ingest`** repository:
+The canonical Compose file for NeMo Retriever extraction development lives at the root of the **[NeMo-Retriever](https://github.com/NVIDIA/NeMo-Retriever)** repository:
 
-- Upstream: [`NVIDIA/nv-ingest` — `docker-compose.yaml`](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml)
-- In a monorepo checkout, run **all** `docker compose` commands from the directory that **contains** that file (the `nv-ingest` root), **not** from `nemo_retriever/` alone.
+- Upstream: [`NVIDIA/NeMo-Retriever` — `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)
+- In a monorepo checkout, run **all** `docker compose` commands from the directory that **contains** that file (the **repository root**), **not** from `nemo_retriever/` alone.
 
 Optional GPU SKU merges use additional files in the same directory, for example `docker-compose.a10g.yaml`, `docker-compose.l40s.yaml`, `docker-compose.a100-40gb.yaml` (see the harness plan above for how automation merges `-f` flags).
 
@@ -57,7 +57,7 @@ If login fails, image pulls will error with **401/403** — re-check the key and
 
 ## Environment variables and `.env`
 
-Compose reads variables from your shell and from a **`.env` file in the project directory** (the directory you pass to `docker compose`, i.e. the `nv-ingest` root). The stack expects (at minimum) valid NVIDIA / NGC credentials for NIM containers, for example:
+Compose reads variables from your shell and from a **`.env` file in the project directory** (the directory you pass to `docker compose`, i.e. the **NeMo-Retriever repository root**). The stack expects (at minimum) valid NVIDIA / NGC credentials for NIM containers, for example:
 
 - `NGC_API_KEY` — used by services as `NGC_API_KEY` / `NIM_NGC_API_KEY` fallbacks in `docker-compose.yaml`
 - `NVIDIA_API_KEY` — some paths use this for build.nvidia.com–compatible keys inside the ingest runtime (see the file for exact wiring)
@@ -70,20 +70,20 @@ Other commonly tuned variables include **`GPU_ID`** (physical GPU index passed t
 
 ## Default developer stack (no extra profiles)
 
-From the `nv-ingest` repository root, after `docker login` and exporting keys (or populating `.env`):
+From the **NeMo-Retriever** repository root, after `docker login` and exporting keys (or populating `.env`):
 
 ```bash
 docker compose up -d
 ```
 
-This starts the **default** services defined **without** a `profiles:` gate (for example core layout NIMs, `redis`, `nv-ingest-ms-runtime`, and bundled observability sidecars — the exact graph is authoritative in `docker-compose.yaml` for your revision).
+This starts the **default** services defined **without** a `profiles:` gate (for example core layout NIMs, the **ingest microservice runtime** (see `docker-compose.yaml` for the exact service name on your revision), and bundled observability sidecars — the exact graph is authoritative in `docker-compose.yaml` for your revision).
 
 ### Bring up only selected services
 
-Example — core layout + OCR + embedding NIMs and Redis (adjust service names to match your checkout):
+Example — core layout + OCR + embedding NIMs (adjust service names to match your checkout):
 
 ```bash
-docker compose up -d redis page-elements graphic-elements table-structure ocr embedding
+docker compose up -d page-elements graphic-elements table-structure ocr embedding
 ```
 
 ### Compose **profiles** (optional components)
@@ -131,7 +131,7 @@ Follow logs for a failing service:
 docker compose logs -f page-elements
 ```
 
-Health endpoints and ready checks vary by service; the ingest runtime exposes HTTP on host port **7670** by default (`nv-ingest-ms-runtime` mapping in `docker-compose.yaml`).
+Health endpoints and ready checks vary by service; the ingest runtime exposes HTTP on host port **7670** by default (see the ingest runtime service mapping in `docker-compose.yaml`).
 
 ---
 
@@ -187,4 +187,4 @@ For **application-level** ingestion errors (not Docker wiring), use [Troubleshoo
 | Topic | Location |
 |-------|----------|
 | Neo4j via Compose (`graph` profile + Python connection) | [`src/nemo_retriever/tabular_data/neo4j/SETUP.md`](src/nemo_retriever/tabular_data/neo4j/SETUP.md) |
-| UDF examples that tweak `nv-ingest-ms-runtime` mounts / `INGEST_CONFIG_PATH` | [`../examples/udfs/README.md`](../examples/udfs/README.md) (Compose snippets there intentionally short — this page is the canonical Compose overview) |
+| UDF examples that tweak ingest-runtime mounts / `INGEST_CONFIG_PATH` | [`../examples/udfs/README.md`](../examples/udfs/README.md) (Compose snippets there intentionally short — this page is the canonical Compose overview) |

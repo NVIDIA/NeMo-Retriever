@@ -1,15 +1,14 @@
 # Use the Retriever Command Line Interface
 
-This page is the `retriever`-CLI counterpart to
-`nv-ingest/docs/docs/extraction/nv-ingest_cli.md` and
-`nv-ingest/docs/docs/extraction/cli-reference.md`.
+This page is the `retriever`-CLI counterpart to the prior CLI reference material under
+`docs/docs/extraction/` (including the historical CLI reference page).
 
-The original `nv-ingest-cli` docs remain valid for service-based ingestion.
+The original **ingestion-service** CLI docs remain valid for service-based ingestion.
 The examples below show how to obtain the same end-user outcomes with the new
 `retriever` Typer app (the `retriever` executable installed with the
 `nemo-retriever` package).
 
-> **Shape difference.** `nv-ingest-cli` is a single command that submits
+> **Shape difference.** The legacy **ingestion-service** CLI was a single command that submits
 > `--task ...` definitions to a running REST service. `retriever` is a
 > multi-subcommand app. The main replacement for document ingestion is
 > `retriever pipeline run INPUT_PATH`, which runs the full graph pipeline
@@ -38,10 +37,10 @@ retriever pipeline run --help
 
 ### Example: Text / PDF file — extract with defaults
 
-Old (`nv-ingest-cli`, returns full metadata over the service):
+Old (`legacy-cli`, returns full metadata over the service):
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc ./data/test.pdf \
   --client_host=localhost \
   --client_port=7670
@@ -67,7 +66,7 @@ The old per-content-type `*.metadata.json` tree is not produced; use
 The old `--task='split'` example submitted a split-only job to the service:
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='split' \
@@ -96,7 +95,7 @@ and inspect the resulting chunks.
 Old:
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium"}' \
@@ -132,7 +131,7 @@ PDF + docx in a single invocation is not supported; invoke once per type.
 Old:
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_text": "true"}' \
@@ -161,7 +160,7 @@ is the batching knob used by the Ray pipeline.
 Old:
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc ./data/test.pdf \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_images": "true"}' \
   --task='caption:{"prompt": "Caption the content of this image:", "reasoning": true}' \
@@ -197,7 +196,7 @@ retriever pipeline run ./data/test.pdf \
 Old (dataset file with sampled entries):
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --dataset dataset.json \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium"}' \
@@ -224,7 +223,7 @@ that contains the files you want.
 Old: extraction + a MinIO upload configured on the service side.
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc ./data/test.pdf \
   --output_directory ./processed_docs \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium"}' \

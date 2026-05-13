@@ -1,11 +1,11 @@
 # Benchmarking with the `retriever` CLI
 
-This page is the `retriever`-CLI counterpart to
-`nv-ingest/docs/docs/extraction/benchmarking.md` and
-`nv-ingest/tools/harness/README.md`.
+This page is the `retriever`-CLI counterpart to the older benchmarking docs under
+`docs/docs/extraction/benchmarking.md` and the integration harness guide at
+`tools/harness/README.md`.
 
 The old benchmarking workflow is driven by `tools/harness` and
-`uv run nv-ingest-harness-run`. The `retriever` CLI exposes the harness (and
+`uv run --project tools/harness python -m nv_ingest_harness.cli.run`. The `retriever` CLI exposes the harness (and
 per-stage micro-benchmarks) as first-class subcommands, so you can run
 benchmarks without `uv run` or a separate harness repo.
 
@@ -16,8 +16,8 @@ Old:
 ```bash
 cd tools/harness
 uv sync
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
-uv run nv-ingest-harness-run --case=e2e --dataset=/path/to/your/data
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=/path/to/your/data
 ```
 
 New — the harness is a subcommand on the main CLI (full parity):
@@ -48,7 +48,7 @@ page images, and element granularity stores element images.
 ## Per-stage micro-benchmarks
 
 The new CLI also exposes stage-level throughput benchmarks that had no direct
-counterpart in `nv-ingest-cli`:
+counterpart in the legacy service-based CLI:
 
 ```bash
 retriever benchmark --help           # split, extract, audio-extract, page-elements, ocr, all
@@ -77,9 +77,9 @@ end-to-end run.
 - The harness use-cases in the old docs (`--case=e2e`, `--dataset=bo767`,
   `--dataset=/path/...`, `--override ...`) are preserved verbatim — only the
   launcher changes (`retriever harness run …` instead of
-  `uv run nv-ingest-harness-run …`).
+  `uv run --project tools/harness python -m nv_ingest_harness.cli.run …`).
 - If you have a repo-local `uv` environment, `uv run retriever harness run …`
   still works.
 - Stage benchmarks (`retriever benchmark …`) are net-new relative to the old
-  `nv-ingest-cli` examples — they are the recommended way to profile
+  service-based CLI examples — they are the recommended way to profile
   individual actors before tuning `pipeline run` flags.

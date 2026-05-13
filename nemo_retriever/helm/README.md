@@ -8,7 +8,7 @@ result + status APIs over HTTP / SSE.
 
 **Unsupported developer path:** ad-hoc **Docker Compose** workflows (not
 chart-managed) are documented separately in [`../docker.md`](../docker.md).
-Use **Helm** (this chart and/or the **NV-Ingest Helm charts** documented in the
+Use **Helm** (this chart and/or the **additional Library charts** documented in the
 [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/))
 for supported NIM and service deployment.
 

@@ -72,7 +72,7 @@ pipeline run
   -> _upload_vdb_records(records, vdb_op, vdb_kwargs)
   -> IngestVdbOperator(records)
   -> IngestVdbOperator.process(...)
-  -> graph rows -> nv-ingest-client VDB record shape
+  -> graph rows -> ingestion Python client VDB record shape
   -> nv_ingest_client.util.vdb.<backend>.run(records)
 ```
 
@@ -86,9 +86,9 @@ Responsibilities:
   mode.
 - `_upload_vdb_records(...)` is the CLI handoff from materialized graph records
   to VDB upload.
-- `IngestVdbOperator` is the boundary to nv-ingest-client VDB writers.
+- `IngestVdbOperator` is the boundary to ingestion Python client VDB writers.
 - Record conversion exists only because `VDB.run(...)` expects the
-  nv-ingest-client nested record shape, while graph output rows are ordinary
+  ingestion Python client nested record shape, while graph output rows are ordinary
   extraction/embed rows.
 
 This path should not contain LanceDB-specific logic except for the default
@@ -181,7 +181,7 @@ rerank if configured
 There are two separate conversion concerns that should not be confused:
 
 1. **Upload conversion**
-   - graph rows -> nv-ingest-client nested records
+   - graph rows -> ingestion Python client nested records
    - required while `VDB.run(records)` is the upload contract
 2. **Retrieval normalization**
    - backend/client hits -> Retriever hit dictionaries
@@ -198,7 +198,7 @@ hits instead of plain dicts, so recall does not silently drop to zero.
 
 These are intentionally out of scope for this PR unless explicitly reopened:
 
-- changing nv-ingest-client VDB behavior beyond the retrieval vector-in
+- changing ingestion Python client VDB behavior beyond the retrieval vector-in
   contract;
 - moving query embedding into a broad new adapter framework;
 - making all legacy BEIR, harness, or outdated example pipelines fully
@@ -224,7 +224,7 @@ The implementation should converge on:
   endpoint embedding used only when configured;
 - backend-specific vector search hidden behind VDB code, not spread through
   Retriever;
-- nv-ingest-client VDB upload behavior unchanged.
+- ingestion Python client VDB upload behavior unchanged.
 
 ## Validation
 

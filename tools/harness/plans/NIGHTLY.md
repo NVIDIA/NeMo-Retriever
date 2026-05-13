@@ -11,17 +11,17 @@ cd tools/harness
 uv pip install -e .
 
 # Vanilla pip: install the harness with pip, then add nightly Nemotron from Test PyPI:
-#   pip install -e .   # (after installing nv-ingest, nv-ingest-api, nv-ingest-client)
+#   pip install -e .   # (after installing ingestion runtime, API, and client packages for your release)
 #   pip install -r nemotron-nightly.txt --force-reinstall --no-deps
 
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
-uv run nv-ingest-harness-nightly
+uv run --project tools/harness python -m nv_ingest_harness.cli.nightly
 
 # Options
-uv run nv-ingest-harness-nightly --skip-slack        # No Slack
-uv run nv-ingest-harness-nightly --skip-fresh-start  # Use running services
-uv run nv-ingest-harness-nightly --dry-run           # Show config only
-uv run nv-ingest-harness-nightly --note "Testing new embedding model"
+uv run --project tools/harness python -m nv_ingest_harness.cli.nightly --skip-slack        # No Slack
+uv run --project tools/harness python -m nv_ingest_harness.cli.nightly --skip-fresh-start  # Use running services
+uv run --project tools/harness python -m nv_ingest_harness.cli.nightly --dry-run           # Show config only
+uv run --project tools/harness python -m nv_ingest_harness.cli.nightly --note "Testing new embedding model"
 ```
 
 ## Configuration
@@ -178,7 +178,7 @@ CREATE TABLE runs (
 If Slack posting fails (e.g., expired webhook), replay results after fixing:
 
 ```bash
-uv run nv-ingest-harness-nightly \
+uv run --project tools/harness python -m nv_ingest_harness.cli.nightly \
   --replay artifacts/bo20_20260109_053712_UTC \
   --replay artifacts/bo767_20260109_053814_UTC
 ```
@@ -203,7 +203,7 @@ jobs:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@v4
-      - run: cd tools/harness && uv pip install -e . && uv run nv-ingest-harness-nightly
+      - run: cd tools/harness && uv pip install -e . && uv run --project tools/harness python -m nv_ingest_harness.cli.nightly
 ```
 
 ### Cron
@@ -212,7 +212,7 @@ jobs:
 # Cron (2 AM daily)
 0 2 * * * cd /path/to/tools/harness && source ~/setup_env.sh && \
   uv pip install -e . && \
-  SLACK_WEBHOOK_URL="..." uv run nv-ingest-harness-nightly >> /var/log/nightly.log 2>&1
+  SLACK_WEBHOOK_URL="..." uv run --project tools/harness python -m nv_ingest_harness.cli.nightly >> /var/log/nightly.log 2>&1
 ```
 
 ## Slack Output

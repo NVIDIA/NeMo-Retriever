@@ -1,9 +1,9 @@
 # `retriever` CLI — Client-Usage Walk-through
 
 This page is the `retriever`-CLI counterpart to
-`nv-ingest/client/client_examples/examples/cli_client_usage.ipynb`.
+`client/client_examples/examples/cli_client_usage.ipynb`.
 
-The original notebook walks through `nv-ingest-cli` by:
+The original notebook walks through the legacy **ingestion-service** CLI by:
 
 1. Printing `--help`.
 2. Submitting a single PDF with `extract + dedup + filter` tasks.
@@ -28,13 +28,13 @@ ingest-specific flags you will actually use in this walk-through.
 Old notebook cell:
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --doc ${SAMPLE_PDF0} \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_text": true, "extract_images": true, "extract_tables": true, "extract_tables_method": "yolox"}' \
   --task='dedup:{"content_type": "image", "filter": true}' \
   --task='filter:{"content_type": "image", "min_size": 128, "max_aspect_ratio": 5.0, "min_aspect_ratio": 0.2, "filter": true}' \
-  --client_host=${REDIS_HOST} \
-  --client_port=${REDIS_PORT} \
+  --client_host=localhost \
+  --client_port=7670 \
   --output_directory=${OUTPUT_DIRECTORY_SINGLE}
 ```
 
@@ -59,7 +59,7 @@ retriever pipeline run "${SAMPLE_PDF0}" \
 - `filter:{content_type:"image", min_size, min/max_aspect_ratio, filter:true}`
   **has no parity.** There is no image scale/aspect-ratio filter in the
   `retriever` CLI today. If that matters, drop to the Python API or keep the
-  old `nv-ingest-cli` for that example.
+  old `legacy-cli` for that example.
 - `extract_images:true` is covered by `--store-images-uri`: the image assets
   produced by the configured embed granularity are persisted to that URI.
 
@@ -68,13 +68,13 @@ retriever pipeline run "${SAMPLE_PDF0}" \
 Old notebook cell:
 
 ```bash
-nv-ingest-cli \
+legacy-cli \
   --dataset ${BATCH_FILE} \
   --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_text": true, "extract_images": true, "extract_tables": true, "extract_tables_method": "yolox"}' \
   --task='dedup:{"content_type": "image", "filter": true}' \
   --task='filter:{"content_type": "image", "min_size": 128, "max_aspect_ratio": 5.0, "min_aspect_ratio": 0.2, "filter": true}' \
-  --client_host=${REDIS_HOST} \
-  --client_port=${REDIS_PORT} \
+  --client_host=localhost \
+  --client_port=7670 \
   --output_directory=${OUTPUT_DIRECTORY_BATCH}
 ```
 
@@ -109,9 +109,9 @@ import lancedb
 df = pq.read_table(OUTPUT_DIRECTORY_BATCH).to_pandas()
 print(df[["source_id", "text", "content_type"]].head())
 
-# LanceDB rows (default table name "nv-ingest"):
+# LanceDB rows (default table name "nemo-retriever"):
 db = lancedb.connect("./lancedb")
-tbl = db.open_table("nv-ingest")
+tbl = db.open_table("nemo-retriever")
 print(tbl.to_pandas().head())
 ```
 
@@ -119,6 +119,6 @@ print(tbl.to_pandas().head())
 
 | Old notebook cell | New `retriever` form | Parity |
 |-------------------|----------------------|--------|
-| `!nv-ingest-cli --help` | `!retriever --help` (plus `retriever pipeline run --help`) | Full |
+| `!legacy-cli --help` | `!retriever --help` (plus `retriever pipeline run --help`) | Full |
 | Single-file extract + dedup + filter | `retriever pipeline run <file> … --dedup …` | Partial — no image-size/aspect filter, `extract_tables_method` auto-selected |
 | Dataset extract + dedup + filter | `retriever pipeline run <dir> …` | Partial — no `dataset.json` loader; use a directory |

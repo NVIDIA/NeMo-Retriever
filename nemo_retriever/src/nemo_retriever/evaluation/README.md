@@ -39,7 +39,7 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
 
 | Stage | Artifacts produced | Code / APIs involved |
 |-------|-------------------|----------------------|
-| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `python -m nemo_retriever.examples.graph_pipeline` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nv-ingest`). |
+| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `python -m nemo_retriever.examples.graph_pipeline` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nemo-retriever`). |
 | **2. Full-page markdown index** | `data/bo767_page_markdown.json` (`source_id` -> page -> markdown) | `retriever eval build-page-index` -> `nemo_retriever.io.markdown.build_page_index()` (which calls `to_markdown_by_page` per document); numpy list columns are coerced so structured content is not dropped. |
 | **3. Retrieval export** | `data/eval/bo767_retrieval_fullpage.json` (or sub-page JSON) | `retriever eval export` -> `nemo_retriever.export.export_retrieval_json()` queries LanceDB; if `--page-index` is provided, hits are expanded/deduped by `(source_id, page)` and replaced with full-page markdown strings. |
 | **4. Ground truth** | `data/bo767_annotations.csv` (repo root) | Questions/answers for export and eval; must align with **query string normalization** in `FileRetriever` (see retrieval JSON rules). |
@@ -91,7 +91,7 @@ uv venv qa-retriever --python 3.12
 source qa-retriever/bin/activate
 
 # 2. Install nemo_retriever with LLM extras (from repo root)
-cd /path/to/nv-ingest
+cd /path/to/nemo-retriever
 uv pip install -e "./nemo_retriever[llm]"
 
 # 3. Set your API key (used by generation + judging)
@@ -104,7 +104,7 @@ See [Python environment](#python-environment) and [Prerequisites](#prerequisites
 <summary><strong>Quick reference -- full-page markdown (all commands)</strong></summary>
 
 ```bash
-cd /path/to/nv-ingest
+cd /path/to/nemo-retriever
 
 # 1. Ingest + embed + save Parquet in one pass (~45-90 min)
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
@@ -138,7 +138,7 @@ retrieval context, which may produce lower scores for structured content
 (tables, charts, infographics).
 
 ```bash
-cd /path/to/nv-ingest
+cd /path/to/nemo-retriever
 
 # 1. Ingest + embed into LanceDB
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
@@ -165,7 +165,7 @@ runs generation + judging + scoring. Optionally saves the retrieval JSON
 so you can re-run eval later without re-querying.
 
 ```bash
-cd /path/to/nv-ingest
+cd /path/to/nemo-retriever
 
 # Single command: ingest -> page index -> LanceDB query -> QA eval
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
@@ -235,7 +235,7 @@ Steps 1-3 (ingest, build index, export) require the **`nemo_retriever`** library
 ```bash
 uv venv qa-retriever --python 3.12
 source qa-retriever/bin/activate
-cd /path/to/nv-ingest   # repo root
+cd /path/to/nemo-retriever   # repo root
 uv pip install -e "./nemo_retriever[llm]"
 ```
 
@@ -274,7 +274,7 @@ python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
 ```
 
 Output:
-- `lancedb/nv-ingest/` (~84k chunks) -- used by step 3 for retrieval queries.
+- `lancedb/nemo-retriever/` (~84k chunks) -- used by step 3 for retrieval queries.
 - `data/bo767_extracted/*.parquet` -- used by step 2 for full-page markdown.
 
 **Minimal (skip Parquet / full-page path):** omit `--save-intermediate` if you only need
@@ -287,7 +287,7 @@ python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
 ```
 
 Output:
-- `lancedb/nv-ingest/` (~84k chunks) -- used by step 3 for retrieval queries.
+- `lancedb/nemo-retriever/` (~84k chunks) -- used by step 3 for retrieval queries.
 
 **Note:** `graph_pipeline.py` uses `--run-mode batch` (Ray Data) by default. For local testing
 without Ray, pass `--run-mode inprocess`. Both modes produce the same output.
@@ -333,7 +333,7 @@ retriever eval export \
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--lancedb-uri` | `lancedb` | LanceDB directory |
-| `--lancedb-table` | `nv-ingest` | LanceDB table name |
+| `--lancedb-table` | `nemo-retriever` | LanceDB table name |
 | `--top-k` | `5` | Chunks per query |
 | `--embedder` | `nvidia/llama-nemotron-embed-1b-v2` | Embedding model |
 | `--query-csv` | _(required)_ | Ground-truth query/answer CSV |
@@ -796,7 +796,7 @@ live and feed results directly to generation/judging. Set `retrieval.type` to
 retrieval:
   type: "lancedb"
   lancedb_uri: "lancedb"
-  lancedb_table: "nv-ingest"
+  lancedb_table: "nemo-retriever"
   embedder: "nvidia/llama-nemotron-embed-1b-v2"
   save_path: "data/eval/bo767_retrieval.json"   # optional -- persists for re-runs
   page_index: "data/bo767_page_markdown.json"    # optional -- full-page expansion
@@ -806,7 +806,7 @@ retrieval:
 |-------|---------|-------------|
 | `type` | `"file"` | `"file"` reads a pre-exported JSON; `"lancedb"` queries live |
 | `lancedb_uri` | `"lancedb"` | LanceDB directory path |
-| `lancedb_table` | `"nv-ingest"` | Table name inside the LanceDB directory |
+| `lancedb_table` | `"nemo-retriever"` | Table name inside the LanceDB directory |
 | `embedder` | `"nvidia/llama-nemotron-embed-1b-v2"` | Embedding model for query encoding |
 | `save_path` | *none* | If set, writes the retrieval JSON for later `type: "file"` re-runs |
 | `page_index` | *none* | JSON page-markdown index for full-page chunk expansion |
@@ -821,7 +821,7 @@ Three usage modes from a single config:
 
 ```bash
 export LANCEDB_URI="lancedb"
-export LANCEDB_TABLE="nv-ingest"           # optional, default: nv-ingest
+export LANCEDB_TABLE="nemo-retriever"           # optional, default: nemo-retriever
 export EMBEDDER="nvidia/llama-nemotron-embed-1b-v2"  # optional
 export RETRIEVAL_SAVE_PATH="data/eval/retrieval.json" # optional
 export QA_DATASET="csv:data/bo767_annotations.csv"
@@ -854,7 +854,7 @@ automatic in-memory build.
 | `GEN_API_KEY` | `retriever eval run --from-env`, config `${GEN_API_KEY}` | Generator API key (falls back to `NVIDIA_API_KEY`) |
 | `JUDGE_API_KEY` | `retriever eval run --from-env`, config `${JUDGE_API_KEY}` | Judge API key (falls back to `NVIDIA_API_KEY`) |
 | `LANCEDB_URI` | `retriever eval run --from-env` (lancedb mode) | LanceDB directory path (activates lancedb mode when `RETRIEVAL_FILE` is unset) |
-| `LANCEDB_TABLE` | `retriever eval run --from-env` (lancedb mode) | LanceDB table name (default: `nv-ingest`) |
+| `LANCEDB_TABLE` | `retriever eval run --from-env` (lancedb mode) | LanceDB table name (default: `nemo-retriever`) |
 | `EMBEDDER` | `retriever eval run --from-env` (lancedb mode) | Embedding model name |
 | `RETRIEVAL_SAVE_PATH` | `retriever eval run --from-env` (lancedb mode) | Optional path to persist the retrieval JSON |
 
@@ -869,7 +869,7 @@ from nemo_retriever.llm import LiteLLMClient, LLMJudge
 
 retriever = Retriever(
     lancedb_uri="lancedb",
-    lancedb_table="nv-ingest",
+    lancedb_table="nemo-retriever",
     embedder="nvidia/llama-nemotron-embed-1b-v2",
     embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
     top_k=5,

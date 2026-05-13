@@ -10,7 +10,7 @@ You’ll set up a CUDA 13–compatible environment, install the library and its 
 
 ## Deployment at a glance
 
-- **Supported (Kubernetes / Helm):** deploy the retriever **service** and optional in-cluster **NIM** workloads with the **[`nemo_retriever/helm` chart](helm/README.md)**. Published **NV-Ingest Helm** install and upgrade flows are documented in the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)** (use together with the chart README for your release).
+- **Supported (Kubernetes / Helm):** deploy the retriever **service** and optional in-cluster **NIM** workloads with the **[`nemo_retriever/helm` chart](helm/README.md)**. Published **Helm** install and upgrade flows for the full extraction stack are documented in the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)** (use together with the chart README for your release).
 - **Unsupported (Docker Compose):** looking for local **Docker Compose** workflows? See **[`docker.md`](docker.md)** — **unsupported developer tooling** for experimentation only, **not** a supported NIM deployment path.
 
 ## Prerequisites
@@ -43,8 +43,10 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0
+uv pip install "nemo-retriever[local]==26.3.0"
 ```
+
+Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
 For **remote NIM inference only** (no local GPU required), the base package is sufficient:
 
@@ -52,8 +54,10 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.3.0 nv-ingest-client==26.3.0 nv-ingest==26.3.0
+uv pip install nemo-retriever==26.3.0
 ```
+
+Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
 
@@ -140,7 +144,7 @@ python -m nemo_retriever.examples.graph_pipeline \
   --lancedb-uri lancedb
 ```
 
-Chunks land at `./lancedb/nv-ingest`, which matches the default `Retriever()`
+Chunks land at `./lancedb/nemo-retriever`, which matches the default `Retriever()`
 constructor used in [Run a recall query](#run-a-recall-query) below. With the
 `[local]` extra installed (see setup), defaults point at local-GPU extraction
 and embedding. For a realistic retrieval corpus, see
@@ -214,7 +218,7 @@ from nemo_retriever.retriever import Retriever
 retriever = Retriever(
   # default values
   lancedb_uri="lancedb",
-  lancedb_table="nv-ingest",
+  lancedb_table="nemo-retriever",
   embedder="nvidia/llama-3.2-nv-embedqa-1b-v2",
   top_k=5,
   reranker=False
@@ -233,7 +237,7 @@ same model that produced the stored chunk vectors:
 ```python
 retriever = Retriever(
     lancedb_uri="lancedb",
-    lancedb_table="nv-ingest",
+    lancedb_table="nemo-retriever",
     embedder="nvidia/llama-nemotron-embed-1b-v2",
     embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
     top_k=5,
@@ -319,7 +323,7 @@ from nemo_retriever.llm import LiteLLMClient
 
 retriever = Retriever(
     lancedb_uri="lancedb",
-    lancedb_table="nv-ingest",
+    lancedb_table="nemo-retriever",
     embedder="nvidia/llama-nemotron-embed-1b-v2",
     embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
     top_k=5,
@@ -568,7 +572,7 @@ stacks)? See **[`docker.md`](docker.md)** — **unsupported developer tooling**
 only.
 
 For **supported** deployment of NeMo Retriever / **NIM** containers, use
-**Helm**: **[`helm/README.md`](helm/README.md)** and the **NV-Ingest Helm**
+**Helm**: **[`helm/README.md`](helm/README.md)** and the **NeMo Retriever Library**
 documentation linked from that guide and the
 [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
@@ -603,7 +607,7 @@ The harness includes BEIR-style ViDoRe dataset presets in `nemo_retriever/harnes
 
 The ViDoRe harness datasets are configured to:
 
-- read PDFs from `/datasets/nv-ingest/vidore_v3_corpus_pdf/...`
+- read PDFs from `/datasets/retrieval-eval/vidore_v3_corpus_pdf/...`
 - ingest with `embed_modality: text_image`
 - embed at `embed_granularity: page`
 - enable `extract_page_as_image: true` and `extract_infographics: true`
@@ -612,7 +616,7 @@ The ViDoRe harness datasets are configured to:
 To run the full ViDoRe sweep:
 
 ```bash
-cd ~/nv-ingest/nemo_retriever
+cd ~/NeMo-Retriever/nemo_retriever
 retriever-harness sweep --runs-config harness/vidore_sweep.yaml
 ```
 
