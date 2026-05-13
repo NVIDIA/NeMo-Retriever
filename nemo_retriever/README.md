@@ -99,9 +99,11 @@ ingestor = (
 
 ### Optional extras
 
-- **`asr`** — Local ASR (Parakeet). Has a different `transformers` requirement than the core package; install only if you need local ASR:
+- **`multimedia`** — Audio/video extraction and SVG rendering support. Install this extra when using Parakeet ASR through `extract_method="audio"` so audio decoding and resampling dependencies are available:
   ```bash
-  uv pip install -e './nemo_retriever[asr]'
+  uv pip install "nemo-retriever[multimedia]"
+  # or, for local GPU inference:
+  uv pip install "nemo-retriever[local,multimedia]"
   ```
 
 Run the batch pipeline script and point it at the directory that contains your PDFs using the following command.

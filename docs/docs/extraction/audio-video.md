@@ -30,6 +30,14 @@ This pipeline enables retrieval at the speech segment level when you enable segm
 
 Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
+Before running audio extraction from Python, install the multimedia extra so the Parakeet ASR client can decode and resample audio:
+
+```bash
+pip install "nemo-retriever[multimedia]"
+# For local GPU inference, include both extras:
+pip install "nemo-retriever[local,multimedia]"
+```
+
 !!! important
 
     Pin the Parakeet workload to the dedicated GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
