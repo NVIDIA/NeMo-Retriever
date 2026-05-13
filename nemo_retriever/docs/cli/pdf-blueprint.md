@@ -76,8 +76,6 @@ print(tbl.to_pandas().head())
   exercise the REST API), replace the CLI cell with a `retriever online serve`
   container plus `retriever online stream-pdf` for per-page NDJSON output.
   Note that `retriever online submit` is currently a stub.
-- LanceDB and local `--store-images-uri` / `--save-intermediate` paths do not
-  use MinIO. The optional `nv-ingest-client[minio]` extra exists for legacy
-  Milvus bulk-upload helpers in the client
-  (`client/src/nv_ingest_client/util/vdb/milvus.py`), not for
-  the LanceDB vector path—skip it for this in-process blueprint.
+- LanceDB and local `--store-images-uri` / `--save-intermediate` paths run
+  entirely from the local filesystem — no extra storage extras are needed for
+  the LanceDB vector path in this in-process blueprint.

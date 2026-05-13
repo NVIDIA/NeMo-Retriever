@@ -282,7 +282,7 @@ The pool has three main components:
 - Returns `False` when full, causing the ingest router to 503
 
 **Worker processes** — isolated operator chains:
-- Each worker calls `_worker_initializer` once, which builds the full `nv-ingest` operator chain
+- Each worker calls `_worker_initializer` once, which builds the full Nemo Retriever Library (NRL) operator chain
 - `_run_pipeline_batch` receives page descriptors, builds a DataFrame, runs the chain, and writes results to SQLite
 - Provenance columns (`_page_document_id`, etc.) track which output rows belong to which input page through content-explosion stages
 
