@@ -41,7 +41,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -211,7 +210,15 @@ def add_custom_analyses(
             )
             continue
 
-        analysis_id = str(uuid.uuid4())
+        # Match the Sql node by its full text so re-runs reuse the existing
+        # node instead of creating a fresh one (which would cause duplicate
+        # HAS_SQL edges from the merged CustomAnalysis node).
+        query_obj.sql_node.match_props = {"sql_full_query": sql}
+
+        # Match the CustomAnalysis node by name so re-running the script is
+        # idempotent (Tables/Columns merge by id derived from their fully
+        # qualified path; CustomAnalysis has no such id, so name is the
+        # natural key from the JSON spec).
         analysis_node = Neo4jNode(
             name=name,
             label=Labels.CUSTOM_ANALYSIS,
@@ -219,10 +226,10 @@ def add_custom_analyses(
                 "name": name,
                 "description": entry.get("description", ""),
             },
-            existing_id=analysis_id,
+            match_props={"name": name},
         )
 
-        edge_props = {Props.ANALYSIS_ID: analysis_id}
+        edge_props = {Props.ANALYSIS_ID: analysis_node.get_id()}
         query_obj.edges.append((analysis_node, query_obj.sql_node, edge_props))
 
         add_query(query_obj.get_edges())
