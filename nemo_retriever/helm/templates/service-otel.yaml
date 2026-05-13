@@ -1,0 +1,27 @@
+{{- if .Values.topology.otel.enabled }}
+{{- $fullname := include "nemo-retriever.fullname" . -}}
+{{- $otel := .Values.topology.otel -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-otel
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "otel") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "otel") | nindent 4 }}
+  ports:
+    - name: otlp-grpc
+      protocol: TCP
+      port: {{ $otel.ports.otlpGrpc }}
+      targetPort: otlp-grpc
+    - name: otlp-http
+      protocol: TCP
+      port: {{ $otel.ports.otlpHttp }}
+      targetPort: otlp-http
+    - name: prometheus
+      protocol: TCP
+      port: {{ $otel.ports.prometheus }}
+      targetPort: prometheus
+{{- end }}

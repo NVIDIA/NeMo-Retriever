@@ -636,6 +636,9 @@ def _run_evaluation(
     beir_doc_id_field: Optional[str],
     beir_k: list[int],
     local_query_embed_backend: str = "hf",
+    run_mode: str = "inprocess",
+    service_url: Optional[str] = None,
+    service_api_token: Optional[str] = None,
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
     """Run recall or BEIR evaluation.
 
@@ -653,9 +656,7 @@ def _run_evaluation(
     eval_vdb_kwargs = dict(vdb_kwargs or {})
 
     if evaluation_mode == "beir":
-        if str(vdb_op).strip().lower() != "lancedb":
-            raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
-        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir, resolve_beir_dataset_options
+        from nemo_retriever.recall.beir import BeirConfig, resolve_beir_dataset_options
 
         beir_options = resolve_beir_dataset_options(
             dataset_name=beir_dataset_name,
@@ -694,9 +695,21 @@ def _run_evaluation(
             local_hf_batch_size=int(local_hf_batch_size),
             local_query_max_length=int(local_query_max_length),
             local_query_embed_backend=local_query_embed_backend,
+            service_url=service_url if run_mode == "service" else None,
+            service_api_token=service_api_token,
         )
+
         evaluation_start = time.perf_counter()
-        beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
+        if run_mode == "service" and service_url:
+            from nemo_retriever.recall.beir import evaluate_service_beir
+
+            beir_dataset, _raw_hits, _run, metrics = evaluate_service_beir(cfg)
+        else:
+            if str(vdb_op).strip().lower() != "lancedb":
+                raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
+            from nemo_retriever.recall.beir import evaluate_lancedb_beir
+
+            beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
         return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
 
     if recall_match_mode != "audio_segment":
@@ -1523,6 +1536,9 @@ def run(
             beir_doc_id_field=beir_doc_id_field,
             beir_k=beir_k,
             local_query_embed_backend=local_query_embed_backend,
+            run_mode=run_mode,
+            service_url=service_url,
+            service_api_token=service_api_token,
         )
 
         if not ran:

@@ -1,4 +1,8 @@
 {{- $svc := .Values.service -}}
+{{- if eq .Values.topology.mode "standalone" }}
+# =========================================================================
+# Standalone mode — single Deployment with both worker pools
+# =========================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,8 +13,6 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ $svc.replicas }}
   {{- end }}
-  # SQLite + RWO PVC enforce a single writer. Keep the strategy as Recreate
-  # so we never have two pods sharing the volume during a rolling update.
   strategy:
     type: Recreate
   selector:
@@ -24,8 +26,6 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        # Force a pod roll whenever the rendered config changes so the
-        # service picks up new settings without a manual rollout.
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- with $svc.podAnnotations }}
         {{- toYaml . | nindent 8 }}
@@ -65,8 +65,6 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          # The service config path matches NEMO_RETRIEVER_SERVICE_CONFIG
-          # baked into the image, so no extra arg parsing is needed.
           args:
             - retriever
             - service
@@ -112,8 +110,6 @@ spec:
             - name: retriever-results
               mountPath: {{ .Values.retrieverResults.mountPath }}
             {{- end }}
-            # /tmp is writable so uploaded files can be staged briefly even
-            # when the rest of the rootfs is read-only.
             - name: tmp
               mountPath: /tmp
             {{- with $svc.extraVolumeMounts }}
@@ -150,3 +146,132 @@ spec:
         {{- with $svc.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+{{- else }}
+# =========================================================================
+# Split mode — three Deployments: gateway, realtime, batch
+# =========================================================================
+{{- $roles := list "gateway" "realtime" "batch" }}
+{{- range $role := $roles }}
+{{- $roleCfg := index $.Values.topology $role }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" $role) }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" $role) | nindent 4 }}
+spec:
+  {{- if not (and (hasKey $roleCfg "hpa") (index $roleCfg "hpa").enabled) }}
+  replicas: {{ $roleCfg.replicas }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" $role) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" $role) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "nemo-retriever.serviceAccountName" $ }}
+      {{- include "nemo-retriever.imagePullSecrets" $ | nindent 6 }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $roleCfg.terminationGracePeriodSeconds | default 15 }}
+      {{- with $roleCfg.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $roleCfg.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $roleCfg.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if ne $role "gateway" }}
+      initContainers:
+        - name: wait-for-gateway
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              GATEWAY="{{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "gateway") }}"
+              PORT="{{ $.Values.networkService.port }}"
+              echo "Waiting for gateway at ${GATEWAY}:${PORT} ..."
+              until wget -qO- --timeout=3 "http://${GATEWAY}:${PORT}/v1/health" >/dev/null 2>&1; do
+                echo "  gateway not ready — retrying in 3s"
+                sleep 3
+              done
+              echo "Gateway is healthy — starting worker"
+      {{- end }}
+      containers:
+        - name: nemo-retriever
+          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          args:
+            - retriever
+            - service
+            - start
+            - --config
+            - /etc/nemo-retriever/retriever-service.yaml
+          ports:
+            - name: http
+              containerPort: {{ $.Values.serviceConfig.server.port }}
+              protocol: TCP
+          env:
+            - name: NEMO_RETRIEVER_SERVICE_CONFIG
+              value: /etc/nemo-retriever/retriever-service.yaml
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            {{- if or $.Values.nimApiKey.value $.Values.nimApiKey.existingSecret }}
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-retriever.nimApiKeySecretName" $ }}
+                  key: {{ $.Values.nimApiKey.existingSecretKey }}
+            {{- end }}
+            {{- with $svc.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- $resources := deepCopy $roleCfg.resources }}
+            {{- if and (hasKey $roleCfg "gpu") (index $roleCfg "gpu").enabled }}
+            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" (index $roleCfg "gpu").count -}}
+            {{- end }}
+            {{- toYaml $resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nemo-retriever
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          {{- if $svc.startupProbe.enabled }}
+          startupProbe:
+            {{- omit $svc.startupProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if $svc.livenessProbe.enabled }}
+          livenessProbe:
+            {{- omit $svc.livenessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if $svc.readinessProbe.enabled }}
+          readinessProbe:
+            {{- omit $svc.readinessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "nemo-retriever.role.configMapName" (dict "context" $ "role" $role) }}
+        - name: tmp
+          emptyDir: {}
+{{- end }}
+{{- end }}

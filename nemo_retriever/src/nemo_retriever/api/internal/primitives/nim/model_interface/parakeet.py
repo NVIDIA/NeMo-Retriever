@@ -2,6 +2,8 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import io
 import base64
 import logging
@@ -10,10 +12,22 @@ from typing import List
 from typing import Optional
 from typing import Tuple
 
-import grpc
 import numpy as np
-import riva.client
-from scipy.io import wavfile
+
+try:
+    import grpc
+except ModuleNotFoundError:
+    grpc = None  # type: ignore[assignment]
+
+try:
+    import riva.client as riva_client
+except ModuleNotFoundError:
+    riva_client = None  # type: ignore[assignment]
+
+try:
+    from scipy.io import wavfile
+except ModuleNotFoundError:
+    wavfile = None  # type: ignore[assignment]
 
 from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
 
@@ -72,8 +86,8 @@ class ParakeetClient:
             self.auth_metadata.append(("function-id", self.function_id))
 
         # Create authentication and ASR service objects.
-        self._auth = riva.client.Auth(self.ssl_cert, self.use_ssl, self.endpoint, self.auth_metadata)
-        self._asr_service = riva.client.ASRService(self._auth)
+        self._auth = riva_client.Auth(self.ssl_cert, self.use_ssl, self.endpoint, self.auth_metadata)
+        self._asr_service = riva_client.ASRService(self._auth)
 
     @traceable_func(trace_name="{stage_name}::{model_name}")
     def infer(self, data: dict, model_name: str, **kwargs) -> Any:
@@ -165,12 +179,12 @@ class ParakeetClient:
 
         Returns
         -------
-        Optional[riva.client.RecognitionResponse]
+        Optional[riva_client.RecognitionResponse]
             The response containing the transcription results.
             Returns None if the transcription fails.
         """
         # Build the recognition configuration.
-        recognition_config = riva.client.RecognitionConfig(
+        recognition_config = riva_client.RecognitionConfig(
             language_code=language_code,
             max_alternatives=max_alternatives,
             profanity_filter=profanity_filter,
@@ -180,17 +194,17 @@ class ParakeetClient:
         )
 
         # Add additional configuration parameters.
-        riva.client.add_word_boosting_to_config(
+        riva_client.add_word_boosting_to_config(
             recognition_config,
             boosted_lm_words or [],
             boosted_lm_score,
         )
-        riva.client.add_speaker_diarization_to_config(
+        riva_client.add_speaker_diarization_to_config(
             recognition_config,
             speaker_diarization,
             diarization_max_speakers,
         )
-        riva.client.add_endpoint_parameters_to_config(
+        riva_client.add_endpoint_parameters_to_config(
             recognition_config,
             start_history,
             start_threshold,

@@ -75,6 +75,23 @@ dependencies = [
 # when a gRPC client is constructed; install ``nemo-retriever[local]`` for on-box
 # Triton + GPU stacks (``tritonclient`` is listed under ``local``).
 
+# ── Service mode (remote NIMs over HTTP — no local GPU models) ───────────────
+# Lightweight dependencies needed to run the FastAPI service with InprocessExecutor
+# when all heavy inference is offloaded to remote NIM endpoints.  Excludes GPU
+# frameworks (torch, vLLM), HuggingFace model weights (nemotron-*), and
+# transformers to keep the container image small.
+service = [
+  # HTTP retry decorator used by NIM model interfaces
+  "backoff",
+  # Lightweight utilities used by pipeline operators
+  "glom",
+  "easydict",
+  "addict",
+  "scikit-learn>=1.6.0",
+  "psutil>=5.9.0",
+  "apscheduler>=3.10",
+]
+
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
 # Adds HuggingFace transformers, torch, nemotron models, GPU monitoring, and vLLM.
 local = [
@@ -149,7 +166,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[local,multimedia,tabular,benchmarks,llm]",
+  "nemo_retriever[service,local,multimedia,tabular,benchmarks,llm]",
 ]
 
 [project.scripts]

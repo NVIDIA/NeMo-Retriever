@@ -1,0 +1,77 @@
+{{- if .Values.topology.otel.enabled }}
+{{- $fullname := include "nemo-retriever.fullname" . -}}
+{{- $otelName := printf "%s-otel" $fullname -}}
+{{- $otel := .Values.topology.otel -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $otelName }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "otel") | nindent 4 }}
+spec:
+  replicas: {{ $otel.replicas }}
+  selector:
+    matchLabels:
+      {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "otel") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "otel") | nindent 8 }}
+      annotations:
+        checksum/otel-config: {{ include (print $.Template.BasePath "/configmap-otel.yaml") . | sha256sum }}
+    spec:
+      {{- with $otel.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $otel.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $otel.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: otel-collector
+          image: "{{ $otel.image.repository }}:{{ $otel.image.tag }}"
+          imagePullPolicy: {{ $otel.image.pullPolicy }}
+          args:
+            - --config=/etc/otelcol/config.yaml
+          ports:
+            - name: otlp-grpc
+              containerPort: {{ $otel.ports.otlpGrpc }}
+              protocol: TCP
+            - name: otlp-http
+              containerPort: {{ $otel.ports.otlpHttp }}
+              protocol: TCP
+            - name: prometheus
+              containerPort: {{ $otel.ports.prometheus }}
+              protocol: TCP
+          resources:
+            {{- toYaml $otel.resources | nindent 12 }}
+          volumeMounts:
+            - name: otel-config
+              mountPath: /etc/otelcol
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: otel-config
+          configMap:
+            name: {{ $otelName }}-config
+{{- end }}

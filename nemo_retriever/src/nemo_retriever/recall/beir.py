@@ -173,6 +173,11 @@ class BeirConfig:
     local_reranker_backend: str = "vllm"
     #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
     local_query_embed_backend: str = "hf"
+    #: When set, queries are sent to this service URL (POST /v1/query) instead of local LanceDB.
+    service_url: str | None = None
+    service_api_token: str | None = None
+    service_query_batch_size: int = 32
+    service_max_concurrent: int = 16
 
     def __post_init__(self) -> None:
         from nemo_retriever.model import (
@@ -836,6 +841,156 @@ def evaluate_lancedb_beir(
     metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
     logger.info(
         "Computed BEIR metrics for dataset=%s queries=%d ks=%s",
+        dataset.dataset_name,
+        len(dataset.query_ids),
+        list(ks),
+    )
+    return dataset, raw_hits, run, metrics
+
+
+# ── Service-mode BEIR evaluation ─────────────────────────────────────
+
+
+def _query_service_batch(
+    client: Any,
+    base_url: str,
+    queries: list[str],
+    *,
+    top_k: int,
+    headers: dict[str, str],
+) -> list[list[dict[str, Any]]]:
+    """Send a batch of queries to POST /v1/query (sync httpx)."""
+    payload: dict[str, Any] = {
+        "query": queries if len(queries) > 1 else queries[0],
+        "top_k": top_k,
+    }
+    resp = client.post(f"{base_url}/v1/query", json=payload, headers=headers)
+    resp.raise_for_status()
+    body = resp.json()
+    all_hits: list[list[dict[str, Any]]] = []
+    for result_set in body.get("results", []):
+        hits = result_set.get("hits", []) if isinstance(result_set, dict) else []
+        all_hits.append(hits)
+    return all_hits
+
+
+def _query_service_all(
+    base_url: str,
+    queries: list[str],
+    *,
+    top_k: int,
+    batch_size: int = 32,
+    max_concurrent: int = 16,
+    token: str | None = None,
+) -> list[list[dict[str, Any]]]:
+    """Query a remote service for all queries using batched concurrent requests."""
+    import asyncio
+
+    import httpx as _httpx
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    all_hits: list[list[dict[str, Any]]] = [[] for _ in queries]
+    semaphore = asyncio.Semaphore(max_concurrent)
+    timeout = _httpx.Timeout(300.0, connect=30.0)
+    limits = _httpx.Limits(
+        max_connections=max_concurrent * 2,
+        max_keepalive_connections=max_concurrent,
+    )
+
+    async def _run() -> None:
+        async with _httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+
+            async def _do_batch(start: int, end: int) -> None:
+                async with semaphore:
+                    batch = queries[start:end]
+                    payload: dict[str, Any] = {
+                        "query": batch if len(batch) > 1 else batch[0],
+                        "top_k": top_k,
+                    }
+                    resp = await client.post(
+                        f"{base_url}/v1/query",
+                        json=payload,
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+                    body = resp.json()
+                    for i, result_set in enumerate(body.get("results", [])):
+                        hits = result_set.get("hits", []) if isinstance(result_set, dict) else []
+                        all_hits[start + i] = hits
+
+            tasks = []
+            for start in range(0, len(queries), batch_size):
+                end = min(start + batch_size, len(queries))
+                tasks.append(asyncio.create_task(_do_batch(start, end)))
+
+            total = len(tasks)
+            done = 0
+            for coro in asyncio.as_completed(tasks):
+                await coro
+                done += 1
+                if done % 5 == 0 or done == total:
+                    logger.info("Service query progress: %d/%d batches", done, total)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            pool.submit(asyncio.run, _run()).result()
+    else:
+        asyncio.run(_run())
+
+    return all_hits
+
+
+def evaluate_service_beir(
+    cfg: BeirConfig,
+) -> tuple["BeirDataset", list[list[dict[str, Any]]], dict[str, dict[str, float]], dict[str, float]]:
+    """Load a BEIR-style dataset, query a remote service, and compute aggregate metrics.
+
+    Same interface as :func:`evaluate_lancedb_beir` but sends queries to
+    ``POST {cfg.service_url}/v1/query`` instead of searching a local LanceDB.
+    """
+    if not cfg.service_url:
+        raise ValueError("service_url is required for service-mode BEIR evaluation")
+
+    dataset = load_beir_dataset(
+        cfg.loader,
+        dataset_name=cfg.dataset_name,
+        split=cfg.split,
+        query_language=cfg.query_language,
+        doc_id_field=cfg.doc_id_field,
+    )
+    ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
+
+    logger.info(
+        "Running service-mode BEIR evaluation: url=%s queries=%d top_k=%d batch_size=%d",
+        cfg.service_url,
+        len(dataset.queries),
+        max(ks),
+        cfg.service_query_batch_size,
+    )
+
+    raw_hits = _query_service_all(
+        cfg.service_url,
+        list(dataset.queries),
+        top_k=max(ks),
+        batch_size=cfg.service_query_batch_size,
+        max_concurrent=cfg.service_max_concurrent,
+        token=cfg.service_api_token,
+    )
+
+    run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)
+    metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
+    logger.info(
+        "Computed service BEIR metrics for dataset=%s queries=%d ks=%s",
         dataset.dataset_name,
         len(dataset.query_ids),
         list(ks),

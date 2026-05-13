@@ -2472,6 +2472,15 @@ multimedia = [
     { name = "scipy" },
     { name = "soundfile" },
 ]
+service = [
+    { name = "addict" },
+    { name = "apscheduler" },
+    { name = "backoff" },
+    { name = "easydict" },
+    { name = "glom" },
+    { name = "psutil" },
+    { name = "scikit-learn" },
+]
 tabular = [
     { name = "duckdb" },
     { name = "duckdb-engine" },
@@ -2483,9 +2492,12 @@ tabular = [
 requires-dist = [
     { name = "accelerate", marker = "extra == 'local'", specifier = "==1.12.0" },
     { name = "addict", marker = "extra == 'local'" },
+    { name = "addict", marker = "extra == 'service'" },
     { name = "albumentations", marker = "extra == 'local'", specifier = "==2.0.8" },
     { name = "apscheduler", marker = "extra == 'local'", specifier = ">=3.10" },
+    { name = "apscheduler", marker = "extra == 'service'", specifier = ">=3.10" },
     { name = "backoff" },
+    { name = "backoff", marker = "extra == 'service'" },
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2.2" },
     { name = "cairosvg", marker = "extra == 'multimedia'", specifier = ">=2.7.0" },
     { name = "click", specifier = ">=8.2.0" },
@@ -2494,6 +2506,7 @@ requires-dist = [
     { name = "duckdb", marker = "extra == 'tabular'", specifier = ">=1.2.0" },
     { name = "duckdb-engine", marker = "extra == 'tabular'", specifier = ">=0.13.0" },
     { name = "easydict", marker = "extra == 'local'" },
+    { name = "easydict", marker = "extra == 'service'" },
     { name = "einops", marker = "extra == 'local'" },
     { name = "fastapi", specifier = ">=0.114.0" },
     { name = "fastmcp", specifier = ">=2.0.0" },
@@ -2502,6 +2515,7 @@ requires-dist = [
     { name = "flashinfer-python", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==0.6.4" },
     { name = "fsspec", specifier = ">=2025.5.1" },
     { name = "glom", marker = "extra == 'local'" },
+    { name = "glom", marker = "extra == 'service'" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lancedb" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=0.3.0" },
@@ -2509,7 +2523,7 @@ requires-dist = [
     { name = "librosa", marker = "extra == 'multimedia'", specifier = ">=0.10.2" },
     { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40.0" },
     { name = "markitdown" },
-    { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "tabular"], marker = "extra == 'all'" },
+    { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "service", "tabular"], marker = "extra == 'all'" },
     { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.0.0.dev0,<2.0.0a0", index = "https://test.pypi.org/simple/" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
@@ -2523,6 +2537,7 @@ requires-dist = [
     { name = "pillow", specifier = "==12.2.0" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0,<8" },
     { name = "psutil", marker = "extra == 'local'", specifier = ">=5.9.0" },
+    { name = "psutil", marker = "extra == 'service'", specifier = ">=5.9.0" },
     { name = "pydantic", specifier = ">=2.8.0" },
     { name = "pypdfium2", specifier = "==4.30.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.2" },
@@ -2533,6 +2548,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7.0" },
     { name = "s3fs", specifier = ">=2025.5.1" },
     { name = "scikit-learn", marker = "extra == 'local'", specifier = ">=1.6.0" },
+    { name = "scikit-learn", marker = "extra == 'service'", specifier = ">=1.6.0" },
     { name = "scipy", marker = "extra == 'multimedia'", specifier = ">=1.11.0" },
     { name = "soundfile", marker = "extra == 'multimedia'", specifier = ">=0.12.0" },
     { name = "sqlglot", specifier = ">=30.0.0" },
@@ -2553,7 +2569,7 @@ requires-dist = [
     { name = "vllm", marker = "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra == 'local'", specifier = "==0.17.0" },
     { name = "vllm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local'", url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl" },
 ]
-provides-extras = ["local", "multimedia", "tabular", "benchmarks", "llm", "dev", "all"]
+provides-extras = ["service", "local", "multimedia", "tabular", "benchmarks", "llm", "dev", "all"]
 
 [[package]]
 name = "nemotron-graphic-elements-v1"
