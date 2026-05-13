@@ -363,21 +363,21 @@ def extract_candidates(
 
     combined_custom: list[dict] = []
     combined_columns: list[dict] = []
-    for text in pulls:
-        all_hits = (
-            get_candidates_information(
-                retriever,
-                text,
-                list_of_semantic=target_labels,
-            )
-            or []
-        )
-        for hit in all_hits:
-            lab = str(hit.get("label") or "")
-            if lab == Labels.CUSTOM_ANALYSIS:
-                combined_custom.append(hit)
-            elif lab == Labels.COLUMN:
-                combined_columns.append(hit)
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _search(text):
+        return get_candidates_information(retriever, text, list_of_semantic=target_labels) or []
+
+    with ThreadPoolExecutor(max_workers=min(len(pulls), 8)) as executor:
+        futures = {executor.submit(_search, text): text for text in pulls}
+        for future in as_completed(futures):
+            for hit in future.result():
+                lab = str(hit.get("label") or "")
+                if lab == Labels.CUSTOM_ANALYSIS:
+                    combined_custom.append(hit)
+                elif lab == Labels.COLUMN:
+                    combined_columns.append(hit)
 
     out_custom = _dedupe_best_score_sort_cap(combined_custom)
     out_columns = _dedupe_best_score_sort_cap(combined_columns)

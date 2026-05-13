@@ -43,6 +43,10 @@ import logging
 import time
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nemo_retriever.params import EmbedParams, VdbUploadParams
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +142,13 @@ def apply_metadata(database_name: str) -> None:
     )
 
 
-def add_custom_analyses(database_name: str, dialect: str) -> None:
-    """Ingest custom analyses for *database_name* into the Neo4j graph.
+def add_custom_analyses(
+    database_name: str,
+    dialect: str,
+    embed_params: "EmbedParams | None" = None,
+    vdb_params: "VdbUploadParams | None" = None,
+) -> None:
+    """Ingest custom analyses for *database_name* into the Neo4j graph and the VDB.
 
     Reads ``<this dir>/<database_name>_custom_analyses.json`` — a list of
     ``{"name", "description", "sql"}`` entries — and, for each entry:
@@ -149,6 +158,13 @@ def add_custom_analyses(database_name: str, dialect: str) -> None:
       corresponding ``Sql -> Table/Column`` edges;
     * creates a :class:`CustomAnalysis` node with ``name`` and ``description``;
     * connects ``CustomAnalysis -[:HAS_SQL]-> Sql``.
+
+    When *embed_params* and *vdb_params* are provided, the function then
+    embeds each newly-ingested analysis (name + description + SQL) and
+    **appends** the rows to the configured LanceDB table — so they live
+    alongside the rows the main embed pipeline writes for ``Table`` and
+    ``Column`` nodes. The append mode means the main pipeline (which uses
+    ``overwrite=True``) must run *before* this function.
 
     Entries with no SQL, or whose SQL doesn't resolve to any known table, are
     skipped with a warning. Must be called *after* schema ingestion so the
@@ -216,5 +232,107 @@ def add_custom_analyses(database_name: str, dialect: str) -> None:
         "Ingested %d/%d custom analyses in %.2fs.",
         ingested,
         len(analyses),
+        time.time() - before,
+    )
+
+    if ingested == 0:
+        return
+
+    if embed_params is None or vdb_params is None:
+        logger.info("Skipping custom-analysis embedding: embed_params/vdb_params not provided.")
+        return
+
+    _embed_custom_analyses(database_name, embed_params, vdb_params)
+
+
+def _embed_custom_analyses(
+    database_name: str,
+    embed_params: "EmbedParams",
+    vdb_params: "VdbUploadParams",
+) -> None:
+    """Fetch ``CustomAnalysis`` docs from Neo4j, embed them, and append to LanceDB.
+
+    Filters to analyses whose SQL references at least one table belonging to
+    *database_name* via the path
+    ``CustomAnalysis -[:HAS_SQL]-> Sql -[:SQL]-> Table <-[:CONTAINS]- Schema <-[:CONTAINS]- Database``,
+    shapes the result into the same 5-column DataFrame the main pipeline
+    produces, then uses the same embedder
+    (:func:`nemo_retriever.text_embed.runtime.embed_text_main_text_embed`) and
+    writer (:class:`IngestVdbOperator`) as the main pipeline — but forces
+    ``overwrite=False`` so existing Table/Column rows are preserved.
+    """
+    import pandas as pd
+
+    from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
+    from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
+    from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
+    from nemo_retriever.vdb import IngestVdbOperator
+
+    query = f"""
+        MATCH (ca:{Labels.CUSTOM_ANALYSIS})-[:{Edges.HAS_SQL}]->(sql:{Labels.SQL})
+              -[:{Edges.SQL}]->(t:{Labels.TABLE})<-[:{Edges.CONTAINS}]-(s:{Labels.SCHEMA})
+              <-[:{Edges.CONTAINS}]-(d:{Labels.DB}{{name: $database_name}})
+        WITH DISTINCT ca, sql,
+             CASE
+                 WHEN ca.description IS NOT NULL AND trim(toString(ca.description)) <> ''
+                 THEN ca.description
+                 ELSE ''
+             END AS desc,
+             CASE
+                 WHEN sql.sql_full_query IS NOT NULL
+                 THEN ', sql: ' + sql.sql_full_query
+                 ELSE ''
+             END AS sql_text
+        RETURN collect({{
+            text: 'custom_analysis: ' + ca.name +
+                  CASE WHEN desc <> '' THEN ', description: ' + desc ELSE '' END +
+                  sql_text,
+            name: ca.name,
+            label: labels(ca)[0],
+            id: ca.id
+        }}) AS docs
+    """
+    result = get_neo4j_conn().query_read(query, parameters={"database_name": database_name})
+    docs = result[0].get("docs") if result else None
+    if not docs:
+        logger.info("No CustomAnalysis rows found for %r; skipping VDB upsert.", database_name)
+        return
+
+    rows = []
+    for item in docs:
+        node_id = item.get("id")
+        path = f"neo4j:{node_id}" if node_id is not None else "neo4j:unknown"
+        tabular_fields = {
+            "id": node_id,
+            "label": item.get("label", ""),
+            "name": item.get("name", ""),
+            "source_path": path,
+            "database_name": database_name,
+        }
+        rows.append(
+            {
+                "text": (item.get("text") or "").strip(),
+                "_embed_modality": "text",
+                "path": path,
+                "page_number": -1,
+                "metadata": {**tabular_fields, "content_metadata": dict(tabular_fields)},
+            }
+        )
+    df = pd.DataFrame(rows)
+
+    before = time.time()
+    embedded = embed_text_main_text_embed(
+        df,
+        model_name=embed_params.model_name,
+        embed_invoke_url=embed_params.embed_invoke_url,
+        api_key=embed_params.api_key,
+        embed_modality=embed_params.embed_modality,
+    )
+
+    append_kwargs = {**vdb_params.vdb_kwargs, "overwrite": False}
+    IngestVdbOperator(vdb_op=vdb_params.vdb_op, vdb_kwargs=append_kwargs)(embedded.to_dict(orient="records"))
+    logger.info(
+        "Embedded and appended %d CustomAnalysis row(s) to LanceDB in %.2fs.",
+        len(embedded),
         time.time() - before,
     )
