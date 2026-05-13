@@ -204,6 +204,8 @@ jobs:
           CUDA_HOME: /usr/local/cuda
           BUILD_CPP_EXTENSION: "1"
           BUILD_CPP_FORCE: "1"
+          OCR_TORCH_VERSION: "2.11.0"
+          OCR_TORCHVISION_VERSION: "0.26.0"
           TORCH_CUDA_ARCH_LIST: "8.0;8.6;8.9;9.0;10.0;12.0+PTX"
           PIP_EXTRA_INDEX_URL: "https://download.pytorch.org/whl/cu130"
         shell: bash
@@ -236,6 +238,7 @@ jobs:
           fi
 
           python --version
+          python -m pip install "packaging>=24"
           python ci/scripts/nightly_build_publish.py \
             --repo-id "${{ matrix.ocr.id }}" \
             --repo-url "${{ matrix.ocr.url }}" \
@@ -255,8 +258,8 @@ jobs:
             --venv-pip-install "hatchling" \
             --venv-pip-install "setuptools>=68" \
             --venv-pip-install "ninja" \
-            --venv-pip-install "torch==2.10.0" \
-            --venv-pip-install "torchvision==0.25.0" \
+            --venv-pip-install "torch==${OCR_TORCH_VERSION}" \
+            --venv-pip-install "torchvision==${OCR_TORCHVISION_VERSION}" \
             --pin-runtime-dependency "torch" \
             --pin-runtime-dependency "torchvision" \
             --build-env "BUILD_CPP_EXTENSION=1" \
@@ -268,9 +271,15 @@ jobs:
             ${skip_existing_flag}
 
           python - <<'PY'
+          import os
           import sys
           import zipfile
+          from email.parser import Parser
           from pathlib import Path
+          from packaging.requirements import Requirement
+          from packaging.specifiers import SpecifierSet
+          from packaging.utils import canonicalize_name
+          from packaging.version import Version
 
           dist_dir = Path("dist-out/${{ matrix.ocr.id }}")
           wheels = sorted(dist_dir.glob("*.whl"))
@@ -281,6 +290,35 @@ jobs:
           expected_project = "nemotron-ocr"
           expected_package = "nemotron_ocr"
           expected_version_prefix = "${{ matrix.ocr.nightly_base_version }}.dev"
+          expected_runtime_dependencies = {
+              "torch": f"~={os.environ['OCR_TORCH_VERSION']}",
+              "torchvision": f"~={os.environ['OCR_TORCHVISION_VERSION']}",
+          }
+
+          def expanded_compatible_specifier(specifier):
+              if not specifier.startswith("~="):
+                  return None
+              version = Version(specifier[2:])
+              release = version.release
+              if len(release) < 3:
+                  return None
+              upper = f"{release[0]}.{release[1] + 1}.0"
+              return SpecifierSet(f">={version},<{upper}")
+
+          def declares_runtime_dependency(metadata, package, specifier):
+              expected_name = canonicalize_name(package)
+              expected_specifier = SpecifierSet(specifier)
+              expanded_specifier = expanded_compatible_specifier(specifier)
+              for value in Parser().parsestr(metadata).get_all("Requires-Dist", []):
+                  requirement = Requirement(value)
+                  if canonicalize_name(requirement.name) != expected_name:
+                      continue
+                  if requirement.specifier == expected_specifier:
+                      return True
+                  if expanded_specifier and requirement.specifier == expanded_specifier:
+                      return True
+              return False
+
           matches = []
           for wheel in wheels:
               with zipfile.ZipFile(wheel) as zf:
@@ -295,6 +333,12 @@ jobs:
                   )
               if not any(name.startswith(f"{expected_package}/") for name in names):
                   raise SystemExit(f"Built wheel is missing {expected_package} package")
+              for package, specifier in expected_runtime_dependencies.items():
+                  expected = f"Requires-Dist: {package}{specifier}"
+                  if not declares_runtime_dependency(metadata, package, specifier):
+                      raise SystemExit(
+                          f"Built wheel metadata does not declare runtime dependency {expected!r}"
+                      )
               if any(name.startswith("nemotron_ocr_v2/") for name in names):
                   raise SystemExit("Built wheel still contains the patched nemotron_ocr_v2 package")
               for name in names:

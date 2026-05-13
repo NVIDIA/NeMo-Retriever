@@ -98,10 +98,10 @@ local = [
 
   "glom",
   "transformers>=4.57.6,<5",
-  "tokenizers>=0.20.3",
+  "tokenizers>=0.21.1",
   "accelerate==1.12.0",
-  "torch~=2.10.0",
-  "torchvision>=0.25,<0.26",
+  "torch~=2.11.0",
+  "torchvision>=0.26.0,<0.27",
   "tritonclient",
   "einops",
   "easydict",
@@ -120,10 +120,10 @@ local = [
   # vLLM compiles CUDA kernels at runtime via torch inductor (requires Python.h).
   # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
   # system Python installs typically omit them and will fail with InductorError.
-  "vllm==0.17.0; sys_platform == 'linux'",
+  "vllm==0.20.0; sys_platform == 'linux'",
   # flashinfer and cubin versions must match
-  "flashinfer-cubin==0.6.4; sys_platform == 'linux'",
-  "flashinfer-python==0.6.4; sys_platform == 'linux'",
+  "flashinfer-cubin==0.6.8.post1; sys_platform == 'linux'",
+  "flashinfer-python==0.6.8.post1; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
@@ -189,11 +189,6 @@ torch = [
 torchvision = [
   { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-vllm = [
-  { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl", marker = "platform_machine == 'x86_64'" },
-  { url = "https://github.com/vllm-project/vllm/releases/download/v0.17.0/vllm-0.17.0+cu130-cp38-abi3-manylinux_2_35_aarch64.whl", marker = "platform_machine == 'aarch64'" },
-]
-
 [[tool.uv.index]]
 name = "test-pypi"
 url = "https://test.pypi.org/simple/"
