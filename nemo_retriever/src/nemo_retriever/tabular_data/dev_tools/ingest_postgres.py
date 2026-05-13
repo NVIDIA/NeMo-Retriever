@@ -13,7 +13,7 @@ import argparse
 import logging
 import os
 
-from nemo_retriever.tabular_data.dev_tools.apply_metadata import (
+from nemo_retriever.tabular_data.dev_tools.enrich_graph import (
     add_custom_analyses,
     apply_metadata,
 )
@@ -102,7 +102,6 @@ def run_ingest() -> None:
     extract_graph.execute(None)
 
     apply_metadata(connector.database_name)
-    add_custom_analyses(connector.database_name, connector.dialect)
 
     embed_graph = (
         Graph()
@@ -121,6 +120,15 @@ def run_ingest() -> None:
         logger.info("Tabular ingest result: %d rows written to LanceDB", len(result_df))
     else:
         logger.info("Tabular ingest result: no rows produced")
+
+    # Custom analyses are ingested after the main embed step so they can be
+    # appended to LanceDB without being wiped by the overwrite=True write above.
+    add_custom_analyses(
+        connector.database_name,
+        connector.dialect,
+        embed_params=EMBED_PARAMS,
+        vdb_params=VDB_PARAMS,
+    )
 
 
 def _build_retriever() -> Retriever:
