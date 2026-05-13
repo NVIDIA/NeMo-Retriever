@@ -295,3 +295,62 @@ class TestCaptionImageParamThreading:
         infer_kwargs = mock_nim.infer.call_args[1]
         assert "top_p" not in infer_kwargs
         assert infer_kwargs["max_tokens"] == 1024
+
+
+def test_caption_params_accepts_extra_body():
+    from nemo_retriever.params import CaptionParams
+
+    params = CaptionParams(extra_body={"chat_template_kwargs": {"enable_thinking": True}})
+
+    assert params.extra_body == {"chat_template_kwargs": {"enable_thinking": True}}
+    assert params.model_dump(mode="python")["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
+
+
+def test_vlm_model_interface_forwards_request_extras():
+    from nemo_retriever.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+
+    interface = VLMModelInterface()
+    payloads, batch_data = interface.format_input(
+        {"base64_images": ["abc123"], "prompt": "Caption this."},
+        protocol="http",
+        max_batch_size=8,
+        model_name="nvidia/test-vlm",
+        temperature=0.25,
+        max_tokens=99,
+        chat_template_kwargs={"enable_thinking": False},
+        mm_processor_kwargs={"max_dynamic_patch": 4},
+        media_options={"image": {"detail": "high"}},
+        extra_body={"custom_request_id": "caption-123"},
+    )
+
+    assert len(payloads) == 1
+    assert batch_data == [{"base64_images": ["abc123"], "prompt": "Caption this."}]
+    assert payloads[0]["model"] == "nvidia/test-vlm"
+    assert payloads[0]["temperature"] == 0.25
+    assert payloads[0]["max_tokens"] == 99
+    assert payloads[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payloads[0]["mm_processor_kwargs"] == {"max_dynamic_patch": 4}
+    assert payloads[0]["media_options"] == {"image": {"detail": "high"}}
+    assert payloads[0]["custom_request_id"] == "caption-123"
+
+
+def test_vlm_model_interface_extra_body_overrides_payload_fields():
+    from nemo_retriever.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+
+    interface = VLMModelInterface()
+    payloads, _batch_data = interface.format_input(
+        {"base64_images": ["abc123"], "prompt": "Caption this."},
+        protocol="http",
+        max_batch_size=8,
+        model_name="nvidia/test-vlm",
+        temperature=0.25,
+        chat_template_kwargs={"enable_thinking": False},
+        extra_body={
+            "temperature": 0.05,
+            "chat_template_kwargs": {"enable_thinking": True},
+        },
+    )
+
+    assert len(payloads) == 1
+    assert payloads[0]["temperature"] == 0.05
+    assert payloads[0]["chat_template_kwargs"] == {"enable_thinking": True}

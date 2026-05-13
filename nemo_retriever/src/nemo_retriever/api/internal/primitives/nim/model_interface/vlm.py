@@ -125,6 +125,14 @@ class VLMModelInterface(ModelInterface):
                 "top_p": kwargs.get("top_p", 1.0),
                 "stream": kwargs.get("stream", False),
             }
+            for extra_key in ("chat_template_kwargs", "mm_processor_kwargs", "media_options"):
+                if kwargs.get(extra_key) is not None:
+                    payload[extra_key] = kwargs[extra_key]
+
+            extra_body = kwargs.get("extra_body")
+            if isinstance(extra_body, dict):
+                payload.update(extra_body)
+
             payloads.append(payload)
             batch_data = {"base64_images": batch, "prompt": prompt}
             if system_prompt:
