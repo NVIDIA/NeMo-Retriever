@@ -252,7 +252,7 @@ datasets:
     path: /datasets/nv-ingest/audio_retrieval_data_mp3
     query_csv: /datasets/nv-ingest/video_retrieval_eval_gt_audio_only.csv
     input_type: audio
-    evaluation_mode: recall
+    evaluation_mode: audio_recall
     segment_audio: true
     audio_split_type: time
     audio_split_interval: 36000

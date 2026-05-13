@@ -38,6 +38,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from nemo_retriever.harness import history
 from nemo_retriever.harness import scheduler as sched_module
+from nemo_retriever.harness.config import VALID_EVALUATION_MODES
 
 mimetypes.add_type("text/javascript", ".jsx")
 
@@ -386,7 +387,7 @@ class DatasetCreateRequest(BaseModel):
     recall_required: bool = False
     recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
-    evaluation_mode: str = "beir"
+    evaluation_mode: str = "none"
     beir_loader: str | None = None
     beir_dataset_name: str | None = None
     beir_split: str = "test"
@@ -1552,8 +1553,19 @@ async def list_managed_datasets():
     return history.get_all_datasets()
 
 
+def _validate_dataset_evaluation_mode(evaluation_mode: str | None) -> None:
+    if evaluation_mode == "recall":
+        raise HTTPException(status_code=422, detail="evaluation_mode=recall has been renamed to evaluation_mode=audio_recall")
+    if evaluation_mode and evaluation_mode not in VALID_EVALUATION_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}",
+        )
+
+
 @app.post("/api/managed-datasets")
 async def create_managed_dataset(req: DatasetCreateRequest):
+    _validate_dataset_evaluation_mode(req.evaluation_mode)
     if req.evaluation_mode == "beir" and not str(req.beir_loader or "").strip():
         raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
     data = req.model_dump(exclude_none=True)
@@ -1623,6 +1635,10 @@ async def import_datasets_yaml(file: UploadFile = File(...)):
         body = body if isinstance(body, dict) else {}
         payload = {"name": name.strip(), **body}
         payload.setdefault("path", "")
+        try:
+            _validate_dataset_evaluation_mode(payload.get("evaluation_mode"))
+        except HTTPException as exc:
+            raise HTTPException(status_code=400, detail=f"{name}: {exc.detail}")
         existing = history.get_dataset_by_name(name.strip())
         if existing:
             history.update_dataset(existing["id"], payload)
@@ -1650,6 +1666,7 @@ async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
 
     requested = req.model_dump()
     effective_mode = requested.get("evaluation_mode") or existing.get("evaluation_mode")
+    _validate_dataset_evaluation_mode(effective_mode)
     effective_loader = (
         requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
     )

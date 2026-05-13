@@ -16,7 +16,7 @@ REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
 VALID_RUN_MODES = {"batch", "inprocess", "service"}
-VALID_EVALUATION_MODES = {"none", "recall", "beir"}
+VALID_EVALUATION_MODES = {"none", "audio_recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none"}
 VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -77,14 +77,14 @@ class HarnessConfig:
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = True
-    # Legacy recall fields only apply when evaluation_mode="recall" and input_type="audio".
+    # Audio recall fields only apply when evaluation_mode="audio_recall".
     recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
     audio_match_tolerance_secs: float = 2.0
     segment_audio: bool = False
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
-    evaluation_mode: str = "recall"
+    evaluation_mode: str = "none"
     beir_loader: str | None = None
     video_extract_audio: bool = True
     video_extract_frames: bool = True
@@ -161,20 +161,22 @@ class HarnessConfig:
                 errors.append("service_max_concurrency must be >= 1")
             return errors
 
-        if self.evaluation_mode not in VALID_EVALUATION_MODES:
+        if self.evaluation_mode == "recall":
+            errors.append("evaluation_mode=recall has been renamed to evaluation_mode=audio_recall")
+        elif self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
 
-        if self.evaluation_mode == "recall" and self.recall_required and not self.query_csv:
+        if self.evaluation_mode == "audio_recall" and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
 
         if self.input_type not in {"pdf", "txt", "html", "doc", "audio", "video"}:
             errors.append(f"input_type must be one of pdf/txt/html/doc/audio/video, got '{self.input_type}'")
 
-        if self.evaluation_mode == "recall":
+        if self.evaluation_mode == "audio_recall":
             if self.input_type != "audio":
-                errors.append("evaluation_mode=recall is only supported for input_type=audio; use evaluation_mode=beir")
+                errors.append("evaluation_mode=audio_recall is only supported for input_type=audio")
             if self.recall_match_mode != "audio_segment":
-                errors.append("recall_match_mode must be audio_segment when evaluation_mode=recall")
+                errors.append("recall_match_mode must be audio_segment when evaluation_mode=audio_recall")
 
             if self.recall_adapter not in VALID_RECALL_ADAPTERS:
                 errors.append(f"recall_adapter must be one of {sorted(VALID_RECALL_ADAPTERS)}")

@@ -67,13 +67,13 @@ def test_load_harness_config_precedence(tmp_path: Path, monkeypatch: pytest.Monk
     assert cfg.recall_required is True
 
 
-def test_harness_config_preserves_legacy_evaluation_defaults(tmp_path: Path) -> None:
+def test_harness_config_defaults_to_no_evaluation(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
 
     cfg = HarnessConfig(dataset_dir=str(dataset_dir), dataset_label="tiny", preset="base")
 
-    assert cfg.evaluation_mode == "recall"
+    assert cfg.evaluation_mode == "none"
     assert cfg.beir_loader is None
 
 
@@ -145,7 +145,7 @@ def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: 
                 f"  dataset_dir: {dataset_dir}",
                 "  preset: base",
                 "  input_type: audio",
-                "  evaluation_mode: recall",
+                "  evaluation_mode: audio_recall",
                 "  recall_match_mode: audio_segment",
                 "  recall_required: true",
                 "presets:",
@@ -262,7 +262,7 @@ def test_load_nightly_config_rejects_invalid_metric_keys(tmp_path: Path) -> None
         load_nightly_config(str(runs_path))
 
 
-def test_load_harness_config_rejects_document_recall_mode(tmp_path: Path) -> None:
+def test_load_harness_config_rejects_old_recall_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -290,7 +290,7 @@ def test_load_harness_config_rejects_document_recall_mode(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="evaluation_mode=recall is only supported"):
+    with pytest.raises(ValueError, match="evaluation_mode=recall has been renamed"):
         load_harness_config(config_file=str(cfg_path))
 
 
@@ -316,7 +316,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
                 "    input_type: audio",
-                "    evaluation_mode: recall",
+                "    evaluation_mode: audio_recall",
                 "    segment_audio: true",
                 "    audio_split_type: time",
                 "    audio_split_interval: 30",
@@ -331,6 +331,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
 
     cfg = load_harness_config(config_file=str(cfg_path))
     assert cfg.input_type == "audio"
+    assert cfg.evaluation_mode == "audio_recall"
     assert cfg.segment_audio is True
     assert cfg.audio_split_type == "time"
     assert cfg.audio_split_interval == 30
@@ -546,7 +547,7 @@ def test_load_harness_config_rejects_invalid_recall_adapter(tmp_path: Path) -> N
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
                 "    input_type: audio",
-                "    evaluation_mode: recall",
+                "    evaluation_mode: audio_recall",
                 "    recall_match_mode: audio_segment",
                 "    recall_required: true",
                 "    recall_adapter: unknown_adapter",
