@@ -329,7 +329,7 @@ def _embed_custom_analyses(
         embed_modality=embed_params.embed_modality,
     )
 
-    append_kwargs = {**vdb_params.vdb_kwargs, "mode": "overwrite"}
+    append_kwargs = {**vdb_params.vdb_kwargs, "overwrite": False}
     IngestVdbOperator(vdb_op=vdb_params.vdb_op, vdb_kwargs=append_kwargs)(embedded.to_dict(orient="records"))
     logger.info(
         "Embedded and appended %d CustomAnalysis row(s) to LanceDB in %.2fs.",
