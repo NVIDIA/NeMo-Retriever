@@ -1,10 +1,8 @@
 # Docker Compose for local development (unsupported)
 
-!!! warning "Unsupported developer tooling"
-
-    This page describes **Docker Compose** workflows for **local development** and **internal experimentation**. This path is **unsupported** and should be treated as **developer tooling**, not a supported deployment method.
-
-    **This is not a supported deployment method for NIM containers** or for production NeMo Retriever / NV-Ingest services.
+> **Warning — unsupported developer tooling.** This page describes **Docker Compose** workflows for **local development** and **internal experimentation**. This path is **unsupported** and should be treated as **developer tooling**, not a supported deployment method.
+>
+> **This is not a supported deployment method for NIM containers** or for production NeMo Retriever / NV-Ingest services.
 
 **Supported NIM and service deployment:** use **Kubernetes** and **Helm**:
 
