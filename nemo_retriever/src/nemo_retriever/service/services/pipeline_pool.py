@@ -81,7 +81,8 @@ async def _fire_gateway_callback(
             if resp.status_code != 200:
                 logger.warning(
                     "Gateway callback returned HTTP %d for item %s",
-                    resp.status_code, item_id,
+                    resp.status_code,
+                    item_id,
                 )
     except Exception as exc:
         logger.warning("Failed to fire gateway callback for item %s: %s", item_id, exc)
@@ -185,18 +186,25 @@ class _Pool:
 
                 if item.callback_url:
                     await _fire_gateway_callback(
-                        item.callback_url, item.id, "completed",
-                        result_rows=result_rows, result_data=result_data,
+                        item.callback_url,
+                        item.id,
+                        "completed",
+                        result_rows=result_rows,
+                        result_data=result_data,
                     )
                 elif tracker is not None:
                     tracker.mark_completed(
-                        item.id, result_rows=result_rows, result_data=result_data,
+                        item.id,
+                        result_rows=result_rows,
+                        result_data=result_data,
                     )
                 self._processed += 1
             except Exception as exc:
                 if item.callback_url:
                     await _fire_gateway_callback(
-                        item.callback_url, item.id, "failed",
+                        item.callback_url,
+                        item.id,
+                        "failed",
                         error=f"{type(exc).__name__}: {exc}",
                     )
                 else:
@@ -237,13 +245,15 @@ class _Pool:
 
         if self._workers:
             done, still_pending = await asyncio.wait(
-                self._workers, timeout=timeout,
+                self._workers,
+                timeout=timeout,
             )
             if still_pending:
                 logger.warning(
-                    "Pool '%s': %d workers did not exit within %.1fs — "
-                    "force-cancelling",
-                    self._name, len(still_pending), timeout,
+                    "Pool '%s': %d workers did not exit within %.1fs — " "force-cancelling",
+                    self._name,
+                    len(still_pending),
+                    timeout,
                 )
                 for task in still_pending:
                     task.cancel()

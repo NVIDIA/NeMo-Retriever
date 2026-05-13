@@ -527,8 +527,7 @@ class ServiceIngestor(ingestor):
     def cancel(self, job_id: str | None = None) -> dict[str, Any]:
         """Not supported — the server does not expose a cancel endpoint."""
         raise NotImplementedError(
-            "Cancel is not supported in service mode. "
-            "The server does not currently expose a cancel endpoint."
+            "Cancel is not supported in service mode. " "The server does not currently expose a cancel endpoint."
         )
 
     # ------------------------------------------------------------------

@@ -81,7 +81,7 @@ service:
   terminationGracePeriodSeconds: 60
 
   podSecurityContext:
-    runAsNonRoot: false
+    runAsNonRoot: true
   securityContext: {}
 
   serviceAccount:

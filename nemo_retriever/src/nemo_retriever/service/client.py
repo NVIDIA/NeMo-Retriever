@@ -374,7 +374,9 @@ class RetrieverServiceClient:
         t0 = time.monotonic()
 
         async with httpx.AsyncClient(
-            timeout=timeout, limits=pool_limits, headers=self._auth_headers,
+            timeout=timeout,
+            limits=pool_limits,
+            headers=self._auth_headers,
         ) as client:
             upload_sem = asyncio.Semaphore(self._max_concurrency)
             upload_failures: list[tuple[str, str]] = []
@@ -410,16 +412,12 @@ class RetrieverServiceClient:
 
             if progress_ctx:
                 with progress_ctx:
-                    sse_task = asyncio.create_task(
-                        self._consume_sse(client, pending, uploads_done, tracker)
-                    )
+                    sse_task = asyncio.create_task(self._consume_sse(client, pending, uploads_done, tracker))
                     await asyncio.sleep(0.3)
                     await _upload_all()
                     await sse_task
             else:
-                sse_task = asyncio.create_task(
-                    self._consume_sse(client, pending, uploads_done, tracker)
-                )
+                sse_task = asyncio.create_task(self._consume_sse(client, pending, uploads_done, tracker))
                 await asyncio.sleep(0.3)
                 await _upload_all()
                 await sse_task
@@ -432,8 +430,10 @@ class RetrieverServiceClient:
         if show_progress:
             mins, secs = divmod(elapsed, 60)
             pps_str = f"{len(files) / elapsed:.1f}" if elapsed > 0 else "N/A"
-            print(f"\n  Completed: {tracker.completed}  Failed: {tracker.failed}  "
-                  f"Upload errors: {len(upload_failures)}")
+            print(
+                f"\n  Completed: {tracker.completed}  Failed: {tracker.failed}  "
+                f"Upload errors: {len(upload_failures)}"
+            )
             print(f"  Wall time: {int(mins)}m {secs:.1f}s  ({pps_str} docs/sec)")
             if tracker.errors:
                 print(f"\n  Errors ({len(tracker.errors)}):")
@@ -467,7 +467,9 @@ class RetrieverServiceClient:
         timeout = httpx.Timeout(timeout=None, connect=30.0)
 
         async with httpx.AsyncClient(
-            timeout=timeout, limits=pool_limits, headers=self._auth_headers,
+            timeout=timeout,
+            limits=pool_limits,
+            headers=self._auth_headers,
         ) as client:
             upload_sem = asyncio.Semaphore(self._max_concurrency)
 
@@ -478,18 +480,22 @@ class RetrieverServiceClient:
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
-                            await event_queue.put({
-                                "event": "upload_complete",
-                                "filename": fpath.name,
-                                "document_id": doc_id,
-                            })
+                            await event_queue.put(
+                                {
+                                    "event": "upload_complete",
+                                    "filename": fpath.name,
+                                    "document_id": doc_id,
+                                }
+                            )
                     except Exception as exc:
                         logger.error("Upload failed for %s: %s", fpath.name, exc)
-                        await event_queue.put({
-                            "event": "upload_failed",
-                            "filename": fpath.name,
-                            "error": str(exc),
-                        })
+                        await event_queue.put(
+                            {
+                                "event": "upload_failed",
+                                "filename": fpath.name,
+                                "error": str(exc),
+                            }
+                        )
 
             async def _upload_all() -> None:
                 tasks = [asyncio.create_task(_upload_one_file(f)) for f in files]
@@ -499,14 +505,16 @@ class RetrieverServiceClient:
             def _on_sse_event(event: dict[str, Any]) -> None:
                 doc_id = event.get("id", "")
                 status = event.get("status", "completed")
-                event_queue.put_nowait({
-                    "event": "document_complete",
-                    "document_id": doc_id,
-                    "status": status,
-                    "result_rows": event.get("result_rows", 0),
-                    "elapsed_s": event.get("elapsed_s"),
-                    "error": event.get("error"),
-                })
+                event_queue.put_nowait(
+                    {
+                        "event": "document_complete",
+                        "document_id": doc_id,
+                        "status": status,
+                        "result_rows": event.get("result_rows", 0),
+                        "elapsed_s": event.get("elapsed_s"),
+                        "error": event.get("error"),
+                    }
+                )
 
             async def _sse_then_signal() -> None:
                 await self._consume_sse(client, pending, uploads_done, tracker, on_event=_on_sse_event)

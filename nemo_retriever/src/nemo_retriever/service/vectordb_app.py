@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # ── Request / response models ────────────────────────────────────────
 
+
 class WriteRequest(BaseModel):
     rows: list[dict[str, Any]]
 
@@ -55,6 +56,7 @@ class QueryResponse(BaseModel):
 
 
 # ── VectorDB state ───────────────────────────────────────────────────
+
 
 class VectorDBState:
     """Thread-safe wrapper around a LanceDB connection."""
@@ -105,12 +107,18 @@ class VectorDBState:
                     return 0
                 schema = lancedb_schema(vector_dim=dim)
                 create_or_append_lancedb_table(
-                    self._db, self.table_name, rows, schema, overwrite=True,
+                    self._db,
+                    self.table_name,
+                    rows,
+                    schema,
+                    overwrite=True,
                 )
                 self._table_exists = True
                 logger.info(
                     "Created LanceDB table '%s' with %d rows (dim=%d)",
-                    self.table_name, len(rows), dim,
+                    self.table_name,
+                    len(rows),
+                    dim,
                 )
             else:
                 table = self._db.open_table(self.table_name)
@@ -138,11 +146,7 @@ class VectorDBState:
         table = self._db.open_table(self.table_name)
         raw_results = []
         for vector in vectors:
-            results = (
-                table.search(vector)
-                .limit(top_k)
-                .to_list()
-            )
+            results = table.search(vector).limit(top_k).to_list()
             raw_results.append(results)
 
         return normalize_retrieval_results(raw_results)
@@ -179,8 +183,6 @@ def create_vectordb_app(
 ) -> FastAPI:
     """Build the VectorDB FastAPI application."""
 
-    global _state, _query_semaphore
-
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         global _state, _query_semaphore
@@ -194,7 +196,10 @@ def create_vectordb_app(
         _query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
         logger.info(
             "VectorDB service started: uri=%s table=%s embed=%s max_concurrent_queries=%d",
-            lancedb_uri, table_name, embed_endpoint or "(none)", MAX_CONCURRENT_QUERIES,
+            lancedb_uri,
+            table_name,
+            embed_endpoint or "(none)",
+            MAX_CONCURRENT_QUERIES,
         )
         yield
         _state = None
@@ -260,6 +265,7 @@ def create_vectordb_app(
 
 
 # ── CLI entry point ──────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")

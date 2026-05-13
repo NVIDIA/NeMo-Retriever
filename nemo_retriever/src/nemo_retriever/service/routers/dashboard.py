@@ -14,8 +14,6 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any
-
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -30,12 +28,14 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "static"
 
 # ── Request models ───────────────────────────────────────────────────
 
+
 class VdbQueryRequest(BaseModel):
     query: str
     top_k: int = Field(default=10, ge=1, le=1000)
 
 
 # ── SPA shell ────────────────────────────────────────────────────────
+
 
 @router.get("", include_in_schema=False)
 @router.get("/", include_in_schema=False)
@@ -47,6 +47,7 @@ async def index():
 
 
 # ── Overview API ─────────────────────────────────────────────────────
+
 
 @router.get("/api/overview")
 async def overview(request: Request) -> JSONResponse:
@@ -99,17 +100,20 @@ async def overview(request: Request) -> JSONResponse:
             "batch_url": gateway_cfg.batch_url,
         }
 
-    return JSONResponse({
-        "mode": config.mode,
-        "backends": backends,
-        "vectordb": vdb_status,
-        "job_summary": job_summary,
-        "worker_config": worker_config,
-        "gateway": gateway_info,
-    })
+    return JSONResponse(
+        {
+            "mode": config.mode,
+            "backends": backends,
+            "vectordb": vdb_status,
+            "job_summary": job_summary,
+            "worker_config": worker_config,
+            "gateway": gateway_info,
+        }
+    )
 
 
 # ── Jobs SSE stream ─────────────────────────────────────────────────
+
 
 @router.get("/api/jobs")
 async def jobs_sse(request: Request) -> StreamingResponse:
@@ -167,6 +171,7 @@ async def jobs_sse(request: Request) -> StreamingResponse:
 
 # ── Jobs snapshot (REST fallback) ────────────────────────────────────
 
+
 @router.get("/api/jobs/snapshot")
 async def jobs_snapshot(request: Request) -> JSONResponse:
     from nemo_retriever.service.services.job_tracker import get_job_tracker
@@ -175,13 +180,16 @@ async def jobs_snapshot(request: Request) -> JSONResponse:
     if tracker is None:
         return JSONResponse({"summary": {}, "jobs": []})
 
-    return JSONResponse({
-        "summary": tracker.summary(),
-        "jobs": tracker.all_records(),
-    })
+    return JSONResponse(
+        {
+            "summary": tracker.summary(),
+            "jobs": tracker.all_records(),
+        }
+    )
 
 
 # ── VDB tables ───────────────────────────────────────────────────────
+
 
 @router.get("/api/vdb/tables")
 async def vdb_tables(request: Request) -> JSONResponse:
@@ -196,18 +204,23 @@ async def vdb_tables(request: Request) -> JSONResponse:
             resp = await client.get(f"{vdb_cfg.vectordb_url}/v1/health")
             resp.raise_for_status()
             health = resp.json()
-            return JSONResponse({
-                "tables": [{
-                    "name": health.get("table", ""),
-                    "total_rows": health.get("total_rows", 0),
-                    "exists": health.get("table_exists", False),
-                }],
-            })
+            return JSONResponse(
+                {
+                    "tables": [
+                        {
+                            "name": health.get("table", ""),
+                            "total_rows": health.get("total_rows", 0),
+                            "exists": health.get("table_exists", False),
+                        }
+                    ],
+                }
+            )
     except Exception as exc:
         return JSONResponse({"error": str(exc), "tables": []})
 
 
 # ── VDB query proxy ──────────────────────────────────────────────────
+
 
 @router.post("/api/vdb/query")
 async def vdb_query(req: VdbQueryRequest, request: Request) -> JSONResponse:

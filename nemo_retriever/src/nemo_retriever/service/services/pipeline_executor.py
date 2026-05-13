@@ -40,9 +40,15 @@ logger = logging.getLogger(__name__)
 _MP_CONTEXT = mp.get_context("forkserver")
 _MAX_TASKS_PER_CHILD = 100
 
-_SENSITIVE_PATTERNS = frozenset({
-    "api_key", "password", "secret", "token", "credential",
-})
+_SENSITIVE_PATTERNS = frozenset(
+    {
+        "api_key",
+        "password",
+        "secret",
+        "token",
+        "credential",
+    }
+)
 
 
 def _redact_dict(d: dict[str, Any]) -> dict[str, Any]:
@@ -74,10 +80,17 @@ def get_pipeline_configs() -> dict[str, dict[str, Any]]:
     return _pipeline_configs
 
 
-_LARGE_COLUMNS = frozenset({
-    "bytes", "page_image", "image_b64", "images", "charts",
-    "infographics", "tables",
-})
+_LARGE_COLUMNS = frozenset(
+    {
+        "bytes",
+        "page_image",
+        "image_b64",
+        "images",
+        "charts",
+        "infographics",
+        "tables",
+    }
+)
 
 _MAX_STR_LEN = 500
 
@@ -157,7 +170,8 @@ def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filena
     url = vectordb_url.rstrip("/") + "/internal/vectordb/write"
     body = json.dumps({"rows": rows}).encode()
     req = urllib.request.Request(
-        url, data=body,
+        url,
+        data=body,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
@@ -165,12 +179,16 @@ def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filena
         with urllib.request.urlopen(req, timeout=30) as resp:
             logging.getLogger(__name__).info(
                 "Posted %d rows to vectordb for %s — HTTP %d",
-                len(rows), filename, resp.status,
+                len(rows),
+                filename,
+                resp.status,
             )
     except Exception as exc:
         logging.getLogger(__name__).warning(
             "Failed to POST %d rows to vectordb for %s: %s",
-            len(rows), filename, exc,
+            len(rows),
+            filename,
+            exc,
         )
 
 
@@ -208,6 +226,7 @@ def _run_pipeline_in_process(
 
     if vectordb_url and row_count > 0:
         from nemo_retriever.vdb.lancedb_schema import build_lancedb_rows
+
         lancedb_rows = build_lancedb_rows(result_df)
         _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
 
@@ -277,11 +296,7 @@ def _make_work_fn(
         vectordb_url = config.vectordb.vectordb_url
         logger.info("VectorDB write enabled for %s workers → %s", label, vectordb_url)
 
-    num_workers = (
-        config.pipeline.realtime_workers
-        if label.lower() == "realtime"
-        else config.pipeline.batch_workers
-    )
+    num_workers = config.pipeline.realtime_workers if label.lower() == "realtime" else config.pipeline.batch_workers
 
     executor = ProcessPoolExecutor(
         max_workers=num_workers,
@@ -304,9 +319,7 @@ def _make_work_fn(
         "pool": {
             "workers": num_workers,
             "queue_size": (
-                config.pipeline.realtime_queue_size
-                if label.lower() == "realtime"
-                else config.pipeline.batch_queue_size
+                config.pipeline.realtime_queue_size if label.lower() == "realtime" else config.pipeline.batch_queue_size
             ),
             "max_tasks_per_child": _MAX_TASKS_PER_CHILD,
         },
@@ -314,8 +327,7 @@ def _make_work_fn(
     }
 
     logger.info(
-        "Pipeline work function created (%s): extract=%s, embed=%s, "
-        "process_pool_workers=%d, max_tasks_per_child=%d",
+        "Pipeline work function created (%s): extract=%s, embed=%s, " "process_pool_workers=%d, max_tasks_per_child=%d",
         label,
         type(extract_params).__name__,
         type(embed_params).__name__ if embed_params else "disabled",
@@ -343,9 +355,10 @@ def _make_work_fn(
             )
         except BrokenProcessPool:
             logger.error(
-                "%s process pool broken (worker crash) while processing "
-                "id=%s file=%s — recreating pool",
-                label, item.id, filename,
+                "%s process pool broken (worker crash) while processing " "id=%s file=%s — recreating pool",
+                label,
+                item.id,
+                filename,
             )
             old = executor_ref[0]
             try:

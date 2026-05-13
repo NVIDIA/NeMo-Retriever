@@ -50,16 +50,7 @@ _MD_BLOCKS = _iter_markdown_python_blocks()
 @pytest.mark.parametrize("block_id,code", _MD_BLOCKS, ids=[b[0] for b in _MD_BLOCKS])
 def test_markdown_python_snippet_is_valid_syntax(block_id: str, code: str) -> None:
     """All in-tree Markdown ``python`` fences parse as Python except documented pseudocode."""
-    if block_id == "service/ARCHITECTURE.md#1":
-        pytest.skip("Illustrative ``from ... import ..., my_feature`` is not valid Python.")
     ast.parse(code)
-
-
-def test_architecture_md_router_registration_snippet_is_pseudocode() -> None:
-    """``ARCHITECTURE.md`` shows an ellipsis import for narrative purposes."""
-    block = next(c for bid, c in _MD_BLOCKS if bid == "service/ARCHITECTURE.md#1")
-    with pytest.raises(SyntaxError):
-        ast.parse(block)
 
 
 def test_graph_readme_smallest_example() -> None:

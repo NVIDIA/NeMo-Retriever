@@ -53,6 +53,11 @@ class ResourceLimitsConfig(RichModel):
     max_memory_mb: int | None = None
     max_cpu_cores: int | None = None
     gpu_devices: list[str] = Field(default_factory=list)
+    max_upload_bytes: int = Field(
+        default=500_000_000,
+        ge=1,
+        description="Max upload file size in bytes (default 500 MB). Rejected before buffering.",
+    )
 
 
 class AuthConfig(RichModel):
@@ -191,6 +196,8 @@ def load_config(
 
     config = ServiceConfig(**raw)
 
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "password", "secret"})
+
     from rich.console import Console
     from rich.tree import Tree
 
@@ -200,7 +207,8 @@ def load_config(
         if isinstance(section_value, RichModel):
             branch = tree.add(f"[cyan]{section_name}[/cyan]")
             for field_name, field_value in section_value:
-                branch.add(f"[dim]{field_name}[/dim] = [white]{field_value!r}[/white]")
+                display = "****" if field_name in _REDACTED_FIELDS and field_value else repr(field_value)
+                branch.add(f"[dim]{field_name}[/dim] = [white]{display}[/white]")
         else:
             tree.add(f"[cyan]{section_name}[/cyan] = [white]{section_value!r}[/white]")
     console.print(tree)

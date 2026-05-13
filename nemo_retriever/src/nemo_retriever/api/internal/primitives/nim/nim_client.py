@@ -99,7 +99,9 @@ class NimClient:
         self._lock = threading.Lock()
 
         if self.protocol == "grpc":
-            if grpcclient is None:
+            try:
+                grpc = _triton_grpc()
+            except ImportError:
                 raise ImportError(
                     "tritonclient[grpc] is required for gRPC protocol. "
                     "Install it with: pip install tritonclient[grpc]"
@@ -107,7 +109,6 @@ class NimClient:
             if not self._grpc_endpoint:
                 raise ValueError("gRPC endpoint must be provided for gRPC protocol")
             logger.debug(f"Creating gRPC client with {self._grpc_endpoint}")
-            grpc = _triton_grpc()
             self.client = grpc.InferenceServerClient(url=self._grpc_endpoint)
         elif self.protocol == "http":
             if not self._http_endpoint:

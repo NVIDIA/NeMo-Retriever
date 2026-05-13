@@ -203,10 +203,25 @@ def _file_size_from_upload(file: UploadFile, request: Request | None = None) -> 
     return 0
 
 
+def _check_upload_size(file: UploadFile, request: Request) -> None:
+    """Reject uploads exceeding the configured size limit before buffering."""
+    config = request.app.state.config
+    limit = getattr(getattr(config, "resources", None), "max_upload_bytes", None)
+    if limit is None:
+        return
+    size = file.size
+    if size is not None and size > limit:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload size {size:,} bytes exceeds limit of {limit:,} bytes",
+        )
+
+
 def _count_pdf_pages(file_bytes: bytes) -> int:
     """Return the number of pages in a PDF, or 1 for non-PDF / errors."""
     try:
         import pypdfium2 as pdfium
+
         doc = pdfium.PdfDocument(file_bytes)
         n = len(doc)
         doc.close()
@@ -252,6 +267,8 @@ async def ingest(
     except Exception:
         meta = IngestRequest()
 
+    _check_upload_size(file, request)
+
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         file_size = _file_size_from_upload(file, request)
@@ -269,10 +286,14 @@ async def ingest(
             tracker.mark_processing(document_id)
 
         callback_url = _build_callback_url(request)
-        resp = await _gateway_forward(request, route, extra_headers={
-            _GATEWAY_DOC_ID_HEADER: document_id,
-            _GATEWAY_CALLBACK_HEADER: callback_url,
-        })
+        resp = await _gateway_forward(
+            request,
+            route,
+            extra_headers={
+                _GATEWAY_DOC_ID_HEADER: document_id,
+                _GATEWAY_CALLBACK_HEADER: callback_url,
+            },
+        )
 
         if resp.status_code not in (200, 202):
             if tracker is not None:
@@ -370,6 +391,8 @@ async def ingest_page(
     page_number: int = Form(..., description="1-based page number within the source document"),
     filename: str = Form(default="", description="Original source document filename"),
 ) -> PageIngestAccepted | Response:
+    _check_upload_size(file, request)
+
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=filename)
         file_size = _file_size_from_upload(file, request)
@@ -384,10 +407,14 @@ async def ingest_page(
             tracker.mark_processing(page_id)
 
         callback_url = _build_callback_url(request)
-        resp = await _gateway_forward(request, PoolType.REALTIME, extra_headers={
-            _GATEWAY_DOC_ID_HEADER: page_id,
-            _GATEWAY_CALLBACK_HEADER: callback_url,
-        })
+        resp = await _gateway_forward(
+            request,
+            PoolType.REALTIME,
+            extra_headers={
+                _GATEWAY_DOC_ID_HEADER: page_id,
+                _GATEWAY_CALLBACK_HEADER: callback_url,
+            },
+        )
 
         if resp.status_code not in (200, 202):
             if tracker is not None:
@@ -487,6 +514,8 @@ async def ingest_document(
     except Exception:
         meta = IngestRequest()
 
+    _check_upload_size(file, request)
+
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         file_size = _file_size_from_upload(file, request)
@@ -502,10 +531,14 @@ async def ingest_document(
             tracker.mark_processing(document_id)
 
         callback_url = _build_callback_url(request)
-        resp = await _gateway_forward(request, PoolType.BATCH, extra_headers={
-            _GATEWAY_DOC_ID_HEADER: document_id,
-            _GATEWAY_CALLBACK_HEADER: callback_url,
-        })
+        resp = await _gateway_forward(
+            request,
+            PoolType.BATCH,
+            extra_headers={
+                _GATEWAY_DOC_ID_HEADER: document_id,
+                _GATEWAY_CALLBACK_HEADER: callback_url,
+            },
+        )
 
         if resp.status_code not in (200, 202):
             if tracker is not None:
@@ -700,12 +733,14 @@ async def pipeline_config(request: Request):
     pool = get_pipeline_pool()
     pool_stats = pool.stats() if pool is not None else {}
 
-    return JSONResponse(content={
-        "source": mode,
-        "mode": mode,
-        "pipelines": get_pipeline_configs(),
-        "pool_stats": pool_stats,
-    })
+    return JSONResponse(
+        content={
+            "source": mode,
+            "mode": mode,
+            "pipelines": get_pipeline_configs(),
+            "pool_stats": pool_stats,
+        }
+    )
 
 
 # ------------------------------------------------------------------
@@ -810,7 +845,10 @@ async def job_callback(request: Request) -> JSONResponse:
     sub_count = bus.subscriber_count if bus else 0
     logger.info(
         "Gateway callback: id=%s status=%s rows=%s subscribers=%d",
-        item_id, status, body.get("result_rows", 0), sub_count,
+        item_id,
+        status,
+        body.get("result_rows", 0),
+        sub_count,
     )
     return JSONResponse(content={"ok": True})
 
@@ -851,7 +889,8 @@ async def ingest_events(request: Request) -> StreamingResponse:
                     yield f"event: {rec['status']}\ndata: {json.dumps(rec)}\n\n"
                 logger.info(
                     "SSE subscriber %d: sent %d snapshot events",
-                    sub_id, snapshot_count,
+                    sub_id,
+                    snapshot_count,
                 )
 
             while True:
@@ -868,7 +907,9 @@ async def ingest_events(request: Request) -> StreamingResponse:
             bus.unsubscribe(sub_id)
             logger.info(
                 "SSE subscriber %d closed (snapshot=%d live=%d)",
-                sub_id, snapshot_count, live_count,
+                sub_id,
+                snapshot_count,
+                live_count,
             )
 
     return StreamingResponse(
@@ -882,18 +923,19 @@ def _snapshot_terminal_jobs(tracker: Any) -> list[dict[str, Any]]:
     """Return already-terminal jobs so SSE clients get caught up."""
     from nemo_retriever.service.services.job_tracker import JobStatus
 
-    results: list[dict[str, Any]] = []
-    for rec in tracker._jobs.values():
-        if rec.status in (JobStatus.COMPLETED, JobStatus.FAILED):
-            results.append({
-                "type": rec.status.value,
-                "id": rec.id,
-                "status": rec.status.value,
-                "result_rows": rec.result_rows,
-                "elapsed_s": rec.elapsed_s,
-                "error": rec.error,
-            })
-    return results
+    terminal = {JobStatus.COMPLETED.value, JobStatus.FAILED.value}
+    return [
+        {
+            "type": rec["status"],
+            "id": rec["id"],
+            "status": rec["status"],
+            "result_rows": rec["result_rows"],
+            "elapsed_s": rec["elapsed_s"],
+            "error": rec["error"],
+        }
+        for rec in tracker.all_records()
+        if rec["status"] in terminal
+    ]
 
 
 # ------------------------------------------------------------------
@@ -911,10 +953,17 @@ async def ingest_status_batch(request: Request) -> JSONResponse:
     Accepts ``{"ids": ["id1", "id2", ...]}`` and returns a dict keyed by
     item id.  Works on the gateway's local tracker — no backend proxying.
     """
+    _MAX_BATCH_IDS = 1000
+
     body = await request.json()
     ids = body.get("ids", [])
     if not isinstance(ids, list):
         raise HTTPException(status_code=400, detail="'ids' must be a list")
+    if len(ids) > _MAX_BATCH_IDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many IDs ({len(ids)}); maximum is {_MAX_BATCH_IDS}",
+        )
 
     tracker = get_job_tracker()
     if tracker is None:
@@ -936,12 +985,13 @@ async def ingest_status_batch(request: Request) -> JSONResponse:
             }
 
     terminal_count = sum(
-        1 for r in results.values()
-        if r["status"] in (JobStatus.COMPLETED.value, JobStatus.FAILED.value)
+        1 for r in results.values() if r["status"] in (JobStatus.COMPLETED.value, JobStatus.FAILED.value)
     )
-    return JSONResponse(content={
-        "total": len(ids),
-        "terminal": terminal_count,
-        "pending": len(ids) - terminal_count,
-        "items": results,
-    })
+    return JSONResponse(
+        content={
+            "total": len(ids),
+            "terminal": terminal_count,
+            "pending": len(ids) - terminal_count,
+            "items": results,
+        }
+    )
