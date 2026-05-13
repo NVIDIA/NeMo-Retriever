@@ -266,13 +266,16 @@ def create_graph():
         },
     )
 
-    # SQL execution → route
+    # SQL execution → route (use route_sql_validation to enforce attempt limits)
     graph.add_conditional_edges(
         "execute_sql_query",
-        route_decision,
+        route_sql_validation,
         {
             "valid_sql": "format_and_respond",
             "invalid_sql": "reconstruct_sql",
+            "fallback": "construct_sql_not_from_snippets",
+            "unconstructable": "unconstructable_sql_response",
+            "skip_intent_validation": "format_and_respond",
         },
     )
 
