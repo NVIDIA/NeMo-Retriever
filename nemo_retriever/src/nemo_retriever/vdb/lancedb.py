@@ -304,8 +304,26 @@ class LanceDB(VDB):
         self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
 
+    def _build_rows(self, records):
+        """Transform pipeline records into LanceDB rows with validation counts."""
+        if self.validate_vector_length and self.on_bad_vectors != "error":
+            expected_dim: int | None = self.vector_dim
+        else:
+            expected_dim = None
+        return _create_lancedb_results(records, expected_dim=expected_dim)
+
+    def _schema(self) -> pa.Schema:
+        return pa.schema(
+            [
+                pa.field("vector", pa.list_(pa.float32(), self.vector_dim)),
+                pa.field("text", pa.string()),
+                pa.field("metadata", pa.string()),
+                pa.field("source", pa.string()),
+            ]
+        )
+
     def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
-        """Create a LanceDB table and populate it with transformed records.
+        """Create (overwrite) a LanceDB table and populate it with transformed records.
 
         Validates per-row vector shape (when ``validate_vector_length`` is set
         on the instance and ``on_bad_vectors`` is not ``"error"``) and forwards
@@ -320,24 +338,11 @@ class LanceDB(VDB):
         db = lancedb.connect(uri=self.uri)
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
 
-        if self.validate_vector_length and self.on_bad_vectors != "error":
-            expected_dim: int | None = self.vector_dim
-        else:
-            expected_dim = None
-
-        results, counts = _create_lancedb_results(records, expected_dim=expected_dim)
-        schema = pa.schema(
-            [
-                pa.field("vector", pa.list_(pa.float32(), self.vector_dim)),
-                pa.field("text", pa.string()),
-                pa.field("metadata", pa.string()),
-                pa.field("source", pa.string()),
-            ]
-        )
+        results, counts = self._build_rows(records)
         create_kwargs: dict[str, Any] = {
             "data": results,
-            "schema": schema,
-            "mode": "overwrite" if self.overwrite else "append",
+            "schema": self._schema(),
+            "mode": "overwrite",
             "on_bad_vectors": self.on_bad_vectors,
         }
         if self.on_bad_vectors == "fill":
@@ -347,6 +352,46 @@ class LanceDB(VDB):
         _record_timing(
             "lancedb.create_table",
             time.perf_counter() - create_start,
+            {"rows": len(results), **counts},
+        )
+        return table
+
+    def append_to_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
+        """Open an existing LanceDB table and append transformed records to it.
+
+        Used when ``overwrite=False`` so we don't re-create the table (which
+        would either wipe existing rows under ``mode="overwrite"`` or fail
+        outright on newer LanceDB versions that reject ``mode="append"`` in
+        ``create_table``).
+        """
+        connect_start = time.perf_counter()
+        db = lancedb.connect(uri=self.uri)
+        _record_timing("lancedb.connect", time.perf_counter() - connect_start)
+
+        open_start = time.perf_counter()
+        table = db.open_table(table_name)
+        _record_timing("lancedb.open_table", time.perf_counter() - open_start)
+
+        results, counts = self._build_rows(records)
+        if not results:
+            logger.info(
+                "LanceDB append: no rows to add to %r (table_name=%s).",
+                self.uri,
+                table_name,
+            )
+            return table
+
+        add_kwargs: dict[str, Any] = {
+            "mode": "append",
+            "on_bad_vectors": self.on_bad_vectors,
+        }
+        if self.on_bad_vectors == "fill":
+            add_kwargs["fill_value"] = self.fill_value
+        add_start = time.perf_counter()
+        table.add(results, **add_kwargs)
+        _record_timing(
+            "lancedb.add",
+            time.perf_counter() - add_start,
             {"rows": len(results), **counts},
         )
         return table
@@ -425,18 +470,28 @@ class LanceDB(VDB):
             _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
 
     def run(self, records):
-        """Orchestrate index creation and data ingestion."""
-        table = self.create_index(records=records, table_name=self.table_name)
-        self.write_to_index(
-            records,
-            table=table,
-            index_type=self.index_type,
-            metric=self.metric,
-            num_partitions=self.num_partitions,
-            num_sub_vectors=self.num_sub_vectors,
-            hybrid=self.hybrid,
-            fts_language=self.fts_language,
-        )
+        """Orchestrate index creation and data ingestion.
+
+        When ``overwrite=True`` (default), the table is (re)created from
+        scratch and the vector / FTS indexes are built. When
+        ``overwrite=False``, new rows are appended to the existing table and
+        index building is skipped — LanceDB's incremental indexing covers
+        rows added after the initial index build.
+        """
+        if self.overwrite:
+            table = self.create_index(records=records, table_name=self.table_name)
+            self.write_to_index(
+                records,
+                table=table,
+                index_type=self.index_type,
+                metric=self.metric,
+                num_partitions=self.num_partitions,
+                num_sub_vectors=self.num_sub_vectors,
+                hybrid=self.hybrid,
+                fts_language=self.fts_language,
+            )
+        else:
+            self.append_to_index(records=records, table_name=self.table_name)
         return records
 
     def retrieval(self, vectors, **kwargs):
