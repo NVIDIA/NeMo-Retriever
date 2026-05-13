@@ -23,7 +23,9 @@ The following diagram shows the NeMo Retriever Library pipeline.
 
 ![Pipeline Overview](https://docs.nvidia.com/nemo/retriever/extraction/images/overview-extraction.png)
 
-For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Kubernetes ([helm charts](nemo_retriever/helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
+For production-level performance and scalability, deploy the pipeline and supporting NIMs on **Kubernetes** using **Helm** — start with the **[NeMo Retriever Helm chart](nemo_retriever/helm/README.md)** and the **[NeMo Retriever Library (prerequisites / deployment)](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)** for published NV-Ingest charts and install procedures.
+
+**Docker Compose** in this repository is **unsupported developer tooling** only (local experimentation). It is **not** a recommended or supported deployment path for NIMs — see **[`nemo_retriever/docker.md`](nemo_retriever/docker.md)** for details and caveats.
 
 *Note*:
 Along with the recent repo name change, we're phasing out the nv-ingest APIs and simplifying the dependencies. You can follow this work and see the forward looking API via the [nemo_retriever](nemo_retriever) library subfolder.

@@ -6,6 +6,12 @@ streams uploads through five NVIDIA NIM microservices
 (page-elements, graphic-elements, table-structure, OCR, embed) and exposes
 result + status APIs over HTTP / SSE.
 
+**Unsupported developer path:** ad-hoc **Docker Compose** workflows (not
+chart-managed) are documented separately in [`../docker.md`](../docker.md).
+Use **Helm** (this chart and/or the **NV-Ingest Helm charts** documented in the
+[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/))
+for supported NIM and service deployment.
+
 The chart ships two deployable layers behind feature flags:
 
 - **the service** — always on; one Deployment built from

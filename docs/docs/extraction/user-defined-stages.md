@@ -8,11 +8,12 @@ and operate on a well-defined DataFrame payload and metadata structure.
 
 To add user-defined stages to your pipeline, you need the following:
 
-- **A callable function** — Your function must have the following exact signature. For more information, refer to []().
-  
-    ```python
-    def my_fn(control_message: IngestControlMessage, stage_config: MyConfig) -> IngestControlMessage:
-    ```
+- **A callable function** — Your function must have the following exact signature. For more information, refer to [Extending NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md).
+
+```python
+def my_fn(control_message: IngestControlMessage, stage_config: MyConfig) -> IngestControlMessage:
+    ...
+```
 
 - **A DataFrame payload** — The `control_message.payload` field must be a [pandas.DataFrame](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html). For more information, refer to [Create a DataFrame Payload](#create-a-dataframe-payload).
 
@@ -227,61 +228,63 @@ The  following example adds user-defined stages to your NeMo Retriever Library p
 
 1. The following code creates a function for a user-defined stage.
 
-    ```python
-    # my_pipeline/stages.py
-    from pydantic import BaseModel
-    from nv_ingest_api.internal.primitives.ingest_control_message import IngestControlMessage
-    from nv_ingest_api.internal.schemas.meta.metadata_schema import validate_metadata
+```python
+# my_pipeline/stages.py
+from pydantic import BaseModel
+from nv_ingest_api.internal.primitives.ingest_control_message import IngestControlMessage
+from nv_ingest_api.internal.schemas.meta.metadata_schema import validate_metadata
 
-    class DoubleConfig(BaseModel):
+
+class DoubleConfig(BaseModel):
     multiply_by: int = 2
 
-    def double_amount(control_message: IngestControlMessage, stage_config: DoubleConfig) -> IngestControlMessage:
+
+def double_amount(control_message: IngestControlMessage, stage_config: DoubleConfig) -> IngestControlMessage:
     df = control_message.payload()
-    
+
     # Suppose the metadata for each row includes 'amount' under 'content_metadata'
     def double_meta(meta):
         meta = dict(meta)
         if "content_metadata" in meta and isinstance(meta["content_metadata"], dict):
-        cm = dict(meta["content_metadata"])
-        if "amount" in cm and isinstance(cm["amount"], (int, float)):
-            cm["amount"] *= stage_config.multiply_by
-        meta["content_metadata"] = cm
+            cm = dict(meta["content_metadata"])
+            if "amount" in cm and isinstance(cm["amount"], (int, float)):
+                cm["amount"] *= stage_config.multiply_by
+            meta["content_metadata"] = cm
         validate_metadata(meta)
         return meta
 
     df["metadata"] = df["metadata"].apply(double_meta)
     control_message.payload(df)
     return control_message
-    ```
+```
 
 2. The following code adds the user-defined stage to the pipeline.
 
     - (Option 1)  For a function that is defined in the module my_pipeline.stages.
 
-        ```python
-        from my_pipeline.stages import double_amount, DoubleConfig
+```python
+from my_pipeline.stages import double_amount, DoubleConfig
 
-        pipeline.add_stage(
-        name="doubler",
-        stage_actor="my_pipeline.stages:double_amount",
-        config=DoubleConfig(multiply_by=3),
-        min_replicas=1,
-        max_replicas=2,
-        )
-        ```
+pipeline.add_stage(
+    name="doubler",
+    stage_actor="my_pipeline.stages:double_amount",
+    config=DoubleConfig(multiply_by=3),
+    min_replicas=1,
+    max_replicas=2,
+)
+```
 
     - (Option 2) For a function that you have already imported.
 
-        ```python
-        pipeline.add_stage(
-        name="doubler",
-        stage_actor=double_amount,
-        config=DoubleConfig(multiply_by=3),
-        min_replicas=1,
-        max_replicas=2,
-        )
-        ```
+```python
+pipeline.add_stage(
+    name="doubler",
+    stage_actor=double_amount,
+    config=DoubleConfig(multiply_by=3),
+    min_replicas=1,
+    max_replicas=2,
+)
+```
 
 
 

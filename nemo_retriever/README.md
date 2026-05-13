@@ -8,6 +8,11 @@ This quick start guide shows how to run NeMo Retriever Library as a library all 
 
 You’ll set up a CUDA 13–compatible environment, install the library and its dependencies, and run GPU‑accelerated ingestion pipelines that convert PDFs, HTML, plain text, audio, or video into vector embeddings stored in LanceDB (on local disk), with Ray‑based scaling and built‑in recall benchmarking.
 
+## Deployment at a glance
+
+- **Supported (Kubernetes / Helm):** deploy the retriever **service** and optional in-cluster **NIM** workloads with the **[`nemo_retriever/helm` chart](helm/README.md)**. Published **NV-Ingest Helm** install and upgrade flows are documented in the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)** (use together with the chart README for your release).
+- **Unsupported (Docker Compose):** looking for local **Docker Compose** workflows? See **[`docker.md`](docker.md)** — **unsupported developer tooling** for experimentation only, **not** a supported NIM deployment path.
+
 ## Prerequisites
 
 Before starting, make sure your system meets the following requirements:
@@ -170,7 +175,7 @@ When you use the remote embedder, pair the `Retriever` with the matching
 
 ### Inspect extracts
 You can inspect how recall accuracy optimized text chunks for various content types were extracted into text representations:
-```python
+```text
 # page 1 raw text:
 >>> chunks[0]["text"]
 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose...'
@@ -237,7 +242,7 @@ retriever = Retriever(
 hits = retriever.query(query)
 ```
 
-```python
+```text
 # retrieved text from the first page
 >>> hits[0]
 {'text': 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose. It contains some \r\nheadings and some placeholder text to fill the space. The text is not important and contains \r\nno real value, but it is useful for testing. Below, we will have some simple tables and charts \r\nthat we can use to confirm Ingest is working as expected.\r\nTable 1\r\nThis table describes some animals, and some activities they might be doing in specific \r\nlocations.\r\nAnimal Activity Place\r\nGira@e Driving a car At the beach\r\nLion Putting on sunscreen At the park\r\nCat Jumping onto a laptop In a home o@ice\r\nDog Chasing a squirrel In the front yard\r\nChart 1\r\nThis chart shows some gadgets, and some very fictitious costs.', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.5822279453277588}
@@ -526,7 +531,7 @@ CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1
 ```
 Then run your pipeline as before with `--ray-address auto` so it connects to this single‑GPU Ray cluster. [NeMo Ray run guide](https://docs.nvidia.com/nemo/run/latest/guides/ray.html)
 
-## Running multiple NIM instances on multi‑GPU hosts
+## Multi-GPU resource heuristics (library batch mode)
 
 ### Resource heuristics (batch mode)
 
@@ -556,41 +561,16 @@ This means defaults are deterministic but easy to override when you need fixed b
 |---|---|---|
 | `override_cpu_count`, `override_gpu_count` | function args | Highest-priority CPU/GPU override |
 
-### Running multiple NIM service instances on multi-GPU hosts
+## NIM containers and Docker Compose (unsupported)
 
-### Start two stacks on separate GPUs
+Looking for local **Docker Compose** workflows (including multi-GPU NIM
+stacks)? See **[`docker.md`](docker.md)** — **unsupported developer tooling**
+only.
 
-```bash
-# GPU 0 stack
-GPU_ID=0 \
-PAGE_ELEMENTS_HTTP_PORT=8000 PAGE_ELEMENTS_GRPC_PORT=8001 PAGE_ELEMENTS_METRICS_PORT=8002 \
-OCR_HTTP_PORT=8019 OCR_GRPC_PORT=8010 OCR_METRICS_PORT=8011 \
-docker compose -p retriever-gpu0 up -d page-elements ocr
-
-# GPU 1 stack
-GPU_ID=1 \
-PAGE_ELEMENTS_HTTP_PORT=8100 PAGE_ELEMENTS_GRPC_PORT=8101 PAGE_ELEMENTS_METRICS_PORT=8102 \
-OCR_HTTP_PORT=8119 OCR_GRPC_PORT=8110 OCR_METRICS_PORT=8111 \
-docker compose -p retriever-gpu1 up -d page-elements ocr
-```
-
-The `-p` project names create isolated stacks, `GPU_ID` pins each stack to a specific physical GPU, and distinct host ports avoid collisions between the services.  
-
-### Check and tear down stacks
-
-To verify that both stacks are running use the following command.
-
-```bash
-docker compose -p retriever-gpu0 ps
-docker compose -p retriever-gpu1 ps
-```
-
-To stop and remove both stacks use the following command.
-
-```bash
-docker compose -p retriever-gpu0 down
-docker compose -p retriever-gpu1 down
-```
+For **supported** deployment of NeMo Retriever / **NIM** containers, use
+**Helm**: **[`helm/README.md`](helm/README.md)** and the **NV-Ingest Helm**
+documentation linked from that guide and the
+[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
 ## Troubleshooting
 

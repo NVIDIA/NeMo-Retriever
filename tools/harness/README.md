@@ -819,7 +819,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --sku=a100-40g
 ```
 
 **How it works:**
-- **Compose:** Loads `docker-compose.<sku>.yaml` and merges with base `docker-compose.yaml` (override takes precedence).
+- **Compose:** Loads `docker-compose.<sku>.yaml` and merges with base `docker-compose.yaml` (override takes precedence). **Unsupported developer tooling** — see [`nemo_retriever/docker.md`](../../nemo_retriever/docker.md) for human-oriented Compose notes (this README covers harness automation only).
 - **Helm:** Loads `helm/overrides/values-<sku>.yaml` via `helm upgrade -f`; merged with chart defaults (and any `helm_values_file` / `helm_values` still override).
 
 **Available SKUs:** `a10g` (NVIDIA A10G), `l40s` (NVIDIA L40S), `a100-40gb` (NVIDIA A100 40GB).

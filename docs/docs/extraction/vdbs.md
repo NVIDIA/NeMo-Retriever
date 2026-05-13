@@ -14,6 +14,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) handle
 - [Vector database partners](#vector-database-partners)
     - [Backends with `VDB` implementations](#vdb-backends-implementations)
     - [RAG Blueprint and partner vector stores](#rag-blueprint-and-partner-vector-stores)
+    - [More information (embeddings & custom `VDB`)](#vector-database-partners-more-info)
 - [Related Topics](#related-topics)
 
 ## Overview { #overview }
@@ -29,7 +30,7 @@ It does not store the embeddings for images.
 
 !!! tip "Storing Extracted Images"
 
-    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, etc.). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md).
+    To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, and other object stores). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md).
 
 NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](nemo-retriever-api-reference.md).
 Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
@@ -161,7 +162,7 @@ On nv-ingest-client `Ingestor.vdb_upload`, omitting `vdb_op` does not select Lan
 
 For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` subclasses, construct the client class and pass it as the graph operator’s `vdb` argument.
 
-### RAG Blueprint and partner vector stores {#rag-blueprint-and-partner-vector-stores}
+### RAG Blueprint and partner vector stores { #rag-blueprint-and-partner-vector-stores }
 
 Some deployments use a different vector store than the default LanceDB path on this page—for example the [NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/index.html) (Docker Compose or Helm) or a partner package that subclasses the same [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface. Use the following public references when you wire those stacks to ingestion and retrieval:
 
@@ -173,7 +174,7 @@ Some deployments use a different vector store than the default LanceDB path on t
 
 Testing and release cadence for these integrations follow the owning project (RAG Blueprint, Pinecone sample repo, or Teradata Generative AI package), not the first-party LanceDB operator validated for NeMo Retriever Library on this page.
 
-### More information 
+### More information (embeddings & custom `VDB`) { #vector-database-partners-more-info }
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)

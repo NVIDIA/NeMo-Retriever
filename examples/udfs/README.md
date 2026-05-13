@@ -231,27 +231,12 @@ For advanced use cases, you can load a custom pipeline configuration from a YAML
 
 An example configuration (`config/custom_summarization_pipeline.yaml`) demonstrates a pipeline with a dedicated high-concurrency UDF stage (8 parallel workers) for LLM summarization.
 
-**To enable custom pipeline loading:**
+**To enable custom pipeline loading** (unsupported **Docker Compose** developer workflow — see **[`nemo_retriever/docker.md`](../../nemo_retriever/docker.md)** for full Compose context, registry auth, and support posture):
 
-1. **Uncomment the volume mount** in `docker-compose.yaml`:
-```yaml
-nv-ingest-ms-runtime:
-  volumes:
-    - ${DATASET_ROOT:-./data}:/workspace/data
-    - ./config:/workspace/config  # Uncomment this line
-```
-
-2. **Uncomment and set INGEST_CONFIG_PATH** in `docker-compose.yaml`:
-```yaml
-  environment:
-    # Uncomment and specify your custom pipeline YAML file
-    - INGEST_CONFIG_PATH=/workspace/config/custom_summarization_pipeline.yaml
-```
-
-3. **Rebuild and restart the nv-ingest-ms-runtime container:**
-```bash
-docker-compose up -d --build nv-ingest-ms-runtime
-```
+1. In the **`nv-ingest` repository root** `docker-compose.yaml`, under `nv-ingest-ms-runtime`, **uncomment** the `./config:/workspace/config` volume mount.
+2. **Uncomment** `INGEST_CONFIG_PATH=/workspace/config/custom_summarization_pipeline.yaml` (or your YAML) in the same service’s `environment` list.
+3. Rebuild and restart that service, for example:  
+   `docker compose up -d --build nv-ingest-ms-runtime`
 
 > **Important**: `INGEST_CONFIG_PATH` must point to a **YAML configuration file** inside the container (after volume mount). The file path is relative to the container's filesystem, not the host.
 
@@ -264,8 +249,7 @@ docker-compose up -d --build nv-ingest-ms-runtime
 **To create your own custom pipeline:**
 1. Copy the example: `cp config/custom_summarization_pipeline.yaml config/my_pipeline.yaml`
 2. Edit `config/my_pipeline.yaml` to add/modify stages for your needs
-3. Update `INGEST_CONFIG_PATH` in docker-compose: `/workspace/config/my_pipeline.yaml`
-4. Rebuild and restart: `docker-compose up -d --build nv-ingest-ms-runtime`
+3. Point `INGEST_CONFIG_PATH` at `/workspace/config/my_pipeline.yaml` in `docker-compose.yaml` and rebuild/restart as in step 3 above (see **[`nemo_retriever/docker.md`](../../nemo_retriever/docker.md)** for Compose conventions).
 
 **Pipeline customization options:**
 - Add custom stages (extractors, transformers, storage, etc.)
@@ -274,7 +258,7 @@ docker-compose up -d --build nv-ingest-ms-runtime
 - Configure memory thresholds and scaling strategies
 - Change service endpoints and model configurations
 
-This approach is useful for production deployments requiring specific pipeline configurations beyond the default setup.
+This approach is useful when you need a customized pipeline graph during **development**; for **supported** production configuration of the ingest runtime and NIMs, deploy with **Helm** ([NeMo Retriever chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)).
 
 ### Setup & Configuration
 
