@@ -126,8 +126,31 @@ def expand_info(ids_and_labels):
                     CALL apoc.case([
                         n:{Labels.CUSTOM_ANALYSIS},
                             'OPTIONAL MATCH(n)-[:{Edges.HAS_SQL}]->(sql:{Labels.SQL})
-                            WITH n, head(collect(sql.sql_full_query)) as sql_code
-                            RETURN apoc.map.setKey(properties(n), "sql", coalesce(sql_code, "")) as item',
+                            WITH n, head(collect(sql.sql_full_query)) as sql_code, head(collect(sql)) as sql_node
+                            OPTIONAL MATCH (sql_node)-[:{Edges.SQL}]->(t:{Labels.TABLE})<-[:{Edges.CONTAINS}]-(schema:{Labels.SCHEMA})
+                            OPTIONAL MATCH (t)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
+                            WITH n, sql_code, t, schema,
+                                 collect(DISTINCT {{
+                                     name: c.name,
+                                     data_type: toString(coalesce(c.data_type, "")),
+                                     description: CASE WHEN c.description IS NOT NULL AND trim(c.description) <> ""
+                                                       THEN c.description ELSE null END,
+                                     sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
+                                                         THEN c.sample_values ELSE null END
+                                 }}) AS column_list
+                            WITH n, sql_code,
+                                 [x IN collect(DISTINCT
+                                     CASE WHEN t IS NOT NULL THEN
+                                         apoc.map.merge(
+                                             properties(t),
+                                             {{label: "{Labels.TABLE}", columns: column_list, schema_name: schema.name}}
+                                         )
+                                     ELSE null END
+                                 ) WHERE x IS NOT NULL] AS tables
+                            RETURN apoc.map.merge(
+                                apoc.map.setKey(properties(n), "sql", coalesce(sql_code, "")),
+                                {{relevant_tables: tables}}
+                            ) as item',
                         n:{Labels.COLUMN},
                             'MATCH(n)<-[:{Edges.CONTAINS}]-(parent)<-[:{Edges.CONTAINS}]-(schema:{Labels.SCHEMA})
                             WITH n, parent, schema,
