@@ -226,7 +226,8 @@ def _count_pdf_pages(file_bytes: bytes) -> int:
         n = len(doc)
         doc.close()
         return n
-    except Exception:
+    except Exception as exc:
+        logger.warning("Could not determine PDF page count; defaulting to 1 page: %s", exc)
         return 1
 
 
@@ -264,8 +265,8 @@ async def ingest(
 ) -> IngestAccepted | Response:
     try:
         meta = IngestRequest(**json.loads(metadata))
-    except Exception:
-        meta = IngestRequest()
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
     _check_upload_size(file, request)
 
@@ -511,8 +512,8 @@ async def ingest_document(
 ) -> DocumentIngestAccepted | Response:
     try:
         meta = IngestRequest(**json.loads(metadata))
-    except Exception:
-        meta = IngestRequest()
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
     _check_upload_size(file, request)
 
