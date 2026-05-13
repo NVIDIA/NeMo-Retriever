@@ -92,3 +92,6 @@ class OCRActor(AbstractOperator, GPUOperator):
                 out["ocr_v1_counts_by_label"] = [{} for _ in range(n)]
                 return out
             return [{"ocr": _error_payload(stage="actor_call", exc=exc)}]
+
+
+OCRV2Actor = OCRActor

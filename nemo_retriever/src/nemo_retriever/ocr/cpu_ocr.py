@@ -19,8 +19,7 @@ from nemo_retriever.ocr.shared import ocr_page_elements
 class OCRCPUActor(AbstractOperator, CPUOperator):
     """Remote OCR variant of :class:`OCRActor`.
 
-    Local OCR uses ``NemotronOCRV2`` for both v2 and legacy v1 modes, but the
-    hosted NIM endpoint is still v1-only until OCR v2 is released remotely.
+    The hosted NIM endpoint is still v1-only until OCR v2 is released remotely.
     """
 
     # Keep the remote default on v1 until a hosted OCR v2 NIM is available.
@@ -86,3 +85,6 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
                 out["ocr_v1_counts_by_label"] = [{} for _ in range(n)]
                 return out
             return [{"ocr": _error_payload(stage="cpu_actor_call", exc=exc)}]
+
+
+OCRV2CPUActor = OCRCPUActor

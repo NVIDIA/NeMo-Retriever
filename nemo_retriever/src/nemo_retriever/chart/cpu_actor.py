@@ -24,8 +24,8 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`GraphicElementsActor`.
 
     Defaults to build.nvidia.com endpoints for ``nemotron-graphic-elements-v1``
-    and hosted ``nemotron-ocr-v1``. Local OCR uses ``NemotronOCRV2``; remote OCR
-    remains v1 until OCR v2 NIM is released.
+    and hosted ``nemotron-ocr-v1``. Remote OCR remains URL-driven until OCR v2
+    NIM is released.
     """
 
     DEFAULT_GRAPHIC_ELEMENTS_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
@@ -36,9 +36,6 @@ class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
         *,
         graphic_elements_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
-        load_ocr_v2: Optional[bool] = None,
-        ocr_version: str = "v2",
-        ocr_lang: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,

@@ -23,8 +23,9 @@ from pydantic import ValidationError
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.ocr import config as ocr_config
 from nemo_retriever.ocr.config import OCRLang, OCRVersion, resolve_ocr_v2_lang, resolve_ocr_v2_model_dir
-from nemo_retriever.ocr.ocr import OCRActor, OCRV2Actor, resolve_ocr_archetype
+from nemo_retriever.ocr.ocr import OCRActor, resolve_ocr_archetype
 from nemo_retriever.params import EmbedParams, ExtractParams
+from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
 def _linear_nodes(graph):
@@ -109,7 +110,6 @@ def test_default_graph_uses_unified_ocr_actor() -> None:
     ocr_node = next(node for node in nodes if node.operator_class is OCRActor)
 
     assert OCRActor in classes
-    assert OCRV2Actor not in classes
     assert ocr_node.operator_kwargs["ocr_version"] == "v2"
     assert "ocr_lang" not in ocr_node.operator_kwargs
 
@@ -136,7 +136,6 @@ def test_explicit_ocr_version_v1_uses_unified_actor_with_legacy_selector() -> No
     ocr_node = next(node for node in nodes if node.operator_class is OCRActor)
 
     assert OCRActor in classes
-    assert OCRV2Actor not in classes
     assert ocr_node.operator_kwargs["ocr_version"] == "v1"
 
 
@@ -160,6 +159,41 @@ def test_graph_forwards_v2_ocr_lang_selector() -> None:
 
     assert ocr_node.operator_kwargs["ocr_version"] == "v2"
     assert ocr_node.operator_kwargs["ocr_lang"] == "english"
+
+
+def test_resolved_remote_ocr_stages_drop_local_selector_kwargs() -> None:
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=True,
+            use_table_structure=True,
+            extract_charts=True,
+            use_graphic_elements=True,
+            extract_infographics=False,
+            page_elements_invoke_url="http://page.example/v1",
+            ocr_invoke_url="http://ocr.example/v1",
+            table_structure_invoke_url="http://table.example/v1",
+            graphic_elements_invoke_url="http://graphic.example/v1",
+            ocr_lang="english",
+        ),
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_invoke_url="http://embed.example/v1",
+        ),
+    )
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=4))
+    nodes = {node.name: node for node in _linear_nodes(resolved)}
+
+    for name in ("TableStructureActor", "GraphicElementsActor", "OCRActor"):
+        assert nodes[name].operator_class.__name__.endswith("CPUActor")
+        assert "ocr_version" not in nodes[name].operator_kwargs
+        assert "ocr_lang" not in nodes[name].operator_kwargs
+
+    assert nodes["TableStructureActor"].operator_kwargs["ocr_invoke_url"] == "http://ocr.example/v1"
+    assert nodes["GraphicElementsActor"].operator_kwargs["ocr_invoke_url"] == "http://ocr.example/v1"
+    assert nodes["OCRActor"].operator_kwargs["ocr_invoke_url"] == "http://ocr.example/v1"
 
 
 def test_invalid_ocr_version_raises_validation_error() -> None:
@@ -219,5 +253,3 @@ def test_table_structure_actor_receives_ocr_selectors(monkeypatch) -> None:
     assert graphic_kwargs.get("ocr_version") == "v2"
     assert table_kwargs.get("ocr_lang") == "english"
     assert graphic_kwargs.get("ocr_lang") == "english"
-    assert "load_ocr_v2" not in table_kwargs
-    assert "load_ocr_v2" not in graphic_kwargs

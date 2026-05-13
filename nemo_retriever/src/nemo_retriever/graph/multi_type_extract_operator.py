@@ -500,6 +500,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         resolved_class = resolve_operator_class(
             operator_class, self._local_resources(), operator_kwargs=operator_kwargs
         )
+        if issubclass(operator_class, ArchetypeOperator):
+            operator_kwargs = operator_class.variant_operator_kwargs(resolved_class, operator_kwargs)
         return resolved_class(**operator_kwargs)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

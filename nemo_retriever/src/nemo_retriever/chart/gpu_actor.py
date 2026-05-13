@@ -34,7 +34,6 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
         inference_batch_size: int = 8,
-        load_ocr_v2: Optional[bool] = None,
         ocr_version: str = "v2",
         ocr_lang: Optional[str] = None,
     ) -> None:
@@ -62,8 +61,7 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
         else:
             from nemo_retriever.model.local import NemotronOCRV2
 
-            effective_ocr_version = "v1" if load_ocr_v2 is False else ocr_version
-            lang = resolve_ocr_v2_lang(effective_ocr_version, ocr_lang)
+            lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
             self._ocr_model = NemotronOCRV2(lang=lang)
 
         if self._graphic_elements_invoke_url or self._ocr_invoke_url:
