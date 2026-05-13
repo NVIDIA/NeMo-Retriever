@@ -176,4 +176,5 @@ def test_ocr_nightly_builds_and_verifies_vllm_compatible_torch_stack() -> None:
     assert '--venv-pip-install "torch==${OCR_TORCH_VERSION}"' in workflow
     assert '--venv-pip-install "torchvision==${OCR_TORCHVISION_VERSION}"' in workflow
     assert "expected_runtime_dependencies" in workflow
-    assert 'expected = f"Requires-Dist: {package}{specifier}"' in workflow
+    assert "def declares_runtime_dependency(" in workflow
+    assert "if not declares_runtime_dependency(metadata, package, specifier):" in workflow
