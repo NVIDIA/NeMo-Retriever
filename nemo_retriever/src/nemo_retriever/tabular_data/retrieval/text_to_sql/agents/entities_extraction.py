@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     AgentState,
     get_question_for_processing,
-    rules_to_text,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class EntitiesExtractionModel(BaseModel):
-    """Extract entities from a question (no domain rules)."""
+    """Extract entities from a question."""
 
     required_entity_name: list[str] = Field(
         ...,
@@ -33,41 +32,6 @@ class EntitiesExtractionModel(BaseModel):
             "database entities. Only extract what the question actually says. "
             "Ignore values, dates, numbers, and constants."
         ),
-    )
-
-
-class EntitiesWithRulesModel(BaseModel):
-    """Extract entities and rule-based search phrases from a question."""
-
-    required_entity_name: list[str] = Field(
-        ...,
-        min_length=1,
-        description=(
-            "Concepts explicitly mentioned in the question that refer to "
-            "database entities. Only extract what the question actually says. "
-            "Ignore values, dates, numbers, and constants."
-        ),
-    )
-    item_search_queries: list[str] = Field(
-        ...,
-        min_length=1,
-        description=(
-            "Generate 2-4 short search phrases  (1-3 words each) to help find relevant database items "
-            "(tables, columns, etc.). "
-            "Use the domain rules "
-            "(if provided) to identify which database concepts and item names "
-            "might be relevant. Each phrase should target a different aspect "
-            "of the question."
-        ),
-    )
-
-
-class RuleFilterModel(BaseModel):
-    """LLM output for filtering domain rules by relevance to a question."""
-
-    relevant_rule_names: list[str] = Field(
-        default_factory=list,
-        description="Names of domain rules that are relevant to the question.",
     )
 
 
@@ -86,34 +50,20 @@ class EntitiesExtractionAgent(BaseAgent):
         return True
 
     def execute(self, state: AgentState) -> Dict[str, Any]:
-        """Filter domain rules first, then extract entities guided only by kept rules."""
+        """Extract entities from the question only (no domain rules)."""
         llm = state["llm"]
         path_state = state.get("path_state", {})
         question = get_question_for_processing(state)
-        domain_rules = state.get("domain_rules", [])
-        domain_rules_text = rules_to_text(domain_rules)
 
         result: Dict[str, Any] = {"path_state": path_state}
 
-        # --- Step 1: Filter domain rules based on question alone ---
-        kept_rules_text = ""
-        if domain_rules:
-            filtered = self._filter_custom_prompts(
-                llm, question, domain_rules, domain_rules_text,
-            )
-            if filtered:
-                result["domain_rules"] = filtered
-                kept_rules_text = rules_to_text(filtered)
-            else:
-                result["domain_rules"] = []
-
-        # --- Step 2: Extract entities (schema depends on whether rules exist) ---
-        model_cls = EntitiesWithRulesModel if kept_rules_text else EntitiesExtractionModel
         try:
             extraction_messages = [
-                SystemMessage(content=create_entity_extraction_prompt(question, kept_rules_text))
+                SystemMessage(content=create_entity_extraction_prompt(question))
             ]
-            extraction_result = invoke_with_structured_output(llm, extraction_messages, model_cls)
+            extraction_result = invoke_with_structured_output(
+                llm, extraction_messages, EntitiesExtractionModel,
+            )
             self.logger.debug("Raw extraction result: %s", extraction_result)
 
             if extraction_result is None:
@@ -122,83 +72,16 @@ class EntitiesExtractionAgent(BaseAgent):
                 return result
 
             entities = extraction_result.required_entity_name or []
-            item_search_queries = getattr(extraction_result, "item_search_queries", None) or []
 
-            combined = entities + item_search_queries
-
-            if not combined:
+            if not entities:
                 self.logger.warning("LLM returned empty entities — using question as fallback")
-                combined = [question]
+                entities = [question]
 
-            path_state["entities"] = combined
+            path_state["entities"] = entities
 
-            self.logger.info(
-                "Extracted %s entities + %s search queries = %s total: %s",
-                len(entities),
-                len(item_search_queries),
-                len(combined),
-                combined,
-            )
+            self.logger.info("Extracted %d entities: %s", len(entities), entities)
         except Exception as e:
             self.logger.warning(f"Entity extraction failed: {e}, using fallback values")
             path_state["entities"] = []
 
         return result
-
-    def _filter_custom_prompts(
-        self,
-        llm,
-        question: str,
-        rules: list[dict[str, str]],
-        rules_text: str,
-    ) -> list[dict[str, str]] | None:
-        """Pick which domain rules apply to this question (before entity extraction)."""
-        available_names = [r["name"] for r in rules]
-        prompt = (
-            "Which domain rules are relevant to answering this question?\n\n"
-            f"Question: {question}\n\n"
-            f"Available domain rules:\n{rules_text}\n"
-            "Return ONLY the names of rules that are needed. "
-            "If none are relevant, return an empty list.\n"
-            f"Choose from these exact names: {available_names}"
-        )
-
-        try:
-            filter_result = invoke_with_structured_output(
-                llm,
-                [SystemMessage(content=prompt)],
-                RuleFilterModel,
-            )
-        except Exception as e:
-            self.logger.warning("Rule filter LLM call failed: %s — keeping all rules", e)
-            return None
-
-        if filter_result is None:
-            self.logger.warning("Rule filter returned None — keeping all rules")
-            return None
-
-        relevant_names = filter_result.relevant_rule_names or []
-        self.logger.info("Rule filter returned: %s", relevant_names)
-
-        if not relevant_names:
-            self.logger.info("No relevant rules identified — no domain context for entity extraction")
-            return []
-
-        names_lower = {n.lower().strip() for n in relevant_names}
-        filtered = [r for r in rules if r["name"].lower().strip() in names_lower]
-
-        if not filtered:
-            self.logger.warning(
-                "Rule filter names %s did not match available rules %s — keeping all rules",
-                relevant_names,
-                available_names,
-            )
-            return None
-
-        self.logger.info(
-            "Filtered domain_rules: kept %d/%d rules: %s",
-            len(filtered),
-            len(rules),
-            [r["name"] for r in filtered],
-        )
-        return filtered

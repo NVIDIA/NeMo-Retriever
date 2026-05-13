@@ -128,22 +128,22 @@ def expand_info(ids_and_labels):
                             'OPTIONAL MATCH(n)-[:{Edges.HAS_SQL}]->(sql:{Labels.SQL})
                             WITH n, head(collect(sql.sql_full_query)) as sql_code, head(collect(sql)) as sql_node
                             OPTIONAL MATCH (sql_node)-[:{Edges.SQL}]->(t:{Labels.TABLE})<-[:{Edges.CONTAINS}]-(schema:{Labels.SCHEMA})
-                            OPTIONAL MATCH (t)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
-                            WITH n, sql_code, t, schema,
-                                 collect(DISTINCT {{
-                                     name: c.name,
-                                     data_type: toString(coalesce(c.data_type, "")),
-                                     description: CASE WHEN c.description IS NOT NULL AND trim(c.description) <> ""
-                                                       THEN c.description ELSE null END,
-                                     sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
-                                                         THEN c.sample_values ELSE null END
-                                 }}) AS column_list
                             WITH n, sql_code,
-                                 [x IN collect(DISTINCT
+                                 [x IN collect(
                                      CASE WHEN t IS NOT NULL THEN
                                          apoc.map.merge(
                                              properties(t),
-                                             {{label: "{Labels.TABLE}", columns: column_list, schema_name: schema.name}}
+                                             {{label: "{Labels.TABLE}",
+                                              schema_name: schema.name,
+                                              columns: [(t)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
+                                                  {{name: c.name,
+                                                    data_type: toString(coalesce(c.data_type, "")),
+                                                    description: CASE WHEN c.description IS NOT NULL AND trim(c.description) <> ""
+                                                                      THEN c.description ELSE null END,
+                                                    sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
+                                                                        THEN c.sample_values ELSE null END
+                                                  }}]
+                                             }}
                                          )
                                      ELSE null END
                                  ) WHERE x IS NOT NULL] AS tables
@@ -387,20 +387,14 @@ def extract_candidates(
     combined_custom: list[dict] = []
     combined_columns: list[dict] = []
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    def _search(text):
-        return get_candidates_information(retriever, text, list_of_semantic=target_labels) or []
-
-    with ThreadPoolExecutor(max_workers=min(len(pulls), 8)) as executor:
-        futures = {executor.submit(_search, text): text for text in pulls}
-        for future in as_completed(futures):
-            for hit in future.result():
-                lab = str(hit.get("label") or "")
-                if lab == Labels.CUSTOM_ANALYSIS:
-                    combined_custom.append(hit)
-                elif lab == Labels.COLUMN:
-                    combined_columns.append(hit)
+    for text in pulls:
+        hits = get_candidates_information(retriever, text, list_of_semantic=target_labels) or []
+        for hit in hits:
+            lab = str(hit.get("label") or "")
+            if lab == Labels.CUSTOM_ANALYSIS:
+                combined_custom.append(hit)
+            elif lab == Labels.COLUMN:
+                combined_columns.append(hit)
 
     out_custom = _dedupe_best_score_sort_cap(combined_custom)
     out_columns = _dedupe_best_score_sort_cap(combined_columns)

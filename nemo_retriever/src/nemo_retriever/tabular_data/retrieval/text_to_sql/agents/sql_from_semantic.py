@@ -37,7 +37,6 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import (
     create_sql_user_prompt,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
-from nemo_retriever.tabular_data.retrieval.text_to_sql.state import rules_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +189,24 @@ class SQLFromCandidatesAgent(BaseAgent):
                 observation_block += f"\nTable selection reasoning:\n{relevance_reasoning}\n"
             observation_block += f"\nlist of important semantic entities with sql snippets:\n{custom_analyses_str}\n"
 
+            # Build custom analyses section for user prompt
+            ca_section = ""
+            if custom_analyses:
+                ca_lines = []
+                for a in custom_analyses:
+                    line = f"- {a.get('name', '(unnamed)')}"
+                    desc = (a.get("description") or "").strip()
+                    if desc:
+                        line += f": {desc}"
+                    sql = (a.get("sql") or "").strip()
+                    if sql:
+                        line += f"\n  SQL: {sql}"
+                    ca_lines.append(line)
+                ca_section = (
+                    "DOMAIN-SPECIFIC CUSTOM ANALYSES (use their SQL patterns as guidance):\n"
+                    + "\n".join(ca_lines) + "\n\n"
+                )
+
             # Build user prompt with formatted tables
             user_prompt = create_sql_user_prompt.format(
                 dialect=connector.dialect,
@@ -198,11 +215,11 @@ class SQLFromCandidatesAgent(BaseAgent):
                 queries=relevant_queries,
                 qa_from_conversations=similar_questions_txt,
                 tables=format_tables_for_prompt(relevant_tables),
-                custom_prompts=rules_to_text(state.get("domain_rules", [])),
+                custom_analyses=ca_section,
             )
 
             # Choose system prompt based on context
-            system_prompt = create_sql_from_candidates_prompt(custom_analyses)
+            system_prompt = create_sql_from_candidates_prompt()
 
             messages = state["messages"] + [
                 SystemMessage(content=system_prompt),

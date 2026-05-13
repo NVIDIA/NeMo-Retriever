@@ -24,8 +24,14 @@ from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
-from nemo_retriever.tabular_data.retrieval.text_to_sql.models import TableRelevanceModel
-from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import TABLE_RELEVANCE_FILTER_PROMPT
+from nemo_retriever.tabular_data.retrieval.text_to_sql.models import (
+    CustomAnalysisRelevanceModel,
+    TableRelevanceModel,
+)
+from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import (
+    CUSTOM_ANALYSIS_RELEVANCE_FILTER_PROMPT,
+    TABLE_RELEVANCE_FILTER_PROMPT,
+)
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import rules_to_text
 
 
@@ -114,7 +120,7 @@ class CandidatePreparationAgent(BaseAgent):
         custom_analyses = [x for x in candidates if x.get("label") == Labels.CUSTOM_ANALYSIS]
         self.logger.info("Retrieved %d custom analyses", len(custom_analyses))
 
-        custom_analyses = self._filter_custom_analyses_by_relevance(state, custom_analyses)
+        custom_analyses = self._filter_custom_analyses_by_relevance(state, question, custom_analyses)
         self.logger.info(
             "Kept %d custom analyses (after relevance filter): %s",
             len(custom_analyses),
@@ -155,7 +161,7 @@ class CandidatePreparationAgent(BaseAgent):
 
         # --- 3. Filter tables by relevance ---
         relevant_tables, table_relevance_reasoning = self._filter_tables_by_relevance(
-            state, question, relevant_tables,
+            state, question, relevant_tables, custom_analyses,
         )
         self.logger.info(
             "Kept %d relevant tables (after relevance filter): %s",
@@ -177,20 +183,65 @@ class CandidatePreparationAgent(BaseAgent):
     def _filter_custom_analyses_by_relevance(
         self,
         state: AgentState,
+        question: str,
         analyses: list[dict],
     ) -> list[dict]:
-        """Keep only custom analyses whose name appears in the filtered domain_rules."""
-        domain_rules = state.get("domain_rules") or []
-        if not domain_rules:
-            self.logger.info("No domain rules — removing all custom analyses")
-            return []
+        """Use the LLM to decide which retrieved custom analyses are relevant.
 
-        kept_names = {(r.get("name") or "").lower() for r in domain_rules}
-        filtered = [a for a in analyses if (a.get("name") or "").lower() in kept_names]
+        On any failure the full list is returned unchanged (safe fallback).
+        """
+        if len(analyses) <= 1:
+            return analyses
 
-        removed = [a.get("name") for a in analyses if (a.get("name") or "").lower() not in kept_names]
+        try:
+            llm = state["llm"]
+        except KeyError:
+            self.logger.warning("No LLM in state — skipping custom analysis relevance filter")
+            return analyses
+
+        analyses_summary = "\n".join(
+            f"- {a.get('name', '(unnamed)')}: "
+            f"{(a.get('description') or '(no description)').strip()}"
+            f"{('  SQL: ' + a['sql'].strip()) if a.get('sql') else ''}"
+            for a in analyses
+        )
+
+        prompt_text = CUSTOM_ANALYSIS_RELEVANCE_FILTER_PROMPT.format(
+            question=question,
+            analyses_summary=analyses_summary,
+        )
+
+        messages = [
+            SystemMessage(content="You are a database domain expert that filters custom analyses."),
+            HumanMessage(content=prompt_text),
+        ]
+
+        try:
+            result = invoke_with_structured_output(llm, messages, CustomAnalysisRelevanceModel)
+        except Exception as e:
+            self.logger.warning(
+                "Custom analysis relevance LLM call failed: %s — keeping all", e,
+            )
+            return analyses
+
+        if result is None:
+            self.logger.warning("Custom analysis relevance filter returned None — keeping all")
+            return analyses
+
+        names_to_remove = {name.lower() for name in result.analyses_to_remove}
+
+        filtered = [a for a in analyses if (a.get("name") or "").lower() not in names_to_remove]
+        removed = [a.get("name") for a in analyses if (a.get("name") or "").lower() in names_to_remove]
+
+        reasoning = (result.reasoning or "").strip()
+        self.logger.info("Custom analysis filter reasoning: %s", reasoning if reasoning else "(empty)")
         if removed:
-            self.logger.info("Custom analysis filter removed (not in domain rules): %s", removed)
+            self.logger.info("Custom analysis filter removed: %s", removed)
+        self.logger.info("Custom analysis filter kept: %s", [a.get("name") for a in filtered])
+
+        if not filtered:
+            self.logger.warning("Custom analysis filter removed ALL analyses — keeping all")
+            return analyses
 
         return filtered
 
@@ -199,11 +250,14 @@ class CandidatePreparationAgent(BaseAgent):
         state: AgentState,
         question: str,
         tables: list[dict],
+        custom_analyses: list[dict] | None = None,
     ) -> tuple[list[dict], str]:
         """Use the LLM to decide which candidate tables are actually needed.
 
         Sends table names and descriptions to the LLM alongside the user's
-        question and domain rules.  Returns ``(filtered_tables, reasoning)``.
+        question, domain rules, and selected custom analyses (so the LLM
+        knows which tables the analyses' SQL requires).
+        Returns ``(filtered_tables, reasoning)``.
         On any failure the full list is returned unchanged with empty reasoning.
         """
         if len(tables) <= 2:
@@ -228,10 +282,28 @@ class CandidatePreparationAgent(BaseAgent):
                 f"{domain_rules_text}\n"
             )
 
+        ca_section = ""
+        if custom_analyses:
+            ca_lines = []
+            for a in custom_analyses:
+                line = f"- {a.get('name', '(unnamed)')}"
+                desc = (a.get("description") or "").strip()
+                if desc:
+                    line += f": {desc}"
+                sql = (a.get("sql") or "").strip()
+                if sql:
+                    line += f"  SQL: {sql}"
+                ca_lines.append(line)
+            ca_section = (
+                "Selected custom analyses (their SQL references tables that MUST be kept):\n"
+                + "\n".join(ca_lines) + "\n\n"
+            )
+
         prompt_text = TABLE_RELEVANCE_FILTER_PROMPT.format(
             question=question,
             tables_summary=tables_summary,
             domain_rules=domain_rules_section,
+            custom_analyses=ca_section,
         )
 
         messages = [
