@@ -136,6 +136,14 @@ multimedia = [
   "librosa>=0.10.2",
 ]
 
+# ── Nemotron Parse NIM client support ────────────────────────────────────────
+# Required when using ``extract_method="nemotron_parse"``. Kept separate from
+# the default install so remote-only deployments can opt into the visual parser
+# client without pulling benchmarking tools.
+nemotron-parse = [
+  "open-clip-torch==3.2.0",
+]
+
 # ── Independent extras ───────────────────────────────────────────────────────
 
 # SQL and graph storage backends (lancedb is in core deps).
@@ -149,7 +157,6 @@ tabular = [
 # BEIR benchmarking and evaluation tools (not needed for production use).
 benchmarks = [
   "datasets>=4.8.2",
-  "open-clip-torch==3.2.0",
 ]
 
 # ── LLM client (generation + judge) ──────────────────────────────────────────
@@ -166,7 +173,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[service,local,multimedia,tabular,benchmarks,llm]",
+  "nemo_retriever[service,local,multimedia,nemotron-parse,tabular,benchmarks,llm]",
 ]
 
 [project.scripts]
