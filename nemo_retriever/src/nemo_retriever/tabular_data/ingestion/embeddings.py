@@ -2,19 +2,61 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import List
+"""Build the embedding-ready DataFrame for tabular entities stored in Neo4j.
+
+Two modes:
+
+* **Full** — ``node_ids=None`` returns every ``Table``/``Column`` under
+  ``database_name``. Used by the one-shot ingest pipeline that overwrites
+  the LanceDB table.
+* **Targeted** — ``node_ids=[...]`` returns only the listed
+  ``Table``/``Column`` rows. The PATCH-driven incremental flow uses this:
+  the API handler already knows exactly which nodes changed, so we
+  re-embed only those instead of marking + scanning a Neo4j-side dirty
+  flag.
+"""
+
+from typing import Iterable, List
 
 import pandas as pd
 
-from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
+from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 
 
-def query_neo4j_tables_for_embedding(database_name: str) -> List[dict]:
-    """Run the Neo4j query for tables not yet info_embedded; return list of doc dicts."""
+def _node_id_filter(
+    alias: str, node_ids: Iterable[str] | None
+) -> tuple[str, list[str]]:
+    """Return ``(cypher_clause, params_list)`` filtering ``alias.id`` by ids.
+
+    Empty / ``None`` input yields ``("", [])`` so callers can splice the
+    fragment unconditionally. Stringification mirrors what
+    :func:`server.datasources.vector_sync.sync_node_vectors` passes through
+    so UUIDs and other key types both behave.
+    """
+    if not node_ids:
+        return "", []
+    cleaned = [str(n) for n in node_ids if n is not None and str(n)]
+    if not cleaned:
+        return "", []
+    return f"WHERE {alias}.id IN $node_ids", cleaned
+
+
+def query_neo4j_tables_for_embedding(
+    database_name: str,
+    *,
+    node_ids: Iterable[str] | None = None,
+) -> List[dict]:
+    """Return one doc per ``Table`` node under ``database_name``.
+
+    When ``node_ids`` is provided, only tables whose ``id`` is in the list
+    are returned. ``None`` (the default) returns every table.
+    """
     neo4j_conn = get_neo4j_conn()
+    id_filter, ids_param = _node_id_filter("t", node_ids)
     query = f"""MATCH (d:{Labels.DB}{{name: $database_name}})-[:{Edges.CONTAINS}]->
       (s:{Labels.SCHEMA})-[:{Edges.CONTAINS}]->(t:{Labels.TABLE})
+               {id_filter}
                MATCH (t)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
                WITH d, s, t, collect(
                  "{{name: " + c.name + ", data_type: " + c.data_type +
@@ -30,26 +72,44 @@ def query_neo4j_tables_for_embedding(database_name: str) -> List[dict]:
                  name: t.name, label: labels(t)[0], id: t.id
                }}) as docs
             """
-    result = neo4j_conn.query_read(query, parameters={"database_name": database_name})
+    params: dict = {"database_name": database_name}
+    if ids_param:
+        params["node_ids"] = ids_param
+    result = neo4j_conn.query_read(query, parameters=params)
     if not result:
         return []
     return result[0].get("docs") or []
 
 
-def query_neo4j_columns_for_embedding(database_name: str) -> List[dict]:
-    """Return one doc per ``Column`` node for embedding (distinct from table-level rows)."""
+def query_neo4j_columns_for_embedding(
+    database_name: str,
+    *,
+    node_ids: Iterable[str] | None = None,
+) -> List[dict]:
+    """Return one doc per ``Column`` node under ``database_name``.
+
+    When ``node_ids`` is provided, only columns whose ``id`` is in the list
+    are returned.
+    """
     neo4j_conn = get_neo4j_conn()
+    id_filter, ids_param = _node_id_filter("c", node_ids)
     query = f"""
         MATCH (d:{Labels.DB}{{name: $database_name}})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})
               -[:{Edges.CONTAINS}]->(t:{Labels.TABLE})
               -[:{Edges.CONTAINS}]->(c:{Labels.COLUMN})
+        {id_filter}
 
         WITH d, s, t, c,
              CASE
                  WHEN c.description IS NOT NULL AND trim(toString(c.description)) <> ''
                  THEN ', column_description: ' + toString(c.description)
                  ELSE ''
-             END AS column_desc
+             END AS column_desc,
+             CASE
+                 WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
+                 THEN ', sample_values: ' + apoc.text.join([x IN c.sample_values[..5] | toString(x)], ', ')
+                 ELSE ''
+             END AS sample_vals
 
         RETURN collect({{
             text:  'db_name: ' + d.name +
@@ -57,28 +117,46 @@ def query_neo4j_columns_for_embedding(database_name: str) -> List[dict]:
                    ', table_name: ' + t.name +
                    ', column_name: ' + c.name +
                    ', data_type: ' + coalesce(toString(c.data_type), '') +
-                   column_desc,
+                   column_desc +
+                   sample_vals,
             name: c.name,
             label: labels(c)[0],
             id: c.id
         }}) AS docs
     """
-    result = neo4j_conn.query_read(query, parameters={"database_name": database_name})
+    params: dict = {"database_name": database_name}
+    if ids_param:
+        params["node_ids"] = ids_param
+    result = neo4j_conn.query_read(query, parameters=params)
     if not result:
         return []
     return result[0].get("docs") or []
 
 
-def fetch_tabular_embedding_dataframe(database_name: str) -> pd.DataFrame:
-    """Fetch all tabular entity docs from Neo4j and return a DataFrame ready for embedding.
+def fetch_tabular_embedding_dataframe(
+    database_name: str,
+    *,
+    node_ids: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    """Fetch tabular entity docs from Neo4j as a DataFrame ready for embedding.
 
     Each row has: text, _embed_modality, path, page_number, metadata
     (id, label, name, source_path) — matching the format produced by the
     unstructured pipeline so run_pipeline_tasks_on_df works without changes.
+
+    When ``node_ids`` is provided, only those table/column ids are
+    returned. The default (``None``) returns every table and column under
+    ``database_name`` — the full-reindex case.
     """
-    _empty = pd.DataFrame(columns=["text", "_embed_modality", "path", "page_number", "metadata"])
-    table_docs = query_neo4j_tables_for_embedding(database_name=database_name)
-    column_docs = query_neo4j_columns_for_embedding(database_name=database_name)
+    _empty = pd.DataFrame(
+        columns=["text", "_embed_modality", "path", "page_number", "metadata"]
+    )
+    table_docs = query_neo4j_tables_for_embedding(
+        database_name=database_name, node_ids=node_ids
+    )
+    column_docs = query_neo4j_columns_for_embedding(
+        database_name=database_name, node_ids=node_ids
+    )
     docs = list(table_docs) + list(column_docs)
     if not docs:
         return _empty
