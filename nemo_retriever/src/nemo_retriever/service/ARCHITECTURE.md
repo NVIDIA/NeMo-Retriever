@@ -566,7 +566,7 @@ async def my_feature(request: Request) -> dict:
 2. Register in `app.py`:
 
 ```python
-from nemo_retriever.service.routers import ..., my_feature
+from nemo_retriever.service.routers import my_feature  # re-export from routers/__init__.py next to existing routers
 
 app.include_router(my_feature.router, prefix="/v1")
 ```
