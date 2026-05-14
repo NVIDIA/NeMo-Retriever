@@ -11,17 +11,21 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from nemo_retriever.service.models.base import RichModel
+
+ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
 
 
-class ServerConfig(BaseModel):
+class ServerConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     host: str = "0.0.0.0"
     port: int = 7670
 
 
-class LoggingConfig(BaseModel):
+class LoggingConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     level: str = "INFO"
@@ -29,13 +33,7 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 
-class DatabaseConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    path: str = "retriever-service.db"
-
-
-class NimEndpointsConfig(BaseModel):
+class NimEndpointsConfig(RichModel):
     """Remote NIM microservice endpoints used instead of local GPU models."""
 
     model_config = ConfigDict(extra="forbid")
@@ -49,31 +47,21 @@ class NimEndpointsConfig(BaseModel):
     api_key: str | None = None
 
 
-class ProcessingConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    num_workers: int = 16
-    batch_size: int = 32
-    batch_timeout_s: float = 2.0
-    results_dir: str = "retriever_results"
-
-
-class ResourceLimitsConfig(BaseModel):
+class ResourceLimitsConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     max_memory_mb: int | None = None
     max_cpu_cores: int | None = None
     gpu_devices: list[str] = Field(default_factory=list)
+    max_upload_bytes: int = Field(
+        default=500_000_000,
+        ge=1,
+        description="Max upload file size in bytes (default 500 MB). Rejected before buffering.",
+    )
 
 
-class AuthConfig(BaseModel):
-    """Optional bearer-token authentication.
-
-    When ``api_token`` is set, every request must carry a matching
-    ``Authorization: Bearer <token>`` header (or whatever ``header_name``
-    is configured to).  Paths in ``bypass_paths`` are exempt — useful for
-    Kubernetes liveness probes hitting ``/v1/health``.
-    """
+class AuthConfig(RichModel):
+    """Optional bearer-token authentication."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -82,118 +70,77 @@ class AuthConfig(BaseModel):
     bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
 
 
-class DrainConfig(BaseModel):
-    """Graceful-shutdown tunables."""
+class GatewayConfig(RichModel):
+    """Backend service URLs used when ``mode`` is ``gateway``.
 
-    model_config = ConfigDict(extra="forbid")
-
-    timeout_s: float = 60.0
-
-
-class SpoolConfig(BaseModel):
-    """Durable spool of accepted-but-not-yet-processed page bytes.
-
-    When ``enabled`` is true, ingest writes every accepted page to disk
-    (atomic write + fsync) before returning 202.  On startup the service
-    scans the spool and re-enqueues any non-terminal documents — a pod
-    crash, OOM kill, or rolling upgrade no longer loses accepted work.
+    Defaults use Kubernetes in-cluster DNS names that match the Helm chart
+    service names generated when ``topology.mode: split``.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = True
-    # Filesystem root for spooled bytes.  Defaults to ``<db_dir>/spool``
-    # so it sits on the same persistence volume as the SQLite DB.
-    # Override to point at a faster (or larger) volume.
-    path: str | None = None
-    # How often the background sweeper unlinks files for documents that
-    # have reached a terminal state.
-    cleanup_interval_s: float = 60.0
-    # Per-cleanup batch cap so the sweeper never holds the loop hostage
-    # when a backlog builds up.
-    cleanup_batch_size: int = 1000
+    realtime_url: str = "http://nemo-retriever-realtime:7670"
+    batch_url: str = "http://nemo-retriever-batch:7670"
+    timeout_s: float = Field(default=300.0, description="Per-request forwarding timeout in seconds")
+    max_connections: int = Field(default=100, description="httpx connection pool limit per backend")
 
 
-class RerankerConfig(BaseModel):
-    """Defaults for the ``/v1/rerank`` endpoint."""
+class PipelinePoolConfig(RichModel):
+    """Worker pool sizing for realtime and batch ingestion pipelines.
 
-    model_config = ConfigDict(extra="forbid")
-
-    model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
-    default_top_n: int = 10
-
-
-class VectorStoreConfig(BaseModel):
-    """LanceDB vector store settings used by the ``/v1/query`` endpoint."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    lancedb_uri: str = "/var/lib/nemo-retriever/lancedb"
-    lancedb_table: str = "nv-ingest"
-    top_k: int = 10
-    vector_column_name: str = "vector"
-    nprobes: int = 16
-    refine_factor: int = 10
-    embedding_model: str = "nvidia/llama-nemotron-embed-1b-v2"
-
-
-class EventBusConfig(BaseModel):
-    """SSE event-bus back-pressure policy.
-
-    ``overflow_policy`` controls what happens when a subscriber queue
-    fills up faster than the SSE consumer can drain it:
-
-    - ``drop_low_priority`` (default): silently shed
-      ``page_complete`` events to preserve terminal events.  Lowest
-      latency, no caller blocking, but accepts that *some* events are
-      dropped under load.
-    - ``backpressure``: the publisher awaits ``Queue.put()`` with the
-      configured timeout, which back-pressures the worker callback
-      thread, which in turn back-pressures the worker pool, which
-      eventually 503s ingest with ``Retry-After``.  No events dropped
-      until the timeout expires; after that, falls back to overflow.
-    - ``block``: same as ``backpressure`` but waits forever.  Use only
-      when the caller can tolerate unbounded latency to guarantee
-      zero loss.
+    Workers are abstract dispatchers — the actual work function is plugged
+    in at startup.  Defaults are tuned for a CPU-only node that forwards
+    work to remote NIM endpoints over HTTP.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    overflow_policy: Literal["drop_low_priority", "backpressure", "block"] = "drop_low_priority"
-    # Per-subscription queue size.  Larger queues smooth bigger bursts
-    # before back-pressure or shedding kicks in, at the cost of memory.
-    queue_maxsize: int = 16384
-    # Per-key replay buffer size.  When a client reconnects with
-    # ``Last-Event-ID`` the server replays from this deque, so it should
-    # comfortably cover one document's full event history.
-    replay_buffer_size: int = 1024
-    # Used by ``backpressure`` mode: max time the publisher is willing
-    # to wait before falling back to the overflow path.  Ignored in
-    # ``drop_low_priority`` and ``block`` modes.
-    publish_timeout_s: float = 30.0
+    realtime_workers: int = Field(default=8, ge=1, description="Concurrent workers for low-latency page processing")
+    realtime_queue_size: int = Field(default=2048, ge=1, description="Max queued items before realtime pool rejects")
+    batch_workers: int = Field(default=16, ge=1, description="Concurrent workers for bulk document processing")
+    batch_queue_size: int = Field(default=4096, ge=1, description="Max queued items before batch pool rejects")
 
 
-class ServiceConfig(BaseModel):
+class VectorDbConfig(RichModel):
+    """Configuration for the dedicated VectorDB pod (LanceDB + query endpoint)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    lancedb_uri: str = "/data/vectordb"
+    table_name: str = "nemo_retriever"
+    embed_model: str = "nvidia/llama-nemotron-embed-1b-v2"
+    vectordb_url: str = Field(
+        default="http://nemo-retriever-vectordb:7671",
+        description="URL of the vectordb service (for workers to POST embeddings to)",
+    )
+
+
+class ServiceConfig(RichModel):
     """Top-level configuration for the retriever service mode.
 
     Every section has sensible defaults so a zero-config launch works out of
     the box.  Values can be overridden per-field from CLI flags.
+
+    The ``mode`` field selects the runtime role:
+
+    * **standalone** — single pod runs both realtime and batch pools (default).
+    * **gateway** — thin proxy that routes uploads to backend worker pods.
+    * **realtime** — worker pod that only runs the realtime pool.
+    * **batch** — worker pod that only runs the batch pool.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
+    mode: ServiceMode = "standalone"
     server: ServerConfig = Field(default_factory=ServerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     nim_endpoints: NimEndpointsConfig = Field(default_factory=NimEndpointsConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
-    drain: DrainConfig = Field(default_factory=DrainConfig)
-    spool: SpoolConfig = Field(default_factory=SpoolConfig)
-    event_bus: EventBusConfig = Field(default_factory=EventBusConfig)
-    vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
-    reranker: RerankerConfig = Field(default_factory=RerankerConfig)
+    gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
+    vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
 
 
 def _bundled_yaml_path() -> Path:
@@ -230,15 +177,7 @@ def load_config(
     config_path: str | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> ServiceConfig:
-    """Load a :class:`ServiceConfig` from YAML with optional CLI overrides.
-
-    Parameters
-    ----------
-    config_path
-        Explicit path to a YAML config file.  ``None`` triggers auto-discovery.
-    overrides
-        Flat ``section.key`` overrides (e.g. ``{"server.port": 9000}``).
-    """
+    """Load a :class:`ServiceConfig` from YAML with optional CLI overrides."""
     path = _discover_config_path(config_path)
     if path is not None:
         raw: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
@@ -255,4 +194,23 @@ def load_config(
                 target = target.setdefault(part, {})
             target[parts[-1]] = value
 
-    return ServiceConfig(**raw)
+    config = ServiceConfig(**raw)
+
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "password", "secret"})
+
+    from rich.console import Console
+    from rich.tree import Tree
+
+    console = Console(stderr=True)
+    tree = Tree(f"[bold]ServiceConfig[/bold]  (source: {path or 'defaults'})")
+    for section_name, section_value in config:
+        if isinstance(section_value, RichModel):
+            branch = tree.add(f"[cyan]{section_name}[/cyan]")
+            for field_name, field_value in section_value:
+                display = "****" if field_name in _REDACTED_FIELDS and field_value else repr(field_value)
+                branch.add(f"[dim]{field_name}[/dim] = [white]{display}[/white]")
+        else:
+            tree.add(f"[cyan]{section_name}[/cyan] = [white]{section_value!r}[/white]")
+    console.print(tree)
+
+    return config

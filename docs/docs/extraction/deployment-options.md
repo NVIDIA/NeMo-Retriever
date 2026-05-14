@@ -14,7 +14,7 @@ Use the sections below to pick documentation and deployment options that match y
 ### I want a Kubernetes / Helm deployment
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-2. [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
+2. [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) — chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub
 3. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
 ### I want examples and notebooks
@@ -60,5 +60,5 @@ Consider self-hosting when:
 
 **Related**
 
-- [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
+- [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)

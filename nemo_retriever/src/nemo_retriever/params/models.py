@@ -106,6 +106,7 @@ class IngestorCreateParams(_ParamsModel):
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
     api_key: Optional[str] = None
+    error_policy: Literal["raise", "collect"] = "raise"
     # service run mode: maximum number of concurrent page uploads.  Lower
     # values (e.g. 2-4) reduce burst pressure on Kubernetes NodePort /
     # kube-proxy paths that otherwise reset connections under heavy load.
@@ -260,6 +261,7 @@ class BatchTuningParams(_ParamsModel):
     nemotron_parse_workers: Optional[int] = None
     gpu_nemotron_parse: Optional[float] = None
     nemotron_parse_batch_size: Optional[int] = None
+    store_workers: Optional[int] = None
     inference_batch_size: int = 8
 
 
@@ -296,6 +298,7 @@ class ExtractParams(_ParamsModel):
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
     ocr_version: Literal["v1", "v2"] = "v2"
+    ocr_lang: Optional[Literal["multi", "english"]] = None
 
     # Service endpoints
     invoke_url: Optional[str] = None
@@ -337,6 +340,8 @@ class ExtractParams(_ParamsModel):
             self.use_table_structure = True
         if self.table_output_format is None:
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
+        if self.ocr_version == "v1" and self.ocr_lang is not None:
+            raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
         return self
 
 
@@ -366,6 +371,7 @@ class EmbedParams(_ParamsModel):
     local_ingest_embed_backend: str = (
         "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
     )
+    query_max_length: int = 128
     dimensions: Optional[int] = None
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
@@ -462,6 +468,7 @@ class StoreParams(_ParamsModel):
     storage_options: dict[str, Any] = Field(default_factory=dict)
     image_format: str = "png"
     strip_base64: bool = True
+    batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
 
     @model_validator(mode="after")
     def _resolve_local_storage_uri(self) -> "StoreParams":

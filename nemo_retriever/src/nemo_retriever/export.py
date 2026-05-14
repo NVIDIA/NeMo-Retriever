@@ -139,11 +139,13 @@ def query_lancedb(
     from nemo_retriever.retriever import Retriever
 
     retriever = Retriever(
-        vdb="lancedb",
-        vdb_kwargs={"uri": lancedb_uri, "table_name": lancedb_table},
-        embedder=embedder,
+        vdb_kwargs={
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {"uri": lancedb_uri, "table_name": lancedb_table},
+        },
+        embed_kwargs={"model_name": embedder, "embed_model_name": embedder},
         top_k=top_k,
-        reranker=False,
+        rerank=False,
     )
 
     use_fullpage = page_index is not None

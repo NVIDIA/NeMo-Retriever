@@ -174,6 +174,53 @@ imagePullSecrets:
 
 {{/*
 =============================================================================
+Split-topology helpers (gateway / realtime / batch)
+=============================================================================
+*/}}
+
+{{/*
+nemo-retriever.role.fullname
+  Resource name for a topology role, e.g. <fullname>-gateway.
+  Usage: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "gateway") }}
+*/}}
+{{- define "nemo-retriever.role.fullname" -}}
+{{- printf "%s-%s" (include "nemo-retriever.fullname" .context) .role | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+nemo-retriever.role.selectorLabels
+  Stable selector labels for a topology-role Deployment / Service.
+*/}}
+{{- define "nemo-retriever.role.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "nemo-retriever.name" .context }}
+app.kubernetes.io/instance: {{ .context.Release.Name }}
+app.kubernetes.io/component: {{ .role }}
+{{- end -}}
+
+{{/*
+nemo-retriever.role.labels
+  Full labels for a topology-role resource.
+*/}}
+{{- define "nemo-retriever.role.labels" -}}
+helm.sh/chart: {{ include "nemo-retriever.chart" .context }}
+{{ include "nemo-retriever.role.selectorLabels" . }}
+{{- if .context.Chart.AppVersion }}
+app.kubernetes.io/version: {{ .context.Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .context.Release.Service }}
+app.kubernetes.io/part-of: nemo-retriever
+{{- end -}}
+
+{{/*
+nemo-retriever.role.configMapName
+  ConfigMap name for a topology role.
+*/}}
+{{- define "nemo-retriever.role.configMapName" -}}
+{{- printf "%s-config" (include "nemo-retriever.role.fullname" .) -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 NIM helpers
 =============================================================================
 */}}

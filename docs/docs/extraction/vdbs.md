@@ -13,6 +13,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) handle
 - [Upload to a Custom Data Store](#upload-to-a-custom-data-store)
 - [Vector database partners](#vector-database-partners)
     - [Backends with `VDB` implementations](#vdb-backends-implementations)
+    - [RAG Blueprint and partner vector stores](#rag-blueprint-and-partner-vector-stores)
 - [Related Topics](#related-topics)
 
 ## Overview { #overview }
@@ -72,13 +73,13 @@ vdb.run(results)
 docs = vdb.retrieval(queries, top_k=10)
 ```
 
-With `hybrid=False`, `vdb.retrieval()` runs dense vector search. With **`hybrid=True`**, `vdb.run(results)` also builds the BM25/FTS index for hybrid ingest, but **`LanceDB.retrieval()` does not implement hybrid queries** and raises `NotImplementedError` if the operator was created with `hybrid=True`. For hybrid (dense + BM25 + RRF) **queries**, import and call **`lancedb_hybrid_retrieval()`** from `nv_ingest_client.util.vdb.lancedb` (same `table_path` / `table_name` as the `LanceDB` instance)—see [Hybrid search (LanceDB)](#hybrid-search-lancedb).
+With `hybrid=False`, `vdb.retrieval()` runs dense vector search. With `hybrid=True`, `vdb.run(results)` also builds the BM25/FTS index for hybrid ingest, but `LanceDB.retrieval()` does not implement hybrid queries and raises `NotImplementedError` if the operator was created with `hybrid=True`. For hybrid (dense + BM25 + RRF) queries, import and call `lancedb_hybrid_retrieval()` from `nv_ingest_client.util.vdb.lancedb` (same `table_path` / `table_name` as the `LanceDB` instance)—see [Hybrid search (LanceDB)](#hybrid-search-lancedb).
 
 When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB. If you omit `vdb_op`, nv-ingest-client still defaults the string argument to `"milvus"` for backward compatibility, which is not the LanceDB operator—always pass `vdb_op="lancedb"` when you intend LanceDB.
 
 ## Semantic and hybrid retrieval { #semantic-and-hybrid-retrieval }
 
-**Semantic retrieval** uses dense embeddings to find content that is similar in meaning to a query. **Hybrid retrieval** combines dense vectors with sparse or lexical signals (for example, BM25-style full-text) and fuses ranked lists for better recall on keyword-heavy queries.
+Semantic retrieval uses dense embeddings to find content that is similar in meaning to a query. Hybrid retrieval combines dense vectors with sparse or lexical signals (for example, BM25-style full-text) and fuses ranked lists for better recall on keyword-heavy queries.
 
 In NeMo Retriever Library, the default vector path is LanceDB. Use these resources together with the sections on this page:
 
@@ -108,7 +109,7 @@ Enable hybrid **ingest** by setting `hybrid=True` when creating the `LanceDB` op
 
 !!! note "Hybrid queries use `lancedb_hybrid_retrieval`, not `LanceDB.retrieval()`"
 
-    `LanceDB.retrieval()` only supports dense vector search. If the operator was created with `hybrid=True`, calling `vdb.retrieval(...)` raises `NotImplementedError` (“hybrid retrieval with precomputed vectors is not implemented yet”). For hybrid (dense + BM25 + RRF) **queries**, use **`lancedb_hybrid_retrieval()`** from the same module, with the same `table_path` / `table_name` as the `LanceDB` instance:
+    `LanceDB.retrieval()` only supports dense vector search. If the operator was created with `hybrid=True`, calling `vdb.retrieval(...)` raises `NotImplementedError` (“hybrid retrieval with precomputed vectors is not implemented yet”). For hybrid (dense + BM25 + RRF) queries, use `lancedb_hybrid_retrieval()` from the same module, with the same `table_path` / `table_name` as the `LanceDB` instance:
 
     ```python
     from nv_ingest_client.util.vdb.lancedb import LanceDB, lancedb_hybrid_retrieval
@@ -145,7 +146,7 @@ NeMo Retriever Library does not provide connections to other data sources.
 
 ## Vector database partners { #vector-database-partners }
 
-NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as used in the library. This section summarizes other client `VDB` implementations and how they plug into NeMo Retriever Library graph operators. For chunking before ingest, see [Chunking and splitting](chunking.md).
+NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as used in the library. This section summarizes other client `VDB` implementations and how they plug into NeMo Retriever Library graph operators. For chunking behavior, see [Chunking](concepts.md#chunking).
 
 ### Backends with `VDB` implementations (retriever adapters) { #vdb-backends-implementations }
 
@@ -153,16 +154,29 @@ NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/N
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
-| **LanceDB** | [LanceDB](https://lancedb.com/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
-| **OpenSearch** | [OpenSearch](https://opensearch.org/) | [`opensearch.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/opensearch.py) — reference operator; wire your own `OpenSearch` instance as `vdb` and see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb). |
+| **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
+| **OpenSearch** | [OpenSearch](https://opensearch.org/) · [Vector search](https://opensearch.org/docs/latest/vector-search/) | [`opensearch.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/opensearch.py) — reference operator; wire your own `OpenSearch` instance as `vdb` and see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb). |
 
 On nv-ingest-client `Ingestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; see [Upload to LanceDB](#upload-to-lancedb).
 
 For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` subclasses, construct the client class and pass it as the graph operator’s `vdb` argument.
 
-**Related**
+### RAG Blueprint and partner vector stores {#rag-blueprint-and-partner-vector-stores}
 
-- [Embedding NIMs and models](embedding-nims-models.md)
+Some deployments use a different vector store than the default LanceDB path on this page—for example the [NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/index.html) (Docker Compose or Helm) or a partner package that subclasses the same [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/src/nv_ingest_client/util/vdb/adt_vdb.py) interface. Use the following public references when you wire those stacks to ingestion and retrieval:
+
+| Vector store | Where to configure or implement |
+|--------------|--------------------------------|
+| **[Elasticsearch](https://www.elastic.co/elasticsearch)** | [Configure Elasticsearch as Your Vector Database for NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/change-vectordb.html) — compose profiles, environment variables, and Helm notes for the RAG Blueprint. |
+| **[Pinecone](https://www.pinecone.io/)** | [Customize your vector database (Pinecone + NVIDIA RAG)](https://github.com/pinecone-io/nvidia-pinecone-rag/blob/main/docs/vector-database.md) in the [`pinecone-io/nvidia-pinecone-rag`](https://github.com/pinecone-io/nvidia-pinecone-rag) repository. |
+| **[Teradata](https://www.teradata.com/)** | [TeradataVDB (NVIDIA NIM Ingest integration)](https://docs.teradata.com/r/VMware/Teradata-Package-for-Generative-AI-Function-Reference/Vector-Store/NVIDIA-NIM-Ingest-Integration/TeradataVDB) — `teradatagenai.vector_store.teradataVDB.TeradataVDB` implements the NV-Ingest `VDB` abstract class for Teradata Vector Store. |
+
+Testing and release cadence for these integrations follow the owning project (RAG Blueprint, Pinecone sample repo, or Teradata Generative AI package), not the first-party LanceDB operator validated for NeMo Retriever Library on this page.
+
+### More information 
+
+- [Multimodal embeddings (VLM)](embedding.md)
+- [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
 - [NVIDIA NIM catalog](https://build.nvidia.com/) for embedding and retrieval-related NIMs
 
 !!! important
@@ -170,8 +184,6 @@ For LanceDB, pass `vdb_op="lancedb"` (or a `LanceDB` instance). For other `VDB` 
     NVIDIA documents and validates the first-party LanceDB operator for this library. If you integrate a different vector store, you are responsible for testing and maintaining that integration.
 
 To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
-
-
 
 ## Related Topics { #related-topics }
 

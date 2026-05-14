@@ -2,16 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Dataset loader for vidore v3 benchmark datasets.
+Dataset loader for benchmark datasets.
 
-Handles downloading and preparing vidore v3 datasets from HuggingFace,
+Handles downloading and preparing ViDoRe v3 and BRIGHT datasets from HuggingFace,
 including queries, corpus images, and ground truth relevance judgments.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from datasets import load_dataset
 from vidore_benchmark.pipeline_evaluation.dataset_loader import (
@@ -36,6 +36,17 @@ BRIGHT_TASKS: tuple[str, ...] = (
 )
 
 
+class BenchmarkDatasetBundle(NamedTuple):
+    query_ids: List[str]
+    queries: List[str]
+    corpus_ids: List[str]
+    corpus_images: List[Any]
+    corpus_texts: List[str]
+    qrels: Dict[str, Dict[str, int]]
+    query_languages: Dict[str, str]
+    excluded_ids_by_query: Dict[str, List[str]]
+
+
 def _repo_root() -> Path:
     # <repo>/src/retrieval_bench/pipeline_evaluation/dataset_loader.py
     return Path(__file__).resolve().parents[3]
@@ -58,16 +69,7 @@ def _load_bright_split(
     task: str,
     split: str = "test",
     language: Optional[str] = None,
-) -> Tuple[
-    List[str],
-    List[str],
-    List[str],
-    List[Any],
-    List[str],
-    Dict[str, Dict[str, int]],
-    Dict[str, str],
-    Dict[str, List[str]],
-]:
+) -> BenchmarkDatasetBundle:
     """
     Load one BRIGHT task as a dataset compatible with our pipeline evaluator.
 
@@ -153,19 +155,21 @@ def _load_bright_split(
     if not any(v for v in qrels.values()):
         raise ValueError(f"No relevance judgments found in BRIGHT task '{task}'.")
 
-    return query_ids, queries, corpus_ids, corpus_images, corpus_texts, qrels, query_languages, excluded_ids_by_query
+    return BenchmarkDatasetBundle(
+        query_ids=query_ids,
+        queries=queries,
+        corpus_ids=corpus_ids,
+        corpus_images=corpus_images,
+        corpus_texts=corpus_texts,
+        qrels=qrels,
+        query_languages=query_languages,
+        excluded_ids_by_query=excluded_ids_by_query,
+    )
 
 
-def load_vidore_dataset(dataset_name: str, split: str = "test", language: str = None) -> Tuple[
-    List[str],
-    List[str],
-    List[str],
-    List[Any],
-    List[str],
-    Dict[str, Dict[str, int]],
-    Dict[str, str],
-    Dict[str, List[str]],
-]:
+def load_benchmark_dataset(
+    dataset_name: str, split: str = "test", language: Optional[str] = None
+) -> BenchmarkDatasetBundle:
     """
     Load a dataset for the pipeline evaluator.
 
@@ -182,15 +186,24 @@ def load_vidore_dataset(dataset_name: str, split: str = "test", language: str = 
         language=language,
     )
     excluded_ids_by_query = {str(qid): ["N/A"] for qid in query_ids}
-    return query_ids, queries, corpus_ids, corpus_images, corpus_texts, qrels, query_languages, excluded_ids_by_query
+    return BenchmarkDatasetBundle(
+        query_ids=query_ids,
+        queries=queries,
+        corpus_ids=corpus_ids,
+        corpus_images=corpus_images,
+        corpus_texts=corpus_texts,
+        qrels=qrels,
+        query_languages=query_languages,
+        excluded_ids_by_query=excluded_ids_by_query,
+    )
 
 
 def get_available_datasets() -> List[str]:
     """
-    Get list of available vidore v3 datasets.
+    Get list of available benchmark datasets.
 
     Returns:
-        List of dataset names that can be used with load_vidore_dataset()
+        List of dataset names that can be used with load_benchmark_dataset()
     """
     datasets = list(_upstream_get_available_datasets())
     for name in (f"bright/{t}" for t in BRIGHT_TASKS):

@@ -27,6 +27,7 @@ from nemo_retriever.api.util.image_processing.table_and_chart import convert_ocr
 from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import YoloxTableStructureModelInterface
 from nemo_retriever.api.util.image_processing.transforms import base64_to_numpy
 from nemo_retriever.api.util.nim import create_inference_client
+from nemo_retriever.ocr.config import resolve_ocr_v2_model_dir
 
 logger = logging.getLogger(__name__)
 
@@ -348,8 +349,8 @@ def _local_nemotron_ocr_boxes_texts(
     trace_info: Optional[Dict] = None,
 ) -> List[Tuple[str, Any, Any, Any]]:
     """
-    Local OCR fallback using the Nemotron OCR v1 pipeline via:
-      `nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1`
+    Local OCR fallback using the Nemotron OCR v2 pipeline via:
+      `nemo_retriever.model.local.nemotron_ocr_v2.NemotronOCRV2`
 
     Returns a list aligned with base64_images:
       (base64_image, cell_predictions=None, bounding_boxes, text_predictions)
@@ -366,28 +367,29 @@ def _local_nemotron_ocr_boxes_texts(
     if not valid_images:
         return results
 
-    model_dir = (
-        os.getenv("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()
-        or os.getenv("NEMOTRON_OCR_MODEL_DIR", "").strip()
-        or os.getenv("NEMOTRON_OCR_V1_MODEL_DIR", "").strip()
-    )
+    model_dir = resolve_ocr_v2_model_dir()
+    ocr_version = os.getenv("NEMOTRON_OCR_VERSION", "v2").strip() or "v2"
+    ocr_lang = os.getenv("NEMOTRON_OCR_LANG", "").strip() or None
 
     # Lazy import to avoid hard dependency when running pure API package.
     try:
-        from nemo_retriever.model.local.nemotron_ocr_v1 import NemotronOCRV1  # type: ignore
+        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2  # type: ignore
+        from nemo_retriever.ocr.config import resolve_ocr_v2_lang
     except Exception as e:
         raise RuntimeError(
             "Local table OCR fallback requires the `nemo-retriever` package to be importable "
-            "so we can use `nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1`."
+            "so we can use `nemo_retriever.model.local.nemotron_ocr_v2.NemotronOCRV2`."
         ) from e
+    lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
 
     if trace_info is not None:
         trace_info.setdefault("ocr", {})
-        trace_info["ocr"]["backend"] = "local_nemotron_ocr_v1"
+        trace_info["ocr"]["backend"] = "local_nemotron_ocr_v2"
         trace_info["ocr"]["model_dir"] = model_dir or None
+        trace_info["ocr"]["lang"] = lang
 
     # Instantiate local OCR model once per call.
-    ocr = NemotronOCRV1(model_dir=model_dir) if model_dir else NemotronOCRV1()
+    ocr = NemotronOCRV2(model_dir=model_dir, lang=lang) if model_dir else NemotronOCRV2(lang=lang)
 
     def _xyxy_to_quad(xyxy: List[float]) -> List[List[float]]:
         x1, y1, x2, y2 = [float(v) for v in xyxy]

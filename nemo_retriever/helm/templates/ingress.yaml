@@ -1,10 +1,15 @@
 {{- if .Values.ingress.enabled -}}
-{{- $svcName := include "nemo-retriever.fullname" . -}}
 {{- $svcPort := .Values.networkService.port -}}
+{{- $svcName := "" -}}
+{{- if eq .Values.topology.mode "standalone" -}}
+{{- $svcName = include "nemo-retriever.fullname" . -}}
+{{- else -}}
+{{- $svcName = include "nemo-retriever.role.fullname" (dict "context" $ "role" "gateway") -}}
+{{- end -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $svcName }}
+  name: {{ include "nemo-retriever.fullname" . }}
   labels:
     {{- include "nemo-retriever.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}

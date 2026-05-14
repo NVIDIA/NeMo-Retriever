@@ -1,0 +1,13 @@
+{{- if .Values.topology.otel.enabled }}
+{{- $fullname := include "nemo-retriever.fullname" . -}}
+{{- $otelName := printf "%s-otel" $fullname -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $otelName }}-config
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "otel") | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.topology.otel.config | nindent 4 }}
+{{- end }}

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # syntax=docker/dockerfile:1.3
 #
-# Build from repo root: docker build -f nemo_retriever/Dockerfile -t nemo-retriever .
+# Build from repo root: docker build -f Dockerfile -t nemo-retriever .
 # Run: docker run nemo-retriever  (shell with venv active)
 # Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
 # Run with data:     docker run -v /host/docs:/data nemo-retriever /data
@@ -63,10 +63,13 @@ RUN sed -i 's/# deb-src/deb-src/' /etc/apt/sources.list \
        done \
     && apt-get clean
 
+ENV UV_INSTALL_DIR=/usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-ENV PATH=/root/.local/bin:$PATH
 ENV UV_LINK_MODE=copy
+# Keep uv-managed Python outside /root so the non-root service user can execute
+# venv console-script interpreters.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv python install 3.12 \
@@ -90,9 +93,6 @@ WORKDIR /workspace
 COPY data data
 COPY nemo_retriever nemo_retriever
 
-# ENV VIRTUAL_ENV=/opt/retriever_runtime
-# ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
-# ENV LD_LIBRARY_PATH=/opt/retriever_runtime/lib:${LD_LIBRARY_PATH}
 
 # ---------------------------------------------------------------------------
 # Install nemo_retriever and path deps (build context = repo root)
@@ -109,14 +109,14 @@ ENV PYTHONUNBUFFERED=1
 
 # Activate venv by default so CLI and python see nemo_retriever; mount over /workspace for dev.
 ENV VIRTUAL_ENV=/opt/retriever_runtime
-ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
+ENV PATH=/opt/retriever_runtime/bin:$PATH
 
 # Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e ./nemo_retriever
+    && uv pip install -e "./nemo_retriever[service]"
 
 # Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
@@ -124,7 +124,7 @@ CMD ["/bin/bash"]
 # ---------------------------------------------------------------------------
 # Service profile: run the FastAPI ingest service.
 #
-# Build:  docker build -f nemo_retriever/Dockerfile --target service \
+# Build:  docker build -f Dockerfile --target service \
 #             -t nemo-retriever-service .
 #
 # Run with the bundled default config:
@@ -145,8 +145,9 @@ ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
 
 ENV PATH=/opt/retriever_runtime/bin:$PATH
 
-RUN chmod -R a+rX /root/.local \
-    && groupadd -r nemo && useradd -r -g nemo -d /workspace -s /sbin/nologin nemo \
+RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx \
+    && chmod -R a+rX /opt/uv \
+    && groupadd -r -g 1000 nemo && useradd -r -u 1000 -g nemo -d /workspace -s /sbin/nologin nemo \
     && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \

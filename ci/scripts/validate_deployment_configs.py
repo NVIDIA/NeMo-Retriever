@@ -351,7 +351,7 @@ def main() -> int:
     repo_root = script_dir.parent.parent
 
     compose_path = repo_root / "docker-compose.yaml"
-    helm_path = repo_root / "helm" / "values.yaml"
+    helm_path = repo_root / "nemo_retriever" / "helm" / "values.yaml"
 
     # Load configurations
     print("Loading configuration files...")

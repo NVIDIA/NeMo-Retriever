@@ -60,8 +60,8 @@ retriever pipeline run "${SAMPLE_PDF0}" \
   **has no parity.** There is no image scale/aspect-ratio filter in the
   `retriever` CLI today. If that matters, drop to the Python API or keep the
   old `nv-ingest-cli` for that example.
-- `extract_images:true` is implicitly satisfied by `--store-images-uri`
-  (images are extracted and persisted to the URI).
+- `extract_images:true` is covered by `--store-images-uri`: the image assets
+  produced by the configured embed granularity are persisted to that URI.
 
 ## 3. Submit a dataset of PDFs
 

@@ -204,11 +204,13 @@ def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
     )
 
     assert captured_kwargs == {
-        "vdb": "lancedb",
-        "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "nv-ingest"},
-        "embedder": "embedder",
+        "vdb_kwargs": {
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "nv-ingest"},
+        },
+        "embed_kwargs": {"model_name": "embedder", "embed_model_name": "embedder"},
         "top_k": 7,
-        "reranker": False,
+        "rerank": False,
     }
     assert all_results["What is the range of the 767?"]["chunks"] == ["range chunk"]
     assert meta["collection_name"] == "nv-ingest"

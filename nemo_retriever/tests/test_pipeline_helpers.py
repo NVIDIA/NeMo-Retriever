@@ -57,7 +57,15 @@ def test_resolve_file_patterns_recurses_directory_inputs(
 
 
 class TestBuildIngestor:
-    def test_store_is_attached_after_embed(self, monkeypatch, tmp_path: Path) -> None:
+    def _build_pdf_ingestor(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+        *,
+        run_mode: str,
+        store_images_uri: str | None,
+        store_actors: int = 0,
+    ) -> tuple[list[str], dict[str, Any]]:
         calls: list[str] = []
         captured: dict[str, Any] = {}
 
@@ -87,7 +95,7 @@ class TestBuildIngestor:
         monkeypatch.setattr(pipeline_main, "GraphIngestor", _FakeIngestor)
 
         _build_ingestor(
-            run_mode="inprocess",
+            run_mode=run_mode,
             ray_address=None,
             file_patterns=[str(tmp_path / "doc.pdf")],
             input_type="pdf",
@@ -108,7 +116,8 @@ class TestBuildIngestor:
             caption_temperature=1.0,
             caption_top_p=None,
             caption_max_tokens=1024,
-            store_images_uri=str(tmp_path / "stored"),
+            store_images_uri=store_images_uri,
+            store_actors=store_actors,
             segment_audio=False,
             audio_split_type="time",
             audio_split_interval=30,
@@ -121,8 +130,61 @@ class TestBuildIngestor:
             video_av_fuse=True,
         )
 
+        return calls, captured
+
+    def test_store_is_attached_after_embed(self, monkeypatch, tmp_path: Path) -> None:
+        calls, captured = self._build_pdf_ingestor(
+            monkeypatch,
+            tmp_path,
+            run_mode="inprocess",
+            store_images_uri=str(tmp_path / "stored"),
+        )
+
         assert calls == ["files", "extract", "embed", "store"]
+        assert captured["init"]["node_overrides"] is None
         assert captured["store_params"].storage_uri.endswith("/stored")
+
+    def test_store_actor_flag_creates_store_params(self, monkeypatch, tmp_path: Path) -> None:
+        calls, captured = self._build_pdf_ingestor(
+            monkeypatch,
+            tmp_path,
+            run_mode="batch",
+            store_images_uri=str(tmp_path / "stored"),
+            store_actors=4,
+        )
+
+        assert calls == ["files", "extract", "embed", "store"]
+        assert captured["init"]["node_overrides"] is None
+        assert captured["store_params"].storage_uri.endswith("/stored")
+        assert captured["store_params"].batch_tuning.store_workers == 4
+
+    def test_default_store_tuning_leaves_store_params_unset(self, monkeypatch, tmp_path: Path) -> None:
+        calls, captured = self._build_pdf_ingestor(
+            monkeypatch,
+            tmp_path,
+            run_mode="batch",
+            store_images_uri=str(tmp_path / "stored"),
+        )
+
+        assert calls == ["files", "extract", "embed", "store"]
+        assert captured["init"]["node_overrides"] is None
+        assert captured["store_params"].batch_tuning.store_workers is None
+
+    def test_store_actor_flag_without_uri_warns_and_skips_store(self, monkeypatch, tmp_path: Path, caplog) -> None:
+        with caplog.at_level("WARNING", logger=pipeline_main.__name__):
+            calls, captured = self._build_pdf_ingestor(
+                monkeypatch,
+                tmp_path,
+                run_mode="batch",
+                store_images_uri=None,
+                store_actors=4,
+            )
+
+        assert calls == ["files", "extract", "embed"]
+        assert captured["init"]["node_overrides"] is None
+        assert "store_params" not in captured
+        assert "--store-actors" in caplog.text
+        assert "--store-images-uri" in caplog.text
 
 
 def test_resolve_file_patterns_returns_existing_file_verbatim(tmp_path: Path) -> None:
@@ -242,6 +304,13 @@ def test_collect_results_accepts_inprocess_dataframe() -> None:
     assert records == [{"source_path": "/a.pdf"}, {"source_path": "/b.pdf"}]
     assert download_time == 0.0
     assert num_units == 2
+
+
+def test_to_client_vdb_records_returns_empty_list_when_nothing_uploadable() -> None:
+    from nemo_retriever.vdb.records import to_client_vdb_records
+
+    assert to_client_vdb_records([]) == []
+    assert to_client_vdb_records([{"text": "no embedding"}]) == []
 
 
 def test_count_uploadable_vdb_records_filters_rows_without_embedding_or_text() -> None:

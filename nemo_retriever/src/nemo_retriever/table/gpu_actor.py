@@ -12,6 +12,7 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.ocr.config import resolve_ocr_v2_lang
 from nemo_retriever.table.shared import table_structure_ocr_page_elements
 
 
@@ -26,7 +27,8 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         *,
         table_structure_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
-        load_ocr_v2: bool = True,
+        ocr_version: str = "v2",
+        ocr_lang: Optional[str] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
@@ -56,14 +58,11 @@ class TableStructureActor(AbstractOperator, GPUOperator):
 
         if self._ocr_invoke_url:
             self._ocr_model = None
-        elif load_ocr_v2:
+        else:
             from nemo_retriever.model.local import NemotronOCRV2
 
-            self._ocr_model = NemotronOCRV2()
-        else:
-            from nemo_retriever.model.local import NemotronOCRV1
-
-            self._ocr_model = NemotronOCRV1()
+            lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
+            self._ocr_model = NemotronOCRV2(lang=lang)
 
         if self._table_structure_invoke_url or self._ocr_invoke_url:
             self._nim_client = NIMClient(

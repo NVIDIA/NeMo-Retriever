@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Built-in retrieval pipelines for vidore-benchmark evaluation.
+Built-in retrieval pipelines for benchmark evaluation.
 """
 
 from retrieval_bench.pipelines.backends import VALID_BACKENDS, init_backend

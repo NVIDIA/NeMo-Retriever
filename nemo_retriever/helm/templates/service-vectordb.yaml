@@ -1,0 +1,19 @@
+{{- if .Values.serviceConfig.vectordb.enabled }}
+{{- $fullname := include "nemo-retriever.fullname" . -}}
+{{- $vdb := .Values.topology.vectordb -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-vectordb
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "vectordb") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "vectordb") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ $vdb.port }}
+      targetPort: http
+{{- end }}

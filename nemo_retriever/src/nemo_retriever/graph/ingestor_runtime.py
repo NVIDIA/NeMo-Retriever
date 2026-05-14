@@ -36,7 +36,8 @@ from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.table.table_detection import TableStructureActor
 from nemo_retriever.pdf.extract import PDFExtractionActor
 from nemo_retriever.pdf.split import PDFSplitActor
-from nemo_retriever.params import TextChunkParams, resolve_split_params
+from nemo_retriever.params import TextChunkParams, VdbUploadParams, resolve_split_params
+from nemo_retriever.vdb import IngestVdbOperator
 from nemo_retriever.txt.ray_data import TextChunkActor
 from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.ingest_plans import IngestExecutionPlan
@@ -46,6 +47,9 @@ from nemo_retriever.utils.ray_resource_hueristics import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_STORE_WORKERS = 4
+DEFAULT_STORE_CPUS_PER_ACTOR = 0.1
 
 
 def _batch_tuning(params: Any) -> Any:
@@ -76,8 +80,9 @@ def batch_tuning_to_node_overrides(
     caption_params: Any | None = None,
     caption_gpus_per_actor: float | None = None,
     video_frame_params: Any | None = None,
+    store_params: Any | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Translate BatchTuningParams from extract/embed params into RayDataExecutor node_overrides.
+    """Translate BatchTuningParams from stage params into RayDataExecutor node_overrides.
 
     Explicit (non-zero) values from BatchTuningParams always win.  When a field
     is absent or zero, the heuristic default from ``resolve_requested_plan`` is
@@ -351,6 +356,15 @@ def batch_tuning_to_node_overrides(
         if cpus > 0:
             _set(VideoSplitActor.__name__, "concurrency", max(1, min(cpus // 4, 8)))
 
+    if store_params is not None:
+        store_tuning = _batch_tuning(store_params)
+        store_workers = _positive(getattr(store_tuning, "store_workers", None) if store_tuning is not None else None)
+        store_workers = int(store_workers or DEFAULT_STORE_WORKERS)
+        store_override = overrides.setdefault(StoreOperator.__name__, {})
+        # Ray actor pool tuple is (min, max, initial); keep store lazy at startup.
+        store_override["concurrency"] = (1, store_workers, 1) if store_workers > 1 else 1
+        store_override["num_cpus"] = DEFAULT_STORE_CPUS_PER_ACTOR
+
     return overrides
 
 
@@ -454,6 +468,7 @@ def _append_ordered_transform_stages(
     caption_params: Any | None,
     store_params: Any | None,
     embed_params: Any | None,
+    vdb_upload_params: VdbUploadParams | None = None,
     webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
@@ -511,6 +526,12 @@ def _append_ordered_transform_stages(
                     )
             graph = graph >> _BatchEmbedActor(params=embed_params)
 
+    if vdb_upload_params is not None:
+        graph = graph >> IngestVdbOperator(
+            vdb_op=vdb_upload_params.vdb_op,
+            vdb_kwargs=vdb_upload_params.to_ingest_operator_kwargs(),
+        )
+
     if webhook_params is not None and getattr(webhook_params, "endpoint_url", None):
         graph = graph >> WebhookNotifyOperator(params=webhook_params)
 
@@ -531,6 +552,7 @@ def build_graph(
     split_config: dict[str, Any] | None = None,
     caption_params: Any | None = None,
     store_params: Any | None = None,
+    vdb_upload_params: VdbUploadParams | None = None,
     webhook_params: Any | None = None,
     video_frame_params: Any | None = None,
     video_text_dedup_params: Any | None = None,
@@ -570,6 +592,14 @@ def build_graph(
         stage_order=stage_order,
     )
 
+    sink_vdb: VdbUploadParams | None = None
+    if execution_plan is not None:
+        for sink in execution_plan.sinks:
+            if sink.name == "vdb_upload":
+                sink_vdb = sink.params
+                break
+    effective_vdb_upload_params = vdb_upload_params if vdb_upload_params is not None else sink_vdb
+
     # GraphIngestor pre-resolves split_config; tests and other direct callers
     # may omit it, in which case fill in defaults consistently with the
     # ingestor surface.
@@ -603,6 +633,8 @@ def build_graph(
         if frames_enabled:
             graph = graph >> VideoFrameOCRActor(
                 ocr_invoke_url=getattr(extract_params, "ocr_invoke_url", None),
+                ocr_version=getattr(extract_params, "ocr_version", "v2"),
+                ocr_lang=getattr(extract_params, "ocr_lang", None),
                 api_key=getattr(extract_params, "ocr_api_key", None) or getattr(extract_params, "api_key", None),
                 inference_batch_size=int(getattr(extract_params, "inference_batch_size", None) or 8),
                 request_timeout_s=float(
@@ -700,6 +732,9 @@ def build_graph(
                 ocr_kwargs["extract_infographics"] = True
             ocr_kwargs["use_graphic_elements"] = extract_params.use_graphic_elements
             ocr_kwargs["use_table_structure"] = extract_params.use_table_structure
+            ocr_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
+            if getattr(extract_params, "ocr_lang", None) is not None:
+                ocr_kwargs["ocr_lang"] = extract_params.ocr_lang
             if extract_params.ocr_invoke_url:
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
@@ -710,8 +745,6 @@ def build_graph(
             if detect_batch_size:
                 ocr_kwargs["inference_batch_size"] = int(detect_batch_size)
 
-            load_ocr_v2 = getattr(extract_params, "ocr_version", "v2") == "v2"
-
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
@@ -721,7 +754,9 @@ def build_graph(
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
                 table_kwargs["table_output_format"] = extract_params.table_output_format
-            table_kwargs["load_ocr_v2"] = load_ocr_v2
+            table_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
+            if getattr(extract_params, "ocr_lang", None) is not None:
+                table_kwargs["ocr_lang"] = extract_params.ocr_lang
 
             graphic_kwargs: dict[str, Any] = {}
             if extract_params.graphic_elements_invoke_url:
@@ -730,7 +765,9 @@ def build_graph(
                 graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 graphic_kwargs["api_key"] = extract_params.api_key
-            graphic_kwargs["load_ocr_v2"] = load_ocr_v2
+            graphic_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
+            if getattr(extract_params, "ocr_lang", None) is not None:
+                graphic_kwargs["ocr_lang"] = extract_params.ocr_lang
 
             _rr = _nim_remote_http_kwargs(extract_params)
             detect_kwargs.update(_rr)
@@ -766,6 +803,7 @@ def build_graph(
         caption_params=caption_params,
         store_params=store_params,
         embed_params=embed_params,
+        vdb_upload_params=effective_vdb_upload_params,
         webhook_params=webhook_params,
         stage_order=stage_order,
         supports_dedup=True,

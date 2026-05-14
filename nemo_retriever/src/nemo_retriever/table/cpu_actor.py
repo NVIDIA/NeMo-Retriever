@@ -24,7 +24,8 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`TableStructureActor`.
 
     Defaults to the build.nvidia.com endpoint for
-    ``nemotron-table-structure-v1``. No local GPU models are loaded.
+    ``nemotron-table-structure-v1`` and hosted ``nemotron-ocr-v1``. Remote OCR
+    remains URL-driven until OCR v2 NIM is released.
     """
 
     DEFAULT_TABLE_STRUCTURE_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
@@ -35,7 +36,6 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
         *,
         table_structure_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
-        load_ocr_v2: bool = True,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
