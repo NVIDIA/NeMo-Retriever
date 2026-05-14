@@ -93,7 +93,11 @@ The default `ingest` runs 8 stages, in order:
   CUDA-graph capture for the embedder. Subsequent runs in the same process
   are fast; one-shot CLI invocations always pay this cost.
 - **`No existing dataset at …/nv-ingest.lance, it will be created`** — expected
-  on the first ingest into a new DB. Subsequent ingests append.
+  on the first ingest into a new DB. Subsequent ingests **always append** —
+  there is no `--overwrite` flag on `retriever ingest`. To start fresh,
+  `rm -rf <lancedb-uri>/<table-name>.lance` before running. Alternatively,
+  use [[vector-store]] (`vector-store stage run --overwrite`) on the
+  embeddings stage of the [[local]] flow.
 - **HuggingFace download on first run** — the embedder and page-element
   detector pull weights to `~/.cache/huggingface`. Needs network the first
   time; cached afterwards.
