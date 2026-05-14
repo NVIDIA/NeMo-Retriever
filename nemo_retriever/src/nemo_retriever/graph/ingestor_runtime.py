@@ -633,6 +633,8 @@ def build_graph(
         if frames_enabled:
             graph = graph >> VideoFrameOCRActor(
                 ocr_invoke_url=getattr(extract_params, "ocr_invoke_url", None),
+                ocr_version=getattr(extract_params, "ocr_version", "v2"),
+                ocr_lang=getattr(extract_params, "ocr_lang", None),
                 api_key=getattr(extract_params, "ocr_api_key", None) or getattr(extract_params, "api_key", None),
                 inference_batch_size=int(getattr(extract_params, "inference_batch_size", None) or 8),
                 request_timeout_s=float(
@@ -730,6 +732,9 @@ def build_graph(
                 ocr_kwargs["extract_infographics"] = True
             ocr_kwargs["use_graphic_elements"] = extract_params.use_graphic_elements
             ocr_kwargs["use_table_structure"] = extract_params.use_table_structure
+            ocr_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
+            if getattr(extract_params, "ocr_lang", None) is not None:
+                ocr_kwargs["ocr_lang"] = extract_params.ocr_lang
             if extract_params.ocr_invoke_url:
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
@@ -740,8 +745,6 @@ def build_graph(
             if detect_batch_size:
                 ocr_kwargs["inference_batch_size"] = int(detect_batch_size)
 
-            load_ocr_v2 = getattr(extract_params, "ocr_version", "v2") == "v2"
-
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
@@ -751,7 +754,9 @@ def build_graph(
                 table_kwargs["api_key"] = extract_params.api_key
             if extract_params.table_output_format:
                 table_kwargs["table_output_format"] = extract_params.table_output_format
-            table_kwargs["load_ocr_v2"] = load_ocr_v2
+            table_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
+            if getattr(extract_params, "ocr_lang", None) is not None:
+                table_kwargs["ocr_lang"] = extract_params.ocr_lang
 
             graphic_kwargs: dict[str, Any] = {}
             if extract_params.graphic_elements_invoke_url:
@@ -760,7 +765,9 @@ def build_graph(
                 graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 graphic_kwargs["api_key"] = extract_params.api_key
-            graphic_kwargs["load_ocr_v2"] = load_ocr_v2
+            graphic_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
+            if getattr(extract_params, "ocr_lang", None) is not None:
+                graphic_kwargs["ocr_lang"] = extract_params.ocr_lang
 
             _rr = _nim_remote_http_kwargs(extract_params)
             detect_kwargs.update(_rr)

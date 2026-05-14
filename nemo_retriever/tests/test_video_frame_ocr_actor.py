@@ -72,6 +72,12 @@ def test_cpu_actor_calls_remote_batched_with_b64_list() -> None:
     assert call_kwargs["invoke_url"] == "https://example/ocr"
 
 
+def test_cpu_actor_defaults_to_hosted_ocr_v1() -> None:
+    actor = VideoFrameOCRCPUActor()
+
+    assert "nemotron-ocr-v1" in actor._invoke_url
+
+
 def test_gpu_actor_invokes_local_model_per_frame() -> None:
     df = _make_frame_df(["b64_one", "b64_two"])
 
@@ -90,6 +96,18 @@ def test_gpu_actor_invokes_local_model_per_frame() -> None:
     assert isinstance(out, pd.DataFrame)
     assert out["text"].tolist() == ["alpha", "beta"]
     assert fake_model.invoke.call_count == 2
+
+
+def test_gpu_actor_loads_v2_model_with_legacy_selector(monkeypatch) -> None:
+    import nemo_retriever.model.local as local_models
+
+    mock_ocr_v2 = MagicMock()
+    monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
+
+    actor = VideoFrameOCRGPUActor(ocr_version="v1")
+    actor._ensure_model()
+
+    mock_ocr_v2.assert_called_once_with(lang="v1")
 
 
 def test_gpu_actor_drops_empty_text_rows() -> None:

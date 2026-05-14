@@ -159,6 +159,7 @@ def test_huggingface_ocr_nightly_does_not_carry_namespace_patch_knobs() -> None:
     workflow = workflow_path.read_text(encoding="utf-8")
     v2_stanza = workflow.split("- id: nemotron-ocr-v2", 1)[1].split("container:", 1)[0]
 
+    assert "nemotron-ocr-v1" not in workflow
     assert 'nightly_base_version: "2.0.0"' in v2_stanza
     assert "project_name:" not in workflow
     assert "package_rename:" not in workflow

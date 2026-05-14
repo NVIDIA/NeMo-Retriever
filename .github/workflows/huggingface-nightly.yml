@@ -133,7 +133,7 @@ jobs:
     # Nemotron OCR packages need nvcc/CUDA headers to build their extension.
     # Build with Python 3.12 to match upstream package constraints and
     # avoid producing an extension for the wrong Python ABI.
-    # Matrix across model generations, x86_64, and aarch64 so the wheel works on ARM hosts
+    # Matrix across x86_64 and aarch64 so the wheel works on ARM hosts
     # (e.g. DGX Spark) as well as conventional x86 machines.
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -147,9 +147,6 @@ jobs:
             cuda_image: nvidia/cuda:13.0.0-devel-ubuntu24.04
             arch: aarch64
         ocr:
-          - id: nemotron-ocr-v1
-            url: https://huggingface.co/nvidia/nemotron-ocr-v1
-            nightly_base_version: "1.0.2"
           - id: nemotron-ocr-v2
             url: https://huggingface.co/nvidia/nemotron-ocr-v2
             nightly_base_version: "2.0.0"
