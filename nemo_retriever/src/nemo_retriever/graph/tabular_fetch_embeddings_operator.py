@@ -65,11 +65,16 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
         return data
 
     def _build_rows(self, tables_df: pd.DataFrame, columns_df: pd.DataFrame) -> Iterable[dict[str, Any]]:
-        # Index columns by lowercase table name so each table can pick up its
-        # column rows without rescanning the full columns_df.
-        columns_by_table: dict[str, list[Any]] = {}
+        # Index columns by (schema, table_name) so duplicate table names across
+        # different schemas (e.g. two "users" tables in two schemas) don't get
+        # their columns merged into one bucket — which would both bloat each
+        # table's text and double-emit every column row per duplicate.
+        columns_by_table: dict[tuple[str, str], list[Any]] = {}
         for _, col in columns_df.iterrows():
-            key = str(col.get("table_name", "")).lower()
+            key = (
+                str(col.get("table_schema", "")).lower(),
+                str(col.get("table_name", "")).lower(),
+            )
             columns_by_table.setdefault(key, []).append(col)
 
         rows: list[dict[str, Any]] = []
@@ -77,8 +82,8 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
             table_id = str(table.get("id", ""))
             table_name = str(table.get("table_name", ""))
             table_description = "" if pd.isna(v := table.get("description")) else str(v).strip()
-            columns = columns_by_table.get(table_name.lower(), [])
             schema_name = str(table.get("table_schema", ""))
+            columns = columns_by_table.get((schema_name.lower(), table_name.lower()), [])
 
             table_text = _create_table_text(
                 table_name=table_name,
@@ -103,7 +108,7 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
                 column_name = str(column.get("column_name", ""))
                 data_type = "" if pd.isna(v := column.get("data_type")) else str(v).strip()
                 column_description = "" if pd.isna(v := column.get("description")) else str(v).strip()
-                sample_values = column.get("sample_values") or []
+                sample_values = (column.get("sample_values") or [])[:5]
                 column_text = _create_column_text(
                     column_name=column_name,
                     column_description=column_description,
@@ -142,6 +147,10 @@ def _create_table_text(
     Returns just the text string; the caller is responsible for wrapping it
     in an embed-row dict via :func:`_create_row`.
     """
+    text = f"db_name: {database_name}" f", schema_name: {schema_name}" f", table_name: {table_name}"
+    if table_description:
+        text += f", table_description: {table_description}"
+
     column_pieces: list[str] = []
     for column in columns:
         column_name = column.get("column_name", "")
@@ -154,10 +163,7 @@ def _create_table_text(
         piece += "}"
         column_pieces.append(piece)
 
-    text = f"db_name: {database_name}" f", schema_name: {schema_name}" f", table_name: {table_name}"
-    if table_description:
-        text += f", table_description: {table_description}"
-    text += f", columns: {' '.join(column_pieces)}"
+    text += f", columns: {','.join(column_pieces)}"
     return text
 
 
