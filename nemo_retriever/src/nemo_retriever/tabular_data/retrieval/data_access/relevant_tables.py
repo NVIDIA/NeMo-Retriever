@@ -17,7 +17,7 @@ import re
 from typing import TYPE_CHECKING
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
-from nemo_retriever.tabular_data.retrieval.context.semantic_search import (
+from nemo_retriever.tabular_data.retrieval.data_access.semantic_search import (
     search_semantic_index,
 )
 

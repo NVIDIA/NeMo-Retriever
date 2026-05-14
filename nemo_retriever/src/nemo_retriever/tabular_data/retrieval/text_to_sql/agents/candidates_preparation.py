@@ -39,7 +39,7 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
-from nemo_retriever.tabular_data.retrieval.context.relevant_tables import (
+from nemo_retriever.tabular_data.retrieval.data_access.relevant_tables import (
     dedupe_merge_relevant_tables,
     get_relevant_tables,
     get_relevant_tables_from_candidates,

@@ -173,7 +173,7 @@ def add_custom_analyses(
     from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
     from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels, Props
     from nemo_retriever.tabular_data.ingestion.services.queries import parse_query_single
-    from nemo_retriever.tabular_data.retrieval.context.graph_schemas import (
+    from nemo_retriever.tabular_data.retrieval.data_access.graph_schemas import (
         get_all_schemas_ids,
         get_schemas_by_ids,
     )

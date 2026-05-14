@@ -4,7 +4,7 @@ The functions here build ``where`` predicates over the JSON ``metadata``
 column, run per-label vector queries through the injected
 :class:`~nemo_retriever.retriever.Retriever`, and shape the raw hits into a
 common ``{text, id, label, score}`` candidate dict consumed by the rest of
-the retrieval context modules.
+the retrieval data-access modules.
 """
 
 from __future__ import annotations

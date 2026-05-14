@@ -15,7 +15,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
-from nemo_retriever.tabular_data.retrieval.context.relevant_tables import (
+from nemo_retriever.tabular_data.retrieval.data_access.relevant_tables import (
     get_relevant_tables,
     get_relevant_tables_from_candidates,
 )
@@ -165,7 +165,7 @@ def get_relevant_fks_from_candidates_tables(
 ) -> tuple[list[dict], list[dict]]:
     """Extract tables and foreign keys from flat candidate dicts.
 
-    Wraps :func:`~nemo_retriever.tabular_data.retrieval.context.relevant_tables.get_relevant_tables_from_candidates`
+    Wraps :func:`~nemo_retriever.tabular_data.retrieval.data_access.relevant_tables.get_relevant_tables_from_candidates`
     and additionally fetches FK / join relationships for the resulting tables
     via :func:`_get_relevant_fks`, then applies FK hints in-place.
 

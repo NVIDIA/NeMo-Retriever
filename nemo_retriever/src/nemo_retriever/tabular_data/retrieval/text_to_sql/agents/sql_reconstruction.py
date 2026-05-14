@@ -29,7 +29,7 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.sql_from_semantic import format_tables_for_prompt
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
-from nemo_retriever.tabular_data.retrieval.context.custom_analyses import get_custom_analyses_ids
+from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import get_custom_analyses_ids
 
 logger = logging.getLogger(__name__)
 

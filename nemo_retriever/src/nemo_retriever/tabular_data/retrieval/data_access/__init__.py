@@ -1,4 +1,4 @@
-"""Retrieval context helpers used by the text-to-SQL and deep_agent pipelines.
+"""Data-access helpers used by the text-to-SQL and deep_agent pipelines.
 
 Each submodule is focused on one source / shape of data:
 

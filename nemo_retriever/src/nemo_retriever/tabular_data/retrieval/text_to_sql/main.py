@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.text_to_sql_graph import create_graph
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload, AgentState
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import main_system_prompt_template
-from nemo_retriever.tabular_data.retrieval.context.custom_analyses import fetch_custom_analyses
+from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import fetch_custom_analyses
 from nemo_retriever.tabular_data.retrieval.llm_invoke import get_llm_client
 
 logger = logging.getLogger(__name__)

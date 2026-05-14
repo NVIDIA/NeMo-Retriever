@@ -18,8 +18,8 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
-from nemo_retriever.tabular_data.retrieval.context.candidates import extract_candidates
-from nemo_retriever.tabular_data.retrieval.context.semantic_search import clean_results
+from nemo_retriever.tabular_data.retrieval.data_access.candidates import extract_candidates
+from nemo_retriever.tabular_data.retrieval.data_access.semantic_search import clean_results
 
 logger = logging.getLogger(__name__)
 

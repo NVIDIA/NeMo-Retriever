@@ -17,10 +17,10 @@ from typing import TYPE_CHECKING
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
-from nemo_retriever.tabular_data.retrieval.context.relevant_tables import (
+from nemo_retriever.tabular_data.retrieval.data_access.relevant_tables import (
     _normalize_table_to_relevant_shape,
 )
-from nemo_retriever.tabular_data.retrieval.context.semantic_search import (
+from nemo_retriever.tabular_data.retrieval.data_access.semantic_search import (
     MAX_CALCULATION_CANDIDATES,
     PER_LABEL_LIMIT,
     PER_LABEL_LIMITS,

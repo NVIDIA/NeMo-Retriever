@@ -24,7 +24,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 from nemo_retriever.tabular_data.retrieval.llm_invoke import safe_invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.context.custom_analyses import (
+from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import (
     build_custom_analyses_section,
     get_custom_analyses_ids,
 )

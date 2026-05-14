@@ -14,7 +14,7 @@ import logging
 import re
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
-from nemo_retriever.tabular_data.retrieval.context.graph_schemas import get_item_by_id
+from nemo_retriever.tabular_data.retrieval.data_access.graph_schemas import get_item_by_id
 
 logger = logging.getLogger(__name__)
 
