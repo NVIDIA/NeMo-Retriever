@@ -2,11 +2,11 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Graph operator: turn a ``{schema_name: Schema}`` dict into embedding-ready rows."""
+"""Graph operator: turn ``(tables_df, columns_df)`` into embedding-ready rows."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import Any, Iterable
 
 import pandas as pd
 
@@ -14,19 +14,18 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 
-if TYPE_CHECKING:
-    from nemo_retriever.tabular_data.ingestion.model.schema import Schema
-
-
-_EMBED_COLUMNS = ["text", "_embed_modality", "path", "page_number", "metadata"]
-
 
 class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
-    """Build an embedding-ready DataFrame from a ``{schema_name: Schema}`` dict.
+    """Build an embedding-ready DataFrame from ``(tables_df, columns_df)``.
 
-    Expected input: the dict produced by :class:`TabularSchemaExtractOp`. Each
-    :class:`Schema` exposes ``tables_df`` and ``columns_df`` carrying the
-    UUIDs of the Table/Column nodes written to Neo4j.
+    Expected input: a 2-tuple ``(tables_df, columns_df)``. Both DataFrames
+    carry the post-ingest UUIDs of the Table/Column nodes written to Neo4j;
+    ``tables_df`` is keyed by ``id`` (table UUID) with at least
+    ``table_name``, ``table_schema`` and ``description`` columns, and
+    ``columns_df`` carries one row per column with ``id``, ``table_name``,
+    ``column_name``, ``data_type``, ``description`` and ``sample_values``.
+    Multiple schemas can be concatenated into the same pair — the
+    ``table_schema`` column on each table row keeps them distinguishable.
 
     Output columns: ``text, _embed_modality, path, page_number, metadata``.
     Two row types are produced:
@@ -44,39 +43,28 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
         self,
         *,
         database_name: str,
-        node_ids: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(database_name=database_name, node_ids=node_ids, **kwargs)
+        super().__init__(database_name=database_name, **kwargs)
         self._database_name = database_name
-        # Optional allow-list of Table/Column UUIDs to embed. ``None`` means
-        # "embed everything"; a (possibly empty) list restricts output to rows
-        self._node_ids: set[str] | None = set(node_ids) if node_ids is not None else None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
     def process(self, data: Any, **kwargs: Any) -> pd.DataFrame:
-        if not isinstance(data, dict) or not data:
-            return pd.DataFrame(columns=_EMBED_COLUMNS)
+        if not (isinstance(data, tuple) and len(data) == 2):
+            raise TypeError(f"Expected (tables_df, columns_df) tuple, got {type(data).__name__}")
 
-        rows: list[dict[str, Any]] = []
-        for schema in data.values():
-            rows.extend(self._build_rows_for_schema(schema))
-
-        if not rows:
-            return pd.DataFrame(columns=_EMBED_COLUMNS)
-        return pd.DataFrame(rows, columns=_EMBED_COLUMNS)
+        tables_df, columns_df = data
+        rows = list(self._build_rows(tables_df, columns_df))
+        if rows:
+            return pd.DataFrame(rows)
+        return pd.DataFrame(columns=["text", "_embed_modality", "path", "page_number", "metadata"])
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
-    def _build_rows_for_schema(self, schema: "Schema") -> Iterable[dict[str, Any]]:
-        tables_df = getattr(schema, "tables_df", None)
-        columns_df = getattr(schema, "columns_df", None)
-        if tables_df is None or columns_df is None or tables_df.empty or columns_df.empty:
-            return []
-
+    def _build_rows(self, tables_df: pd.DataFrame, columns_df: pd.DataFrame) -> Iterable[dict[str, Any]]:
         # Index columns by lowercase table name so each table can pick up its
         # column rows without rescanning the full columns_df.
         columns_by_table: dict[str, list[Any]] = {}
@@ -84,7 +72,6 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
             key = str(col.get("table_name", "")).lower()
             columns_by_table.setdefault(key, []).append(col)
 
-        allowed_ids = self._node_ids
         rows: list[dict[str, Any]] = []
         for _, table in tables_df.iterrows():
             table_id = str(table.get("id", ""))
@@ -93,31 +80,26 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
             columns = columns_by_table.get(table_name.lower(), [])
             schema_name = str(table.get("table_schema", ""))
 
-            # Table-row text always references the full column list, even when
-            # filtering — otherwise the table embedding would silently change
-            # shape based on which columns happen to be in the allow-list.
-            if allowed_ids is None or table_id in allowed_ids:
-                table_text = _create_table_text(
-                    table_name=table_name,
-                    table_description=table_description,
-                    columns=columns,
+            table_text = _create_table_text(
+                table_name=table_name,
+                table_description=table_description,
+                columns=columns,
+                schema_name=schema_name,
+                database_name=self._database_name,
+            )
+            rows.append(
+                _create_row(
+                    text=table_text,
+                    node_id=table_id,
+                    label=Labels.TABLE,
+                    name=table_name,
                     schema_name=schema_name,
                     database_name=self._database_name,
                 )
-                rows.append(
-                    _create_row(
-                        text=table_text,
-                        node_id=table_id,
-                        label=Labels.TABLE,
-                        name=table_name,
-                        database_name=self._database_name,
-                    )
-                )
+            )
 
             for column in columns:
                 column_id = str(column.get("id", ""))
-                if allowed_ids is not None and column_id not in allowed_ids:
-                    continue
                 column_name = str(column.get("column_name", ""))
                 data_type = "" if pd.isna(v := column.get("data_type")) else str(v).strip()
                 column_description = "" if pd.isna(v := column.get("description")) else str(v).strip()
@@ -137,6 +119,7 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
                         node_id=column_id,
                         label=Labels.COLUMN,
                         name=column_name,
+                        schema_name=schema_name,
                         database_name=self._database_name,
                     )
                 )
@@ -213,6 +196,7 @@ def _create_row(
     node_id: str | None,
     label: str,
     name: str,
+    schema_name: str,
     database_name: str,
 ) -> dict[str, Any]:
     path = f"neo4j:{node_id}" if node_id else "neo4j:unknown"
@@ -225,6 +209,7 @@ def _create_row(
         "label": label,
         "name": name,
         "source_path": path,
+        "schema_name": schema_name,
         "database_name": database_name,
     }
     return {
