@@ -13,7 +13,7 @@ import argparse
 import logging
 import os
 
-from nemo_retriever.tabular_data.dev_tools.enrich_graph import (
+from nemo_retriever.tabular_data.dev_tools.enrich_graph import (  # noqa: F401
     add_custom_analyses,
     apply_metadata,
 )
@@ -123,12 +123,12 @@ def run_ingest() -> None:
 
     # Custom analyses are ingested after the main embed step so they can be
     # appended to LanceDB without being wiped by the overwrite=True write above.
-    add_custom_analyses(
-        connector.database_name,
-        connector.dialect,
-        embed_params=EMBED_PARAMS,
-        vdb_params=VDB_PARAMS,
-    )
+    # add_custom_analyses(
+    #     connector.database_name,
+    #     connector.dialect,
+    #     embed_params=EMBED_PARAMS,
+    #     vdb_params=VDB_PARAMS,
+    # )
 
 
 def _build_retriever() -> Retriever:

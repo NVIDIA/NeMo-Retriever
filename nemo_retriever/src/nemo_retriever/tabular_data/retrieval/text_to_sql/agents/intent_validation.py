@@ -44,13 +44,6 @@ class IntentValidationModel(BaseModel):
     is_valid: bool = Field(
         description="Whether the SQL query has any CRITICAL issues. Should be True unless there are serious problems."
     )
-    # missing_entities: list[str] = Field(
-    #     default_factory=list,
-    #     description=(
-    #         "List of CRITICAL entity names that are completely missing and essential for the query. "
-    #         "Leave EMPTY [] if no entities are missing — do NOT add explanatory text like 'no missing entities'."
-    #     ),
-    # )
     join_issues: list[str] = Field(
         default_factory=list,
         description=(
@@ -174,9 +167,7 @@ class IntentValidationAgent(BaseAgent):
                 "path_state": path_state,
             }
 
-        has_real_issues = (
-            validation_result.join_issues or validation_result.aggregation_issues
-        )
+        has_real_issues = validation_result.join_issues or validation_result.aggregation_issues
         if not has_real_issues:
             self.logger.info("SQL validation passed (is_valid=False but no real issues listed)")
             return {
@@ -186,9 +177,6 @@ class IntentValidationAgent(BaseAgent):
 
         # Build detailed error message
         error_parts = ["Critical SQL issues found:"]
-
-        # if validation_result.missing_entities:
-        #     error_parts.append(f"\n\nCritical missing entities: {', '.join(validation_result.missing_entities)}")
 
         if validation_result.join_issues:
             error_parts.append(
