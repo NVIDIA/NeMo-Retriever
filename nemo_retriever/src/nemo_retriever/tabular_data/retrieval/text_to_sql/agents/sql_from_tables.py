@@ -79,9 +79,11 @@ class SQLFromTablesAgent(BaseAgent):
         # Get relevant tables (search if not already available)
         relevant_tables = path_state.get("relevant_tables", [])
         if not relevant_tables:
+            database_name = getattr(connector, "database_name", None)
             relevant_tables = get_relevant_tables(
                 state["retriever"],
                 question,
+                database_name=database_name,
             )
         similar_questions = []
 

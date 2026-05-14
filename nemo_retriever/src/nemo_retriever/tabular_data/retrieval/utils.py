@@ -232,19 +232,51 @@ def _vector_distance_value(distance: object | None) -> float:
         return float("inf")
 
 
-LANCEDB_FETCH_LIMIT = 100
+LANCEDB_FETCH_LIMIT = 20
 PER_LABEL_LIMIT = 10
+PER_LABEL_LIMITS: dict[str, int] = {
+    Labels.COLUMN: 10,
+    Labels.CUSTOM_ANALYSIS: 3,
+}
+
+
+def _resolve_label_k(per_label_k: "int | dict[str, int]", label: str | None) -> int:
+    """Return the top-k for *label* given a scalar or per-label dict."""
+    if isinstance(per_label_k, dict):
+        return per_label_k.get(label or "", PER_LABEL_LIMIT)
+    return int(per_label_k)
+
+
+def _build_metadata_where_clause(
+    labels: list[str] | None = None,
+    database_name: str | None = None,
+) -> str | None:
+    """Build a LanceDB SQL ``where`` predicate for the ``metadata`` JSON column.
+
+    Uses ``LIKE`` on the compact-JSON string (no spaces after ``:``) to match
+    ``"label":"<value>"`` and ``"database_name":"<value>"`` substrings.
+    """
+    parts: list[str] = []
+    if labels:
+        label_preds = [f"""metadata LIKE '%"label":"{lab}"%'""" for lab in labels]
+        parts.append(
+            "(" + " OR ".join(label_preds) + ")" if len(label_preds) > 1 else label_preds[0]
+        )
+    if database_name:
+        parts.append(f"""metadata LIKE '%"database_name":"{database_name}"%'""")
+    return " AND ".join(parts) if parts else None
 
 
 def _hits_to_semantic_rows(
     hits: list[dict],
     label_filter: set[str] | None = None,
-    per_label_k: int = PER_LABEL_LIMIT,
+    per_label_k: "int | dict[str, int]" = PER_LABEL_LIMIT,
 ) -> list[dict]:
     """Turn raw LanceDB hits into candidate dicts, filtering by label in Python.
 
     Hits are already sorted by vector distance (from LanceDB). For each allowed
-    label, at most *per_label_k* rows are kept (best-first).
+    label, at most *per_label_k* rows are kept (best-first).  *per_label_k* can
+    be a single int (same cap for every label) or a ``{label: k}`` dict.
 
     ``score`` is the raw vector ``_distance`` from Lance (lower is better).
     """
@@ -260,7 +292,7 @@ def _hits_to_semantic_rows(
         if label_filter and lab_str not in label_filter:
             continue
         cnt = label_counts.get(lab_str, 0)
-        if cnt >= per_label_k:
+        if cnt >= _resolve_label_k(per_label_k, lab_str):
             continue
         label_counts[lab_str] = cnt + 1
         score = _vector_distance_value(hit.get("_distance"))
@@ -279,37 +311,48 @@ def search_lancedb_semantic_index(
     retriever: "Retriever",
     entity: str,
     label_filter: list[str] | None = None,
-    per_label_k: int = PER_LABEL_LIMIT,
+    per_label_k: "int | dict[str, int]" = PER_LABEL_LIMIT,
+    database_name: str | None = None,
 ) -> list[dict]:
     """
     Vector search over LanceDB via the injected :class:`~nemo_retriever.retriever.Retriever`.
 
-    Always fetches ``LANCEDB_FETCH_LIMIT`` rows from LanceDB, then filters by
-    *label_filter* in Python, keeping at most *per_label_k* per label.
+    Runs one query **per label** with a server-side ``where`` predicate on the
+    ``metadata`` JSON column (label + database_name), requesting exactly
+    the label-specific *k* rows.  *per_label_k* can be a single int or a
+    ``{label: k}`` dict (e.g. ``{"Column": 10, "CustomAnalysis": 3}``).
+    When no *label_filter* is given, falls back to a single query with
+    ``LANCEDB_FETCH_LIMIT``.
     """
     allowed_labels = {str(x) for x in (label_filter or []) if x is not None} or None
+    labels_to_query = list(allowed_labels) if allowed_labels else [None]
 
-    # TODO: revert after logical change in labels filter
-    if allowed_labels and allowed_labels == {Labels.TABLE}:
-        retriever.top_k = 500
-    else:
-        retriever.top_k = LANCEDB_FETCH_LIMIT
+    all_hits: list[dict] = []
+    for label in labels_to_query:
+        where_clause = _build_metadata_where_clause(
+            labels=[label] if label else None,
+            database_name=database_name,
+        )
+        vdb_kwargs = {"where": where_clause} if where_clause else None
+        top_k = _resolve_label_k(per_label_k, label) if where_clause else LANCEDB_FETCH_LIMIT
+        hits = retriever.query(entity, top_k=top_k, vdb_kwargs=vdb_kwargs)
+        all_hits.extend(hits)
 
-    hits = retriever.query(entity)
-
-    return _hits_to_semantic_rows(hits, label_filter=allowed_labels, per_label_k=per_label_k)
+    return _hits_to_semantic_rows(all_hits, label_filter=allowed_labels, per_label_k=per_label_k)
 
 
 def get_candidates_information(
     retriever: "Retriever",
     entity: str,
     list_of_semantic: list | None = None,
+    database_name: str | None = None,
+    per_label_k: "int | dict[str, int]" = PER_LABEL_LIMIT,
 ):
     """
     Vector search over LanceDB, then merge graph properties from ``expand_info``.
 
-    Fetches ``LANCEDB_FETCH_LIMIT`` rows from LanceDB, filters to
-    *list_of_semantic* labels in Python (max ``PER_LABEL_LIMIT`` per label),
+    Runs one query per label with a server-side ``where`` predicate
+    (label + *database_name*) keeping at most *per_label_k* per label,
     then enriches each hit with Neo4j graph properties.
     """
     results: list[dict] = list(
@@ -317,6 +360,8 @@ def get_candidates_information(
             retriever,
             entity,
             label_filter=list_of_semantic,
+            database_name=database_name,
+            per_label_k=per_label_k,
         )
     )
 
@@ -362,6 +407,7 @@ def extract_candidates(
     retriever: "Retriever",
     entities: list[str],
     query_with_values: str = "",
+    database_name: str | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     One semantic search per pull string (``query_with_values`` and each entity name).
@@ -388,7 +434,7 @@ def extract_candidates(
     combined_columns: list[dict] = []
 
     for text in pulls:
-        hits = get_candidates_information(retriever, text, list_of_semantic=target_labels) or []
+        hits = get_candidates_information(retriever, text, list_of_semantic=target_labels, database_name=database_name, per_label_k=PER_LABEL_LIMITS) or []
         for hit in hits:
             lab = str(hit.get("label") or "")
             if lab == Labels.CUSTOM_ANALYSIS:
@@ -867,7 +913,8 @@ def get_relevant_tables_from_candidates(
 def get_relevant_tables(
     retriever: "Retriever",
     initial_question,
-    k=15,
+    k: int | None = None,
+    database_name: str | None = None,
 ) -> list[dict]:
     """Semantic search over the same LanceDB index as candidate retrieval, label ``table`` only."""
     try:
@@ -876,6 +923,7 @@ def get_relevant_tables(
             initial_question,
             label_filter=[Labels.TABLE],
             per_label_k=k,
+            database_name=database_name,
         )
     except Exception:
         logger.exception("get_relevant_tables: LanceDB search failed")
@@ -1210,9 +1258,10 @@ def get_relevant_tables_with_fks(
     retriever: "Retriever",
     initial_question,
     k=15,
+    database_name: str | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Like :func:`get_relevant_tables` but also returns FK relationships, with FK hints applied in-place."""
-    relevant_tables_list = get_relevant_tables(retriever, initial_question, k=k)
+    relevant_tables_list = get_relevant_tables(retriever, initial_question, k=k, database_name=database_name)
 
     relevant_fks: list = []
     if relevant_tables_list:
