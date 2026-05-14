@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 _DEFAULT_VECTOR_DIM: Final[int] = 2048
-_VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset(
-    {"drop", "fill", "null", "error"}
-)
+_VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -45,9 +43,7 @@ def _normalize_on_bad_vectors(value: str) -> str:
     """
     normalized = (value or "drop").strip().lower()
     if normalized not in _VALID_ON_BAD_VECTORS:
-        raise ValueError(
-            f"on_bad_vectors must be one of {sorted(_VALID_ON_BAD_VECTORS)}; got {value!r}"
-        )
+        raise ValueError(f"on_bad_vectors must be one of {sorted(_VALID_ON_BAD_VECTORS)}; got {value!r}")
     return normalized
 
 
@@ -217,14 +213,9 @@ def _create_lancedb_results(
                 dropped_no_embedding += 1
                 continue
 
-            if enforce_length and (
-                not isinstance(embedding, (list, tuple))
-                or len(embedding) != expected_dim_int
-            ):
+            if enforce_length and (not isinstance(embedding, (list, tuple)) or len(embedding) != expected_dim_int):
                 dropped_bad_length += 1
-                got_len: Any = (
-                    len(embedding) if hasattr(embedding, "__len__") else "n/a"
-                )
+                got_len: Any = len(embedding) if hasattr(embedding, "__len__") else "n/a"
                 logger.debug(
                     "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
                     got_len,
@@ -239,13 +230,9 @@ def _create_lancedb_results(
 
             if not text:
                 dropped_no_text += 1
-                source_name = metadata.get("source_metadata", {}).get(
-                    "source_name", "unknown"
-                )
+                source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
                 pg_num = content_meta.get("page_number")
-                logger.debug(
-                    f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}"
-                )
+                logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
                 continue
 
             # Promote stable entity id (e.g. Neo4j node UUID for tabular ingest)
@@ -342,8 +329,16 @@ class LanceDB(VDB):
         self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
 
+    def _build_ingestible_rows(self, records):
+        """Transform pipeline records into LanceDB rows with validation counts."""
+        if self.validate_vector_length and self.on_bad_vectors != "error":
+            expected_dim: int | None = self.vector_dim
+        else:
+            expected_dim = None
+        return _create_lancedb_results(records, expected_dim=expected_dim)
+
     def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
-        """Create a LanceDB table and populate it with transformed records.
+        """Create (overwrite) a LanceDB table and populate it with transformed records.
 
         Validates per-row vector shape (when ``validate_vector_length`` is set
         on the instance and ``on_bad_vectors`` is not ``"error"``) and forwards
@@ -358,17 +353,12 @@ class LanceDB(VDB):
         db = lancedb.connect(uri=self.uri)
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
 
-        if self.validate_vector_length and self.on_bad_vectors != "error":
-            expected_dim: int | None = self.vector_dim
-        else:
-            expected_dim = None
-
-        results, counts = _create_lancedb_results(records, expected_dim=expected_dim)
+        results, counts = self._build_ingestible_rows(records)
         schema = _build_table_schema(self.vector_dim)
         create_kwargs: dict[str, Any] = {
             "data": results,
             "schema": schema,
-            "mode": "overwrite" if self.overwrite else "append",
+            "mode": "overwrite",
             "on_bad_vectors": self.on_bad_vectors,
         }
         if self.on_bad_vectors == "fill":
@@ -378,6 +368,46 @@ class LanceDB(VDB):
         _record_timing(
             "lancedb.create_table",
             time.perf_counter() - create_start,
+            {"rows": len(results), **counts},
+        )
+        return table
+
+    def append_to_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
+        """Open an existing LanceDB table and append transformed records to it.
+
+        Used when ``overwrite=False`` so we don't re-create the table (which
+        would either wipe existing rows under ``mode="overwrite"`` or fail
+        outright on newer LanceDB versions that reject ``mode="append"`` in
+        ``create_table``).
+        """
+        connect_start = time.perf_counter()
+        db = lancedb.connect(uri=self.uri)
+        _record_timing("lancedb.connect", time.perf_counter() - connect_start)
+
+        open_start = time.perf_counter()
+        table = db.open_table(table_name)
+        _record_timing("lancedb.open_table", time.perf_counter() - open_start)
+
+        results, counts = self._build_ingestible_rows(records)
+        if not results:
+            logger.info(
+                "LanceDB append: no rows to add to %r (table_name=%s).",
+                self.uri,
+                table_name,
+            )
+            return table
+
+        add_kwargs: dict[str, Any] = {
+            "mode": "append",
+            "on_bad_vectors": self.on_bad_vectors,
+        }
+        if self.on_bad_vectors == "fill":
+            add_kwargs["fill_value"] = self.fill_value
+        add_start = time.perf_counter()
+        table.add(results, **add_kwargs)
+        _record_timing(
+            "lancedb.add",
+            time.perf_counter() - add_start,
             {"rows": len(results), **counts},
         )
         return table
@@ -408,9 +438,7 @@ class LanceDB(VDB):
         use_ivf = _is_ivf_vector_index(index_type)
         effective_partitions: int | None
         if use_ivf:
-            effective_partitions = _effective_ivf_num_partitions(
-                num_rows, requested_partitions
-            )
+            effective_partitions = _effective_ivf_num_partitions(num_rows, requested_partitions)
         else:
             effective_partitions = requested_partitions
 
@@ -429,9 +457,7 @@ class LanceDB(VDB):
                 )
         else:
             partitions_for_index = (
-                int(effective_partitions)
-                if effective_partitions is not None
-                else requested_partitions
+                int(effective_partitions) if effective_partitions is not None else requested_partitions
             )
             if use_ivf and partitions_for_index != requested_partitions:
                 logger.info(
@@ -449,39 +475,39 @@ class LanceDB(VDB):
             )
             for index_stub in table.list_indices():
                 table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
-            _record_timing(
-                "lancedb.vector_index_ready", time.perf_counter() - vector_index_start
-            )
+            _record_timing("lancedb.vector_index_ready", time.perf_counter() - vector_index_start)
 
         if hybrid:
             fts_index_start = time.perf_counter()
             table.create_fts_index("text", language=fts_language)
             for index_stub in table.list_indices():
-                if (
-                    "text" in index_stub.name.lower()
-                    or "fts" in index_stub.name.lower()
-                ):
-                    table.wait_for_index(
-                        [index_stub.name], timeout=timedelta(seconds=600)
-                    )
-            _record_timing(
-                "lancedb.fts_index_ready", time.perf_counter() - fts_index_start
-            )
+                if "text" in index_stub.name.lower() or "fts" in index_stub.name.lower():
+                    table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+            _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
 
     def run(self, records):
-        """Orchestrate index creation and data ingestion."""
-        table = self.create_index(records=records, table_name=self.table_name)
-        self.write_to_index(
-            records,
-            table=table,
-            index_type=self.index_type,
-            metric=self.metric,
-            num_partitions=self.num_partitions,
-            num_sub_vectors=self.num_sub_vectors,
-            hybrid=self.hybrid,
-            fts_language=self.fts_language,
-        )
-        return records
+        """Orchestrate index creation and data ingestion.
+
+        When ``overwrite=True`` (default), the table is (re)created from
+        scratch and the vector / FTS indexes are built. When
+        ``overwrite=False``, new rows are appended to the existing table and
+        index building is skipped — LanceDB's incremental indexing covers
+        rows added after the initial index build.
+        """
+        if self.overwrite:
+            table = self.create_index(records=records, table_name=self.table_name)
+            self.write_to_index(
+                records,
+                table=table,
+                index_type=self.index_type,
+                metric=self.metric,
+                num_partitions=self.num_partitions,
+                num_sub_vectors=self.num_sub_vectors,
+                hybrid=self.hybrid,
+                fts_language=self.fts_language,
+            )
+        else:
+            self.append_to_index(records=records, table_name=self.table_name)
 
     def upsert(
         self,
@@ -616,12 +642,7 @@ class LanceDB(VDB):
                 table = db.open_table(target_name)
 
         upsert_start = time.perf_counter()
-        (
-            table.merge_insert(key)
-            .when_matched_update_all()
-            .when_not_matched_insert_all()
-            .execute(rows_with_key)
-        )
+        (table.merge_insert(key).when_matched_update_all().when_not_matched_insert_all().execute(rows_with_key))
         _record_timing(
             "lancedb.upsert",
             time.perf_counter() - upsert_start,
@@ -651,9 +672,7 @@ class LanceDB(VDB):
         """
         hybrid = kwargs.pop("hybrid", self.hybrid)
         if hybrid:
-            raise NotImplementedError(
-                "LanceDB hybrid retrieval with precomputed vectors is not implemented yet."
-            )
+            raise NotImplementedError("LanceDB hybrid retrieval with precomputed vectors is not implemented yet.")
         table_path = kwargs.pop("table_path", self.uri)
         table_name = kwargs.pop("table_name", self.table_name)
 
@@ -667,9 +686,7 @@ class LanceDB(VDB):
         if search_kwargs_raw is None:
             search_kwargs: dict[str, Any] = {}
         elif not isinstance(search_kwargs_raw, dict):
-            raise TypeError(
-                f"search_kwargs must be a dict or None; got {type(search_kwargs_raw).__name__}"
-            )
+            raise TypeError(f"search_kwargs must be a dict or None; got {type(search_kwargs_raw).__name__}")
         else:
             search_kwargs = dict(search_kwargs_raw)
 
@@ -684,9 +701,7 @@ class LanceDB(VDB):
 
         search_results = []
         for vector in vectors:
-            query = table.search(
-                [vector], vector_column_name=vector_column_name, **search_kwargs
-            )
+            query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
             if where_clause is not None:
                 query = query.where(where_clause)
             query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
