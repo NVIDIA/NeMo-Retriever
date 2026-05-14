@@ -342,14 +342,17 @@ def _wait_for_captures(captured_items: list[WorkItem], count: int = 1, timeout_s
 def test_router_admits_caption_when_endpoint_configured(
     app_with_caption: TestClient, captured_items: list[WorkItem]
 ) -> None:
+    from .conftest import create_test_job
+
     metadata = {
         "pipeline": {
             "caption_params": {"prompt": "Describe", "batch_size": 8},
             "stage_order": ["extract", "caption"],
         }
     }
+    job_id = create_test_job(app_with_caption)
     resp = app_with_caption.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF-1.4\n%stub\n", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -364,9 +367,12 @@ def test_router_admits_caption_when_endpoint_configured(
 
 def test_router_rejects_caption_endpoint_override(app_with_caption: TestClient) -> None:
     """Even with the stage enabled, clients cannot redirect the endpoint."""
+    from .conftest import create_test_job
+
     metadata = {"pipeline": {"caption_params": {"endpoint_url": "http://attacker.evil/v1"}}}
+    job_id = create_test_job(app_with_caption)
     resp = app_with_caption.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -377,9 +383,12 @@ def test_router_rejects_caption_endpoint_override(app_with_caption: TestClient) 
 def test_router_rejects_local_execution_keys_with_caption_enabled(
     app_with_caption: TestClient,
 ) -> None:
+    from .conftest import create_test_job
+
     metadata = {"pipeline": {"caption_params": {"device": "cuda:0", "prompt": "x"}}}
+    job_id = create_test_job(app_with_caption)
     resp = app_with_caption.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )

@@ -30,10 +30,14 @@ from fastapi.responses import JSONResponse, Response
 from starlette.responses import StreamingResponse
 
 from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.models.requests import IngestRequest
+from nemo_retriever.service.models.requests import IngestRequest, JobCreateRequest
 from nemo_retriever.service.models.responses import (
     DocumentIngestAccepted,
+    DocumentStatusResponse,
     IngestAccepted,
+    JobAggregateResponse,
+    JobCreatedResponse,
+    JobDocumentsPage,
     JobStatusResponse,
     PageIngestAccepted,
     SidecarUploadResponse,
@@ -62,7 +66,13 @@ _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
 _GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
 _GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
 _GATEWAY_PIPELINE_SPEC_HEADER = "X-Gateway-Pipeline-Spec"
+_GATEWAY_JOB_ID_HEADER = "X-Gateway-Job-Id"
 _PAGE_THRESHOLD_FOR_BATCH = 5
+
+# SSE keepalive cadence; tests monkey-patch this to a short value so
+# they don't have to wait the production 30 s before the generator
+# re-checks ``request.is_disconnected()`` and exits cleanly.
+SSE_KEEPALIVE_TIMEOUT_S = 30.0
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +107,17 @@ def _is_gateway(request: Request) -> bool:
     return _mode(request) == "gateway"
 
 
+def _is_worker(request: Request) -> bool:
+    """Return True for split-mode worker pods (``realtime`` or ``batch``).
+
+    Workers don't own the ``JobTracker`` aggregate — the gateway does.
+    When the gateway forwards an upload to a worker, the URL still
+    contains the ``job_id``, but the worker must trust it (and not
+    re-validate via ``_require_job``).
+    """
+    return _mode(request) in ("realtime", "batch")
+
+
 def _record_prometheus(
     request: Request,
     endpoint: str,
@@ -115,11 +136,49 @@ def _record_prometheus(
         INGEST_DOCUMENTS_TOTAL.labels(role=role).inc()
 
 
-def _register_job(item_id: str) -> None:
-    """Register a work item in the job tracker (best-effort, no-op if tracker absent)."""
+def _register_document_under_job(
+    *,
+    document_id: str,
+    job_id: str,
+    filename: str | None = None,
+) -> None:
+    """Register a per-document tracker entry inside an existing job.
+
+    Maps :class:`JobTrackerError` subclasses to HTTP responses so the
+    upload routes can surface 404 (job missing) / 409 (full or
+    finalized) without leaking the tracker's internal exception types.
+    """
+    from nemo_retriever.service.services.job_tracker import (
+        JobFinalizedError,
+        JobFullError,
+        JobNotFoundError,
+        JobTrackerError,
+    )
+
     tracker = get_job_tracker()
-    if tracker is not None:
-        tracker.register(item_id)
+    if tracker is None:
+        return
+    try:
+        tracker.register_document(document_id, job_id=job_id, filename=filename)
+    except JobNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except JobFullError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except JobFinalizedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except JobTrackerError as exc:
+        raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
+
+
+def _require_job(job_id: str):
+    """Look up an existing :class:`JobAggregate` or raise HTTP 404."""
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(status_code=503, detail="Job tracker not available")
+    agg = tracker.get_job(job_id)
+    if agg is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+    return agg
 
 
 async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
@@ -314,26 +373,259 @@ def _parse_backend_json(resp: Response) -> dict:
 
 
 # ------------------------------------------------------------------
-# POST /v1/ingest  — general-purpose ingestion (unspecified mode)
+# POST /v1/ingest/job          — create a new job aggregate
+# GET  /v1/ingest/job/{job_id} — fetch the aggregate's current state
+# ------------------------------------------------------------------
+
+
+def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None) -> JobAggregateResponse:
+    """Project a :class:`JobAggregate` to the wire response model."""
+    return JobAggregateResponse(
+        job_id=agg.job_id,
+        expected_documents=agg.expected_documents,
+        status=agg.status.value,
+        created_at=agg.created_at,
+        started_at=agg.started_at,
+        finalized_at=agg.finalized_at,
+        elapsed_s=agg.elapsed_s,
+        label=agg.label,
+        counts=dict(agg.counts),
+        document_ids=list(agg.document_ids),
+        documents=documents,
+    )
+
+
+@router.post(
+    "/ingest/job",
+    response_model=JobCreatedResponse,
+    status_code=201,
+    summary="Create a new ingestion job aggregate",
+)
+async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResponse:
+    """Open a job that will receive ``expected_documents`` uploads.
+
+    The server returns an opaque ``job_id`` the client uses for every
+    subsequent ``POST /v1/ingest/job/{job_id}/document`` (or ``/page``)
+    call. The job is in-memory only; gateway pod restarts erase it
+    (this is intentional — see the J1 design notes).
+    """
+    from nemo_retriever.service.services.job_tracker import JobTrackerError
+
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(status_code=503, detail="Job tracker not available")
+    job_id = uuid.uuid4().hex
+    try:
+        agg = tracker.register_job(
+            job_id,
+            expected_documents=body.expected_documents,
+            label=body.label,
+            metadata=body.metadata,
+        )
+    except JobTrackerError as exc:
+        raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
+
+    if (m := get_metrics()) is not None:
+        m.record_request("/v1/ingest/job")
+        m.record_job_created(job_id)
+    return JobCreatedResponse(
+        job_id=agg.job_id,
+        expected_documents=agg.expected_documents,
+        status=agg.status.value,
+        created_at=agg.created_at,
+        label=agg.label,
+    )
+
+
+@router.get(
+    "/ingest/job/{job_id}",
+    response_model=JobAggregateResponse,
+    summary="Fetch the current state of a job aggregate",
+)
+async def get_job(
+    request: Request,
+    job_id: str,
+    include_documents: bool = False,
+) -> JobAggregateResponse:
+    """Return the live aggregate snapshot.
+
+    Pass ``?include_documents=true`` to also return the per-document
+    records (capped to the first 10k entries to keep payloads bounded).
+    """
+    agg = _require_job(job_id)
+    documents: list[dict[str, Any]] | None = None
+    if include_documents:
+        tracker = get_job_tracker()
+        docs = tracker.job_documents(job_id) if tracker is not None else []
+        cap = 10_000
+        documents = [d.model_dump() for d in docs[:cap]]
+    return _aggregate_to_response(agg, documents=documents)
+
+
+# ------------------------------------------------------------------
+# GET /v1/ingest/job/{job_id}/documents
+#   J6 — paginated per-document status under a job. Supports filtering
+#   by ``status`` and slicing with ``offset`` / ``limit``. Preferred
+#   over ``?include_documents=true`` for big jobs.
+# GET /v1/ingest/job/{job_id}/document/{document_id}
+#   J6 — single-document detail (replaces the legacy ``/ingest/status``
+#   shape with a JSON body that exposes ``job_id`` + ``filename``).
+# ------------------------------------------------------------------
+
+
+def _document_to_response(rec, *, result_data=None) -> DocumentStatusResponse:
+    """Project a :class:`DocumentRecord` to the wire response shape."""
+    return DocumentStatusResponse(
+        document_id=rec.id,
+        job_id=rec.job_id,
+        status=rec.status.value,
+        submitted_at=rec.submitted_at,
+        started_at=rec.started_at,
+        completed_at=rec.completed_at,
+        elapsed_s=rec.elapsed_s,
+        filename=rec.filename,
+        result_rows=rec.result_rows,
+        result_data=result_data,
+        error=rec.error,
+    )
+
+
+@router.get(
+    "/ingest/job/{job_id}/documents",
+    response_model=JobDocumentsPage,
+    summary="Paginated per-document status under a job",
+)
+async def get_job_documents(
+    request: Request,
+    job_id: str,
+    status: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> JobDocumentsPage:
+    """Return per-document records for *job_id*, paginated.
+
+    Parameters
+    ----------
+    status:
+        Optional filter — one of ``pending``, ``processing``,
+        ``completed``, ``failed``. The default returns every document.
+    offset:
+        Zero-based page start (must be ``>= 0``).
+    limit:
+        Page size; capped at 1000.
+
+    The aggregate ``total`` is the absolute document count, and
+    ``total_filtered`` is what the status filter selected; ``items``
+    is the slice for the requested page.
+    """
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be in [1, 1000]")
+
+    agg = _require_job(job_id)
+    tracker = get_job_tracker()
+    docs = tracker.job_documents(job_id) if tracker is not None else []
+
+    if status is not None:
+        status_lower = status.lower()
+        valid = {"pending", "processing", "completed", "failed"}
+        if status_lower not in valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"status must be one of {sorted(valid)}, got {status!r}",
+            )
+        filtered = [d for d in docs if d.status.value == status_lower]
+    else:
+        filtered = docs
+
+    page = filtered[offset : offset + limit]
+    return JobDocumentsPage(
+        job_id=agg.job_id,
+        total=len(docs),
+        total_filtered=len(filtered),
+        offset=offset,
+        limit=limit,
+        items=[_document_to_response(d) for d in page],
+    )
+
+
+@router.get(
+    "/ingest/job/{job_id}/document/{document_id}",
+    response_model=DocumentStatusResponse,
+    summary="Fetch the current status of one document in a job",
+    responses={
+        200: {"model": DocumentStatusResponse},
+        202: {"model": DocumentStatusResponse},
+        404: {"description": "Job or document not found"},
+    },
+)
+async def get_job_document(
+    request: Request,
+    job_id: str,
+    document_id: str,
+) -> Response:
+    """Single-document detail nested under the owning job.
+
+    Returns HTTP 200 when the document is terminal (consumes
+    ``result_data`` so memory is freed for the caller) and HTTP 202
+    while still pending/processing. A 404 is returned if either the
+    job is unknown or the document does not belong to this job — the
+    latter prevents leaking document existence across tenants.
+    """
+    from nemo_retriever.service.services.job_tracker import DocumentStatus
+
+    _require_job(job_id)
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(status_code=503, detail="Job tracker is not available.")
+    rec = tracker.get_document(document_id)
+    if rec is None or rec.job_id != job_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document {document_id!r} not found in job {job_id!r}",
+        )
+    is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
+    result_data = tracker.consume_result_data(document_id) if is_terminal else None
+    body = _document_to_response(rec, result_data=result_data).model_dump()
+    return JSONResponse(content=body, status_code=200 if is_terminal else 202)
+
+
+# ------------------------------------------------------------------
+# POST /v1/ingest/job/{job_id}/document   — auto-routed by page count
+# POST /v1/ingest/job/{job_id}/page       — explicit single page
+# POST /v1/ingest/job/{job_id}/whole      — explicit whole document
 # ------------------------------------------------------------------
 
 
 @router.post(
-    "/ingest",
+    "/ingest/job/{job_id}/document",
     response_model=IngestAccepted,
     status_code=202,
-    summary="General-purpose ingestion endpoint",
+    summary="Submit a document to an existing job (auto-routed by page count)",
 )
-async def ingest(
+async def submit_document_to_job(
     request: Request,
+    job_id: str,
     file: UploadFile = File(..., description="The file to ingest"),
     metadata: str = Form(default="{}", description="JSON-encoded IngestRequest metadata"),
 ) -> IngestAccepted | Response:
+    """General-purpose upload into a job.
+
+    Routes to the realtime or batch pool based on PDF page count
+    (matches the legacy ``POST /v1/ingest`` behaviour). The ``job_id``
+    comes from the URL path; any ``job_id`` in the metadata body is
+    ignored.
+    """
     try:
         meta = IngestRequest(**json.loads(metadata))
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
+    # Job lookup is gateway/standalone only — worker pods don't own the
+    # JobTracker, so we must trust the gateway-forwarded URL.
+    if not _is_worker(request):
+        _require_job(job_id)
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
 
@@ -348,7 +640,9 @@ async def ingest(
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_job(document_id)
+        _register_document_under_job(
+            document_id=document_id, job_id=job_id, filename=file.filename
+        )
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.mark_processing(document_id)
@@ -356,6 +650,7 @@ async def ingest(
         callback_url = _build_callback_url(request)
         extra_headers = {
             _GATEWAY_DOC_ID_HEADER: document_id,
+            _GATEWAY_JOB_ID_HEADER: job_id,
             _GATEWAY_CALLBACK_HEADER: callback_url,
         }
         if validated_spec is not None:
@@ -367,24 +662,22 @@ async def ingest(
                 tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
             return resp
 
-        _record_prometheus(request, "/v1/ingest", "2xx", file_size=file_size)
+        _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
         if (m := get_metrics()) is not None:
-            m.record_request("/v1/ingest")
-            if meta.job_id:
-                m.record_job_created(meta.job_id)
+            m.record_request("/v1/ingest/job/document")
             m.record_document_accepted(
                 document_id=document_id,
-                job_id=meta.job_id,
+                job_id=job_id,
                 filename=classification.filename,
                 file_category=classification.category.value,
                 content_type=classification.content_type,
                 file_size_bytes=file_size,
-                endpoint="/v1/ingest",
+                endpoint="/v1/ingest/job/document",
             )
 
         return IngestAccepted(
             document_id=document_id,
-            job_id=meta.job_id,
+            job_id=job_id,
             content_sha256=content_sha256,
             status="accepted",
             created_at=now,
@@ -400,12 +693,15 @@ async def ingest(
 
     gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
     gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+    gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
     document_id = gw_doc_id or uuid.uuid4().hex
 
     worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
 
     if not gw_callback_url:
-        _register_job(document_id)
+        _register_document_under_job(
+            document_id=document_id, job_id=job_id, filename=file.filename
+        )
 
     await _enqueue_or_reject(
         route,
@@ -414,53 +710,52 @@ async def ingest(
             payload=file_bytes,
             filename=file.filename,
             callback_url=gw_callback_url,
+            job_id=gw_job_id,
             pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
         ),
     )
 
-    _record_prometheus(request, "/v1/ingest", "2xx", file_size=len(file_bytes))
+    _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=len(file_bytes))
 
     if (m := get_metrics()) is not None:
-        m.record_request("/v1/ingest")
-        if meta.job_id:
-            m.record_job_created(meta.job_id)
+        m.record_request("/v1/ingest/job/document")
         m.record_document_accepted(
             document_id=document_id,
-            job_id=meta.job_id,
+            job_id=gw_job_id,
             filename=classification.filename,
             file_category=classification.category.value,
             content_type=classification.content_type,
             file_size_bytes=len(file_bytes),
-            endpoint="/v1/ingest",
+            endpoint="/v1/ingest/job/document",
         )
 
     return IngestAccepted(
         document_id=document_id,
-        job_id=meta.job_id,
+        job_id=gw_job_id,
         content_sha256=content_sha256,
         status="accepted",
         created_at=now,
     )
 
 
-# ------------------------------------------------------------------
-# POST /v1/ingest/page  — single page from a pre-split document
-# ------------------------------------------------------------------
-
-
 @router.post(
-    "/ingest/page",
+    "/ingest/job/{job_id}/page",
     response_model=PageIngestAccepted,
     status_code=202,
-    summary="Upload a single page belonging to a pre-split document",
+    summary="Upload a single page belonging to a pre-split document inside a job",
 )
-async def ingest_page(
+async def submit_page_to_job(
     request: Request,
+    job_id: str,
     file: UploadFile = File(..., description="A single-page PDF or image"),
     document_id: str = Form(..., description="Client-assigned ID grouping pages from the same source document"),
     page_number: int = Form(..., description="1-based page number within the source document"),
     filename: str = Form(default="", description="Original source document filename"),
 ) -> PageIngestAccepted | Response:
+    # Job lookup is gateway/standalone only (workers don't own the
+    # JobTracker — they trust the gateway-forwarded URL).
+    if not _is_worker(request):
+        _require_job(job_id)
     _check_upload_size(file, request)
 
     if _is_gateway(request):
@@ -471,7 +766,9 @@ async def ingest_page(
         content_sha256 = hashlib.sha256((await file.read()) or b"").hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_job(page_id)
+        _register_document_under_job(
+            document_id=page_id, job_id=job_id, filename=filename or file.filename
+        )
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.mark_processing(page_id)
@@ -482,6 +779,7 @@ async def ingest_page(
             PoolType.REALTIME,
             extra_headers={
                 _GATEWAY_DOC_ID_HEADER: page_id,
+                _GATEWAY_JOB_ID_HEADER: job_id,
                 _GATEWAY_CALLBACK_HEADER: callback_url,
             },
         )
@@ -493,17 +791,17 @@ async def ingest_page(
 
         _record_prometheus(
             request,
-            "/v1/ingest/page",
+            "/v1/ingest/job/page",
             "2xx",
             file_size=file_size,
             is_page=True,
         )
         if (m := get_metrics()) is not None:
-            m.record_request("/v1/ingest/page")
+            m.record_request("/v1/ingest/job/page")
             m.record_page_accepted(
                 page_id=page_id,
                 document_id=document_id,
-                endpoint="/v1/ingest/page",
+                endpoint="/v1/ingest/job/page",
                 page_number=page_number,
                 file_size_bytes=file_size,
                 file_category=classification.category.value,
@@ -529,24 +827,33 @@ async def ingest_page(
 
     gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
     gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+    gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
     page_id = gw_doc_id or uuid.uuid4().hex
 
     if not dry_run:
         if not gw_callback_url:
-            _register_job(page_id)
+            _register_document_under_job(
+                document_id=page_id, job_id=job_id, filename=filename or file.filename
+            )
         await _enqueue_or_reject(
             PoolType.REALTIME,
-            WorkItem(id=page_id, payload=file_bytes, filename=file.filename, callback_url=gw_callback_url),
+            WorkItem(
+                id=page_id,
+                payload=file_bytes,
+                filename=file.filename,
+                callback_url=gw_callback_url,
+                job_id=gw_job_id,
+            ),
         )
 
-    _record_prometheus(request, "/v1/ingest/page", "2xx", file_size=len(file_bytes), is_page=True)
+    _record_prometheus(request, "/v1/ingest/job/page", "2xx", file_size=len(file_bytes), is_page=True)
 
     if (m := get_metrics()) is not None:
-        m.record_request("/v1/ingest/page")
+        m.record_request("/v1/ingest/job/page")
         m.record_page_accepted(
             page_id=page_id,
             document_id=document_id,
-            endpoint="/v1/ingest/page",
+            endpoint="/v1/ingest/job/page",
             page_number=page_number,
             file_size_bytes=len(file_bytes),
             file_category=classification.category.value,
@@ -563,19 +870,15 @@ async def ingest_page(
     )
 
 
-# ------------------------------------------------------------------
-# POST /v1/ingest/document  — whole document (not individual pages)
-# ------------------------------------------------------------------
-
-
 @router.post(
-    "/ingest/document",
+    "/ingest/job/{job_id}/whole",
     response_model=DocumentIngestAccepted,
     status_code=202,
-    summary="Upload a complete document for ingestion (server handles page splitting)",
+    summary="Upload a complete document into a job (server handles page splitting)",
 )
-async def ingest_document(
+async def submit_whole_document_to_job(
     request: Request,
+    job_id: str,
     file: UploadFile = File(..., description="The full document to ingest"),
     metadata: str = Form(default="{}", description="JSON-encoded IngestRequest metadata"),
 ) -> DocumentIngestAccepted | Response:
@@ -584,6 +887,10 @@ async def ingest_document(
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
+    # Job lookup is gateway/standalone only (workers don't own the
+    # JobTracker — they trust the gateway-forwarded URL).
+    if not _is_worker(request):
+        _require_job(job_id)
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
 
@@ -596,7 +903,9 @@ async def ingest_document(
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_job(document_id)
+        _register_document_under_job(
+            document_id=document_id, job_id=job_id, filename=file.filename
+        )
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.mark_processing(document_id)
@@ -604,6 +913,7 @@ async def ingest_document(
         callback_url = _build_callback_url(request)
         extra_headers = {
             _GATEWAY_DOC_ID_HEADER: document_id,
+            _GATEWAY_JOB_ID_HEADER: job_id,
             _GATEWAY_CALLBACK_HEADER: callback_url,
         }
         if validated_spec is not None:
@@ -615,19 +925,17 @@ async def ingest_document(
                 tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
             return resp
 
-        _record_prometheus(request, "/v1/ingest/document", "2xx", file_size=file_size)
+        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
         if (m := get_metrics()) is not None:
-            m.record_request("/v1/ingest/document")
-            if meta.job_id:
-                m.record_job_created(meta.job_id)
+            m.record_request("/v1/ingest/job/whole")
             m.record_document_accepted(
                 document_id=document_id,
-                job_id=meta.job_id,
+                job_id=job_id,
                 filename=classification.filename,
                 file_category=classification.category.value,
                 content_type=classification.content_type,
                 file_size_bytes=file_size,
-                endpoint="/v1/ingest/document",
+                endpoint="/v1/ingest/job/whole",
             )
 
         return DocumentIngestAccepted(
@@ -649,13 +957,16 @@ async def ingest_document(
 
     gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
     gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+    gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
     document_id = gw_doc_id or uuid.uuid4().hex
 
     worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
 
     if not dry_run:
         if not gw_callback_url:
-            _register_job(document_id)
+            _register_document_under_job(
+                document_id=document_id, job_id=job_id, filename=file.filename
+            )
         await _enqueue_or_reject(
             PoolType.BATCH,
             WorkItem(
@@ -663,24 +974,23 @@ async def ingest_document(
                 payload=file_bytes,
                 filename=file.filename,
                 callback_url=gw_callback_url,
+                job_id=gw_job_id,
                 pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
             ),
         )
 
-    _record_prometheus(request, "/v1/ingest/document", "2xx", file_size=len(file_bytes))
+    _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=len(file_bytes))
 
     if (m := get_metrics()) is not None:
-        m.record_request("/v1/ingest/document")
-        if meta.job_id:
-            m.record_job_created(meta.job_id)
+        m.record_request("/v1/ingest/job/whole")
         m.record_document_accepted(
             document_id=document_id,
-            job_id=meta.job_id,
+            job_id=gw_job_id,
             filename=classification.filename,
             file_category=classification.category.value,
             content_type=classification.content_type,
             file_size_bytes=len(file_bytes),
-            endpoint="/v1/ingest/document",
+            endpoint="/v1/ingest/job/whole",
         )
 
     return DocumentIngestAccepted(
@@ -701,13 +1011,13 @@ async def ingest_document(
 
 
 def _status_response(request: Request, item_id: str) -> JSONResponse:
-    """Look up job status and return the appropriate HTTP code.
+    """Look up document status and return the appropriate HTTP code.
 
     Returns 200 for completed/failed, 202 for pending/processing, 404 if unknown.
     When returning a terminal (200) response, result_data is consumed from the
     tracker so memory is freed after the client has retrieved it.
     """
-    from nemo_retriever.service.services.job_tracker import JobStatus
+    from nemo_retriever.service.services.job_tracker import DocumentStatus
 
     tracker = get_job_tracker()
     if tracker is None:
@@ -715,11 +1025,11 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
             status_code=503,
             detail="Job tracker is not available on this pod.",
         )
-    rec = tracker.get(item_id)
+    rec = tracker.get_document(item_id)
     if rec is None:
-        raise HTTPException(status_code=404, detail=f"No tracked job with id={item_id!r}")
+        raise HTTPException(status_code=404, detail=f"No tracked document with id={item_id!r}")
 
-    is_terminal = rec.status in (JobStatus.COMPLETED, JobStatus.FAILED)
+    is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
     result_data = tracker.consume_result_data(item_id) if is_terminal else None
 
     body = JobStatusResponse(
@@ -1058,51 +1368,77 @@ async def job_callback(request: Request) -> JSONResponse:
 
 
 # ------------------------------------------------------------------
-# GET /v1/ingest/events  — SSE stream for real-time status updates
+# GET /v1/ingest/job/{job_id}/events
+#   SSE stream filtered to a single job aggregate.
+#
+# The legacy firehose ``GET /v1/ingest/events`` was removed in J4 to
+# preserve job isolation between tenants — every public SSE consumer
+# must declare which job it is observing. Dashboard internals (which
+# are served from a separate router) still use a firehose subscription
+# for the operator overview view, but that endpoint is privileged and
+# lives under ``/dashboard``.
 # ------------------------------------------------------------------
 
 
 @router.get(
-    "/ingest/events",
-    summary="SSE stream of job completion events",
+    "/ingest/job/{job_id}/events",
+    summary="SSE stream of completion events for one job",
 )
-async def ingest_events(request: Request) -> StreamingResponse:
-    """Server-Sent Events stream that pushes completion notifications.
+async def ingest_job_events(request: Request, job_id: str) -> StreamingResponse:
+    """Stream Server-Sent Events for a single :class:`JobAggregate`.
 
-    Clients open this after uploading documents and receive real-time
-    ``completed`` / ``failed`` events as workers finish processing.
-    Sends a keepalive comment every 30 seconds to prevent proxies from
-    closing the connection.
+    Emits:
+
+    * a catch-up batch of already-terminal ``completed`` / ``failed``
+      document events (so clients that connect after some documents
+      already finished still see them),
+    * live per-document ``processing`` / ``completed`` / ``failed``
+      events,
+    * lifecycle events (``job_progress``, ``job_finalized``,
+      ``job_failed``) — these arrive once J5 wires them through the
+      tracker; the endpoint already routes them.
+
+    A keepalive comment is emitted every 30 seconds.
     """
     bus = get_event_bus()
     if bus is None:
         raise HTTPException(status_code=503, detail="Event bus not available")
 
     tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(status_code=503, detail="Job tracker not available")
+    if tracker.get_job(job_id) is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
 
     async def event_generator():
-        sub_id, queue = bus.subscribe()
+        sub_id, queue = bus.subscribe(job_id=job_id)
         snapshot_count = 0
         live_count = 0
-        logger.info("SSE subscriber %d connected", sub_id)
+        logger.info("SSE subscriber %d connected (job_id=%s)", sub_id, job_id)
         try:
-            if tracker is not None:
-                snapshot = _snapshot_terminal_jobs(tracker)
-                snapshot_count = len(snapshot)
-                for rec in snapshot:
-                    yield f"event: {rec['status']}\ndata: {json.dumps(rec)}\n\n"
-                logger.info(
-                    "SSE subscriber %d: sent %d snapshot events",
-                    sub_id,
-                    snapshot_count,
-                )
+            snapshot = _snapshot_terminal_jobs(tracker, job_id=job_id)
+            snapshot_count = len(snapshot)
+            for rec in snapshot:
+                yield f"event: {rec['status']}\ndata: {json.dumps(rec)}\n\n"
+            logger.info(
+                "SSE subscriber %d (job_id=%s): sent %d snapshot events",
+                sub_id,
+                job_id,
+                snapshot_count,
+            )
 
             while True:
                 if await request.is_disconnected():
-                    logger.info("SSE subscriber %d: client disconnected", sub_id)
+                    logger.info(
+                        "SSE subscriber %d (job_id=%s): client disconnected",
+                        sub_id,
+                        job_id,
+                    )
                     break
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    event = await asyncio.wait_for(
+                        queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_S
+                    )
                     live_count += 1
                     yield f"event: {event.get('type', 'status')}\ndata: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
@@ -1110,8 +1446,9 @@ async def ingest_events(request: Request) -> StreamingResponse:
         finally:
             bus.unsubscribe(sub_id)
             logger.info(
-                "SSE subscriber %d closed (snapshot=%d live=%d)",
+                "SSE subscriber %d (job_id=%s) closed (snapshot=%d live=%d)",
                 sub_id,
+                job_id,
                 snapshot_count,
                 live_count,
             )
@@ -1123,22 +1460,33 @@ async def ingest_events(request: Request) -> StreamingResponse:
     )
 
 
-def _snapshot_terminal_jobs(tracker: Any) -> list[dict[str, Any]]:
-    """Return already-terminal jobs so SSE clients get caught up."""
-    from nemo_retriever.service.services.job_tracker import JobStatus
+def _snapshot_terminal_jobs(tracker: Any, *, job_id: str | None = None) -> list[dict[str, Any]]:
+    """Return already-terminal documents so SSE clients get caught up.
 
-    terminal = {JobStatus.COMPLETED.value, JobStatus.FAILED.value}
+    If *job_id* is supplied, only documents belonging to that job are
+    returned; otherwise every terminal document across every job is
+    yielded. The latter mode is only used by privileged dashboard
+    endpoints — public per-job SSE always passes a *job_id*.
+    """
+    from nemo_retriever.service.services.job_tracker import DocumentStatus
+
+    terminal = {DocumentStatus.COMPLETED, DocumentStatus.FAILED}
+    if job_id is not None:
+        recs = tracker.job_documents(job_id)
+    else:
+        recs = tracker.all_documents()
     return [
         {
-            "type": rec["status"],
-            "id": rec["id"],
-            "status": rec["status"],
-            "result_rows": rec["result_rows"],
-            "elapsed_s": rec["elapsed_s"],
-            "error": rec["error"],
+            "type": rec.status.value,
+            "id": rec.id,
+            "job_id": rec.job_id,
+            "status": rec.status.value,
+            "result_rows": rec.result_rows,
+            "elapsed_s": rec.elapsed_s,
+            "error": rec.error,
         }
-        for rec in tracker.all_records()
-        if rec["status"] in terminal
+        for rec in recs
+        if rec.status in terminal
     ]
 
 
@@ -1173,23 +1521,24 @@ async def ingest_status_batch(request: Request) -> JSONResponse:
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
 
-    from nemo_retriever.service.services.job_tracker import JobStatus
+    from nemo_retriever.service.services.job_tracker import DocumentStatus
 
     results: dict[str, dict[str, Any]] = {}
     for item_id in ids:
-        rec = tracker.get(item_id)
+        rec = tracker.get_document(item_id)
         if rec is None:
             results[item_id] = {"status": "unknown"}
         else:
             results[item_id] = {
                 "status": rec.status.value,
+                "job_id": rec.job_id,
                 "result_rows": rec.result_rows,
                 "elapsed_s": rec.elapsed_s,
                 "error": rec.error,
             }
 
     terminal_count = sum(
-        1 for r in results.values() if r["status"] in (JobStatus.COMPLETED.value, JobStatus.FAILED.value)
+        1 for r in results.values() if r["status"] in (DocumentStatus.COMPLETED.value, DocumentStatus.FAILED.value)
     )
     return JSONResponse(
         content={

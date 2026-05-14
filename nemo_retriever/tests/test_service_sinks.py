@@ -318,14 +318,17 @@ def _wait_for_captures(captured_items: list[WorkItem], count: int = 1, timeout_s
 def test_router_accepts_store_with_allowed_scheme(
     app_with_sinks: TestClient, captured_items: list[WorkItem]
 ) -> None:
+    from .conftest import create_test_job
+
     metadata = {
         "pipeline": {
             "store_params": {"storage_uri": "s3://bucket/imgs"},
             "stage_order": ["extract", "store"],
         }
     }
+    job_id = create_test_job(app_with_sinks)
     resp = app_with_sinks.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF-1.4\n%stub\n", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -338,9 +341,12 @@ def test_router_accepts_store_with_allowed_scheme(
 
 
 def test_router_rejects_store_with_disallowed_scheme(app_with_sinks: TestClient) -> None:
+    from .conftest import create_test_job
+
     metadata = {"pipeline": {"store_params": {"storage_uri": "gs://bucket/imgs"}}}
+    job_id = create_test_job(app_with_sinks)
     resp = app_with_sinks.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -349,9 +355,12 @@ def test_router_rejects_store_with_disallowed_scheme(app_with_sinks: TestClient)
 
 
 def test_router_rejects_webhook_with_disallowed_prefix(app_with_sinks: TestClient) -> None:
+    from .conftest import create_test_job
+
     metadata = {"pipeline": {"webhook_params": {"endpoint_url": "https://attacker.evil/leak"}}}
+    job_id = create_test_job(app_with_sinks)
     resp = app_with_sinks.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )

@@ -14,11 +14,17 @@ Three execution surfaces are exposed:
 
 1. :meth:`ServiceIngestor.ingest` — sync, blocks until every document has
    finished, returns a :class:`ServiceIngestResult` (a ``list`` subclass
-   holding per-document completion events, plus ``failures`` /
-   ``document_ids`` / ``elapsed_s`` attributes).
+   holding per-document completion events, plus ``job_id`` / ``failures``
+   / ``document_ids`` / ``elapsed_s`` / ``job_status`` attributes). Each
+   call implicitly opens one server-side job aggregate sized to
+   ``len(documents)`` via ``POST /v1/ingest/job``, then submits every
+   document under that ``job_id``.
 
 2. :meth:`ServiceIngestor.ingest_stream` — sync generator yielding one
-   ``dict`` per event (upload_complete, document_complete, upload_failed).
+   ``dict`` per event (``job_created``, ``upload_complete``,
+   ``document_complete``, ``upload_failed``, plus the job-lifecycle
+   stream: ``job_started``, ``job_progress``, ``job_finalized`` /
+   ``job_partial`` / ``job_failed``).
 
 3. :meth:`ServiceIngestor.aingest_stream` — true async generator for
    callers already inside an event loop.
@@ -101,6 +107,11 @@ class ServiceIngestResult(list):
 
     Attributes
     ----------
+    job_id
+        The server-assigned job aggregate id for this ``ingest()`` call.
+        Every :meth:`ServiceIngestor.ingest` invocation opens exactly one
+        job, sized to ``len(documents)``; this is the handle to drive
+        ``GET /v1/ingest/job/{job_id}`` follow-ups.
     failures
         ``(document_id_or_filename, error_message)`` pairs for documents
         that failed during upload or pipeline processing.
@@ -108,17 +119,26 @@ class ServiceIngestResult(list):
         Document identifiers returned by the server, in upload order.
     elapsed_s
         Wall-clock seconds from first upload to last result.
+    job_status
+        Final aggregate status reported by the server
+        (``completed`` / ``failed`` / ``partial_success``) when a job
+        lifecycle event was observed during the run. ``None`` if the
+        stream closed without a terminal job event (e.g. SSE fallback
+        only delivered per-document completions).
     """
 
     def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
         super().__init__(items or [])
+        self.job_id: str | None = None
         self.failures: list[tuple[str, str]] = []
         self.document_ids: list[str] = []
         self.elapsed_s: float = 0.0
+        self.job_status: str | None = None
 
     def __repr__(self) -> str:
         return (
-            f"ServiceIngestResult(documents={len(self)}, "
+            f"ServiceIngestResult(job_id={self.job_id!r}, "
+            f"documents={len(self)}, "
             f"failures={len(self.failures)}, "
             f"elapsed_s={self.elapsed_s:.2f})"
         )
@@ -344,6 +364,7 @@ class ServiceIngestor(ingestor):
         self._api_token = (api_token or "").strip() or None
         self._document_ids: list[str] = []
         self._last_run_elapsed_s: float = 0.0
+        self._last_job_id: str | None = None
         self._pipeline_spec: dict[str, Any] = {
             "extraction_mode": "pdf",
             "stage_order": [],
@@ -904,11 +925,18 @@ class ServiceIngestor(ingestor):
     def ingest(self, params: Any = None, **kwargs: Any) -> ServiceIngestResult:
         """Block until every document has finished processing on the server.
 
+        Internally opens exactly one server-side job aggregate for the
+        full input set (sized to ``len(documents)``). The aggregate
+        ``job_id`` is captured from the first ``job_created`` event and
+        exposed on :class:`ServiceIngestResult` so the caller can call
+        ``GET /v1/ingest/job/{job_id}`` for follow-up status.
+
         Returns
         -------
         ServiceIngestResult
             A list of per-document completion events, with extra
-            ``failures`` / ``document_ids`` / ``elapsed_s`` attributes.
+            ``job_id`` / ``failures`` / ``document_ids`` / ``elapsed_s``
+            / ``job_status`` attributes.
         """
         del params, kwargs
         result = ServiceIngestResult()
@@ -921,10 +949,32 @@ class ServiceIngestor(ingestor):
         for evt in self.ingest_stream():
             event_type = evt.get("event")
 
+            if event_type == "job_created":
+                result.job_id = evt.get("job_id") or result.job_id
+                continue
+
+            if event_type in ("job_finalized", "job_partial", "job_failed"):
+                if event_type == "job_finalized":
+                    result.job_status = "completed"
+                elif event_type == "job_partial":
+                    result.job_status = "partial_success"
+                else:
+                    result.job_status = "failed"
+                continue
+
+            if event_type == "job_progress" or event_type == "job_started":
+                continue
+
             if event_type == "upload_complete":
                 total_uploaded += 1
+                if result.job_id is None:
+                    # Race: SSE delivered an upload_complete before the
+                    # generator yielded job_created. Fall back to the
+                    # job_id stamped on the per-doc event by the client.
+                    result.job_id = evt.get("job_id") or result.job_id
                 print(
-                    f"\r  Uploaded: {total_uploaded}  |  "
+                    f"\r  Job {result.job_id or '?'}  |  "
+                    f"Uploaded: {total_uploaded}  |  "
                     f"Completed: {documents_completed}  |  "
                     f"Failed: {documents_failed}",
                     end="",
@@ -951,7 +1001,8 @@ class ServiceIngestor(ingestor):
                             result.failures.append((doc_id, f"save_to_disk: {exc}"))
                 result.append(evt)
                 print(
-                    f"\r  Uploaded: {total_uploaded}  |  "
+                    f"\r  Job {result.job_id or '?'}  |  "
+                    f"Uploaded: {total_uploaded}  |  "
                     f"Completed: {documents_completed}  |  "
                     f"Failed: {documents_failed}",
                     end="",
@@ -969,6 +1020,11 @@ class ServiceIngestor(ingestor):
         result.document_ids = list(self._document_ids)
         result.elapsed_s = time.monotonic() - t0
         self._last_run_elapsed_s = result.elapsed_s
+        # Cache the job_id on the ingestor for the get_status() /
+        # remaining_jobs() accessors so they can target the job
+        # aggregate endpoints once J6 wiring is opted in (kept
+        # backwards compatible — get_status() still uses document_ids).
+        self._last_job_id = result.job_id
         return result
 
     # ------------------------------------------------------------------
@@ -980,9 +1036,12 @@ class ServiceIngestor(ingestor):
 
         Yields dicts with:
 
-        * ``{"event": "upload_complete", "filename": ..., "document_id": ...}``
-        * ``{"event": "document_complete", "document_id": ..., "status": ..., ...}``
-        * ``{"event": "upload_failed", "filename": ..., "error": ...}``
+        * ``{"event": "job_created", "job_id": ..., "expected_documents": ...}``
+        * ``{"event": "upload_complete", "filename": ..., "document_id": ..., "job_id": ...}``
+        * ``{"event": "document_complete", "document_id": ..., "status": ..., "job_id": ..., ...}``
+        * ``{"event": "upload_failed", "filename": ..., "error": ..., "job_id": ...}``
+        * ``{"event": "job_progress", "job_id": ..., "completed": ..., "failed": ..., ...}``
+        * ``{"event": "job_finalized"|"job_partial"|"job_failed", "job_id": ..., ...}``
         """
         files = self._collect_inputs()
         if not files:

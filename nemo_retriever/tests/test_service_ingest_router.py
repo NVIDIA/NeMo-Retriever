@@ -31,6 +31,7 @@ from nemo_retriever.service.config import (
     ServiceConfig,
 )
 from nemo_retriever.service.services.pipeline_pool import WorkItem
+from .conftest import create_test_job
 
 
 @pytest.fixture
@@ -79,14 +80,16 @@ def _make_pdf_bytes() -> bytes:
 def test_ingest_without_spec_falls_back_to_legacy_pipeline(
     app_with_stub_pool: TestClient, captured_items: list[WorkItem]
 ) -> None:
+    job_id = create_test_job(app_with_stub_pool)
     resp = app_with_stub_pool.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": "{}"},
     )
     assert resp.status_code == 202, resp.text
     body = resp.json()
     assert "document_id" in body
+    assert body["job_id"] == job_id
 
     # Wait briefly for the async worker loop to consume the queued item.
     import time as _time
@@ -98,11 +101,13 @@ def test_ingest_without_spec_falls_back_to_legacy_pipeline(
     assert len(captured_items) == 1
     item = captured_items[0]
     assert item.pipeline_spec is None  # legacy path
+    assert item.job_id == job_id
 
 
 def test_ingest_with_valid_spec_attaches_to_work_item(
     app_with_stub_pool: TestClient, captured_items: list[WorkItem]
 ) -> None:
+    job_id = create_test_job(app_with_stub_pool)
     metadata = {
         "pipeline": {
             "extraction_mode": "pdf",
@@ -111,7 +116,7 @@ def test_ingest_with_valid_spec_attaches_to_work_item(
         }
     }
     resp = app_with_stub_pool.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -132,9 +137,10 @@ def test_ingest_with_valid_spec_attaches_to_work_item(
 
 
 def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient) -> None:
+    job_id = create_test_job(app_with_stub_pool)
     metadata = {"pipeline": {"extract_params": {"page_elements_invoke_url": "http://attacker/"}}}
     resp = app_with_stub_pool.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -144,9 +150,10 @@ def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient)
 
 def test_ingest_rejects_caption_when_endpoint_not_configured(app_with_stub_pool: TestClient) -> None:
     """Without ``nim_endpoints.caption_invoke_url``, caption overrides are 403."""
+    job_id = create_test_job(app_with_stub_pool)
     metadata = {"pipeline": {"caption_params": {"prompt": "Describe"}}}
     resp = app_with_stub_pool.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -156,9 +163,10 @@ def test_ingest_rejects_caption_when_endpoint_not_configured(app_with_stub_pool:
 
 def test_ingest_rejects_webhook_when_sinks_disabled(app_with_stub_pool: TestClient) -> None:
     """Without ``sinks.webhook_url_prefixes`` set, the ``webhook`` stage is not allowed."""
+    job_id = create_test_job(app_with_stub_pool)
     metadata = {"pipeline": {"webhook_params": {"endpoint_url": "http://x/"}, "stage_order": ["webhook"]}}
     resp = app_with_stub_pool.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -172,14 +180,75 @@ def test_ingest_rejects_webhook_params_without_stage_when_sinks_disabled(
     app_with_stub_pool: TestClient,
 ) -> None:
     """Bare ``webhook_params`` (no stage_order entry) still fails the sink allowlist check."""
+    job_id = create_test_job(app_with_stub_pool)
     metadata = {"pipeline": {"webhook_params": {"endpoint_url": "http://x/"}}}
     resp = app_with_stub_pool.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
     assert resp.status_code == 403, resp.text
     assert "disabled" in resp.json()["detail"].lower()
+
+
+def test_create_job_returns_201_and_aggregate_fields(app_with_stub_pool: TestClient) -> None:
+    """POST /v1/ingest/job opens a fresh aggregate with status=pending."""
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 3, "label": "smoke"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["expected_documents"] == 3
+    assert body["status"] == "pending"
+    assert body["label"] == "smoke"
+    assert body["job_id"]
+
+
+def test_get_job_returns_aggregate_snapshot(app_with_stub_pool: TestClient) -> None:
+    job_id = create_test_job(app_with_stub_pool, expected_documents=2)
+    resp = app_with_stub_pool.get(f"/v1/ingest/job/{job_id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["job_id"] == job_id
+    assert body["expected_documents"] == 2
+    assert body["status"] == "pending"
+    assert body["documents"] is None  # not requested
+    assert body["counts"] == {} or "pending" in body["counts"]
+
+
+def test_get_job_missing_returns_404(app_with_stub_pool: TestClient) -> None:
+    resp = app_with_stub_pool.get("/v1/ingest/job/does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_upload_to_missing_job_returns_404(app_with_stub_pool: TestClient) -> None:
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job/does-not-exist/document",
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+    assert resp.status_code == 404, resp.text
+
+
+def test_upload_beyond_capacity_returns_409(
+    app_with_stub_pool: TestClient, captured_items: list[WorkItem]
+) -> None:
+    """The (expected_documents + 1)th upload must be rejected with 409."""
+    job_id = create_test_job(app_with_stub_pool, expected_documents=1)
+    first = app_with_stub_pool.post(
+        f"/v1/ingest/job/{job_id}/document",
+        files={"file": ("a.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+    assert first.status_code == 202, first.text
+
+    second = app_with_stub_pool.post(
+        f"/v1/ingest/job/{job_id}/document",
+        files={"file": ("b.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+    assert second.status_code == 409, second.text
 
 
 def test_pipeline_config_endpoint_reports_allowed_overrides(

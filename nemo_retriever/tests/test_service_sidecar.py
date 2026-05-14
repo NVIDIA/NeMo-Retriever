@@ -317,6 +317,8 @@ def test_ingest_with_meta_dataframe_id_propagates_through_router(
     app_with_sidecars: TestClient, captured_items: list[WorkItem]
 ) -> None:
     """End-to-end: upload sidecar → reference by id in ingest request → worker sees resolved bytes."""
+    from .conftest import create_test_job
+
     up = app_with_sidecars.post(
         "/v1/ingest/sidecar",
         files={"file": ("meta.csv", _csv_bytes(), "text/csv")},
@@ -334,8 +336,9 @@ def test_ingest_with_meta_dataframe_id_propagates_through_router(
             }
         }
     }
+    job_id = create_test_job(app_with_sidecars)
     resp = app_with_sidecars.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF-1.4\n", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
@@ -357,6 +360,8 @@ def test_ingest_with_meta_dataframe_id_propagates_through_router(
 def test_ingest_rejects_raw_meta_dataframe_through_router(
     app_with_sidecars: TestClient,
 ) -> None:
+    from .conftest import create_test_job
+
     metadata = {
         "pipeline": {
             "vdb_upload_params": {
@@ -368,8 +373,9 @@ def test_ingest_rejects_raw_meta_dataframe_through_router(
             }
         }
     }
+    job_id = create_test_job(app_with_sidecars)
     resp = app_with_sidecars.post(
-        "/v1/ingest",
+        f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", b"%PDF", "application/pdf")},
         data={"metadata": json.dumps(metadata)},
     )
