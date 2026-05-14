@@ -189,8 +189,8 @@ def _create_lancedb_results(
 
     Returns:
         ``(rows, counts)`` where ``rows`` is the list of dicts shaped for
-        LanceDB ingestion (``id``, ``vector``, ``text``, ``metadata``,
-        ``source``) and ``counts`` is a dict containing ``accepted``,
+        LanceDB ingestion (``vector``, ``text``, ``metadata``, ``source``)
+        and ``counts`` is a dict containing ``accepted``,
         ``dropped_no_embedding``, ``dropped_bad_length``, and
         ``dropped_no_text`` keys.
     """
@@ -508,6 +508,7 @@ class LanceDB(VDB):
             )
         else:
             self.append_to_index(records=records, table_name=self.table_name)
+        return records
 
     def upsert(
         self,
