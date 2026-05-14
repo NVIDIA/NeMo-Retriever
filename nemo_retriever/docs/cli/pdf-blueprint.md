@@ -79,5 +79,5 @@ print(tbl.to_pandas().head())
 - LanceDB and local `--store-images-uri` / `--save-intermediate` paths do not
   use MinIO. The optional **ingestion client** `[minio]` extra exists for legacy
   Milvus bulk-upload helpers in the client
-  (`client/src/nv_ingest_client/util/vdb/milvus.py`), not for
+  (Milvus adapter under the repository `client` tree), not for
   the LanceDB vector path—skip it for this in-process blueprint.
