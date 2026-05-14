@@ -2480,6 +2480,7 @@ all = [
 ]
 benchmarks = [
     { name = "datasets" },
+    { name = "open-clip-torch" },
 ]
 dev = [
     { name = "build" },
@@ -2584,6 +2585,7 @@ requires-dist = [
     { name = "nltk", specifier = "==3.9.3" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "nvidia-ml-py", marker = "extra == 'local'" },
+    { name = "open-clip-torch", marker = "extra == 'benchmarks'", specifier = "==3.2.0" },
     { name = "open-clip-torch", marker = "extra == 'nemotron-parse'", specifier = "==3.2.0" },
     { name = "pandas", specifier = ">=2.0,<3" },
     { name = "pillow", specifier = "==12.2.0" },
