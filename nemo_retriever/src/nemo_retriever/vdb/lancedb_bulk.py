@@ -1,666 +1,284 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""Batch LanceDB writes, index creation, and JSON-dir ingestion (canonical under ``vdb``)."""
+
+from __future__ import annotations
+
 import json
 import logging
-import os
-import time
-
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Final, FrozenSet
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
 
 import lancedb
-import pyarrow as pa
+import pandas as pd
 
-from nemo_retriever.vdb.adt_vdb import VDB
-
+from nemo_retriever.vdb.lancedb import LanceDB
+from nemo_retriever.vdb.lancedb_schema import lancedb_schema, update_metadata_with_content_type
 
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_VECTOR_DIM: Final[int] = 2048
-_VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
-
-
-def _normalize_on_bad_vectors(value: str) -> str:
-    """Validate and normalize an ``on_bad_vectors`` policy string.
-
-    LanceDB's ``Table.create`` accepts a fixed set of policies for handling rows
-    whose vector column does not match the declared fixed-size schema. We
-    surface the same vocabulary on this wrapper so callers can configure the
-    behavior through ``--vdb-kwargs-json``.
-
-    Args:
-        value: User-supplied policy name. Whitespace and case are ignored.
-
-    Returns:
-        The normalized lower-case policy string.
-
-    Raises:
-        ValueError: If ``value`` is not one of ``drop``, ``fill``, ``null``,
-            or ``error``.
+@dataclass(frozen=True)
+class LanceDBConfig:
     """
-    normalized = (value or "drop").strip().lower()
-    if normalized not in _VALID_ON_BAD_VECTORS:
-        raise ValueError(f"on_bad_vectors must be one of {sorted(_VALID_ON_BAD_VECTORS)}; got {value!r}")
-    return normalized
+    Minimal config for writing embeddings into LanceDB.
 
-
-def _json_str(value) -> str:
+    Used by the text-embedding stage and by the vector-store CLI.
     """
-    Convert Python objects (dict/list/etc.) to a compact JSON string.
 
-    LanceDB table schema stores `metadata` and `source` as strings, so we must
-    serialize nested structures before ingestion.
+    uri: str = "lancedb"
+    table_name: str = "nv-ingest"
+    overwrite: bool = True
+
+    # Optional index creation (recommended for recall/search runs).
+    create_index: bool = True
+    index_type: str = "IVF_HNSW_SQ"
+    metric: str = "l2"
+    num_partitions: int = 16
+    num_sub_vectors: int = 256
+
+    hybrid: bool = False
+    fts_language: str = "English"
+
+
+def _read_text_embeddings_json_df(path: Path) -> pd.DataFrame:
     """
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
+    Read a `*.text_embeddings.json` file emitted by `nemo_retriever.text_embed.stage`.
+
+    Expected wrapper shape:
+      {
+        ...,
+        "df_records": [ { "document_type": ..., "metadata": {...}, ... }, ... ],
+        ...
+      }
+    """
     try:
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
-    except Exception:
-        return str(value)
+        obj = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception as e:
+        raise ValueError(f"Failed reading JSON {path}: {e}") from e
+
+    if isinstance(obj, dict):
+        recs = obj.get("df_records")
+        if isinstance(recs, list):
+            return pd.DataFrame([r for r in recs if isinstance(r, dict)])
+        return pd.DataFrame([obj])
+
+    if isinstance(obj, list):
+        return pd.DataFrame([r for r in obj if isinstance(r, dict)])
+
+    return pd.DataFrame([])
 
 
-def _maybe_parse_json(value):
-    """Best-effort parse for JSON-serialized string columns."""
-    if value is None:
-        return None
-    if isinstance(value, (dict, list)):
-        return value
-    if not isinstance(value, str):
-        return value
-    s = value.strip()
-    if not s:
-        return {}
-    # Avoid accidental parsing of plain strings that are not JSON objects/arrays.
-    if not (s.startswith("{") or s.startswith("[")):
-        return value
-    try:
-        return json.loads(s)
-    except Exception:
-        return value
-
-
-def _is_ivf_vector_index(index_type: object) -> bool:
-    """Return True if ``index_type`` names an IVF-style index (K-means partitions)."""
-    s = str(index_type or "").upper()
-    return s.startswith("IVF") or "IVF_" in s
-
-
-def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
-    """Compute a valid ``num_partitions`` for Lance IVF training.
-
-    K-means centroids must be strictly fewer than the number of training vectors
-    (``num_partitions < num_rows``). For empty or single-row tables, IVF
-    training is skipped (return ``None``).
-
-    Args:
-        num_rows: Row count in the table.
-        requested: Caller-configured ``num_partitions``.
-
-    Returns:
-        Clamped partition count, or ``None`` if vector index build should be skipped.
-    """
-    if num_rows <= 0:
-        return None
-    if num_rows == 1:
-        return None
-    cap = num_rows - 1
-    return min(int(requested), max(1, cap))
-
-
-def _record_timing(event: str, duration_s: float, extra: dict | None = None):
-    timing_path = os.getenv("NV_INGEST_LANCEDB_TIMING_PATH")
-    if not timing_path:
-        return
-    payload = {
-        "event": event,
-        "duration_s": duration_s,
-        "timestamp_s": time.time(),
-    }
-    if extra:
-        payload.update(extra)
-    timing_dir = os.path.dirname(timing_path)
-    if timing_dir:
-        os.makedirs(timing_dir, exist_ok=True)
-    with open(timing_path, "a") as f:
-        f.write(json.dumps(payload) + "\n")
-
-
-def _get_text_for_element(element):
-    """
-    Extract searchable text from an element based on document_type.
-
-    This prevents base64-encoded images from being stored in the text field.
-    """
-    doc_type = element.get("document_type")
-    metadata = element.get("metadata", {})
-
-    if doc_type == "text":
-        return metadata.get("content")
-    elif doc_type == "structured":
-        # Tables, charts, infographics
-        table_meta = metadata.get("table_metadata", {})
-        return table_meta.get("table_content")
-    elif doc_type == "image":
-        # Use caption/OCR text, not raw base64 image data
-        image_meta = metadata.get("image_metadata", {})
-        content_meta = metadata.get("content_metadata", {})
-        if content_meta.get("subtype") == "page_image":
-            return image_meta.get("text")
-        else:
-            return image_meta.get("caption")
-    elif doc_type == "audio":
-        audio_meta = metadata.get("audio_metadata", {})
-        return audio_meta.get("audio_transcript")
+def _iter_text_embeddings_json_files(input_dir: Path, *, recursive: bool) -> List[Path]:
+    if recursive:
+        files = list(input_dir.rglob("*.text_embeddings.json"))
     else:
-        # Fallback for unknown types
-        return metadata.get("content")
+        files = list(input_dir.glob("*.text_embeddings.json"))
+    return sorted([p for p in files if p.is_file()])
 
 
-def _create_lancedb_results(
-    results,
-    *,
-    expected_dim: int | None = _DEFAULT_VECTOR_DIM,
-) -> tuple[list, dict[str, int]]:
-    """Transform NV-Ingest pipeline results into LanceDB ingestible rows.
-
-    Extracts the appropriate searchable text per ``document_type`` and, when
-    ``expected_dim`` is set, validates that each row's embedding is shaped
-    consistently with the LanceDB fixed-size-list schema before forwarding it
-    to the writer. Rows whose embedding is missing, of the wrong type, or of
-    the wrong length are dropped and counted; per-row reasons are emitted at
-    ``DEBUG`` and a single structured ``WARNING`` summary is emitted at the
-    end of the call when any drops occurred.
-
-    Passing ``expected_dim=None`` disables the length check entirely. Callers
-    that prefer to defer to LanceDB's ``on_bad_vectors`` policy on the writer
-    side (e.g. ``LanceDB(on_bad_vectors="error")``) should use this mode so
-    bad rows reach LanceDB rather than being silently dropped at the wrapper.
-
-    Args:
-        results: Iterable of pipeline output result lists, where each element
-            is a per-document list of NV-Ingest record dicts.
-        expected_dim: Required vector length, or ``None`` to skip the length
-            check. Defaults to :data:`_DEFAULT_VECTOR_DIM`.
-
-    Returns:
-        ``(rows, counts)`` where ``rows`` is the list of dicts shaped for
-        LanceDB ingestion (``vector``, ``text``, ``metadata``, ``source``)
-        and ``counts`` is a dict containing ``accepted``,
-        ``dropped_no_embedding``, ``dropped_bad_length``, and
-        ``dropped_no_text`` keys.
+def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    lancedb_rows: list = []
-    accepted = 0
-    dropped_no_embedding = 0
-    dropped_bad_length = 0
-    dropped_no_text = 0
+    Transform an embeddings-enriched primitives DataFrame into LanceDB rows.
 
-    enforce_length = expected_dim is not None
-    expected_dim_int = int(expected_dim) if enforce_length else None
+    Rows include:
+      - vector (embedding)
+      - pdf_basename
+      - page_number
+      - pdf_page (basename_page)
+      - source_id
+      - path
+    """
+    out: List[Dict[str, Any]] = []
 
-    for result in results:
-        for element in result:
-            metadata = element.get("metadata", {})
-            doc_type = element.get("document_type")
+    for row in rows:
+        meta = row.get("metadata")
+        if not isinstance(meta, dict):
+            continue
+        meta = meta.copy()
 
-            embedding = metadata.get("embedding")
-            if embedding is None:
-                dropped_no_embedding += 1
+        embedding = meta.get("embedding")
+        if embedding is None:
+            continue
+
+        if not isinstance(embedding, list):
+            try:
+                embedding = list(embedding)  # type: ignore[arg-type]
+            except Exception:
                 continue
+        meta.pop("embedding", None)
+        update_metadata_with_content_type(meta, content_type=row.get("_content_type"))
+        path = row.get("path", "")
+        source_id = meta.get("source_path", path)
+        page_number = row.get("page_number", -1)
+        p = Path(path) if path else None
+        filename = p.name if p is not None else ""
+        pdf_basename = p.stem if p is not None else ""
+        pdf_page = f"{pdf_basename}_{page_number}" if (pdf_basename and page_number >= 0) else ""
 
-            if enforce_length and (not isinstance(embedding, (list, tuple)) or len(embedding) != expected_dim_int):
-                dropped_bad_length += 1
-                got_len: Any = len(embedding) if hasattr(embedding, "__len__") else "n/a"
-                logger.debug(
-                    "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
-                    got_len,
-                    expected_dim_int,
-                    doc_type,
-                )
-                continue
+        if page_number == -1:
+            logger.debug("Unable to determine page number for %s", path)
 
-            content_meta = metadata.get("content_metadata", {})
+        stored_uri = row.get("_stored_image_uri") or ""
+        out.append(
+            {
+                "vector": embedding,
+                "pdf_page": pdf_page,
+                "filename": filename,
+                "pdf_basename": pdf_basename,
+                "page_number": int(page_number),
+                "source": source_id,
+                "source_id": source_id,
+                "path": path,
+                "text": row.get("text", ""),
+                "metadata": str(meta),
+                "stored_image_uri": str(stored_uri) if stored_uri else "",
+                "content_type": str(row.get("_content_type") or ""),
+                "bbox_xyxy_norm": json.dumps(row.get("_bbox_xyxy_norm")) if row.get("_bbox_xyxy_norm") else "",
+            }
+        )
 
-            text = _get_text_for_element(element)
+    return out
 
-            if not text:
-                dropped_no_text += 1
-                source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
-                pg_num = content_meta.get("page_number")
-                logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
-                continue
 
-            # Promote stable entity id (e.g. Neo4j node UUID for tabular ingest)
-            # to a top-level column so upserts can target a single row.
-            row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
-            if row_id is None and isinstance(metadata, dict):
-                row_id = metadata.get("id")
-            row_id_str = str(row_id) if row_id is not None else ""
+def _infer_vector_dim(rows: Sequence[Dict[str, Any]]) -> int:
+    for r in rows:
+        v = r.get("vector")
+        if isinstance(v, list) and v:
+            return int(len(v))
+    return 0
 
-            lancedb_rows.append(
-                {
-                    "id": row_id_str,
-                    "vector": embedding,
-                    "text": text,
-                    "metadata": _json_str(content_meta),
-                    "source": _json_str(metadata.get("source_metadata", {})),
-                }
+
+def create_lancedb_index(table: Any, *, cfg: LanceDBConfig, text_column: str = "text") -> None:
+    """Create vector (IVF_HNSW_SQ) and optionally FTS indices on a LanceDB table."""
+    try:
+        table.create_index(
+            index_type=cfg.index_type,
+            metric=cfg.metric,
+            num_partitions=int(cfg.num_partitions),
+            num_sub_vectors=int(cfg.num_sub_vectors),
+            vector_column_name="vector",
+        )
+    except TypeError:
+        table.create_index(vector_column_name="vector")
+
+    if cfg.hybrid:
+        try:
+            table.create_fts_index(text_column, replace=True, language=cfg.fts_language)
+        except Exception:
+            logger.warning(
+                "FTS index creation failed on column %r; continuing with vector-only search.",
+                text_column,
+                exc_info=True,
             )
-            accepted += 1
 
-    counts: dict[str, int] = {
-        "accepted": accepted,
-        "dropped_no_embedding": dropped_no_embedding,
-        "dropped_bad_length": dropped_bad_length,
-        "dropped_no_text": dropped_no_text,
+    for index_stub in table.list_indices():
+        table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+
+
+def _write_rows_to_lancedb(rows: Sequence[Dict[str, Any]], *, cfg: LanceDBConfig) -> None:
+    if not rows:
+        logger.warning("No embeddings rows provided; nothing to write to LanceDB.")
+        return
+
+    dim = _infer_vector_dim(rows)
+    if dim <= 0:
+        raise ValueError("Failed to infer embedding dimension from rows.")
+
+    db = lancedb.connect(uri=cfg.uri)
+
+    schema = lancedb_schema(vector_dim=dim)
+
+    mode = "overwrite" if cfg.overwrite else "append"
+    table = db.create_table(cfg.table_name, data=list(rows), schema=schema, mode=mode)
+
+    if cfg.create_index:
+        create_lancedb_index(table, cfg=cfg)
+
+
+def write_embeddings_to_lancedb(df_with_embeddings: pd.DataFrame, *, cfg: LanceDBConfig) -> None:
+    """
+    Write embeddings found in `df_with_embeddings.metadata.embedding` to LanceDB.
+
+    Used by `nemo_retriever.text_embed.stage.embed_text_from_primitives_df(...)`.
+    """
+    rows = _build_lancedb_rows_from_df(df_with_embeddings.to_dict("records"))
+    _write_rows_to_lancedb(rows, cfg=cfg)
+
+
+def write_text_embeddings_dir_to_lancedb(
+    input_dir: Path,
+    *,
+    cfg: LanceDBConfig,
+    recursive: bool = False,
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Read `*.text_embeddings.json` files from `input_dir` and upload their embeddings to LanceDB."""
+    input_dir = Path(input_dir)
+    files = _iter_text_embeddings_json_files(input_dir, recursive=bool(recursive))
+    if limit is not None:
+        files = files[: int(limit)]
+
+    processed = 0
+    skipped = 0
+    failed = 0
+
+    ldb = LanceDB(uri=cfg.uri, table_name=cfg.table_name, overwrite=cfg.overwrite)
+
+    results: List[List[Dict[str, Any]]] = []
+
+    for p in files:
+        df = _read_text_embeddings_json_df(p)
+        rows = df.to_dict(orient="records")
+        results.append(rows)
+
+    if not results:
+        logger.warning("No *.text_embeddings.json files found in %s; nothing to write.", input_dir)
+        return {
+            "input_dir": str(input_dir),
+            "n_files": 0,
+            "processed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
+        }
+
+    ldb.run(results)
+
+    return {
+        "input_dir": str(input_dir),
+        "n_files": len(files),
+        "processed": processed,
+        "skipped": skipped,
+        "failed": failed,
+        "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
     }
 
-    if dropped_no_embedding or dropped_bad_length or dropped_no_text:
-        expected_dim_repr = expected_dim_int if enforce_length else "None"
-        logger.warning(
-            "_create_lancedb_results: accepted=%d dropped_no_embedding=%d "
-            "dropped_bad_length=%d dropped_no_text=%d expected_dim=%s",
-            accepted,
-            dropped_no_embedding,
-            dropped_bad_length,
-            dropped_no_text,
-            expected_dim_repr,
-        )
 
-    return lancedb_rows, counts
-    
+def handle_lancedb(
+    rows: List[Dict[str, Any]],
+    uri: str,
+    table_name: str,
+    hybrid: bool = False,
+    mode: str = "overwrite",
+) -> Dict[str, Any]:
+    """Write flattened extraction rows into LanceDB and build indices.
 
-def _build_table_schema(vector_dim: int) -> pa.Schema:
-    """Single source of truth for the LanceDB table schema.
-
-    Used by both the full-ingest path (``create_index``) and the on-the-fly
-    auto-create branch in ``upsert``, so the two paths can never drift.
+    ``mode`` is accepted for API compatibility; writes use ``overwrite`` semantics
+    via :class:`LanceDBConfig` when creating the table.
     """
-    return pa.schema(
-        [
-            pa.field("id", pa.string()),
-            pa.field("vector", pa.list_(pa.float32(), vector_dim)),
-            pa.field("text", pa.string()),
-            pa.field("metadata", pa.string()),
-            pa.field("source", pa.string()),
-        ]
-    )
-
-
-class LanceDB(VDB):
-    """LanceDB operator implementing the VDB interface."""
-
-    def __init__(
-        self,
-        uri: str | None = None,
-        overwrite: bool = True,
-        table_name: str = "nv-ingest",
-        index_type: str = "IVF_HNSW_SQ",
-        metric: str = "l2",
-        num_partitions: int = 16,
-        num_sub_vectors: int = 256,
-        hybrid: bool = False,
-        fts_language: str = "English",
-        vector_dim: int = _DEFAULT_VECTOR_DIM,
-        on_bad_vectors: str = "drop",
-        fill_value: float = 0.0,
-        validate_vector_length: bool = True,
-        **kwargs,
-    ):
-        if int(vector_dim) <= 0:
-            raise ValueError(f"vector_dim must be positive; got {vector_dim}")
-        self.uri = uri or "lancedb"
-        self.overwrite = overwrite
-        self.table_name = table_name
-        self.index_type = index_type
-        self.metric = metric
-        self.num_partitions = num_partitions
-        self.num_sub_vectors = num_sub_vectors
-        self.hybrid = hybrid
-        self.fts_language = fts_language
-        self.vector_dim = int(vector_dim)
-        self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
-        self.fill_value = float(fill_value)
-        self.validate_vector_length = bool(validate_vector_length)
-        super().__init__(**kwargs)
-
-    def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
-        """Create a LanceDB table and populate it with transformed records.
-
-        Validates per-row vector shape (when ``validate_vector_length`` is set
-        on the instance and ``on_bad_vectors`` is not ``"error"``) and forwards
-        LanceDB's ``on_bad_vectors`` policy as defense-in-depth so that any
-        rows escaping the row-builder check are still handled by the LanceDB
-        writer instead of aborting the run. When ``on_bad_vectors == "error"``
-        the wrapper deliberately skips its own length check so that LanceDB
-        itself raises on the bad row, matching the documented strict-fail
-        semantics of that policy.
-        """
-        connect_start = time.perf_counter()
-        db = lancedb.connect(uri=self.uri)
-        _record_timing("lancedb.connect", time.perf_counter() - connect_start)
-
-        if self.validate_vector_length and self.on_bad_vectors != "error":
-            expected_dim: int | None = self.vector_dim
-        else:
-            expected_dim = None
-
-        results, counts = _create_lancedb_results(records, expected_dim=expected_dim)
-        schema = _build_table_schema(self.vector_dim)
-        create_kwargs: dict[str, Any] = {
-            "data": results,
-            "schema": schema,
-            "mode": "overwrite" if self.overwrite else "append",
-            "on_bad_vectors": self.on_bad_vectors,
-        }
-        if self.on_bad_vectors == "fill":
-            create_kwargs["fill_value"] = self.fill_value
-        create_start = time.perf_counter()
-        table = db.create_table(table_name, **create_kwargs)
-        _record_timing(
-            "lancedb.create_table",
-            time.perf_counter() - create_start,
-            {"rows": len(results), **counts},
-        )
-        return table
-
-    def write_to_index(
-        self,
-        records,
-        table=None,
-        index_type="IVF_HNSW_SQ",
-        metric="l2",
-        num_partitions=16,
-        num_sub_vectors=256,
-        hybrid: bool = None,
-        fts_language: str = None,
-        **kwargs,
-    ):
-        """Create vector and optionally FTS indexes on the LanceDB table.
-
-        For IVF index types, ``num_partitions`` is clamped so that
-        ``num_partitions < row_count`` (Lance K-means requirement). Empty or
-        single-row tables skip the vector index; hybrid FTS may still be built.
-        """
-        hybrid = hybrid if hybrid is not None else self.hybrid
-        fts_language = fts_language or self.fts_language
-
-        num_rows = int(table.count_rows())
-        requested_partitions = int(num_partitions)
-        use_ivf = _is_ivf_vector_index(index_type)
-        effective_partitions: int | None
-        if use_ivf:
-            effective_partitions = _effective_ivf_num_partitions(num_rows, requested_partitions)
-        else:
-            effective_partitions = requested_partitions
-
-        vector_index_start = time.perf_counter()
-        if use_ivf and effective_partitions is None:
-            if num_rows == 0:
-                logger.warning(
-                    "Skipping LanceDB vector index: empty table (index_type=%s).",
-                    index_type,
-                )
-            else:
-                logger.info(
-                    "Skipping LanceDB vector index: IVF needs at least two rows (got %d; index_type=%s).",
-                    num_rows,
-                    index_type,
-                )
-        else:
-            partitions_for_index = (
-                int(effective_partitions) if effective_partitions is not None else requested_partitions
-            )
-            if use_ivf and partitions_for_index != requested_partitions:
-                logger.info(
-                    "Clamping num_partitions from %d to %d (table has %d rows; IVF requires partitions < row count).",
-                    requested_partitions,
-                    partitions_for_index,
-                    num_rows,
-                )
-            table.create_index(
-                index_type=index_type,
-                metric=metric,
-                num_partitions=partitions_for_index,
-                num_sub_vectors=num_sub_vectors,
-                vector_column_name="vector",
-            )
-            for index_stub in table.list_indices():
-                table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
-            _record_timing("lancedb.vector_index_ready", time.perf_counter() - vector_index_start)
-
-        if hybrid:
-            fts_index_start = time.perf_counter()
-            table.create_fts_index("text", language=fts_language)
-            for index_stub in table.list_indices():
-                if "text" in index_stub.name.lower() or "fts" in index_stub.name.lower():
-                    table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
-            _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
-
-    def run(self, records):
-        """Orchestrate index creation and data ingestion."""
-        table = self.create_index(records=records, table_name=self.table_name)
-        self.write_to_index(
-            records,
-            table=table,
-            index_type=self.index_type,
-            metric=self.metric,
-            num_partitions=self.num_partitions,
-            num_sub_vectors=self.num_sub_vectors,
-            hybrid=self.hybrid,
-            fts_language=self.fts_language,
-        )
-        return records
-
-    def upsert(
-        self,
-        records,
-        table_name: str | None = None,
-        key: str = "id",
-    ) -> dict[str, int | bool]:
-        """Merge-insert ``records`` into a LanceDB table on ``key``.
-
-        Targets the incremental-update flow:
-
-        * Rows that share ``key`` with an existing row are **updated** (all
-          columns, including ``vector``, are replaced).
-        * Rows whose ``key`` is absent are **inserted**.
-        * Rows already in the table that are *not* in ``records`` are **left
-          untouched** — this method never deletes. Tombstoning entities that
-          disappeared upstream (e.g. a ``Table``/``Column`` removed in Neo4j)
-          is out of scope for ``upsert`` and would need a separate code path.
-
-        If the target table does not yet exist (e.g. a metadata PATCH lands
-        before the first full ingest has run), it is created on the fly with
-        the same fixed-size-list schema as :meth:`create_index`. The
-        auto-create branch is race-tolerant: if a parallel writer wins the
-        ``create_table`` call, we fall back to ``open_table`` + merge_insert
-        instead of crashing.
-
-        Vector / FTS indexes are intentionally **not** built here: IVF
-        training needs at least two rows and incremental upserts typically
-        carry only one or two; indexes will be built by the next full ingest
-        or by an explicit :meth:`write_to_index` call. The auto-create branch
-        is logged at ``INFO`` so it is visible in server logs.
-
-        The wrapper validates per-row vector shape using the same
-        ``on_bad_vectors`` / ``validate_vector_length`` policy as
-        :meth:`create_index`, then drops rows with an empty ``key`` (an empty
-        upsert key is treated as "no stable identity" and would otherwise
-        collapse multiple unrelated rows together).
-
-        Returns the row counts dict from :func:`_create_lancedb_results` plus
-        these additional keys:
-
-        * ``upserted`` — rows sent to ``merge_insert`` (matched + inserted).
-        * ``inserted_via_create`` — rows written via the auto-create branch
-          when the table did not exist (``0`` for the normal path).
-        * ``skipped_no_key`` — rows dropped because their ``key`` value was
-          empty/``None``.
-        * ``created_table`` — ``True`` if the target table did not exist and
-          was created here, ``False`` otherwise.
-        """
-        target_name = table_name or self.table_name
-        connect_start = time.perf_counter()
-        db = lancedb.connect(uri=self.uri)
-        _record_timing("lancedb.connect", time.perf_counter() - connect_start)
-
-        if self.validate_vector_length and self.on_bad_vectors != "error":
-            expected_dim: int | None = self.vector_dim
-        else:
-            expected_dim = None
-
-        rows, counts = _create_lancedb_results(records, expected_dim=expected_dim)
-
-        rows_with_key = [r for r in rows if r.get(key)]
-        skipped_no_key = len(rows) - len(rows_with_key)
-        if skipped_no_key:
-            logger.warning(
-                "LanceDB.upsert: dropping %d row(s) with empty %r — cannot upsert without a stable key.",
-                skipped_no_key,
-                key,
-            )
-
-        # Counts are populated incrementally so each early-return path is
-        # consistent with the documented contract above.
-        counts["upserted"] = 0
-        counts["inserted_via_create"] = 0
-        counts["skipped_no_key"] = skipped_no_key
-        counts["created_table"] = False
-
-        if not rows_with_key:
-            logger.info("LanceDB.upsert: nothing to write to table %r.", target_name)
-            return counts
-
-        table = None
-        try:
-            table = db.open_table(target_name)
-        except (ValueError, FileNotFoundError) as exc:
-            # ``ValueError`` is what lancedb-python raises for "Table '<name>'
-            # was not found"; ``FileNotFoundError`` covers the bare-FS variant
-            # where the parent directory exists but holds no Lance dataset.
-            # Either way: this is the first write into the target — try to
-            # create it with the canonical schema. If a parallel writer wins
-            # the create, fall back to open_table + the regular merge_insert
-            # path so the caller still gets upsert semantics instead of a
-            # crash on "table already exists".
-            logger.info(
-                "LanceDB.upsert: target table %r not found at uri=%r (%s); "
-                "creating it on the fly from %d row(s). Indexes will be built "
-                "by the next full ingest.",
-                target_name,
-                self.uri,
-                exc,
-                len(rows_with_key),
-            )
-            schema = _build_table_schema(self.vector_dim)
-            create_kwargs: dict[str, Any] = {
-                "data": rows_with_key,
-                "schema": schema,
-                "mode": "create",
-                "on_bad_vectors": self.on_bad_vectors,
-            }
-            if self.on_bad_vectors == "fill":
-                create_kwargs["fill_value"] = self.fill_value
-            try:
-                create_start = time.perf_counter()
-                table = db.create_table(target_name, **create_kwargs)
-                _record_timing(
-                    "lancedb.upsert_create_table",
-                    time.perf_counter() - create_start,
-                    {"rows": len(rows_with_key), "table": target_name},
-                )
-                counts["inserted_via_create"] = len(rows_with_key)
-                counts["created_table"] = True
-                return counts
-            except (ValueError, FileExistsError) as race_exc:
-                # Another writer raced us to create_table. Re-open and fall
-                # through into the normal merge_insert path below.
-                logger.info(
-                    "LanceDB.upsert: race on create_table(%r) (%s); "
-                    "falling back to merge_insert on the existing table.",
-                    target_name,
-                    race_exc,
-                )
-                table = db.open_table(target_name)
-
-        upsert_start = time.perf_counter()
-        (
-            table.merge_insert(key)
-            .when_matched_update_all()
-            .when_not_matched_insert_all()
-            .execute(rows_with_key)
-        )
-        _record_timing(
-            "lancedb.upsert",
-            time.perf_counter() - upsert_start,
-            {"rows": len(rows_with_key), "table": target_name},
-        )
-
-        counts["upserted"] = len(rows_with_key)
-        return counts
-
-    def retrieval(self, vectors, **kwargs):
-        """Search LanceDB with precomputed query vectors.
-
-        Keyword arguments
-        -----------------
-        where:
-            Optional SQL predicate (Lance / DataFusion) applied on the vector
-            query builder via ``.where(...)`` before ``limit``. Filter against
-            table columns: ``vector``, ``text``, ``metadata``, ``source``.
-            Note: ``metadata`` and ``source`` are JSON strings at rest.
-        _filter:
-            Alias for ``where`` when ``where`` is omitted (call-site parity).
-        search_kwargs:
-            Optional dict of extra keyword arguments forwarded to
-            ``table.search`` (e.g. ``query_type``, ``fts_columns``). Do not
-            pass ``vector_column_name`` here; use the top-level
-            ``vector_column_name`` retrieval argument instead.
-        """
-        hybrid = kwargs.pop("hybrid", self.hybrid)
-        if hybrid:
-            raise NotImplementedError("LanceDB hybrid retrieval with precomputed vectors is not implemented yet.")
-        table_path = kwargs.pop("table_path", self.uri)
-        table_name = kwargs.pop("table_name", self.table_name)
-
-        result_fields = kwargs.pop("result_fields", None)
-        top_k = int(kwargs.pop("top_k", 10))
-        refine_factor = int(kwargs.pop("refine_factor", 50))
-        n_probe = int(kwargs.pop("n_probe", kwargs.pop("nprobes", 64)))
-        vector_column_name = str(kwargs.pop("vector_column_name", "vector"))
-
-        search_kwargs_raw = kwargs.pop("search_kwargs", None)
-        if search_kwargs_raw is None:
-            search_kwargs: dict[str, Any] = {}
-        elif not isinstance(search_kwargs_raw, dict):
-            raise TypeError(f"search_kwargs must be a dict or None; got {type(search_kwargs_raw).__name__}")
-        else:
-            search_kwargs = dict(search_kwargs_raw)
-
-        where_clause = kwargs.pop("where", None)
-        _filter_fallback = kwargs.pop("_filter", None)
-        if where_clause is None:
-            where_clause = _filter_fallback
-        if where_clause is not None:
-            where_clause = str(where_clause).strip() or None
-
-        table = lancedb.connect(uri=table_path).open_table(table_name)
-
-        search_results = []
-        for vector in vectors:
-            query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
-            if where_clause is not None:
-                query = query.where(where_clause)
-            query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
-            if result_fields is not None:
-                query = query.select(result_fields)
-            results = query.to_list()
-            search_results.append(results)
-
-        return search_results
+    _ = mode
+    lancedb_config = LanceDBConfig(uri=uri, table_name=table_name, hybrid=hybrid)
+    db = lancedb.connect(uri=lancedb_config.uri)
+    cleaned_rows = _build_lancedb_rows_from_df(rows)
+    if not cleaned_rows:
+        logger.warning("No embedding rows to write; skipping LanceDB index creation.")
+        return {}
+    _write_rows_to_lancedb(cleaned_rows, cfg=lancedb_config)
+    table = db.open_table(lancedb_config.table_name)
+    create_lancedb_index(table, cfg=lancedb_config)
+    return {"rows_written": len(cleaned_rows)}
