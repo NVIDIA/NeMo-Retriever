@@ -143,11 +143,13 @@ class UpsertVdbOperator(IngestVdbOperator):
     ``records`` are touched. Rows in the table that are not referenced are
     left untouched, and existing rows that match by ``key`` are replaced.
 
-    The underlying VDB implementation must expose an ``upsert(records, key)``
-    method; currently this is implemented by
-    :class:`~nemo_retriever.vdb.lancedb.LanceDB`. Passing an unsupported VDB
-    raises :class:`NotImplementedError` at construction time so misuse fails
-    fast rather than silently no-oping at runtime.
+    The underlying VDB implementation must override
+    :meth:`~nemo_retriever.vdb.adt_vdb.VDB.upsert` with a real
+    stable-key merge; currently this is implemented by
+    :class:`~nemo_retriever.vdb.lancedb.LanceDB`. ``VDB.upsert`` itself
+    raises :class:`NotImplementedError`, so backends that have not
+    overridden it are detected at construction time and fail fast rather
+    than silently no-oping at runtime.
     """
 
     def __init__(
@@ -160,7 +162,12 @@ class UpsertVdbOperator(IngestVdbOperator):
         table_name: str | None = None,
     ) -> None:
         super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
-        if not hasattr(self._vdb, "upsert"):
+        # ``upsert`` is part of the abstract VDB contract, but the base
+        # class provides a NotImplementedError stub for backends that
+        # cannot support stable-key merges. Treat a not-overridden stub
+        # as "unsupported" so misuse surfaces here instead of at the
+        # first write.
+        if getattr(type(self._vdb), "upsert", None) is VDB.upsert:
             raise NotImplementedError(
                 f"VDB backend {type(self._vdb).__name__!r} does not implement upsert(); "
                 "only LanceDB is currently supported for incremental updates."
