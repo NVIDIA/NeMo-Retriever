@@ -2,7 +2,7 @@
 
 Each submodule is focused on one source / shape of data:
 
-* :mod:`semantic_search` — LanceDB vector search primitives.
+* :mod:`semantic_search` — vector search primitives.
 * :mod:`candidates` — vector hits + graph enrichment for the SQL agent.
 * :mod:`relevant_tables` — table-dict shaping (used by the agent prompts).
 * :mod:`foreign_keys` — FK / join relationships fetched from Neo4j.

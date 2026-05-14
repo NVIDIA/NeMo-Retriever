@@ -1,4 +1,4 @@
-"""LanceDB-side semantic search primitives.
+"""Vector semantic search primitives.
 
 The functions here build ``where`` predicates over the JSON ``metadata``
 column, run per-label vector queries through the injected
@@ -26,7 +26,7 @@ MAX_CALCULATION_CANDIDATES = 15
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 
-LANCEDB_FETCH_LIMIT = 20
+DEFAULT_FETCH_LIMIT = 20
 PER_LABEL_LIMIT = 10
 PER_LABEL_LIMITS: dict[str, int] = {
     Labels.COLUMN: 10,
@@ -52,8 +52,8 @@ def clean_results(raw_candidates: list[dict]) -> list[dict]:
     return out
 
 
-def _parse_lancedb_row_metadata(hit: dict) -> dict:
-    """Normalize LanceDB hit ``metadata`` (dict or JSON string) to a flat dict."""
+def _parse_hit_metadata(hit: dict) -> dict:
+    """Normalize a vector hit's ``metadata`` (dict or JSON string) to a flat dict."""
     raw = hit.get("metadata")
     if raw is None:
         return {}
@@ -75,7 +75,7 @@ def _parse_lancedb_row_metadata(hit: dict) -> dict:
 
 
 def _vector_distance_value(distance: object | None) -> float:
-    """LanceDB dense search ``_distance`` (L2); lower is better. Missing → +inf for sorting."""
+    """Coerce a vector ``_distance`` score (L2) to float; lower is better. Missing → +inf."""
     if distance is None:
         return float("inf")
     try:
@@ -95,7 +95,7 @@ def _build_metadata_where_clause(
     labels: list[str] | None = None,
     database_name: str | None = None,
 ) -> str | None:
-    """Build a LanceDB SQL ``where`` predicate for the ``metadata`` JSON column.
+    """Build a SQL ``where`` predicate for the ``metadata`` JSON column.
 
     Uses ``LIKE`` on the compact-JSON string (no spaces after ``:``) to match
     ``"label":"<value>"`` and ``"database_name":"<value>"`` substrings.
@@ -114,18 +114,18 @@ def _hits_to_semantic_rows(
     label_filter: set[str] | None = None,
     per_label_k: "int | dict[str, int]" = PER_LABEL_LIMIT,
 ) -> list[dict]:
-    """Turn raw LanceDB hits into candidate dicts, filtering by label in Python.
+    """Turn raw vector hits into candidate dicts, filtering by label in Python.
 
-    Hits are already sorted by vector distance (from LanceDB). For each allowed
-    label, at most *per_label_k* rows are kept (best-first).  *per_label_k* can
+    Hits are already sorted by vector distance. For each allowed label,
+    at most *per_label_k* rows are kept (best-first).  *per_label_k* can
     be a single int (same cap for every label) or a ``{label: k}`` dict.
 
-    ``score`` is the raw vector ``_distance`` from Lance (lower is better).
+    ``score`` is the raw vector ``_distance`` (lower is better).
     """
     label_counts: dict[str, int] = {}
     rows: list[dict] = []
     for hit in hits:
-        meta = _parse_lancedb_row_metadata(hit)
+        meta = _parse_hit_metadata(hit)
         cid = meta.get("id")
         if cid is None:
             continue
@@ -149,21 +149,21 @@ def _hits_to_semantic_rows(
     return rows
 
 
-def search_lancedb_semantic_index(
+def search_semantic_index(
     retriever: "Retriever",
     entity: str,
     label_filter: list[str] | None = None,
     per_label_k: "int | dict[str, int]" = PER_LABEL_LIMIT,
     database_name: str | None = None,
 ) -> list[dict]:
-    """Vector search over LanceDB via the injected :class:`~nemo_retriever.retriever.Retriever`.
+    """Vector search via the injected :class:`~nemo_retriever.retriever.Retriever`.
 
     Runs one query **per label** with a server-side ``where`` predicate on the
     ``metadata`` JSON column (label + database_name), requesting exactly
     the label-specific *k* rows.  *per_label_k* can be a single int or a
     ``{label: k}`` dict (e.g. ``{"Column": 10, "CustomAnalysis": 3}``).
     When no *label_filter* is given, falls back to a single query with
-    ``LANCEDB_FETCH_LIMIT``.
+    ``DEFAULT_FETCH_LIMIT``.
     """
     allowed_labels = {str(x) for x in (label_filter or []) if x is not None} or None
     labels_to_query = list(allowed_labels) if allowed_labels else [None]
@@ -175,7 +175,7 @@ def search_lancedb_semantic_index(
             database_name=database_name,
         )
         vdb_kwargs = {"where": where_clause} if where_clause else None
-        top_k = _resolve_label_k(per_label_k, label) if where_clause else LANCEDB_FETCH_LIMIT
+        top_k = _resolve_label_k(per_label_k, label) if where_clause else DEFAULT_FETCH_LIMIT
         hits = retriever.query(entity, top_k=top_k, vdb_kwargs=vdb_kwargs)
         all_hits.extend(hits)
 

@@ -1,7 +1,7 @@
 """Candidate retrieval: vector hits + Neo4j graph enrichment.
 
 * :func:`_expand_info` pulls graph properties for the (label, id) pairs
-  returned by :func:`semantic_search.search_lancedb_semantic_index`.
+  returned by :func:`semantic_search.search_semantic_index`.
 * :func:`_get_candidates_information` glues the two together for a single
   question string.
 * :func:`extract_candidates` runs the per-entity / per-query-with-values
@@ -24,7 +24,7 @@ from nemo_retriever.tabular_data.retrieval.context.semantic_search import (
     MAX_CALCULATION_CANDIDATES,
     PER_LABEL_LIMIT,
     PER_LABEL_LIMITS,
-    search_lancedb_semantic_index,
+    search_semantic_index,
 )
 
 if TYPE_CHECKING:
@@ -147,14 +147,14 @@ def _get_candidates_information(
     database_name: str | None = None,
     per_label_k: "int | dict[str, int]" = PER_LABEL_LIMIT,
 ):
-    """Vector search over LanceDB, then merge graph properties from :func:`_expand_info`.
+    """Vector search, then merge graph properties from :func:`_expand_info`.
 
     Runs one query per label with a server-side ``where`` predicate
     (label + *database_name*) keeping at most *per_label_k* per label,
     then enriches each hit with Neo4j graph properties.
     """
     results: list[dict] = list(
-        search_lancedb_semantic_index(
+        search_semantic_index(
             retriever,
             entity,
             label_filter=list_of_semantic,
@@ -210,7 +210,7 @@ def extract_candidates(
     """One semantic search per pull string (``query_with_values`` and each entity name).
 
     Each search fetches both custom-analysis and column candidates in a single
-    LanceDB call, then splits by label in Python.
+    vector-store call, then splits by label in Python.
 
     Merge streams, dedupe by (label, id) keeping the lowest vector distance
     (``score``), sort ascending by distance, cap at ``MAX_CALCULATION_CANDIDATES``

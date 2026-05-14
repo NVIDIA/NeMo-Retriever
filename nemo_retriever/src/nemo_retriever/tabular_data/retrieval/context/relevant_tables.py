@@ -4,9 +4,9 @@ The text-to-SQL prompts expect each table to be a flat dict with
 ``name``, ``label``, ``id``, ``table_info``, ``columns``, optional
 ``primary_key`` / ``foreign_key`` etc. This module:
 
-* parses the LanceDB row ``text`` into structured fields,
+* parses the vector hit ``text`` into structured fields,
 * normalises a single table dict into the prompt shape, merges duplicates
-  with different richness (Neo4j vs LanceDB hits), and
+  with different richness (Neo4j vs vector hits), and
 * runs the semantic search restricted to ``Table`` rows.
 """
 
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 from nemo_retriever.tabular_data.retrieval.context.semantic_search import (
-    search_lancedb_semantic_index,
+    search_semantic_index,
 )
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_table_text(text: str) -> dict:
-    """Parse db_name, schema_name, table_name, and columns from LanceDB-style table text."""
+    """Parse db_name, schema_name, table_name, and columns from the table-row text."""
     parsed: dict = {}
     try:
         if not isinstance(text, str):
@@ -103,7 +103,7 @@ def _normalize_table_to_relevant_shape(table: dict) -> dict:
 
 
 def _merge_two_relevant_table_dicts(a: dict, b: dict) -> dict:
-    """Merge two table dicts with the same ``id`` (e.g. Neo4j vs Lance); prefer non-empty / richer fields."""
+    """Merge two table dicts with the same ``id`` (e.g. Neo4j vs vector); prefer non-empty / richer fields."""
     out = dict(a)
     for k, v in b.items():
         if v is None:
@@ -202,9 +202,9 @@ def get_relevant_tables(
     k: int | None = None,
     database_name: str | None = None,
 ) -> list[dict]:
-    """Semantic search over the same LanceDB index as candidate retrieval, label ``table`` only."""
+    """Semantic search over the same vector index as candidate retrieval, label ``table`` only."""
     try:
-        raw_rows = search_lancedb_semantic_index(
+        raw_rows = search_semantic_index(
             retriever,
             initial_question,
             label_filter=[Labels.TABLE],
@@ -212,7 +212,7 @@ def get_relevant_tables(
             database_name=database_name,
         )
     except Exception:
-        logger.exception("get_relevant_tables: LanceDB search failed")
+        logger.exception("get_relevant_tables: vector search failed")
         raw_rows = []
 
     relevant_tables_list = []
