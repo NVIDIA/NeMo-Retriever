@@ -34,7 +34,7 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | New file | Replaces example(s) in |
 |----------|------------------------|
 | [`retriever_cli.md`](retriever_cli.md) | Prior `cli-reference` / CLI reference pages under `docs/docs/extraction/` |
-| [`quickstart.md`](quickstart.md) | Legacy service quickstart; supported **Helm** + **NeMo Retriever Library** deployment handoff in quickstart prose; **Docker Compose** (unsupported): [`docker.md`](../docker.md) |
+| [`quickstart.md`](quickstart.md) | Legacy service quickstart; supported **Helm** + **NeMo Retriever Library** deployment handoff in quickstart prose; **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
 | [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` (CLI example) |
 | [`smoke-test.md`](smoke-test.md) | `api/api_tests/smoke_test.sh` |
 | [`cli-client-usage.md`](cli-client-usage.md) | `client/client_examples/examples/cli_client_usage.ipynb` |
