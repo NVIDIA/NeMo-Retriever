@@ -88,7 +88,18 @@ class ArchetypeOperator(AbstractOperator):
         if operator_class is type(self):
             raise RuntimeError(f"{type(self).__name__} could not resolve a concrete hardware-specific operator.")
 
+<<<<<<< Updated upstream
         delegate = operator_class(**operator_kwargs)
+=======
+        resolved_kwargs = type(self).variant_operator_kwargs(operator_class, operator_kwargs)
+        delegate = operator_class(**resolved_kwargs)
+        # Propagate the pipeline-level stage name (set by RayDataExecutor on the
+        # archetype class) so the delegate's run() can label timing records
+        # consistently with the node name rather than the variant class name.
+        stage_name = getattr(self, "_nr_stage_name", None)
+        if stage_name is not None:
+            delegate._nr_stage_name = stage_name
+>>>>>>> Stashed changes
         self._resolved_delegate = delegate
         self._resolved_delegate_key = cache_key
         return delegate

@@ -6,10 +6,21 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import inspect
+import os
+import time
 from typing import Any, TYPE_CHECKING
+
+from nemo_retriever.utils import stage_timing
 
 if TYPE_CHECKING:
     from nemo_retriever.graph.pipeline_graph import Graph, Node
+
+
+def _safe_len(data: Any) -> int:
+    try:
+        return len(data)
+    except Exception:
+        return -1
 
 
 class AbstractOperator(ABC):
@@ -30,9 +41,32 @@ class AbstractOperator(ABC):
     def postprocess(self, data: Any, **kwargs: Any) -> Any: ...
 
     def run(self, data: Any, **kwargs: Any) -> Any:
+        if not stage_timing.is_enabled():
+            data = self.preprocess(data, **kwargs)
+            data = self.process(data, **kwargs)
+            data = self.postprocess(data, **kwargs)
+            return data
+
+        stage = getattr(self, "_nr_stage_name", None) or type(self).__name__
+        n_in = _safe_len(data)
+        t0 = time.perf_counter()
         data = self.preprocess(data, **kwargs)
+        t1 = time.perf_counter()
         data = self.process(data, **kwargs)
+        t2 = time.perf_counter()
         data = self.postprocess(data, **kwargs)
+        t3 = time.perf_counter()
+        stage_timing.record_timing(
+            stage=stage,
+            n_rows_in=n_in,
+            n_rows_out=_safe_len(data),
+            preprocess_ms=(t1 - t0) * 1000.0,
+            process_ms=(t2 - t1) * 1000.0,
+            postprocess_ms=(t3 - t2) * 1000.0,
+            total_ms=(t3 - t0) * 1000.0,
+            worker_pid=os.getpid(),
+            wallclock_start=t0,
+        )
         return data
 
     def __call__(self, data: Any, **kwargs: Any) -> Any:

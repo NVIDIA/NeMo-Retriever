@@ -29,6 +29,7 @@ from nemo_retriever.utils.ray_resource_hueristics import (
     VLLM_GPUS_PER_ACTOR,
     OCR_GPUS_PER_ACTOR,
 )
+from nemo_retriever.utils import stage_timing
 
 import logging
 
@@ -249,6 +250,10 @@ class RayDataExecutor(AbstractExecutor):
             }
             ray_env_vars.update(collect_hf_runtime_env())
             ray_env_vars.update(collect_remote_auth_runtime_env())
+            for _name in (stage_timing.ENABLED_ENV, stage_timing.REPORT_PATH_ENV):
+                _val = os.environ.get(_name)
+                if _val:
+                    ray_env_vars[_name] = _val
             os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
             runtime_env = {"env_vars": ray_env_vars}
             ray.init(
@@ -256,6 +261,9 @@ class RayDataExecutor(AbstractExecutor):
                 ignore_reinit_error=True,
                 runtime_env=runtime_env,
             )
+
+        timing_enabled = stage_timing.is_enabled()
+        timing_collector = stage_timing.start_collector() if timing_enabled else None
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
@@ -273,6 +281,24 @@ class RayDataExecutor(AbstractExecutor):
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
         nodes = self._linearize(resolved_graph)
+        timing_call_index: Optional[int] = None
+        timing_node_names: List[str] = [n.name for n in nodes]
+        timing_graph_label: Optional[str] = None
+        if timing_enabled:
+            timing_call_index = stage_timing.next_call_index()
+            timing_graph_label = stage_timing.slugify_graph_label(timing_node_names)
+            report_path = stage_timing.resolve_report_path(timing_call_index, timing_graph_label)
+            logger.info(
+                "RayDataExecutor.ingest() #%02d | %d nodes: [%s] | label=%s | report -> %s",
+                timing_call_index,
+                len(timing_node_names),
+                ", ".join(timing_node_names),
+                timing_graph_label,
+                report_path if report_path is not None else "<stdout only>",
+            )
+            # Per-node operator class stamping happens inside the map_batches
+            # loop below via stage_timing.make_named_operator_class so two
+            # nodes sharing the same operator class get distinct stage names.
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
@@ -370,8 +396,11 @@ class RayDataExecutor(AbstractExecutor):
             # fn_constructor_kwargs for deferred construction on workers.
             # AbstractOperator.__call__ delegates to run(), so each stage
             # executes the full preprocess -> process -> postprocess chain.
+            operator_cls = node.operator_class
+            if timing_enabled:
+                operator_cls = stage_timing.make_named_operator_class(operator_cls, node.name)
             ds = ds.map_batches(
-                node.operator_class,
+                operator_cls,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 num_cpus=num_cpus,
@@ -380,4 +409,26 @@ class RayDataExecutor(AbstractExecutor):
                 **overrides,
             )
 
-        return ds.to_pandas()
+        result = ds.to_pandas()
+        if timing_collector is not None:
+            try:
+                ray_stats_text = None
+                try:
+                    ray_stats_text = ds.stats()
+                except Exception as exc:
+                    logger.warning("Failed to collect ds.stats(): %s", exc)
+                try:
+                    records = ray.get(timing_collector.dump.remote())
+                except Exception as exc:
+                    logger.warning("Failed to retrieve stage timing records: %s", exc)
+                    records = []
+                stage_timing.write_report(
+                    records,
+                    ray_stats_text=ray_stats_text,
+                    call_index=timing_call_index,
+                    graph_label=timing_graph_label,
+                    node_names=timing_node_names,
+                )
+            finally:
+                stage_timing.stop_collector(timing_collector)
+        return result
