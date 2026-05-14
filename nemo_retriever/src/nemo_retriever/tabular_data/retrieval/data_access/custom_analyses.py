@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """CustomAnalysis fetch + selection helpers.
 
 Read-only operations on the ``CustomAnalysis`` / ``Sql`` subgraph plus the

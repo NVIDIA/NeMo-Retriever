@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Retrieve-candidates phase of the Deep Agent pipeline.
 
 Decomposes the user question into typed entities, retrieves per-entity

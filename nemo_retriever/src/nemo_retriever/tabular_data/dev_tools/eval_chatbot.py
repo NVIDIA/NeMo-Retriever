@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Evaluate the text-to-SQL agent against a chatbot evaluation JSON file.
 
 For every entry in the JSON array (each containing ``question_id``,
@@ -335,8 +339,6 @@ def _stringify_db_result(value: Any) -> str:
     return str(value)
 
 
-
-
 CSV_FIELDS = [
     "row_index",
     "question_id",
@@ -597,7 +599,10 @@ def evaluate_consistency(
     questions = all_questions[start_index:end_index]
     logger.info(
         "Consistency eval: agent=%s, %d questions, %d runs each, output=%s",
-        agent, len(questions), runs, output_path,
+        agent,
+        len(questions),
+        runs,
+        output_path,
     )
 
     connector = PostgresDatabase(_conn_string(DATABASE))
@@ -698,7 +703,12 @@ if __name__ == "__main__":
         num_runs = args.runs if args.consistency else CONSISTENCY_RUNS
         consistency_output = Path(__file__).parent / "chatbot_consistency_scores.csv"
         evaluate_consistency(
-            args.input, consistency_output, args.agent, START_INDEX, END_INDEX, num_runs,
+            args.input,
+            consistency_output,
+            args.agent,
+            START_INDEX,
+            END_INDEX,
+            num_runs,
         )
     else:
         output_path = args.output if args.output is not None else _default_output_for(args.agent)

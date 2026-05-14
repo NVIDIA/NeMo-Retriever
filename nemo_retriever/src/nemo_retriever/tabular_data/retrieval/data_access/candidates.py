@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Candidate retrieval: vector hits + Neo4j graph enrichment.
 
 * :func:`_expand_info` pulls graph properties for the (label, id) pairs

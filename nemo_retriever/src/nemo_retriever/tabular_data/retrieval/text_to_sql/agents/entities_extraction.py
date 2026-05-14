@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Entity extraction for omni-lite retrieval.
 It stores:
@@ -58,11 +62,11 @@ class EntitiesExtractionAgent(BaseAgent):
         result: Dict[str, Any] = {"path_state": path_state}
 
         try:
-            extraction_messages = [
-                SystemMessage(content=create_entity_extraction_prompt(question))
-            ]
+            extraction_messages = [SystemMessage(content=create_entity_extraction_prompt(question))]
             extraction_result = invoke_with_structured_output(
-                llm, extraction_messages, EntitiesExtractionModel,
+                llm,
+                extraction_messages,
+                EntitiesExtractionModel,
             )
             self.logger.debug("Raw extraction result: %s", extraction_result)
 

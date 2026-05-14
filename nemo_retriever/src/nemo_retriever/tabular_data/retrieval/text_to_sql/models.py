@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import List, Annotated, Literal
 
@@ -90,9 +94,7 @@ class SQLGenerationModel(StrictModel):
     )
     sql_code: NonEmptyStr = Field(
         ...,
-        description=(
-            "The complete, executable SQL query. No comments, no delimiters, no explanation."
-        ),
+        description=("The complete, executable SQL query. No comments, no delimiters, no explanation."),
     )
     response: NonEmptyStr = Field(
         ...,

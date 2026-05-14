@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared data contract between Phase 1 (Retrieval Agent) and Phase 2 (SQL Agent).
 
 ``RetrievalContext`` is the single structured object that Phase 1 produces and

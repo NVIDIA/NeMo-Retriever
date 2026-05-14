@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """SQL-generation phase of the Deep Agent pipeline.
 
 Receives a ``RetrievalContext`` produced by the retrieve-candidates phase

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """LangChain tools for the Phase 1 Retrieval Deep Agent.
 
 Each tool writes its results directly into a shared ``RetrievalStore`` — the

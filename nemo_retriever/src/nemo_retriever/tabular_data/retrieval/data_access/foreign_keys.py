@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Foreign-key / join discovery against Neo4j.
 
 * :func:`_get_relevant_fks` expands outward up to 3 levels through ``fk`` /
