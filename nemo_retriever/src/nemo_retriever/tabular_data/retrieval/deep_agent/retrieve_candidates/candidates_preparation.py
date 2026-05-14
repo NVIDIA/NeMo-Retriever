@@ -26,12 +26,14 @@ from nemo_retriever.tabular_data.retrieval.deep_agent.state import (
 )
 from nemo_retriever.tabular_data.retrieval.deep_agent.retrieve_candidates.base import BaseAgent
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
-from nemo_retriever.tabular_data.retrieval.utils import (
+from nemo_retriever.tabular_data.retrieval.context.custom_analyses import get_relevant_queries
+from nemo_retriever.tabular_data.retrieval.context.foreign_keys import (
     _apply_foreign_key_hints,
-    dedupe_merge_relevant_tables,
     get_relevant_fks_from_candidates_tables,
-    get_relevant_queries,
     get_relevant_tables_with_fks,
+)
+from nemo_retriever.tabular_data.retrieval.context.relevant_tables import (
+    dedupe_merge_relevant_tables,
 )
 
 logger = logging.getLogger(__name__)

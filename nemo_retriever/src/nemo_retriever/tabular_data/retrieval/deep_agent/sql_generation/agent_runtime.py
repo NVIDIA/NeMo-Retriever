@@ -40,7 +40,7 @@ from nemo_retriever.tabular_data.retrieval.deep_agent.sql_generation.tools impor
     build_planner_tools,
     build_sql_store,
 )
-from nemo_retriever.tabular_data.retrieval.utils import get_llm_client
+from nemo_retriever.tabular_data.retrieval.llm_invoke import get_llm_client
 
 logger = logging.getLogger(__name__)
 

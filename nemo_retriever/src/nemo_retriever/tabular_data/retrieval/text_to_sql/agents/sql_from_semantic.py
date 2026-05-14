@@ -24,7 +24,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 from nemo_retriever.tabular_data.retrieval.llm_invoke import safe_invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.utils import (
+from nemo_retriever.tabular_data.retrieval.context.custom_analyses import (
     build_custom_analyses_section,
     get_custom_analyses_ids,
 )
@@ -204,7 +204,8 @@ class SQLFromCandidatesAgent(BaseAgent):
                     ca_lines.append(line)
                 ca_section = (
                     "DOMAIN-SPECIFIC CUSTOM ANALYSES (use their SQL patterns as guidance):\n"
-                    + "\n".join(ca_lines) + "\n\n"
+                    + "\n".join(ca_lines)
+                    + "\n\n"
                 )
 
             # Build user prompt with formatted tables

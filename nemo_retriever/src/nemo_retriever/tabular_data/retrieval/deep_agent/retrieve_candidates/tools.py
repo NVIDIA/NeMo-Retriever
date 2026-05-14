@@ -31,14 +31,16 @@ from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structu
 from nemo_retriever.tabular_data.retrieval.deep_agent.context import EntityCoverage, RetrievalContext
 from nemo_retriever.tabular_data.retrieval.deep_agent.state import AgentPayload
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
-from nemo_retriever.tabular_data.retrieval.utils import (
+from nemo_retriever.tabular_data.retrieval.context.candidates import extract_candidates
+from nemo_retriever.tabular_data.retrieval.context.foreign_keys import (
     _apply_foreign_key_hints,
-    clean_results,
-    dedupe_merge_relevant_tables,
-    extract_candidates,
     get_relevant_fks_from_candidates_tables,
     get_relevant_tables_with_fks,
 )
+from nemo_retriever.tabular_data.retrieval.context.relevant_tables import (
+    dedupe_merge_relevant_tables,
+)
+from nemo_retriever.tabular_data.retrieval.context.semantic_search import clean_results
 
 logger = logging.getLogger(__name__)
 

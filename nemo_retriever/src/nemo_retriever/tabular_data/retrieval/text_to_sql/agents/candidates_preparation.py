@@ -32,7 +32,18 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import (
     CUSTOM_ANALYSIS_RELEVANCE_FILTER_PROMPT,
     TABLE_RELEVANCE_FILTER_PROMPT,
 )
-from nemo_retriever.tabular_data.retrieval.text_to_sql.state import rules_to_text
+from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
+    AgentState,
+    get_question_for_processing,
+    rules_to_text,
+)
+from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
+from nemo_retriever.tabular_data.retrieval.context.relevant_tables import (
+    dedupe_merge_relevant_tables,
+    get_relevant_tables,
+    get_relevant_tables_from_candidates,
+)
 
 
 def _qualified_name(t: dict) -> str:
@@ -40,17 +51,7 @@ def _qualified_name(t: dict) -> str:
     schema = t.get("schema_name", "")
     name = t.get("name", "")
     return f"{schema}.{name}" if schema else name
-from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
-    AgentState,
-    get_question_for_processing,
-)
-from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.utils import (
-    Labels,
-    dedupe_merge_relevant_tables,
-    get_relevant_tables,
-    get_relevant_tables_from_candidates,
-)
+
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,10 @@ class CandidatePreparationAgent(BaseAgent):
 
         # --- 3. Filter tables by relevance ---
         relevant_tables, table_relevance_reasoning = self._filter_tables_by_relevance(
-            state, question, relevant_tables, custom_analyses,
+            state,
+            question,
+            relevant_tables,
+            custom_analyses,
         )
         self.logger.info(
             "Kept %d relevant tables (after relevance filter): %s",
@@ -224,7 +228,8 @@ class CandidatePreparationAgent(BaseAgent):
             result = invoke_with_structured_output(llm, messages, CustomAnalysisRelevanceModel)
         except Exception as e:
             self.logger.warning(
-                "Custom analysis relevance LLM call failed: %s — keeping all", e,
+                "Custom analysis relevance LLM call failed: %s — keeping all",
+                e,
             )
             return analyses
 
@@ -274,17 +279,13 @@ class CandidatePreparationAgent(BaseAgent):
             return tables, ""
 
         tables_summary = "\n".join(
-            f"- {_qualified_name(t)}: {t.get('description', '(no description)')}"
-            for t in tables
+            f"- {_qualified_name(t)}: {t.get('description', '(no description)')}" for t in tables
         )
 
         domain_rules_text = rules_to_text(state.get("domain_rules", []))
         domain_rules_section = ""
         if domain_rules_text:
-            domain_rules_section = (
-                "Domain-specific rules (use these to decide relevance):\n"
-                f"{domain_rules_text}\n"
-            )
+            domain_rules_section = "Domain-specific rules (use these to decide relevance):\n" f"{domain_rules_text}\n"
 
         ca_section = ""
         if custom_analyses:
@@ -300,7 +301,8 @@ class CandidatePreparationAgent(BaseAgent):
                 ca_lines.append(line)
             ca_section = (
                 "Selected custom analyses (their SQL references tables that MUST be kept):\n"
-                + "\n".join(ca_lines) + "\n\n"
+                + "\n".join(ca_lines)
+                + "\n\n"
             )
 
         prompt_text = TABLE_RELEVANCE_FILTER_PROMPT.format(
@@ -321,7 +323,9 @@ class CandidatePreparationAgent(BaseAgent):
             top_n = tables[:10]
             self.logger.warning(
                 "Table relevance LLM call failed: %s — falling back to top %d/%d tables",
-                e, len(top_n), len(tables),
+                e,
+                len(top_n),
+                len(tables),
             )
             return top_n, ""
 

@@ -15,9 +15,7 @@ from typing import Dict, Any
 from langchain_core.messages import AIMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentState
-from nemo_retriever.tabular_data.retrieval.utils import (
-    format_response,
-)
+from nemo_retriever.tabular_data.retrieval.context.response_formatting import format_response
 
 logger = logging.getLogger(__name__)
 
