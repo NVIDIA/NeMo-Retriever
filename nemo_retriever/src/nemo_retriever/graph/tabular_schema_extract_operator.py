@@ -6,13 +6,14 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-import pandas as pd
+from typing import TYPE_CHECKING, Any
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.params import TabularExtractParams
+
+if TYPE_CHECKING:
+    from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 
 
 class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
@@ -24,9 +25,14 @@ class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
        connector stored in *tabular_params*.
     2. Write the extracted entities as graph nodes and relationships into Neo4j.
 
-    The operator produces an empty DataFrame as output so it can be chained
-    with downstream operators (e.g. :class:`TabularFetchEmbeddingsOp`) via
-    ``>>``.  All meaningful state lives in Neo4j after this step.
+    The operator returns the ``{schema_name_lower: Schema}`` dict produced by
+    the ingest step. Each :class:`Schema` already carries the post-ingest
+    ``tables_df`` / ``columns_df`` with the UUIDs written to Neo4j, so
+    downstream operators — notably :class:`TabularFetchEmbeddingsOp` — can
+    build embedding text directly from it without a Neo4j round-trip.
+
+    Returns an empty dict when there is nothing to ingest, so the chain
+    still flows.
     """
 
     def __init__(
@@ -43,15 +49,17 @@ class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
             return data
         return self._tabular_params
 
-    def process(self, data: TabularExtractParams | None, **kwargs: Any) -> pd.DataFrame:
+    def process(self, data: TabularExtractParams | None, **kwargs: Any) -> dict[str, "Schema"]:
         from nemo_retriever.tabular_data.ingestion.extract_data import (
             extract_tabular_db_data,
             store_relational_db_in_neo4j,
         )
 
+        if data is None or data.connector is None:
+            return {}
+
         schema_data = extract_tabular_db_data(params=data)
-        store_relational_db_in_neo4j(data=schema_data, dialect=data.connector.dialect)
-        return pd.DataFrame()
+        return store_relational_db_in_neo4j(data=schema_data, dialect=data.connector.dialect) or {}
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

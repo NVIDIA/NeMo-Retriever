@@ -38,23 +38,23 @@ def populate_tabular_data(data, num_workers, dialect):
 
     if tables_df is None or tables_df.empty:
         logger.warning("No tables found in source database; skipping graph population.")
-        return
+        return {}
 
     database = data["database_name"]
     logger.info(f"Started parsing db {database}.")
 
-    all_schemas = {}
     all_schemas = populate_db(tables_df, columns_df, database, num_workers)
 
     if "fks" in data:
         populate_fks(fks=data["fks"], database_name=database)
+
     if "pks" in data:
         populate_pks(pks=data["pks"], database_name=database)
 
     if "queries" in data:
         populate_queries(all_schemas, data["queries"], num_workers, dialect)
 
-    return []
+    return all_schemas
 
 
 def populate_db(tables_df, columns_df, database, num_workers):
