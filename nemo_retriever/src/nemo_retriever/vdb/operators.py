@@ -134,6 +134,81 @@ class IngestVdbOperator(AbstractOperator):
         return data
 
 
+class UpsertVdbOperator(AbstractOperator):
+    """Incrementally update an existing VDB table on a stable row key.
+
+    Unlike :class:`IngestVdbOperator` (which orchestrates create_index +
+    write_to_index, optionally overwriting the whole table), this operator
+    calls ``vdb.upsert(records, ...)`` so that only rows whose ``key`` is in
+    ``records`` are touched. Rows in the table that are not referenced are
+    left untouched, and existing rows that match by ``key`` are replaced.
+
+    The underlying VDB implementation must expose an ``upsert(records, key)``
+    method; currently this is implemented by
+    :class:`~nemo_retriever.vdb.lancedb.LanceDB`. Passing an unsupported VDB
+    raises :class:`NotImplementedError` at construction time so misuse fails
+    fast rather than silently no-oping at runtime.
+    """
+
+    REQUIRES_GLOBAL_BATCH: bool = True
+
+    def __init__(
+        self,
+        *,
+        vdb: VDB | None = None,
+        vdb_op: str | None = None,
+        vdb_kwargs: dict[str, Any] | None = None,
+        key: str = "id",
+        table_name: str | None = None,
+    ) -> None:
+        merged = dict(vdb_kwargs or {})
+        clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
+        super().__init__(
+            vdb=vdb,
+            vdb_op=vdb_op,
+            vdb_kwargs=clean_kwargs,
+            key=key,
+            table_name=table_name,
+        )
+        self._vdb_kwargs = clean_kwargs
+        self._sidecar_spec = sidecar
+        self._sidecar_lookup: dict[str, dict[str, Any]] | None = None
+        if sidecar is not None:
+            _df = materialize_sidecar_dataframe(sidecar)
+            self._sidecar_lookup = build_sidecar_lookup(
+                _df,
+                sidecar["meta_source_field"],
+                sidecar["meta_fields"],
+            )
+        self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        if not hasattr(self._vdb, "upsert"):
+            raise NotImplementedError(
+                f"VDB backend {type(self._vdb).__name__!r} does not implement upsert(); "
+                "only LanceDB is currently supported for incremental updates."
+            )
+        self._key = key
+        self._table_name = table_name
+
+    def preprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        records = to_client_vdb_records(data)
+        if self._sidecar_spec is not None and self._sidecar_lookup is not None:
+            records = apply_sidecar_metadata_to_client_batches(
+                records,
+                lookup=self._sidecar_lookup,
+                meta_fields=self._sidecar_spec["meta_fields"],
+                join_key=self._sidecar_spec["meta_join_key"],
+            )
+        if records and any(batch for batch in records):
+            self._vdb.upsert(records, table_name=self._table_name, key=self._key)
+        return data
+
+    def postprocess(self, data: Any, **kwargs: Any) -> Any:
+        return data
+
+
 class RetrieveVdbOperator(AbstractOperator):
     """Retrieve hits from an nv-ingest-client VDB using precomputed query vectors."""
 
