@@ -95,6 +95,11 @@ def _resolve_label_k(per_label_k: "int | dict[str, int]", label: str | None) -> 
     return int(per_label_k)
 
 
+def _escape_like(value: str) -> str:
+    """Escape a literal for use inside a LIKE pattern with ``ESCAPE '\\'``."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''")
+
+
 def _build_metadata_where_clause(
     labels: list[str] | None = None,
     database_name: str | None = None,
@@ -102,14 +107,16 @@ def _build_metadata_where_clause(
     """Build a SQL ``where`` predicate for the ``metadata`` JSON column.
 
     Uses ``LIKE`` on the compact-JSON string (no spaces after ``:``) to match
-    ``"label":"<value>"`` and ``"database_name":"<value>"`` substrings.
+    ``"label":"<value>"`` and ``"database_name":"<value>"`` substrings. Values
+    are escaped via :func:`_escape_like` and the predicate declares
+    ``ESCAPE '\\'`` so ``%`` / ``_`` / ``\\`` in inputs are treated literally.
     """
     parts: list[str] = []
     if labels:
-        label_preds = [f"""metadata LIKE '%"label":"{lab}"%'""" for lab in labels]
+        label_preds = [f"""metadata LIKE '%"label":"{_escape_like(lab)}"%' ESCAPE '\\'""" for lab in labels]
         parts.append("(" + " OR ".join(label_preds) + ")" if len(label_preds) > 1 else label_preds[0])
     if database_name:
-        parts.append(f"""metadata LIKE '%"database_name":"{database_name}"%'""")
+        parts.append(f"""metadata LIKE '%"database_name":"{_escape_like(database_name)}"%' ESCAPE '\\'""")
     return " AND ".join(parts) if parts else None
 
 
