@@ -134,7 +134,7 @@ class IngestVdbOperator(AbstractOperator):
         return data
 
 
-class UpsertVdbOperator(AbstractOperator):
+class UpsertVdbOperator(IngestVdbOperator):
     """Incrementally update an existing VDB table on a stable row key.
 
     Unlike :class:`IngestVdbOperator` (which orchestrates create_index +
@@ -150,8 +150,6 @@ class UpsertVdbOperator(AbstractOperator):
     fast rather than silently no-oping at runtime.
     """
 
-    REQUIRES_GLOBAL_BATCH: bool = True
-
     def __init__(
         self,
         *,
@@ -161,26 +159,7 @@ class UpsertVdbOperator(AbstractOperator):
         key: str = "id",
         table_name: str | None = None,
     ) -> None:
-        merged = dict(vdb_kwargs or {})
-        clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(
-            vdb=vdb,
-            vdb_op=vdb_op,
-            vdb_kwargs=clean_kwargs,
-            key=key,
-            table_name=table_name,
-        )
-        self._vdb_kwargs = clean_kwargs
-        self._sidecar_spec = sidecar
-        self._sidecar_lookup: dict[str, dict[str, Any]] | None = None
-        if sidecar is not None:
-            _df = materialize_sidecar_dataframe(sidecar)
-            self._sidecar_lookup = build_sidecar_lookup(
-                _df,
-                sidecar["meta_source_field"],
-                sidecar["meta_fields"],
-            )
-        self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
         if not hasattr(self._vdb, "upsert"):
             raise NotImplementedError(
                 f"VDB backend {type(self._vdb).__name__!r} does not implement upsert(); "
@@ -188,9 +167,6 @@ class UpsertVdbOperator(AbstractOperator):
             )
         self._key = key
         self._table_name = table_name
-
-    def preprocess(self, data: Any, **kwargs: Any) -> Any:
-        return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         records = to_client_vdb_records(data)
@@ -203,9 +179,6 @@ class UpsertVdbOperator(AbstractOperator):
             )
         if records and any(batch for batch in records):
             self._vdb.upsert(records, table_name=self._table_name, key=self._key)
-        return data
-
-    def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
 
