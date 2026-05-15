@@ -1663,8 +1663,10 @@ async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     requested = req.model_dump()
+    requested_fields = req.model_fields_set
+    if "evaluation_mode" in requested_fields:
+        _validate_dataset_evaluation_mode(requested.get("evaluation_mode"))
     effective_mode = requested.get("evaluation_mode") or existing.get("evaluation_mode")
-    _validate_dataset_evaluation_mode(effective_mode)
     effective_loader = (
         requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
     )
