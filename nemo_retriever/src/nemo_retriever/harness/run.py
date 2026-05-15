@@ -306,8 +306,6 @@ def _resolve_lancedb_uri(cfg: HarnessConfig, artifact_dir: Path) -> str:
 def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
-    if cfg.evaluation_mode == "recall":
-        raise ValueError("evaluation_mode=recall has been renamed to evaluation_mode=audio_recall")
     if cfg.write_detection_file:
         detection_summary_file = artifact_dir / "detection_summary.json"
     else:

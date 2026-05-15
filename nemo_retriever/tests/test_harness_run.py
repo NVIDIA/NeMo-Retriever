@@ -508,25 +508,6 @@ def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: 
     assert cmd[cmd.index("--structured-elements-modality") + 1] == "text_image"
 
 
-def test_build_command_rejects_old_recall_mode(tmp_path: Path) -> None:
-    dataset_dir = tmp_path / "dataset"
-    dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("query,pdf,page\nq,doc_name.pdf,0\n", encoding="utf-8")
-
-    cfg = HarnessConfig(
-        dataset_dir=str(dataset_dir),
-        dataset_label="earnings",
-        preset="single_gpu",
-        query_csv=str(query_csv),
-        evaluation_mode="recall",
-        recall_match_mode="pdf_page",
-        recall_adapter="none",
-    )
-    with pytest.raises(ValueError, match="evaluation_mode=recall has been renamed"):
-        _build_command(cfg, tmp_path, run_id="r1")
-
-
 def test_build_command_rejects_document_audio_recall(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

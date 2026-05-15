@@ -262,7 +262,7 @@ def test_load_nightly_config_rejects_invalid_metric_keys(tmp_path: Path) -> None
         load_nightly_config(str(runs_path))
 
 
-def test_load_harness_config_rejects_old_recall_mode(tmp_path: Path) -> None:
+def test_load_harness_config_rejects_invalid_recall_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -290,7 +290,7 @@ def test_load_harness_config_rejects_old_recall_mode(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="evaluation_mode=recall has been renamed"):
+    with pytest.raises(ValueError, match="evaluation_mode must be one of"):
         load_harness_config(config_file=str(cfg_path))
 
 

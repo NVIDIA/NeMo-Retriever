@@ -649,8 +649,6 @@ def _run_evaluation(
 
     if evaluation_mode == "none":
         return "None", 0.0, {}, None, False
-    if evaluation_mode == "recall":
-        raise ValueError("--evaluation-mode=recall has been renamed to --evaluation-mode=audio_recall")
 
     from nemo_retriever.model import resolve_embed_model
 
@@ -1204,8 +1202,6 @@ def run(
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode == "recall":
-            raise ValueError("--evaluation-mode=recall has been renamed to --evaluation-mode=audio_recall")
         if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
         if evaluation_mode == "audio_recall":
