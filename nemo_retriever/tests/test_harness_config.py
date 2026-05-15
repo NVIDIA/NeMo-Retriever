@@ -6,7 +6,11 @@ from fastapi import HTTPException
 
 import nemo_retriever.harness.config as harness_config
 from nemo_retriever.harness.config import HarnessConfig, load_harness_config, load_nightly_config, load_runs_config
-from nemo_retriever.harness.portal.app import DatasetUpdateRequest, _validate_dataset_evaluation_mode, update_managed_dataset
+from nemo_retriever.harness.portal.app import (
+    DatasetUpdateRequest,
+    _validate_dataset_evaluation_mode,
+    update_managed_dataset,
+)
 
 
 def _write_harness_config(path: Path, dataset_dir: Path, query_csv: Path) -> None:
