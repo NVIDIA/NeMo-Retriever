@@ -197,10 +197,12 @@ _FP8_ENGINE_KWARGS = {
 _NVFP4_ENGINE_KWARGS = {"dtype": "auto", "quantization": "modelopt"}
 
 _OMNI_CAPABILITIES = CaptionCapabilities(
+    # These describe capabilities exposed by the current caption pipeline,
+    # not every modality the underlying Omni model may support.
     image_captioning=True,
-    audio_input=True,
-    video_input=True,
-    document_intelligence=True,
+    audio_input=False,
+    video_input=False,
+    document_intelligence=False,
     reasoning_control=True,
 )
 

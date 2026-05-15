@@ -159,7 +159,7 @@ def test_unknown_local_profile_raises_clear_error():
     assert OMNI_BF16 in message
 
 
-def test_omni_profile_has_request_defaults_and_future_capabilities():
+def test_omni_profile_has_request_defaults_and_current_capabilities():
     from nemo_retriever.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(OMNI_FP8, target="local")
@@ -171,9 +171,9 @@ def test_omni_profile_has_request_defaults_and_future_capabilities():
     assert profile.request_extras_for("local") == {"chat_template_kwargs": {"enable_thinking": False}}
     assert profile.request_extras_for("remote") == {"chat_template_kwargs": {"enable_thinking": False}}
     assert profile.capabilities.image_captioning is True
-    assert profile.capabilities.audio_input is True
-    assert profile.capabilities.video_input is True
-    assert profile.capabilities.document_intelligence is True
+    assert profile.capabilities.audio_input is False
+    assert profile.capabilities.video_input is False
+    assert profile.capabilities.document_intelligence is False
     assert profile.capabilities.reasoning_control is True
 
 

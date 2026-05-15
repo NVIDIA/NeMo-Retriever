@@ -330,7 +330,7 @@ def caption_images(
             model_name = profile.remote_model_id or model_name
             request_extras = profile.request_extras_for("remote")
         request_extras = merge_request_extras(request_extras, extra_body or {})
-        if extra_body is not None:
+        if extra_body:
             request_extras["extra_body"] = merge_request_extras(
                 {},
                 {key: value for key, value in request_extras.items() if key != "extra_body"},

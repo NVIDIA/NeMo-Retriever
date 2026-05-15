@@ -371,6 +371,29 @@ def test_remote_omni_uses_hosted_model_and_profile_extras(mock_create_client):
 
 
 @patch("nemo_retriever.caption.caption._create_remote_client")
+def test_caption_cpu_actor_default_extra_body_does_not_repack_profile_extras(mock_create_client):
+    from nemo_retriever.caption.caption import CaptionCPUActor
+    from nemo_retriever.params import CaptionParams
+
+    mock_nim = MagicMock()
+    mock_nim.infer.return_value = ["remote cap"]
+    mock_create_client.return_value = mock_nim
+
+    params = CaptionParams(
+        endpoint_url="https://integrate.api.nvidia.com/v1/chat/completions",
+        model_name="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    )
+    actor = CaptionCPUActor(params)
+
+    result = actor.process(_make_page_df(num_images=1))
+
+    assert result.iloc[0]["images"][0]["text"] == "remote cap"
+    infer_kwargs = mock_nim.infer.call_args[1]
+    assert infer_kwargs["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "extra_body" not in infer_kwargs
+
+
+@patch("nemo_retriever.caption.caption._create_remote_client")
 def test_remote_omni_user_extra_body_overrides_profile_defaults(mock_create_client):
     from nemo_retriever.caption.caption import caption_images
 

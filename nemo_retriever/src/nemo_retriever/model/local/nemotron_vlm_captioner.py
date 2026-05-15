@@ -15,7 +15,6 @@ from nemo_retriever.caption.model_profiles import (
     caption_model_revisions,
     get_caption_model_profile,
     merge_request_extras,
-    supported_caption_model_names,
     supported_caption_models_by_variant,
 )
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
@@ -67,14 +66,6 @@ class NemotronVLMCaptioner(BaseModel):
         super().__init__()
 
         profile = get_caption_model_profile(model_path, target="local")
-        if profile.local_model_id is None:
-            supported = supported_caption_model_names(target="local")
-            raise ValueError(
-                f"Unsupported local caption model: {model_path!r}\n"
-                "Supported local caption models and aliases:\n"
-                + "\n".join(f"  - {model_name}" for model_name in supported)
-            )
-
         model_path = profile.local_model_id
 
         try:
