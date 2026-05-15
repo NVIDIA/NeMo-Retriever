@@ -8,6 +8,7 @@ import importlib
 import json
 import logging
 
+from pydantic import ValidationError
 import typer
 
 from nemo_retriever.adapters.cli.sdk_workflow import (
@@ -55,7 +56,7 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
     except Exception:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
-_ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError)
+_ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
 
 
 def _version_callback(value: bool) -> None:

@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import create_autospec
 
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
@@ -199,7 +200,9 @@ def test_root_ingest_rejects_ocr_lang_with_legacy_ocr_version(monkeypatch, tmp_p
     )
 
     assert result.exit_code == 1
+    assert result.output.startswith("Error: ")
     assert "ocr_lang is only supported when ocr_version='v2'" in result.output
+    assert "Traceback" not in result.output
     fake_ingestor.extract.assert_not_called()
 
 
@@ -308,6 +311,10 @@ def test_root_ingest_reports_os_errors(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "Error: permission denied" in result.output
+
+
+def test_root_cli_error_handler_includes_pydantic_validation_error() -> None:
+    assert ValidationError in cli_main._ROOT_CLI_ERRORS
 
 
 def test_ingest_documents_validates_run_mode_before_creating_ingestor(monkeypatch) -> None:
