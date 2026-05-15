@@ -92,7 +92,7 @@ To generate one extracted element for each sentence-like ASR segment, include `e
 
     !!! tip
 
-        For more Python examples, refer to [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+        For more Python examples, refer to the [Python Client Quick Start Guide](quickstart-guide.md#ingest_python_example).
 
 
 ## Use NVCF Endpoints for Cloud-Based Inference
@@ -128,7 +128,7 @@ Instead of running the pipeline locally, you can use NVCF to perform inference b
 
     !!! tip
 
-        For more Python examples, refer to [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+        For more Python examples, refer to the [Python Client Quick Start Guide](quickstart-guide.md#ingest_python_example).
 
 
 

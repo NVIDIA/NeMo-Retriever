@@ -17,7 +17,7 @@ nv-ingest-cli --help
 
 !!! tip
 
-    There is a Jupyter notebook available to help you get started with the CLI. For more information, refer to [CLI Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/cli_client_usage.ipynb).
+    For CLI examples and walkthroughs, refer to the [CLI Client Quick Start Guide](quickstart-guide.md#ingest_cli_example) and [CLI Reference](cli-reference.md).
 
 
 ## Examples

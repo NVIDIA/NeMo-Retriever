@@ -12,7 +12,7 @@ Use the provided [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/
     NIM containers on their first startup can take 10-15 minutes to pull and fully load models.
 
 
-If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/nv-ingest/blob/main/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
+If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
 
 a. Git clone the repo:
 
@@ -179,7 +179,7 @@ The following examples demonstrate how to extract text, charts, tables, and imag
 
 !!! tip
 
-    For more Python examples, refer to [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+    For more Python examples, refer to the [Python Client Quick Start Guide](quickstart-guide.md#ingest_python_example).
 
 <a id="ingest_python_example"></a>
 ```python
@@ -321,7 +321,7 @@ image_caption:[]
 
 !!! tip
 
-    There is a Jupyter notebook available to help you get started with the CLI. For more information, refer to [CLI Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/cli_client_usage.ipynb).
+    For more CLI examples and options, refer to the [CLI Client Quick Start Guide](quickstart-guide.md#ingest_cli_example) and [CLI Reference](cli-reference.md).
 
 <a id="ingest_cli_example"></a>
 ```shell
@@ -408,7 +408,7 @@ multimodal_test.pdf.metadata.json
 
 For the full metadata definitions, refer to [Content Metadata](content-metadata.md). 
 
-We also provide a script for inspecting [extracted images](https://github.com/NVIDIA/nv-ingest/blob/main/src/util/image_viewer.py).
+We also provide a script for inspecting [extracted images](https://github.com/AI-App/NVIDIA.NV-Ingest/blob/main/src/util/image_viewer.py).
 
 First, install `tkinter` by running the following code. Choose the code for your OS.
 
@@ -536,7 +536,7 @@ docker compose \
 
 ## Specify MIG slices for NIM models
 
-When you deploy NeMo Retriever Library with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NeMo Retriever Library NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/NeMo-Retriever/main/helm/README.md).​
+When you deploy NeMo Retriever Library with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NeMo Retriever Library NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/NeMo-Retriever/main/nemo_retriever/helm/README.md).​
 
 To target a specific MIG profile—for example, a 3g.20gb slice on an A100, which is a hardware-partitioned virtual GPU instance that gives your workload a fixed mid-sized share of the A100’s compute plus 20 GB of dedicated GPU memory and behaves like a smaller independent GPU—for a given NIM, configure the `resources` and `nodeSelector` under that NIM’s values path in `values.yaml`.
 
