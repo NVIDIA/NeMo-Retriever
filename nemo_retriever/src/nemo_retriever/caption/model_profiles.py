@@ -32,6 +32,8 @@ _OMNI_NO_THINK_EXTRAS = {"chat_template_kwargs": {"enable_thinking": False}}
 
 @dataclass(frozen=True)
 class CaptionCapabilities:
+    """Capabilities currently exposed by the caption pipeline for a model profile."""
+
     image_captioning: bool = True
     audio_input: bool = False
     video_input: bool = False
@@ -41,6 +43,8 @@ class CaptionCapabilities:
 
 @dataclass(frozen=True)
 class CaptionModelProfile:
+    """Immutable caption model metadata for local and remote model resolution."""
+
     family: str
     variant: str
     local_model_id: str
@@ -57,11 +61,15 @@ class CaptionModelProfile:
         object.__setattr__(self, "local_engine_kwargs", _freeze_metadata(self.local_engine_kwargs))
 
     def request_extras_for(self, target: CaptionTarget | str) -> dict[str, Any]:
+        """Return mutable default request extras for the local or remote caption target."""
+
         target = _validate_target(target)
         extras = self.local_request_extras if target == "local" else self.remote_request_extras
         return _mutable_metadata_copy(extras)
 
     def engine_kwargs_for_local(self) -> dict[str, Any]:
+        """Return mutable vLLM engine defaults for local caption model loading."""
+
         return _mutable_metadata_copy(self.local_engine_kwargs)
 
 
@@ -89,6 +97,12 @@ def merge_request_extras(
     defaults: Mapping[str, Any] | None,
     user: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    """Deep-merge profile default request extras with user request extras.
+
+    Nested mappings are merged recursively. Default-only keys are preserved, while user values win
+    when both inputs define the same key or nested leaf.
+    """
+
     merged = _mutable_metadata_copy(defaults or {})
     for key, value in (user or {}).items():
         current = merged.get(key)
@@ -100,21 +114,29 @@ def merge_request_extras(
 
 
 def supported_caption_model_names(target: CaptionTarget | str = "local") -> tuple[str, ...]:
+    """Return supported model IDs and aliases for the local or remote caption target."""
+
     target = _validate_target(target)
     return _SUPPORTED_NAMES_BY_TARGET[target]
 
 
 def supported_caption_models_by_variant(target: CaptionTarget | str = "local") -> dict[str, str]:
+    """Return canonical target model IDs keyed by model variant label."""
+
     target = _validate_target(target)
     return {variant: _target_model_id(profile, target) for variant, profile in _PROFILES_BY_VARIANT}
 
 
 def caption_model_aliases(target: CaptionTarget | str = "local") -> dict[str, str]:
+    """Return alias-to-canonical-model mappings for the local or remote caption target."""
+
     target = _validate_target(target)
     return {alias: _target_model_id(profile, target) for alias, profile in _PROFILE_LOOKUP_BY_TARGET[target].items()}
 
 
 def caption_model_revisions() -> dict[str, str]:
+    """Return pinned Hugging Face revisions keyed by local model ID."""
+
     return {profile.local_model_id: profile.revision for profile in _CAPTION_MODEL_PROFILES}
 
 
@@ -124,6 +146,12 @@ def get_caption_model_profile(
     target: CaptionTarget | str | None = None,
     strict: bool = True,
 ) -> CaptionModelProfile | None:
+    """Look up a caption model profile by model ID or alias.
+
+    ``target`` restricts lookup to ``"local"`` or ``"remote"`` model names; ``None`` searches both.
+    When ``strict`` is True, unknown names raise ``ValueError``. When False, unknown names return None.
+    """
+
     profile = _get_caption_model_profile(name, target=target)
     if profile is not None or not strict:
         return profile
@@ -137,6 +165,8 @@ def get_caption_model_profile(
 
 
 def resolve_caption_model_name(name: str, *, target: CaptionTarget | str = "local") -> str:
+    """Resolve a model ID or alias to the canonical model name for the target."""
+
     target = _validate_target(target)
     profile = get_caption_model_profile(name, target=target, strict=False)
     if profile is None:
