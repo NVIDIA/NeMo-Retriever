@@ -170,9 +170,12 @@ python -m nemo_retriever.examples.graph_pipeline \
 ```
 
 > **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Use
-> `--ocr-version v1` to opt into the legacy OCR engine. The remote-inference
-> example above pins `--ocr-version v1` because a hosted v2 endpoint is not yet
-> available on `ai.api.nvidia.com`.
+> `--ocr-version v1` to opt into the legacy OCR engine. Local OCR v2 defaults
+> to multilingual mode (`multi`); pass `--ocr-lang english` for the English-only
+> v2 selector. Remote OCR NIM endpoints decide their own model and language
+> behavior, and the local OCR selectors are not added to remote request payloads.
+> The remote-inference example above pins `--ocr-version v1` because a hosted v2
+> endpoint is not yet available on `ai.api.nvidia.com`.
 
 When you use the remote embedder, pair the `Retriever` with the matching
 `embedder=` + `embedding_endpoint=` overrides shown in

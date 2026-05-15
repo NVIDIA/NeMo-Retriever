@@ -110,6 +110,18 @@ def test_gpu_actor_loads_v2_model_with_legacy_selector(monkeypatch) -> None:
     mock_ocr_v2.assert_called_once_with(lang="v1")
 
 
+def test_gpu_actor_loads_v2_model_with_english_selector(monkeypatch) -> None:
+    import nemo_retriever.model.local as local_models
+
+    mock_ocr_v2 = MagicMock()
+    monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
+
+    actor = VideoFrameOCRGPUActor(ocr_lang="english")
+    actor._ensure_model()
+
+    mock_ocr_v2.assert_called_once_with(lang="english")
+
+
 def test_gpu_actor_drops_empty_text_rows() -> None:
     df = _make_frame_df(["b64_one", "b64_two"])
     fake_model = MagicMock()

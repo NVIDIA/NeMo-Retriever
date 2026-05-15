@@ -12,6 +12,7 @@ import typer
 
 from nemo_retriever.adapters.cli.sdk_workflow import (
     IngestRunModeValue,
+    OcrLangValue,
     OcrVersionValue,
     ingest_documents,
     query_documents,
@@ -106,6 +107,11 @@ def ingest_command(
         None,
         "--ocr-version",
         help="OCR engine version for extraction.",
+    ),
+    ocr_lang: OcrLangValue | None = typer.Option(
+        None,
+        "--ocr-lang",
+        help="OCR v2 language selector for local extraction.",
     ),
     graphic_elements_invoke_url: str | None = typer.Option(
         None,
@@ -208,6 +214,7 @@ def ingest_command(
             page_elements_invoke_url=page_elements_invoke_url,
             ocr_invoke_url=ocr_invoke_url,
             ocr_version=ocr_version,
+            ocr_lang=ocr_lang,
             graphic_elements_invoke_url=graphic_elements_invoke_url,
             table_structure_invoke_url=table_structure_invoke_url,
             embed_invoke_url=embed_invoke_url,
