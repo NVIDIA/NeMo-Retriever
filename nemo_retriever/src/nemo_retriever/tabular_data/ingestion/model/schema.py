@@ -282,7 +282,8 @@ class Schema:
             if column_df.empty:
                 raise ValueError(f"Column {column_name} is not in table {table_name}.")
 
-            id = column_df.iloc[0]["props"]["id"]
+            row = column_df.iloc[0]
+            id = row["props"]["id"] if "props" in row.index else row["id"]
             data_type = None if pd.isna(column_df.iloc[0]["data_type"]) else column_df.iloc[0]["data_type"].strip('"')
             column_name = column_df.iloc[0]["column_name"].strip('"')
             description = (
@@ -375,7 +376,8 @@ class Schema:
             if table_df.empty:
                 raise ValueError(f"Table {table_name} is not in schema {self.schema_name}.")
 
-            id = table_df.iloc[0]["props"]["id"]
+            row = table_df.iloc[0]
+            id = row["props"]["id"] if "props" in row.index else row["id"]
             created = (
                 None
                 if "created" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["created"])

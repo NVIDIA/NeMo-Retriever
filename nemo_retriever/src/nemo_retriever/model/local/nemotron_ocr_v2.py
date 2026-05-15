@@ -60,8 +60,8 @@ class NemotronOCRV2(BaseModel):
                 "Install `nemotron-ocr` 2.0 nightlies from TestPyPI, or install from source via: "
                 "git clone https://huggingface.co/nvidia/nemotron-ocr-v2 && "
                 "cd nemotron-ocr-v2/nemotron-ocr && pip install --no-build-isolation -v . "
-                "Alternatively, run with --ocr-invoke-url pointed at a v2 endpoint, "
-                "or pass --ocr-version v1 to use the legacy local model."
+                "Alternatively, run with --ocr-invoke-url pointed at a v2 endpoint. "
+                "--ocr-version v1 still uses this package and selects its legacy mode."
             ) from exc
 
         install_pinned_hf_hub_download(_nemotron_ocr_pipeline_v2)

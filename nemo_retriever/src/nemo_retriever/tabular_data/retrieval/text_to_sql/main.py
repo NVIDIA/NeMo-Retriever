@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import logging
 import time
 from datetime import datetime
@@ -8,7 +12,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.text_to_sql_graph import create_graph
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload, AgentState
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import main_system_prompt_template
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_llm_client
+from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import fetch_custom_analyses
+from nemo_retriever.tabular_data.retrieval.llm_invoke import get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +28,8 @@ app = graph.compile()
 
 
 def _build_state(payload: AgentPayload) -> AgentState:
-    acronyms = payload.get("acronyms", "")
     custom_prompts = payload.get("custom_prompts", "")
+    acronyms = payload.get("acronyms", [])
     connector = payload.get("connector")
     if connector is None:
         raise ValueError(
@@ -39,13 +44,13 @@ def _build_state(payload: AgentPayload) -> AgentState:
             "instance). Construct a Retriever once at startup and pass it in the payload."
         )
 
-    acronyms_text = f"Acronyms:\n{acronyms}\n\n" if acronyms else ""
     custom_prompts_text = f"{custom_prompts}\n\n" if custom_prompts else ""
+    domain_rules = fetch_custom_analyses() + list(acronyms or [])
+
     initial_path_state = dict(payload.get("path_state") or {})
 
     main_system_prompt = main_system_prompt_template.format(
         date=datetime.now(),
-        acronyms=acronyms_text,
         custom_prompts=custom_prompts_text,
         dialect=connector.dialect,
     )
@@ -62,6 +67,7 @@ def _build_state(payload: AgentPayload) -> AgentState:
         "path_state": initial_path_state,
         "retriever": retriever,
         "decision": "",
+        "domain_rules": domain_rules,
     }
 
 
@@ -70,8 +76,11 @@ def _extract_answer(final_state: dict) -> dict:
     final_response = path_state.get("final_response")
 
     if final_response is None:
-        messages_out = final_state.get("messages", [])
-        final_response = messages_out[-1] if messages_out else ""
+        messages_out = final_state.get("messages") or []
+        if isinstance(messages_out, list) and messages_out:
+            final_response = messages_out[-1]
+        else:
+            final_response = ""
 
     if isinstance(final_response, dict):
         return final_response

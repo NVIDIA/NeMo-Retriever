@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Entity extraction for omni-lite retrieval.
 It stores:
@@ -15,25 +19,23 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     get_question_for_processing,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import create_entity_extraction_prompt
 
 logger = logging.getLogger(__name__)
 
 
 class EntitiesExtractionModel(BaseModel):
-    """
-    Model for extracting entities/concepts and query without values.
-    """
+    """Extract entities from a question."""
 
     required_entity_name: list[str] = Field(
         ...,
-        description="List of primary entities or concepts mentioned in the question. "
-        "Ignore time frames, quantities, or constants. ",
-    )
-    query_no_values: str = Field(
-        ...,
-        description="The user's query with all specific values stripped out (dates, numbers, names, etc.).",
+        min_length=1,
+        description=(
+            "Concepts explicitly mentioned in the question that refer to "
+            "database entities. Only extract what the question actually says. "
+            "Ignore values, dates, numbers, and constants."
+        ),
     )
 
 
@@ -52,30 +54,38 @@ class EntitiesExtractionAgent(BaseAgent):
         return True
 
     def execute(self, state: AgentState) -> Dict[str, Any]:
-        """Extract normalized question + entities/concepts, and force calculation decision."""
+        """Extract entities from the question only (no domain rules)."""
         llm = state["llm"]
-        base_messages = state["messages"]
         path_state = state.get("path_state", {})
         question = get_question_for_processing(state)
 
+        result: Dict[str, Any] = {"path_state": path_state}
+
         try:
-            extraction_messages = base_messages + [SystemMessage(content=create_entity_extraction_prompt(question))]
-            extraction_result = invoke_with_structured_output(llm, extraction_messages, EntitiesExtractionModel)
+            extraction_messages = [SystemMessage(content=create_entity_extraction_prompt(question))]
+            extraction_result = invoke_with_structured_output(
+                llm,
+                extraction_messages,
+                EntitiesExtractionModel,
+            )
+            self.logger.debug("Raw extraction result: %s", extraction_result)
+
+            if extraction_result is None:
+                self.logger.warning("Entity extraction returned None, using fallback")
+                path_state["entities"] = []
+                return result
+
             entities = extraction_result.required_entity_name or []
 
-            path_state["query_no_values"] = extraction_result.query_no_values
+            if not entities:
+                self.logger.warning("LLM returned empty entities — using question as fallback")
+                entities = [question]
+
             path_state["entities"] = entities
 
-            self.logger.info(
-                "Extracted %s entities/concepts from normalized question: %s",
-                len(entities),
-                entities,
-            )
-            return {"path_state": path_state}
-
+            self.logger.info("Extracted %d entities: %s", len(entities), entities)
         except Exception as e:
             self.logger.warning(f"Entity extraction failed: {e}, using fallback values")
-            path_state["query_no_values"] = question
             path_state["entities"] = []
 
-            return {"path_state": path_state}
+        return result

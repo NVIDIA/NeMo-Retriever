@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from tests import _have_ffmpeg_binary
@@ -5,7 +7,7 @@ from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
 from nemo_retriever.graph.pipeline_graph import Graph
-from nemo_retriever.ocr.ocr import OCRActor, OCRV2Actor
+from nemo_retriever.ocr.ocr import OCRActor
 from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.text_embed.operators import _BatchEmbedActor
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
@@ -152,7 +154,7 @@ def test_build_graph_vdb_from_execution_plan_sink() -> None:
 @pytest.mark.parametrize(
     "ocr_version, expected_actor_class, expected_actor_name",
     [
-        ("v2", OCRV2Actor, "OCRV2Actor"),
+        ("v2", OCRActor, "OCRActor"),
         ("v1", OCRActor, "OCRActor"),
     ],
 )
@@ -186,6 +188,7 @@ def test_build_graph_keeps_archetype_operator_classes(
     ]
     assert nodes[3].operator_class is PageElementDetectionActor
     assert nodes[4].operator_class is expected_actor_class
+    assert nodes[4].operator_kwargs["ocr_version"] == ocr_version
     assert nodes[-1].operator_class is _BatchEmbedActor
     assert issubclass(nodes[3].operator_class, ArchetypeOperator)
     assert issubclass(nodes[4].operator_class, ArchetypeOperator)
@@ -195,7 +198,7 @@ def test_build_graph_keeps_archetype_operator_classes(
 @pytest.mark.parametrize(
     "ocr_version, expected_node_name, expected_cpu_class_name",
     [
-        ("v2", "OCRV2Actor", "OCRV2CPUActor"),
+        ("v2", "OCRActor", "OCRCPUActor"),
         ("v1", "OCRActor", "OCRCPUActor"),
     ],
 )
@@ -233,10 +236,40 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
     assert issubclass(classes["_BatchEmbedActor"], CPUOperator)
 
 
+def test_build_graph_keeps_partial_graphic_endpoint_on_gpu_for_local_ocr(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger="nemo_retriever.chart.chart_detection")
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=True,
+            extract_infographics=False,
+            page_elements_invoke_url="http://page.example/v1",
+            graphic_elements_invoke_url="http://graphic.example/v1",
+            ocr_invoke_url=None,
+            ocr_version="v1",
+        ),
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2", embed_invoke_url="http://embed.example/v1"
+        ),
+    )
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=4))
+    classes = {node.name: node.operator_class for node in _linear_nodes(resolved)}
+
+    assert classes["PageElementDetectionActor"].__name__ == "PageElementDetectionCPUActor"
+    assert classes["GraphicElementsActor"].__name__ == "GraphicElementsActor"
+    assert classes["OCRActor"].__name__ == "OCRActor"
+    assert issubclass(classes["GraphicElementsActor"], GPUOperator)
+    assert "received graphic_elements_invoke_url without ocr_invoke_url" in caplog.text
+    assert issubclass(classes["OCRActor"], GPUOperator)
+
+
 @pytest.mark.parametrize(
     "ocr_version, expected_node_name, expected_archetype_class",
     [
-        ("v2", "OCRV2Actor", OCRV2Actor),
+        ("v2", "OCRActor", OCRActor),
         ("v1", "OCRActor", OCRActor),
     ],
 )
@@ -269,7 +302,7 @@ def test_build_graph_resolves_local_nodes_to_gpu_variants_when_gpus_available(
 @pytest.mark.parametrize(
     "ocr_version, expected_actor_name",
     [
-        ("v2", "OCRV2Actor"),
+        ("v2", "OCRActor"),
         ("v1", "OCRActor"),
     ],
 )

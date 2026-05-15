@@ -178,6 +178,79 @@ def test_graph_pipeline_cli_accepts_multimodal_embed_and_page_image_flags(tmp_pa
     assert fake_ingestor.embed_params.embed_granularity == "page"
 
 
+def test_graph_pipeline_cli_defaults_vdb_overwrite(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setitem(
+        sys.modules,
+        "ray",
+        SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
+    )
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(batch_pipeline.app, [str(dataset_dir), "--evaluation-mode", "none"])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.vdb_upload_params.vdb_kwargs["overwrite"] is True
+
+
+def test_graph_pipeline_cli_vdb_append_forwards_overwrite_false(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setitem(
+        sys.modules,
+        "ray",
+        SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
+    )
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(batch_pipeline.app, [str(dataset_dir), "--evaluation-mode", "none", "--vdb-append"])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.vdb_upload_params.vdb_kwargs["overwrite"] is False
+
+
+def test_graph_pipeline_cli_vdb_flag_overrides_json(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setitem(
+        sys.modules,
+        "ray",
+        SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
+    )
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--evaluation-mode",
+            "none",
+            "--vdb-kwargs-json",
+            json.dumps({"uri": "/tmp/custom-lancedb", "overwrite": True}),
+            "--vdb-append",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert fake_ingestor.vdb_upload_params.vdb_kwargs == {
+        "uri": "/tmp/custom-lancedb",
+        "overwrite": False,
+    }
+
+
 def test_graph_pipeline_cli_routes_audio_input_to_audio_ingestor(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

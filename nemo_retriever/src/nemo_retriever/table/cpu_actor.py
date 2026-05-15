@@ -24,18 +24,17 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`TableStructureActor`.
 
     Defaults to the build.nvidia.com endpoint for
-    ``nemotron-table-structure-v1``. No local GPU models are loaded.
+    ``nemotron-table-structure-v1`` and hosted ``nemotron-ocr-v1``. Remote OCR
+    remains URL-driven until OCR v2 NIM is released.
     """
 
     DEFAULT_TABLE_STRUCTURE_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
-    DEFAULT_OCR_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
 
     def __init__(
         self,
         *,
         table_structure_invoke_url: Optional[str] = None,
         ocr_invoke_url: Optional[str] = None,
-        load_ocr_v2: bool = True,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         table_output_format: Optional[str] = None,
@@ -49,7 +48,7 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
         self._table_structure_invoke_url = (
             table_structure_invoke_url or invoke_url or self.DEFAULT_TABLE_STRUCTURE_INVOKE_URL
         ).strip()
-        self._ocr_invoke_url = (ocr_invoke_url or self.DEFAULT_OCR_INVOKE_URL).strip()
+        self._ocr_invoke_url = str(ocr_invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._inference_batch_size = int(inference_batch_size)
@@ -76,7 +75,13 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
             prefix="TableStructureCPUActor",
             api_key=self._api_key,
         )
-        probe_endpoint(self._ocr_invoke_url, name="ocr", prefix="TableStructureCPUActor", api_key=self._api_key)
+        if self._ocr_invoke_url:
+            probe_endpoint(
+                self._ocr_invoke_url,
+                name="ocr",
+                prefix="TableStructureCPUActor",
+                api_key=self._api_key,
+            )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
