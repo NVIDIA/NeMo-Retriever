@@ -264,6 +264,7 @@ class RayDataExecutor(AbstractExecutor):
 
         timing_enabled = stage_timing.is_enabled()
         timing_collector = stage_timing.start_collector() if timing_enabled else None
+        timing_mem_sampler = stage_timing.start_memory_sampler(timing_collector) if timing_collector else None
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
@@ -386,11 +387,14 @@ class RayDataExecutor(AbstractExecutor):
                 group_keys = list(getattr(node.operator_class, "GLOBAL_BATCH_GROUP_KEYS", None) or ())
                 n_blocks = max(1, int(overrides.get("concurrency") or 1)) if group_keys else 1
                 if n_blocks > 1:
-                    ds = ds.repartition(num_blocks=n_blocks, keys=group_keys, shuffle=True)
+                    # ds = ds.repartition(num_blocks=n_blocks, keys=group_keys, shuffle=True)
+                    pass
                 else:
-                    ds = ds.repartition(num_blocks=1)
+                    # ds = ds.repartition(num_blocks=1)
+                    pass
             elif target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
-                ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
+                # ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
+                pass
 
             # Pass the operator class directly to map_batches with
             # fn_constructor_kwargs for deferred construction on workers.
@@ -412,6 +416,9 @@ class RayDataExecutor(AbstractExecutor):
         result = ds.to_pandas()
         if timing_collector is not None:
             try:
+                # Stop the memory sampler before dumping so no late samples
+                # arrive after we've read the collector.
+                stage_timing.stop_memory_sampler(timing_mem_sampler)
                 ray_stats_text = None
                 try:
                     ray_stats_text = ds.stats()
@@ -422,12 +429,22 @@ class RayDataExecutor(AbstractExecutor):
                 except Exception as exc:
                     logger.warning("Failed to retrieve stage timing records: %s", exc)
                     records = []
+                try:
+                    memory_samples = ray.get(timing_collector.dump_samples.remote())
+                except Exception as exc:
+                    logger.warning("Failed to retrieve memory samples: %s", exc)
+                    memory_samples = []
+                baseline_used_mb = (
+                    getattr(timing_mem_sampler, "baseline_sys_used_mb", 0.0) if timing_mem_sampler else None
+                )
                 stage_timing.write_report(
                     records,
                     ray_stats_text=ray_stats_text,
                     call_index=timing_call_index,
                     graph_label=timing_graph_label,
                     node_names=timing_node_names,
+                    memory_samples=memory_samples,
+                    baseline_sys_used_mb=baseline_used_mb,
                 )
             finally:
                 stage_timing.stop_collector(timing_collector)

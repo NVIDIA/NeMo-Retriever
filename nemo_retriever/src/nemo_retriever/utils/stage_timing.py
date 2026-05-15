@@ -122,7 +122,37 @@ class StageRecord:
     total_ms: float
     worker_pid: int
     wallclock_start: float
+    # Memory metrics (host-side, per worker process). All zero when psutil is
+    # unavailable. ``rss_peak_mb`` is the worker's process-lifetime high-water
+    # mark sampled at the end of the batch -- it only grows, so the diff across
+    # consecutive batches tells you which batch pushed the peak up.
+    rss_before_mb: float = 0.0
+    rss_after_mb: float = 0.0
+    rss_peak_mb: float = 0.0
+    avail_before_mb: float = 0.0
+    avail_after_mb: float = 0.0
     extra: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SystemSample:
+    """A single driver-side snapshot of host + Ray-worker memory.
+
+    Memory fields use **PSS** (proportional set size) on Linux so that shared
+    library / mmap pages are not double-counted across processes -- the sum
+    of PSS across processes ~= actual physical memory used.  When PSS is
+    unavailable (non-Linux), the sampler transparently falls back to RSS;
+    field names stay the same to keep the JSON schema stable.
+    """
+
+    t_rel_s: float
+    driver_pss_mb: float
+    workers_pss_mb: float
+    workload_pss_mb: float  # driver + workers (PSS)
+    sys_used_mb: float  # host-wide MemUsed from psutil.virtual_memory().used
+    sys_available_mb: float
+    sys_used_pct: float
+    n_workers: int
 
 
 def is_enabled() -> bool:
@@ -170,17 +200,154 @@ def _build_collector_class() -> Any:
     class StageTimingCollector:
         def __init__(self) -> None:
             self._records: List[StageRecord] = []
+            self._samples: List[SystemSample] = []
 
         def record(self, rec: StageRecord) -> None:
             self._records.append(rec)
 
+        def record_sample(self, sample: SystemSample) -> None:
+            self._samples.append(sample)
+
         def dump(self) -> List[Dict[str, Any]]:
             return [asdict(r) for r in self._records]
 
+        def dump_samples(self) -> List[Dict[str, Any]]:
+            return [asdict(s) for s in self._samples]
+
         def clear(self) -> None:
             self._records.clear()
+            self._samples.clear()
 
     return StageTimingCollector
+
+
+def _enumerate_ray_worker_processes() -> List[Any]:
+    """Return psutil.Process handles for Ray worker processes on this host.
+
+    Ray worker processes are named ``ray::<actor_class>`` (or ``ray::IDLE``).
+    Returns an empty list if psutil is unavailable.
+    """
+    try:
+        import psutil
+    except Exception:
+        return []
+    workers: List[Any] = []
+    try:
+        for p in psutil.process_iter(["pid", "name"]):
+            try:
+                name = p.info.get("name") or ""
+                if name.startswith("ray::"):
+                    workers.append(p)
+            except Exception:
+                continue
+    except Exception:
+        return []
+    return workers
+
+
+def _process_pss_bytes(p: Any) -> int:
+    """Return PSS in bytes for a psutil.Process, falling back to RSS off-Linux."""
+    try:
+        return int(p.memory_full_info().pss)
+    except (AttributeError, OSError, Exception):
+        try:
+            return int(p.memory_info().rss)
+        except Exception:
+            return 0
+
+
+class _MemorySampler(threading.Thread):
+    """Daemon thread that snapshots driver + worker memory every ``interval_s`` seconds.
+
+    Memory uses PSS (proportional set size) on Linux: a page mapped by N
+    processes contributes ``1/N`` of its size to each.  Summing PSS across
+    processes therefore approximates true physical-memory usage, unlike
+    summing RSS which double-counts shared library / mmap pages.
+    """
+
+    def __init__(self, collector_handle: Any, interval_s: float = 1.0) -> None:
+        super().__init__(daemon=True)
+        self._collector = collector_handle
+        self._interval = float(interval_s)
+        self._stop = threading.Event()
+        self._t0 = 0.0
+        # Captured eagerly in start_memory_sampler before run() begins.
+        self.baseline_sys_used_mb: float = 0.0
+
+    def run(self) -> None:  # pragma: no cover - thread loop
+        import time as _time
+
+        try:
+            import psutil
+        except Exception:
+            return
+        try:
+            driver = psutil.Process()
+        except Exception:
+            return
+        self._t0 = _time.perf_counter()
+        while not self._stop.wait(self._interval):
+            try:
+                drv_mem = _process_pss_bytes(driver)
+                workers = _enumerate_ray_worker_processes()
+                worker_mem = 0
+                live = 0
+                for p in workers:
+                    v = _process_pss_bytes(p)
+                    if v > 0:
+                        worker_mem += v
+                        live += 1
+                vm = psutil.virtual_memory()
+                sample = SystemSample(
+                    t_rel_s=_time.perf_counter() - self._t0,
+                    driver_pss_mb=drv_mem / 1e6,
+                    workers_pss_mb=worker_mem / 1e6,
+                    workload_pss_mb=(drv_mem + worker_mem) / 1e6,
+                    sys_used_mb=float(vm.used) / 1e6,
+                    sys_available_mb=vm.available / 1e6,
+                    sys_used_pct=float(vm.percent),
+                    n_workers=live,
+                )
+                try:
+                    self._collector.record_sample.remote(sample)
+                except Exception:
+                    pass
+            except Exception:
+                continue
+
+    def stop(self, timeout: float = 2.0) -> None:
+        self._stop.set()
+        if self.is_alive():
+            self.join(timeout=timeout)
+
+
+def start_memory_sampler(collector_handle: Any, interval_s: float = 1.0) -> Optional[_MemorySampler]:
+    """Start a daemon sampler thread.
+
+    Also captures a baseline of ``psutil.virtual_memory().used`` *before*
+    sampling begins so the report can show "memory the run added" rather
+    than absolute host usage.
+    """
+    if collector_handle is None:
+        return None
+    sampler = _MemorySampler(collector_handle, interval_s=interval_s)
+    try:
+        import psutil
+
+        sampler.baseline_sys_used_mb = float(psutil.virtual_memory().used) / 1e6
+    except Exception:
+        sampler.baseline_sys_used_mb = 0.0
+    sampler.start()
+    return sampler
+
+
+def stop_memory_sampler(sampler: Optional[_MemorySampler]) -> None:
+    """Stop the sampler thread (no-op if ``None``)."""
+    if sampler is not None:
+        try:
+            sampler.stop()
+        except Exception:
+            pass
 
 
 def start_collector() -> Any:
@@ -218,8 +385,11 @@ def format_report(
     call_index: Optional[int] = None,
     graph_label: Optional[str] = None,
     node_names: Optional[Iterable[str]] = None,
+    memory_samples: Optional[List[Dict[str, Any]]] = None,
+    baseline_sys_used_mb: Optional[float] = None,
 ) -> str:
     """Build a human-readable per-stage timing report from collected records."""
+    memory_block = ""
     if not records:
         body = "(no stage timing records were collected)"
     else:
@@ -227,15 +397,15 @@ def format_report(
         for r in records:
             by_stage[r["stage"]].append(r)
 
-        cols = ("stage", "batches", "rows_in", "total_s",
-                "pre_ms/b", "proc_ms/b", "post_ms/b", "ms/row")
+        cols = ("stage", "batches", "rows_in", "total_s", "pre_ms/b", "proc_ms/b", "post_ms/b", "ms/row")
         widths = (34, 9, 11, 10, 11, 11, 11, 10)
         header = "".join(c.rjust(w) if i else c.ljust(w) for i, (c, w) in enumerate(zip(cols, widths)))
         sep = "-" * len(header)
         lines = [header, sep]
 
         pipeline_total_ms = 0.0
-        for stage, recs in sorted(by_stage.items(), key=lambda kv: -sum(r["total_ms"] for r in kv[1])):
+        ordered_stages = sorted(by_stage.items(), key=lambda kv: -sum(r["total_ms"] for r in kv[1]))
+        for stage, recs in ordered_stages:
             n_batches = len(recs)
             rows_in = sum(max(r["n_rows_in"], 0) for r in recs)
             total_ms = sum(r["total_ms"] for r in recs)
@@ -259,6 +429,38 @@ def format_report(
         lines.append(f"sum of stage wall-time (worker-side, parallel): {pipeline_total_ms / 1000:.2f} s")
         body = "\n".join(lines)
 
+        # Memory section: only emitted when at least one record carries a
+        # non-zero rss measurement (psutil was available on the workers).
+        has_mem = any(float(r.get("rss_peak_mb") or 0.0) > 0 for r in records)
+        if has_mem:
+            mcols = ("stage", "peak_rss_mb", "max_rss_mb", "mean_delta_mb", "min_avail_mb")
+            mwidths = (34, 14, 14, 16, 14)
+            mhead = "".join(c.rjust(w) if i else c.ljust(w) for i, (c, w) in enumerate(zip(mcols, mwidths)))
+            msep = "-" * len(mhead)
+            mlines = [mhead, msep]
+            for stage, recs in ordered_stages:
+                peak = max((float(r.get("rss_peak_mb") or 0.0) for r in recs), default=0.0)
+                max_after = max((float(r.get("rss_after_mb") or 0.0) for r in recs), default=0.0)
+                deltas = [float(r.get("rss_after_mb") or 0.0) - float(r.get("rss_before_mb") or 0.0) for r in recs]
+                mean_delta = sum(deltas) / len(deltas) if deltas else 0.0
+                min_avail = min(
+                    (
+                        float(r.get("avail_before_mb") or 0.0)
+                        for r in recs
+                        if float(r.get("avail_before_mb") or 0.0) > 0
+                    ),
+                    default=0.0,
+                )
+                mlines.append(
+                    stage[: mwidths[0]].ljust(mwidths[0])
+                    + f"{peak:.1f}".rjust(mwidths[1])
+                    + f"{max_after:.1f}".rjust(mwidths[2])
+                    + f"{mean_delta:+.2f}".rjust(mwidths[3])
+                    + f"{min_avail:.0f}".rjust(mwidths[4])
+                )
+            mlines.append(msep)
+            memory_block = "\n".join(mlines)
+
     title = "NeMo Retriever - Stage Timing Report"
     if call_index is not None:
         title += f"  (graph #{call_index:02d}"
@@ -281,6 +483,53 @@ def format_report(
         header_lines.append(f"graph nodes: {nodes_str}")
     header_lines.append("")
     out = header_lines + [body]
+    if memory_block:
+        out += ["", "Per-stage memory (host-side, per worker process):", memory_block]
+    if memory_samples:
+        peak_workload = max((float(s.get("workload_pss_mb") or 0.0) for s in memory_samples), default=0.0)
+        peak_driver = max((float(s.get("driver_pss_mb") or 0.0) for s in memory_samples), default=0.0)
+        peak_workers = max((float(s.get("workers_pss_mb") or 0.0) for s in memory_samples), default=0.0)
+        min_avail = min(
+            (
+                float(s.get("sys_available_mb") or 0.0)
+                for s in memory_samples
+                if float(s.get("sys_available_mb") or 0.0) > 0
+            ),
+            default=0.0,
+        )
+        max_used_mb = max((float(s.get("sys_used_mb") or 0.0) for s in memory_samples), default=0.0)
+        max_used_pct = max((float(s.get("sys_used_pct") or 0.0) for s in memory_samples), default=0.0)
+        mean_workers = (
+            sum(int(s.get("n_workers") or 0) for s in memory_samples) / len(memory_samples) if memory_samples else 0.0
+        )
+        # "Memory the run added": host-used at peak minus host-used before
+        # the sampler started.  This is the cleanest "what did this run cost"
+        # number -- it ignores stale Ray IDLE workers, kernel caches, and
+        # anything else that was already resident before ingestion began.
+        delta_lines: List[str] = []
+        if baseline_sys_used_mb is not None and baseline_sys_used_mb > 0:
+            delta = max_used_mb - float(baseline_sys_used_mb)
+            delta_lines = [
+                f"  baseline host MemUsed (pre-run)          : {baseline_sys_used_mb:8.1f} MB",
+                f"  peak host MemUsed (during run)           : {max_used_mb:8.1f} MB",
+                f"  delta MemUsed (memory the run added)     : {delta:+8.1f} MB",
+            ]
+        out += [
+            "",
+            "Run-level memory (driver-sampled, PSS-based):",
+            f"  peak workload PSS (driver + ray workers) : {peak_workload:8.1f} MB",
+            f"  peak driver PSS                          : {peak_driver:8.1f} MB",
+            f"  peak ray-workers PSS (sum)               : {peak_workers:8.1f} MB",
+            *delta_lines,
+            f"  host worst-case available                : {min_avail:8.1f} MB",
+            f"  host worst-case used                     : {max_used_pct:8.1f} %",
+            f"  mean ray-worker count seen               : {mean_workers:8.1f}",
+            f"  sample count                             : {len(memory_samples)}",
+            "",
+            "  Note: PSS attributes shared pages proportionally across the",
+            "  processes mapping them; sum-of-PSS ~= true physical memory used.",
+            "  'delta MemUsed' is the most defensible 'this run's cost' figure.",
+        ]
     if ray_stats_text:
         out += [
             "",
@@ -299,20 +548,48 @@ def write_report(
     call_index: Optional[int] = None,
     graph_label: Optional[str] = None,
     node_names: Optional[Iterable[str]] = None,
+    memory_samples: Optional[List[Dict[str, Any]]] = None,
+    baseline_sys_used_mb: Optional[float] = None,
 ) -> str:
     """Format and emit the report. Returns the report text."""
     node_list = list(node_names) if node_names is not None else None
+    samples = list(memory_samples) if memory_samples is not None else None
     text = format_report(
         records,
         ray_stats_text,
         call_index=call_index,
         graph_label=graph_label,
         node_names=node_list,
+        memory_samples=samples,
+        baseline_sys_used_mb=baseline_sys_used_mb,
     )
     logger.info("\n%s", text)
     out_path = resolve_report_path(call_index, graph_label)
     if out_path is not None:
         try:
+            peak_workload_pss_mb = (
+                max((float(s.get("workload_pss_mb") or 0.0) for s in samples), default=0.0) if samples else 0.0
+            )
+            min_sys_available_mb = (
+                min(
+                    (
+                        float(s.get("sys_available_mb") or 0.0)
+                        for s in samples
+                        if float(s.get("sys_available_mb") or 0.0) > 0
+                    ),
+                    default=0.0,
+                )
+                if samples
+                else 0.0
+            )
+            peak_sys_used_mb = (
+                max((float(s.get("sys_used_mb") or 0.0) for s in samples), default=0.0) if samples else 0.0
+            )
+            delta_sys_used_mb = (
+                peak_sys_used_mb - float(baseline_sys_used_mb)
+                if (baseline_sys_used_mb is not None and baseline_sys_used_mb > 0 and peak_sys_used_mb > 0)
+                else None
+            )
             with open(out_path, "w") as f:
                 json.dump(
                     {
@@ -320,7 +597,13 @@ def write_report(
                         "graph_label": graph_label,
                         "node_names": node_list,
                         "run_timestamp": _RUN_TIMESTAMP,
+                        "peak_workload_pss_mb": peak_workload_pss_mb,
+                        "min_sys_available_mb": min_sys_available_mb,
+                        "baseline_sys_used_mb": baseline_sys_used_mb,
+                        "peak_sys_used_mb": peak_sys_used_mb,
+                        "delta_sys_used_mb": delta_sys_used_mb,
                         "records": records,
+                        "memory_samples": samples or [],
                         "ray_stats": ray_stats_text,
                         "report": text,
                     },
