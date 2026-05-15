@@ -275,8 +275,10 @@ def plot_memory_overview(agg: pd.DataFrame, payload: dict, out_path: str) -> boo
     ax = axes[1, 1]
     ax.axis("off")
     lines = ["Run-level memory summary"]
+
     def fmt(k, v, unit="MB", prec=1):
         return f"  {k:<32s} {v:>10,.{prec}f} {unit}" if v is not None else f"  {k:<32s} {'-':>10s}"
+
     base = payload.get("baseline_sys_used_mb")
     peak = payload.get("peak_sys_used_mb")
     delta = payload.get("delta_sys_used_mb")
