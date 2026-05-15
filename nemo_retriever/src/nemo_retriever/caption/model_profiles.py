@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -49,7 +49,7 @@ class CaptionModelProfile:
     variant: str
     local_model_id: str
     remote_model_id: str
-    revision: str
+    revision: str | None
     capabilities: CaptionCapabilities = field(default_factory=CaptionCapabilities)
     local_request_extras: Mapping[str, Any] = field(default_factory=dict)
     remote_request_extras: Mapping[str, Any] = field(default_factory=dict)
@@ -134,7 +134,7 @@ def caption_model_aliases(target: CaptionTarget | str = "local") -> dict[str, st
     return {alias: _target_model_id(profile, target) for alias, profile in _PROFILE_LOOKUP_BY_TARGET[target].items()}
 
 
-def caption_model_revisions() -> dict[str, str]:
+def caption_model_revisions() -> dict[str, str | None]:
     """Return pinned Hugging Face revisions keyed by local model ID."""
 
     return {profile.local_model_id: profile.revision for profile in _CAPTION_MODEL_PROFILES}
@@ -241,7 +241,7 @@ _NANO_BF16_PROFILE = CaptionModelProfile(
     variant="BF16",
     local_model_id=NANO_BF16_MODEL_ID,
     remote_model_id=_NANO_BF16_REMOTE_MODEL_ID,
-    revision=get_hf_revision(NANO_BF16_MODEL_ID),
+    revision=get_hf_revision(NANO_BF16_MODEL_ID, strict=False),
     local_engine_kwargs=_BF16_ENGINE_KWARGS,
 )
 _NANO_FP8_PROFILE = CaptionModelProfile(
@@ -249,7 +249,7 @@ _NANO_FP8_PROFILE = CaptionModelProfile(
     variant="FP8",
     local_model_id=NANO_FP8_MODEL_ID,
     remote_model_id=_NANO_FP8_REMOTE_MODEL_ID,
-    revision=get_hf_revision(NANO_FP8_MODEL_ID),
+    revision=get_hf_revision(NANO_FP8_MODEL_ID, strict=False),
     local_engine_kwargs=_FP8_ENGINE_KWARGS,
 )
 _NANO_NVFP4_QAD_PROFILE = CaptionModelProfile(
@@ -257,7 +257,7 @@ _NANO_NVFP4_QAD_PROFILE = CaptionModelProfile(
     variant="NVFP4-QAD",
     local_model_id=NANO_NVFP4_QAD_MODEL_ID,
     remote_model_id=_NANO_NVFP4_QAD_REMOTE_MODEL_ID,
-    revision=get_hf_revision(NANO_NVFP4_QAD_MODEL_ID),
+    revision=get_hf_revision(NANO_NVFP4_QAD_MODEL_ID, strict=False),
     local_engine_kwargs=_NVFP4_ENGINE_KWARGS,
 )
 _OMNI_BF16_PROFILE = CaptionModelProfile(
@@ -265,7 +265,7 @@ _OMNI_BF16_PROFILE = CaptionModelProfile(
     variant="BF16",
     local_model_id=OMNI_BF16_MODEL_ID,
     remote_model_id=OMNI_REMOTE_MODEL_ID,
-    revision=get_hf_revision(OMNI_BF16_MODEL_ID),
+    revision=get_hf_revision(OMNI_BF16_MODEL_ID, strict=False),
     capabilities=_OMNI_CAPABILITIES,
     local_request_extras=_OMNI_NO_THINK_EXTRAS,
     remote_request_extras=_OMNI_NO_THINK_EXTRAS,
@@ -276,7 +276,7 @@ _OMNI_FP8_PROFILE = CaptionModelProfile(
     variant="FP8",
     local_model_id=OMNI_FP8_MODEL_ID,
     remote_model_id=OMNI_REMOTE_MODEL_ID,
-    revision=get_hf_revision(OMNI_FP8_MODEL_ID),
+    revision=get_hf_revision(OMNI_FP8_MODEL_ID, strict=False),
     capabilities=_OMNI_CAPABILITIES,
     local_request_extras=_OMNI_NO_THINK_EXTRAS,
     remote_request_extras=_OMNI_NO_THINK_EXTRAS,
@@ -287,7 +287,7 @@ _OMNI_NVFP4_PROFILE = CaptionModelProfile(
     variant="NVFP4",
     local_model_id=OMNI_NVFP4_MODEL_ID,
     remote_model_id=OMNI_REMOTE_MODEL_ID,
-    revision=get_hf_revision(OMNI_NVFP4_MODEL_ID),
+    revision=get_hf_revision(OMNI_NVFP4_MODEL_ID, strict=False),
     capabilities=_OMNI_CAPABILITIES,
     local_request_extras=_OMNI_NO_THINK_EXTRAS,
     remote_request_extras=_OMNI_NO_THINK_EXTRAS,

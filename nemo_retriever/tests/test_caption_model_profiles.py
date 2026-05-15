@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
+import importlib
 import importlib.abc
 import sys
 from types import ModuleType
@@ -41,6 +42,28 @@ _LOCAL_CAPTIONER_PARENT_ATTRS = (
     ("torch.cuda", "nvtx"),
 )
 _MISSING = object()
+
+
+def _reload_model_profiles_with_fake_revision_lookup(monkeypatch, fake_get_hf_revision):
+    import nemo_retriever.caption as caption_pkg
+    import nemo_retriever.utils.hf_model_registry as hf_model_registry
+
+    module_name = "nemo_retriever.caption.model_profiles"
+    original_module = sys.modules.get(module_name, _MISSING)
+    original_parent_attr = caption_pkg.__dict__.get("model_profiles", _MISSING)
+
+    monkeypatch.setattr(hf_model_registry, "get_hf_revision", fake_get_hf_revision)
+    sys.modules.pop(module_name, None)
+    caption_pkg.__dict__.pop("model_profiles", None)
+    try:
+        return importlib.import_module(module_name)
+    finally:
+        sys.modules.pop(module_name, None)
+        caption_pkg.__dict__.pop("model_profiles", None)
+        if original_module is not _MISSING:
+            sys.modules[module_name] = original_module
+        if original_parent_attr is not _MISSING:
+            caption_pkg.model_profiles = original_parent_attr
 
 
 class _VllmImportBlocker(importlib.abc.MetaPathFinder):
@@ -91,6 +114,29 @@ def isolated_local_captioner_imports():
                 setattr(parent, attr_name, attr_value)
 
 
+def test_model_profiles_import_uses_non_strict_revision_lookup(monkeypatch):
+    calls = []
+
+    def fake_get_hf_revision(model_id, *, strict=True):
+        calls.append((model_id, strict))
+        if strict:
+            raise ValueError(f"strict lookup used for {model_id}")
+        return None
+
+    module = _reload_model_profiles_with_fake_revision_lookup(monkeypatch, fake_get_hf_revision)
+
+    assert module.caption_model_revisions() == {
+        NANO_BF16: None,
+        NANO_FP8: None,
+        NANO_NVFP4: None,
+        OMNI_BF16: None,
+        OMNI_FP8: None,
+        OMNI_NVFP4: None,
+    }
+    assert calls
+    assert {strict for _model_id, strict in calls} == {False}
+
+
 def test_nano_resolution_remains_unchanged():
     from nemo_retriever.caption.model_profiles import resolve_caption_model_name
 
@@ -101,6 +147,15 @@ def test_nano_resolution_remains_unchanged():
     assert resolve_caption_model_name(NANO_BF16, target="remote") == NANO_REMOTE
     assert resolve_caption_model_name(NANO_FP8, target="remote") == "nvidia/nemotron-nano-12b-v2-vl-fp8"
     assert resolve_caption_model_name(NANO_NVFP4, target="remote") == "nvidia/nemotron-nano-12b-v2-vl-nvfp4-qad"
+
+
+def test_legacy_local_captioner_resolve_caption_model_name_shim_warns():
+    from nemo_retriever.model.local.nemotron_vlm_captioner import resolve_caption_model_name
+
+    with pytest.warns(DeprecationWarning, match="nemo_retriever.caption.model_profiles"):
+        resolved = resolve_caption_model_name("nvidia/nemotron-nano-12b-v2-vl", target="local")
+
+    assert resolved == NANO_BF16
 
 
 @pytest.mark.parametrize(

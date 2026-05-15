@@ -5,16 +5,19 @@
 from __future__ import annotations
 
 import base64
+import warnings
 from io import BytesIO
 from typing import Any, List, Optional
 
 from PIL import Image
 
 from nemo_retriever.caption.model_profiles import (
+    CaptionTarget,
     caption_model_aliases,
     caption_model_revisions,
     get_caption_model_profile,
     merge_request_extras,
+    resolve_caption_model_name as _resolve_caption_model_name,
     supported_caption_models_by_variant,
 )
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
@@ -25,6 +28,18 @@ from ..model import BaseModel, RunMode
 def _b64_to_pil(b64: str) -> Image.Image:
     """Decode a base64-encoded image string to a PIL Image."""
     return Image.open(BytesIO(base64.b64decode(b64))).convert("RGB")
+
+
+def resolve_caption_model_name(name: str, *, target: CaptionTarget | str = "local") -> str:
+    """Deprecated shim for caption model name resolution."""
+
+    warnings.warn(
+        "nemo_retriever.model.local.nemotron_vlm_captioner.resolve_caption_model_name is deprecated; "
+        "use nemo_retriever.caption.model_profiles.resolve_caption_model_name instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _resolve_caption_model_name(name, target=target)
 
 
 class NemotronVLMCaptioner(BaseModel):
