@@ -1554,7 +1554,7 @@ async def list_managed_datasets():
 
 
 def _validate_dataset_evaluation_mode(evaluation_mode: str | None) -> None:
-    if evaluation_mode and evaluation_mode not in VALID_EVALUATION_MODES:
+    if evaluation_mode is not None and evaluation_mode not in VALID_EVALUATION_MODES:
         raise HTTPException(
             status_code=422,
             detail=f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}",

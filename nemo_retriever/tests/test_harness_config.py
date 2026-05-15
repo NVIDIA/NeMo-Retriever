@@ -1,9 +1,11 @@
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 import nemo_retriever.harness.config as harness_config
 from nemo_retriever.harness.config import HarnessConfig, load_harness_config, load_nightly_config, load_runs_config
+from nemo_retriever.harness.portal.app import _validate_dataset_evaluation_mode
 
 
 def _write_harness_config(path: Path, dataset_dir: Path, query_csv: Path) -> None:
@@ -75,6 +77,11 @@ def test_harness_config_defaults_to_no_evaluation(tmp_path: Path) -> None:
 
     assert cfg.evaluation_mode == "none"
     assert cfg.beir_loader is None
+
+
+def test_portal_rejects_explicit_empty_evaluation_mode() -> None:
+    with pytest.raises(HTTPException, match="evaluation_mode must be one of"):
+        _validate_dataset_evaluation_mode("")
 
 
 def test_load_harness_config_supports_lancedb_table_name_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
