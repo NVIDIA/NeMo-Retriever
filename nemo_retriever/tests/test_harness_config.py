@@ -85,15 +85,17 @@ def test_portal_rejects_explicit_empty_evaluation_mode() -> None:
         _validate_dataset_evaluation_mode("")
 
 
-def test_portal_update_omitted_evaluation_mode_does_not_validate_existing_empty(
+@pytest.mark.parametrize("existing_evaluation_mode", ["", "custom"])
+def test_portal_update_omitted_evaluation_mode_does_not_validate_existing_invalid_value(
     monkeypatch: pytest.MonkeyPatch,
+    existing_evaluation_mode: str,
 ) -> None:
     import nemo_retriever.harness.portal.app as portal_app
 
     monkeypatch.setattr(
         portal_app.history,
         "get_dataset_by_id",
-        lambda _dataset_id: {"id": 7, "evaluation_mode": "", "beir_loader": None},
+        lambda _dataset_id: {"id": 7, "evaluation_mode": existing_evaluation_mode, "beir_loader": None},
     )
 
     def _fake_update_dataset(dataset_id: int, data: dict[str, object]) -> dict[str, object]:
