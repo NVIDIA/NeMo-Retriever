@@ -1,0 +1,23 @@
+{{- if and .Values.serviceConfig.vectordb.enabled .Values.topology.vectordb.persistence.enabled }}
+{{- $fullname := include "nemo-retriever.fullname" . -}}
+{{- $vdb := .Values.topology.vectordb -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-vectordb-data
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "vectordb") | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml $vdb.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ $vdb.persistence.size | quote }}
+  {{- if $vdb.persistence.storageClass }}
+  {{- if eq "-" $vdb.persistence.storageClass }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ $vdb.persistence.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

@@ -244,6 +244,30 @@ def test_build_command_passes_explicit_ocr_version(tmp_path: Path) -> None:
     assert cmd[cmd.index("--ocr-version") + 1] == "v1"
 
 
+def test_build_command_passes_explicit_ocr_lang(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    annotations_csv = tmp_path / "jp20_query_gt.csv"
+    annotations_csv.write_text("query,pdf,page,pdf_page\nq,doc.pdf,1,doc_1\n", encoding="utf-8")
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="PE_GE_OCR_TE_DENSE",
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_doc_id_field="pdf_page",
+        query_csv=str(annotations_csv),
+        recall_required=False,
+        ocr_lang="english",
+    )
+
+    cmd, _runtime_dir, _detection_file, _effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
+
+    assert "--ocr-lang" in cmd
+    assert cmd[cmd.index("--ocr-lang") + 1] == "english"
+
+
 def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

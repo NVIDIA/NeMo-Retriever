@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 SQL Validation Agent
 
@@ -22,10 +26,10 @@ from typing import Dict, Any
 from nemo_retriever.tabular_data.ingestion.services.queries import parse_query_single
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentState
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
+from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import get_custom_analyses_ids
+from nemo_retriever.tabular_data.retrieval.data_access.graph_schemas import (
     get_all_schemas_ids,
     get_schemas_by_ids,
-    get_custom_analyses_ids,
 )
 
 logger = logging.getLogger(__name__)
