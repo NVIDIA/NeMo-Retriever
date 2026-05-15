@@ -132,8 +132,7 @@ def get_caption_model_profile(
     supported_names = _supported_names_for_error(target)
     raise ValueError(
         f"Unsupported caption model {name!r} for {target_label}.\n"
-        "Supported caption models:\n"
-        + "\n".join(f"  - {supported_name}" for supported_name in supported_names)
+        "Supported caption models:\n" + "\n".join(f"  - {supported_name}" for supported_name in supported_names)
     )
 
 

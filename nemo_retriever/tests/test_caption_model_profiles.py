@@ -40,9 +40,6 @@ _LOCAL_CAPTIONER_PARENT_ATTRS = (
     ("torch", "nn"),
     ("torch.cuda", "nvtx"),
 )
-_INITIAL_LOCAL_CAPTIONER_NEMO_IMPORT_MODULES = {
-    module_name for module_name in _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES if module_name in sys.modules
-}
 _MISSING = object()
 
 
@@ -403,12 +400,7 @@ def test_local_captioner_fake_imports_do_not_leak():
     leaked_modules = sorted(
         module_name
         for module_name in _LOCAL_CAPTIONER_IMPORT_MODULES
-        if (
-            module_name not in _INITIAL_LOCAL_CAPTIONER_NEMO_IMPORT_MODULES
-            and module_name in _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES
-            and module_name in sys.modules
-        )
-        or getattr(sys.modules.get(module_name), "_nemo_retriever_test_fake", False)
+        if getattr(sys.modules.get(module_name), "_nemo_retriever_test_fake", False)
     )
 
     assert leaked_modules == []

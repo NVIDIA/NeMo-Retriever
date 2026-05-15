@@ -15,7 +15,6 @@ from nemo_retriever.caption.model_profiles import (
     caption_model_revisions,
     get_caption_model_profile,
     merge_request_extras,
-    resolve_caption_model_name,
     supported_caption_model_names,
     supported_caption_models_by_variant,
 )
