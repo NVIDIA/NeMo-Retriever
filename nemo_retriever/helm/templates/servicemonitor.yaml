@@ -1,4 +1,19 @@
-{{- if .Values.serviceMonitor.enabled -}}
+{{- /*
+ServiceMonitor templates.
+
+A ServiceMonitor is rendered when *either* of these is true:
+  • `serviceMonitor.enabled` is explicitly true, OR
+  • `topology.mode == "split"` AND `serviceMonitor.autoEnableInSplitMode`
+    is true (the chart default).
+
+Split-mode autoscaling depends on Prometheus scraping the worker pods'
+``/metrics`` endpoint for the queue-depth + processing-duration series.
+Automatically rendering the ServiceMonitor in split mode keeps the
+"out of the box" experience working without forcing operators to flip
+two unrelated knobs.
+*/}}
+{{- $auto := and (eq .Values.topology.mode "split") (.Values.serviceMonitor.autoEnableInSplitMode | default false) -}}
+{{- if or .Values.serviceMonitor.enabled $auto -}}
 {{- if eq .Values.topology.mode "standalone" }}
 # =========================================================================
 # Standalone mode — single ServiceMonitor
@@ -19,6 +34,10 @@ spec:
   selector:
     matchLabels:
       {{- include "nemo-retriever.selectorLabels" . | nindent 6 }}
+  {{- with .Values.serviceMonitor.targetLabels }}
+  targetLabels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   endpoints:
     - port: http
       path: {{ .Values.serviceMonitor.path }}
@@ -34,7 +53,10 @@ spec:
       {{- end }}
 {{- else }}
 # =========================================================================
-# Split mode — one ServiceMonitor per role (gateway, realtime, batch)
+# Split mode — one ServiceMonitor per role (gateway, realtime, batch).
+# `targetLabels` carries the role tag (app.kubernetes.io/component)
+# onto every scraped sample so prometheus-adapter and the Grafana
+# dashboards can disambiguate pool series across pods.
 # =========================================================================
 {{- range $role := list "gateway" "realtime" "batch" }}
 ---
@@ -54,6 +76,10 @@ spec:
   selector:
     matchLabels:
       {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" $role) | nindent 6 }}
+  {{- with $.Values.serviceMonitor.targetLabels }}
+  targetLabels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   endpoints:
     - port: http
       path: {{ $.Values.serviceMonitor.path }}

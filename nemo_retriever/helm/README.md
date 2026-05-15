@@ -231,18 +231,209 @@ ConfigMap, so `helm upgrade` automatically rolls the pod when any
 
 ---
 
+## Queue-depth autoscaling (split mode)
+
+In `topology.mode: split` deployments the realtime and batch worker
+pods scale horizontally based on **queue fill ratio** and
+**95th-percentile processing latency**. Both signals come straight out
+of the pods' `/metrics` endpoint — the publisher is always on (see
+`nemo_retriever_pool_queue_depth_ratio` in
+[`prometheus.py`](../src/nemo_retriever/service/services/prometheus.py)).
+The only choice you have to make is **how the metrics get from
+Prometheus into the Kubernetes HPA**.
+
+### Why queue depth (and not CPU)
+
+CPU-based HPA reacts to *the pod that has already saturated its work*.
+For an ingest pipeline that fans out to remote NIM endpoints, the work
+spends most of its time blocked on HTTP — CPU stays low even when the
+queue is full. Queue depth measures *demand to be served*, which is
+what we actually want to scale on. A 95th-percentile-latency signal
+rides alongside to catch the inverse case (a single hot pod whose
+queue is shallow but whose per-item processing has stalled).
+
+### Backend choices
+
+The chart's `autoscaling.queueDepth.backend` controls which path is
+wired up. All three options leave the metrics publisher untouched:
+
+| backend                | When to pick it                                                  | Cluster prerequisite              |
+|------------------------|------------------------------------------------------------------|-----------------------------------|
+| `prometheus-adapter` *(default)* | Production. One adapter feeds HPA + Grafana + future autoscalers. | Prometheus Operator + `prometheus-community/prometheus-adapter`. |
+| `cpu`                  | Bootstrap / dev cluster without Prometheus.                      | None — built-in.                   |
+| `keda`                 | Already standardised on KEDA org-wide.                           | KEDA operator (you install + apply your own `ScaledObject`). |
+
+The chart-recommended path is `prometheus-adapter`. The reasoning is
+documented in `values.yaml`; in short, it keeps a single Prometheus as
+the source of truth, supports HPA's multi-metric arithmetic-mean
+evaluation out of the box, and doesn't force the chart to bundle new
+CRDs.
+
+### Wiring up prometheus-adapter (recommended)
+
+The chart renders a ConfigMap named
+`<release>-nemo-retriever-prom-adapter-rules` containing PromQL rules
+for the External Metrics API. You point your existing
+prometheus-adapter at it:
+
+```bash
+helm upgrade prometheus-adapter prometheus-community/prometheus-adapter \
+  --namespace monitoring \
+  --reuse-values \
+  --set rules.existing=<release>-nemo-retriever-prom-adapter-rules
+```
+
+Then verify both metrics show up in the External Metrics API:
+
+```bash
+kubectl get --raw \
+  "/apis/external.metrics.k8s.io/v1beta1/namespaces/$NS/nemo_retriever_pool_queue_depth_ratio_avg?labelSelector=pool%3Drealtime" \
+  | jq .
+```
+
+Once that returns a non-empty `items` array, the HPAs rendered by this
+chart will start consuming them. The HPA annotation
+`nemo-retriever.nvidia.com/hpa-signals` documents the active set per
+HPA, e.g. `queueRatio=true latencyP95=true cpu=false`.
+
+### CPU fallback (no Prometheus required)
+
+Set `autoscaling.queueDepth.backend: cpu` and enable the CPU metric
+under each role:
+
+```yaml
+autoscaling:
+  queueDepth:
+    backend: cpu
+topology:
+  realtime:
+    hpa:
+      metrics:
+        queueDepthRatio: { enabled: false }
+        processingLatencyP95: { enabled: false }
+        cpu: { enabled: true, targetUtilizationPercentage: 60 }
+  batch:
+    hpa:
+      metrics:
+        queueDepthRatio: { enabled: false }
+        processingLatencyP95: { enabled: false }
+        cpu: { enabled: true, targetUtilizationPercentage: 80 }
+```
+
+The legacy `topology.<role>.hpa.targetCPUUtilizationPercentage` field
+still works and behaves as an alias for the `metrics.cpu` block.
+
+### KEDA path
+
+Set `autoscaling.queueDepth.backend: keda` and disable the chart-managed
+HPAs:
+
+```yaml
+autoscaling:
+  queueDepth: { backend: keda }
+topology:
+  realtime: { hpa: { enabled: false } }
+  batch:    { hpa: { enabled: false } }
+```
+
+Then apply your own `ScaledObject` — example for the realtime pool:
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: nemo-retriever-realtime
+spec:
+  scaleTargetRef:
+    name: nemo-retriever-realtime
+  minReplicaCount: 2
+  maxReplicaCount: 8
+  cooldownPeriod: 300
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc:9090
+        metricName: nemo_retriever_pool_queue_depth_ratio
+        threshold: "0.5"
+        query: |
+          avg by (pool) (
+            nemo_retriever_pool_queue_depth{pool="realtime"}
+            /
+            on(pool, instance) group_left()
+            nemo_retriever_pool_max_queue_size{pool="realtime"}
+          )
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc:9090
+        metricName: nemo_retriever_pool_processing_duration_p95
+        threshold: "30"
+        query: |
+          histogram_quantile(
+            0.95,
+            sum by (le, pool) (
+              rate(nemo_retriever_pool_processing_duration_seconds_bucket{pool="realtime"}[2m])
+            )
+          )
+```
+
+KEDA's biggest win is **scale-from-zero**, which we don't use today —
+both `minReplicas` defaults are ≥ 1 because the realtime pod is on the
+hot path for SSE consumers. If you do want scale-from-zero (e.g. a
+nightly batch-only job tenant), KEDA is the right tool and this is the
+escape hatch.
+
+### Tuning the thresholds
+
+Per-role tuning lives under `topology.<role>.hpa.metrics`:
+
+```yaml
+topology:
+  realtime:
+    hpa:
+      metrics:
+        queueDepthRatio: { enabled: true, target: "500m" }   # 0.5
+        processingLatencyP95: { enabled: true, targetSeconds: "30" }
+  batch:
+    hpa:
+      metrics:
+        queueDepthRatio: { enabled: true, target: "700m" }   # 0.7 — batch can run hot
+        processingLatencyP95: { enabled: true, targetSeconds: "120" }
+```
+
+Quantity-string conventions are k8s standard: `500m == 0.5`, `2`, `2k`,
+etc. The `target` is **per-replica** because the HPA template uses
+`type: AverageValue` for both External metrics — that's what makes
+"scale up when *average* queue fill across pods exceeds 0.5" work
+without baking the pod count into the publisher.
+
+### Verifying it scales
+
+```bash
+# Cause realtime pressure (anything that submits to /v1/ingest/job/.../page).
+# Then watch the HPA decide:
+kubectl get hpa -w
+
+# And watch the active signals on each HPA:
+kubectl get hpa <release>-realtime -o jsonpath='{.metadata.annotations.nemo-retriever\.nvidia\.com/hpa-signals}'
+```
+
+The dashboard's *Worker Pool Capacity* card on the **Overview** page
+mirrors the same signal Prometheus is seeing, so it's a quick eyeball
+sanity check before opening Grafana.
+
+---
+
 ## Roadmap
 
 1. **PostgreSQL backend** — replace `service.db.engine.DatabaseEngine` with
    a SQLAlchemy/asyncpg-based engine, then bump the chart to deploy a
    PostgreSQL StatefulSet (or take a sub-chart dependency on Bitnami's
    chart) and lift `service.replicas` to N.
-2. **`/metrics` Prometheus endpoint** in the service so the bundled
-   `ServiceMonitor` is useful out of the box.
-3. **NetworkPolicies** restricting the service Pod to the NIM Pods + DB
+2. **NetworkPolicies** restricting the service Pod to the NIM Pods + DB
    only.
-4. **HPA on a custom queue-depth metric** instead of CPU once the shared
-   DB unblocks horizontal scaling.
+3. **Gateway autoscaling** on inflight-uploads (currently fixed
+   `topology.gateway.replicas`) — sticky-routing story for SSE
+   subscribers needs to land first.
 
 ---
 

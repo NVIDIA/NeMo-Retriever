@@ -229,11 +229,14 @@ def create_app(config: ServiceConfig) -> FastAPI:
     else:
         logger.info("Bearer-token authentication DISABLED (no api_token configured)")
 
-    from nemo_retriever.service.routers import ingest, metrics
+    from nemo_retriever.service.routers import admin, ingest, metrics
     from nemo_retriever.service.services.prometheus import instrument_app
 
     app.include_router(ingest.router, prefix="/v1")
     app.include_router(metrics.router, prefix="/v1")
+    # Admin/internal endpoints — pool_stats etc. Registered on every
+    # role; the handler self-reports an empty pool dict on gateway pods.
+    app.include_router(admin.router, prefix="/v1")
     instrument_app(app, role=config.mode)
 
     if config.mode == "gateway":

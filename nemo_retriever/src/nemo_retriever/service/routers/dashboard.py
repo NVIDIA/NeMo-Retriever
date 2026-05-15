@@ -49,22 +49,83 @@ async def index():
 # ── Overview API ─────────────────────────────────────────────────────
 
 
+async def _fetch_pool_stats(client: httpx.AsyncClient, base_url: str) -> dict:
+    """Best-effort fetch of ``GET /v1/admin/pool_stats`` from a backend.
+
+    Returns ``{}`` on any error so the overview never fails to render
+    just because one worker pod is briefly unhealthy.
+    """
+    try:
+        resp = await client.get(f"{base_url}/v1/admin/pool_stats", timeout=2.0)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as exc:
+        logger.debug("pool_stats fetch failed for %s: %s", base_url, exc)
+    return {}
+
+
 @router.get("/api/overview")
 async def overview(request: Request) -> JSONResponse:
-    """Aggregate cluster status for the overview panel."""
+    """Aggregate cluster status for the overview panel.
+
+    On gateway pods, this fans out to each worker Service to collect
+    live pool stats (queue depth, queue ratio, processed counts) so
+    the dashboard can surface scaling pressure without forcing the
+    operator to open Grafana. On standalone pods the local pool is
+    read in-process via :func:`get_pipeline_pool`.
+    """
     config = request.app.state.config
 
     backends = {}
+    pool_stats: dict[str, dict] = {}
     try:
         from nemo_retriever.service.services.proxy import get_proxy
-        from nemo_retriever.service.services.pipeline_pool import PoolType
+        from nemo_retriever.service.services.pipeline_pool import (
+            PoolType,
+            get_pipeline_pool,
+        )
 
         proxy = get_proxy()
         if proxy is not None:
             backends["realtime"] = await proxy.check_backend(PoolType.REALTIME)
             backends["batch"] = await proxy.check_backend(PoolType.BATCH)
+            # H6: fan out to each backend for live queue depth. The
+            # gateway has no local pool, so this is the only way the
+            # overview page can show "realtime queue 50% full" without
+            # going through Prometheus.
+            gateway_cfg = getattr(config, "gateway", None)
+            if gateway_cfg is not None:
+                async with httpx.AsyncClient() as client:
+                    rt_task = _fetch_pool_stats(client, gateway_cfg.realtime_url)
+                    bt_task = _fetch_pool_stats(client, gateway_cfg.batch_url)
+                    rt_stats, bt_stats = await asyncio.gather(rt_task, bt_task)
+                # Each worker's response carries its own pools dict; the
+                # realtime pod returns {"realtime": {...}} and batch
+                # returns {"batch": {...}}. Merge for the consumer.
+                for stats in (rt_stats, bt_stats):
+                    for pool_name, pool_data in (stats.get("pools") or {}).items():
+                        pool_stats[pool_name] = pool_data
+        else:
+            # Standalone (or worker) pod — pull stats from the local
+            # singleton directly to avoid an HTTP round trip to ourselves.
+            local_pool = get_pipeline_pool()
+            if local_pool is not None:
+                for pt in (PoolType.REALTIME, PoolType.BATCH):
+                    p = local_pool.pool_for(pt)
+                    if p is None:
+                        continue
+                    depth = p.queue_depth
+                    max_qs = max(1, p.max_queue_size)
+                    pool_stats[pt.value] = {
+                        "queue_depth": depth,
+                        "queue_depth_ratio": round(depth / max_qs, 4),
+                        "max_queue_size": p.max_queue_size,
+                        "num_workers": p.num_workers,
+                        "processed": p.processed,
+                        "is_running": p.is_running,
+                    }
     except Exception as exc:
-        logger.debug("Could not check backends: %s", exc)
+        logger.debug("Could not check backends / pool stats: %s", exc)
 
     vdb_status = None
     vdb_url = getattr(config, "vectordb", None)
@@ -104,6 +165,7 @@ async def overview(request: Request) -> JSONResponse:
         {
             "mode": config.mode,
             "backends": backends,
+            "pool_stats": pool_stats,
             "vectordb": vdb_status,
             "job_summary": job_summary,
             "worker_config": worker_config,

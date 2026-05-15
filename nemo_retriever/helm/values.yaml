@@ -215,11 +215,69 @@ topology:
     nodeSelector: {}
     tolerations: []
     affinity: {}
+    # -------------------------------------------------------------------
+    # Horizontal Pod Autoscaler — realtime
+    # -------------------------------------------------------------------
+    # The HPA combines three independent signals (any can be disabled):
+    #   • queueDepthRatio       — pool fill (0..1), via prometheus-adapter
+    #   • processingLatencyP95  — 95th-percentile pipeline duration (s)
+    #   • cpu                   — utilization fallback, plain Resource metric
+    #
+    # Metrics that depend on Prometheus only render when
+    # `autoscaling.queueDepth.backend` is set to "prometheus-adapter"
+    # (the default) AND the per-metric `enabled` flag below is true.
+    # If neither queue-depth nor latency is enabled, the HPA degrades
+    # to the CPU fallback so the chart still scales on a vanilla
+    # cluster.
+    #
+    # The deprecated `targetCPUUtilizationPercentage` knob is honoured
+    # as an alias for `metrics.cpu.targetUtilizationPercentage` so
+    # existing values files keep working.
     hpa:
       enabled: true
       minReplicas: 2
       maxReplicas: 8
-      targetCPUUtilizationPercentage: 60
+      metrics:
+        queueDepthRatio:
+          enabled: true
+          # AverageValue across replicas — scale up when per-replica
+          # queue fill exceeds 0.5 (50%). Quantity strings are passed
+          # verbatim to the HPA; `500m` == 0.5 in k8s quantity notation.
+          target: "500m"
+        processingLatencyP95:
+          enabled: true
+          # Seconds of per-item p95 latency that triggers scale-up.
+          # Realtime pages typically finish in < 5s; 30s is the slow-stage
+          # threshold (OCR + chart inference on a hot path).
+          targetSeconds: "30"
+        cpu:
+          enabled: false
+          targetUtilizationPercentage: 60
+      # k8s HPA `v2` behavior block — passed through verbatim. Realtime
+      # scales out aggressively (double or +2 pods per minute) and
+      # scales down slowly to avoid flapping during burst-then-drain
+      # workloads.
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 60
+            - type: Pods
+              value: 2
+              periodSeconds: 60
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 120
+      # Legacy alias — kept so values files written before the metrics
+      # block existed still scale on CPU. When set AND
+      # `metrics.cpu.enabled` is false, the chart auto-flips CPU on
+      # with this value. Remove once you migrate to `metrics.cpu`.
+      targetCPUUtilizationPercentage: null
 
   batch:
     replicas: 2
@@ -236,11 +294,41 @@ topology:
     nodeSelector: {}
     tolerations: []
     affinity: {}
+    # Batch HPA tuning differs from realtime: a deeper queue is normal
+    # (we *want* batching), and replicas usually carry expensive GPUs
+    # that we'd rather not churn. So:
+    #   • Higher queueDepthRatio target (allow steady-state fill)
+    #   • Higher p95 latency target (batch jobs can legitimately take
+    #     minutes per item)
+    #   • Longer scaleDown stabilization window (no GPU thrash)
     hpa:
       enabled: true
       minReplicas: 1
       maxReplicas: 4
-      targetCPUUtilizationPercentage: 80
+      metrics:
+        queueDepthRatio:
+          enabled: true
+          target: "700m"   # 70% — batch runs hot by design
+        processingLatencyP95:
+          enabled: true
+          targetSeconds: "120"
+        cpu:
+          enabled: false
+          targetUtilizationPercentage: 80
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+        scaleDown:
+          stabilizationWindowSeconds: 600
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 300
+      targetCPUUtilizationPercentage: null
 
   vectordb:
     replicas: 1
@@ -460,12 +548,17 @@ ingress:
   #      - nemo-retriever.example.com
 
 # =============================================================================
-# HorizontalPodAutoscaler (off by default)
+# HorizontalPodAutoscaler — standalone mode
 # =============================================================================
 # WARNING: While persistence is SQLite, scaling beyond 1 replica is unsafe
 # (PVC is RWO + single writer). Keep maxReplicas=1 until the shared DB
 # backend is in place. The template is included now so the scaffolding is
 # ready when that day comes.
+#
+# For split mode (`topology.mode: split`), HPA configuration lives under
+# `topology.realtime.hpa` and `topology.batch.hpa` instead — those pods
+# are stateless and can scale on queue depth + latency. See the
+# `autoscaling.queueDepth` block below for the backend wiring.
 autoscaling:
   enabled: false
   minReplicas: 1
@@ -474,16 +567,89 @@ autoscaling:
   targetMemoryUtilizationPercentage: ""
   behavior: {}
 
+  # ---------------------------------------------------------------------------
+  # Queue-depth + latency autoscaling backend (split mode only)
+  # ---------------------------------------------------------------------------
+  # Chooses how the HPA gets at `nemo_retriever_pool_queue_depth_ratio`
+  # and `nemo_retriever_pool_processing_duration_seconds`. The metrics
+  # themselves are *always* published (see H1 — instrumented in
+  # services/pipeline_pool.py); this block only controls the *delivery
+  # path* into the Kubernetes metrics API.
+  #
+  # Supported values:
+  #
+  #   prometheus-adapter (recommended for production)
+  #     • Requires: Prometheus + prometheus-adapter installed in-cluster.
+  #     • Renders: `prometheus-adapter-rules.yaml` ConfigMap with the
+  #       PromQL needed for the External Metrics API.
+  #     • Chart hands the ConfigMap name to the operator; operator
+  #       points its prometheus-adapter at it. No subchart bundling.
+  #
+  #   cpu
+  #     • No Prometheus needed. The realtime/batch HPAs degrade to
+  #       a Resource-typed CPU metric. Convenient for clusters
+  #       without an observability stack — but ignores queue depth,
+  #       so scaling lags behind queue saturation by minutes.
+  #
+  #   keda
+  #     • Reserved hook. The chart does NOT install or render KEDA
+  #       resources today; setting this disables the chart-managed
+  #       HPAs so you can apply your own ScaledObject snippet.
+  #       See README "Queue-depth autoscaling" for the template.
+  #
+  # The recommendation in this codebase is `prometheus-adapter`.
+  # Reasoning is documented in helm/README.md.
+  queueDepth:
+    backend: "prometheus-adapter"
+
+    prometheusAdapter:
+      # External-metrics API names exposed by the adapter for our two
+      # PromQL queries. These are what the HPA `metric.name` field
+      # references; the adapter ConfigMap's `name.as` field has to match.
+      queueDepthRatioMetric: "nemo_retriever_pool_queue_depth_ratio_avg"
+      processingLatencyP95Metric: "nemo_retriever_pool_processing_duration_p95_seconds"
+      # When `rules.create` is true the chart renders a ConfigMap with
+      # the PromQL rules below; the operator wires their existing
+      # prometheus-adapter at this ConfigMap via:
+      #   helm upgrade prometheus-adapter ... \
+      #     --set rules.existing=<release>-prom-adapter-rules
+      # Set to false to bring-your-own rules (e.g. a cluster-wide ones).
+      rules:
+        create: true
+        # Window for the histogram_quantile() PromQL — short enough to
+        # react within a single HPA cycle (15s default), long enough to
+        # smooth out noise. 2m matches the prometheus-adapter docs'
+        # recommended default for short-lived workloads.
+        latencyWindow: "2m"
+
 # =============================================================================
-# Prometheus integration (off by default)
+# Prometheus integration (off by default in standalone, on by default
+# in split mode — see autoEnableInSplitMode below)
 # =============================================================================
+# When `topology.mode: split` is active, queue-depth-driven autoscaling
+# needs the worker pods' `/metrics` endpoint to be scraped by Prometheus.
+# The `autoEnableInSplitMode: true` default below ensures the
+# ServiceMonitor is rendered automatically in that case, even when the
+# top-level `enabled` flag is left at its (legacy) `false`.
+#
+# Operators on standalone (or operators who scrape via another route —
+# Prometheus Pushgateway, an external agent, OpenTelemetry, etc.) can
+# leave both flags false and no ServiceMonitor will be produced.
 serviceMonitor:
   enabled: false
+  autoEnableInSplitMode: true
   namespace: ""
-  interval: 30s
+  interval: 15s
   scrapeTimeout: 10s
   path: /metrics
   labels: {}
+  # Labels copied from the Service onto each scraped sample. We always
+  # propagate `app.kubernetes.io/component` so prometheus-adapter (and
+  # human Grafana queries) can filter on `component="realtime"` /
+  # `component="batch"` even when our publisher's `pool` label happens
+  # to disagree (e.g. during the standalone→split migration window).
+  targetLabels:
+    - app.kubernetes.io/component
   relabelings: []
   metricRelabelings: []
 
