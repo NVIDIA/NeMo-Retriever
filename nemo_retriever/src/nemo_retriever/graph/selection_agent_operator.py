@@ -444,6 +444,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             messages.append(assistant_turn)
 
             if finish_reason == "stop" or not tool_calls:
+                logger.debug("query=%r step=%d [stop] content=%s", query_text, _step, msg.get("content"))
                 messages.append(
                     {
                         "role": "user",
@@ -479,6 +480,15 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                             raw_doc_ids = json.loads(raw_doc_ids)
                         except json.JSONDecodeError:
                             raw_doc_ids = []
+                    if isinstance(raw_doc_ids, dict):
+                        raw_doc_ids = list(raw_doc_ids.values())
+                    if not isinstance(raw_doc_ids, list):
+                        raw_doc_ids = []
+                    raw_doc_ids = [
+                        str(item) for elem in raw_doc_ids
+                        for item in (elem if isinstance(elem, list) else [elem])
+                        if item is not None
+                    ]
                     doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
                     if not doc_ids and raw_doc_ids:
                         logger.warning(
@@ -506,6 +516,11 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
             messages.extend(tool_messages)
 
+        logger.warning(
+            "SelectionAgentOperator: falling back to RRF top-%d for query %r",
+            feasible_k,
+            query_text,
+        )
         return {
             "doc_ids": [],
             "message": "Selection agent reached max steps without completing.",
