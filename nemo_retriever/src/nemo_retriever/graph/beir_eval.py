@@ -39,7 +39,6 @@ class BEIREvaluatorActor:
 
     def __init__(
         self,
-        evaluation_mode: Annotated[str, Param(label="Evaluation Mode", choices=["recall", "beir"])] = "beir",
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
         embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
@@ -56,7 +55,6 @@ class BEIREvaluatorActor:
         beir_ks: Annotated[str, Param(label="K Values", placeholder="1,3,5,10")] = "1,3,5,10",
         hybrid: Annotated[bool, Param(label="Hybrid Search")] = False,
     ) -> None:
-        self.evaluation_mode = evaluation_mode
         self.lancedb_uri = str(Path(lancedb_uri).expanduser().resolve())
         self.lancedb_table = lancedb_table
         self.embedding_model = embedding_model

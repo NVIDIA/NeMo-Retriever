@@ -385,7 +385,12 @@ def _retriever_in_command(cmd: str) -> bool:
         tokens = seg.split()
         if len(tokens) >= 3 and tokens[0] == "uv" and tokens[1] == "run" and tokens[2] == "retriever":
             return True
-        if len(tokens) >= 3 and tokens[0].startswith("python") and tokens[1] == "-m" and tokens[2].startswith("nemo_retriever"):
+        if (
+            len(tokens) >= 3
+            and tokens[0].startswith("python")
+            and tokens[1] == "-m"
+            and tokens[2].startswith("nemo_retriever")
+        ):
             return True
     return False
 

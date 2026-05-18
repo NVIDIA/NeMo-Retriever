@@ -32,7 +32,7 @@ Examples::
         --vdb-op <operator-key> \\
         --vdb-kwargs-json '<operator kwargs JSON object>'
 
-    # Extract + embed only (skip in-graph VDB; default run includes VDB for recall)
+    # Extract + embed only (skip in-graph VDB upload)
     retriever pipeline run /data/pdfs \\
         --no-vdb
 
@@ -644,11 +644,11 @@ def _run_evaluation(
     service_url: Optional[str] = None,
     service_api_token: Optional[str] = None,
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
-    """Run recall or BEIR evaluation.
+    """Run audio recall or BEIR evaluation.
 
     Returns ``(label, elapsed_secs, metrics, query_count, ran)``.  When the
-    query CSV is missing in recall mode, ``ran`` is ``False`` and the caller
-    should skip metric recording.
+    query CSV is missing in audio recall mode, ``ran`` is ``False`` and the
+    caller should skip metric recording.
     """
 
     if evaluation_mode == "none":
@@ -716,14 +716,17 @@ def _run_evaluation(
             beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
         return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
 
-    if recall_match_mode != "audio_segment":
-        raise ValueError("Legacy recall evaluation is only supported for audio_segment matching")
+    if evaluation_mode != "audio_recall":
+        raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
 
-    # Legacy recall is retained for audio segment evaluation only.
+    if recall_match_mode != "audio_segment":
+        raise ValueError("Audio recall evaluation is only supported for audio_segment matching")
+
+    # Legacy scorer is retained for audio segment evaluation only.
     query_csv_path = Path(query_csv)
     if not query_csv_path.exists():
-        logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv_path)
-        return "Recall", 0.0, {}, None, False
+        logger.warning("Query CSV not found at %s; skipping audio recall evaluation.", query_csv_path)
+        return "Audio Recall", 0.0, {}, None, False
 
     from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
 
@@ -749,7 +752,7 @@ def _run_evaluation(
     )
     evaluation_start = time.perf_counter()
     df_query, _gold, _raw_hits, _retrieved_keys, metrics = retrieve_and_score(query_csv=query_csv_path, cfg=recall_cfg)
-    return "Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
+    return "Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
 
 
 # ---------------------------------------------------------------------------
@@ -1080,7 +1083,7 @@ def run(
     no_vdb: bool = typer.Option(
         False,
         "--no-vdb",
-        help="Skip in-graph vector DB upload (extract+embed only; default run uploads for recall/eval).",
+        help="Skip in-graph vector DB upload (extract+embed only).",
         rich_help_panel=_PANEL_VDB,
     ),
     meta_dataframe: Optional[Path] = typer.Option(
@@ -1129,10 +1132,9 @@ def run(
     runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix", rich_help_panel=_PANEL_OBS),
     # --- Evaluation -----------------------------------------------------
     evaluation_mode: str = typer.Option(
-        "recall",
+        "none",
         "--evaluation-mode",
-        help="Post-ingest evaluation: default 'recall' runs when a \
-        query CSV exists (after VDB upload unless --no-vdb).",
+        help="Post-ingest evaluation: none (default), audio_recall, beir, or qa.",
         rich_help_panel=_PANEL_EVAL,
     ),
     query_csv: Path = typer.Option(
@@ -1229,13 +1231,13 @@ def run(
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode not in {"none", "recall", "beir", "qa"}:
+        if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
-        if evaluation_mode == "recall":
+        if evaluation_mode == "audio_recall":
             if input_type != "audio":
-                raise ValueError("--evaluation-mode=recall is only supported with --input-type=audio")
+                raise ValueError("--evaluation-mode=audio_recall is only supported with --input-type=audio")
             if recall_match_mode != "audio_segment":
-                raise ValueError("--evaluation-mode=recall requires --recall-match-mode=audio_segment")
+                raise ValueError("--evaluation-mode=audio_recall requires --recall-match-mode=audio_segment")
         if evaluation_mode == "qa" and eval_config is None:
             raise typer.BadParameter(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
@@ -1372,7 +1374,7 @@ def run(
         enable_caption = caption or caption_invoke_url is not None
         enable_dedup = dedup if dedup is not None else enable_caption
 
-        # In-graph VDB by default (supports default recall); opt out with --no-vdb.
+        # In-graph VDB upload is enabled by default; opt out with --no-vdb.
         enable_in_graph_vdb_upload = run_mode != "service" and not no_vdb
         pipeline_vdb_upload: Optional[VdbUploadParams] = None
         if enable_in_graph_vdb_upload:

@@ -72,6 +72,7 @@ running self-hosted NIM containers.
   `--save-intermediate`).
 - Extracted image assets on disk under `./processed_docs/images/` (from
   `--store-images-uri`). The stored asset URI is written to row metadata.
+- No evaluation is run unless you explicitly pass `--evaluation-mode`.
 - Progress, timing, and stage-level logs on stderr.
 
 ### Inspect the results

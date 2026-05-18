@@ -75,8 +75,12 @@ def load_eval_manifest(path: Path) -> list[DatasetEntry]:
         taxonomy = item.get("prompt_taxonomy") or {}
         domain_label = str(taxonomy.get("domain_label") or "")
         # Accept both the legacy SDG keys and the newer scenario-format keys.
-        candidates = ((item.get("sdg_prompt_candidates") or item.get("scenario_prompt_candidates") or {}).get("candidates") or [])
-        selected_variant = (item.get("sdg_prompt_validation") or item.get("scenario_prompt_validation") or {}).get("selected_variant_id")
+        candidates = (item.get("sdg_prompt_candidates") or item.get("scenario_prompt_candidates") or {}).get(
+            "candidates"
+        ) or []
+        selected_variant = (item.get("sdg_prompt_validation") or item.get("scenario_prompt_validation") or {}).get(
+            "selected_variant_id"
+        )
         prompt = _select_prompt(candidates, selected_variant)
         if not prompt:
             # No usable paraphrased prompt — skip.

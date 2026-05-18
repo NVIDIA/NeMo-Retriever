@@ -1,9 +1,16 @@
+import asyncio
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 import nemo_retriever.harness.config as harness_config
 from nemo_retriever.harness.config import HarnessConfig, load_harness_config, load_nightly_config, load_runs_config
+from nemo_retriever.harness.portal.app import (
+    DatasetUpdateRequest,
+    _validate_dataset_evaluation_mode,
+    update_managed_dataset,
+)
 
 
 def _write_harness_config(path: Path, dataset_dir: Path, query_csv: Path) -> None:
@@ -67,14 +74,42 @@ def test_load_harness_config_precedence(tmp_path: Path, monkeypatch: pytest.Monk
     assert cfg.recall_required is True
 
 
-def test_harness_config_preserves_legacy_evaluation_defaults(tmp_path: Path) -> None:
+def test_harness_config_defaults_to_no_evaluation(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
 
     cfg = HarnessConfig(dataset_dir=str(dataset_dir), dataset_label="tiny", preset="base")
 
-    assert cfg.evaluation_mode == "recall"
+    assert cfg.evaluation_mode == "none"
     assert cfg.beir_loader is None
+
+
+def test_portal_rejects_explicit_empty_evaluation_mode() -> None:
+    with pytest.raises(HTTPException, match="evaluation_mode must be one of"):
+        _validate_dataset_evaluation_mode("")
+
+
+@pytest.mark.parametrize("existing_evaluation_mode", ["", "custom"])
+def test_portal_update_omitted_evaluation_mode_does_not_validate_existing_invalid_value(
+    monkeypatch: pytest.MonkeyPatch,
+    existing_evaluation_mode: str,
+) -> None:
+    import nemo_retriever.harness.portal.app as portal_app
+
+    monkeypatch.setattr(
+        portal_app.history,
+        "get_dataset_by_id",
+        lambda _dataset_id: {"id": 7, "evaluation_mode": existing_evaluation_mode, "beir_loader": None},
+    )
+
+    def _fake_update_dataset(dataset_id: int, data: dict[str, object]) -> dict[str, object]:
+        return {"id": dataset_id, **data}
+
+    monkeypatch.setattr(portal_app.history, "update_dataset", _fake_update_dataset)
+
+    result = asyncio.run(update_managed_dataset(7, DatasetUpdateRequest(ocr_version="v1")))
+
+    assert result == {"id": 7, "ocr_version": "v1"}
 
 
 def test_load_harness_config_supports_lancedb_table_name_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -145,7 +180,7 @@ def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: 
                 f"  dataset_dir: {dataset_dir}",
                 "  preset: base",
                 "  input_type: audio",
-                "  evaluation_mode: recall",
+                "  evaluation_mode: audio_recall",
                 "  recall_match_mode: audio_segment",
                 "  recall_required: true",
                 "presets:",
@@ -262,7 +297,7 @@ def test_load_nightly_config_rejects_invalid_metric_keys(tmp_path: Path) -> None
         load_nightly_config(str(runs_path))
 
 
-def test_load_harness_config_rejects_document_recall_mode(tmp_path: Path) -> None:
+def test_load_harness_config_rejects_invalid_recall_mode(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -290,7 +325,7 @@ def test_load_harness_config_rejects_document_recall_mode(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="evaluation_mode=recall is only supported"):
+    with pytest.raises(ValueError, match="evaluation_mode must be one of"):
         load_harness_config(config_file=str(cfg_path))
 
 
@@ -316,7 +351,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
                 "    input_type: audio",
-                "    evaluation_mode: recall",
+                "    evaluation_mode: audio_recall",
                 "    segment_audio: true",
                 "    audio_split_type: time",
                 "    audio_split_interval: 30",
@@ -331,6 +366,7 @@ def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> Non
 
     cfg = load_harness_config(config_file=str(cfg_path))
     assert cfg.input_type == "audio"
+    assert cfg.evaluation_mode == "audio_recall"
     assert cfg.segment_audio is True
     assert cfg.audio_split_type == "time"
     assert cfg.audio_split_interval == 30
@@ -546,7 +582,7 @@ def test_load_harness_config_rejects_invalid_recall_adapter(tmp_path: Path) -> N
                 f"    path: {dataset_dir}",
                 f"    query_csv: {query_csv}",
                 "    input_type: audio",
-                "    evaluation_mode: recall",
+                "    evaluation_mode: audio_recall",
                 "    recall_match_mode: audio_segment",
                 "    recall_required: true",
                 "    recall_adapter: unknown_adapter",
