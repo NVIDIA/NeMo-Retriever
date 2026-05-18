@@ -36,7 +36,7 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
 | CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
-| PDF split tuning | [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` |
+| PDF split tuning | [Large PDF page batches](#large-pdf-page-batches) below | `docs/docs/extraction/v2-api-guide.md` |
 | Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
 
 <!-- --8<-- [start:quickstart] -->

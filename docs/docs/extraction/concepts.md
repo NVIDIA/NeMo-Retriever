@@ -4,11 +4,11 @@ These terms appear throughout NeMo Retriever Library documentation.
 
 ## Job
 
-An **ingestion job** is a unit of work done on input content (documents, audio, video, and other supported types). There are default tasks with built-in configurations aimed at strong recall, but behavior can be customized via task keyword arguments and via custom UDF-style operations ([Graph operators](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md), [user-defined stages](user-defined-stages.md)). Results are retrieved as structured metadata and annotations.
+An **ingestion job** is a unit of work done on input content (documents, audio, video, and other supported types). There are default tasks with built-in configurations aimed at strong recall, but behavior can be customized via task keyword arguments and via custom UDF-style operations ([NeMo Retriever graph](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)). Results are retrieved as structured metadata and annotations.
 
 ## Pipeline and tasks
 
-NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/graph/README.md), [user-defined stages](user-defined-stages.md).
+NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph).
 
 ## Extraction metadata
 
