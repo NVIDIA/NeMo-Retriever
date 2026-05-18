@@ -63,7 +63,10 @@ def missing_media_dependencies() -> List[str]:
 def media_dependency_error_message(component: str = "Media processing") -> str:
     """Build an actionable error for missing audio/video dependencies."""
     missing = missing_media_dependencies()
-    missing_text = ", ".join(missing) if missing else "none"
+    if not missing:
+        return f"{component} media dependencies are available."
+
+    missing_text = ", ".join(missing)
     install_hints = []
     if "ffmpeg-python" in missing:
         install_hints.append("Install the Python wrapper with `pip install ffmpeg-python`.")
@@ -74,7 +77,8 @@ def media_dependency_error_message(component: str = "Media processing") -> str:
             "For the bundled container, rebuild with "
             f"`docker build -f Dockerfile {CONTAINER_FFMPEG_INSTALL_FLAG} ...`."
         )
-    return f"{component} requires media dependencies; missing: {missing_text}. {' '.join(install_hints)}"
+    hints_str = (" " + " ".join(install_hints)) if install_hints else ""
+    return f"{component} requires media dependencies; missing: {missing_text}.{hints_str}"
 
 
 class SplitType:
@@ -126,9 +130,9 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
     and the call returns. We only read stderr when ``returncode != 0``.
     """
     if not is_ffmpeg_python_available():
-        raise RuntimeError(media_dependency_error_message(label))
+        raise RuntimeError(media_dependency_error_message(f"FFmpeg operation '{label}'"))
     if not is_ffmpeg_cli_available():
-        raise RuntimeError(media_dependency_error_message(label))
+        raise RuntimeError(media_dependency_error_message(f"FFmpeg operation '{label}'"))
     args = ffmpeg.compile(stream)
     with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
         result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=stderr_buf)
