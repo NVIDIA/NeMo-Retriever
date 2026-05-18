@@ -28,7 +28,6 @@ class MediaDependencyAvailabilityTests(TestCase):
             return f"/usr/bin/{name}" if name == "ffmpeg" else None
 
         with (
-            patch.object(media_interface, "_FFMPEG_AVAILABLE", True),
             patch.object(media_interface, "ffmpeg", SimpleNamespace()),
             patch.object(media_interface.shutil, "which", side_effect=fake_which),
         ):
@@ -42,7 +41,6 @@ class MediaDependencyAvailabilityTests(TestCase):
         media_interface = _load_media_interface()
 
         with (
-            patch.object(media_interface, "_FFMPEG_AVAILABLE", False),
             patch.object(media_interface, "ffmpeg", None),
             patch.object(media_interface.shutil, "which", return_value=None),
         ):

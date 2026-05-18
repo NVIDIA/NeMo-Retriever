@@ -26,11 +26,8 @@ logger = logging.getLogger(__name__)
 
 try:
     import ffmpeg
-
-    _FFMPEG_AVAILABLE = True
 except Exception:
     ffmpeg = None  # type: ignore[assignment]
-    _FFMPEG_AVAILABLE = False
 
 MANUAL_FFMPEG_INSTALL_COMMAND = "apt-get update && apt-get install -y --no-install-recommends ffmpeg"
 CONTAINER_FFMPEG_INSTALL_FLAG = "--build-arg INSTALL_FFMPEG=true"
@@ -38,7 +35,7 @@ CONTAINER_FFMPEG_INSTALL_FLAG = "--build-arg INSTALL_FFMPEG=true"
 
 def is_ffmpeg_python_available() -> bool:
     """True when the ``ffmpeg-python`` wrapper package can be imported."""
-    return _FFMPEG_AVAILABLE and ffmpeg is not None
+    return ffmpeg is not None
 
 
 def is_ffmpeg_cli_available() -> bool:
