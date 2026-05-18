@@ -17,6 +17,7 @@ from nemo_retriever.retriever_graph_utils import (
     rerank_long_dataframe_to_hits,
 )
 from nemo_retriever.vdb.operators import RetrieveVdbOperator
+from nemo_retriever.vdb.records import RetrievalHit
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +218,7 @@ class Retriever:
         top_k: Optional[int] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[RetrievalHit]:
         return self.queries([query], top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)[0]
 
     def queries(
@@ -227,7 +228,7 @@ class Retriever:
         top_k: Optional[int] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
-    ) -> list[list[dict[str, Any]]]:
+    ) -> list[list[RetrievalHit]]:
         query_texts = [str(q) for q in queries]
         if not query_texts:
             return []

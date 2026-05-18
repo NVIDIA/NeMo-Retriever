@@ -14,6 +14,7 @@ from nemo_retriever.params.utils import normalize_embed_kwargs
 from nemo_retriever.retriever import Retriever
 from nemo_retriever.utils.input_files import expand_input_file_patterns, resolve_input_files
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.vdb.records import RetrievalHit
 
 
 IngestRunModeValue = Literal["inprocess", "batch"]
@@ -247,7 +248,7 @@ def query_documents(
     embed_invoke_url: str | None = None,
     embed_model_name: str | None = None,
     reranker_invoke_url: str | None = None,
-) -> list[dict[str, Any]]:
+) -> list[RetrievalHit]:
     """Run the minimal SDK query path used by the root CLI."""
     embed_kwargs = _build_embed_kwargs(embed_invoke_url, embed_model_name)
     rerank_kwargs = _build_rerank_kwargs(reranker_invoke_url)
