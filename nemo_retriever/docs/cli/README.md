@@ -33,11 +33,115 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 
 | Topic | Location | Replaces example(s) in |
 |-------|----------|------------------------|
-| Quick start | [`quickstart.md`](quickstart.md) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
+| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
 | CLI reference | [`retriever_cli.md`](retriever_cli.md) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
 | PDF split tuning | [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` |
 | Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
+
+<!-- --8<-- [start:quickstart] -->
+
+## Quick start
+
+Local **Docker Compose** workflows are **unsupported developer tooling** only — see
+[`docker.md`](../../docker.md).
+
+For **supported** deployment of NeMo Retriever / **NIM** containers, use
+[nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm)
+and the [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)
+Helm install guides.
+
+### Ingest a PDF
+
+```bash
+retriever pipeline run ./data/multimodal_test.pdf \
+  --input-type pdf \
+  --method pdfium \
+  --extract-text --extract-tables --extract-charts \
+  --store-images-uri ./processed_docs/images \
+  --save-intermediate ./processed_docs
+```
+
+For a lightweight PDF-only workflow:
+
+```bash
+retriever ingest ./data/multimodal_test.pdf
+retriever query "What is in this document?"
+```
+
+Route stages to self-hosted or hosted NIM endpoints by passing only the URLs you
+want to override:
+
+```bash
+export NVIDIA_API_KEY=nvapi-...
+
+retriever ingest ./data/multimodal_test.pdf \
+  --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
+  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
+  --ocr-version v1 \
+  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
+  --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
+  --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+
+retriever query "What is in this document?" \
+  --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
+  --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking
+```
+
+`NVIDIA_API_KEY` is required only when those URLs point at hosted
+build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
+running self-hosted NIM containers.
+
+### What you get
+
+- Extracted text, tables, and charts as rows in LanceDB at `./lancedb` (default
+  table name `nv-ingest`).
+- Per-document Parquet under `./processed_docs/` (`--save-intermediate`).
+- Image assets under `./processed_docs/images/` (`--store-images-uri`).
+- Progress and stage logs on stderr.
+
+### Inspect the results
+
+```bash
+ls ./processed_docs
+ls ./processed_docs/images
+ls ./lancedb
+```
+
+```python
+import pyarrow.parquet as pq
+import lancedb
+
+df = pq.read_table("./processed_docs").to_pandas()
+print(df.head())
+
+db = lancedb.connect("./lancedb")
+tbl = db.open_table("nv-ingest")
+print(tbl.to_pandas().head())
+```
+
+Or query via the Retriever Python client (`nemo_retriever/README.md`):
+
+```python
+from nemo_retriever.retriever import Retriever
+
+retriever = Retriever(lancedb_uri="lancedb", lancedb_table="nv-ingest", top_k=5)
+hits = retriever.query(
+    "Given their activities, which animal is responsible for the typos?"
+)
+```
+
+### Larger datasets
+
+- Batch ingest: `retriever ingest ./data/pdf_corpus --run-mode batch`.
+- Tune throughput with `--pdf-extract-workers`, `--pdf-extract-batch-size`,
+  `--page-elements-workers`, `--page-elements-batch-size`, `--ocr-workers`,
+  `--ocr-batch-size`, `--embed-workers`, and `--embed-batch-size`.
+- For CI or debugging: `--run-mode inprocess` skips Ray startup.
+
+<!-- --8<-- [end:quickstart] -->
 
 ## Client usage walk-through
 
@@ -99,7 +203,7 @@ df = pq.read_table(OUTPUT_DIRECTORY_BATCH).to_pandas()
 print(df[["source_id", "text", "content_type"]].head())
 
 db = lancedb.connect("./lancedb")
-tbl = db.open_table("nemo-retriever")
+tbl = db.open_table("nv-ingest")
 print(tbl.to_pandas().head())
 ```
 
