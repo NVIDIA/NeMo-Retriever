@@ -123,6 +123,9 @@ def test_build_graph_inserts_ingest_vdb_before_webhook() -> None:
             break
         node = node.children[0]
 
+    # Streaming write is the last VDB stage; the index build runs as a
+    # driver-side hook (``GraphIngestor._finalize_vdb_upload``) after the
+    # graph completes, not as another Ray Data operator.
     assert names[-2] == "IngestVdbOperator"
     assert names[-1] == "WebhookNotifyOperator"
 

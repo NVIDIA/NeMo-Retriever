@@ -25,6 +25,8 @@ class _FakeVDB:
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
         self.run_calls: list[Any] = []
+        self.append_calls: list[tuple[Any, bool]] = []
+        self.build_index_calls: int = 0
 
     def create_index(self, **kwargs: Any) -> None:
         return None
@@ -37,6 +39,12 @@ class _FakeVDB:
 
     def run(self, records: Any) -> None:
         self.run_calls.append(records)
+
+    def append(self, records: Any, *, overwrite: bool) -> None:
+        self.append_calls.append((records, overwrite))
+
+    def build_index(self) -> None:
+        self.build_index_calls += 1
 
 
 def test_normalize_sidecar_cell_value_list_and_dict_no_raise() -> None:
@@ -104,8 +112,9 @@ def test_apply_sidecar_merges_into_content_metadata(tmp_path: Path) -> None:
     assert cm["type"] == "text"
 
 
-def test_ingest_vdb_operator_marks_global_batch_for_ray() -> None:
-    assert IngestVdbOperator.REQUIRES_GLOBAL_BATCH is True
+def test_ingest_vdb_operator_streams_without_global_batch() -> None:
+    """Streaming append path keeps per-actor memory bounded by the batch size."""
+    assert IngestVdbOperator.REQUIRES_GLOBAL_BATCH is False
 
 
 def test_vdb_upload_params_triplet_validation() -> None:
@@ -157,8 +166,9 @@ def test_ingest_operator_passes_merged_records_to_vdb(tmp_path: Path, monkeypatc
     ]
     operator.process(data)
     vdb = operator._vdb
-    assert vdb.run_calls
-    rec = vdb.run_calls[0][0][0]
+    assert vdb.append_calls
+    records, _overwrite = vdb.append_calls[0]
+    rec = records[0][0]
     assert rec["metadata"]["content_metadata"].get("meta_a") == "zeta"
 
 

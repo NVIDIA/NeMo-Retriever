@@ -325,21 +325,17 @@ class LanceDB(VDB):
         on_bad_vectors: str = "drop",
         fill_value: float = 0.0,
         validate_vector_length: bool = True,
-        build_index: bool | None = None,
+        create_index: bool = True,
         **kwargs,
     ):
-        create_index = kwargs.pop("create_index", None)
-        if build_index is None:
-            build_index = True if create_index is None else bool(create_index)
-        elif create_index is not None and bool(create_index) != bool(build_index):
-            raise ValueError("Pass only one index toggle: build_index or create_index.")
-
         if int(vector_dim) <= 0:
             raise ValueError(f"vector_dim must be positive; got {vector_dim}")
         self.uri = uri or "lancedb"
         self.overwrite = bool(overwrite)
         self.table_name = table_name
-        self.build_index = bool(build_index)
+        # Stored under a private name so it doesn't shadow the ``build_index()``
+        # streaming-finalize method on this class / the VDB base.
+        self._build_index_on_run = bool(create_index)
         self.index_type = index_type
         self.metric = metric
         self.num_partitions = num_partitions
@@ -350,6 +346,11 @@ class LanceDB(VDB):
         self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
         self.fill_value = float(fill_value)
         self.validate_vector_length = bool(validate_vector_length)
+        # Cached lance connection + table handle reused across streaming
+        # ``append`` calls. The IngestVdbOperator is pinned to concurrency=1
+        # in ingestor_runtime so there is exactly one writer per actor.
+        self._cached_db: Any = None
+        self._cached_table: Any = None
         super().__init__(**kwargs)
 
     def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
@@ -514,7 +515,7 @@ class LanceDB(VDB):
     def run(self, records):
         """Orchestrate index creation and data ingestion."""
         table = self.create_index(records=records, table_name=self.table_name)
-        if self.build_index:
+        if self._build_index_on_run:
             self.write_to_index(
                 records,
                 table=table,
@@ -526,8 +527,126 @@ class LanceDB(VDB):
                 fts_language=self.fts_language,
             )
         else:
-            logger.info("Skipping LanceDB index creation for table %r because build_index=False.", self.table_name)
+            logger.info("Skipping LanceDB index creation for table %r because create_index=False.", self.table_name)
         return records
+
+    def _lancedb_schema(self) -> "pa.Schema":
+        return pa.schema(
+            [
+                pa.field("vector", pa.list_(pa.float32(), self.vector_dim)),
+                pa.field("text", pa.string()),
+                pa.field("metadata", pa.string()),
+                pa.field("source", pa.string()),
+            ]
+        )
+
+    def append(self, records: list[list[dict[str, Any]]], *, overwrite: bool) -> bool:
+        """Streaming write entry point for ``IngestVdbOperator``.
+
+        Writes ``records`` to the LanceDB table without building any search
+        index. ``build_index`` does that once, after all batches are in.
+
+        Semantics:
+        - ``overwrite=True``: drop any existing table and create it from this
+          batch's rows + the LanceDB schema.
+        - ``overwrite=False``: open the existing table and ``table.add`` the
+          rows. (Callers are responsible for ensuring an overwrite call landed
+          first; ``IngestVdbOperator`` does this by pinning concurrency=1 and
+          tracking a first-batch flag.)
+
+        Returns ``True`` when rows were committed to the table, ``False`` when
+        every record was filtered out by ``_create_lancedb_results`` (so no
+        table was created or modified). The operator uses this to keep
+        ``overwrite=True`` until a write actually lands.
+
+        The lance connection and table handle are cached on ``self`` so the
+        per-batch path is just ``table.add(rows)`` plus the underlying lance
+        version commit — no repeated ``lancedb.connect()`` or ``open_table()``
+        (which becomes expensive once the table accumulates many versions).
+        """
+        if self.validate_vector_length and self.on_bad_vectors != "error":
+            expected_dim: int | None = self.vector_dim
+        else:
+            expected_dim = None
+
+        rows, counts = _create_lancedb_results(records, expected_dim=expected_dim)
+        if not rows:
+            return False
+
+        if self._cached_db is None:
+            self._cached_db = lancedb.connect(uri=self.uri)
+
+        if overwrite:
+            create_kwargs: dict[str, Any] = {
+                "data": rows,
+                "schema": self._lancedb_schema(),
+                "mode": "overwrite",
+                "on_bad_vectors": self.on_bad_vectors,
+            }
+            if self.on_bad_vectors == "fill":
+                create_kwargs["fill_value"] = self.fill_value
+            t0 = time.perf_counter()
+            self._cached_table = self._cached_db.create_table(self.table_name, **create_kwargs)
+            _record_timing(
+                "lancedb.create_table",
+                time.perf_counter() - t0,
+                {"rows": len(rows), **counts},
+            )
+        else:
+            if self._cached_table is None:
+                self._cached_table = self._cached_db.open_table(self.table_name)
+                # Mirror create_index()'s append-path warning so streaming and
+                # legacy paths give the same heads-up about non-deduplicating
+                # re-runs. Emit once per operator instance, the first time we
+                # open a pre-existing table for append.
+                existing_rows = int(self._cached_table.count_rows())
+                if existing_rows:
+                    logger.warning(
+                        "Appending to existing LanceDB table %r at %s "
+                        "(existing_rows=%d). Append mode does not deduplicate; "
+                        "rerunning the same inputs will duplicate rows.",
+                        self.table_name,
+                        self.uri,
+                        existing_rows,
+                    )
+            t0 = time.perf_counter()
+            self._cached_table.add(rows)
+            _record_timing(
+                "lancedb.append",
+                time.perf_counter() - t0,
+                {"rows": len(rows), **counts},
+            )
+
+        return True
+
+    def build_index(self) -> None:
+        """Build vector indexes on the populated table."""
+        if not self._build_index_on_run:
+            logger.info(
+                "Skipping LanceDB index build for table %r because create_index=False.",
+                self.table_name,
+            )
+            return
+        db = lancedb.connect(uri=self.uri)
+        try:
+            table = db.open_table(self.table_name)
+        except (FileNotFoundError, ValueError):
+            # Empty corpus: no batch produced rows, so no table was ever created.
+            logger.warning(
+                "LanceDB.build_index: table %r does not exist; skipping index build.",
+                self.table_name,
+            )
+            return
+        self.write_to_index(
+            records=None,
+            table=table,
+            index_type=self.index_type,
+            metric=self.metric,
+            num_partitions=self.num_partitions,
+            num_sub_vectors=self.num_sub_vectors,
+            hybrid=self.hybrid,
+            fts_language=self.fts_language,
+        )
 
     def retrieval(self, vectors, **kwargs):
         """Search LanceDB with precomputed query vectors.

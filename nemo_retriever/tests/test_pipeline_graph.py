@@ -926,7 +926,9 @@ class TestRayDataExecutor:
         executor = RayDataExecutor(Graph())
         result = executor.ingest([str(tmp_path / "**" / "*.pdf")])
 
-        assert isinstance(result, pd.DataFrame)
+        # The executor now returns the materialized Ray Dataset (cheap on the
+        # driver — block refs only) instead of forcing a ``to_pandas()`` pull.
+        assert isinstance(result, _FakeDataset)
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
 

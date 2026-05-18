@@ -20,6 +20,9 @@ RUNNER = CliRunner()
 
 
 class _FakeDataset:
+    """Empty-corpus Ray Dataset stand-in supporting the streaming surface
+    used by :class:`IngestResult`."""
+
     def materialize(self):
         return self
 
@@ -28,6 +31,23 @@ class _FakeDataset:
 
     def to_pandas(self):
         return pd.DataFrame()
+
+    def count(self) -> int:
+        return 0
+
+    def unique(self, column: str):
+        raise KeyError(column)
+
+    def iter_rows(self):
+        return iter(())
+
+    def iter_batches(self, *, batch_format="pandas", batch_size=None):
+        return iter(())
+
+    def write_parquet(self, path: str) -> None:
+        from pathlib import Path as _P
+
+        _P(path).mkdir(parents=True, exist_ok=True)
 
     def groupby(self, _key):
         class _FakeGrouped:
@@ -360,7 +380,10 @@ def test_graph_pipeline_cli_routes_beir_mode_to_evaluator(tmp_path, monkeypatch)
 
     fake_ingestor = _FakeIngestor()
     monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
-    monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
+    monkeypatch.setattr(
+        "nemo_retriever.pipeline.ingest_result.IngestResult.count_uploadable_vdb_records",
+        lambda self: 1,
+    )
     monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
 
     class _FakeTable:
@@ -440,7 +463,10 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
 
     monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
-    monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
+    monkeypatch.setattr(
+        "nemo_retriever.pipeline.ingest_result.IngestResult.count_uploadable_vdb_records",
+        lambda self: 1,
+    )
     monkeypatch.setattr(
         pipeline_main,
         "_run_evaluation",

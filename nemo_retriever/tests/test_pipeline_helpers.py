@@ -247,34 +247,30 @@ def test_build_embed_params_forwards_remote_and_modality_flags() -> None:
 
 
 class TestCollectResults:
-    """Ingest returns a DataFrame (``ingestor.ingest()`` → ``ds.to_pandas()``); _collect_results consumes it."""
+    """``_collect_results`` returns an ``IngestResult`` plus download time + unit count."""
 
-    def test_batch_mode_accepts_ingest_dataframe(self):
+    def test_batch_mode_wraps_dataframe_input(self):
         rows = [
             {"source_id": "a", "text": "hello"},
             {"source_id": "a", "text": "world"},
             {"source_id": "b", "text": "!"},
         ]
-        # Same shape as the graph executor return after ``Dataset.to_pandas()``.
+        # Pre-fix ingest could return a DataFrame even in batch mode (after the
+        # historical ``ds.to_pandas()``). The streaming refactor still accepts it.
         result_df = pd.DataFrame(rows)
 
-        records, df, download_time, num_units = _collect_results("batch", result_df)
+        handle, download_time, num_units = _collect_results("batch", result_df)
 
-        assert records == rows
-        assert df is result_df
-        assert isinstance(df, pd.DataFrame)
-        assert list(df.columns) == ["source_id", "text"]
-        assert len(df) == 3
+        assert list(handle.iter_records()) == rows
+        assert handle.row_count() == 3
         # ``source_id`` has two distinct values → that is the unit count.
         assert num_units == 2
         assert download_time >= 0.0
 
     def test_batch_mode_handles_empty_result(self):
-        result_df = pd.DataFrame()
-        records, df, download_time, num_units = _collect_results("batch", result_df)
-        assert records == []
-        assert df.empty
-        # Empty DataFrame has no columns → falls through to len(df.index) == 0.
+        handle, download_time, num_units = _collect_results("batch", pd.DataFrame())
+        assert handle.row_count() == 0
+        # Empty DataFrame has no columns → falls through to row count == 0.
         assert num_units == 0
         assert download_time >= 0.0
 
@@ -285,11 +281,9 @@ class TestCollectResults:
         ]
         df_in = pd.DataFrame(rows)
 
-        records, df_out, download_time, num_units = _collect_results("inprocess", df_in)
+        handle, download_time, num_units = _collect_results("inprocess", df_in)
 
-        # The DataFrame is passed through unchanged (same object).
-        assert df_out is df_in
-        assert records == rows
+        assert list(handle.iter_records()) == rows
         # inprocess mode never incurs Ray download time.
         assert download_time == 0.0
         assert num_units == 2
@@ -298,10 +292,9 @@ class TestCollectResults:
 def test_collect_results_accepts_inprocess_dataframe() -> None:
     df_in = pd.DataFrame([{"source_path": "/a.pdf"}, {"source_path": "/b.pdf"}])
 
-    records, df_out, download_time, num_units = _collect_results("inprocess", df_in)
+    handle, download_time, num_units = _collect_results("inprocess", df_in)
 
-    assert df_out is df_in
-    assert records == [{"source_path": "/a.pdf"}, {"source_path": "/b.pdf"}]
+    assert list(handle.iter_records()) == [{"source_path": "/a.pdf"}, {"source_path": "/b.pdf"}]
     assert download_time == 0.0
     assert num_units == 2
 

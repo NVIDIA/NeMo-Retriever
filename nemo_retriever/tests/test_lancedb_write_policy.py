@@ -74,8 +74,13 @@ def test_append_incompatible_schema_raises_clear_error(tmp_path: Path) -> None:
 
 def test_create_index_kwarg_disables_index_build_without_shadowing_method(tmp_path: Path) -> None:
     op = LanceDB(uri=str(tmp_path), table_name="t", vector_dim=2, create_index=False)
+    # ``create_index`` and ``build_index`` must remain callable methods — the
+    # streaming flow (``IngestVdbOperator`` → ``vdb.append`` → ``vdb.build_index``)
+    # invokes ``build_index()`` after all batches land. The constructor kwarg is
+    # stored on a private attribute so it can't shadow either method.
     assert callable(op.create_index)
-    assert op.build_index is False
+    assert callable(op.build_index)
+    assert op._build_index_on_run is False
 
     def fail_if_called(*_args, **_kwargs) -> None:
         raise AssertionError("write_to_index should not be called when create_index=False")

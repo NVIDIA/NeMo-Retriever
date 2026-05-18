@@ -17,6 +17,8 @@ class FakeVDB(VDB):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.run_calls: list[Any] = []
+        self.append_calls: list[tuple[Any, bool]] = []
+        self.build_index_calls: int = 0
         self.retrieval_calls: list[tuple[Any, dict[str, Any]]] = []
 
     def create_index(self, **kwargs: Any) -> None:
@@ -47,6 +49,13 @@ class FakeVDB(VDB):
         self.run_calls.append(records)
         return {"records": records}
 
+    def append(self, records: Any, *, overwrite: bool) -> bool:
+        self.append_calls.append((records, overwrite))
+        return True
+
+    def build_index(self) -> None:
+        self.build_index_calls += 1
+
 
 def _graph_rows() -> list[dict[str, Any]]:
     return [
@@ -65,19 +74,6 @@ def _graph_rows() -> list[dict[str, Any]]:
             "metadata": {"content_metadata": {"type": "text"}},
         },
     ]
-
-
-def test_process_returns_original_graph_rows_and_delegates_converted_records_to_run() -> None:
-    data = _graph_rows()
-    vdb = FakeVDB()
-    operator = IngestVdbOperator(vdb=vdb)
-
-    assert operator.preprocess(data) is data
-    assert operator.process(data) is data
-    assert operator.postprocess(data) is data
-    assert vdb.run_calls[0][0][0]["document_type"] == "text"
-    assert vdb.run_calls[0][0][0]["metadata"]["content"] == "first chunk"
-    assert vdb.run_calls[0][0][0]["metadata"]["embedding"] == [0.1] * 2048
 
 
 def test_vdb_op_constructs_client_vdb(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -114,23 +110,26 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
 
     assert operator(data) is data
 
-    assert vdb.run_calls == [
-        [
+    assert vdb.append_calls == [
+        (
             [
-                {
-                    "document_type": "text",
-                    "metadata": {
-                        "embedding": [0.1] * 2048,
-                        "content": "graph chunk",
-                        "content_metadata": {"page_number": 7},
-                        "source_metadata": {
-                            "source_id": "/tmp/doc-a.pdf",
-                            "source_name": "doc-a.pdf",
+                [
+                    {
+                        "document_type": "text",
+                        "metadata": {
+                            "embedding": [0.1] * 2048,
+                            "content": "graph chunk",
+                            "content_metadata": {"page_number": 7},
+                            "source_metadata": {
+                                "source_id": "/tmp/doc-a.pdf",
+                                "source_name": "doc-a.pdf",
+                            },
                         },
-                    },
-                }
-            ]
-        ]
+                    }
+                ]
+            ],
+            True,
+        )
     ]
 
 
@@ -167,3 +166,100 @@ def test_constructor_requires_exactly_one_vdb_source() -> None:
 
     with pytest.raises(ValueError, match="Pass either vdb or vdb_op"):
         IngestVdbOperator(vdb=FakeVDB(), vdb_op="lancedb")
+
+
+def test_ingest_operator_streams_with_overwrite_flag_flip() -> None:
+    """First batch overwrites the table; subsequent batches append. This handshake
+    is the entire streaming contract — without concurrency=1 it'd be impossible to
+    keep coherent, and without the flag flip we'd either rewrite per batch or
+    never overwrite at all."""
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+
+    operator.process(_graph_rows())
+    operator.process(_graph_rows())
+    operator.process(_graph_rows())
+
+    overwrites = [overwrite for _records, overwrite in vdb.append_calls]
+    assert overwrites == [True, False, False]
+    assert vdb.run_calls == []  # legacy global-batch path must not be invoked
+
+
+def test_finalize_vdb_upload_builds_index_when_params_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``GraphIngestor`` finalizes a configured VDB upload by constructing the
+    backend once and calling ``build_index()`` — replacing the old downstream
+    ``VdbBuildIndexOperator`` Ray-Data barrier with a driver-side hook so the
+    graph itself can stay fully streaming end-to-end."""
+    from nemo_retriever.graph_ingestor import GraphIngestor
+    from nemo_retriever.params import VdbUploadParams
+
+    constructed: list[dict[str, Any]] = []
+    indexed: list[FakeVDB] = []
+
+    class _CountingVDB(FakeVDB):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            constructed.append(kwargs)
+
+        def build_index(self) -> None:
+            super().build_index()
+            indexed.append(self)
+
+    monkeypatch.setattr(vdb_operator_module, "get_vdb_op_cls", lambda _name: _CountingVDB)
+
+    ingestor = GraphIngestor(run_mode="inprocess", documents=[])
+    ingestor.vdb_upload(VdbUploadParams(vdb_op="fake", vdb_kwargs={"uri": "/tmp/x", "table_name": "t"}))
+    ingestor._finalize_vdb_upload()
+
+    assert len(constructed) == 1
+    assert constructed[0] == {"uri": "/tmp/x", "table_name": "t"}
+    assert len(indexed) == 1 and indexed[0].build_index_calls == 1
+
+
+def test_dataframe_output_keeps_only_whitelisted_columns_and_marks_uploadable() -> None:
+    """When the operator receives a pandas DataFrame (real Ray Data path), the
+    returned block must keep ONLY a small whitelist of accounting columns —
+    anything else (embeddings, metadata blobs, raw PDF bytes, page images,
+    extracted text) accumulates in plasma at the downstream global-batch
+    barrier and dominates the driver-side materialization. A whitelist also
+    survives future schema additions: any newly-added heavy column gets
+    dropped by default."""
+    import pandas as pd
+
+    rows = pd.DataFrame(
+        [
+            # Valid row: text + embedding present.
+            {
+                "text": "alpha",
+                "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+                "source_id": "doc-a.pdf",
+                "source_path": "/tmp/doc-a.pdf",
+                "path": "/tmp/doc-a.pdf",
+                "page_number": 1,
+                "metadata": {"content_metadata": {"type": "text"}},
+                "bytes": b"x" * 1024,  # heavy column not in any blacklist
+                "image_data": "base64..." * 100,  # another heavy column
+            },
+            # Invalid row: text but no embedding.
+            {
+                "text": "beta",
+                "text_embeddings_1b_v2": None,
+                "source_id": "doc-a.pdf",
+                "source_path": "/tmp/doc-a.pdf",
+                "path": "/tmp/doc-a.pdf",
+                "page_number": 2,
+                "metadata": {"content_metadata": {"type": "text"}},
+                "bytes": b"y" * 1024,
+                "image_data": "base64..." * 100,
+            },
+        ]
+    )
+
+    operator = IngestVdbOperator(vdb=FakeVDB())
+    out = operator(rows)
+
+    # Only the accounting whitelist + the _vdb_uploadable flag must remain.
+    expected = {"source_id", "source_path", "path", "page_number", "_vdb_uploadable"}
+    assert set(out.columns) == expected
+    # First row uploaded, second row dropped (no embedding).
+    assert list(out["_vdb_uploadable"]) == [True, False]

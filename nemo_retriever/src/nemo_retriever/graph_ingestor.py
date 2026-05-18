@@ -34,6 +34,7 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tupl
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
 from nemo_retriever.ingestor import ingestor
+from nemo_retriever.vdb.operators import _construct_vdb
 from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,
@@ -557,7 +558,22 @@ class GraphIngestor(ingestor):
                 result = executor.ingest(self._documents)
 
         self._raise_for_stage_errors(result)
+        self._finalize_vdb_upload()
         return result
+
+    def _finalize_vdb_upload(self) -> None:
+        """Build the VDB search index once after the graph has finished
+        writing.
+
+        ``IngestVdbOperator`` streams per-batch writes during the run; the
+        index build is a one-shot operation that doesn't need any of the
+        graph's row data.
+        """
+        params = self._vdb_upload_params
+        if params is None:
+            return
+        vdb = _construct_vdb(vdb_op=params.vdb_op, vdb_kwargs=params.vdb_kwargs)
+        vdb.build_index()
 
     # ------------------------------------------------------------------
     # Internal helpers

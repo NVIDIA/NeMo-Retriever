@@ -365,6 +365,24 @@ def batch_tuning_to_node_overrides(
         store_override["concurrency"] = (1, store_workers, 1) if store_workers > 1 else 1
         store_override["num_cpus"] = DEFAULT_STORE_CPUS_PER_ACTOR
 
+    # IngestVdbOperator opens the LanceDB table with ``mode="overwrite"`` on
+    # its first batch and ``table.add(...)`` on every subsequent batch. With
+    # concurrency > 1, multiple actors would each treat their own first batch
+    # as the overwrite and clobber each other's writes.
+    overrides.setdefault(IngestVdbOperator.__name__, {})["concurrency"] = 1
+
+    # Coalesce Ray Data blocks into ~1000-row LanceDB writes. Every
+    # ``table.add(rows)`` commits a new entry to Lance's table-version
+    # manifest, and Lance reads the manifest linearly on every commit *and*
+    # every table reopen — so commit latency grows with the count of prior
+    # commits. At the default ~32-row block size coming out of
+    # ``StreamingRepartition`` this would be ~80k commits for a bo767-sized
+    # corpus (~80k rows); batching to ~1000 cuts that ~30× to ~3k commits and
+    # keeps per-commit time roughly flat. Higher values further reduce commit
+    # count but trade off per-batch memory in the writer actor — callers can
+    # raise the value via ``node_overrides``; we only set a default here.
+    overrides[IngestVdbOperator.__name__].setdefault("batch_size", 1000)
+
     return overrides
 
 

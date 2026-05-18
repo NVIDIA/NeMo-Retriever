@@ -73,6 +73,7 @@ from nemo_retriever.params import (
     VideoFrameTextDedupParams,
 )
 from nemo_retriever.params.models import BatchTuningParams
+from nemo_retriever.pipeline.ingest_result import IngestResult
 from nemo_retriever.utils.input_files import resolve_input_patterns
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
@@ -579,31 +580,26 @@ def _build_ingestor(
     return ingestor
 
 
-def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
-    """Materialize the graph result into a list of records + DataFrame.
+def _collect_results(run_mode: str, result: Any) -> tuple["IngestResult", float, int]:
+    """Wrap the graph result into a streaming-friendly IngestResult.
 
-    Ingest may return a ``pandas.DataFrame`` (in-process or after
-    ``ray.data.Dataset.to_pandas()`` in the executor), a ``ray.data.Dataset``,
-    or a :class:`~nemo_retriever.service_ingestor.ServiceIngestResult` (service
-    mode); normalize to a consistent ``(records, DataFrame, secs, units)`` tuple.
+    Ingest may return a ``pandas.DataFrame`` (in-process), a ``ray.data.Dataset``
+    (batch mode), or a ``nemo_retriever.service_ingestor.ServiceIngestResult``
+    (service mode); each is mapped to the matching ``IngestResult`` constructor without
+    ever pulling the full corpus onto the driver as a single pandas DataFrame.
 
-    Returns ``(records, result_df, ray_download_secs, num_input_units)``.
+    Returns ``(result_handle, ray_download_secs, num_input_units)``.
     """
 
     if run_mode == "service":
-        records = list(result)
-        result_df = pd.DataFrame(records) if records else pd.DataFrame()
-        num_units = getattr(result, "total_pages", 0) or len(records)
-        return records, result_df, 0.0, num_units
+        handle = IngestResult.from_service(result)
+        return handle, 0.0, handle.unique_source_count()
 
     if isinstance(result, pd.DataFrame):
-        result_df = result
+        handle = IngestResult.from_dataframe(result)
     else:
-        result_df = result.to_pandas()
-    records = result_df.to_dict("records")
-    ray_download_time = 0.0
-
-    return records, result_df, float(ray_download_time), _count_input_units(result_df)
+        handle = IngestResult.from_dataset(result)
+    return handle, 0.0, handle.unique_source_count()
 
 
 def _count_uploadable_vdb_records(records: list[dict[str, Any]]) -> int:
@@ -1426,7 +1422,8 @@ def run(
         ingest_start = time.perf_counter()
         raw_result = ingestor.ingest()
         ingestion_only_total_time = time.perf_counter() - ingest_start
-        ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
+        ingest_result, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
+        total_row_count = ingest_result.row_count()
 
         if run_mode == "service":
             # The service writes embeddings to LanceDB server-side during
@@ -1436,14 +1433,14 @@ def run(
             logger.info(
                 "Service-mode ingestion complete (%d results from %d input(s), %.1fs). "
                 "VDB writes are handled server-side.",
-                len(ingest_local_results),
+                total_row_count,
                 num_rows,
                 ingestion_only_total_time,
             )
-            uploadable_vdb_records = len(ingest_local_results)
+            uploadable_vdb_records = total_row_count
             vdb_upload_time = 0.0
         else:
-            uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+            uploadable_vdb_records = ingest_result.count_uploadable_vdb_records()
             vdb_upload_time = 0.0
             if uploadable_vdb_records == 0:
                 logger.warning(
@@ -1455,26 +1452,26 @@ def run(
                     "Prepared %s uploadable VDB records (%s graph rows) for in-graph upload to %s "
                     "(row conversion count, not backend-confirmed writes; see VDB/operator logs for persistence).",
                     uploadable_vdb_records,
-                    len(ingest_local_results),
+                    total_row_count,
                     resolved_vdb_op,
                 )
 
         if save_intermediate is not None:
             out_dir = Path(save_intermediate).expanduser().resolve()
             out_dir.mkdir(parents=True, exist_ok=True)
+            # Streaming write: Ray Data produces a directory of per-block
+            # parquet files (one file in inprocess/service mode). Existing
+            # readers in nemo_retriever already handle the directory form.
             out_path = out_dir / "extraction.parquet"
-            result_df.to_parquet(out_path, index=False)
+            ingest_result.write_parquet_dir(out_path)
             logger.info("Wrote extraction Parquet for intermediate use: %s", out_path)
 
         if detection_summary_file is not None:
-            from nemo_retriever.utils.detection_summary import (
-                collect_detection_summary_from_df,
-                write_detection_summary,
-            )
+            from nemo_retriever.utils.detection_summary import write_detection_summary
 
             write_detection_summary(
                 Path(detection_summary_file),
-                collect_detection_summary_from_df(result_df),
+                ingest_result.detection_summary(),
             )
 
         if uploadable_vdb_records == 0 and run_mode != "service":
@@ -1509,7 +1506,7 @@ def run(
                     "input_path": str(Path(input_path).resolve()),
                     "input_pages": int(num_rows),
                     "num_pages": int(num_rows),
-                    "num_rows": int(len(result_df.index)),
+                    "num_rows": int(total_row_count),
                     "ingestion_only_secs": float(ingestion_only_total_time),
                     "ray_download_secs": float(ray_download_time),
                     "vdb_upload_secs": float(vdb_upload_time),
@@ -1587,7 +1584,7 @@ def run(
                     "input_path": str(Path(input_path).resolve()),
                     "input_pages": int(num_rows),
                     "num_pages": int(num_rows),
-                    "num_rows": int(len(result_df.index)),
+                    "num_rows": int(total_row_count),
                     "ingestion_only_secs": float(ingestion_only_total_time),
                     "ray_download_secs": float(ray_download_time),
                     "vdb_upload_secs": float(vdb_upload_time),
@@ -1615,7 +1612,7 @@ def run(
                 "input_path": str(Path(input_path).resolve()),
                 "input_pages": int(num_rows),
                 "num_pages": int(num_rows),
-                "num_rows": int(len(result_df.index)),
+                "num_rows": int(total_row_count),
                 "ingestion_only_secs": float(ingestion_only_total_time),
                 "ray_download_secs": float(ray_download_time),
                 "vdb_upload_secs": float(vdb_upload_time),

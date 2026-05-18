@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 """Abstract Vector Database (VDB) operator API.
@@ -236,3 +239,34 @@ class VDB(ABC):
         - implementation-specific result
         """
         pass
+
+    def append(self, records: list[list[dict[str, Any]]], *, overwrite: bool) -> bool:
+        """Stream-friendly write entry point used by ``IngestVdbOperator``.
+
+        Implementations should write ``records`` to the underlying table without
+        building search indexes; ``build_index`` is invoked separately once all
+        writes are complete. When ``overwrite`` is ``True`` the implementation
+        must drop any existing table before writing the first batch; subsequent
+        calls with ``overwrite=False`` must append.
+
+        Returns ``True`` if any rows were committed to the backing store; returns
+        ``False`` if the implementation early-returned (e.g. all records failed
+        per-row validation and there were no rows to write). The streaming
+        operator uses this signal to keep ``overwrite=True`` until a write
+        actually lands — otherwise an "empty" first batch would silently flip
+        the handshake to ``overwrite=False`` against a non-existent table.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement streaming append(); "
+            "the operator's IngestVdbOperator path requires it."
+        )
+
+    def build_index(self) -> None:
+        """Build vector indexes on the underlying table.
+
+        Called by ``GraphIngestor._finalize_vdb_upload`` exactly once after the streaming
+        writes from ``IngestVdbOperator`` are finished. Default is a no-op for
+        backends that do not have an explicit "build index after data is in"
+        step.
+        """
+        return None
