@@ -7,6 +7,7 @@ import logging
 import os
 import time
 
+from collections.abc import Iterable, Sequence
 from datetime import timedelta
 from typing import Any, Final, FrozenSet
 
@@ -529,7 +530,7 @@ class LanceDB(VDB):
             logger.info("Skipping LanceDB index creation for table %r because build_index=False.", self.table_name)
         return records
 
-    def retrieval(self, vectors, **kwargs):
+    def retrieval(self, vectors: Iterable[Sequence[float]], **kwargs: Any) -> list[list[dict[str, Any]]]:
         """Search LanceDB with precomputed query vectors.
 
         Keyword arguments
@@ -572,8 +573,8 @@ class LanceDB(VDB):
         if hybrid:
             if query_texts is None:
                 raise ValueError(
-                    "LanceDB hybrid retrieval requires query_texts because it needs raw query text "
-                    "in addition to precomputed vectors."
+                    "LanceDB hybrid retrieval requires query_texts. Pass query_texts=your_queries "
+                    "alongside vectors when calling retrieval() with hybrid=True."
                 )
             query_type = search_kwargs.get("query_type")
             if query_type is not None:
@@ -595,19 +596,20 @@ class LanceDB(VDB):
 
         table = lancedb.connect(uri=table_path).open_table(table_name)
 
-        vectors_list = list(vectors)
         if hybrid:
+            vectors_for_search = list(vectors)
             query_texts_list = [query_texts] if isinstance(query_texts, str) else list(query_texts)
-            if len(query_texts_list) != len(vectors_list):
+            if len(query_texts_list) != len(vectors_for_search):
                 raise ValueError(
                     "LanceDB hybrid retrieval requires query_texts length to match vectors length; "
-                    f"got query_texts={len(query_texts_list)} vectors={len(vectors_list)}."
+                    f"got query_texts={len(query_texts_list)} vectors={len(vectors_for_search)}."
                 )
         else:
+            vectors_for_search = vectors
             query_texts_list = []
 
         search_results = []
-        for idx, vector in enumerate(vectors_list):
+        for idx, vector in enumerate(vectors_for_search):
             if hybrid:
                 query = (
                     table.search(vector_column_name=vector_column_name, **search_kwargs)
