@@ -187,4 +187,4 @@ For **application-level** ingestion errors (not Docker wiring), use [Troubleshoo
 | Topic | Location |
 |-------|----------|
 | Neo4j via Compose (`graph` profile + Python connection) | [`src/nemo_retriever/tabular_data/neo4j/SETUP.md`](src/nemo_retriever/tabular_data/neo4j/SETUP.md) |
-| UDF examples that tweak ingest-runtime mounts / `INGEST_CONFIG_PATH` | [`../examples/udfs/README.md`](../examples/udfs/README.md) (Compose snippets there intentionally short — this page is the canonical Compose overview) |
+| Custom pipeline stages / UDFs | [`src/nemo_retriever/graph/README.md`](src/nemo_retriever/graph/README.md#nemo-retriever-graph) |

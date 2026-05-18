@@ -46,9 +46,7 @@ The following legacy **ingestion-service** CLI examples are **not** migrated her
 new CLI does not yet expose an equivalent — continue to use the **ingestion-service** CLI
 for these cases:
 
-- `--task 'udf:{…}'` — user-defined functions
-  (`nemo_retriever/src/nemo_retriever/graph/README.md`,
-  [`examples/udfs/README.md`](../../../examples/udfs/README.md)). `retriever` does not expose UDFs.
+- `--task 'udf:{…}'` — user-defined functions ([NeMo Retriever Graph](../../src/nemo_retriever/graph/README.md#nemo-retriever-graph)). `retriever` does not expose UDFs.
 - `--task 'filter:{content_type:"image", min_size:…, min_aspect_ratio:…, max_aspect_ratio:…}'`.
   The image scale/aspect-ratio filter stage is not reproduced in the new CLI.
 - Bare service submission (legacy CLI `--doc foo.pdf` with no extract tasks
