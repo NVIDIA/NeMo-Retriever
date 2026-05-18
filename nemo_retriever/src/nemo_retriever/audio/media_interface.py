@@ -144,7 +144,7 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
 
 def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optional[str] = None) -> Optional[Path]:
     """Extract audio from a video file. Returns output Path or None on failure."""
-    if not is_media_available():
+    if not is_ffmpeg_python_available() or not is_ffmpeg_cli_available():
         raise RuntimeError(media_dependency_error_message("Audio extraction"))
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)

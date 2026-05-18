@@ -81,6 +81,32 @@ class MediaDependencyAvailabilityTests(TestCase):
                 self.assertIn("FFmpeg operation 'split' requires media dependencies", message)
                 self.assertNotIn("split requires media dependencies", message)
 
+    def test_get_audio_from_video_does_not_require_ffprobe(self) -> None:
+        media_interface = _load_media_interface()
+
+        class FakeFFmpegStream:
+            def output(self, *_args, **_kwargs):
+                return self
+
+            def overwrite_output(self):
+                return self
+
+        stream = FakeFFmpegStream()
+        fake_ffmpeg = SimpleNamespace(input=lambda _path: stream, Error=Exception)
+
+        def fake_which(name: str) -> str | None:
+            return f"/usr/bin/{name}" if name == "ffmpeg" else None
+
+        with (
+            patch.object(media_interface, "ffmpeg", fake_ffmpeg),
+            patch.object(media_interface.shutil, "which", side_effect=fake_which),
+            patch.object(media_interface, "_run_ffmpeg") as run_ffmpeg,
+        ):
+            result = media_interface._get_audio_from_video("/tmp/input.mp4", "/tmp/output.mp3")
+
+        self.assertEqual(result, Path("/tmp/output.mp3"))
+        run_ffmpeg.assert_called_once_with(stream, label="extract_audio", input_path="/tmp/input.mp4")
+
 
 if __name__ == "__main__":
     main()
