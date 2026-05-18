@@ -31,13 +31,77 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 
 ## Contents
 
-| New file | Replaces example(s) in |
-|----------|------------------------|
-| [`retriever_cli.md`](retriever_cli.md) | Prior `cli-reference` / CLI reference pages under `docs/docs/extraction/` |
-| [`quickstart.md`](quickstart.md) | Legacy service quickstart; supported **Helm** + **NeMo Retriever Library** deployment handoff in quickstart prose; **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
-| [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` (CLI example) |
-| [`cli-client-usage.md`](cli-client-usage.md) | `client/client_examples/examples/cli_client_usage.ipynb` |
-| [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
+| Topic | Location | Replaces example(s) in |
+|-------|----------|------------------------|
+| Quick start | [`quickstart.md`](quickstart.md) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
+| CLI reference | [`retriever_cli.md`](retriever_cli.md) | Prior `cli-reference` pages under `docs/docs/extraction/` |
+| Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
+| PDF split tuning | [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` |
+| Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
+
+## Client usage walk-through
+
+Counterpart to `client/client_examples/examples/cli_client_usage.ipynb`. Covers help, a
+single-PDF run, a batch directory run, and inspecting results. Drop these cells into a
+notebook (e.g. `retriever_client_usage.ipynb`) if you prefer.
+
+### Help
+
+```bash
+retriever --help
+retriever pipeline run --help
+```
+
+Top-level `--help` lists the subcommand tree; `pipeline run --help` shows the
+ingest-specific flags used below.
+
+### Run a single PDF
+
+```bash
+retriever pipeline run "${SAMPLE_PDF0}" \
+  --input-type pdf \
+  --method pdfium \
+  --extract-text --extract-tables --extract-charts \
+  --dedup --dedup-iou-threshold 0.45 \
+  --store-images-uri "${OUTPUT_DIRECTORY_SINGLE}/images" \
+  --save-intermediate "${OUTPUT_DIRECTORY_SINGLE}"
+```
+
+- Table/structure detectors are chosen automatically; there is no CLI flag to pick a
+  specific table-extraction backend.
+- `--dedup` with `--dedup-iou-threshold` removes duplicate image elements.
+- There is no image scale/aspect-ratio filter in the `retriever` CLI today.
+- `--store-images-uri` persists image assets at the configured embed granularity.
+
+### Run a batch of PDFs
+
+```bash
+# $PDF_DIR is a directory of PDFs.
+retriever pipeline run "${PDF_DIR}" \
+  --input-type pdf \
+  --method pdfium \
+  --extract-text --extract-tables --extract-charts \
+  --dedup --dedup-iou-threshold 0.45 \
+  --store-images-uri "${OUTPUT_DIRECTORY_BATCH}/images" \
+  --save-intermediate "${OUTPUT_DIRECTORY_BATCH}"
+```
+
+- Pass a directory or glob; there is no built-in `dataset.json` loader.
+- Tune throughput with `--pdf-split-batch-size`, `--pdf-extract-batch-size`, etc.
+
+### Inspect results
+
+```python
+import pyarrow.parquet as pq
+import lancedb
+
+df = pq.read_table(OUTPUT_DIRECTORY_BATCH).to_pandas()
+print(df[["source_id", "text", "content_type"]].head())
+
+db = lancedb.connect("./lancedb")
+tbl = db.open_table("nemo-retriever")
+print(tbl.to_pandas().head())
+```
 
 ## Gaps with no retriever-CLI equivalent (kept out of this folder)
 
