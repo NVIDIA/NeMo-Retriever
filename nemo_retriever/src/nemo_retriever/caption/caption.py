@@ -31,7 +31,6 @@ _LOCAL_MODEL_CACHE_KEYS = (
     "model_name",
     "device",
     "hf_cache_dir",
-    "max_tokens",
     "tensor_parallel_size",
     "gpu_memory_utilization",
 )
@@ -66,7 +65,6 @@ def _local_model_cache_key(kwargs: dict) -> tuple[tuple[str, Any], ...]:
         "model_name": kwargs.get("model_name", _DEFAULT_MODEL_NAME),
         "device": kwargs.get("device"),
         "hf_cache_dir": kwargs.get("hf_cache_dir"),
-        "max_tokens": kwargs.get("max_tokens", 1024),
         "tensor_parallel_size": kwargs.get("tensor_parallel_size", 1),
         "gpu_memory_utilization": kwargs.get("gpu_memory_utilization", 0.5),
     }

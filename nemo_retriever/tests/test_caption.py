@@ -588,6 +588,7 @@ def test_caption_images_local_cache_keys_by_resolved_loader_kwargs(monkeypatch):
 
     default_result = caption_module.caption_images(_make_page_df(num_images=1), max_tokens=512)
     default_again = caption_module.caption_images(_make_page_df(num_images=1), max_tokens=512)
+    default_different_tokens = caption_module.caption_images(_make_page_df(num_images=1), max_tokens=256)
     omni_result = caption_module.caption_images(
         _make_page_df(num_images=1),
         model_name="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning-fp8",
@@ -601,6 +602,7 @@ def test_caption_images_local_cache_keys_by_resolved_loader_kwargs(monkeypatch):
 
     assert default_result.iloc[0]["images"][0]["text"] == "local cap 1"
     assert default_again.iloc[0]["images"][0]["text"] == "local cap 1"
+    assert default_different_tokens.iloc[0]["images"][0]["text"] == "local cap 1"
     assert omni_result.iloc[0]["images"][0]["text"] == "local cap 2"
     assert omni_again.iloc[0]["images"][0]["text"] == "local cap 2"
     assert [kwargs["model_name"] for kwargs in created_kwargs] == [
