@@ -180,6 +180,22 @@ class VDB(ABC):
         - embedding_endpoint / model_name / nvidia_api_key: parameters needed
             when the operator integrates with an external embedding service.
 
+        Portable metadata filter (recommended for cross-backend code):
+        - ``filter`` (``dict[str, Any] | None``): a dialect-free set of
+            equality constraints on per-record ``metadata`` fields. Keys are
+            top-level metadata field names (e.g. ``"label"``,
+            ``"database_name"``) and values are scalars (``str`` / ``int`` /
+            ``float`` / ``bool``). All constraints are AND-ed; keys with
+            value ``None`` are ignored; an empty / ``None`` filter is a
+            no-op. Concrete backends are responsible for translating this
+            into their native predicate language (e.g. a LanceDB ``LIKE``
+            on a JSON-encoded string column, a Postgres ``metadata->>'k' =
+            'v'`` / ``metadata @> '{...}'::jsonb`` clause, etc.). Callers
+            that need richer expressions (``OR``, ranges, nested fields)
+            should fall back to a backend-specific escape hatch (e.g.
+            LanceDB's ``where=<sql>``). Backends that cannot honor a given
+            key MAY raise ``NotImplementedError``.
+
         Parameters:
         - queries (list[str]): list of text queries to be vectorized and
             searched

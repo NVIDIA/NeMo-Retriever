@@ -47,6 +47,45 @@ def _normalize_on_bad_vectors(value: str) -> str:
     return normalized
 
 
+def _escape_like_literal(value: str) -> str:
+    """Escape a literal for use inside a LanceDB / DataFusion LIKE pattern with ``ESCAPE '\\'``."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''")
+
+
+def _filter_dict_to_where_clause(filter_dict: dict[str, Any]) -> str | None:
+    """Translate a portable ``filter`` dict into a LanceDB ``where`` predicate.
+
+    The ``metadata`` column is stored as a JSON string. Ingestion paths in
+    this repo are not uniform: the canonical LanceDB writer uses
+    :func:`_json_str` (compact, ``"k":"v"``), while
+    :mod:`nemo_retriever.vdb.records` / :mod:`nemo_retriever.vdb.lancedb_schema`
+    use the default :func:`json.dumps` (``"k": "v"`` with a space). To stay
+    robust to both, each constraint is matched with a disjunction of the two
+    forms. Only string equality is supported; richer predicates should be
+    passed through the backend-specific ``where=`` escape hatch.
+    """
+    parts: list[str] = []
+    for key, value in filter_dict.items():
+        if value is None:
+            continue
+        if not isinstance(key, str) or not key:
+            raise ValueError(f"filter keys must be non-empty strings; got {key!r}")
+        if not isinstance(value, str):
+            raise NotImplementedError(
+                f"LanceDB filter currently supports string equality only; "
+                f"got {type(value).__name__} for key {key!r}. "
+                "Use the backend-specific `where=<sql>` escape hatch for richer predicates."
+            )
+        k = _escape_like_literal(key)
+        v = _escape_like_literal(value)
+        compact = f"""metadata LIKE '%"{k}":"{v}"%' ESCAPE '\\'"""
+        spaced = f"""metadata LIKE '%"{k}": "{v}"%' ESCAPE '\\'"""
+        parts.append(f"({compact} OR {spaced})")
+    if not parts:
+        return None
+    return " AND ".join(parts)
+
+
 def _json_str(value) -> str:
     """
     Convert Python objects (dict/list/etc.) to a compact JSON string.
@@ -534,11 +573,20 @@ class LanceDB(VDB):
 
         Keyword arguments
         -----------------
+        filter:
+            Optional ``dict[str, Any]`` of dialect-free equality constraints
+            on per-record ``metadata`` fields, per the portable
+            :class:`~nemo_retriever.vdb.adt_vdb.VDB` contract. Translated
+            into a ``LIKE`` predicate on the compact JSON-encoded
+            ``metadata`` column. String values only; non-string values raise
+            ``NotImplementedError`` (use ``where`` for richer predicates).
+            Ignored when ``where`` (or its ``_filter`` alias) is provided.
         where:
-            Optional SQL predicate (Lance / DataFusion) applied on the vector
-            query builder via ``.where(...)`` before ``limit``. Filter against
-            table columns: ``vector``, ``text``, ``metadata``, ``source``.
-            Note: ``metadata`` and ``source`` are JSON strings at rest.
+            Backend-specific SQL predicate (Lance / DataFusion) applied on
+            the vector query builder via ``.where(...)`` before ``limit``.
+            Filter against table columns: ``vector``, ``text``, ``metadata``,
+            ``source``. Note: ``metadata`` and ``source`` are JSON strings
+            at rest. Takes precedence over ``filter``.
         _filter:
             Alias for ``where`` when ``where`` is omitted (call-site parity).
         search_kwargs:
@@ -569,10 +617,15 @@ class LanceDB(VDB):
 
         where_clause = kwargs.pop("where", None)
         _filter_fallback = kwargs.pop("_filter", None)
+        filter_dict = kwargs.pop("filter", None)
         if where_clause is None:
             where_clause = _filter_fallback
         if where_clause is not None:
             where_clause = str(where_clause).strip() or None
+        if where_clause is None and filter_dict is not None:
+            if not isinstance(filter_dict, dict):
+                raise TypeError(f"filter must be a dict or None; got {type(filter_dict).__name__}")
+            where_clause = _filter_dict_to_where_clause(filter_dict)
 
         table = lancedb.connect(uri=table_path).open_table(table_name)
 
