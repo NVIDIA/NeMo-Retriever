@@ -23,6 +23,43 @@ These errors can occur when your input file is malformed.
 Verify or fix the format of your input file, and try resubmitting your job.
 
 
+## Audio or video extraction reports missing media dependencies
+
+When you run audio or video extraction, you might see an error similar to one
+of the following:
+
+```text
+Audio extraction requires media dependencies; missing: ffmpeg.
+VideoFrameActor requires media dependencies; missing: ffprobe.
+```
+
+The Python package includes the `ffmpeg-python` wrapper, and
+`nemo-retriever[multimedia]` installs Python audio libraries. These do not
+install the `ffmpeg` or `ffprobe` command-line binaries that the media pipeline
+executes.
+
+On Debian or Ubuntu systems, install system FFmpeg with root privileges:
+
+```bash
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+```
+
+For containers built from this repository, rebuild the image with FFmpeg
+enabled:
+
+```bash
+docker build \
+  -f Dockerfile \
+  --target service \
+  --build-arg INSTALL_FFMPEG=true \
+  -t nemo-retriever-service:ffmpeg .
+```
+
+For Kubernetes or Helm deployments, push that image to a registry and set
+`service.image.repository` and `service.image.tag` to the ffmpeg-enabled image.
+The Helm chart does not install `ffmpeg` or `ffprobe` into the service image at
+deploy time.
+
 
 ## Can't start new thread error
 
