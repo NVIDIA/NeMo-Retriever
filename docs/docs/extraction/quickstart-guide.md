@@ -12,7 +12,7 @@ Use the provided [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/
     NIM containers on their first startup can take 10-15 minutes to pull and fully load models.
 
 
-If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/nv-ingest/blob/main/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
+If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
 
 a. Git clone the repo:
 
@@ -177,10 +177,6 @@ The following examples demonstrate how to extract text, charts, tables, and imag
 
 ### In Python
 
-!!! tip
-
-    For more Python examples, refer to [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb).
-
 <a id="ingest_python_example"></a>
 ```python
 import logging, os, time
@@ -318,10 +314,6 @@ image_caption:[]
 ```
 
 ### Using the `nv-ingest-cli`
-
-!!! tip
-
-    There is a Jupyter notebook available to help you get started with the CLI. For more information, refer to [CLI Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/cli_client_usage.ipynb).
 
 <a id="ingest_cli_example"></a>
 ```shell
@@ -474,7 +466,7 @@ For a complete NeMo Retriever Library air-gapped checklist (Compose and Kubernet
 When deploying in an air-gapped environment (no internet or NGC registry access), you must pre-stage container images on a machine with network access, then transfer and load them in the isolated environment.
 
 1. On a machine with network access: Clone the repo, authenticate with NGC (`docker login nvcr.io`), and pull all images used by your chosen profile (for example, `docker compose --profile retrieval pull`).
-2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)).
+2. Save images: Export the images to archives (for example, using `docker save` for each image or a script that saves all images referenced by your [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml)).
 3. Transfer the image archives and your `docker-compose.yaml` (and `.env` if used) to the air-gapped system.
 4. On the air-gapped machine: Load the images (`docker load -i <archive>`) and start the stack with the same profile (for example, `docker compose --profile retrieval up`).
 
@@ -536,7 +528,7 @@ docker compose \
 
 ## Specify MIG slices for NIM models
 
-When you deploy NeMo Retriever Library with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NeMo Retriever Library NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/NeMo-Retriever/main/helm/README.md).​
+When you deploy NeMo Retriever Library with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NeMo Retriever Library NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/NeMo-Retriever/26.03/helm/README.md).
 
 To target a specific MIG profile—for example, a 3g.20gb slice on an A100, which is a hardware-partitioned virtual GPU instance that gives your workload a fixed mid-sized share of the A100’s compute plus 20 GB of dedicated GPU memory and behaves like a smaller independent GPU—for a given NIM, configure the `resources` and `nodeSelector` under that NIM’s values path in `values.yaml`.
 

@@ -1,6 +1,6 @@
 # Notebooks for NeMo Retriever Library
 
-To get started using [NeMo Retriever Library](overview.md), you can try one of the ready-made notebooks that are available.
+To get started using [NeMo Retriever Library](overview.md), you can try one of the guides or ready-made notebooks that are available.
 
 !!! note
 
@@ -13,10 +13,10 @@ If you plan to run benchmarking or evaluation tests, you must download the [Benc
 
 ## Getting Started
 
-To get started with the basics, try one of the following notebooks:
+To get started with the basics, try one of the following guides or notebooks:
 
-- [NV-Ingest: CLI Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/cli_client_usage.ipynb)
-- [NV-Ingest: Python Client Quick Start Guide](https://github.com/NVIDIA/nv-ingest/blob/main/client/client_examples/examples/python_client_usage.ipynb)
+- [CLI Client Quick Start Guide](quickstart-guide.md#ingest_cli_example) — walkthrough for `nv-ingest-cli` / `retriever` with the self-hosted stack
+- [Python Client Quick Start Guide](quickstart-guide.md#ingest_python_example) — walkthrough for the Python client with the self-hosted stack
 - [How to add metadata to your documents and filter searches](https://github.com/NVIDIA/nv-ingest/blob/main/examples/metadata_and_filtered_search.ipynb)
 - [How to reindex a collection](https://github.com/NVIDIA/nv-ingest/blob/main/examples/reindex_example.ipynb)
 

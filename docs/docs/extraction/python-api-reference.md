@@ -8,7 +8,7 @@ The [NeMo Retriever Library](overview.md) Python API provides a simple and flexi
 
 !!! tip
 
-    There is a Jupyter notebook available to help you get started with the Python API. For more information, refer to [Python Client Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+    For examples and walkthroughs using the Python API, refer to the [Python Client Quick Start Guide](quickstart-guide.md#ingest_python_example) and [Use the NeMo Retriever Library Python API](nv-ingest-python-api.md).
 
 
 ## Summary of Key Methods

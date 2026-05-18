@@ -4,10 +4,10 @@ This guide consolidates what you need to run NeMo Retriever Library in a secured
 
 !!! note "Source of truth for versions"
 
-    Image repositories and default tags change between releases. Always verify pins against the `release/26.3.0` (or your exact stack) branches of:
+    Image repositories and default tags change between releases. Always verify pins against the Git branch that matches your stack (for 26.3.x self-hosted docs, use the NeMo Retriever **`26.03`** branch as the structural baseline):
 
-    - [NeMo Retriever `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/docker-compose.yaml) for self-hosted Compose (check out the **Git tag or branch that matches 26.3.0** in your environment; `main` moves forward)
-    - [`helm/values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/values.yaml) and [`helm/README.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/README.md) for Kubernetes / Helm
+    - [NeMo Retriever `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml) for self-hosted Compose
+    - [`helm/values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/values.yaml) and [`helm/README.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md) for Kubernetes / Helm
 
 ## End-to-end workflow
 
@@ -62,7 +62,7 @@ Again, take the exact repository and tag from your pinned `values.yaml` for 26.3
 
 ## Helm charts and packaging artifacts
 
-From a connected environment, download and version-control the chart archive you install, for example (see [NV-Ingest Helm README](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/helm/README.md)):
+From a connected environment, download and version-control the chart archive you install, for example (see [NV-Ingest Helm README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md)):
 
 - `nv-ingest-26.3.0.tgz` from NGC Helm (`helm pull` with NGC credentials)
 
@@ -90,7 +90,7 @@ Transfer tarballs instead when the enclave has no registry yet: `docker save -o 
 
 ### Docker Compose
 
-- Override each `*_IMAGE` / `*_TAG` environment variable (see [`docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.3.0/docker-compose.yaml)) so every `image:` resolves to your mirror.
+- Override each `*_IMAGE` / `*_TAG` environment variable (see [`docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml)) so every `image:` resolves to your mirror.
 - Keep hosted API endpoints disabled: use in-stack URLs for NIMs (defaults in the compose file already prefer `http://…` service names over `https://integrate.api.nvidia.com`).
 - Provide `.env` or config alongside the compose file in the enclave; never rely on pulling new images at `up` time without registry access.
 
