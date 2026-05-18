@@ -521,6 +521,7 @@ def graphic_elements_ocr_page_elements(
             _ocr_kw = dict(
                 invoke_url=ocr_url,
                 image_b64_list=flat_crop_b64s,
+                merge_levels=["word"] * len(flat_crop_b64s),
                 api_key=api_key or None,
                 timeout_s=float(request_timeout_s),
                 max_batch_size=inference_batch_size,

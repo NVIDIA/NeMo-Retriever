@@ -45,10 +45,26 @@ except Exception:  # pragma: no cover
 # content like tables/charts/infographics).  Used by the OCR stage to
 # decide which detections contribute to the page's ``text`` column.
 _TEXT_LABELS: frozenset[str] = frozenset({"text", "title", "header_footer"})
+_MERGE_LEVEL_BY_LABEL: dict[str, str] = {
+    "table": "word",
+    "chart": "paragraph",
+    "infographic": "paragraph",
+    "text": "paragraph",
+    "title": "paragraph",
+    "header_footer": "paragraph",
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _merge_level_for_ocr_label(label_name: str) -> str:
+    """Return the OCR merge level used by the local path for this element label."""
+    try:
+        return _MERGE_LEVEL_BY_LABEL[label_name]
+    except KeyError:
+        raise ValueError(f"Unsupported OCR label for merge level: {label_name!r}") from None
 
 
 def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
@@ -410,6 +426,7 @@ def ocr_b64_to_text(
             invoke_kw = dict(
                 invoke_url=invoke_url,
                 image_b64_list=valid_b64,
+                merge_levels=[merge_level] * len(valid_b64),
                 api_key=api_key,
                 timeout_s=float(timeout_s),
                 max_batch_size=int(batch_size),
@@ -807,11 +824,13 @@ def ocr_page_elements(
                 crops = _crop_all_from_page(page_image_b64, dets, row_wanted, as_b64=True)
                 crop_b64s: List[str] = [b64 for _label, _bbox, b64 in crops]
                 crop_meta: List[Tuple[str, List[float]]] = [(label, bbox) for label, bbox, _b64 in crops]
+                merge_levels = [_merge_level_for_ocr_label(label) for label, _bbox in crop_meta]
 
                 if crop_b64s:
                     _invoke_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=crop_b64s,
+                        merge_levels=merge_levels,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         max_batch_size=int(kwargs.get("inference_batch_size", 8)),
@@ -891,9 +910,11 @@ def ocr_page_elements(
 
                 # Tables require word-level merging; charts/infographics use paragraph-level.
                 # Group by merge level so each batched invoke uses one consistent setting.
-                local_jobs: Dict[str, List[Tuple[str, List[float], np.ndarray]]] = {"word": [], "paragraph": []}
+                local_jobs: Dict[str, List[Tuple[str, List[float], np.ndarray]]] = {
+                    ml: [] for ml in _MERGE_LEVEL_BY_LABEL.values()
+                }
                 for label_name, bbox, crop_array in crops:
-                    ml = "word" if label_name == "table" else "paragraph"
+                    ml = _merge_level_for_ocr_label(label_name)
                     local_jobs[ml].append((label_name, bbox, crop_array))
 
                 def _append_local_result(
