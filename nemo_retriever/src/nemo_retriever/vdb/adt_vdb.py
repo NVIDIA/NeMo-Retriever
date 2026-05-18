@@ -193,6 +193,79 @@ class VDB(ABC):
         pass
 
     @abstractmethod
+    def upsert(self, records: list, **kwargs):
+        """Incrementally merge a batch of records into the target table/index.
+
+        ``upsert`` exists as a separate abstract entry point from
+        :meth:`write_to_index` because it has fundamentally different
+        semantics. Where ``write_to_index`` is an *append* (or full
+        ingest) operation, ``upsert`` is a **stable-key merge**:
+
+        * Rows whose key value already exists in the target table are
+          **updated in place** — all stored columns (including the dense
+          vector) are replaced with the values from ``records``.
+        * Rows whose key value is absent are **inserted**.
+        * Rows that already exist in the target but are *not* referenced
+          by ``records`` are **left untouched**. ``upsert`` MUST NOT
+          delete rows; tombstoning entities that have disappeared
+          upstream is intentionally out of scope and belongs in a
+          separate code path.
+
+        This contract makes ``upsert`` suitable for incremental metadata
+        patches and partial re-ingests where the caller knows the stable
+        identity of the rows it is changing but does not want to rebuild
+        the whole index.
+
+        Implementations are expected to:
+
+        * Validate / transform records the same way :meth:`write_to_index`
+          does (e.g. enforce the embedding dimension, apply the
+          ``on_bad_vectors`` policy), so that an upserted row is
+          indistinguishable from one written via the full-ingest path.
+        * Drop rows whose ``key`` value is empty or ``None`` — an empty
+          merge key has no stable identity and would otherwise collapse
+          unrelated rows together. Skipped rows should be logged.
+        * Create the target table/index on the fly when it does not yet
+          exist (e.g. a metadata patch lands before the first full
+          ingest), if the backend supports it. Race-tolerance is
+          recommended: if a parallel writer wins the create, fall back
+          to opening the existing table and performing the merge.
+        * Avoid building heavy secondary structures (e.g. IVF/HNSW
+          vector indexes, FTS indexes) on the upsert path: incremental
+          batches are typically too small to train such indexes
+          meaningfully. Defer index builds to the next full
+          :meth:`write_to_index` / :meth:`create_index` call.
+
+        Parameters:
+        - records (list): NV-Ingest-shaped batches (typically a list of
+            lists of record dicts) to merge into the target. The shape
+            mirrors what :meth:`write_to_index` accepts.
+        - table_name (str, optional): override the operator's configured
+            target table/index name for this call. When ``None``, the
+            implementation should use its default target.
+        - key (str, optional): name of the column used as the stable
+            merge key. Defaults to ``"id"``. Rows missing this column
+            (or with an empty value) should be skipped.
+
+        Returns:
+        - implementation-specific result describing what happened
+            (typical fields include the number of rows merged, the
+            number of rows skipped for missing keys, and whether the
+            target table had to be created on the fly). Concrete
+            implementations should document the exact return shape.
+
+        Backends that genuinely cannot support stable-key merges should
+        override this method and raise :class:`NotImplementedError`
+        explicitly so that :class:`UpsertVdbOperator` (and any other
+        caller) fails fast with a clear message instead of silently
+        no-oping or duplicating rows.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement upsert(); "
+            "incremental stable-key merges are not supported by this VDB backend."
+        )
+
+    @abstractmethod
     def run(self, records):
         """Main entry point used by the NV-Ingest pipeline.
 
