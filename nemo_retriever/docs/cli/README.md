@@ -37,7 +37,6 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | [`quickstart.md`](quickstart.md) | Legacy service quickstart; supported **Helm** + **NeMo Retriever Library** deployment handoff in quickstart prose; **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
 | [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` (CLI example) |
 | [`cli-client-usage.md`](cli-client-usage.md) | `client/client_examples/examples/cli_client_usage.ipynb` |
-| [`pdf-blueprint.md`](pdf-blueprint.md) | `deploy/pdf-blueprint.ipynb` (CLI cell) |
 | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
 
 ## Gaps with no retriever-CLI equivalent (kept out of this folder)
