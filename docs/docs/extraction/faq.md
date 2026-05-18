@@ -9,16 +9,12 @@ Using the Python API, `results` is a list object with one entry.
 For code examples, refer to the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) 
 and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb).
 
-
-
 ## Where does NeMo Retriever Library ingest to?
 
 NeMo Retriever Library supports extracting text representations of various forms of content,
 and ingesting to a vector database. **[LanceDB](https://lancedb.com/)** stores vectors as local Lance files on disk for the supported ingestion path.
 You can ingest to other data stores; however, you must configure other data stores yourself.
 For more information, refer to [Data Upload](vdbs.md).
-
-
 
 ## How would I process unstructured images?
 
@@ -36,8 +32,6 @@ we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemot
 Nemotron parse provides higher-accuracy text extraction. 
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
-
-
 ## Why are the environment variables different between library mode and self-hosted mode?
 
 ### Self-Hosted Deployments
@@ -45,7 +39,7 @@ For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/
 For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
 For more information, refer to [Authentication and API keys](api-keys.md).
 
-For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md).
+For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md). If you use **Docker Compose** locally for experiments only, see the unsupported developer page [docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a supported deployment substitute for Helm.
 
 ### Library Mode
 
@@ -56,12 +50,6 @@ You can set custom endpoints for each NIM.
 For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 When you explicitly configure remote NIM endpoints in Python library mode, graph ingestion raises a `GraphIngestionError` if a stage reports row-level connection or inference errors. This makes unreachable services visible to callers instead of returning a DataFrame that looks successful. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`.
-
-
-
-
-
-
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 

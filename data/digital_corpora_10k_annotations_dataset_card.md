@@ -12,7 +12,7 @@ NVIDIA Corporation
 Created: August 29, 2025
 
 ## License/Terms of Use: 
-[Apache 2.0](https://github.com/NVIDIA/nv-ingest/blob/main/LICENSE)
+[Apache 2.0](https://github.com/NVIDIA/NeMo-Retriever/blob/main/LICENSE)
 
 ## Intended Usage:
 Evaluation of PDF retrieval systems.
@@ -37,7 +37,7 @@ The dataset is formatted as a CSV file with the format noted in the following se
 | page     | The page number within the PDF where the answer is located. |
 
 ## Reference(s):
-https://github.com/NVIDIA/nv-ingest
+https://github.com/NVIDIA/NeMo-Retriever
 
 ## Ethical Considerations:
 NVIDIA believes Trustworthy AI is a shared responsibility and we have established policies and practices to enable development for a wide array of AI applications.  When downloaded or used in accordance with our terms of service, developers should work with their internal model team to ensure this model meets requirements for the relevant industry and use case and addresses unforeseen product misuse.   
