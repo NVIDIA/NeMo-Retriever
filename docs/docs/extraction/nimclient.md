@@ -5,7 +5,7 @@ This documentation demonstrates how to create custom NIM integrations for use in
 
 The NimClient architecture consists of two main components:
 
-1. **NimClient**: The client class that handles communication with NIM endpoints via gRPC or HTTP protocols
+1. **NimClient**: The client class that handles communication with NIM endpoints via HTTP protocols
 2. **ModelInterface**: An abstract base class that defines how to format input data, parse output responses, and process inference results for specific models
 
 For advanced usage patterns, refer to the existing model interfaces in `nemo_retriever/src/nemo_retriever/api/internal/primitives/nim/model_interface/`.
