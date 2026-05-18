@@ -34,7 +34,7 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | Topic | Location | Replaces example(s) in |
 |-------|----------|------------------------|
 | Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
-| CLI reference | [`retriever_cli.md`](retriever_cli.md) | Prior `cli-reference` pages under `docs/docs/extraction/` |
+| CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
 | PDF split tuning | [`pdf-split-tuning.md`](pdf-split-tuning.md) | `docs/docs/extraction/v2-api-guide.md` |
 | Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
@@ -142,6 +142,134 @@ hits = retriever.query(
 - For CI or debugging: `--run-mode inprocess` skips Ray startup.
 
 <!-- --8<-- [end:quickstart] -->
+
+## CLI reference
+
+`retriever` is the Typer app installed with the `nemo-retriever` package. Document
+ingestion is usually `retriever pipeline run INPUT_PATH`, which runs the graph pipeline
+locally (in-process or Ray) and writes rows to LanceDB and optional Parquet.
+
+```bash
+retriever --version
+retriever --help
+retriever pipeline run --help
+```
+
+### Extract a PDF with defaults
+
+```bash
+retriever pipeline run ./data/test.pdf \
+  --input-type pdf \
+  --run-mode inprocess \
+  --save-intermediate ./processed_docs
+```
+
+Results go to LanceDB (`./lancedb`, table `nv-ingest` by default) and, with
+`--save-intermediate`, to Parquet under `./processed_docs`. Inspect rows with
+`pyarrow.parquet` or LanceDB queries (not per-content-type `*.metadata.json` files).
+
+### Text chunking and PDF page batches
+
+Splitting is intrinsic to the pipeline. Control text chunks with `--text-chunk` and
+page-batch sizing with `--pdf-split-batch-size`:
+
+```bash
+retriever pipeline run ./data/test.pdf \
+  --input-type pdf \
+  --no-extract-tables --no-extract-charts \
+  --text-chunk --text-chunk-max-tokens 512 --text-chunk-overlap-tokens 64 \
+  --save-intermediate ./processed_docs
+```
+
+There is no split-only mode without extraction; narrow flags to text extraction if you
+only need chunk boundaries.
+
+### PDF and Office documents
+
+Run once per input type (`--input-type doc` matches `*.docx` and `*.pptx`):
+
+```bash
+retriever pipeline run ./data/test.pdf \
+  --input-type pdf \
+  --method pdfium \
+  --text-chunk --text-chunk-max-tokens 512 \
+  --save-intermediate ./processed_docs
+
+retriever pipeline run ./data/test.docx \
+  --input-type doc \
+  --text-chunk --text-chunk-max-tokens 512 \
+  --save-intermediate ./processed_docs
+```
+
+Mixed PDF and docx in one invocation is not supported.
+
+### Large PDF page batches
+
+```bash
+retriever pipeline run ./data/test.pdf \
+  --input-type pdf \
+  --method pdfium \
+  --extract-text --no-extract-tables --no-extract-charts \
+  --pdf-split-batch-size 64 \
+  --save-intermediate ./processed_docs
+```
+
+### Caption images
+
+```bash
+retriever pipeline run ./data/test.pdf \
+  --input-type pdf \
+  --method pdfium \
+  --caption \
+  --caption-model-name nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16 \
+  --caption-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
+  --api-key "${NVIDIA_API_KEY}" \
+  --store-images-uri ./processed_docs/images \
+  --save-intermediate ./processed_docs
+```
+
+For hosted Omni captioning, set
+`--caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Local Omni uses
+`nemo_retriever[local]` and a local Hugging Face model ID. Custom caption prompts and
+`reasoning` flags are not exposed on the CLI — use
+`nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
+
+### Directory of documents
+
+```bash
+retriever pipeline run ./data/pdf_corpus \
+  --input-type pdf \
+  --method pdfium \
+  --save-intermediate ./processed_docs
+```
+
+There is no `dataset.json` loader; pass a directory or glob of files.
+
+### Store images to object storage
+
+```bash
+retriever pipeline run ./data/test.pdf \
+  --input-type pdf \
+  --method pdfium \
+  --store-images-uri s3://my-bucket/images \
+  --save-intermediate ./processed_docs
+```
+
+Image URIs are written to row metadata. Use `--store-actors` to tune object-storage
+write concurrency.
+
+### Where results live
+
+- **LanceDB** — `--lancedb-uri lancedb` (default), table `nv-ingest`. Query via
+  `retriever recall vdb-recall …` or `nemo_retriever.retriever.Retriever`.
+- **Parquet** — `--save-intermediate <dir>` for the extraction DataFrame.
+- **Images** — `--store-images-uri <uri>` (local path or fsspec URI). Storage follows
+  `--embed-granularity` (page vs element images).
+
+### Errors and exit codes
+
+`retriever pipeline run` exits **0** on success and **non-zero** on validation or
+pipeline failures. Use `--debug` or `--log-file <path>` for diagnostics.
 
 ## Client usage walk-through
 
