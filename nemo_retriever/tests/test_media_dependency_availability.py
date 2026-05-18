@@ -53,6 +53,34 @@ class MediaDependencyAvailabilityTests(TestCase):
         self.assertIn("apt-get update && apt-get install -y --no-install-recommends ffmpeg", message)
         self.assertIn("--build-arg INSTALL_FFMPEG=true", message)
 
+    def test_dependency_error_message_is_coherent_when_nothing_is_missing(self) -> None:
+        media_interface = _load_media_interface()
+
+        with (
+            patch.object(media_interface, "ffmpeg", SimpleNamespace()),
+            patch.object(media_interface.shutil, "which", return_value="/usr/bin/tool"),
+        ):
+            message = media_interface.media_dependency_error_message("VideoFrameActor")
+
+        self.assertEqual(message, "VideoFrameActor media dependencies are available.")
+        self.assertEqual(message, message.rstrip())
+
+    def test_run_ffmpeg_dependency_error_wraps_internal_label(self) -> None:
+        media_interface = _load_media_interface()
+
+        for ffmpeg_module in (None, SimpleNamespace()):
+            with self.subTest(ffmpeg_module=ffmpeg_module):
+                with (
+                    patch.object(media_interface, "ffmpeg", ffmpeg_module),
+                    patch.object(media_interface.shutil, "which", return_value=None),
+                ):
+                    with self.assertRaises(RuntimeError) as error:
+                        media_interface._run_ffmpeg(object(), label="split", input_path="/tmp/input.mp4")
+
+                message = str(error.exception)
+                self.assertIn("FFmpeg operation 'split' requires media dependencies", message)
+                self.assertNotIn("split requires media dependencies", message)
+
 
 if __name__ == "__main__":
     main()
