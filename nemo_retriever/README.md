@@ -451,7 +451,7 @@ sudo apt install -y ffmpeg
 ```
 
 The bundled Dockerfile skips ffmpeg/ffprobe by default. To include them in a
-container image, rebuild with:
+container image, rebuild from the repository root with:
 ```bash
 docker build -f Dockerfile --build-arg INSTALL_FFMPEG=true -t nemo-retriever .
 ```

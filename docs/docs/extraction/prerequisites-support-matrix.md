@@ -10,7 +10,8 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
 - For audio and video extraction, the `ffmpeg` and `ffprobe` command-line
   binaries must be installed and available on `PATH`. On Debian/Ubuntu systems,
-  install them with `apt-get update && apt-get install -y --no-install-recommends ffmpeg`.
+  install them with root privileges, for example
+  `sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg`.
   Python packages such as `ffmpeg-python` or `nemo-retriever[multimedia]` do not
   provide these system binaries.
 

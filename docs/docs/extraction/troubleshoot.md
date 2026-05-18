@@ -38,10 +38,10 @@ The Python package includes the `ffmpeg-python` wrapper, and
 install the `ffmpeg` or `ffprobe` command-line binaries that the media pipeline
 executes.
 
-On Debian or Ubuntu systems, install system FFmpeg:
+On Debian or Ubuntu systems, install system FFmpeg with root privileges:
 
 ```bash
-apt-get update && apt-get install -y --no-install-recommends ffmpeg
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 ```
 
 For containers built from this repository, rebuild the image with FFmpeg
