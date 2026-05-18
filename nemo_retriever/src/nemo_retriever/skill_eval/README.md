@@ -34,6 +34,7 @@ This README assumes you are targeting the **ViDoRe v3** corpus and have a copy o
 - **`retriever` CLI** — install the project (`uv pip install -e ./nemo_retriever`) so `retriever skill-eval` is on `$PATH`.
 - **`claude` CLI** — the Claude Code binary must be on `$PATH`. The runner exits with code `2` if `shutil.which("claude")` returns `None`.
 - **A Claude account / API access** — `claude --print` will negotiate auth on first use.
+- **Claude Code autorun / permission access** — the runner launches non-interactive Claude Code subprocesses with `--permission-mode bypassPermissions` and, for `c2_retriever` / `c3_retriever_skill`, `--allow-dangerously-skip-permissions`. Make sure your environment is allowed to run those commands before starting a sweep, and run a small `claude --print` smoke test first so any first-use auth or permission prompts are already resolved.
 - **Disk** — each `(condition, domain)` builds a scratch workdir under `/tmp/skill_eval/` containing a `pdfs/` symlink farm, a `.claude/` sandbox, and any retrieval artifacts the agent creates (e.g. `lancedb/`). The workdir is deleted after the session completes, so only one LanceDB is on disk at a time.
 - **(Optional) `NVIDIA_API_KEY`** — if set, the LLM-as-judge scores each `final_answer` against the manifest's ground-truth `answer` on a 0–5 scale. Unset means judging is skipped silently with a console note; recall numbers are still produced.
 
@@ -53,7 +54,7 @@ Everything else (model, budget, timeout, conditions, judge endpoint) has working
 
 ## 1. Make the PDF tree reachable
 
-ViDoRe v3 is split per-domain. The seven domains the harness recognises are:
+ViDoRe v3 is split per-domain. The eight domains the harness recognises are:
 
 ```
 vidore_v3_computer_science
@@ -287,7 +288,7 @@ The **"Diagnostics"** section reports `skill_fired_rate` for `c2/c3`: the fracti
 
 **`config 'pdf_dirs' is missing an entry for domain '<X>'`** — your manifest contains a `domain` value that has no key in `pdf_dirs`. Either add the key, or use `--domains` to skip that subset.
 
-**`PDF directory '…' for domain '…' does not exist or is not a directory`** — the value under `pdf_dirs.<domain>` was unset (`~` expansion failed, typo, etc.). Resolve the path manually with `ls "$PATH"` and update the config.
+**`PDF directory '…' for domain '…' does not exist or is not a directory`** — the value under `pdf_dirs.<domain>` was unset (`~` expansion failed, typo, etc.). Resolve the path manually with `ls "/your/configured/pdf_dirs/path"` and update the config.
 
 **Judge prints `Judge disabled: $NVIDIA_API_KEY is not set` and exits cleanly** — that is by design. Recall and other metrics still land in the summary; only the `judge` column shows `—`. Export `NVIDIA_API_KEY` and re-run if you want the score.
 
