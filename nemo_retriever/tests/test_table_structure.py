@@ -378,6 +378,42 @@ def _make_page_df_with_ts_regions(
 class TestOCRJoinsTableStructure:
     """When use_table_structure=True, OCR stage should join structure + OCR."""
 
+    def test_merge_level_mapping_rejects_unknown_labels(self) -> None:
+        from nemo_retriever.ocr.shared import _merge_level_for_ocr_label
+
+        assert _merge_level_for_ocr_label("table") == "word"
+        assert _merge_level_for_ocr_label("chart") == "paragraph"
+        assert _merge_level_for_ocr_label("infographic") == "paragraph"
+        assert _merge_level_for_ocr_label("text") == "paragraph"
+        assert _merge_level_for_ocr_label("title") == "paragraph"
+        assert _merge_level_for_ocr_label("header_footer") == "paragraph"
+        with pytest.raises(ValueError, match="Unsupported OCR label"):
+            _merge_level_for_ocr_label("typo")
+
+    def test_local_jobs_follow_merge_level_mapping_values(self, monkeypatch) -> None:
+        from nemo_retriever.ocr import shared as ocr_shared
+
+        monkeypatch.setitem(ocr_shared._MERGE_LEVEL_BY_LABEL, "chart", "line")
+        df = pd.DataFrame(
+            [
+                {
+                    "page_image": {"image_b64": _make_b64_png(200, 100)},
+                    "page_elements_v3": {
+                        "detections": [
+                            {"label_name": "chart", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "score": 0.95}
+                        ]
+                    },
+                }
+            ]
+        )
+        ocr_model = MagicMock()
+        ocr_model.invoke.return_value = [[{"left": 0.1, "right": 0.9, "upper": 0.1, "lower": 0.2, "text": "chart"}]]
+
+        result = ocr_shared.ocr_page_elements(df, model=ocr_model, extract_charts=True)
+
+        assert result.iloc[0]["chart"][0]["text"] == "chart"
+        assert ocr_model.invoke.call_args.kwargs["merge_level"] == "line"
+
     def _structure_2x2(self) -> list[dict]:
         return [
             {"bbox_xyxy_norm": [0.0, 0.0, 1.0, 0.5], "label_name": "row", "score": 0.9},
@@ -482,7 +518,7 @@ class TestOCRJoinsTableStructure:
         with patch(
             "nemo_retriever.ocr.shared.invoke_image_inference_batches",
             return_value=[self._ocr_preds_abcd()],
-        ):
+        ) as remote_invoke:
             result = ocr_page_elements(
                 df,
                 invoke_url="http://fake-ocr",
@@ -497,6 +533,54 @@ class TestOCRJoinsTableStructure:
             assert cell in text, f"missing cell '{cell}' in joined markdown: {text!r}"
         # Structure-aware markdown includes a header separator; pseudo-markdown does not.
         assert "---" in text, f"expected structure-aware markdown, got: {text!r}"
+        assert remote_invoke.call_args.kwargs["merge_levels"] == ["word"]
+
+    def test_remote_path_sends_merge_levels_by_modality(self) -> None:
+        """Remote OCR should request word-level tables and paragraph-level non-table crops."""
+        from nemo_retriever.ocr.shared import ocr_page_elements
+
+        image_b64 = _make_b64_png(240, 160)
+        df = pd.DataFrame(
+            [
+                {
+                    "page_image": {"image_b64": image_b64},
+                    "page_elements_v3": {
+                        "detections": [
+                            {"label_name": "table", "bbox_xyxy_norm": [0.0, 0.0, 0.5, 0.5], "score": 0.95},
+                            {"label_name": "chart", "bbox_xyxy_norm": [0.5, 0.0, 1.0, 0.5], "score": 0.95},
+                            {"label_name": "infographic", "bbox_xyxy_norm": [0.0, 0.5, 0.5, 1.0], "score": 0.95},
+                            {"label_name": "text", "bbox_xyxy_norm": [0.5, 0.5, 1.0, 1.0], "score": 0.95},
+                        ]
+                    },
+                    "metadata": {"needs_ocr_for_text": True},
+                }
+            ]
+        )
+        remote_items = [
+            [{"left": 0.1, "right": 0.2, "upper": 0.1, "lower": 0.2, "text": "table"}],
+            [{"left": 0.1, "right": 0.2, "upper": 0.1, "lower": 0.2, "text": "chart"}],
+            [{"left": 0.1, "right": 0.2, "upper": 0.1, "lower": 0.2, "text": "info"}],
+            [{"left": 0.1, "right": 0.2, "upper": 0.1, "lower": 0.2, "text": "body"}],
+        ]
+
+        with patch(
+            "nemo_retriever.ocr.shared.invoke_image_inference_batches",
+            return_value=remote_items,
+        ) as remote_invoke:
+            result = ocr_page_elements(
+                df,
+                invoke_url="http://fake-ocr",
+                extract_text=True,
+                extract_tables=True,
+                extract_charts=True,
+                extract_infographics=True,
+            )
+
+        assert result.iloc[0]["table"]
+        assert result.iloc[0]["chart"]
+        assert result.iloc[0]["infographic"]
+        assert result.iloc[0]["text"] == "body"
+        assert remote_invoke.call_args.kwargs["merge_levels"] == ["word", "paragraph", "paragraph", "paragraph"]
 
 
 # ---------------------------------------------------------------------------
