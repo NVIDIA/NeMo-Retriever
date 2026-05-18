@@ -8,6 +8,11 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
+- For audio and video extraction, the `ffmpeg` and `ffprobe` command-line
+  binaries must be installed and available on `PATH`. On Debian/Ubuntu systems,
+  install them with `apt-get update && apt-get install -y --no-install-recommends ffmpeg`.
+  Python packages such as `ffmpeg-python` or `nemo-retriever[multimedia]` do not
+  provide these system binaries.
 
 !!! note
 
@@ -60,7 +65,7 @@ The core pipeline models (for document type inputs) include the following:
 - [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) [NIM](https://docs.nvidia.com/nim/ingestion/object-detection/latest/overview.html) — Detects rows, columns, and cells within a table to preserve table structure and convert to Markdown format.
 - [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) [NIM](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/overview.html) — Image OCR model to detect and extract text from images.
 
-Advanced features (for example, for audio/video) require additional GPU support and disk space. 
+Advanced features (for example, for audio/video) require additional GPU support, disk space, and feature-specific system dependencies.
 This includes the following:
 
 - [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — for transcript extraction from [audio and video](audio-video.md).
