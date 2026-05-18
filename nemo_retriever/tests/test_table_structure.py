@@ -399,9 +399,7 @@ class TestOCRJoinsTableStructure:
                 {
                     "page_image": {"image_b64": _make_b64_png(200, 100)},
                     "page_elements_v3": {
-                        "detections": [
-                            {"label_name": "chart", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "score": 0.95}
-                        ]
+                        "detections": [{"label_name": "chart", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "score": 0.95}]
                     },
                 }
             ]
