@@ -12,6 +12,7 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.tabular_data.ingestion.embeddings import fetch_tabular_embedding_dataframe
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
 
 
@@ -53,7 +54,7 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
 
     def process(self, data: Any, **kwargs: Any) -> pd.DataFrame:
         if not (isinstance(data, tuple) and len(data) == 2):
-            raise TypeError(f"Expected (tables_df, columns_df) tuple, got {type(data).__name__}")
+            return fetch_tabular_embedding_dataframe(database_name=self._database_name)
 
         tables_df, columns_df = data
         rows = list(self._build_rows(tables_df, columns_df))

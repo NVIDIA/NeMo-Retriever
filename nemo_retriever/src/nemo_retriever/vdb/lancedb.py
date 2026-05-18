@@ -279,9 +279,6 @@ def _create_lancedb_results(
                 logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
                 continue
 
-            # Promote a stable entity id (e.g. Neo4j node UUID for tabular
-            # ingest) to a top-level column so ``LanceDB.upsert`` can target a
-            # single row. Empty string means "no stable identity for this row".
             row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
             if row_id is None and isinstance(metadata, dict):
                 row_id = metadata.get("id")
