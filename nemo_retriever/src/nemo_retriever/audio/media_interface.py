@@ -32,6 +32,53 @@ except Exception:
     ffmpeg = None  # type: ignore[assignment]
     _FFMPEG_AVAILABLE = False
 
+MANUAL_FFMPEG_INSTALL_COMMAND = "apt-get update && apt-get install -y --no-install-recommends ffmpeg"
+CONTAINER_FFMPEG_INSTALL_FLAG = "--build-arg INSTALL_FFMPEG=true"
+
+
+def is_ffmpeg_python_available() -> bool:
+    """True when the ``ffmpeg-python`` wrapper package can be imported."""
+    return _FFMPEG_AVAILABLE and ffmpeg is not None
+
+
+def is_ffmpeg_cli_available() -> bool:
+    """True when the ``ffmpeg`` executable is on PATH."""
+    return shutil.which("ffmpeg") is not None
+
+
+def is_ffprobe_cli_available() -> bool:
+    """True when the ``ffprobe`` executable is on PATH."""
+    return shutil.which("ffprobe") is not None
+
+
+def missing_media_dependencies() -> List[str]:
+    """Return missing media dependencies in user-facing install order."""
+    missing: List[str] = []
+    if not is_ffmpeg_python_available():
+        missing.append("ffmpeg-python")
+    if not is_ffmpeg_cli_available():
+        missing.append("ffmpeg")
+    if not is_ffprobe_cli_available():
+        missing.append("ffprobe")
+    return missing
+
+
+def media_dependency_error_message(component: str = "Media processing") -> str:
+    """Build an actionable error for missing audio/video dependencies."""
+    missing = missing_media_dependencies()
+    missing_text = ", ".join(missing) if missing else "none"
+    install_hints = []
+    if "ffmpeg-python" in missing:
+        install_hints.append("Install the Python wrapper with `pip install ffmpeg-python`.")
+    if "ffmpeg" in missing or "ffprobe" in missing:
+        install_hints.append(
+            "Install system FFmpeg with "
+            f"`{MANUAL_FFMPEG_INSTALL_COMMAND}`. "
+            "For the bundled container, rebuild with "
+            f"`docker build -f Dockerfile {CONTAINER_FFMPEG_INSTALL_FLAG} ...`."
+        )
+    return f"{component} requires media dependencies; missing: {missing_text}. {' '.join(install_hints)}"
+
 
 class SplitType:
     """Split strategy for media; values match `nemo_retriever.api`."""
@@ -48,8 +95,10 @@ def _probe(
     timeout: Optional[float] = None,
     **kwargs: Any,
 ) -> Any:
-    if not _FFMPEG_AVAILABLE or ffmpeg is None:
-        raise RuntimeError("ffmpeg is required for media probing; install ffmpeg-python and system ffmpeg.")
+    if not is_ffmpeg_python_available():
+        raise RuntimeError(media_dependency_error_message("Media probing"))
+    if not is_ffprobe_cli_available():
+        raise RuntimeError(media_dependency_error_message("Media probing"))
     args = ["ffprobe", "-show_format", "-show_streams", "-of", "json"]
     args += ffmpeg._utils.convert_kwargs_to_cmd_line_args(kwargs)
     if file_handle:
@@ -79,8 +128,10 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
     tempfile instead — file writes never block, so ffmpeg always makes progress
     and the call returns. We only read stderr when ``returncode != 0``.
     """
-    if ffmpeg is None:
-        raise RuntimeError("ffmpeg-python is not installed.")
+    if not is_ffmpeg_python_available():
+        raise RuntimeError(media_dependency_error_message(label))
+    if not is_ffmpeg_cli_available():
+        raise RuntimeError(media_dependency_error_message(label))
     args = ffmpeg.compile(stream)
     with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
         result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=stderr_buf)
@@ -92,8 +143,8 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
 
 def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optional[str] = None) -> Optional[Path]:
     """Extract audio from a video file. Returns output Path or None on failure."""
-    if not _FFMPEG_AVAILABLE or ffmpeg is None:
-        raise RuntimeError("ffmpeg is required; install ffmpeg-python and system ffmpeg.")
+    if not is_media_available():
+        raise RuntimeError(media_dependency_error_message("Audio extraction"))
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -198,6 +249,8 @@ class MediaInterface(_LoaderInterface):
             if duration is None:
                 raise ValueError(f"Could not determine duration for {path_file}")
             num_splits = self.find_num_splits(file_size, sample_rate, duration, split_interval, split_type)
+        except RuntimeError:
+            raise
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", path_file, e.stderr.decode())
         except (KeyError, ValueError) as e:
@@ -263,6 +316,8 @@ class MediaInterface(_LoaderInterface):
             stream = ffmpeg.input(str(input_path)).output(str(output_pattern), **output_kwargs)
             _run_ffmpeg(stream, label="split", input_path=str(input_path))
             self.path_metadata[str(input_path)] = probe
+        except RuntimeError:
+            raise
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", original_input_path, e.stderr.decode())
             return []
@@ -292,8 +347,8 @@ class MediaInterface(_LoaderInterface):
 
         Returns an empty list when ffmpeg fails or no frames are produced.
         """
-        if not _FFMPEG_AVAILABLE or ffmpeg is None:
-            raise RuntimeError("ffmpeg is required for frame extraction; install ffmpeg-python and system ffmpeg.")
+        if not is_media_available():
+            raise RuntimeError(media_dependency_error_message("Frame extraction"))
         if fps <= 0:
             raise ValueError(f"fps must be > 0, got {fps}")
 
@@ -344,5 +399,5 @@ class MediaInterface(_LoaderInterface):
 
 
 def is_media_available() -> bool:
-    """True if ffmpeg-python is installed and the ffprobe binary is on PATH."""
-    return _FFMPEG_AVAILABLE and ffmpeg is not None and shutil.which("ffprobe") is not None
+    """True if the full audio/video media pipeline can run."""
+    return is_ffmpeg_python_available() and is_ffmpeg_cli_available() and is_ffprobe_cli_available()

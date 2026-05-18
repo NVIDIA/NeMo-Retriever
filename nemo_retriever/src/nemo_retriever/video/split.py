@@ -27,7 +27,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from nemo_retriever.audio.chunk_actor import _chunk_one
-from nemo_retriever.audio.media_interface import MediaInterface, is_media_available
+from nemo_retriever.audio.media_interface import MediaInterface, is_media_available, media_dependency_error_message
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -58,7 +58,7 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
             video_frame_params=video_frame_params,
         )
         if not is_media_available():
-            raise RuntimeError("VideoSplitActor requires ffmpeg; install ffmpeg-python and system ffmpeg.")
+            raise RuntimeError(media_dependency_error_message("VideoSplitActor"))
         self._audio_chunk_params = audio_chunk_params or AudioChunkParams()
         self._video_frame_params = video_frame_params or VideoFrameParams()
         self._interface = MediaInterface()

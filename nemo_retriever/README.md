@@ -450,6 +450,12 @@ For example, with apt-get on Ubuntu:
 sudo apt install -y ffmpeg
 ```
 
+The bundled Dockerfile skips ffmpeg/ffprobe by default. To include them in a
+container image, rebuild with:
+```bash
+docker build -f Dockerfile --build-arg INSTALL_FFMPEG=true -t nemo-retriever .
+```
+
 ```python
 ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
