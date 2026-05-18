@@ -22,7 +22,7 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | Extract + embed + store a batch of documents | `retriever pipeline run` |
 | Run an ad-hoc PDF extraction stage | `retriever pdf stage` |
 | Run an HTML / text / audio / chart stage | `retriever html run`, `retriever txt run`, `retriever audio extract`, `retriever chart run` |
-| Upload stage output to LanceDB | `retriever vector-store stage` |
+| Upload stage output to LanceDB | `retriever ingest` or `retriever pipeline run` |
 | Query LanceDB + compute recall@k | `retriever recall vdb-recall` |
 | Run a QA evaluation sweep | `retriever eval run` |
 | Serve / submit to the online REST API | `retriever online serve` / `retriever online stream-pdf` |

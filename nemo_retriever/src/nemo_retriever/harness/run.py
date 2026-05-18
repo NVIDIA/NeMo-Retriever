@@ -413,9 +413,9 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             cmd += ["--beir-query-language", cfg.beir_query_language]
         for k in cfg.beir_ks:
             cmd += ["--beir-k", str(int(k))]
-    elif cfg.evaluation_mode == "recall":
+    elif cfg.evaluation_mode == "audio_recall":
         if cfg.input_type != "audio":
-            raise ValueError("Legacy recall evaluation is only supported for audio input")
+            raise ValueError("Audio recall evaluation is only supported for audio input")
         if cfg.recall_match_mode != "audio_segment" or cfg.recall_adapter != "none":
             raise ValueError("Audio recall evaluation requires recall_match_mode=audio_segment and recall_adapter=none")
         if not cfg.query_csv:
@@ -484,7 +484,7 @@ def _evaluate_run_outcome(
         return process_rc, reason, False
     if evaluation_mode == "beir" and not (evaluation_metrics or {}):
         return 97, "missing_beir_metrics", False
-    if evaluation_mode == "recall" and recall_required and not recall_metrics:
+    if evaluation_mode == "audio_recall" and recall_required and not recall_metrics:
         return 98, "missing_recall_metrics", False
     return 0, "", True
 

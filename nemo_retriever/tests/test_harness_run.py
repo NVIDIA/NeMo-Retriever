@@ -27,14 +27,14 @@ def test_embedded_ray_scripts_import_env_helpers_inside_try() -> None:
 
 
 def test_evaluate_run_outcome_passes_when_process_succeeds_and_recall_present() -> None:
-    rc, reason, success = _evaluate_run_outcome(0, "recall", True, {"recall@5": 0.9})
+    rc, reason, success = _evaluate_run_outcome(0, "audio_recall", True, {"recall@5": 0.9})
     assert rc == 0
     assert reason == ""
     assert success is True
 
 
 def test_evaluate_run_outcome_fails_when_recall_required_and_missing() -> None:
-    rc, reason, success = _evaluate_run_outcome(0, "recall", True, {})
+    rc, reason, success = _evaluate_run_outcome(0, "audio_recall", True, {})
     assert rc == 98
     assert reason == "missing_recall_metrics"
     assert success is False
@@ -55,7 +55,7 @@ def test_evaluate_run_outcome_allows_no_evaluation_metrics() -> None:
 
 
 def test_evaluate_run_outcome_uses_subprocess_error_code() -> None:
-    rc, reason, success = _evaluate_run_outcome(2, "recall", True, {"recall@5": 0.9})
+    rc, reason, success = _evaluate_run_outcome(2, "audio_recall", True, {"recall@5": 0.9})
     assert rc == 2
     assert reason == "subprocess_exit_2"
     assert success is False
@@ -532,7 +532,7 @@ def test_build_command_supports_multimodal_embedding_and_infographics(tmp_path: 
     assert cmd[cmd.index("--structured-elements-modality") + 1] == "text_image"
 
 
-def test_build_command_rejects_document_legacy_recall(tmp_path: Path) -> None:
+def test_build_command_rejects_document_audio_recall(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
@@ -543,11 +543,11 @@ def test_build_command_rejects_document_legacy_recall(tmp_path: Path) -> None:
         dataset_label="earnings",
         preset="single_gpu",
         query_csv=str(query_csv),
-        evaluation_mode="recall",
-        recall_match_mode="pdf_page",
+        evaluation_mode="audio_recall",
+        recall_match_mode="audio_segment",
         recall_adapter="none",
     )
-    with pytest.raises(ValueError, match="Legacy recall evaluation is only supported for audio input"):
+    with pytest.raises(ValueError, match="Audio recall evaluation is only supported for audio input"):
         _build_command(cfg, tmp_path, run_id="r1")
 
 
@@ -566,7 +566,7 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
         preset="single_gpu",
         query_csv=str(query_csv),
         input_type="audio",
-        evaluation_mode="recall",
+        evaluation_mode="audio_recall",
         segment_audio=True,
         audio_split_type="time",
         audio_split_interval=45,
@@ -577,6 +577,7 @@ def test_build_command_passes_audio_recall_options(tmp_path: Path) -> None:
 
     assert "--input-type" in cmd
     assert cmd[cmd.index("--input-type") + 1] == "audio"
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "audio_recall"
     assert "--recall-match-mode" in cmd
     assert cmd[cmd.index("--recall-match-mode") + 1] == "audio_segment"
     assert "--audio-match-tolerance-secs" in cmd
@@ -1030,7 +1031,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
                 "input_pages": 1940,
                 "num_rows": 3181,
                 "ingestion_only_secs": 12.5,
-                "evaluation_mode": "recall",
+                "evaluation_mode": "audio_recall",
                 "evaluation_metrics": {"recall@5": 0.9},
             }
         ),
@@ -1148,7 +1149,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "input_pages": 1940,
             "num_rows": 3181,
             "ingestion_only_secs": 12.5,
-            "evaluation_mode": "recall",
+            "evaluation_mode": "audio_recall",
             "evaluation_metrics": {"recall@5": 0.9},
         },
         "detection_summary": {"total_detections": 7},
@@ -1181,7 +1182,7 @@ def test_run_single_allows_missing_optional_summary_files(monkeypatch, tmp_path:
         preset="single_gpu",
         query_csv=str(query_csv),
         input_type="audio",
-        evaluation_mode="recall",
+        evaluation_mode="audio_recall",
         recall_match_mode="audio_segment",
         write_detection_file=False,
         recall_required=False,

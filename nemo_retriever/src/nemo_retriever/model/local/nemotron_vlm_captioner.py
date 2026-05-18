@@ -5,11 +5,21 @@
 from __future__ import annotations
 
 import base64
+import warnings
 from io import BytesIO
 from typing import Any, List, Optional
 
 from PIL import Image
 
+from nemo_retriever.caption.model_profiles import (
+    CaptionTarget,
+    caption_model_aliases,
+    caption_model_revisions,
+    get_caption_model_profile,
+    merge_request_extras,
+    resolve_caption_model_name as _resolve_caption_model_name,
+    supported_caption_models_by_variant,
+)
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.nvtx import gpu_inference_range
 from ..model import BaseModel, RunMode
@@ -20,41 +30,21 @@ def _b64_to_pil(b64: str) -> Image.Image:
     return Image.open(BytesIO(base64.b64decode(b64))).convert("RGB")
 
 
-# Bidirectional alias maps: short NIM names ↔ full HuggingFace paths.
-_NIM_TO_HF: dict[str, str] = {
-    "nvidia/nemotron-nano-12b-v2-vl": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
-    "nvidia/nemotron-nano-12b-v2-vl-bf16": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
-    "nvidia/nemotron-nano-12b-v2-vl-fp8": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8",
-    "nvidia/nemotron-nano-12b-v2-vl-nvfp4-qad": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD",
-}
-_HF_TO_NIM: dict[str, str] = {
-    "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16": "nvidia/nemotron-nano-12b-v2-vl",
-    "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8": "nvidia/nemotron-nano-12b-v2-vl-fp8",
-    "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD": "nvidia/nemotron-nano-12b-v2-vl-nvfp4-qad",
-}
+def resolve_caption_model_name(name: str, *, target: CaptionTarget | str = "local") -> str:
+    """Deprecated shim for caption model name resolution."""
 
-
-def resolve_caption_model_name(name: str, *, target: str = "local") -> str:
-    """Normalize a caption model name for the given target.
-
-    Parameters
-    ----------
-    name : str
-        Model name (NIM short form or full HuggingFace path).
-    target : str
-        ``"local"`` returns the full HF path, ``"remote"`` returns the
-        short NIM endpoint name.
-    """
-    lower = name.lower()
-    if target == "local":
-        return _NIM_TO_HF.get(lower, name)
-    # remote
-    return _HF_TO_NIM.get(name, _HF_TO_NIM.get(_NIM_TO_HF.get(lower, name), name))
+    warnings.warn(
+        "nemo_retriever.model.local.nemotron_vlm_captioner.resolve_caption_model_name is deprecated; "
+        "use nemo_retriever.caption.model_profiles.resolve_caption_model_name instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _resolve_caption_model_name(name, target=target)
 
 
 class NemotronVLMCaptioner(BaseModel):
     """
-    Local VLM captioner wrapping Nemotron Nano 12B v2 VL variants.
+    Local VLM captioner wrapping supported Nemotron VLM caption profiles.
 
     Supported models:
 
@@ -62,6 +52,7 @@ class NemotronVLMCaptioner(BaseModel):
     * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8``  (FP8 quantised)
     * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD`` (NVFP4 quantised,
       requires GPU compute capability >= 8.9, e.g. Ada Lovelace / Hopper)
+    * Nemotron 3 Nano Omni BF16, FP8, and NVFP4 profiles and aliases
 
     Uses vLLM for inference with batched scheduling.
 
@@ -74,34 +65,9 @@ class NemotronVLMCaptioner(BaseModel):
         )
     """
 
-    SUPPORTED_MODELS: dict[str, str] = {
-        "BF16": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
-        "FP8": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8",
-        "NVFP4-QAD": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD",
-    }
-
-    MODEL_ALIASES: dict[str, str] = _NIM_TO_HF
-
-    # Pinned HF revision (commit SHA) per model to ensure reproducibility.
-    _MODEL_REVISIONS: dict[str, str] = {
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16": "5d250e2e111dc5e1434131bdf3d590c27a878ade",
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8": "7394488badb786e1decc0e00e308de1cab9560e6",
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD": "b8d3c170d9ee3a078917ef9bfd508eff988d6de7",
-    }
-
-    # Map model-name suffixes to vLLM engine kwargs.
-    # The FP8 HF config ships with quant_method="modelopt" which triggers
-    # vLLM's ModelOptFp8Config (SM89+).  Override to quant_method="fp8" in
-    # the HF config so vLLM uses its plain FP8 handler (SM80+).
-    _QUANTIZATION_PROFILES: dict[str, dict[str, Any]] = {
-        "BF16": {"dtype": "bfloat16"},
-        "FP8": {
-            "dtype": "auto",
-            "quantization": "fp8",
-            "hf_overrides": {"quantization_config": {"quant_method": "fp8", "activation_scheme": "static"}},
-        },
-        "NVFP4-QAD": {"dtype": "auto", "quantization": "modelopt"},
-    }
+    SUPPORTED_MODELS: dict[str, str] = supported_caption_models_by_variant(target="local")
+    MODEL_ALIASES: dict[str, str] = caption_model_aliases(target="local")
+    _MODEL_REVISIONS: dict[str, str | None] = caption_model_revisions()
 
     def __init__(
         self,
@@ -114,15 +80,8 @@ class NemotronVLMCaptioner(BaseModel):
     ) -> None:
         super().__init__()
 
-        # Resolve short aliases to full model paths.
-        model_path = self.MODEL_ALIASES.get(model_path.lower(), model_path)
-
-        valid_models = list(self.SUPPORTED_MODELS.values())
-        if model_path not in valid_models:
-            raise ValueError(
-                f"Unknown caption model: {model_path!r}\n"
-                f"Supported models:\n" + "\n".join(f"  - {m}" for m in valid_models)
-            )
+        profile = get_caption_model_profile(model_path, target="local")
+        model_path = profile.local_model_id
 
         try:
             from vllm import LLM, SamplingParams  # noqa: F401
@@ -131,8 +90,10 @@ class NemotronVLMCaptioner(BaseModel):
                 'Local VLM captioning requires vLLM. Install with: pip install "nemo-retriever[vlm-caption]"'
             ) from e
 
+        self._profile = profile
         self._model_path = model_path
         self._max_new_tokens = max_new_tokens
+        self._request_extras = profile.request_extras_for("local")
 
         if device is not None:
             # vLLM uses CUDA_VISIBLE_DEVICES rather than a torch device string.
@@ -144,15 +105,8 @@ class NemotronVLMCaptioner(BaseModel):
 
         configure_global_hf_cache_base(hf_cache_dir)
 
-        revision = self._MODEL_REVISIONS.get(model_path)
-
-        # Pick vLLM engine kwargs based on the model variant.
-        engine_kwargs: dict[str, Any] = {"dtype": "bfloat16"}  # fallback
-        model_upper = model_path.upper()
-        for suffix, profile in self._QUANTIZATION_PROFILES.items():
-            if model_upper.endswith(suffix):
-                engine_kwargs = profile
-                break
+        revision = profile.revision
+        engine_kwargs = profile.engine_kwargs_for_local()
 
         self._llm = LLM(
             model=model_path,
@@ -194,6 +148,7 @@ class NemotronVLMCaptioner(BaseModel):
         temperature: float = 1.0,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        extra_body: dict[str, Any] | None = None,
     ) -> str:
         """Generate a caption for a single base64-encoded image."""
         return self.caption_batch(
@@ -203,6 +158,7 @@ class NemotronVLMCaptioner(BaseModel):
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
+            extra_body=extra_body,
         )[0]
 
     def caption_batch(
@@ -214,6 +170,7 @@ class NemotronVLMCaptioner(BaseModel):
         temperature: float = 1.0,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        extra_body: dict[str, Any] | None = None,
     ) -> List[str]:
         """Generate captions for a list of base64-encoded images.
 
@@ -229,8 +186,9 @@ class NemotronVLMCaptioner(BaseModel):
         if top_p is not None:
             sp_kwargs["top_p"] = top_p
         sampling_params = SamplingParams(**sp_kwargs)
+        chat_kwargs = merge_request_extras(self._request_extras, extra_body or {})
         with gpu_inference_range("NemotronVLMCaptioner", batch_size=len(conversations)):
-            outputs = self._llm.chat(conversations, sampling_params=sampling_params)
+            outputs = self._llm.chat(conversations, sampling_params=sampling_params, **chat_kwargs)
         return [out.outputs[0].text.strip() for out in outputs]
 
     # ---- BaseModel abstract interface ----

@@ -18,6 +18,9 @@ NeMo Retriever Library does the following:
 - Support multiple methods of extraction for each document type to balance trade-offs between throughput and accuracy. For example, for .pdf documents, extraction is performed by using pdfium and [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse).
 - Support various types of pre- and post- processing operations, including text splitting and chunking, transform and filtering, embedding generation, and image offloading to storage.
 
+!!! note
+    To use `extract_method="nemotron_parse"` with PDFs, install the Nemotron Parse client dependencies with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`.
+
 NeMo Retriever Library supports the following file types:
 
 - `avi`

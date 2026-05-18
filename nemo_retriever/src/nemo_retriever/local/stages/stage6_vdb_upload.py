@@ -5,17 +5,17 @@
 from __future__ import annotations
 
 """
-Local pipeline stage6: thin proxy for vector store upload CLI.
+Local pipeline stage6: thin proxy for VDB upload CLI.
 
 This module intentionally contains no configuration logic. It re-exports the
-`nemo_retriever.vector_store.stage` Typer application so arguments provided to:
+`nemo_retriever.vdb.stage` Typer application so arguments provided to:
 
   `retriever local stage6 ...`
 
-are handled by `nemo_retriever.vector_store.stage`.
+are handled by `nemo_retriever.vdb.stage`.
 """
 
-from nemo_retriever.vector_store.stage import app as app
+from nemo_retriever.vdb.stage import app as app
 
 
 def main() -> None:

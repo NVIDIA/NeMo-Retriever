@@ -1,14 +1,30 @@
-from langchain_core.messages import BaseMessage, SystemMessage
-from typing import Type, TypeVar
-from pydantic import BaseModel, ValidationError
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""LLM client construction and structured-output invocation wrappers."""
+
 import logging
+import os
+from typing import Type, TypeVar
+
+from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
 
 RETRY_MAX_ATTEMPTS = 3
 T = TypeVar("T", bound=BaseModel)
+
+
+def get_llm_client() -> ChatNVIDIA:
+    return ChatNVIDIA(
+        base_url=os.environ.get("BASE_URL"),
+        api_key=os.environ.get("NVIDIA_API_KEY"),
+        model=os.environ.get("MODEL_NAME", "nvidia/nemotron-3-nano-30b-a3b"),
+    )
 
 
 def safe_invoke_with_structured_output(

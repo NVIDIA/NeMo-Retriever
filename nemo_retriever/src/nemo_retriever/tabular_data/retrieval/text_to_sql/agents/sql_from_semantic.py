@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 SQL generation from semantic retrieval context.
 
@@ -22,9 +26,9 @@ import logging
 from typing import Dict, Any
 from langchain_core.messages import AIMessage, SystemMessage
 
-from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import safe_invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.llm_invoke import safe_invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
+from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import (
     build_custom_analyses_section,
     get_custom_analyses_ids,
 )
@@ -62,7 +66,7 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         # Table identifier
         table_name = table.get("name", "UNKNOWN")
         table_label = table.get("label", "")
-        table_id = table.get("id", "")
+        table_description = table.get("description", "")
 
         # Database and schema info
         db_name = table.get("db_name", "")
@@ -77,7 +81,8 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         table_parts.append(f"TABLE: {full_name}")
         if table_label and table_label != table_name:
             table_parts.append(f"  Label: {table_label}")
-        table_parts.append(f"  ID: {table_id}")
+        if table_description:
+            table_parts.append(f"  Description: {table_description}")
 
         # Primary key
         if "primary_key" in table:
@@ -94,10 +99,13 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
                     col_name = col.get("name", "UNKNOWN")
                     col_type = col.get("data_type", "UNKNOWN")
                     col_desc = col.get("description", "")
+                    sample_values = col.get("sample_values")
 
                     col_line = f"    - {col_name} ({col_type})"
                     if col_desc:
                         col_line += f" - {col_desc}"
+                    if sample_values:
+                        col_line += f" | sample values: {sample_values}"
                     table_parts.append(col_line)
                 elif isinstance(col, str):
                     # If column is a string, use it directly
@@ -179,7 +187,30 @@ class SQLFromCandidatesAgent(BaseAgent):
             Includes semantic candidate context, similar questions, and optionally
             extracted file data or file excerpts.
             """
-            observation_block = f"\nlist of important semantic entities with sql snippets:\n{custom_analyses_str}\n"
+            relevance_reasoning = path_state.get("table_relevance_reasoning", "")
+            observation_block = ""
+            if relevance_reasoning:
+                observation_block += f"\nTable selection reasoning:\n{relevance_reasoning}\n"
+            observation_block += f"\nlist of important semantic entities with sql snippets:\n{custom_analyses_str}\n"
+
+            # Build custom analyses section for user prompt
+            ca_section = ""
+            if custom_analyses:
+                ca_lines = []
+                for a in custom_analyses:
+                    line = f"- {a.get('name', '(unnamed)')}"
+                    desc = (a.get("description") or "").strip()
+                    if desc:
+                        line += f": {desc}"
+                    sql = (a.get("sql") or "").strip()
+                    if sql:
+                        line += f"\n  SQL: {sql}"
+                    ca_lines.append(line)
+                ca_section = (
+                    "DOMAIN-SPECIFIC CUSTOM ANALYSES (use their SQL patterns as guidance):\n"
+                    + "\n".join(ca_lines)
+                    + "\n\n"
+                )
 
             # Build user prompt with formatted tables
             user_prompt = create_sql_user_prompt.format(
@@ -189,10 +220,11 @@ class SQLFromCandidatesAgent(BaseAgent):
                 queries=relevant_queries,
                 qa_from_conversations=similar_questions_txt,
                 tables=format_tables_for_prompt(relevant_tables),
+                custom_analyses=ca_section,
             )
 
             # Choose system prompt based on context
-            system_prompt = create_sql_from_candidates_prompt(custom_analyses)
+            system_prompt = create_sql_from_candidates_prompt()
 
             messages = state["messages"] + [
                 SystemMessage(content=system_prompt),

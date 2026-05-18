@@ -17,7 +17,7 @@ import lancedb
 import pandas as pd
 
 from nemo_retriever.vdb.lancedb import LanceDB
-from nemo_retriever.vdb.lancedb_schema import lancedb_schema, update_metadata_with_content_type
+from nemo_retriever.vdb.lancedb_schema import build_lancedb_row, infer_vector_dim, lancedb_schema
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class LanceDBConfig:
     """
     Minimal config for writing embeddings into LanceDB.
 
-    Used by the text-embedding stage and by the vector-store CLI.
+    Used by the text-embedding stage and by the VDB stage CLI.
     """
 
     uri: str = "lancedb"
@@ -81,76 +81,27 @@ def _iter_text_embeddings_json_files(input_dir: Path, *, recursive: bool) -> Lis
     return sorted([p for p in files if p.is_file()])
 
 
+class _MappingRow:
+    def __init__(self, values: Dict[str, Any]) -> None:
+        self._values = values
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._values[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
 def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Transform an embeddings-enriched primitives DataFrame into LanceDB rows.
-
-    Rows include:
-      - vector (embedding)
-      - pdf_basename
-      - page_number
-      - pdf_page (basename_page)
-      - source_id
-      - path
-    """
+    """Transform embeddings-enriched primitive rows into the shared LanceDB row schema."""
     out: List[Dict[str, Any]] = []
-
     for row in rows:
-        meta = row.get("metadata")
-        if not isinstance(meta, dict):
+        if not isinstance(row, dict):
             continue
-        meta = meta.copy()
-
-        embedding = meta.get("embedding")
-        if embedding is None:
-            continue
-
-        if not isinstance(embedding, list):
-            try:
-                embedding = list(embedding)  # type: ignore[arg-type]
-            except Exception:
-                continue
-        meta.pop("embedding", None)
-        update_metadata_with_content_type(meta, content_type=row.get("_content_type"))
-        path = row.get("path", "")
-        source_id = meta.get("source_path", path)
-        page_number = row.get("page_number", -1)
-        p = Path(path) if path else None
-        filename = p.name if p is not None else ""
-        pdf_basename = p.stem if p is not None else ""
-        pdf_page = f"{pdf_basename}_{page_number}" if (pdf_basename and page_number >= 0) else ""
-
-        if page_number == -1:
-            logger.debug("Unable to determine page number for %s", path)
-
-        stored_uri = row.get("_stored_image_uri") or ""
-        out.append(
-            {
-                "vector": embedding,
-                "pdf_page": pdf_page,
-                "filename": filename,
-                "pdf_basename": pdf_basename,
-                "page_number": int(page_number),
-                "source": source_id,
-                "source_id": source_id,
-                "path": path,
-                "text": row.get("text", ""),
-                "metadata": str(meta),
-                "stored_image_uri": str(stored_uri) if stored_uri else "",
-                "content_type": str(row.get("_content_type") or ""),
-                "bbox_xyxy_norm": json.dumps(row.get("_bbox_xyxy_norm")) if row.get("_bbox_xyxy_norm") else "",
-            }
-        )
-
+        row_out = build_lancedb_row(_MappingRow(row), provenance_page=row.get("_page_number"))
+        if row_out is not None:
+            out.append(row_out)
     return out
-
-
-def _infer_vector_dim(rows: Sequence[Dict[str, Any]]) -> int:
-    for r in rows:
-        v = r.get("vector")
-        if isinstance(v, list) and v:
-            return int(len(v))
-    return 0
 
 
 def create_lancedb_index(table: Any, *, cfg: LanceDBConfig, text_column: str = "text") -> None:
@@ -181,11 +132,12 @@ def create_lancedb_index(table: Any, *, cfg: LanceDBConfig, text_column: str = "
 
 
 def _write_rows_to_lancedb(rows: Sequence[Dict[str, Any]], *, cfg: LanceDBConfig) -> None:
-    if not rows:
+    row_list = list(rows)
+    if not row_list:
         logger.warning("No embeddings rows provided; nothing to write to LanceDB.")
         return
 
-    dim = _infer_vector_dim(rows)
+    dim = infer_vector_dim(row_list)
     if dim <= 0:
         raise ValueError("Failed to infer embedding dimension from rows.")
 
@@ -194,7 +146,7 @@ def _write_rows_to_lancedb(rows: Sequence[Dict[str, Any]], *, cfg: LanceDBConfig
     schema = lancedb_schema(vector_dim=dim)
 
     mode = "overwrite" if cfg.overwrite else "append"
-    table = db.create_table(cfg.table_name, data=list(rows), schema=schema, mode=mode)
+    table = db.create_table(cfg.table_name, data=row_list, schema=schema, mode=mode)
 
     if cfg.create_index:
         create_lancedb_index(table, cfg=cfg)
@@ -225,25 +177,38 @@ def write_text_embeddings_dir_to_lancedb(
 
     processed = 0
     skipped = 0
-    failed = 0
 
-    ldb = LanceDB(uri=cfg.uri, table_name=cfg.table_name, overwrite=cfg.overwrite)
+    ldb = LanceDB(
+        uri=cfg.uri,
+        table_name=cfg.table_name,
+        overwrite=cfg.overwrite,
+        create_index=cfg.create_index,
+        index_type=cfg.index_type,
+        metric=cfg.metric,
+        num_partitions=cfg.num_partitions,
+        num_sub_vectors=cfg.num_sub_vectors,
+        hybrid=cfg.hybrid,
+        fts_language=cfg.fts_language,
+    )
 
     results: List[List[Dict[str, Any]]] = []
 
     for p in files:
         df = _read_text_embeddings_json_df(p)
         rows = df.to_dict(orient="records")
+        if not rows:
+            skipped += 1
+            continue
         results.append(rows)
+        processed += 1
 
     if not results:
-        logger.warning("No *.text_embeddings.json files found in %s; nothing to write.", input_dir)
+        logger.warning("No uploadable rows found in %s; nothing to write.", input_dir)
         return {
             "input_dir": str(input_dir),
-            "n_files": 0,
+            "n_files": len(files),
             "processed": 0,
-            "skipped": 0,
-            "failed": 0,
+            "skipped": skipped,
             "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
         }
 
@@ -254,7 +219,6 @@ def write_text_embeddings_dir_to_lancedb(
         "n_files": len(files),
         "processed": processed,
         "skipped": skipped,
-        "failed": failed,
         "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
     }
 
@@ -268,11 +232,19 @@ def handle_lancedb(
 ) -> Dict[str, Any]:
     """Write flattened extraction rows into LanceDB and build indices.
 
-    ``mode`` is accepted for API compatibility; writes use ``overwrite`` semantics
-    via :class:`LanceDBConfig` when creating the table.
+    ``mode`` accepts ``"overwrite"`` or ``"append"`` and is mapped to the
+    corresponding :class:`LanceDBConfig.overwrite` value.
     """
-    _ = mode
-    lancedb_config = LanceDBConfig(uri=uri, table_name=table_name, hybrid=hybrid)
+    mode_normalized = str(mode or "overwrite").strip().lower()
+    if mode_normalized not in {"overwrite", "append"}:
+        raise ValueError(f"mode must be 'overwrite' or 'append'; got {mode!r}")
+
+    lancedb_config = LanceDBConfig(
+        uri=uri,
+        table_name=table_name,
+        overwrite=mode_normalized == "overwrite",
+        hybrid=hybrid,
+    )
     db = lancedb.connect(uri=lancedb_config.uri)
     cleaned_rows = _build_lancedb_rows_from_df(rows)
     if not cleaned_rows:

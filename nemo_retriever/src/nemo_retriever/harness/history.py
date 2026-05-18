@@ -273,7 +273,7 @@ _MIGRATIONS = [
     "ALTER TABLE preset_matrices ADD COLUMN preferred_runner_id INTEGER",
     "ALTER TABLE preset_matrices ADD COLUMN gpu_type_filter TEXT",
     "ALTER TABLE schedules ADD COLUMN preferred_runner_ids TEXT",
-    "ALTER TABLE datasets ADD COLUMN evaluation_mode TEXT DEFAULT 'beir'",
+    "ALTER TABLE datasets ADD COLUMN evaluation_mode TEXT DEFAULT 'none'",
     "ALTER TABLE datasets ADD COLUMN beir_loader TEXT",
     "ALTER TABLE datasets ADD COLUMN beir_dataset_name TEXT",
     "ALTER TABLE datasets ADD COLUMN beir_split TEXT DEFAULT 'test'",
@@ -320,6 +320,7 @@ _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR = "non_audio_recall_datasets_to_beir"
 _MIGRATE_BO20_DATASETS_TO_NONE = "bo20_datasets_to_none"
 _MIGRATE_KNOWN_BEIR_DATASET_LOADERS = "known_beir_dataset_loaders"
 _MIGRATE_UNKNOWN_BEIR_DATASETS_WITHOUT_LOADERS_TO_NONE = "unknown_beir_datasets_without_loaders_to_none"
+_MIGRATE_RECALL_EVALUATION_MODE_RENAME = "recall_evaluation_mode_to_audio_recall"
 _DATA_MIGRATIONS = (
     (
         _MIGRATE_NON_AUDIO_RECALL_DATASETS_TO_BEIR,
@@ -350,6 +351,15 @@ _DATA_MIGRATIONS = (
         _MIGRATE_UNKNOWN_BEIR_DATASETS_WITHOUT_LOADERS_TO_NONE,
         "UPDATE datasets SET evaluation_mode = 'none' "
         "WHERE evaluation_mode = 'beir' AND beir_loader IS NULL AND COALESCE(input_type, 'pdf') != 'audio'",
+    ),
+    (
+        _MIGRATE_RECALL_EVALUATION_MODE_RENAME,
+        "UPDATE datasets SET evaluation_mode = CASE "
+        "WHEN COALESCE(input_type, 'pdf') = 'audio' THEN 'audio_recall' "
+        "WHEN name = 'bo20' THEN 'none' "
+        "WHEN name IN ('jp20', 'bo767', 'bo10k', 'earnings', 'financebench') OR name LIKE 'vidore%' THEN 'beir' "
+        "ELSE 'none' END "
+        "WHERE evaluation_mode = 'recall'",
     ),
 )
 
@@ -1038,7 +1048,7 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
                 1 if data.get("recall_required") else 0,
                 data.get("recall_match_mode", "audio_segment"),
                 data.get("recall_adapter", "none"),
-                data.get("evaluation_mode", "beir"),
+                data.get("evaluation_mode", "none"),
                 data.get("beir_loader") or None,
                 data.get("beir_dataset_name") or None,
                 data.get("beir_split", "test"),
