@@ -273,13 +273,14 @@ class GraphIngestor(ingestor):
         params: Optional[ExtractParams] = None,
         *,
         split_config: dict[str, Any] | None = None,
-        extraction_mode: str = "pdf",
+        extraction_mode: str = "auto",
         **kwargs: Any,
     ) -> "GraphIngestor":
-        """Configure PDF/document extraction.
+        """Configure file extraction through :class:`MultiTypeExtractOperator`.
 
-        Defaults to ``extraction_mode='pdf'``. Pass ``extraction_mode='auto'``
-        to dispatch a mixed folder through :class:`MultiTypeExtractOperator`.
+        Defaults to ``extraction_mode='auto'`` so supported file types are
+        dispatched by extension. Pass ``extraction_mode='pdf'`` to use the
+        dedicated PDF/document graph directly.
         Chunking is opt-in: pass ``split_config={"<key>": {...}}`` to enable
         post-extract token chunking for that source type.
         """
@@ -442,7 +443,7 @@ class GraphIngestor(ingestor):
         """
         # Auto-enable dedup before captioning so that images overlapping
         # with table/chart/infographic detections are removed first.
-        # Skip for image-only extraction — the image IS the content.
+        # Skip for explicit image-only extraction — the image IS the content.
         if self._caption_params is not None and self._dedup_params is None and self._extraction_mode != "image":
             self._dedup_params = DedupParams()
             if "dedup" not in self._stage_order:

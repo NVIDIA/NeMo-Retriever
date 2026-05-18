@@ -88,10 +88,84 @@ def test_graph_ingestor_action_methods_materialize_default_params() -> None:
 
 
 def test_extract_unified_defaults() -> None:
-    """`.extract()` defaults: extraction_mode='pdf' and no chunking unless opted in."""
+    """`.extract()` defaults to auto dispatch and no chunking unless opted in."""
     ingestor = GraphIngestor(run_mode="inprocess").extract()
-    assert ingestor._extraction_mode == "pdf"
+    assert ingestor._extraction_mode == "auto"
     assert all(ingestor._split_config[k] is None for k in ("text", "html", "pdf", "audio", "image", "video"))
+
+
+@pytest.mark.parametrize(("suffix", "fmt"), [(".bmp", "BMP"), (".tiff", "TIFF"), (".tif", "TIFF")])
+def test_extract_default_materializes_direct_image_page_image(monkeypatch, tmp_path, suffix: str, fmt: str) -> None:
+    pytest.importorskip("PIL", reason="Pillow is required for image tests")
+    from PIL import Image
+
+    image_path = tmp_path / f"scan{suffix}"
+    Image.new("RGB", (24, 16), color=(32, 96, 160)).save(image_path, format=fmt)
+
+    monkeypatch.setattr(
+        "nemo_retriever.graph.multi_type_extract_operator._MultiTypeExtractBase._run_detection_pipeline",
+        lambda self, batch_df: batch_df,
+    )
+
+    result = (
+        GraphIngestor(run_mode="inprocess", show_progress=False)
+        .files([str(image_path)])
+        .extract(ExtractParams(extract_text=True, extract_images=True, extract_tables=True, extract_charts=True))
+        .ingest()
+    )
+
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert isinstance(row["page_image"], dict)
+    assert row["page_image"]["image_b64"]
+    assert row["page_image"]["encoding"] == "png"
+    assert row["metadata"]["error"] is None
+
+
+def test_extract_default_auto_dispatches_mixed_supported_inputs(monkeypatch, tmp_path) -> None:
+    pytest.importorskip("PIL", reason="Pillow is required for image tests")
+    from PIL import Image
+
+    image_path = tmp_path / "scan.bmp"
+    pdf_path = tmp_path / "doc.pdf"
+    Image.new("RGB", (24, 16), color=(32, 96, 160)).save(image_path, format="BMP")
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(
+        "nemo_retriever.graph.multi_type_extract_operator._MultiTypeExtractBase._run_detection_pipeline",
+        lambda self, batch_df: batch_df,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.graph.multi_type_extract_operator._MultiTypeExtractBase._run_pdf_pipeline",
+        lambda self, batch_df: pd.DataFrame(
+            [
+                {
+                    "path": str(pdf_path),
+                    "page_number": 1,
+                    "source_id": f"{pdf_path}_1",
+                    "text": "pdf text",
+                    "page_image": None,
+                    "images": [],
+                    "tables": [],
+                    "charts": [],
+                    "infographics": [],
+                    "metadata": {"source_path": str(pdf_path), "error": None},
+                }
+            ]
+        ),
+    )
+
+    result = (
+        GraphIngestor(run_mode="inprocess", show_progress=False)
+        .files([str(pdf_path), str(image_path)])
+        .extract(ExtractParams(extract_text=True, extract_images=True, extract_tables=True, extract_charts=True))
+        .ingest()
+    )
+
+    assert set(result["path"]) == {str(pdf_path), str(image_path)}
+    image_row = result[result["path"] == str(image_path)].iloc[0]
+    assert isinstance(image_row["page_image"], dict)
+    assert image_row["page_image"]["image_b64"]
 
 
 def test_typed_shortcuts_preserve_legacy_no_default_chunking() -> None:
