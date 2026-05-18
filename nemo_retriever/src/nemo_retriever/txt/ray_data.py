@@ -21,6 +21,27 @@ from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from .split import txt_bytes_to_chunks_df
 
 
+def _coerce_binary_payload(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, memoryview):
+        return value.tobytes()
+
+    as_py = getattr(value, "as_py", None)
+    if callable(as_py):
+        return _coerce_binary_payload(as_py())
+
+    tobytes = getattr(value, "tobytes", None)
+    if callable(tobytes):
+        return tobytes()
+
+    return value
+
+
 @designer_component(
     name="Text Chunker",
     category="Text & Content",
@@ -98,7 +119,11 @@ class TxtSplitCPUActor(AbstractOperator, CPUOperator):
                 continue
             path_str = str(path) if path is not None else ""
             try:
-                payload = raw or text.encode("utf-8")
+                payload = _coerce_binary_payload(raw)
+                if (payload is None or payload == b"") and isinstance(text, str):
+                    payload = text.encode("utf-8")
+                if payload is None:
+                    continue
                 chunk_df = txt_bytes_to_chunks_df(payload, path_str, params=params)
                 if not chunk_df.empty:
                     out_dfs.append(chunk_df)

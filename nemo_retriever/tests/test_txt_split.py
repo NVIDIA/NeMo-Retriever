@@ -7,12 +7,14 @@ Unit tests for nemo_retriever.txt.split: split_text_by_tokens and txt_file_to_ch
 """
 
 import tempfile  # noqa: F401
+import sys
+import types
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from nemo_retriever.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
+from nemo_retriever.txt.split import _get_tokenizer, split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
 
 
 class _MockTokenizer:
@@ -55,6 +57,35 @@ def test_split_text_by_tokens_max_tokens_positive():
     tokenizer = _MockTokenizer()
     with pytest.raises(ValueError, match="max_tokens must be positive"):
         split_text_by_tokens("hello", tokenizer=tokenizer, max_tokens=0)
+
+
+def test_get_tokenizer_local_path_skips_revision_lookup(tmp_path: Path, monkeypatch):
+    tokenizer_dir = tmp_path / "tokenizer"
+    tokenizer_dir.mkdir()
+    calls = {}
+
+    class _FakeAutoTokenizer:
+        @staticmethod
+        def from_pretrained(model_id, **kwargs):
+            calls["model_id"] = model_id
+            calls["kwargs"] = kwargs
+            return object()
+
+    transformers = types.ModuleType("transformers")
+    transformers.AutoTokenizer = _FakeAutoTokenizer
+    monkeypatch.setitem(sys.modules, "transformers", transformers)
+
+    def fail_revision_lookup(model_id):
+        raise AssertionError(f"unexpected revision lookup for {model_id}")
+
+    monkeypatch.setattr("nemo_retriever.utils.hf_model_registry.get_hf_revision", fail_revision_lookup)
+
+    _get_tokenizer(str(tokenizer_dir), cache_dir="/tmp/tokenizer-cache")
+
+    assert calls["model_id"] == str(tokenizer_dir)
+    assert calls["kwargs"]["cache_dir"] == "/tmp/tokenizer-cache"
+    assert calls["kwargs"]["trust_remote_code"] is True
+    assert "revision" not in calls["kwargs"]
 
 
 def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):

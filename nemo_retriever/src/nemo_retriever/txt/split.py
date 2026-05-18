@@ -26,13 +26,18 @@ def _get_tokenizer(model_id: str, cache_dir: Optional[str] = None):  # noqa: ANN
     """Lazy-load HuggingFace tokenizer."""
     from transformers import AutoTokenizer
 
-    from nemo_retriever.utils.hf_model_registry import get_hf_revision
+    tokenizer_kwargs = {
+        "cache_dir": cache_dir,
+        "trust_remote_code": True,
+    }
+    if not Path(model_id).expanduser().exists():
+        from nemo_retriever.utils.hf_model_registry import get_hf_revision
+
+        tokenizer_kwargs["revision"] = get_hf_revision(model_id)
 
     return AutoTokenizer.from_pretrained(
         model_id,
-        revision=get_hf_revision(model_id),
-        cache_dir=cache_dir,
-        trust_remote_code=True,
+        **tokenizer_kwargs,
     )
 
 
