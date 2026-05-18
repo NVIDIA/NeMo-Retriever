@@ -3,15 +3,13 @@
 This page is the `retriever`-CLI counterpart to
 `client/client_examples/examples/cli_client_usage.ipynb`.
 
-The original notebook walks through the legacy **ingestion-service** CLI by:
+The walk-through below covers:
 
 1. Printing `--help`.
-2. Submitting a single PDF with `extract + dedup + filter` tasks.
-3. Submitting a dataset of PDFs with the same task set.
+2. Running a single PDF with extract, dedup, and image storage.
+3. Running a batch of PDFs from a directory.
 
-The equivalent `retriever` workflow is shown below. You can drop these cells
-into a new notebook (e.g. `retriever_client_usage.ipynb`) alongside the old
-one.
+You can drop these cells into a new notebook (e.g. `retriever_client_usage.ipynb`).
 
 ## 1. Help
 
@@ -23,22 +21,7 @@ retriever pipeline run --help
 Top-level `--help` lists the subcommand tree; `pipeline run --help` shows the
 ingest-specific flags you will actually use in this walk-through.
 
-## 2. Submit a single PDF
-
-Old notebook cell:
-
-```bash
-legacy-cli \
-  --doc ${SAMPLE_PDF0} \
-  --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_text": true, "extract_images": true, "extract_tables": true, "extract_tables_method": "yolox"}' \
-  --task='dedup:{"content_type": "image", "filter": true}' \
-  --task='filter:{"content_type": "image", "min_size": 128, "max_aspect_ratio": 5.0, "min_aspect_ratio": 0.2, "filter": true}' \
-  --client_host=localhost \
-  --client_port=7670 \
-  --output_directory=${OUTPUT_DIRECTORY_SINGLE}
-```
-
-New:
+## 2. Run a single PDF
 
 ```bash
 retriever pipeline run "${SAMPLE_PDF0}" \
@@ -50,35 +33,18 @@ retriever pipeline run "${SAMPLE_PDF0}" \
   --save-intermediate "${OUTPUT_DIRECTORY_SINGLE}"
 ```
 
-### Parity notes
+### Notes
 
-- `extract_tables_method:"yolox"` is not a CLI selector — the pipeline picks
-  its table/structure detectors automatically. Tables are still extracted.
-- `dedup:{content_type:"image", filter:true}` maps to `--dedup` (with
-  `--dedup-iou-threshold` for the IoU threshold).
-- `filter:{content_type:"image", min_size, min/max_aspect_ratio, filter:true}`
-  **has no parity.** There is no image scale/aspect-ratio filter in the
-  `retriever` CLI today. If that matters, drop to the Python API or keep the
-  old `legacy-cli` for that example.
-- `extract_images:true` is covered by `--store-images-uri`: the image assets
-  produced by the configured embed granularity are persisted to that URI.
+- Table/structure detectors are chosen automatically by the pipeline; there is
+  no CLI flag to select a specific table-extraction backend.
+- `--dedup` with `--dedup-iou-threshold` removes duplicate image elements.
+- There is no image scale/aspect-ratio filter in the `retriever` CLI today.
+- `--store-images-uri` persists image assets produced at the configured embed
+  granularity.
 
-## 3. Submit a dataset of PDFs
+## 3. Run a batch of PDFs
 
-Old notebook cell:
-
-```bash
-legacy-cli \
-  --dataset ${BATCH_FILE} \
-  --task='extract:{"document_type": "pdf", "extract_method": "pdfium", "extract_text": true, "extract_images": true, "extract_tables": true, "extract_tables_method": "yolox"}' \
-  --task='dedup:{"content_type": "image", "filter": true}' \
-  --task='filter:{"content_type": "image", "min_size": 128, "max_aspect_ratio": 5.0, "min_aspect_ratio": 0.2, "filter": true}' \
-  --client_host=localhost \
-  --client_port=7670 \
-  --output_directory=${OUTPUT_DIRECTORY_BATCH}
-```
-
-New — point `retriever` at a directory of PDFs instead of a dataset JSON:
+Point `retriever` at a directory of PDFs:
 
 ```bash
 # Assume $PDF_DIR is a directory holding your batch of PDFs.
@@ -91,13 +57,11 @@ retriever pipeline run "${PDF_DIR}" \
   --save-intermediate "${OUTPUT_DIRECTORY_BATCH}"
 ```
 
-### Parity notes
+### Notes
 
-- The `dataset.json` (`sampled_files`) format and `gen_dataset.py` sampler
-  are not reproduced. Materialize a directory (or glob) containing the files
-  you want to process.
-- The `--shuffle_dataset` knob is not present; set Ray block / batch sizes
-  via `--pdf-split-batch-size`, `--pdf-extract-batch-size`, etc. for throughput.
+- Pass a directory or glob of files; there is no built-in `dataset.json` loader.
+- Tune throughput with Ray batch flags such as `--pdf-split-batch-size` and
+  `--pdf-extract-batch-size`.
 
 ## 4. Inspect results
 
@@ -114,11 +78,3 @@ db = lancedb.connect("./lancedb")
 tbl = db.open_table("nemo-retriever")
 print(tbl.to_pandas().head())
 ```
-
-## Migration summary
-
-| Old notebook cell | New `retriever` form | Parity |
-|-------------------|----------------------|--------|
-| `!legacy-cli --help` | `!retriever --help` (plus `retriever pipeline run --help`) | Full |
-| Single-file extract + dedup + filter | `retriever pipeline run <file> … --dedup …` | Partial — no image-size/aspect filter, `extract_tables_method` auto-selected |
-| Dataset extract + dedup + filter | `retriever pipeline run <dir> …` | Partial — no `dataset.json` loader; use a directory |
