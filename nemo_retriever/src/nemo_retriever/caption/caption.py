@@ -334,6 +334,9 @@ def caption_images(
             request_extras = profile.request_extras_for("remote")
         request_extras = merge_request_extras(request_extras, extra_body or {})
         if extra_body:
+            # VLMModelInterface.format_input handles only chat_template_kwargs, mm_processor_kwargs, and
+            # media_options as first-class kwargs. Pack merged extras here so arbitrary caller keys
+            # such as custom_request_id reach the final payload via payload.update(extra_body).
             request_extras["extra_body"] = merge_request_extras(
                 {},
                 {key: value for key, value in request_extras.items() if key != "extra_body"},
