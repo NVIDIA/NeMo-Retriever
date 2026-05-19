@@ -80,7 +80,7 @@ For more information, refer to [Extract Captions from Images](nemo-retriever-api
 Ingestor(client=client)
     .files("data/multimodal_test.pdf")
     .extract()
-    .embed()
     .caption()
+    .embed()
 
 ```
