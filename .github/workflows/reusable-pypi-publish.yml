@@ -21,6 +21,12 @@ jobs:
           name: python-wheels
           path: ./dist
 
+      - name: List downloaded wheel artifacts
+        run: |
+          echo "Contents of ./dist after download-artifact:"
+          find ./dist -type f -ls 2>/dev/null || true
+          find ./dist -type d 2>/dev/null || true
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -35,9 +41,17 @@ jobs:
           ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME }}
           ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
         run: |
-          # Publish all wheels
+          # upload-artifact strips to the common parent (nemo_retriever/dist/), so
+          # downloaded files land directly under ./dist/, not ./dist/nemo_retriever/dist/.
+          mapfile -t DIST_FILES < <(find ./dist -type f \( -name '*.whl' -o -name '*.tar.gz' \))
+          if [ "${#DIST_FILES[@]}" -eq 0 ]; then
+            echo "::error::No wheel or sdist files under ./dist"
+            find ./dist -type f || true
+            exit 1
+          fi
+          printf 'Publishing:\n%s\n' "${DIST_FILES[@]}"
           twine upload --verbose \
-            --repository-url $ARTIFACTORY_URL \
-            -u $ARTIFACTORY_USERNAME \
-            -p $ARTIFACTORY_PASSWORD \
-            ./dist/nemo_retriever/dist/*
+            --repository-url "$ARTIFACTORY_URL" \
+            -u "$ARTIFACTORY_USERNAME" \
+            -p "$ARTIFACTORY_PASSWORD" \
+            "${DIST_FILES[@]}"
