@@ -30,6 +30,78 @@ BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.c
 EARNINGS_ANNOTATIONS_PATH = REPO_ROOT / "data" / "earnings_consulting_multimodal.csv"
 FINANCEBENCH_ANNOTATIONS_PATH = REPO_ROOT / "data" / "financebench_train.json"
 JP20_ANNOTATIONS_PATH = REPO_ROOT / "data" / "jp20_query_gt.csv"
+
+
+@dataclass(frozen=True)
+class BeirDatasetOptions:
+    """Resolved BEIR dataset defaults: loader, dataset identifier/path, doc-id field, and metric cutoffs."""
+
+    loader: str | None = None
+    dataset_name: str | None = None
+    doc_id_field: str | None = None
+    ks: tuple[int, ...] = DEFAULT_BEIR_KS
+
+
+_FIRST_CLASS_BEIR_DATASETS: dict[str, BeirDatasetOptions] = {
+    "bo767": BeirDatasetOptions(
+        loader="bo767_csv",
+        dataset_name=str(BO767_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "bo10k": BeirDatasetOptions(
+        loader="bo10k_csv",
+        dataset_name=str(BO10K_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "jp20": BeirDatasetOptions(
+        loader="jp20_csv",
+        dataset_name=str(JP20_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "earnings": BeirDatasetOptions(
+        loader="earnings_csv",
+        dataset_name=str(EARNINGS_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "financebench": BeirDatasetOptions(
+        loader="financebench_json",
+        dataset_name=str(FINANCEBENCH_ANNOTATIONS_PATH),
+        doc_id_field="pdf_basename",
+    ),
+}
+
+
+def resolve_beir_dataset_options(
+    *,
+    dataset_name: str | None,
+    loader: str | None = None,
+    doc_id_field: str | None = None,
+    ks: Sequence[int] | None = None,
+) -> BeirDatasetOptions:
+    """Resolve shorthand first-class BEIR dataset names into concrete options."""
+    normalized_name = str(dataset_name).strip() if dataset_name is not None else None
+    defaults = None
+    if normalized_name:
+        lookup_key = normalized_name.lower()
+        defaults = _FIRST_CLASS_BEIR_DATASETS.get(lookup_key)
+        if defaults is None and lookup_key.startswith("vidore_v3_"):
+            defaults = BeirDatasetOptions(
+                loader="vidore_hf",
+                dataset_name=normalized_name,
+                doc_id_field="pdf_basename",
+            )
+
+    resolved_ks = tuple(int(k) for k in ks) if ks else (defaults.ks if defaults else DEFAULT_BEIR_KS)
+    # Preserve the historical CLI default for custom/non-first-class BEIR datasets.
+    resolved_doc_id_field = doc_id_field or (defaults.doc_id_field if defaults else "pdf_basename")
+    return BeirDatasetOptions(
+        loader=loader or (defaults.loader if defaults else None),
+        dataset_name=(defaults.dataset_name if defaults else normalized_name),
+        doc_id_field=resolved_doc_id_field,
+        ks=resolved_ks,
+    )
+
+
 _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "caption": "image",
     "chart": "chart",
@@ -92,6 +164,7 @@ class BeirConfig:
     local_hf_device: str | None = None
     local_hf_cache_dir: str | None = None
     local_hf_batch_size: int = 32
+    local_query_max_length: int = 128
     reranker: bool = False
     reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
     reranker_endpoint: str | None = None
@@ -100,6 +173,11 @@ class BeirConfig:
     local_reranker_backend: str = "vllm"
     #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
     local_query_embed_backend: str = "hf"
+    #: When set, queries are sent to this service URL (POST /v1/query) instead of local LanceDB.
+    service_url: str | None = None
+    service_api_token: str | None = None
+    service_query_batch_size: int = 32
+    service_max_concurrent: int = 16
 
     def __post_init__(self) -> None:
         from nemo_retriever.model import (
@@ -721,6 +799,7 @@ def evaluate_lancedb_beir(
         "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
         "inference_batch_size": int(cfg.local_hf_batch_size),
         "embed_inference_batch_size": int(cfg.local_hf_batch_size),
+        "query_max_length": int(cfg.local_query_max_length),
     }
     if cfg.embedding_http_endpoint:
         embed_kwargs["embedding_endpoint"] = cfg.embedding_http_endpoint
@@ -762,6 +841,156 @@ def evaluate_lancedb_beir(
     metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
     logger.info(
         "Computed BEIR metrics for dataset=%s queries=%d ks=%s",
+        dataset.dataset_name,
+        len(dataset.query_ids),
+        list(ks),
+    )
+    return dataset, raw_hits, run, metrics
+
+
+# ── Service-mode BEIR evaluation ─────────────────────────────────────
+
+
+def _query_service_batch(
+    client: Any,
+    base_url: str,
+    queries: list[str],
+    *,
+    top_k: int,
+    headers: dict[str, str],
+) -> list[list[dict[str, Any]]]:
+    """Send a batch of queries to POST /v1/query (sync httpx)."""
+    payload: dict[str, Any] = {
+        "query": queries if len(queries) > 1 else queries[0],
+        "top_k": top_k,
+    }
+    resp = client.post(f"{base_url}/v1/query", json=payload, headers=headers)
+    resp.raise_for_status()
+    body = resp.json()
+    all_hits: list[list[dict[str, Any]]] = []
+    for result_set in body.get("results", []):
+        hits = result_set.get("hits", []) if isinstance(result_set, dict) else []
+        all_hits.append(hits)
+    return all_hits
+
+
+def _query_service_all(
+    base_url: str,
+    queries: list[str],
+    *,
+    top_k: int,
+    batch_size: int = 32,
+    max_concurrent: int = 16,
+    token: str | None = None,
+) -> list[list[dict[str, Any]]]:
+    """Query a remote service for all queries using batched concurrent requests."""
+    import asyncio
+
+    import httpx as _httpx
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    all_hits: list[list[dict[str, Any]]] = [[] for _ in queries]
+    semaphore = asyncio.Semaphore(max_concurrent)
+    timeout = _httpx.Timeout(300.0, connect=30.0)
+    limits = _httpx.Limits(
+        max_connections=max_concurrent * 2,
+        max_keepalive_connections=max_concurrent,
+    )
+
+    async def _run() -> None:
+        async with _httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+
+            async def _do_batch(start: int, end: int) -> None:
+                async with semaphore:
+                    batch = queries[start:end]
+                    payload: dict[str, Any] = {
+                        "query": batch if len(batch) > 1 else batch[0],
+                        "top_k": top_k,
+                    }
+                    resp = await client.post(
+                        f"{base_url}/v1/query",
+                        json=payload,
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+                    body = resp.json()
+                    for i, result_set in enumerate(body.get("results", [])):
+                        hits = result_set.get("hits", []) if isinstance(result_set, dict) else []
+                        all_hits[start + i] = hits
+
+            tasks = []
+            for start in range(0, len(queries), batch_size):
+                end = min(start + batch_size, len(queries))
+                tasks.append(asyncio.create_task(_do_batch(start, end)))
+
+            total = len(tasks)
+            done = 0
+            for coro in asyncio.as_completed(tasks):
+                await coro
+                done += 1
+                if done % 5 == 0 or done == total:
+                    logger.info("Service query progress: %d/%d batches", done, total)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            pool.submit(asyncio.run, _run()).result()
+    else:
+        asyncio.run(_run())
+
+    return all_hits
+
+
+def evaluate_service_beir(
+    cfg: BeirConfig,
+) -> tuple["BeirDataset", list[list[dict[str, Any]]], dict[str, dict[str, float]], dict[str, float]]:
+    """Load a BEIR-style dataset, query a remote service, and compute aggregate metrics.
+
+    Same interface as :func:`evaluate_lancedb_beir` but sends queries to
+    ``POST {cfg.service_url}/v1/query`` instead of searching a local LanceDB.
+    """
+    if not cfg.service_url:
+        raise ValueError("service_url is required for service-mode BEIR evaluation")
+
+    dataset = load_beir_dataset(
+        cfg.loader,
+        dataset_name=cfg.dataset_name,
+        split=cfg.split,
+        query_language=cfg.query_language,
+        doc_id_field=cfg.doc_id_field,
+    )
+    ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
+
+    logger.info(
+        "Running service-mode BEIR evaluation: url=%s queries=%d top_k=%d batch_size=%d",
+        cfg.service_url,
+        len(dataset.queries),
+        max(ks),
+        cfg.service_query_batch_size,
+    )
+
+    raw_hits = _query_service_all(
+        cfg.service_url,
+        list(dataset.queries),
+        top_k=max(ks),
+        batch_size=cfg.service_query_batch_size,
+        max_concurrent=cfg.service_max_concurrent,
+        token=cfg.service_api_token,
+    )
+
+    run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)
+    metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
+    logger.info(
+        "Computed service BEIR metrics for dataset=%s queries=%d ks=%s",
         dataset.dataset_name,
         len(dataset.query_ids),
         list(ks),

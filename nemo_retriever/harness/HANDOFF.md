@@ -24,7 +24,7 @@ Operator-oriented notes for `nemo_retriever` benchmark runs. Implementation deta
 
 ## Defaults (`test_configs.yaml`)
 
-- Default dataset: `jp20` (recall workflow with query CSV).
+- Default dataset: `jp20` (BEIR evaluation workflow with query CSV).
 - Default run mode: `batch`.
 - `bo20`: ingestion-oriented (`recall_required: false`, no query CSV).
 - Presets: `single_gpu`, `dgx_8gpu`.
@@ -69,7 +69,7 @@ Prefer **`summary_metrics`** for dashboards (small set: pages, ingest timing, re
 
 - `recall_required: true` without recall metrics → harness failure (`missing_recall_metrics`).
 - Relative `query_csv` resolves next to the YAML file, then repo root.
-- Dataset paths under `/datasets/nv-ingest/...` may resolve to `/raid/$USER/...` when the former is missing.
+- Dataset paths under `/datasets/retrieval-eval/...` may resolve to `/raid/$USER/...` when the former is missing.
 - Store is not configured through the harness. Use `retriever pipeline run --store-images-uri <uri>` for local or object-storage image assets.
 
 ## Backlog (maintainers / agents)

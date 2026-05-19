@@ -81,7 +81,10 @@ service:
   terminationGracePeriodSeconds: 60
 
   podSecurityContext:
-    runAsNonRoot: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
   securityContext: {}
 
   serviceAccount:
@@ -111,14 +114,12 @@ service:
     count: 0
     productClass: ""
 
-  # Liveness, readiness, and startup probes. The service does not expose a
-  # dedicated /healthz endpoint, so we use FastAPI's auto-generated
-  # /openapi.json (always cheap and JSON) for HTTP probes. Disable / replace
-  # via the `enabled` and `httpGet` overrides if you prefer TCP socket probes.
+  # Liveness, readiness, and startup probes.  All use the dedicated
+  # GET /v1/health endpoint which returns {"status":"ok"} with no auth.
   livenessProbe:
     enabled: true
     httpGet:
-      path: /openapi.json
+      path: /v1/health
       port: http
     initialDelaySeconds: 30
     periodSeconds: 30
@@ -128,7 +129,7 @@ service:
   readinessProbe:
     enabled: true
     httpGet:
-      path: /openapi.json
+      path: /v1/health
       port: http
     initialDelaySeconds: 5
     periodSeconds: 10
@@ -138,7 +139,7 @@ service:
   startupProbe:
     enabled: true
     httpGet:
-      path: /openapi.json
+      path: /v1/health
       port: http
     initialDelaySeconds: 5
     periodSeconds: 5
@@ -160,14 +161,167 @@ service:
 # Kubernetes Service (network)
 # =============================================================================
 networkService:
-  type: ClusterIP
+  type: NodePort
   port: 7670
   # Optional: override the targetPort name. Should match container port name.
   targetPort: http
   annotations: {}
   labels: {}
   # NodePort assignment (only used when type=NodePort).
-  nodePort: ""
+  # Leave empty to let Kubernetes auto-assign from the 30000-32767 range.
+  nodePort: 30670
+
+# =============================================================================
+# Topology — single-pod vs split gateway/worker architecture
+# =============================================================================
+# When mode is "standalone" (default), the chart creates a single Deployment
+# that runs both realtime and batch pools in-process. This is the simplest
+#
+# When mode is "split", the chart creates three Deployments:
+#   1. gateway  — lightweight proxy that routes uploads to the correct backend
+#   2. realtime — worker pod(s) for low-latency page processing
+#   3. batch    — worker pod(s) for throughput-oriented document processing
+#
+# External traffic always enters through the gateway Service; realtime and
+# batch Services are ClusterIP-only and not directly exposed.
+topology:
+  mode: standalone   # "standalone" or "split"
+
+  gateway:
+    replicas: 2
+    resources:
+      requests:
+        cpu: "4"
+        memory: "12Gi"
+      limits:
+        cpu: "16"
+        memory: "48Gi"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+  realtime:
+    replicas: 2
+    resources:
+      requests:
+        cpu: "8"
+        memory: "24Gi"
+      limits:
+        cpu: "16"
+        memory: "96Gi"
+    gpu:
+      enabled: false
+      count: 0
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 60
+
+  batch:
+    replicas: 2
+    resources:
+      requests:
+        cpu: "16"
+        memory: "48Gi"
+      limits:
+        cpu: "32"
+        memory: "128Gi"
+    gpu:
+      enabled: true
+      count: 1
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 80
+
+  vectordb:
+    replicas: 1
+    port: 7671
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+      limits:
+        cpu: "16"
+        memory: "96Gi"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    persistence:
+      enabled: true
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: "50Gi"
+
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry Collector
+  # ---------------------------------------------------------------------------
+  # Deploys an in-cluster OpenTelemetry Collector for traces, metrics, and logs.
+  # Disable with `topology.otel.enabled: false`.  The collector exposes OTLP
+  # gRPC (4317) and OTLP HTTP (4318) receivers by default.
+  otel:
+    enabled: true
+    image:
+      repository: otel/opentelemetry-collector-contrib
+      tag: "0.127.0"
+      pullPolicy: IfNotPresent
+    replicas: 1
+    ports:
+      otlpGrpc: 4317
+      otlpHttp: 4318
+      prometheus: 8889
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    config:
+      extensions:
+        health_check:
+          endpoint: "0.0.0.0:13133"
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: "0.0.0.0:4317"
+            http:
+              endpoint: "0.0.0.0:4318"
+      processors:
+        batch:
+          timeout: 5s
+          send_batch_size: 1024
+      exporters:
+        debug:
+          verbosity: basic
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [debug]
+          metrics:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [debug]
+          logs:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [debug]
 
 # =============================================================================
 # retriever-service.yaml configuration
@@ -177,7 +331,7 @@ networkService:
 # the bundled default that ships in the image.
 #
 # When `nims.enabled` is true the chart auto-injects the in-cluster NIM URLs
-# below into `serviceConfig.nim_endpoints.*` — any explicit value here is
+# below into `serviceConfig.nimEndpoints.*` — any explicit value here is
 # preserved as an override.
 serviceConfig:
   server:
@@ -186,26 +340,8 @@ serviceConfig:
 
   logging:
     level: "INFO"
-    # Path is rooted at the persistence volume so logs survive pod restarts.
     file: "/var/lib/nemo-retriever/retriever-service.log"
     format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-
-  database:
-    # Path is rooted at the persistence volume; do not change unless you also
-    # adjust `persistence.mountPath`.
-    path: "/var/lib/nemo-retriever/retriever-service.db"
-
-  processing:
-    # Worker processes per pod. With remote NIM endpoints these are
-    # lightweight HTTP clients, so the upstream default is 64. Match this
-    # to the requested CPU on the pod (rough rule of thumb: 8-16 workers per
-    # core). Higher values keep GPUs saturated by maintaining more in-flight
-    # NIM requests in parallel.
-    numWorkers: 64
-    batchSize: 16
-    batchTimeoutS: 2.0
-    # Must match retrieverResults.mountPath so the service writes to the PVC.
-    resultsDir: "/retriever_results"
 
   # External NIM endpoints. Used as-is when `nims.enabled` is false. When
   # `nims.enabled` is true these are *overridden* by the in-cluster
@@ -217,46 +353,39 @@ serviceConfig:
     ocrInvokeUrl: ""
     embedInvokeUrl: ""
 
+  # Pipeline worker pools.  Workers are abstract dispatchers — sizing
+  # depends on whether they do local GPU work or fan out to remote NIMs.
+  # For CPU-only NIM-forwarding nodes, higher worker counts are fine.
+  pipeline:
+    realtimeWorkers: 24
+    realtimeQueueSize: 2048
+    batchWorkers: 48
+    batchQueueSize: 8192
+
   resources:
     maxMemoryMb: null
     maxCpuCores: null
     gpuDevices: []
 
-  # ---------------------------------------------------------------------------
-  # Durable spool of accepted-but-not-yet-processed page bytes.
-  #
-  # When `enabled: true` (the default), every accepted page is fsync'd to
-  # disk on the persistence volume BEFORE the ingest endpoint returns 202.
-  # On startup, the service scans the spool and re-enqueues any documents
-  # that didn't reach a terminal state — pod crashes, OOM kills, and
-  # rolling upgrades no longer lose accepted work.
-  #
-  # `path` defaults to <database.path's directory>/spool when null, so
-  # the spool sits on the same persistent volume as the SQLite DB.
-  # ---------------------------------------------------------------------------
-  spool:
+  # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
+  # is deployed.  Workers POST embeddings to it; the gateway proxies
+  # /v1/query to it for retrieval.
+  vectordb:
     enabled: true
-    path: null
-    cleanupIntervalS: 60.0
-    cleanupBatchSize: 1000
+    lancedbUri: "/data/vectordb"
+    tableName: "nemo_retriever"
+    embedModel: "nvidia/llama-nemotron-embed-1b-v2"
 
-  # ---------------------------------------------------------------------------
-  # SSE event-bus back-pressure policy.
-  #
-  # - drop_low_priority (default): silently shed metrics_update /
-  #   page_complete / document_complete when subscribers fall behind, so
-  #   terminal events are always delivered.  Lowest latency.
-  # - backpressure: publisher awaits Queue.put with `publishTimeoutS`,
-  #   back-pressuring the worker pool, eventually 503-ing ingest.  Pick
-  #   this when you cannot tolerate ANY dropped events under load.
-  # - block: same as backpressure but waits forever.  Zero loss at the
-  #   cost of unbounded latency.
-  # ---------------------------------------------------------------------------
-  eventBus:
-    overflowPolicy: "drop_low_priority"
-    queueMaxsize: 8192
-    replayBufferSize: 1024
-    publishTimeoutS: 30.0
+  # Optional bearer-token authentication. When apiToken is set, every
+  # request must carry "Authorization: Bearer <token>".
+  auth:
+    apiToken: null
+    headerName: "Authorization"
+    bypassPaths:
+      - "/v1/health"
+      - "/docs"
+      - "/openapi.json"
+      - "/redoc"
 
 
 # =============================================================================
@@ -312,10 +441,10 @@ persistence:
   annotations: {}
 
 # =============================================================================
-# Ingress (off by default)
+# Ingress (on by default)
 # =============================================================================
 ingress:
-  enabled: false
+  enabled: true
   className: ""
   annotations: {}
   #   nginx.ingress.kubernetes.io/proxy-body-size: "200m"
@@ -377,7 +506,7 @@ nims:
   # Default values inherited by every NIM unless overridden. Per-NIM blocks
   # below can override any of these keys.
   defaults:
-    replicas: 2
+    replicas: 1
     port: 8000
     shmSize: "16Gi"
     resources:

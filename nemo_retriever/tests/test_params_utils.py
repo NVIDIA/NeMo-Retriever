@@ -5,7 +5,7 @@
 """Unit tests for nemo_retriever.params.utils."""
 
 from nemo_retriever.params.models import EmbedParams
-from nemo_retriever.params.utils import build_embed_kwargs, coerce_params
+from nemo_retriever.params.utils import build_embed_kwargs, coerce_params, normalize_embed_kwargs
 
 
 class TestCoerceParams:
@@ -32,6 +32,12 @@ class TestBuildEmbedKwargs:
         kwargs = build_embed_kwargs(params)
         assert kwargs["embedding_endpoint"] == "http://nim:8000/v1"
 
+    def test_strips_embed_invoke_url(self):
+        params = EmbedParams(embed_invoke_url="  http://nim:8000/v1  ")
+        kwargs = build_embed_kwargs(params)
+        assert kwargs["embed_invoke_url"] == "http://nim:8000/v1"
+        assert kwargs["embedding_endpoint"] == "http://nim:8000/v1"
+
     def test_does_not_overwrite_existing_embedding_endpoint(self):
         params = EmbedParams(
             embed_invoke_url="http://old:8000/v1",
@@ -53,3 +59,22 @@ class TestBuildEmbedKwargs:
         assert "runtime" not in kwargs
         assert "batch_tuning" not in kwargs
         assert "fused_tuning" not in kwargs
+
+
+class TestNormalizeEmbedKwargs:
+    def test_adds_embedding_endpoint_alias(self):
+        kwargs = normalize_embed_kwargs({"embed_invoke_url": "http://nim:8000/v1"})
+        assert kwargs["embed_invoke_url"] == "http://nim:8000/v1"
+        assert kwargs["embedding_endpoint"] == "http://nim:8000/v1"
+
+    def test_drops_empty_embed_invoke_url(self):
+        assert normalize_embed_kwargs({"embed_invoke_url": "  "}) == {}
+
+    def test_does_not_overwrite_embedding_endpoint(self):
+        kwargs = normalize_embed_kwargs(
+            {
+                "embed_invoke_url": "http://new:8000/v1",
+                "embedding_endpoint": "http://existing:8000/v1",
+            }
+        )
+        assert kwargs["embedding_endpoint"] == "http://existing:8000/v1"

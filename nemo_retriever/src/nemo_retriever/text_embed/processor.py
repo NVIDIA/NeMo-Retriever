@@ -111,6 +111,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
         gpu_memory_utilization=float(task_config.get("gpu_memory_utilization", 0.45)),
         enforce_eager=_to_bool(task_config.get("enforce_eager"), default=False),
         dimensions=task_config.get("dimensions"),
+        query_max_length=int(task_config.get("query_max_length", 128)),
     )
 
     prefix = f"{transform_config.input_type}: " if getattr(transform_config, "input_type", None) else ""

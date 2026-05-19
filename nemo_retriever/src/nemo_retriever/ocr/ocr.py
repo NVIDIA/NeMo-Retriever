@@ -67,6 +67,8 @@ def nemotron_parse_page_elements(*args: Any, **kwargs: Any):
 class OCRActor(ArchetypeOperator):
     """Graph-facing OCR archetype."""
 
+    _LOCAL_OCR_SELECTOR_KEYS = frozenset({"ocr_version", "ocr_lang"})
+
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
@@ -84,54 +86,30 @@ class OCRActor(ArchetypeOperator):
 
         return OCRGPUActor
 
-    def __init__(self, **ocr_kwargs: Any) -> None:
-        super().__init__(**ocr_kwargs)
-
-
-@designer_component(
-    name="OCR V2",
-    category="Detection & OCR",
-    compute="gpu",
-    description="Performs multilingual optical character recognition using Nemotron OCR v2",
-)
-class OCRV2Actor(ArchetypeOperator):
-    """Graph-facing OCR v2 archetype (multilingual, higher throughput)."""
-
     @classmethod
-    def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
-        kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip())
-
-    @classmethod
-    def cpu_variant_class(cls):
-        from nemo_retriever.ocr.cpu_ocrv2 import OCRV2CPUActor
-
-        return OCRV2CPUActor
-
-    @classmethod
-    def gpu_variant_class(cls):
-        from nemo_retriever.ocr.gpu_ocrv2 import OCRV2Actor as OCRV2GPUActor
-
-        return OCRV2GPUActor
+    def variant_operator_kwargs(cls, operator_class, operator_kwargs: dict[str, Any] | None = None) -> dict[str, Any]:
+        kwargs = super().variant_operator_kwargs(operator_class, operator_kwargs)
+        if operator_class is cls.cpu_variant_class():
+            for key in cls._LOCAL_OCR_SELECTOR_KEYS:
+                kwargs.pop(key, None)
+        return kwargs
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
 
 
 def resolve_ocr_archetype(extract_params: Any) -> type:
-    """Pick the OCR archetype class based on ExtractParams.ocr_version.
-
-    Default is v2 (OCRV2Actor). Pass ocr_version="v1" on ExtractParams
-    to fall back to the legacy English-only OCRActor.
+    """Return the unified OCR archetype for all supported OCR selectors.
 
     Args:
-        extract_params: An object exposing an ``ocr_version`` attribute.
-            When the attribute is missing, v2 is assumed.
+        extract_params: Extract parameters. Accepted for compatibility with
+            older callers that expected version-specific archetype selection.
 
     Returns:
-        The OCR archetype class (``OCRActor`` for v1, ``OCRV2Actor`` for v2).
+        The unified OCR archetype class. The concrete local model version is
+        selected by ``ocr_version``/``ocr_lang`` in the actor kwargs.
     """
-    return OCRActor if getattr(extract_params, "ocr_version", "v2") == "v1" else OCRV2Actor
+    return OCRActor
 
 
 def __getattr__(name: str):
@@ -143,12 +121,14 @@ def __getattr__(name: str):
         from nemo_retriever.ocr.gpu_ocr import OCRActor as OCRGPUActor
 
         return OCRGPUActor
+    if name == "OCRV2Actor":
+        return OCRActor
     if name == "OCRV2CPUActor":
-        from nemo_retriever.ocr.cpu_ocrv2 import OCRV2CPUActor
+        from nemo_retriever.ocr.cpu_ocr import OCRV2CPUActor
 
         return OCRV2CPUActor
     if name == "OCRV2GPUActor":
-        from nemo_retriever.ocr.gpu_ocrv2 import OCRV2Actor as OCRV2GPUActor
+        from nemo_retriever.ocr.gpu_ocr import OCRV2Actor as OCRV2GPUActor
 
         return OCRV2GPUActor
     if name == "NemotronParseCPUActor":

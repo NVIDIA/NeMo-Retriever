@@ -1,5 +1,7 @@
 # Neo4j Setup Guide
 
+> **Warning — unsupported Docker Compose (developer tooling).** The **Docker Compose** commands in this guide run **Neo4j locally** for development only. This is **not** a supported production deployment path. For **supported** NeMo Retriever / NIM deployment, use **[Helm](../../../../helm/README.md)** and the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)**. For the canonical overview of Compose in this repo, see **[`docker.md`](../../../../docker.md)**.
+
 This guide walks you through running Neo4j locally via Docker and using the relational_db Neo4j connection from `nemo_retriever.relational_db.neo4j_connection`.
 
 ---

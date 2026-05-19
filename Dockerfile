@@ -93,9 +93,6 @@ WORKDIR /workspace
 COPY data data
 COPY nemo_retriever nemo_retriever
 
-# ENV VIRTUAL_ENV=/opt/retriever_runtime
-# ENV PATH=/opt/retriever_runtime/bin:/root/.local/bin:$PATH
-# ENV LD_LIBRARY_PATH=/opt/retriever_runtime/lib:${LD_LIBRARY_PATH}
 
 # ---------------------------------------------------------------------------
 # Install nemo_retriever and path deps (build context = repo root)
@@ -119,7 +116,7 @@ SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e ./nemo_retriever
+    && uv pip install -e "./nemo_retriever[service]"
 
 # Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
@@ -150,7 +147,7 @@ ENV PATH=/opt/retriever_runtime/bin:$PATH
 
 RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx \
     && chmod -R a+rX /opt/uv \
-    && groupadd -r nemo && useradd -r -g nemo -d /workspace -s /sbin/nologin nemo \
+    && groupadd -r -g 1000 nemo && useradd -r -u 1000 -g nemo -d /workspace -s /sbin/nologin nemo \
     && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \

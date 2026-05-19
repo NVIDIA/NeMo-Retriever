@@ -137,6 +137,60 @@ class TestRetrieveVdbOperatorPreprocess:
         vec = op.preprocess(df)
         assert vec == [[0.1, 0.2]]
 
+    def test_dataframe_to_vectors_reads_payload_embedding_column(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "text_embeddings_1b_v2": [{"embedding": [0.3, 0.4]}],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.3, 0.4]]
+
+    def test_dataframe_to_vectors_reads_direct_embedding_column(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "text_embeddings_1b_v2": [[0.5, 0.6]],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.5, 0.6]]
+
+    def test_dataframe_to_vectors_skips_non_numeric_list_columns(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "tags": [["finance", "annual"]],
+                "text_embeddings_1b_v2": [[0.7, 0.8]],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.7, 0.8]]
+
+    def test_dataframe_to_vectors_skips_numeric_non_embedding_list_columns(self) -> None:
+        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "page_scores": [[9.9, 8.8]],
+                "text_embeddings_1b_v2": [[0.7, 0.8]],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+        vec = op.preprocess(df)
+        assert vec == [[0.7, 0.8]]
+
 
 class TestRerankLongDataframe:
     def test_groups_by_query_order(self) -> None:

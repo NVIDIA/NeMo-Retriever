@@ -1,3 +1,7 @@
+{{- if eq .Values.topology.mode "standalone" }}
+# =========================================================================
+# Standalone mode — single Service
+# =========================================================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -23,3 +27,72 @@ spec:
       {{- if and (eq .Values.networkService.type "NodePort") .Values.networkService.nodePort }}
       nodePort: {{ .Values.networkService.nodePort }}
       {{- end }}
+{{- else }}
+# =========================================================================
+# Split mode — gateway (external), realtime + batch (ClusterIP only)
+# =========================================================================
+
+# Gateway Service — the only externally-exposed entrypoint
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "gateway") }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "gateway") | nindent 4 }}
+    {{- with .Values.networkService.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.networkService.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.networkService.type }}
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "gateway") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.networkService.port }}
+      targetPort: {{ .Values.networkService.targetPort }}
+      {{- if and (eq .Values.networkService.type "NodePort") .Values.networkService.nodePort }}
+      nodePort: {{ .Values.networkService.nodePort }}
+      {{- end }}
+
+# Realtime Service — ClusterIP, used by gateway for internal routing
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "realtime") }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "realtime") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "realtime") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.networkService.port }}
+      targetPort: http
+
+# Batch Service — ClusterIP, used by gateway for internal routing
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "batch") }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "batch") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "batch") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.networkService.port }}
+      targetPort: http
+{{- end }}

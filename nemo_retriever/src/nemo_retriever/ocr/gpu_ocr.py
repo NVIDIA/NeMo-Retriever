@@ -12,11 +12,12 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.nim.nim import NIMClient
 from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.ocr.config import resolve_ocr_v2_lang
 from nemo_retriever.ocr.shared import Image, _error_payload, ocr_page_elements
 
 
 class OCRActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initializes Nemotron OCR v1 once per actor."""
+    """Ray-friendly callable that initializes Nemotron OCR v2 once per actor."""
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
@@ -50,9 +51,13 @@ class OCRActor(AbstractOperator, GPUOperator):
                 max_pool_workers=int(self._remote_retry.remote_max_pool_workers),
             )
         else:
-            from nemo_retriever.model.local import NemotronOCRV1
+            from nemo_retriever.model.local import NemotronOCRV2
 
-            self._model = NemotronOCRV1()
+            lang = resolve_ocr_v2_lang(
+                str(self.ocr_kwargs.get("ocr_version", "v2")),
+                self.ocr_kwargs.get("ocr_lang"),
+            )
+            self._model = NemotronOCRV2(lang=lang)
             self._nim_client = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
@@ -87,3 +92,6 @@ class OCRActor(AbstractOperator, GPUOperator):
                 out["ocr_v1_counts_by_label"] = [{} for _ in range(n)]
                 return out
             return [{"ocr": _error_payload(stage="actor_call", exc=exc)}]
+
+
+OCRV2Actor = OCRActor

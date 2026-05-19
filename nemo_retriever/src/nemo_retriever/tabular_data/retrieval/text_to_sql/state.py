@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 LangGraph agent state and API payload types.
 
@@ -23,7 +27,7 @@ class AgentPayload(TypedDict):
     path_state: NotRequired[dict]
     dialect: NotRequired[str]
     connector: NotRequired[Any]
-    acronyms: NotRequired[str]
+    acronyms: NotRequired[list[dict[str, str]]]
     custom_prompts: NotRequired[str]
 
 
@@ -38,6 +42,7 @@ class AgentState(TypedDict):
     connector: Any
     path_state: dict
     retriever: Retriever
+    domain_rules: list[dict[str, str]]
 
 
 def get_question_for_processing(state: AgentState) -> str:
@@ -54,4 +59,14 @@ def get_question_for_processing(state: AgentState) -> str:
     return state.get("initial_question", "")
 
 
-__all__ = ["AgentPayload", "AgentState", "get_question_for_processing"]
+def rules_to_text(rules: list[dict[str, str]]) -> str:
+    """Convert a list of ``{"name": ..., "description": ...}`` rules to a prompt string."""
+    if not rules:
+        return ""
+    parts = []
+    for rule in rules:
+        parts.append(f"## {rule['name']}\n{rule['description']}")
+    return "\n\n".join(parts) + "\n\n"
+
+
+__all__ = ["AgentPayload", "AgentState", "get_question_for_processing", "rules_to_text"]

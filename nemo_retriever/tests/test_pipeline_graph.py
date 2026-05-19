@@ -715,7 +715,7 @@ class TestMultiTypeExtractOperator:
             "PageElementDetectionActor",
             "TableStructureActor",
             "GraphicElementsActor",
-            "OCRV2Actor",
+            "OCRActor",
         ]
         assert len({id(resources) for _name, resources in calls}) == 1
 

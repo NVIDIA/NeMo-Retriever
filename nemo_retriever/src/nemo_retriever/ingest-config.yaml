@@ -162,7 +162,7 @@ chart:
   # If `endpoint_config.yolox_endpoints` is null/empty, chart extraction will fall back to the local
   # HuggingFace model (`nemo_retriever.model.local.nemotron_graphic_elements_v1`).
   # If `endpoint_config.ocr_endpoints` is null/empty, chart extraction falls back to local Nemotron OCR
-  # (`nemo_retriever.model.local.nemotron_ocr_v1`) with default HuggingFace model loading.
+  # (`nemo_retriever.model.local.nemotron_ocr_v2`) with default HuggingFace model loading.
 
   # Optional worker settings
   max_queue_size: 1
