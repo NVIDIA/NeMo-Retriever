@@ -21,6 +21,12 @@ jobs:
           name: python-wheels
           path: ./dist
 
+      - name: List downloaded wheel artifacts
+        run: |
+          echo "Contents of ./dist after download-artifact:"
+          find ./dist -type f -ls 2>/dev/null || true
+          find ./dist -type d 2>/dev/null || true
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
