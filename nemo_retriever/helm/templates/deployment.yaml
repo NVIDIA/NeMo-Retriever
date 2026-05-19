@@ -78,13 +78,18 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
-            {{- if or .Values.nimApiKey.value .Values.nimApiKey.existingSecret }}
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ngcApiSecret.name }}
+                  key: NGC_API_KEY
+                  optional: true
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "nemo-retriever.nimApiKeySecretName" . }}
-                  key: {{ .Values.nimApiKey.existingSecretKey }}
-            {{- end }}
+                  name: {{ .Values.ngcApiSecret.name }}
+                  key: NGC_API_KEY
+                  optional: true
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -233,13 +238,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            {{- if or $.Values.nimApiKey.value $.Values.nimApiKey.existingSecret }}
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.ngcApiSecret.name }}
+                  key: NGC_API_KEY
+                  optional: true
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "nemo-retriever.nimApiKeySecretName" $ }}
-                  key: {{ $.Values.nimApiKey.existingSecretKey }}
-            {{- end }}
+                  name: {{ $.Values.ngcApiSecret.name }}
+                  key: NGC_API_KEY
+                  optional: true
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

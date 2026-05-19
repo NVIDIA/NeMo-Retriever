@@ -3,8 +3,11 @@
 # =============================================================================
 #
 # This chart deploys the "service" run mode of nemo-retriever and, optionally,
-# the four NIM microservices it orchestrates against. See README.md for a full
-# walkthrough of every knob below.
+# the supporting NIM microservices via the NVIDIA NIM Operator (NIMCache /
+# NIMService custom resources from the apps.nvidia.com/v1alpha1 API group).
+# The NIM templates are gated on the operator CRDs being installed in the
+# cluster, so the chart degrades gracefully when the operator is absent.
+# See README.md for a full walkthrough of every knob below.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -16,26 +19,48 @@ nameOverride: ""
 fullnameOverride: ""
 
 # -----------------------------------------------------------------------------
-# Pull secrets
+# NGC pull + API secrets (consumed by the service Deployment AND every
+# operator-managed NIMService).
 # -----------------------------------------------------------------------------
-# Image pull secrets applied to every Pod the chart creates (service + NIMs).
-# Either reference pre-existing secrets by name OR let the chart create one
-# from a docker-config JSON via `imagePullSecret.create`.
-imagePullSecrets: []
-#  - name: ngc-pull-secret
-
-imagePullSecret:
-  # When true, render a Secret of type kubernetes.io/dockerconfigjson with
-  # the contents below. The created Secret is automatically appended to
-  # `imagePullSecrets` for every Pod.
+# The NIM Operator references its image pull secret and NGC auth secret by
+# **name only** — those names are hard-coded into each NIMCache/NIMService
+# template (`ngc-secret` and `ngc-api` by default, matching upstream NIM
+# Operator examples). Set `create: true` to have this chart provision the
+# secrets, or `create: false` + an externally managed Secret with the same
+# name.
+#
+# Additional pre-existing pull secrets can be listed under `imagePullSecrets`
+# at the bottom of this section.
+ngcImagePullSecret:
   create: false
-  name: "ngc-pull-secret"
-  # Either supply `dockerconfigjson` (full ~/.docker/config.json contents,
-  # base64-encoded) OR the convenience trio (registry + username + password).
+  # Name used by every Pod's `imagePullSecrets` and by each NIMService's
+  # `image.pullSecrets`. Keep at "ngc-secret" unless you have a strong
+  # reason to rename — every per-model template references this name by
+  # default.
+  name: "ngc-secret"
   registry: "nvcr.io"
   username: "$oauthtoken"
+  # NGC API key. Required when `create: true`. May be left blank if you
+  # supply `dockerconfigjson` directly.
   password: ""
+  # Optional pre-assembled docker-config JSON (base64-encoded). When set,
+  # overrides registry/username/password.
   dockerconfigjson: ""
+
+ngcApiSecret:
+  create: false
+  # Name used as the NIMCache/NIMService `authSecret` and as the source for
+  # the service container's NGC_API_KEY / NVIDIA_API_KEY env vars.
+  name: "ngc-api"
+  # NGC API key. Both `NGC_API_KEY` and `NGC_CLI_API_KEY` keys are
+  # populated with this value so NIM containers and ad-hoc CLI users
+  # both work.
+  password: ""
+
+# Extra pre-existing image pull secrets to append to every Pod in addition
+# to the chart-managed `ngcImagePullSecret` above.
+imagePullSecrets: []
+#  - name: my-private-registry
 
 # =============================================================================
 # Service (the FastAPI nemo-retriever ingest server)
@@ -418,9 +443,11 @@ topology:
 # /etc/nemo-retriever/retriever-service.yaml inside the container, replacing
 # the bundled default that ships in the image.
 #
-# When `nims.enabled` is true the chart auto-injects the in-cluster NIM URLs
-# below into `serviceConfig.nimEndpoints.*` — any explicit value here is
-# preserved as an override.
+# When a NIM is enabled under `nimOperator.<key>.enabled: true` and the NIM
+# Operator CRDs are installed in the cluster, the chart auto-injects the
+# in-cluster NIMService URL below into the matching
+# `serviceConfig.nimEndpoints.*` field. An explicit value supplied here
+# always wins (use it to point at an external NIM, e.g. build.nvidia.com).
 serviceConfig:
   server:
     host: "0.0.0.0"
@@ -431,9 +458,10 @@ serviceConfig:
     file: "/var/lib/nemo-retriever/retriever-service.log"
     format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
-  # External NIM endpoints. Used as-is when `nims.enabled` is false. When
-  # `nims.enabled` is true these are *overridden* by the in-cluster
-  # service URLs of the deployed NIMs (unless explicitly set here).
+  # External NIM endpoints. Used as-is when the operator NIM is disabled
+  # or when the NIM Operator CRDs are absent. When the corresponding
+  # `nimOperator.<key>.enabled` is true (and the CRDs exist), the
+  # in-cluster NIMService URL is used unless explicitly set here.
   nimEndpoints:
     pageElementsInvokeUrl: ""
     tableStructureInvokeUrl: ""
@@ -474,17 +502,6 @@ serviceConfig:
       - "/openapi.json"
       - "/redoc"
 
-
-# =============================================================================
-# NIM API key (for external NIM endpoints, e.g. build.nvidia.com)
-# =============================================================================
-nimApiKey:
-  # When `value` is non-empty AND `existingSecret` is empty, the chart
-  # creates a Secret with the supplied value and wires NVIDIA_API_KEY into
-  # the service container.
-  value: ""
-  existingSecret: ""
-  existingSecretKey: "NVIDIA_API_KEY"
 
 # =============================================================================
 # Retriever Results volume
@@ -653,124 +670,386 @@ serviceMonitor:
   metricRelabelings: []
 
 # =============================================================================
-# NIMs (toggleable sub-stack)
+# NIMs (NVIDIA NIM Operator integration)
 # =============================================================================
-# When `nims.enabled` is true, the chart deploys all four NIMs as
-# Deployments + ClusterIP Services and wires their in-cluster URLs into the
-# retriever-service config. When false, the chart deploys nothing GPU-shaped
-# and uses `serviceConfig.nimEndpoints.*` (or `nimApiKey.value`) instead.
-#
-# Each NIM is independently togglable via its own `enabled` flag.
+# Master switch — set `nims.enabled: false` to disable the entire NIM
+# sub-stack regardless of per-NIM flags below. Handy for installs that
+# only want the retriever service (talking to external NIM URLs) and
+# nothing GPU-shaped in this release.
 nims:
-  enabled: false
+  enabled: true
 
-  # Image pull secrets specific to the NIM sub-stack (in addition to the
-  # global `imagePullSecrets`).
-  imagePullSecrets: []
-
-  # Default values inherited by every NIM unless overridden. Per-NIM blocks
-  # below can override any of these keys.
-  defaults:
-    replicas: 1
-    port: 8000
-    shmSize: "16Gi"
-    resources:
-      requests:
-        cpu: "1"
-        memory: "8Gi"
-      limits:
-        cpu: "8"
-        memory: "32Gi"
-        nvidia.com/gpu: 1
-    nodeSelector: {}
-    tolerations: []
-    affinity: {}
-    podAnnotations: {}
-    # Common NIM env. NGC_API_KEY is sourced from the NGC pull secret value
-    # by default; override or extend via `env` per NIM.
-    env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
-        value: "1"
-      - name: NIM_ENABLE_OTEL
-        value: "0"
-    envFrom: []
-    livenessProbe:
-      tcpSocket:
-        port: http
-      initialDelaySeconds: 60
-      periodSeconds: 30
-      timeoutSeconds: 10
-      failureThreshold: 6
-    readinessProbe:
-      httpGet:
-        path: /v1/health/ready
-        port: http
-      initialDelaySeconds: 60
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 12
-    startupProbe:
-      tcpSocket:
-        port: http
-      initialDelaySeconds: 30
-      periodSeconds: 15
-      timeoutSeconds: 5
-      failureThreshold: 60
-    # Persistent volume for the NIM model cache (avoids re-downloading on
-    # every pod restart). Disable per-NIM by setting `cache.enabled: false`.
-    cache:
-      enabled: true
-      mountPath: /opt/nim/.cache
+# Each `nimOperator.<key>` block renders a pair of `NIMCache` + `NIMService`
+# custom resources (apiVersion: apps.nvidia.com/v1alpha1) that the NIM
+# Operator reconciles into a Deployment + Service per model.
+#
+# The per-model templates are gated on ALL of:
+#   1. `.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1"` — the
+#      NIM Operator CRDs must be installed in the cluster.
+#   2. `nims.enabled: true` — master switch above.
+#   3. `nimOperator.<key>.enabled: true` — per-model toggle below.
+#
+# When auto-resolution is in effect, the chart populates
+# `serviceConfig.nimEndpoints.*` with the NIMService's in-cluster URL
+# (e.g. http://nemotron-page-elements-v3:8000/v1/infer). An explicit value
+# in `serviceConfig.nimEndpoints.*` always wins.
+#
+# NIMCache resources carry the `helm.sh/resource-policy: keep` annotation
+# so model downloads survive `helm uninstall` (they reference PersistentVolume
+# state that's expensive to rebuild).
+nimOperator:
+  # ---------------------------------------------------------------------------
+  # NIMCache storage defaults (currently informational — each per-NIM block
+  # carries its own storage.pvc settings).
+  # ---------------------------------------------------------------------------
+  nimCache:
+    pvc:
+      create: true
+      # If set, applies to every per-NIM PVC that doesn't override
+      # storageClass explicitly.
       storageClass: ""
-      accessModes:
-        - ReadWriteOnce
-      size: 100Gi
-
-  # NGC API key used by every NIM at startup. If `existingSecret` is empty
-  # the chart creates a Secret with `value`. NGC_API_KEY is then exposed to
-  # every NIM container.
-  ngcApiKey:
-    value: ""
-    existingSecret: ""
-    existingSecretKey: "NGC_API_KEY"
+      size: "25Gi"
+      volumeAccessMode: ReadWriteOnce
 
   # ---------------------------------------------------------------------------
-  # The four NIMs. Each block is merged on top of `nims.defaults`. Setting
-  # `enabled: false` removes that NIM entirely (and the chart will fall back
-  # to `serviceConfig.nimEndpoints.*` for that endpoint, which must then be
-  # populated by the operator).
+  # All NIMs the operator can stand up are enabled by default — flip
+  # `nims.enabled: false` to disable the whole sub-stack, or set
+  # `nimOperator.<key>.enabled: false` to opt out of a single NIM.
+  # The first four are wired into the retriever-service config
+  # automatically; the rest are reconciled by the operator but the
+  # retriever-service won't call them unless you also point your
+  # pipeline at them.
   # ---------------------------------------------------------------------------
-  pageElements:
+
+  # Page-elements detector (YOLOX-style). Used by the page-element extraction
+  # stage of the ingest pipeline.
+  page_elements:
     enabled: true
     image:
       repository: nvcr.io/nim/nvidia/nemotron-page-elements-v3
       tag: "1.8.0"
       pullPolicy: IfNotPresent
-    # The retriever-service config field this NIM populates.
-    invokePath: /v1/infer
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "25Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: NIM_TRITON_MAX_BATCH_SIZE
+        value: "32"
+      - name: NIM_TRITON_CPU_THREADS_PRE_PROCESSOR
+        value: "2"
+      - name: NIM_TRITON_CPU_THREADS_POST_PROCESSOR
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "2"
 
-  tableStructure:
+  # Table structure detector. Used by the table extraction stage.
+  table_structure:
     enabled: true
     image:
       repository: nvcr.io/nim/nvidia/nemotron-table-structure-v1
       tag: "1.8.0"
       pullPolicy: IfNotPresent
-    invokePath: /v1/infer
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "25Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: NIM_TRITON_RATE_LIMIT
+        value: "3"
+      - name: NIM_TRITON_MAX_BATCH_SIZE
+        value: "32"
+      - name: NIM_TRITON_CUDA_MEMORY_POOL_MB
+        value: "2048"
+      - name: OMP_NUM_THREADS
+        value: "1"
 
+  # Nemotron OCR v1. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v1
       tag: "1.3.0"
       pullPolicy: IfNotPresent
-    invokePath: /v1/infer
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "25Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: OMP_NUM_THREADS
+        value: "8"
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: NIM_TRITON_MAX_BATCH_SIZE
+        value: "32"
 
-  embed:
+  # Llama Nemotron embed 1B v2. Used by the embedding stage AND by the
+  # vectordb query path.
+  embedqa:
     enabled: true
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2
       tag: "1.13.0"
       pullPolicy: IfNotPresent
-    invokePath: /v1/embeddings
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "50Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_TRITON_PERFORMANCE_MODE
+        value: "throughput"
+
+  # ---------------------------------------------------------------------------
+  # Optional / advanced NIMs. Enabled by default alongside the core four;
+  # the retriever-service does not auto-wire these into its config, so
+  # integrate them manually via your own pipeline configuration. Set
+  # `nimOperator.<key>.enabled: false` to skip one without disabling the
+  # whole sub-stack.
+  # ---------------------------------------------------------------------------
+
+  # Llama Nemotron rerank 1B v2. Optional reranking stage for retrieval.
+  rerankqa:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2
+      tag: "1.10.0"
+      pullPolicy: IfNotPresent
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "50Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+
+  # Nemotron Nano 12B v2 VL. Optional VLM for caption/summarization stages.
+  nemotron_nano_12b_v2_vl:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-nano-12b-v2-vl
+      tag: "1.5.0"
+      pullPolicy: IfNotPresent
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "300Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+
+  # Nemotron Parse v1.2. Optional structured document parser.
+  nemotron_parse:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
+      tag: "1.7.0-variant"
+      pullPolicy: IfNotPresent
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "100Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+
+  # Nemotron 3 Nano Omni 30B A3B Reasoning. Multimodal reasoning LLM.
+  # Large model — bump `storage.pvc.size` and `resources.limits.nvidia.com/gpu`
+  # if your weights/runtime need more than the defaults below.
+  nemotron_3_nano_omni_30b_a3b_reasoning:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+      tag: "latest"
+      pullPolicy: IfNotPresent
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "300Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+
+  # Parakeet ASR. Optional audio transcription NIM.
+  audio:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us
+      tag: "1.5.0"
+      pullPolicy: IfNotPresent
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "25Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 9000
+        grpcPort: 50051
+    env:
+      - name: NIM_TAGS_SELECTOR
+        value: "name=parakeet-1-1b-ctc-en-us,mode=ofl"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
