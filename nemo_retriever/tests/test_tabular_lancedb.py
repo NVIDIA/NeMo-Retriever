@@ -27,6 +27,7 @@ lancedb = pytest.importorskip("lancedb")
 from nemo_retriever.tabular_data.vdb import TabularLanceDB
 from nemo_retriever.vdb.factory import get_vdb_op_cls
 from nemo_retriever.vdb.lancedb import LanceDB
+from nemo_retriever.vdb.operators import IngestVdbOperator, RetrieveVdbOperator
 
 
 def _records_with_labels() -> list[list[dict]]:
@@ -85,8 +86,33 @@ def _records_with_labels() -> list[list[dict]]:
     ]
 
 
-def test_factory_dispatches_tabular_lancedb() -> None:
-    assert get_vdb_op_cls("tabular_lancedb") is TabularLanceDB
+def test_factory_does_not_expose_tabular_lancedb() -> None:
+    """The reference factory must not surface vertical-specific subclasses.
+
+    ``TabularLanceDB`` is a tabular-vertical extension; the tabular code is
+    expected to construct it directly and inject the instance via
+    ``vdb=<instance>``. Registering it in the shared factory would expose
+    external NRL customers to a name that is irrelevant to them.
+    """
+    with pytest.raises(ValueError, match="Invalid vdb_op"):
+        get_vdb_op_cls("tabular_lancedb")
+
+
+def test_instance_injection_via_ingest_and_retrieve_operators() -> None:
+    """The graph operators accept ``vdb=<TabularLanceDB instance>`` directly,
+    which is the wiring tabular_data uses instead of the shared factory.
+    """
+    vdb = TabularLanceDB(
+        uri=tempfile.mkdtemp(),
+        table_name="t",
+        overwrite=True,
+        vector_dim=2,
+        validate_vector_length=False,
+    )
+    ingest = IngestVdbOperator(vdb=vdb)
+    retrieve = RetrieveVdbOperator(vdb=vdb)
+    assert ingest._vdb is vdb
+    assert retrieve._vdb is vdb
 
 
 def test_schema_exposes_label_and_database_name_columns() -> None:

@@ -11,16 +11,11 @@ def get_vdb_op_cls(vdb_op: str):
     Returns the class if found, else raises ValueError.
     """
 
-    available_vdb_ops = ["lancedb", "tabular_lancedb"]
+    available_vdb_ops = ["lancedb"]
 
     if vdb_op == "lancedb":
         from nemo_retriever.vdb.lancedb import LanceDB
 
         return LanceDB
-
-    if vdb_op == "tabular_lancedb":
-        from nemo_retriever.tabular_data.vdb.tabular_lancedb import TabularLanceDB
-
-        return TabularLanceDB
 
     raise ValueError(f"Invalid vdb_op: {vdb_op}. Available vdb_ops - {available_vdb_ops}.")

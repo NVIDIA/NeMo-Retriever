@@ -29,10 +29,10 @@ from nemo_retriever.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload
 from nemo_retriever.vdb import IngestVdbOperator
+from nemo_retriever.tabular_data.vdb import TabularLanceDB
 from nemo_retriever.params import (
     EmbedParams,
     TabularExtractParams,
-    VdbUploadParams,
 )
 
 # ── Validate required environment variables ───────────────────────────────────
@@ -64,15 +64,18 @@ EMBED_PARAMS = EmbedParams(
     embed_modality="text",
 )
 
-# ``tabular_lancedb`` is a thin subclass of the reference LanceDB operator
-VDB_PARAMS = VdbUploadParams(
-    vdb_op="tabular_lancedb",
-    vdb_kwargs={
-        "uri": "lancedb",
-        "table_name": "nv-ingest-tabular",
-        "overwrite": True,
-    },
-)
+# ``TabularLanceDB`` is a vertical-specific subclass of the reference LanceDB
+# operator that promotes ``label`` and ``database_name`` to top-level columns
+# so the tabular retrieval layer can filter them with plain SQL (same shape
+# as the Postgres tabular ingest). It is constructed by the vertical here
+# and injected as ``vdb=<instance>`` so the reference VDB factory stays
+# unaware of vertical-specific subclasses.
+LANCEDB_TABLE = "nv-ingest-tabular"
+
+
+def _build_tabular_vdb(*, overwrite: bool) -> TabularLanceDB:
+    return TabularLanceDB(table_name=LANCEDB_TABLE, overwrite=overwrite)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -90,10 +93,7 @@ def run_ingest() -> None:
     result_df = results[0] if results else None
 
     if result_df is not None and not result_df.empty:
-        ingest_op = IngestVdbOperator(
-            vdb_op=VDB_PARAMS.vdb_op,
-            vdb_kwargs=VDB_PARAMS.vdb_kwargs,
-        )
+        ingest_op = IngestVdbOperator(vdb=_build_tabular_vdb(overwrite=True))
         ingest_op(result_df.to_dict(orient="records"))
         print("Tabular ingest result:", len(result_df), "rows written to LanceDB")
     else:
@@ -102,16 +102,9 @@ def run_ingest() -> None:
 
 def run_retrieve() -> None:
     """Run the text-to-SQL agent against the previously ingested LanceDB."""
-    lancedb_kwargs = VDB_PARAMS.vdb_kwargs
     embed_url = EMBED_PARAMS.embed_invoke_url or ""
     retriever = Retriever(
-        vdb_kwargs={
-            "vdb_op": "tabular_lancedb",
-            "vdb_kwargs": {
-                "uri": lancedb_kwargs["uri"],
-                "table_name": lancedb_kwargs["table_name"],
-            },
-        },
+        vdb_kwargs={"vdb": _build_tabular_vdb(overwrite=False)},
         embed_kwargs={
             "api_key": _NVIDIA_API_KEY,
             "embed_invoke_url": embed_url,

@@ -252,6 +252,7 @@ def get_sql_tool_response_top_k(
     Returns a dict with keys: sql_code, answer, result.
     """
     from nemo_retriever.retriever import Retriever
+    from nemo_retriever.tabular_data.vdb import TabularLanceDB
 
     embed_kw: dict = {}
     if embedding_http_endpoint:
@@ -260,11 +261,10 @@ def get_sql_tool_response_top_k(
     if embedding_api_key:
         embed_kw["api_key"] = embedding_api_key
 
+    # Construct the vertical-specific VDB here and inject it as ``vdb=<instance>``
+    # so the reference VDB factory stays free of tabular-specific names.
     retriever = Retriever(
-        vdb_kwargs={
-            "vdb_op": "tabular_lancedb",
-            "vdb_kwargs": {"table_name": "nv-ingest-tabular"},
-        },
+        vdb_kwargs={"vdb": TabularLanceDB(table_name="nv-ingest-tabular")},
         embed_kwargs=embed_kw,
         top_k=top_k,
     )
