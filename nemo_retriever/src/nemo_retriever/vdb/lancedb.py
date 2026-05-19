@@ -201,10 +201,29 @@ def _get_text_for_element(element):
         return metadata.get("content")
 
 
+def _default_row_builder(element, *, embedding, text, content_meta, source_meta) -> dict:
+    """Default ``row_builder`` for :func:`_create_lancedb_results`.
+
+    Produces the canonical four-column LanceDB row shape: ``vector``,
+    ``text``, ``metadata`` (JSON-encoded ``content_metadata``), and
+    ``source`` (JSON-encoded ``source_metadata``). Subclasses that need to
+    populate extra columns should pass their own callable with the same
+    signature; the base function handles filtering / counting and just
+    delegates the per-row dict construction.
+    """
+    return {
+        "vector": embedding,
+        "text": text,
+        "metadata": _json_str(content_meta),
+        "source": _json_str(source_meta),
+    }
+
+
 def _create_lancedb_results(
     results,
     *,
     expected_dim: int | None = _DEFAULT_VECTOR_DIM,
+    row_builder=_default_row_builder,
 ) -> tuple[list, dict[str, int]]:
     """Transform NV-Ingest pipeline results into LanceDB ingestible rows.
 
@@ -226,11 +245,15 @@ def _create_lancedb_results(
             is a per-document list of NV-Ingest record dicts.
         expected_dim: Required vector length, or ``None`` to skip the length
             check. Defaults to :data:`_DEFAULT_VECTOR_DIM`.
+        row_builder: Callable invoked once per surviving row with the signature
+            ``(element, *, embedding, text, content_meta, source_meta) -> dict``.
+            Defaults to :func:`_default_row_builder`. Subclasses can pass a
+            different callable to add columns without re-implementing the
+            filter / count loop.
 
     Returns:
-        ``(rows, counts)`` where ``rows`` is the list of dicts shaped for
-        LanceDB ingestion (``vector``, ``text``, ``metadata``, ``source``)
-        and ``counts`` is a dict containing ``accepted``,
+        ``(rows, counts)`` where ``rows`` is the list of dicts produced by
+        ``row_builder`` and ``counts`` is a dict containing ``accepted``,
         ``dropped_no_embedding``, ``dropped_bad_length``, and
         ``dropped_no_text`` keys.
     """
@@ -265,23 +288,25 @@ def _create_lancedb_results(
                 continue
 
             content_meta = metadata.get("content_metadata", {})
+            source_meta = metadata.get("source_metadata", {})
 
             text = _get_text_for_element(element)
 
             if not text:
                 dropped_no_text += 1
-                source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
-                pg_num = content_meta.get("page_number")
+                source_name = source_meta.get("source_name", "unknown") if isinstance(source_meta, dict) else "unknown"
+                pg_num = content_meta.get("page_number") if isinstance(content_meta, dict) else None
                 logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
                 continue
 
             lancedb_rows.append(
-                {
-                    "vector": embedding,
-                    "text": text,
-                    "metadata": _json_str(content_meta),
-                    "source": _json_str(metadata.get("source_metadata", {})),
-                }
+                row_builder(
+                    element,
+                    embedding=embedding,
+                    text=text,
+                    content_meta=content_meta,
+                    source_meta=source_meta,
+                )
             )
             accepted += 1
 
@@ -352,6 +377,54 @@ class LanceDB(VDB):
         self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
 
+    # ------------------------------------------------------------------
+    # Extension hooks
+    #
+    # Subclasses (e.g. tabular ingest) override these two methods to ship
+    # vertical-specific table schemas and per-row column projections without
+    # having to copy the full ``create_index`` body or re-implement the
+    # filter / count loop. The defaults preserve the historical behavior of
+    # this class verbatim.
+    # ------------------------------------------------------------------
+    def _build_schema(self) -> pa.Schema:
+        """Return the PyArrow schema used when (re)creating the table.
+
+        Default: the canonical ``vector / text / metadata / source`` layout
+        produced by :func:`_lancedb_arrow_schema`.
+        """
+        return _lancedb_arrow_schema(self.vector_dim)
+
+    def _make_row(self, element, *, embedding, text, content_meta, source_meta) -> dict:
+        """Build a single LanceDB row from a surviving NV-Ingest element.
+
+        Called once per row that passed the embedding / text filters in
+        :func:`_create_lancedb_results`. Subclasses override this to populate
+        additional columns declared in their :meth:`_build_schema`.
+
+        Default: produces the canonical four-column dict (``vector``,
+        ``text``, ``metadata``, ``source``).
+        """
+        return _default_row_builder(
+            element,
+            embedding=embedding,
+            text=text,
+            content_meta=content_meta,
+            source_meta=source_meta,
+        )
+
+    def _build_rows(self, records, *, expected_dim: int | None) -> tuple[list, dict[str, int]]:
+        """Convert NV-Ingest pipeline records into LanceDB-ingestible row dicts.
+
+        Plumbs :meth:`_make_row` into :func:`_create_lancedb_results` so the
+        filter / count loop stays in one place; subclasses typically override
+        :meth:`_make_row` (cheaper) rather than this method.
+        """
+        return _create_lancedb_results(
+            records or [],
+            expected_dim=expected_dim,
+            row_builder=self._make_row,
+        )
+
     def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
         """Create or update a LanceDB table and populate it with transformed records.
 
@@ -363,6 +436,11 @@ class LanceDB(VDB):
         the wrapper deliberately skips its own length check so that LanceDB
         itself raises on the bad row, matching the documented strict-fail
         semantics of that policy.
+
+        The schema and per-row projection go through :meth:`_build_schema` and
+        :meth:`_build_rows`, so subclasses can plug in vertical-specific
+        layouts (e.g. tabular ingest's top-level ``label`` /
+        ``database_name`` columns) without copying this method.
         """
         connect_start = time.perf_counter()
         db = lancedb.connect(uri=self.uri)
@@ -373,8 +451,8 @@ class LanceDB(VDB):
         else:
             expected_dim = None
 
-        results, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
-        schema = _lancedb_arrow_schema(self.vector_dim)
+        results, counts = self._build_rows(records, expected_dim=expected_dim)
+        schema = self._build_schema()
 
         write_kwargs: dict[str, Any] = {
             "on_bad_vectors": self.on_bad_vectors,

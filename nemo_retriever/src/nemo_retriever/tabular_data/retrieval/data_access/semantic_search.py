@@ -4,8 +4,9 @@
 
 """Vector semantic search primitives.
 
-The functions here build ``where`` predicates over the JSON ``metadata``
-column, run per-label vector queries through the injected
+The functions here build ``where`` predicates against the **top-level**
+``label`` and ``database_name`` columns of the tabular VDB row.
+run per-label vector queries through the injected
 :class:`~nemo_retriever.retriever.Retriever`, and shape the raw hits into a
 common ``{text, id, label, score}`` candidate dict consumed by the rest of
 the retrieval data-access modules.
@@ -95,28 +96,25 @@ def _resolve_label_k(per_label_k: "int | dict[str, int]", label: str | None) -> 
     return int(per_label_k)
 
 
-def _escape_like(value: str) -> str:
-    """Escape a literal for use inside a LIKE pattern with ``ESCAPE '\\'``."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''")
+def _sql_quote(value: str) -> str:
+    """Quote a string literal for inline use in a SQL predicate (single-quote escaped)."""
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _build_metadata_where_clause(
     labels: list[str] | None = None,
     database_name: str | None = None,
 ) -> str | None:
-    """Build a SQL ``where`` predicate for the ``metadata`` JSON column.
-
-    Uses ``LIKE`` on the compact-JSON string (no spaces after ``:``) to match
-    ``"label":"<value>"`` and ``"database_name":"<value>"`` substrings. Values
-    are escaped via :func:`_escape_like` and the predicate declares
-    ``ESCAPE '\\'`` so ``%`` / ``_`` / ``\\`` in inputs are treated literally.
-    """
+    """Build a SQL ``where`` predicate over the top-level ``label`` / ``database_name`` columns."""
     parts: list[str] = []
     if labels:
-        label_preds = [f"""metadata LIKE '%"label":"{_escape_like(lab)}"%' ESCAPE '\\'""" for lab in labels]
-        parts.append("(" + " OR ".join(label_preds) + ")" if len(label_preds) > 1 else label_preds[0])
+        quoted_labels = [_sql_quote(lab) for lab in labels]
+        if len(quoted_labels) == 1:
+            parts.append(f"label = {quoted_labels[0]}")
+        else:
+            parts.append(f"label IN ({', '.join(quoted_labels)})")
     if database_name:
-        parts.append(f"""metadata LIKE '%"database_name":"{_escape_like(database_name)}"%' ESCAPE '\\'""")
+        parts.append(f"database_name = {_sql_quote(database_name)}")
     return " AND ".join(parts) if parts else None
 
 
@@ -140,7 +138,7 @@ def _hits_to_semantic_rows(
         cid = meta.get("id")
         if cid is None:
             continue
-        lab = meta.get("label") if meta.get("label") is not None else hit.get("label")
+        lab = hit.get("label") if hit.get("label") is not None else meta.get("label")
         lab_str = str(lab) if lab is not None else ""
         if label_filter and lab_str not in label_filter:
             continue
@@ -170,8 +168,8 @@ def search_semantic_index(
     """Vector search via the injected :class:`~nemo_retriever.retriever.Retriever`.
 
     Runs one query **per label** with a server-side ``where`` predicate on the
-    ``metadata`` JSON column (label + database_name), requesting exactly
-    the label-specific *k* rows.  *per_label_k* can be a single int or a
+    top-level ``label`` / ``database_name`` columns, requesting exactly the
+    label-specific *k* rows.  *per_label_k* can be a single int or a
     ``{label: k}`` dict (e.g. ``{"Column": 10, "CustomAnalysis": 3}``).
     When no *label_filter* is given, falls back to a single query with
     ``DEFAULT_FETCH_LIMIT``.

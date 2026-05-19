@@ -158,7 +158,7 @@ def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
         "pdf_basename": pdf_basename,
         "pdf_page": f"{pdf_basename}_{page_number}" if pdf_basename and page_number is not None else "",
     }
-    for key in ("stored_image_uri", "content_type", "bbox_xyxy_norm", "_distance", "_score"):
+    for key in ("stored_image_uri", "content_type", "bbox_xyxy_norm", "_distance", "_score", "label", "database_name"):
         if key in hit:
             normalized[key] = hit[key]
         elif key in entity:

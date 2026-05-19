@@ -64,9 +64,9 @@ EMBED_PARAMS = EmbedParams(
     embed_modality="text",
 )
 
-# vdb_kwargs are forwarded straight to ``nemo_retriever.vdb.lancedb.LanceDB``.
+# ``tabular_lancedb`` is a thin subclass of the reference LanceDB operator
 VDB_PARAMS = VdbUploadParams(
-    vdb_op="lancedb",
+    vdb_op="tabular_lancedb",
     vdb_kwargs={
         "uri": "lancedb",
         "table_name": "nv-ingest-tabular",
@@ -106,7 +106,7 @@ def run_retrieve() -> None:
     embed_url = EMBED_PARAMS.embed_invoke_url or ""
     retriever = Retriever(
         vdb_kwargs={
-            "vdb_op": "lancedb",
+            "vdb_op": "tabular_lancedb",
             "vdb_kwargs": {
                 "uri": lancedb_kwargs["uri"],
                 "table_name": lancedb_kwargs["table_name"],
