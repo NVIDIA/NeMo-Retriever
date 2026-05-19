@@ -56,8 +56,8 @@ Services:
 {{- if .Values.nimOperator.ocr.enabled }}
    - nemotron-ocr-v1             → http://nemotron-ocr-v1:{{ .Values.nimOperator.ocr.expose.service.port }}/v1/infer
 {{- end }}
-{{- if .Values.nimOperator.embedqa.enabled }}
-   - llama-nemotron-embed-1b-v2  → http://llama-nemotron-embed-1b-v2:{{ .Values.nimOperator.embedqa.expose.service.port }}/v1/embeddings
+{{- if .Values.nimOperator.vlm_embed.enabled }}
+   - llama-3-2-nemoretriever-1b-vlm-embed-v1 → http://llama-3-2-nemoretriever-1b-vlm-embed-v1:{{ .Values.nimOperator.vlm_embed.expose.service.port }}/v1/embeddings
 {{- end }}
 {{- if .Values.nimOperator.rerankqa.enabled }}
    - llama-nemotron-rerank-1b-v2 → http://llama-nemotron-rerank-1b-v2:{{ .Values.nimOperator.rerankqa.expose.service.port }}

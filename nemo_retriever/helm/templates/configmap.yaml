@@ -11,13 +11,13 @@ inherits the NIMService resource name, so the mapping is fixed:
   page_elements   -> nemotron-page-elements-v3      /v1/infer
   table_structure -> nemotron-table-structure-v1    /v1/infer
   ocr             -> nemotron-ocr-v1                /v1/infer
-  embedqa         -> llama-nemotron-embed-1b-v2     /v1/embeddings
+  vlm_embed       -> llama-3-2-nemoretriever-1b-vlm-embed-v1  /v1/embeddings
 */}}
 {{- $ctx := . -}}
 {{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "page_elements" "serviceName" "nemotron-page-elements-v3" "configKey" "pageElementsInvokeUrl" "invokePath" "/v1/infer") -}}
 {{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "table_structure" "serviceName" "nemotron-table-structure-v1" "configKey" "tableStructureInvokeUrl" "invokePath" "/v1/infer") -}}
 {{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "serviceName" "nemotron-ocr-v1" "configKey" "ocrInvokeUrl" "invokePath" "/v1/infer") -}}
-{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "embedqa" "serviceName" "llama-nemotron-embed-1b-v2" "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
+{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "vlm_embed" "serviceName" "llama-3-2-nemoretriever-1b-vlm-embed-v1" "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 
 {{- define "nemo-retriever.configBody" -}}
 server:

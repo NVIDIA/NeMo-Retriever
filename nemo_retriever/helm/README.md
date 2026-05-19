@@ -3,7 +3,7 @@
 A Kubernetes Helm chart for running the **service** mode of
 [`nemo-retriever`](../README.md): a FastAPI document ingestion server that
 streams uploads through a set of NVIDIA NIM microservices
-(page-elements, table-structure, OCR, embed by default) and exposes
+(page-elements, table-structure, OCR, VLM embed by default) and exposes
 result + status APIs over HTTP / SSE.
 
 **Unsupported developer path:** ad-hoc **Docker Compose** workflows (not
@@ -62,7 +62,7 @@ nemo_retriever/helm/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
-        ├── llama-nemotron-embed-1b-v2.yaml    # NIMCache + NIMService
+        ├── llama-3-2-nemoretriever-1b-vlm-embed-v1.yaml  # NIMCache + NIMService
         ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (off by default)
         ├── nemotron-nano-12b-v2-vl.yaml       # NIMCache + NIMService (off by default)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (off by default)
@@ -127,7 +127,7 @@ Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
 registered. Then run the default install — `nims.enabled` is `true` out
 of the box, so every per-NIM block under `nimOperator.<key>.enabled: true`
-(all eight by default) is reconciled:
+(all nine by default) is reconciled:
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -145,7 +145,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the four
 | `nimOperator.page_elements`   | `nemotron-page-elements-v3`   | `/v1/infer`      |
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/infer`      |
 | `nimOperator.ocr`             | `nemotron-ocr-v1`             | `/v1/infer`      |
-| `nimOperator.embedqa`         | `llama-nemotron-embed-1b-v2`  | `/v1/embeddings` |
+| `nimOperator.vlm_embed`       | `llama-3-2-nemoretriever-1b-vlm-embed-v1` | `/v1/embeddings` |
 
 Track operator reconciliation with:
 
@@ -201,7 +201,7 @@ pair gated on three conditions ALL holding:
 | `nimOperator.page_elements.enabled`    | `true`  | Page-elements detector NIM. |
 | `nimOperator.table_structure.enabled`  | `true`  | Table-structure detector NIM. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
-| `nimOperator.embedqa.enabled`          | `true`  | Embedding NIM (also used by the vectordb Pod). |
+| `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM. |
 | `nimOperator.nemotron_nano_12b_v2_vl.enabled` | `true`  | VLM NIM. |
 | `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM. |
@@ -210,14 +210,14 @@ pair gated on three conditions ALL holding:
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
 | `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
 | `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
-| `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for embedqa/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
+| `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
 | `nimOperator.<key>.resources.limits.nvidia.com/gpu` | `1` | GPUs per NIM pod. |
 | `nimOperator.<key>.expose.service.port` | `8000` (9000 for audio) | HTTP port. |
 | `nimOperator.<key>.expose.service.grpcPort` | `8001` (50051 for audio) | gRPC port. |
 
-> Only the four "core" NIMs (page_elements, table_structure, ocr, embedqa)
-> are auto-wired into the retriever-service config. The other four are
+> Only the four "core" NIMs (page_elements, table_structure, ocr, vlm_embed)
+> are auto-wired into the retriever-service config. The other NIMs are
 > reconciled by the operator but the retriever-service won't call them
 > unless you wire your own pipeline to use them.
 
@@ -282,7 +282,7 @@ an `NGC_API_KEY` key, in the release namespace.
 
 ```yaml
 nimOperator:
-  embedqa:
+  vlm_embed:
     enabled: false   # don't deploy the embed NIM in-cluster
 
 serviceConfig:

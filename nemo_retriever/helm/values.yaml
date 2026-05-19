@@ -489,7 +489,7 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
-    embedModel: "nvidia/llama-nemotron-embed-1b-v2"
+    embedModel: "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1"
 
   # Optional bearer-token authentication. When apiToken is set, every
   # request must carry "Authorization: Bearer <token>".
@@ -715,10 +715,10 @@ nimOperator:
   # All NIMs the operator can stand up are enabled by default — flip
   # `nims.enabled: false` to disable the whole sub-stack, or set
   # `nimOperator.<key>.enabled: false` to opt out of a single NIM.
-  # The first four are wired into the retriever-service config
-  # automatically; the rest are reconciled by the operator but the
-  # retriever-service won't call them unless you also point your
-  # pipeline at them.
+  # page_elements, table_structure, ocr, and vlm_embed are wired into the
+  # retriever-service config automatically; the rest are reconciled by the
+  # operator but the retriever-service won't call them unless you also point
+  # your pipeline at them.
   # ---------------------------------------------------------------------------
 
   # Page-elements detector (YOLOX-style). Used by the page-element extraction
@@ -841,13 +841,14 @@ nimOperator:
       - name: NIM_TRITON_MAX_BATCH_SIZE
         value: "32"
 
-  # Llama Nemotron embed 1B v2. Used by the embedding stage AND by the
-  # vectordb query path.
-  embedqa:
+  # Llama 3.2 NeMo Retriever multimodal (VLM) embed 1B v1. Used by the embedding
+  # stage, the vectordb query path, and multimodal ingest. NIM_TRITON_PERFORMANCE_MODE
+  # is unsupported for this model.
+  vlm_embed:
     enabled: true
     image:
-      repository: nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2
-      tag: "1.13.0"
+      repository: nvcr.io/nvidia/nemo-microservices/llama-3.2-nemoretriever-1b-vlm-embed-v1
+      tag: "1.7.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -876,8 +877,6 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
-      - name: NIM_TRITON_PERFORMANCE_MODE
-        value: "throughput"
 
   # ---------------------------------------------------------------------------
   # Optional / advanced NIMs. Enabled by default alongside the core four;
