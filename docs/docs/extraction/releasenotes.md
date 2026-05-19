@@ -2,6 +2,22 @@
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
+## 26.05 Release Notes (26.5.0)
+
+NVIDIA® NeMo Retriever Library version **26.05** (PyPI **26.5.0** at GA) continues the 26.05 release line on the [`26.05`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05) branch. Pre-release builds are tagged **`26.05-RC1`**, **`26.05-RC2`**, and so on; install and deploy using the RC tag that matches your build.
+
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md) and pin chart version **`26.05-RC1`** (or the RC you are validating).
+
+Highlights for the 26.05 release line include everything in [26.03](#2603-release-notes-2630) plus changes on `main` merged into the `26.05` branch. See the [Git compare view](https://github.com/NVIDIA/NeMo-Retriever/compare/26.03...26.05) for the full commit list.
+
+**Install (RC1 example):**
+
+```bash
+uv pip install nemo-retriever==26.05-RC1
+```
+
+Use your organization's Artifactory or PyPI index URL when installing published wheels from CI (see the Perform Release workflow summary for the exact index).
+
 ## 26.03 Release Notes (26.3.0)
 
 NVIDIA® NeMo Retriever Library version 26.03 adds broader hardware and software support along with many pipeline, evaluation, and deployment enhancements.
@@ -32,6 +48,7 @@ Highlights for the 26.03 release include:
 
 ## Release Notes for Previous Versions
 
+| [26.03](https://docs.nvidia.com/nemo/retriever/26.03/extraction/releasenotes/)
 | [26.1.2](https://docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes/)
 | [26.1.1](https://docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes/)
 | [25.9.0](https://docs.nvidia.com/nemo/retriever/25.9.0/extraction/releasenotes/) 

@@ -6,7 +6,7 @@ helm lint nemo_retriever/helm
 python ci/scripts/release_helm_chart.py
     -o nvidian
     -t nemo-llm
-    -v 26.03
+    -v 26.05-RC1
     -n nemo-retriever
     --chart-dir nemo_retriever/helm
 
