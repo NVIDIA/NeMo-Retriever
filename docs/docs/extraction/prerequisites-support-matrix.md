@@ -79,10 +79,6 @@ Enable these only when your workload needs them — the same pattern as the **VL
 - [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`) — optional image captioning when you enable the caption stage (not deployed by default)
 - [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — [audio and video](audio-video.md) transcription
 
-!!! note
-
-    **Nemotron Parse** and **Nemotron 3 Nano Omni** are unrelated: Parse is an optional PDF extract path; Omni is the optional caption model. Neither is on by default in Helm (same as the VL reranker). Audio, video, OCR, and document-intelligence workflows are not routed through the caption stage in this release.
-
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
 ## Model Hardware Requirements
@@ -115,7 +111,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`). BF16 requires at least 80 GB total GPU memory; see the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
-\* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
+\* GPUs with less than 80GB VRAM cannot run the reranker, VLM captioning, or audio transcription concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
 and run only the embedder, reranker, and your vector database.
 
