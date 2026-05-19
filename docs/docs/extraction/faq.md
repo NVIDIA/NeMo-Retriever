@@ -67,13 +67,7 @@ from nemo_retriever import create_ingestor
 
 documents = [str(Path("data/multimodal_test.pdf"))]
 ingestor = create_ingestor(run_mode="batch")
-ingestor = ingestor.files(documents).extract(
-    extract_text=True,
-    extract_tables=True,
-    extract_charts=True,
-    extract_images=True,
-    extract_infographics=True,
-)
+ingestor = ingestor.files(documents).extract()
 ```
 
 To generate captions for images, use code similar to the following.

@@ -12,8 +12,6 @@ For self-hosted Helm or Docker deployments, use the VL embedder NIM:
 - **Container:** `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0`
 - **Model ID:** `nvidia/llama-nemotron-embed-vl-1b-v2`
 
-Do not use the deprecated EA image `nvcr.io/nvidia/nemo-microservices/llama-3.2-nemoretriever-1b-vlm-embed-v1`. The text-only NIM [`llama-nemotron-embed-1b-v2`](https://build.nvidia.com/nvidia/llama-nemotron-embed-1b-v2) (`nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2:1.13.0`) is a separate product for text embedding only.
-
 The **Llama Nemotron Embed VL 1B v2** model is optimized for multimodal question-answering retrieval. 
 The model can embed documents in the form of an image, text, or a combination of image and text. 
 Documents can then be retrieved given a user query in text form. 
