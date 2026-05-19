@@ -19,7 +19,6 @@ from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.html.ray_data import HtmlSplitActor
 from nemo_retriever.image.ray_data import ImageLoadActor
-from nemo_retriever.image.load import SUPPORTED_IMAGE_EXTENSIONS
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
@@ -49,17 +48,18 @@ from nemo_retriever.video import VideoFrameOCRActor
 from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
 logger = logging.getLogger(__name__)
 
 # Define file type mappings
-PDF_EXTENSIONS = {".pdf", ".docx", ".pptx"}
-TEXT_EXTENSIONS = {".txt"}
-HTML_EXTENSIONS = {".html"}
-AUDIO_EXTENSIONS = {".mp3", ".wav"}
-IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
+PDF_EXTENSIONS = INPUT_TYPE_EXTENSIONS["pdf"] | INPUT_TYPE_EXTENSIONS["doc"]
+TEXT_EXTENSIONS = INPUT_TYPE_EXTENSIONS["txt"]
+HTML_EXTENSIONS = INPUT_TYPE_EXTENSIONS["html"]
+AUDIO_EXTENSIONS = INPUT_TYPE_EXTENSIONS["audio"]
+IMAGE_EXTENSIONS = INPUT_TYPE_EXTENSIONS["image"]
+VIDEO_EXTENSIONS = INPUT_TYPE_EXTENSIONS["video"]
 
 
 def _unsupported_extension_message(ext: str) -> str:

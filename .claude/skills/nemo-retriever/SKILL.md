@@ -15,7 +15,7 @@ If no arguments are provided, run `retriever --help` and summarize the available
 
 For per-subcommand details (when to use it, canonical invocations, inputs/outputs, flags, common failure modes), read the matching file in `references/` *before* running anything non-trivial:
 
-- `references/ingest.md` — `retriever ingest`: PDFs → LanceDB (full pipeline).
+- `references/ingest.md` — `retriever ingest`: documents/media → LanceDB (full pipeline).
 - `references/query.md` — `retriever query`: text query → top-k LanceDB hits.
 
 Additional per-stage references (`pdf`, `chart`, `image`, `audio`, `txt`, `html`, `pipeline`, `vector-store`, `recall`, `eval`, `benchmark`, `service`, `local`, `compare`, `harness`) will be added as those stages stabilize. Until then, fall back to `retriever <subcommand> --help` for any subcommand not listed above.

@@ -252,11 +252,15 @@ class BatchTuningParams(_ParamsModel):
     detect_workers: Optional[int] = None
     page_elements_cpus_per_actor: float = 1
     ocr_cpus_per_actor: float = 1
+    table_structure_workers: Optional[int] = None
+    table_structure_batch_size: Optional[int] = None
+    table_structure_cpus_per_actor: float = 1
     embed_workers: Optional[int] = None
     embed_batch_size: int = 32
     embed_cpus_per_actor: float = 1
     gpu_page_elements: Optional[float] = None
     gpu_ocr: Optional[float] = None
+    gpu_table_structure: Optional[float] = None
     gpu_embed: Optional[float] = None
     nemotron_parse_workers: Optional[int] = None
     gpu_nemotron_parse: Optional[float] = None
