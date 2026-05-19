@@ -47,22 +47,51 @@ def _normalize_on_bad_vectors(value: str) -> str:
     return normalized
 
 
-def _escape_like_literal(value: str) -> str:
-    """Escape a literal for use inside a LanceDB / DataFusion LIKE pattern with ``ESCAPE '\\'``."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''")
+def _escape_like_literal(text: str) -> str:
+    """Escape ``\\``, ``%``, ``_``, and ``'`` for a SQL ``LIKE`` pattern with ``ESCAPE '\\'``.
+
+    Operates on already-prepared text. Callers that match against a JSON-encoded
+    column must first convert their Python string to the JSON-on-disk form via
+    :func:`_json_string_inner` (so ``"`` is mapped to the stored ``\\"`` byte
+    pair, ``\\n`` to ``\\n``, etc.) before passing the result here.
+    """
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''")
+
+
+def _json_string_inner(value: str) -> str:
+    """Return ``json.dumps(value)`` stripped of its outer double-quotes.
+
+    This is the exact byte sequence that ``value`` occupies inside a JSON-encoded
+    string field at rest (e.g. inside the LanceDB ``metadata`` column). Crucially,
+    embedded ``"`` becomes ``\\"`` and other control characters get their
+    standard JSON escape sequences, so substring matching against the stored
+    bytes round-trips correctly even for values containing quotes / backslashes.
+    """
+    return json.dumps(value, ensure_ascii=False)[1:-1]
 
 
 def _filter_dict_to_where_clause(filter_dict: dict[str, Any]) -> str | None:
     """Translate a portable ``filter`` dict into a LanceDB ``where`` predicate.
 
-    The ``metadata`` column is stored as a JSON string. Ingestion paths in
-    this repo are not uniform: the canonical LanceDB writer uses
-    :func:`_json_str` (compact, ``"k":"v"``), while
-    :mod:`nemo_retriever.vdb.records` / :mod:`nemo_retriever.vdb.lancedb_schema`
-    use the default :func:`json.dumps` (``"k": "v"`` with a space). To stay
-    robust to both, each constraint is matched with a disjunction of the two
-    forms. Only string equality is supported; richer predicates should be
-    passed through the backend-specific ``where=`` escape hatch.
+    Per the :class:`~nemo_retriever.vdb.adt_vdb.VDB` contract, ``filter`` is a
+    *string-equality* convenience over per-record metadata fields. For anything
+    richer (numeric comparisons, ``OR``, ranges, ``IN``-lists, nested fields)
+    use the backend-specific ``where=<sql>`` predicate; it is the universal
+    entry point and is fully exposed by this operator.
+
+    Implementation notes
+    --------------------
+    The ``metadata`` column is stored as a JSON string. Ingestion paths in this
+    repo are not uniform: the canonical LanceDB writer uses :func:`_json_str`
+    (compact, ``"k":"v"``), while :mod:`nemo_retriever.vdb.records` and
+    :mod:`nemo_retriever.vdb.lancedb_schema` use the default :func:`json.dumps`
+    (``"k": "v"`` with a space after the colon). To stay robust to both, each
+    constraint is matched as a disjunction of the two forms. Both key and
+    value are first converted to their JSON-on-disk form via
+    :func:`_json_string_inner` so values containing ``"`` / ``\\`` / control
+    characters match the stored bytes correctly.
+
+    Non-string values raise ``TypeError`` to enforce the ABC contract.
     """
     parts: list[str] = []
     for key, value in filter_dict.items():
@@ -71,13 +100,12 @@ def _filter_dict_to_where_clause(filter_dict: dict[str, Any]) -> str | None:
         if not isinstance(key, str) or not key:
             raise ValueError(f"filter keys must be non-empty strings; got {key!r}")
         if not isinstance(value, str):
-            raise NotImplementedError(
-                f"LanceDB filter currently supports string equality only; "
-                f"got {type(value).__name__} for key {key!r}. "
-                "Use the backend-specific `where=<sql>` escape hatch for richer predicates."
+            raise TypeError(
+                f"filter values must be strings (got {type(value).__name__} for key {key!r}). "
+                "Use the backend-specific `where=<sql>` escape hatch for non-string predicates."
             )
-        k = _escape_like_literal(key)
-        v = _escape_like_literal(value)
+        k = _escape_like_literal(_json_string_inner(key))
+        v = _escape_like_literal(_json_string_inner(value))
         compact = f"""metadata LIKE '%"{k}":"{v}"%' ESCAPE '\\'"""
         spaced = f"""metadata LIKE '%"{k}": "{v}"%' ESCAPE '\\'"""
         parts.append(f"({compact} OR {spaced})")
@@ -574,19 +602,22 @@ class LanceDB(VDB):
         Keyword arguments
         -----------------
         filter:
-            Optional ``dict[str, Any]`` of dialect-free equality constraints
-            on per-record ``metadata`` fields, per the portable
+            Optional ``dict[str, str]`` of dialect-free **string-equality**
+            constraints on per-record ``metadata`` fields, per the portable
             :class:`~nemo_retriever.vdb.adt_vdb.VDB` contract. Translated
-            into a ``LIKE`` predicate on the compact JSON-encoded
-            ``metadata`` column. String values only; non-string values raise
-            ``NotImplementedError`` (use ``where`` for richer predicates).
-            Ignored when ``where`` (or its ``_filter`` alias) is provided.
+            into a ``LIKE`` predicate on the JSON-encoded ``metadata``
+            column. Non-string values raise ``TypeError``; use ``where``
+            for anything richer (numeric comparisons, ``OR``, ranges,
+            ``IN``-lists, nested fields, etc.). Ignored when ``where`` (or
+            its ``_filter`` alias) is provided.
         where:
             Backend-specific SQL predicate (Lance / DataFusion) applied on
             the vector query builder via ``.where(...)`` before ``limit``.
-            Filter against table columns: ``vector``, ``text``, ``metadata``,
-            ``source``. Note: ``metadata`` and ``source`` are JSON strings
-            at rest. Takes precedence over ``filter``.
+            The universal entry point for non-trivial filtering: filter
+            against any table column (``vector``, ``text``, ``metadata``,
+            ``source``), including numeric comparisons and arbitrary
+            boolean logic. Note: ``metadata`` and ``source`` are JSON
+            strings at rest. Takes precedence over ``filter``.
         _filter:
             Alias for ``where`` when ``where`` is omitted (call-site parity).
         search_kwargs:

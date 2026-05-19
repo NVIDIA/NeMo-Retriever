@@ -181,20 +181,27 @@ class VDB(ABC):
             when the operator integrates with an external embedding service.
 
         Portable metadata filter (recommended for cross-backend code):
-        - ``filter`` (``dict[str, Any] | None``): a dialect-free set of
-            equality constraints on per-record ``metadata`` fields. Keys are
-            top-level metadata field names (e.g. ``"label"``,
-            ``"database_name"``) and values are scalars (``str`` / ``int`` /
-            ``float`` / ``bool``). All constraints are AND-ed; keys with
-            value ``None`` are ignored; an empty / ``None`` filter is a
-            no-op. Concrete backends are responsible for translating this
-            into their native predicate language (e.g. a LanceDB ``LIKE``
-            on a JSON-encoded string column, a Postgres ``metadata->>'k' =
-            'v'`` / ``metadata @> '{...}'::jsonb`` clause, etc.). Callers
-            that need richer expressions (``OR``, ranges, nested fields)
-            should fall back to a backend-specific escape hatch (e.g.
-            LanceDB's ``where=<sql>``). Backends that cannot honor a given
-            key MAY raise ``NotImplementedError``.
+        - ``filter`` (``dict[str, str] | None``): a dialect-free set of
+            string-equality constraints on per-record ``metadata`` fields.
+            Keys are top-level metadata field names (e.g. ``"label"``,
+            ``"database_name"``); values are strings. All constraints are
+            AND-ed; keys with value ``None`` are ignored; an empty /
+            ``None`` filter is a no-op. Non-string values (``int`` /
+            ``float`` / ``bool``) are intentionally **out of scope** here
+            because not every backend can support numeric comparisons or
+            typed nesting uniformly (e.g. LanceDB stores ``metadata`` as a
+            JSON string at rest, which precludes ``<`` / ``>``); concrete
+            backends MUST raise ``TypeError`` on non-string values.
+            Backends translate this into their native predicate language
+            (e.g. a LanceDB ``LIKE`` on a JSON-encoded string column, a
+            Postgres ``metadata->>'k' = 'v'`` / ``metadata @>
+            '{...}'::jsonb`` clause, etc.).
+        - Callers that need richer expressions (``OR``, ranges, numeric
+            comparisons, nested fields, IN-lists, etc.) MUST use a
+            backend-specific predicate escape hatch (e.g. LanceDB's
+            ``where=<sql>``). The predicate is the universal entry point
+            for non-trivial filtering; ``filter`` is only the simple
+            string-equality convenience layer on top of it.
 
         Parameters:
         - queries (list[str]): list of text queries to be vectorized and
