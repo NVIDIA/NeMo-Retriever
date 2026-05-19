@@ -20,6 +20,7 @@ Highlights for the 26.03 release include:
 - Added support for RTX4500 Pro Blackwell SKU  
 - Added support for [llama-nemotron-embed-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2) in text and text+image modes; default Helm VL embedder is `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` (replaces deprecated `llama-3.2-nemoretriever-1b-vlm-embed-v1` and default `embedqa` NIMs)  
 - Default Helm NIMs: `page_elements`, `table_structure`, `ocr`, and `vlm_embed` — **Nemotron Parse**, **Nemotron 3 Nano Omni**, and the **VL reranker** are optional and disabled by default (enable only when needed)  
+- **Caption model:** `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16` (`nemotron-nano-12b-v2-vl`) is no longer documented for Helm or sizing. Migrate to optional [Nemotron 3 Nano Omni](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) (`nemotron-3-nano-omni-30b-a3b-reasoning`) when you enable the caption stage. GPU, disk, and co-residency requirements are in the **Omni caption** rows of the [Pre-Requisites hardware table](prerequisites-support-matrix.md#model-hardware-requirements) (replacing the former Nano 12B VL rows, including the prior 32 GB load limitation).  
 - New extract methods `pdfium_hybrid` and `ocr` target scanned PDFs to improve text and layout extraction from image-based pages  
 - VLM-based image caption enhancements:  
   - Infographics can be captioned  
