@@ -112,17 +112,6 @@ def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
     return min(int(requested), max(1, cap))
 
 
-def _lancedb_arrow_schema(vector_dim: int) -> pa.Schema:
-    return pa.schema(
-        [
-            pa.field("vector", pa.list_(pa.float32(), int(vector_dim))),
-            pa.field("text", pa.string()),
-            pa.field("metadata", pa.string()),
-            pa.field("source", pa.string()),
-        ]
-    )
-
-
 def _table_schema(table: Any) -> pa.Schema:
     schema = table.schema
     return schema() if callable(schema) else schema
@@ -377,22 +366,19 @@ class LanceDB(VDB):
         self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
 
-    # ------------------------------------------------------------------
-    # Extension hooks
-    #
-    # Subclasses (e.g. tabular ingest) override these two methods to ship
-    # vertical-specific table schemas and per-row column projections without
-    # having to copy the full ``create_index`` body or re-implement the
-    # filter / count loop. The defaults preserve the historical behavior of
-    # this class verbatim.
-    # ------------------------------------------------------------------
     def _build_schema(self) -> pa.Schema:
         """Return the PyArrow schema used when (re)creating the table.
 
-        Default: the canonical ``vector / text / metadata / source`` layout
-        produced by :func:`_lancedb_arrow_schema`.
+        Default: the canonical ``vector / text / metadata / source`` layout.
         """
-        return _lancedb_arrow_schema(self.vector_dim)
+        return pa.schema(
+            [
+                pa.field("vector", pa.list_(pa.float32(), int(self.vector_dim))),
+                pa.field("text", pa.string()),
+                pa.field("metadata", pa.string()),
+                pa.field("source", pa.string()),
+            ]
+        )
 
     def _make_row(self, element, *, embedding, text, content_meta, source_meta) -> dict:
         """Build a single LanceDB row from a surviving NV-Ingest element.
