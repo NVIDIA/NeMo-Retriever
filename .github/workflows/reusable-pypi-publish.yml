@@ -15,17 +15,48 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Debug — publish job context (before download)
+        run: |
+          echo "=== PyPI publish debug (job start) ==="
+          echo "pwd=$(pwd)"
+          echo "github.workflow=${{ github.workflow }}"
+          echo "github.job=${{ github.job }}"
+          echo "github.ref=${{ github.ref }}"
+          echo "github.sha=${{ github.sha }}"
+          echo "github.run_id=${{ github.run_id }}"
+          echo "github.run_attempt=${{ github.run_attempt }}"
+          echo "github.event_name=${{ github.event_name }}"
+          echo "Note: Re-run uses the workflow YAML frozen at workflow run creation, not the latest branch tip."
+          echo "Note: Artifacts are per workflow run (not Actions cache). Re-run publish reuses the same run's python-wheels artifact."
+          ls -la
+          test -d ./dist && ls -laR ./dist || echo "./dist does not exist yet (expected before download)"
+
       - name: Download wheel artifacts
         uses: actions/download-artifact@v5
         with:
           name: python-wheels
           path: ./dist
 
-      - name: List downloaded wheel artifacts
+      - name: Debug — tree after download-artifact
         run: |
-          echo "Contents of ./dist after download-artifact:"
-          find ./dist -type f -ls 2>/dev/null || true
-          find ./dist -type d 2>/dev/null || true
+          set -x
+          echo "=== PyPI publish debug (after download-artifact) ==="
+          echo "pwd=$(pwd)"
+          echo "artifact name=python-wheels download path=./dist"
+          echo "--- ./dist (top level) ---"
+          ls -la ./dist 2>&1 || echo "./dist missing"
+          echo "--- full tree under ./dist ---"
+          find ./dist -print 2>/dev/null || echo "find ./dist failed"
+          find ./dist -type f -ls 2>/dev/null || echo "no files under ./dist"
+          du -sh ./dist 2>/dev/null || true
+          echo "--- glob probes (what publish will try) ---"
+          shopt -s nullglob
+          legacy=(./dist/nemo_retriever/dist/*.whl ./dist/nemo_retriever/dist/*.tar.gz)
+          flat=(./dist/*.whl ./dist/*.tar.gz)
+          echo "legacy count=${#legacy[@]}: ${legacy[*]:-<none>}"
+          echo "flat count=${#flat[@]}: ${flat[*]:-<none>}"
+          mapfile -t found < <(find ./dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) 2>/dev/null)
+          echo "find count=${#found[@]}: ${found[*]:-<none>}"
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -44,22 +75,31 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
 
+          echo "=== PyPI publish debug (publish step) ==="
+          echo "pwd=$(pwd)"
+          ls -la
+          ls -laR ./dist 2>&1 || true
+
           # Legacy layout (staged by reusable-pypi-build): ./dist/nemo_retriever/dist/*
           DIST_FILES=(./dist/nemo_retriever/dist/*.whl ./dist/nemo_retriever/dist/*.tar.gz)
+          echo "After legacy glob: count=${#DIST_FILES[@]} files=${DIST_FILES[*]:-<none>}"
 
           # Flat layout (older upload-artifact glob uploads): ./dist/*
           if [ "${#DIST_FILES[@]}" -eq 0 ]; then
             DIST_FILES=(./dist/*.whl ./dist/*.tar.gz)
+            echo "After flat glob: count=${#DIST_FILES[@]} files=${DIST_FILES[*]:-<none>}"
           fi
 
           # Any other nested layout
           if [ "${#DIST_FILES[@]}" -eq 0 ]; then
             mapfile -t DIST_FILES < <(find ./dist -type f \( -name '*.whl' -o -name '*.tar.gz' \))
+            echo "After find: count=${#DIST_FILES[@]} files=${DIST_FILES[*]:-<none>}"
           fi
 
           if [ "${#DIST_FILES[@]}" -eq 0 ]; then
             echo "::error::No wheel or sdist files under ./dist"
-            find ./dist -type f 2>/dev/null || true
+            echo "This is usually: (1) build job did not upload wheels, (2) wrong artifact from another run, or (3) publish re-run with an empty/missing artifact — start a new full workflow run after merging build+publish fixes."
+            find ./dist -type f 2>/dev/null || echo "no files under ./dist at all"
             exit 1
           fi
 
