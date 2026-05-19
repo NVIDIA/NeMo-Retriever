@@ -126,7 +126,7 @@ Each test function should:
 
 ### Integration Test Markers
 
-Tests that require external services (Triton, Redis, Milvus, GPUs) must
+Tests that require external services (Triton, GPUs) must
 be marked with `@pytest.mark.integration` so they are excluded from the
 default unit test run.
 

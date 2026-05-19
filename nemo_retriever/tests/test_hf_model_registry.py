@@ -21,6 +21,30 @@ def test_extraction_hf_repos_have_pinned_revisions():
     assert (
         registry.HF_MODEL_REVISIONS["nvidia/nemotron-graphic-elements-v1"] == "4a76546bb1bb4cbab3401361c91cf01706321805"
     )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"]
+        == "5d250e2e111dc5e1434131bdf3d590c27a878ade"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8"]
+        == "7394488badb786e1decc0e00e308de1cab9560e6"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD"]
+        == "b8d3c170d9ee3a078917ef9bfd508eff988d6de7"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16"]
+        == "24e67ea000b7c2837fc8f9488aa2008524fac8ba"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"]
+        == "6647b845a4b786c6e2c7adb1b6a909e1aa71fac2"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"]
+        == "dc5f0b0bfddf8b6e0f5891475be9af05b80126fe"
+    )
 
 
 def test_hf_hub_download_with_pinned_revision_injects_known_revision(monkeypatch):
@@ -70,7 +94,10 @@ def test_hf_hub_download_with_pinned_revision_preserves_explicit_revision(monkey
 
 
 def test_hf_hub_download_with_pinned_revision_adds_startup_context(monkeypatch):
-    from huggingface_hub.errors import LocalEntryNotFoundError
+    class LocalEntryNotFoundError(Exception):
+        pass
+
+    LocalEntryNotFoundError.__module__ = "huggingface_hub.errors"
 
     def fake_download(*args, **kwargs):
         raise LocalEntryNotFoundError("cache miss")
