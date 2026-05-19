@@ -99,7 +99,6 @@ nav:
       - "Custom metadata and filtering": extraction/custom-metadata.md
   - "8. Deployment & operations":
       - "Ray and distributed ingest": extraction/ray-logging.md
-      - "Telemetry and observability": extraction/telemetry.md
   - "9. Customize & extend":
       - Extending/Customizing NeMo Retriever Library with custom code: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
       - "NimClient and custom NIM endpoints": extraction/nimclient.md
@@ -180,6 +179,7 @@ plugins:
         extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
         extraction/prerequisites.md: extraction/prerequisites-support-matrix.md
         extraction/support-matrix.md: extraction/prerequisites-support-matrix.md
+        extraction/telemetry.md: extraction/ray-logging.md
         extraction/embedding-nims-models.md: extraction/embedding.md
         extraction/chunking.md: extraction/concepts.md#chunking
         extraction/quickstart-library-mode.md: extraction/deployment-options.md
