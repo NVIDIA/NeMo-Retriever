@@ -18,13 +18,13 @@ type: application
 version: 0.1.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.25.0-0"
-home: https://github.com/NVIDIA/nv-ingest
+home: https://github.com/NVIDIA/NeMo-Retriever
 sources:
-  - https://github.com/NVIDIA/nv-ingest
+  - https://github.com/NVIDIA/NeMo-Retriever
 maintainers:
-  - name: nv-ingest maintainers
+  - name: NeMo-Retriever maintainers
 keywords:
-  - nemo-retriever
+  - NeMo-Retriever
   - nvidia
   - nim
   - document-ingestion
