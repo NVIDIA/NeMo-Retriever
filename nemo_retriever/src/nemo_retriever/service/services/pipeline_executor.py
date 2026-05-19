@@ -207,6 +207,8 @@ _TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
     "embed_invoke_url",
     "embedding_endpoint",
     "api_key",
+    "embed_model_name",
+    "model_name",
 )
 # Trust-owned caption keys. ``endpoint_url`` / ``api_key`` /
 # ``model_name`` are all set by the operator via NimEndpointsConfig and
@@ -262,8 +264,7 @@ def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | No
     store = get_sidecar_store()
     if store is None:
         raise RuntimeError(
-            "vdb_upload_params.meta_dataframe_id was set but the SidecarStore "
-            "is not initialised on this pod."
+            "vdb_upload_params.meta_dataframe_id was set but the SidecarStore " "is not initialised on this pod."
         )
     entry = store.consume(sidecar_id)
     if entry is None:
@@ -557,6 +558,9 @@ def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
     from nemo_retriever.params import EmbedParams
 
     kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
+    if nim.embed_model_name:
+        kwargs["model_name"] = nim.embed_model_name
+        kwargs["embed_model_name"] = nim.embed_model_name
     if nim.api_key:
         kwargs["api_key"] = nim.api_key
 

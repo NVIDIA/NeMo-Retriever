@@ -35,6 +35,8 @@ nim_endpoints:
   table_structure_invoke_url: null
   ocr_invoke_url: null
   embed_invoke_url: null
+  # Model name for the remote embed NIM (server-owned; must match the SKU).
+  embed_model_name: null
   # Remote VLM endpoint for the ``caption`` stage. When set, clients
   # may submit caption_params overrides (prompt, system_prompt,
   # batch_size, …). The endpoint URL, API key, and model name itself

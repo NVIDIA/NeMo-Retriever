@@ -34,6 +34,7 @@ nim_endpoints:
   table_structure_invoke_url: {{ .tableStructureURL | quote }}
   ocr_invoke_url: {{ .ocrURL | quote }}
   embed_invoke_url: {{ .embedURL | quote }}
+  embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
   api_key: null
 
 pipeline:
