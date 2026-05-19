@@ -4,11 +4,15 @@
 
 """Vector semantic search primitives.
 
-The functions here build ``where`` predicates over the JSON ``metadata``
-column, run per-label vector queries through the injected
-:class:`~nemo_retriever.retriever.Retriever`, and shape the raw hits into a
-common ``{text, id, label, score}`` candidate dict consumed by the rest of
-the retrieval data-access modules.
+The functions here build a dialect-free ``filter`` (per the
+:class:`~nemo_retriever.vdb.adt_vdb.VDB` portable ``filter`` contract)
+over per-record ``metadata`` fields, run per-label vector queries through
+the injected :class:`~nemo_retriever.retriever.Retriever`, and shape the
+raw hits into a common ``{text, id, label, score}`` candidate dict
+consumed by the rest of the retrieval data-access modules. The active VDB
+operator is responsible for translating the ``filter`` dict into its
+native predicate language (LanceDB ``LIKE`` on a JSON column, Postgres
+``metadata->>'k' = 'v'``, etc.).
 """
 
 from __future__ import annotations
@@ -95,29 +99,28 @@ def _resolve_label_k(per_label_k: "int | dict[str, int]", label: str | None) -> 
     return int(per_label_k)
 
 
-def _escape_like(value: str) -> str:
-    """Escape a literal for use inside a LIKE pattern with ``ESCAPE '\\'``."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''")
-
-
-def _build_metadata_where_clause(
-    labels: list[str] | None = None,
+def _build_metadata_filter(
+    label: str | None = None,
     database_name: str | None = None,
-) -> str | None:
-    """Build a SQL ``where`` predicate for the ``metadata`` JSON column.
+) -> dict[str, str] | None:
+    """Build a portable ``filter`` dict for per-record ``metadata`` equality.
 
-    Uses ``LIKE`` on the compact-JSON string (no spaces after ``:``) to match
-    ``"label":"<value>"`` and ``"database_name":"<value>"`` substrings. Values
-    are escaped via :func:`_escape_like` and the predicate declares
-    ``ESCAPE '\\'`` so ``%`` / ``_`` / ``\\`` in inputs are treated literally.
+    Returns ``{"label": <label>, "database_name": <database_name>}`` with
+    ``None`` entries omitted, or ``None`` when no constraints apply. The
+    concrete VDB operator (e.g. :class:`~nemo_retriever.vdb.lancedb.LanceDB`)
+    is responsible for translating this into its native predicate. See
+    :meth:`~nemo_retriever.vdb.adt_vdb.VDB.retrieval` for the contract.
+
+    Only a single label is accepted because ``search_semantic_index`` issues
+    one query per label (so the operator-level filter is always a flat
+    AND of equality constraints).
     """
-    parts: list[str] = []
-    if labels:
-        label_preds = [f"""metadata LIKE '%"label":"{_escape_like(lab)}"%' ESCAPE '\\'""" for lab in labels]
-        parts.append("(" + " OR ".join(label_preds) + ")" if len(label_preds) > 1 else label_preds[0])
+    out: dict[str, str] = {}
+    if label:
+        out["label"] = label
     if database_name:
-        parts.append(f"""metadata LIKE '%"database_name":"{_escape_like(database_name)}"%' ESCAPE '\\'""")
-    return " AND ".join(parts) if parts else None
+        out["database_name"] = database_name
+    return out or None
 
 
 def _hits_to_semantic_rows(
@@ -169,8 +172,8 @@ def search_semantic_index(
 ) -> list[dict]:
     """Vector search via the injected :class:`~nemo_retriever.retriever.Retriever`.
 
-    Runs one query **per label** with a server-side ``where`` predicate on the
-    ``metadata`` JSON column (label + database_name), requesting exactly
+    Runs one query **per label** with a server-side, dialect-free ``filter``
+    on per-record ``metadata`` (label + database_name), requesting exactly
     the label-specific *k* rows.  *per_label_k* can be a single int or a
     ``{label: k}`` dict (e.g. ``{"Column": 10, "CustomAnalysis": 3}``).
     When no *label_filter* is given, falls back to a single query with
@@ -181,12 +184,9 @@ def search_semantic_index(
 
     all_hits: list[dict] = []
     for label in labels_to_query:
-        where_clause = _build_metadata_where_clause(
-            labels=[label] if label else None,
-            database_name=database_name,
-        )
-        vdb_kwargs = {"where": where_clause} if where_clause else None
-        top_k = _resolve_label_k(per_label_k, label) if where_clause else DEFAULT_FETCH_LIMIT
+        metadata_filter = _build_metadata_filter(label=label, database_name=database_name)
+        vdb_kwargs = {"filter": metadata_filter} if metadata_filter else None
+        top_k = _resolve_label_k(per_label_k, label) if metadata_filter else DEFAULT_FETCH_LIMIT
         hits = retriever.query(entity, top_k=top_k, vdb_kwargs=vdb_kwargs)
         all_hits.extend(hits)
 
