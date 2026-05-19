@@ -33,7 +33,7 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 
 | Topic | Location | Replaces example(s) in |
 |-------|----------|------------------------|
-| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](../../docker.md) |
+| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) |
 | CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
 | PDF split tuning | [Large PDF page batches](#large-pdf-page-batches) below | `docs/docs/extraction/v2-api-guide.md` |
@@ -44,7 +44,7 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 ## Quick start
 
 Local **Docker Compose** workflows are **unsupported developer tooling** only — see
-[`docker.md`](../../docker.md).
+[`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md).
 
 For **supported** deployment of NeMo Retriever / **NIM** containers, use
 [nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm)

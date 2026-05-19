@@ -14,7 +14,7 @@ and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blo
 NeMo Retriever Library supports extracting text representations of various forms of content,
 and ingesting to a vector database. **[LanceDB](https://lancedb.com/)** stores vectors as local Lance files on disk for the supported ingestion path.
 You can ingest to other data stores; however, you must configure other data stores yourself.
-For more information, refer to [Data Upload](vdbs.md).
+For more information, refer to [Vector databases](vdbs.md).
 
 ## How would I process unstructured images?
 
