@@ -993,7 +993,7 @@ nimOperator:
     enabled: true
     image:
       repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-      tag: "latest"
+      tag: "1.7.0-variant"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
