@@ -178,6 +178,9 @@ class Retriever:
         text_col = str(embed_params.text_column)
         df = pd.DataFrame({text_col: query_texts})
 
+        # Hybrid retrieval relies on these ordered query strings staying aligned
+        # with the embedded rows produced from ``df``. If this query graph grows
+        # distributed/shuffled stages, carry row-local query text or IDs instead.
         graph = self._get_graph(embed_extra=embed_extra)
         if not callable(getattr(graph, "resolve_for_local_execution", None)):
             raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")

@@ -147,6 +147,7 @@ class RetrieveVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, _sidecar = split_sidecar_from_vdb_kwargs(merged)
+        clean_kwargs.pop("query_texts", None)
         super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs, explode_for_rerank=explode_for_rerank)
         self._vdb_kwargs = clean_kwargs
         self._retrieval_vdb_kwargs = clean_kwargs
@@ -162,6 +163,8 @@ class RetrieveVdbOperator(AbstractOperator):
         from nemo_retriever.retriever_graph_utils import filter_retrieval_kwargs
 
         retrieval_kwargs = {**self._retrieval_vdb_kwargs, **filter_retrieval_kwargs(kwargs)}
+        if retrieval_kwargs.get("hybrid") and "query_texts" in kwargs:
+            retrieval_kwargs["query_texts"] = kwargs["query_texts"]
         return normalize_retrieval_results(self._vdb.retrieval(data, **retrieval_kwargs))
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

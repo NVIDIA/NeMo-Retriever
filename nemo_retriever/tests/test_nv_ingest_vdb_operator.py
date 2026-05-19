@@ -161,6 +161,38 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
     assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
 
 
+def test_retrieve_operator_forwards_runtime_query_texts() -> None:
+    vdb = FakeVDB()
+    operator = RetrieveVdbOperator(
+        vdb=vdb,
+        vdb_kwargs={"collection_name": "docs", "model_name": "embedder", "hybrid": True, "query_texts": ["stale"]},
+    )
+
+    operator.process([[0.1, 0.2]], top_k=3, query_texts=["current"])
+
+    assert vdb.retrieval_calls == [
+        (
+            [[0.1, 0.2]],
+            {
+                "collection_name": "docs",
+                "model_name": "embedder",
+                "hybrid": True,
+                "top_k": 3,
+                "query_texts": ["current"],
+            },
+        )
+    ]
+
+
+def test_retrieve_operator_does_not_forward_query_texts_for_dense_retrieval() -> None:
+    vdb = FakeVDB()
+    operator = RetrieveVdbOperator(vdb=vdb, vdb_kwargs={"collection_name": "docs", "model_name": "embedder"})
+
+    operator.process([[0.1, 0.2]], top_k=3, query_texts=["current"])
+
+    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
+
+
 def test_constructor_requires_exactly_one_vdb_source() -> None:
     with pytest.raises(ValueError, match="Either vdb or vdb_op is required"):
         IngestVdbOperator()

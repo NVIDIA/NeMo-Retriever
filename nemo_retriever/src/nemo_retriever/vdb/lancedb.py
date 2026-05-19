@@ -7,6 +7,7 @@ import logging
 import os
 import time
 
+from collections.abc import Iterable, Sequence
 from datetime import timedelta
 from typing import Any, Final, FrozenSet
 
@@ -529,7 +530,7 @@ class LanceDB(VDB):
             logger.info("Skipping LanceDB index creation for table %r because build_index=False.", self.table_name)
         return records
 
-    def retrieval(self, vectors, **kwargs):
+    def retrieval(self, vectors: Iterable[Sequence[float]], **kwargs: Any) -> list[list[dict[str, Any]]]:
         """Search LanceDB with precomputed query vectors.
 
         Keyword arguments
@@ -546,10 +547,12 @@ class LanceDB(VDB):
             ``table.search`` (e.g. ``query_type``, ``fts_columns``). Do not
             pass ``vector_column_name`` here; use the top-level
             ``vector_column_name`` retrieval argument instead.
+        query_texts:
+            Raw query strings aligned with ``vectors``. Required for
+            ``hybrid=True`` and ignored for dense-only retrieval.
         """
         hybrid = kwargs.pop("hybrid", self.hybrid)
-        if hybrid:
-            raise NotImplementedError("LanceDB hybrid retrieval with precomputed vectors is not implemented yet.")
+        query_texts = kwargs.pop("query_texts", None)
         table_path = kwargs.pop("table_path", self.uri)
         table_name = kwargs.pop("table_name", self.table_name)
 
@@ -567,6 +570,23 @@ class LanceDB(VDB):
         else:
             search_kwargs = dict(search_kwargs_raw)
 
+        if hybrid:
+            if query_texts is None:
+                raise ValueError(
+                    "LanceDB hybrid retrieval requires query_texts. Pass query_texts=your_queries "
+                    "alongside vectors when calling retrieval() with hybrid=True."
+                )
+            query_type = search_kwargs.get("query_type")
+            if query_type is not None:
+                query_type_value = getattr(query_type, "value", query_type)
+                if str(query_type_value).lower() != "hybrid":
+                    raise ValueError(
+                        "LanceDB hybrid retrieval requires search_kwargs['query_type']='hybrid'; "
+                        f"got {query_type!r}."
+                    )
+            search_kwargs["query_type"] = "hybrid"
+            search_kwargs.setdefault("fts_columns", "text")
+
         where_clause = kwargs.pop("where", None)
         _filter_fallback = kwargs.pop("_filter", None)
         if where_clause is None:
@@ -576,9 +596,28 @@ class LanceDB(VDB):
 
         table = lancedb.connect(uri=table_path).open_table(table_name)
 
+        if hybrid:
+            vectors_for_search = list(vectors)
+            query_texts_list = [query_texts] if isinstance(query_texts, str) else list(query_texts)
+            if len(query_texts_list) != len(vectors_for_search):
+                raise ValueError(
+                    "LanceDB hybrid retrieval requires query_texts length to match vectors length; "
+                    f"got query_texts={len(query_texts_list)} vectors={len(vectors_for_search)}."
+                )
+        else:
+            vectors_for_search = vectors
+            query_texts_list = []
+
         search_results = []
-        for vector in vectors:
-            query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
+        for idx, vector in enumerate(vectors_for_search):
+            if hybrid:
+                query = (
+                    table.search(vector_column_name=vector_column_name, **search_kwargs)
+                    .vector(vector)
+                    .text(str(query_texts_list[idx]))
+                )
+            else:
+                query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
             if where_clause is not None:
                 query = query.where(where_clause)
             query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
