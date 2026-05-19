@@ -18,9 +18,7 @@ Highlights for the 26.03 release include:
 - Added documentation notes on Air-gapped deployment support  
 - Added documentation notes on OpenShift support  
 - Added support for RTX4500 Pro Blackwell SKU  
-- Added support for [llama-nemotron-embed-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2) in text and text+image modes; default Helm VL embedder is `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` (replaces deprecated `llama-3.2-nemoretriever-1b-vlm-embed-v1` and default `embedqa` NIMs)  
-- Default Helm NIMs: `page_elements`, `table_structure`, `ocr`, and `vlm_embed` — **Nemotron Parse**, **Nemotron 3 Nano Omni**, and the **VL reranker** are optional and disabled by default (enable only when needed)  
-- **Caption model:** `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16` (`nemotron-nano-12b-v2-vl`) is no longer documented for Helm or sizing. Migrate to optional [Nemotron 3 Nano Omni](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) (`nemotron-3-nano-omni-30b-a3b-reasoning`) when you enable the caption stage. GPU, disk, and co-residency requirements are in the **Omni caption** rows of the [Pre-Requisites hardware table](prerequisites-support-matrix.md#model-hardware-requirements) (replacing the former Nano 12B VL rows, including the prior 32 GB load limitation).  
+- Added support for llama-nemotron-embed-vl-v2 in text and text+image modes  
 - New extract methods `pdfium_hybrid` and `ocr` target scanned PDFs to improve text and layout extraction from image-based pages  
 - VLM-based image caption enhancements:  
   - Infographics can be captioned  
@@ -29,7 +27,7 @@ Highlights for the 26.03 release include:
 - Added retrieval_bench subfolder with generalizable agentic retrieval pipeline  
 - The project now uses UV as the primary environment and package manager instead of Conda, resulting in faster installs and simpler dependency handling  
 - Default TTL for long-running pipeline job state increased from 1–2 hours to 48 hours so long-running jobs (for example, VLM captioning) do not expire before completion  
-- VLM image captioning via Nemotron 3 Nano Omni is **optional** and not enabled by default; enable the caption stage and deploy the Omni NIM only when needed (see [multimodal-extraction.md](multimodal-extraction.md) for configuration)
+- NeMo Retriever Library currently does not support image captioning via VLM; this feature will be added in the next release
 - Documentation: multimodal extraction is covered on one page with an in-page table of contents and redirects from the former per-topic URLs
 
 ## Release Notes for Previous Versions
