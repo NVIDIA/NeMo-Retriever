@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 """Abstract Vector Database (VDB) operator API.
@@ -192,11 +193,23 @@ class VDB(ABC):
         """
         pass
 
-    @abstractmethod
-    def upsert(self, records: list, **kwargs):
+    def upsert(self, records: list, **kwargs: Any) -> dict[str, Any]:
         """Incrementally merge a batch of records into the target table/index.
 
-        ``upsert`` exists as a separate abstract entry point from
+        Note: this method is intentionally **not** decorated with
+        :func:`abc.abstractmethod`. Marking it abstract would cause
+        Python's ABC machinery to refuse instantiation of any concrete
+        :class:`VDB` subclass that does not override ``upsert`` — which
+        would in turn make the early-detection guard in
+        :class:`~nemo_retriever.vdb.operators.UpsertVdbOperator` (which
+        compares ``type(self._vdb).upsert is VDB.upsert``) permanently
+        unreachable, since instantiation would already have failed.
+        The default body below raises :class:`NotImplementedError` so
+        backends that have not implemented stable-key merges fail fast
+        and visibly at the first ``upsert`` call (and are caught by the
+        operator-level guard at construction time).
+
+        ``upsert`` exists as a separate entry point from
         :meth:`write_to_index` because it has fundamentally different
         semantics. Where ``write_to_index`` is an *append* (or full
         ingest) operation, ``upsert`` is a **stable-key merge**:

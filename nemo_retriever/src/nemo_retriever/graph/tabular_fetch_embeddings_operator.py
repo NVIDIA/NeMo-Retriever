@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterable
 
 import pandas as pd
@@ -14,6 +15,8 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.tabular_data.ingestion.embeddings import fetch_tabular_embedding_dataframe
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
+
+logger = logging.getLogger(__name__)
 
 
 class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
@@ -54,6 +57,12 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
 
     def process(self, data: Any, **kwargs: Any) -> pd.DataFrame:
         if not (isinstance(data, tuple) and len(data) == 2):
+            logger.warning(
+                "TabularFetchEmbeddingsOp received no (tables_df, columns_df) input "
+                "for database %r (got %s); falling back to fetching embeddings from the database.",
+                self._database_name,
+                type(data).__name__,
+            )
             return fetch_tabular_embedding_dataframe(database_name=self._database_name)
 
         tables_df, columns_df = data
