@@ -97,7 +97,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 | VLM (nemotron-nano-12b-v2-vl) | ~22.9 GiB | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | Not supported | Not supported | 1 | Not supported³ |
 | VLM (nemotron-nano-12b-v2-vl) | — | Additional Disk Space (NIM) | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | Not supported | Not supported | ~16GB | Not supported³ |
 | Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | ~62 GiB (BF16); ~33 GiB (FP8); ~21 GiB (NVFP4) | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | Not supported | Not supported | 2 | Not supported⁴ |
-| Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (HF) | ~62GB | ~62GB | ~62GB | ~62GB | ~62GB | Not supported | Not supported | ~62GB | Not supported⁴ |
+| Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (HF) | ~21–62GB | ~21–62GB | ~21–62GB | ~21–62GB | ~21–62GB | Not supported | Not supported | ~21–62GB | Not supported⁴ |
 | Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (NIM) | ~80GB | ~80GB | ~80GB | ~80GB | ~80GB | Not supported | Not supported | ~80GB | Not supported⁴ |
 | Reranker | ~3.1 GiB (llama-nemotron-rerank-vl-1b-v2) | With Core Pipeline | Yes | Yes | Yes | Yes | Yes | No* | No* | No* | No* |
 | Reranker | — | Standalone (recall only) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
