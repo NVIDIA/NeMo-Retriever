@@ -1,18 +1,24 @@
-/* Layout — sidebar navigation, header, view container */
+/* Layout — sidebar navigation, header (with optional breadcrumb), view container.
+ *
+ * The header displays either ``VIEW_TITLES[view]`` (top-level routes)
+ * or a breadcrumb ``parent / label`` when drilling down into a
+ * sub-view (e.g. Jobs / Job <id>). The sidebar always reflects the
+ * top-level view so drill-down pages don't lose their nav anchor.
+ */
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: '◉' },
-  { id: 'jobs',     label: 'Job Tracker', icon: '▶' },
+  { id: 'jobs',     label: 'Jobs', icon: '▶' },
   { id: 'vdb',      label: 'VDB Explorer', icon: '⬡' },
 ];
 
 const VIEW_TITLES = {
   overview: 'Cluster Overview',
-  jobs: 'Job Tracker',
+  jobs: 'Jobs',
   vdb: 'VDB Explorer',
 };
 
-function Layout({ view, onNavigate, children }) {
+function Layout({ view, onNavigate, breadcrumb, children }) {
   return React.createElement('div', { className: 'app-layout' },
     React.createElement('aside', { className: 'sidebar' },
       React.createElement('div', { className: 'sidebar-logo' },
@@ -38,7 +44,17 @@ function Layout({ view, onNavigate, children }) {
     ),
     React.createElement('div', { className: 'main-area' },
       React.createElement('header', { className: 'header' },
-        VIEW_TITLES[view] || 'Dashboard'
+        breadcrumb
+          ? React.createElement(React.Fragment, null,
+              React.createElement('a', {
+                href: `#${view}`,
+                onClick: (e) => { e.preventDefault(); onNavigate(view); },
+                style: { color: 'var(--nv-text-muted)', textDecoration: 'none' },
+              }, breadcrumb.parent),
+              React.createElement('span', { style: { margin: '0 8px', color: 'var(--nv-text-muted)' } }, '/'),
+              React.createElement('span', null, breadcrumb.label),
+            )
+          : (VIEW_TITLES[view] || 'Dashboard')
       ),
       React.createElement('main', { className: 'content' }, children),
     ),

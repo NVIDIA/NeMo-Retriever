@@ -31,6 +31,15 @@ function OverviewView() {
   const summary = data.job_summary || {};
   const workers = data.worker_config || {};
   const gw = data.gateway || {};
+  // H6 — live per-pool stats. Empty object when the backend isn't a
+  // gateway with reachable workers (or when stats fan-out failed).
+  const poolStats = data.pool_stats || {};
+
+  function poolBadge(stats) {
+    if (!stats) return '—';
+    const r = stats.queue_depth_ratio;
+    return `${stats.queue_depth}/${stats.max_queue_size} (${Math.round((r || 0) * 100)}%)`;
+  }
 
   const pods = [
     {
@@ -46,7 +55,7 @@ function OverviewView() {
       status: backends.realtime ? 'ok' : 'error',
       details: [
         `Workers: ${workers.realtime_workers || '—'}`,
-        `Queue: ${workers.realtime_queue_size || '—'}`,
+        `Queue: ${poolBadge(poolStats.realtime) || workers.realtime_queue_size || '—'}`,
       ],
     },
     {
@@ -54,7 +63,7 @@ function OverviewView() {
       status: backends.batch ? 'ok' : 'error',
       details: [
         `Workers: ${workers.batch_workers || '—'}`,
-        `Queue: ${workers.batch_queue_size || '—'}`,
+        `Queue: ${poolBadge(poolStats.batch) || workers.batch_queue_size || '—'}`,
       ],
     },
     {
@@ -85,6 +94,40 @@ function OverviewView() {
           )
         )
       )
+    ),
+
+    /* Worker pool capacity (H6) — live per-pool queue fill, mirrors the
+     * signal HPA uses. Only shows pools the backend reported on. */
+    Object.keys(poolStats).length > 0 && React.createElement('div', { className: 'section' },
+      React.createElement('div', { className: 'section-title' }, 'Worker Pool Capacity'),
+      React.createElement('div', { className: 'card-grid' },
+        Object.entries(poolStats).map(([pool, stats]) => {
+          const pct = Math.round((stats.queue_depth_ratio || 0) * 100);
+          // Threshold colour matches the HPA defaults: realtime tunes to
+          // 50% queue-fill, batch to 70% — anything above the high band
+          // means the HPA is likely already trying to scale up.
+          const high = pool === 'batch' ? 70 : 50;
+          const veryHigh = pool === 'batch' ? 90 : 75;
+          const barColour = pct >= veryHigh
+            ? 'var(--nv-red)'
+            : pct >= high
+              ? 'var(--nv-yellow)'
+              : 'var(--nv-green)';
+          return React.createElement('div', { key: pool, className: 'card' },
+            React.createElement('div', { className: 'card-title' },
+              `${pool} pool`),
+            React.createElement('div', { style: { fontSize: 13, marginBottom: 8, color: 'var(--nv-text-muted)' } },
+              `${stats.num_workers} workers · ${stats.processed.toLocaleString()} processed`),
+            React.createElement('div', { className: 'progress-bar', style: { height: 22 } },
+              React.createElement('div', {
+                className: 'progress-fill',
+                style: { width: pct + '%', background: barColour },
+              }),
+              React.createElement('div', { className: 'progress-label' },
+                `${stats.queue_depth} / ${stats.max_queue_size}  (${pct}%)`)),
+          );
+        })
+      ),
     ),
 
     /* Job summary */

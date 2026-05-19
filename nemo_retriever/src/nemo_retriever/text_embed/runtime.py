@@ -32,6 +32,7 @@ def _embed_group(
     resolved_model_name: str,
     nim_http_max_concurrent: int = 32,
     input_type: str = "passage",
+    request_timeout_s: float = 600.0,
 ) -> pd.DataFrame:
     """Embed a single modality group via ``create_text_embeddings_for_df``."""
     embedder = None
@@ -88,6 +89,7 @@ def _embed_group(
             "endpoint_url": endpoint,
             "local_batch_size": int(effective_batch_size),
             "nim_http_max_concurrent": max(1, int(nim_http_max_concurrent)),
+            "request_timeout_s": float(request_timeout_s),
         },
         transform_config=cfg,
     )
@@ -110,6 +112,7 @@ def embed_text_main_text_embed(
     embed_modality: str = "text",
     nim_http_max_concurrent: int = 32,
     input_type: str = "passage",
+    request_timeout_s: float | None = None,
     **_extras: Any,
 ) -> Any:
     """Embed graph batches while preserving the legacy output columns."""
@@ -117,6 +120,9 @@ def embed_text_main_text_embed(
         raise NotImplementedError("embed_text_main_text_embed currently only supports pandas.DataFrame input.")
     if inference_batch_size <= 0:
         raise ValueError("inference_batch_size must be > 0")
+
+    if request_timeout_s is None:
+        request_timeout_s = float(_extras.get("request_timeout_s", 600.0))
 
     endpoint = (embedding_endpoint or embed_invoke_url or "").strip() or None
     if endpoint is None and model is None:
@@ -144,6 +150,7 @@ def embed_text_main_text_embed(
                 resolved_model_name=resolved_model_name,
                 nim_http_max_concurrent=nim_http_max_concurrent,
                 input_type=input_type,
+                request_timeout_s=float(request_timeout_s),
             )
         else:
             parts: List[pd.DataFrame] = []
@@ -164,6 +171,7 @@ def embed_text_main_text_embed(
                     resolved_model_name=resolved_model_name,
                     nim_http_max_concurrent=nim_http_max_concurrent,
                     input_type=input_type,
+                    request_timeout_s=float(request_timeout_s),
                 )
                 parts.append(part)
             out_df = pd.concat(parts).sort_index()

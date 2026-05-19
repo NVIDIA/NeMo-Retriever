@@ -35,6 +35,14 @@ nim_endpoints:
   table_structure_invoke_url: null
   ocr_invoke_url: null
   embed_invoke_url: null
+  # Model name for the remote embed NIM (server-owned; must match the SKU).
+  embed_model_name: null
+  # Remote VLM endpoint for the ``caption`` stage. When set, clients
+  # may submit caption_params overrides (prompt, system_prompt,
+  # batch_size, …). The endpoint URL, API key, and model name itself
+  # stay server-owned regardless of pipeline_overrides.mode.
+  caption_invoke_url: null
+  caption_model_name: null
   api_key: null
 
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
@@ -70,3 +78,38 @@ auth:
     - "/docs"
     - "/openapi.json"
     - "/redoc"
+
+# Controls whether (and how widely) client-supplied PipelineSpec
+# overrides are honored on a per-request basis.
+#
+#   reject     — every client override is rejected; YAML-only config.
+#   allow_list — only audited "shape" keys may be overridden
+#                (chunk sizes, batch sizes, output flags, …).
+#                Endpoint URLs and API keys are ALWAYS denied.
+#   allow_all  — every key passes except the endpoint/api_key denylist.
+#                Convenient in dev clusters; UNSAFE in multi-tenant prod.
+#
+# The extra_*_keys lists let operators widen the allow_list with
+# additional params keys without dropping to allow_all.
+#
+# The sinks: subsection gates client-driven egress (store / webhook /
+# vdb_upload). Each list is empty by default which DISABLES that sink
+# in service mode; populate them with URI schemes or URL prefixes to
+# enable. Use "*" as a single wildcard entry to bypass enforcement
+# (dev clusters only — never in multi-tenant production).
+pipeline_overrides:
+  mode: allow_list
+  extra_extract_keys: []
+  extra_embed_keys: []
+  extra_dedup_keys: []
+  extra_split_keys: []
+  extra_store_keys: []
+  extra_webhook_keys: []
+  extra_vdb_upload_keys: []
+  # extra_caption_keys only has effect when nim_endpoints.caption_invoke_url
+  # is set above — without an endpoint, the caption stage is rejected entirely.
+  extra_caption_keys: []
+  sinks:
+    storage_uri_schemes: []      # e.g. ["s3://", "gs://", "azure://"]
+    webhook_url_prefixes: []     # e.g. ["https://hooks.example.com/"]
+    vdb_uri_schemes: []          # e.g. ["s3://", "gs://"]

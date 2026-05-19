@@ -163,6 +163,9 @@ jobs:
     if: ${{ !inputs.skip-helm-chart }}
     needs: determine-version
     runs-on: ubuntu-latest
+    env:
+      HELM_CHART_DIR: nemo_retriever/helm
+      HELM_CHART_NAME: nemo-retriever
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -177,27 +180,8 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Install helm-docs
-        run: |
-          HELM_DOCS_VERSION="1.14.2"
-          curl -sSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
-            | tar xz -C /usr/local/bin helm-docs
-
-      - name: Update Helm README
-        run: helm/update_helm_readme.sh
-
-      - name: Add Helm dependency repos
-        run: |
-          helm repo add milvus https://zilliztech.github.io/milvus-helm
-          helm repo add zipkin https://zipkin.io/zipkin-helm
-          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-          helm repo update
-
-      - name: Build Helm dependencies
-        run: |
-          helm dependency update helm/
-          helm dependency build helm/
+      - name: Lint Helm chart
+        run: helm lint "${HELM_CHART_DIR}"
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -212,15 +196,16 @@ jobs:
           python ci/scripts/release_helm_chart.py \
             --org nvidian \
             --team nemo-llm \
-            --name nv-ingest \
+            --name "${HELM_CHART_NAME}" \
+            --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ needs.determine-version.outputs.version }}" \
             --dry-run
 
       - name: Upload Helm chart artifact
         uses: actions/upload-artifact@v5
         with:
-          name: helm-chart
-          path: nv-ingest-*.tgz
+          name: nemo-retriever-helm-chart
+          path: nemo-retriever-*.tgz
           if-no-files-found: error
 
   # ══════════════════════════════════════════════════════════════════════
@@ -285,6 +270,8 @@ jobs:
       NGC_CLI_ORG: ${{ secrets.NGC_ORG }}
       NGC_CLI_TEAM: ${{ secrets.NGC_TEAM }}
       NGC_CLI_FORMAT_TYPE: json
+      HELM_CHART_DIR: nemo_retriever/helm
+      HELM_CHART_NAME: nemo-retriever
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -299,11 +286,8 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Install helm-docs
-        run: |
-          HELM_DOCS_VERSION="1.14.2"
-          curl -sSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
-            | tar xz -C /usr/local/bin helm-docs
+      - name: Lint Helm chart
+        run: helm lint "${HELM_CHART_DIR}"
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -313,22 +297,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install ngcsdk pyyaml
 
-      - name: Update Helm README
-        run: helm/update_helm_readme.sh
-
-      - name: Add Helm dependency repos
-        run: |
-          helm repo add milvus https://zilliztech.github.io/milvus-helm
-          helm repo add zipkin https://zipkin.io/zipkin-helm
-          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-          helm repo update
-
-      - name: Build Helm dependencies
-        run: |
-          helm dependency update helm/
-          helm dependency build helm/
-
       - name: Publish chart to NGC
         env:
           NGC_CLI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -336,7 +304,8 @@ jobs:
           python ci/scripts/release_helm_chart.py \
             --org ${{ secrets.NGC_ORG }} \
             --team ${{ secrets.NGC_TEAM }} \
-            --name nv-ingest \
+            --name "${HELM_CHART_NAME}" \
+            --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ needs.determine-version.outputs.version }}"
 
   pypi-publish:
@@ -479,7 +448,7 @@ jobs:
           fi
 
           # — Helm Chart —
-          HELM_REF="nvidian/nemo-llm/nv-ingest:${VERSION}"
+          HELM_REF="nvidian/nemo-llm/nemo-retriever:${VERSION}"
           if [ "$SKIP_HELM" = "true" ]; then
             MSG+="\n:fast_forward: *Helm Chart* — Disabled (skip-helm-chart)"
           elif [ "$DRY_RUN" = "true" ]; then

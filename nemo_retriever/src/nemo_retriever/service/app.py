@@ -90,6 +90,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from nemo_retriever.service.services.metrics import init_metrics, shutdown_metrics
     from nemo_retriever.service.services.pipeline_pool import init_pipeline_pool, shutdown_pipeline_pool
     from nemo_retriever.service.services.proxy import init_proxy, shutdown_proxy
+    from nemo_retriever.service.services.sidecar_store import init_sidecar_store, shutdown_sidecar_store
 
     if mode in ("gateway", "standalone"):
         app.state.metrics = init_metrics()
@@ -99,6 +100,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     tracker = init_job_tracker()
     event_bus = init_event_bus()
     tracker.set_event_bus(event_bus)
+    app.state.sidecar_store = init_sidecar_store()
 
     if mode == "gateway":
         app.state.proxy = init_proxy(config.gateway)
@@ -133,6 +135,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     shutdown_process_executors()
     await shutdown_proxy()
     await shutdown_pipeline_pool()
+    shutdown_sidecar_store()
     shutdown_event_bus()
     shutdown_job_tracker()
     shutdown_metrics()
@@ -226,11 +229,14 @@ def create_app(config: ServiceConfig) -> FastAPI:
     else:
         logger.info("Bearer-token authentication DISABLED (no api_token configured)")
 
-    from nemo_retriever.service.routers import ingest, metrics
+    from nemo_retriever.service.routers import admin, ingest, metrics
     from nemo_retriever.service.services.prometheus import instrument_app
 
     app.include_router(ingest.router, prefix="/v1")
     app.include_router(metrics.router, prefix="/v1")
+    # Admin/internal endpoints — pool_stats etc. Registered on every
+    # role; the handler self-reports an empty pool dict on gateway pods.
+    app.include_router(admin.router, prefix="/v1")
     instrument_app(app, role=config.mode)
 
     if config.mode == "gateway":
