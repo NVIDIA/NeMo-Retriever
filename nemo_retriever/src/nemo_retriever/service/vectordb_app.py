@@ -243,8 +243,8 @@ def create_vectordb_app(
 
         if not _state.table_exists:
             raise HTTPException(
-                404,
-                "No data has been ingested yet. Ingest documents first, then query.",
+                status_code=422,
+                detail="No data has been ingested yet. Ingest documents first, then query.",
             )
 
         queries = req.query if isinstance(req.query, list) else [req.query]
