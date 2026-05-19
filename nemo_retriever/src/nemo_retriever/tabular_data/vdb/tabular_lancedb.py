@@ -23,7 +23,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from nemo_retriever.vdb.lancedb import LanceDB, _default_row_builder
+from nemo_retriever.vdb.lancedb import LanceDB
 
 
 class TabularLanceDB(LanceDB):
@@ -51,7 +51,7 @@ class TabularLanceDB(LanceDB):
         )
 
     def _make_row(self, element, *, embedding, text, content_meta, source_meta) -> dict:
-        row = _default_row_builder(
+        row = super()._make_row(
             element,
             embedding=embedding,
             text=text,

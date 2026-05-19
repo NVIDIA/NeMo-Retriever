@@ -5,7 +5,7 @@
 """Vector semantic search primitives.
 
 The functions here build ``where`` predicates against the **top-level**
-``label`` and ``database_name`` columns of the tabular VDB row.
+``label`` and ``database_name`` columns of the tabular VDB row,
 run per-label vector queries through the injected
 :class:`~nemo_retriever.retriever.Retriever`, and shape the raw hits into a
 common ``{text, id, label, score}`` candidate dict consumed by the rest of
@@ -96,11 +96,6 @@ def _resolve_label_k(per_label_k: "int | dict[str, int]", label: str | None) -> 
     return int(per_label_k)
 
 
-def _sql_quote(value: str) -> str:
-    """Quote a string literal for inline use in a SQL predicate (single-quote escaped)."""
-    return "'" + value.replace("'", "''") + "'"
-
-
 def _build_metadata_where_clause(
     labels: list[str] | None = None,
     database_name: str | None = None,
@@ -108,13 +103,12 @@ def _build_metadata_where_clause(
     """Build a SQL ``where`` predicate over the top-level ``label`` / ``database_name`` columns."""
     parts: list[str] = []
     if labels:
-        quoted_labels = [_sql_quote(lab) for lab in labels]
-        if len(quoted_labels) == 1:
-            parts.append(f"label = {quoted_labels[0]}")
+        if len(labels) == 1:
+            parts.append(f"label = '{labels[0]}'")
         else:
-            parts.append(f"label IN ({', '.join(quoted_labels)})")
+            parts.append("label IN (" + ", ".join(f"'{lab}'" for lab in labels) + ")")
     if database_name:
-        parts.append(f"database_name = {_sql_quote(database_name)}")
+        parts.append(f"database_name = '{database_name}'")
     return " AND ".join(parts) if parts else None
 
 

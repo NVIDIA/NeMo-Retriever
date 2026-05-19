@@ -41,7 +41,6 @@ def test_database_name_only() -> None:
     assert out == "database_name = 'dor_prod'"
 
 
-def test_single_quote_in_value_is_escaped() -> None:
-    # ``O'Brien`` should round-trip as ``'O''Brien'`` — standard SQL single-quote escape.
-    out = _build_metadata_where_clause(labels=["O'Brien"], database_name="d'b")
-    assert out == "label = 'O''Brien' AND database_name = 'd''b'"
+def test_identifier_with_underscore_and_hyphen() -> None:
+    out = _build_metadata_where_clause(labels=["Column_1", "Table-2"], database_name="dor-prod_eu1")
+    assert out == "label IN ('Column_1', 'Table-2') AND database_name = 'dor-prod_eu1'"
