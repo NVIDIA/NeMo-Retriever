@@ -153,13 +153,30 @@ class SidecarStore:
         """:func:`get` + remove (when ``consume_on_read``).
 
         The default upload policy is single-use so the worker can
-        release the bytes promptly.
+        release the bytes promptly. Lookup and removal run atomically
+        under one lock acquisition so concurrent callers cannot both
+        receive the same single-use entry.
         """
-        entry = self.get(sidecar_id, owner_token=owner_token)
-        if entry is not None and entry.consume_on_read:
-            with self._lock:
+        now = time.time()
+        with self._lock:
+            entry = self._entries.get(sidecar_id)
+            if entry is None:
+                return None
+            if entry.expires_at <= now:
                 self._entries.pop(sidecar_id, None)
-            logger.debug("SidecarStore: sidecar_id=%s consumed and removed", sidecar_id)
+                logger.debug("SidecarStore: sidecar_id=%s expired on consume", sidecar_id)
+                return None
+            if entry.owner_token is not None and owner_token != entry.owner_token:
+                logger.warning(
+                    "SidecarStore: sidecar_id=%s owner mismatch (expected=%r got=%r)",
+                    sidecar_id,
+                    entry.owner_token,
+                    owner_token,
+                )
+                return None
+            if entry.consume_on_read:
+                self._entries.pop(sidecar_id, None)
+                logger.debug("SidecarStore: sidecar_id=%s consumed and removed", sidecar_id)
         return entry
 
     def delete(self, sidecar_id: str) -> bool:

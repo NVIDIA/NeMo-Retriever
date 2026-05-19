@@ -294,7 +294,7 @@ def _http_embed_openai_compat(
     input_type: str,
     truncate: str,
     dimensions: Optional[int] = None,
-    timeout_s: float = 60.0,
+    timeout_s: float = 600.0,
 ) -> List[Optional[List[float]]]:
     """
     Best-effort HTTP embeddings call using an OpenAI-compatible schema.
@@ -359,6 +359,7 @@ def _make_async_request(
     filter_errors: bool,
     modalities: Optional[List[str]] = None,
     dimensions: Optional[int] = None,
+    timeout_s: float = 600.0,
 ) -> dict:
     """
     Mirrors the API transform's request wrapper, but uses HTTP OpenAI-compatible embeddings.
@@ -380,6 +381,7 @@ def _make_async_request(
             input_type=str(input_type),
             truncate=str(truncate),
             dimensions=dimensions,
+            timeout_s=timeout_s,
         )
         response["embedding"] = vecs
         response["info_msg"] = None
@@ -404,6 +406,7 @@ def _async_request_handler(
     modalities: Optional[List[List[str]]] = None,
     dimensions: Optional[int] = None,
     max_concurrent: Optional[int] = None,
+    timeout_s: float = 600.0,
 ) -> List[dict]:
     if modalities is None:
         modalities = [None] * len(prompts)  # type: ignore[assignment]
@@ -423,6 +426,7 @@ def _async_request_handler(
                 filter_errors=bool(filter_errors),
                 modalities=modality_batch,  # type: ignore[arg-type]
                 dimensions=dimensions,
+                timeout_s=timeout_s,
             )
             for prompt_batch, modality_batch in zip(prompts, modalities)
         ]
@@ -443,6 +447,7 @@ def _async_runner(
     modalities: Optional[List[List[str]]] = None,
     dimensions: Optional[int] = None,
     max_concurrent: Optional[int] = None,
+    timeout_s: float = 600.0,
 ) -> dict:
     results = _async_request_handler(
         prompts,
@@ -456,6 +461,7 @@ def _async_runner(
         modalities=modalities,
         dimensions=dimensions,
         max_concurrent=max_concurrent,
+        timeout_s=timeout_s,
     )
 
     flat_results = {"embeddings": [], "info_msgs": []}
@@ -591,6 +597,11 @@ def create_text_embeddings_for_df(
         nim_http_raw = getattr(transform_config, "nim_http_max_concurrent", 32)
     nim_http_max_concurrent = max(1, int(nim_http_raw))
 
+    timeout_raw = task_config.get("request_timeout_s")
+    if timeout_raw is None:
+        timeout_raw = getattr(transform_config, "request_timeout_s", 600.0)
+    request_timeout_s = float(timeout_raw)
+
     if df_transform_ledger.empty:
         return df_transform_ledger, {"trace_info": execution_trace_log}
 
@@ -667,6 +678,7 @@ def create_text_embeddings_for_df(
                 modalities=None,
                 dimensions=dimensions,
                 max_concurrent=nim_http_max_concurrent,
+                timeout_s=request_timeout_s,
             )
         else:
             # Text-only path (default)
@@ -688,6 +700,7 @@ def create_text_embeddings_for_df(
                     modalities=None,
                     dimensions=dimensions,
                     max_concurrent=nim_http_max_concurrent,
+                    timeout_s=request_timeout_s,
                 )
             elif callable(embedder):
                 content_embeddings = _callable_runner(

@@ -85,9 +85,7 @@ class JobAggregateStatus(str, Enum):
     PARTIAL_SUCCESS = "partial_success"
 
 
-_DOC_TERMINAL: frozenset[DocumentStatus] = frozenset(
-    {DocumentStatus.COMPLETED, DocumentStatus.FAILED}
-)
+_DOC_TERMINAL: frozenset[DocumentStatus] = frozenset({DocumentStatus.COMPLETED, DocumentStatus.FAILED})
 _JOB_TERMINAL: frozenset[JobAggregateStatus] = frozenset(
     {
         JobAggregateStatus.COMPLETED,
@@ -243,9 +241,7 @@ class JobTracker:
     ) -> JobAggregate:
         """Create a new :class:`JobAggregate` in ``pending`` state."""
         if expected_documents <= 0:
-            raise ValueError(
-                f"expected_documents must be positive; got {expected_documents}"
-            )
+            raise ValueError(f"expected_documents must be positive; got {expected_documents}")
         with self._lock:
             if job_id in self._jobs:
                 raise JobTrackerError(f"Job {job_id!r} already exists")
@@ -333,12 +329,11 @@ class JobTracker:
             if len(agg.document_ids) >= agg.expected_documents:
                 raise JobFullError(
                     f"Job {job_id!r} is at capacity "
-                    f"({agg.expected_documents} documents); reject 101st upload."
+                    f"({agg.expected_documents} documents); rejected document "
+                    f"#{len(agg.document_ids) + 1}."
                 )
             if document_id in self._documents:
-                raise JobTrackerError(
-                    f"Document {document_id!r} already registered."
-                )
+                raise JobTrackerError(f"Document {document_id!r} already registered.")
             rec = DocumentRecord(
                 id=document_id,
                 job_id=job_id,
@@ -348,9 +343,7 @@ class JobTracker:
             )
             self._documents[document_id] = rec
             agg.document_ids.append(document_id)
-            agg.counts[DocumentStatus.PENDING.value] = (
-                agg.counts.get(DocumentStatus.PENDING.value, 0) + 1
-            )
+            agg.counts[DocumentStatus.PENDING.value] = agg.counts.get(DocumentStatus.PENDING.value, 0) + 1
         return rec.model_copy(deep=True)
 
     def mark_processing(self, document_id: str) -> None:
@@ -368,9 +361,7 @@ class JobTracker:
             rec.status = DocumentStatus.PROCESSING
             rec.started_at = _utcnow_iso()
             self._started_mono[document_id] = time.monotonic()
-            self._adjust_counts_locked(
-                rec.job_id, DocumentStatus.PENDING, DocumentStatus.PROCESSING
-            )
+            self._adjust_counts_locked(rec.job_id, DocumentStatus.PENDING, DocumentStatus.PROCESSING)
             agg = self._jobs.get(rec.job_id)
             if agg is not None and agg.status == JobAggregateStatus.PENDING:
                 agg.status = JobAggregateStatus.PROCESSING
@@ -442,9 +433,7 @@ class JobTracker:
                 rec.elapsed_s = elapsed_s
             else:
                 t0 = self._started_mono.pop(document_id, None)
-                rec.elapsed_s = (
-                    round(time.monotonic() - t0, 4) if t0 is not None else None
-                )
+                rec.elapsed_s = round(time.monotonic() - t0, 4) if t0 is not None else None
             self._adjust_counts_locked(rec.job_id, old_status, new_status)
             doc_snapshot = rec.model_copy(deep=True)
 
@@ -453,22 +442,14 @@ class JobTracker:
             finalized_snapshot: JobAggregate | None = None
             progress_snapshot: JobAggregate | None = None
             if agg is not None:
-                terminal_count = (
-                    agg.counts.get(DocumentStatus.COMPLETED.value, 0)
-                    + agg.counts.get(DocumentStatus.FAILED.value, 0)
+                terminal_count = agg.counts.get(DocumentStatus.COMPLETED.value, 0) + agg.counts.get(
+                    DocumentStatus.FAILED.value, 0
                 )
-                if (
-                    terminal_count == agg.expected_documents
-                    and agg.status not in _JOB_TERMINAL
-                ):
+                if terminal_count == agg.expected_documents and agg.status not in _JOB_TERMINAL:
                     agg.status = self._derive_terminal_status_locked(agg)
                     agg.finalized_at = _utcnow_iso()
                     t0 = self._job_started_mono.pop(rec.job_id, None)
-                    agg.elapsed_s = (
-                        round(time.monotonic() - t0, 4)
-                        if t0 is not None
-                        else None
-                    )
+                    agg.elapsed_s = round(time.monotonic() - t0, 4) if t0 is not None else None
                     finalized_snapshot = agg.model_copy(deep=True)
                 elif terminal_count > 0:
                     last_published = self._progress_published.get(rec.job_id, 0)
@@ -540,11 +521,7 @@ class JobTracker:
             self._drop_job_locked(jid)
 
         if len(self._jobs) > self._max_jobs:
-            terminal = [
-                (jid, agg.finalized_at or "")
-                for jid, agg in self._jobs.items()
-                if agg.status in _JOB_TERMINAL
-            ]
+            terminal = [(jid, agg.finalized_at or "") for jid, agg in self._jobs.items() if agg.status in _JOB_TERMINAL]
             terminal.sort(key=lambda t: t[1])
             excess = len(self._jobs) - self._max_jobs
             for jid, _ in terminal[:excess]:
@@ -592,11 +569,7 @@ class JobTracker:
         failed = agg.counts.get(DocumentStatus.FAILED.value, 0)
         terminal = completed + failed
         remaining = max(0, agg.expected_documents - terminal)
-        progress_pct = (
-            round(terminal * 100.0 / agg.expected_documents, 2)
-            if agg.expected_documents
-            else 0.0
-        )
+        progress_pct = round(terminal * 100.0 / agg.expected_documents, 2) if agg.expected_documents else 0.0
         event: dict[str, Any] = {
             "type": event_type,
             "id": agg.job_id,
@@ -622,9 +595,7 @@ class JobTracker:
             rec = self._documents.get(document_id)
             return rec.model_copy(deep=True) if rec is not None else None
 
-    def consume_result_data(
-        self, document_id: str
-    ) -> list[dict[str, Any]] | None:
+    def consume_result_data(self, document_id: str) -> list[dict[str, Any]] | None:
         """Return ``result_data`` for *document_id* and clear it from memory."""
         with self._lock:
             rec = self._documents.get(document_id)

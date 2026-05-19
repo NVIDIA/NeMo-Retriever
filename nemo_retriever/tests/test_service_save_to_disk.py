@@ -13,7 +13,6 @@ and writes the returned ``result_data`` to disk.
 from __future__ import annotations
 
 import gzip
-import io
 import json
 from contextlib import contextmanager
 from pathlib import Path
@@ -53,30 +52,36 @@ def test_save_to_disk_compression_none(tmp_path: Path) -> None:
 
 
 # ----------------------------------------------------------------------
-# _save_document_to_disk(): exercised with a fake urlopen
+# _save_document_to_disk(): exercised with a fake httpx client
 # ----------------------------------------------------------------------
 
 
 @contextmanager
 def _stub_status_response(body: dict[str, Any]):
-    """Patch ``urllib.request.urlopen`` to yield a single JSON response."""
+    """Patch ``httpx.Client`` so GET /v1/ingest/status/{id} returns *body*."""
 
     class _FakeResp:
-        def __init__(self, payload: bytes) -> None:
-            self._payload = payload
-
-        def read(self) -> bytes:
-            return self._payload
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc) -> None:
+        def raise_for_status(self) -> None:
             return None
 
-    payload = json.dumps(body).encode("utf-8")
-    with patch("urllib.request.urlopen", return_value=_FakeResp(payload)) as mock:
-        yield mock
+        def json(self) -> dict[str, Any]:
+            return body
+
+    class _FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self._kwargs = kwargs
+
+        def __enter__(self) -> "_FakeClient":
+            return self
+
+        def __exit__(self, *exc: Any) -> None:
+            return None
+
+        def get(self, url: str) -> _FakeResp:
+            return _FakeResp()
+
+    with patch("nemo_retriever.service_ingestor.httpx.Client", _FakeClient) as mock_cls:
+        yield mock_cls
 
 
 def test_save_document_writes_gzip_json_by_default(tmp_path: Path) -> None:
@@ -136,9 +141,7 @@ def test_save_document_authorisation_header_sent_when_token_present(tmp_path: Pa
     ing = ServiceIngestor(base_url="http://example:7670", api_token="sekret")
     ing.save_to_disk(output_directory=str(tmp_path), compression=None)
 
-    with _stub_status_response({"result_data": []}) as mock:
+    with _stub_status_response({"result_data": []}) as mock_cls:
         ing._save_document_to_disk("doc-x")
 
-    # First positional arg is the urllib Request object; verify header.
-    request = mock.call_args.args[0]
-    assert request.headers.get("Authorization") == "Bearer sekret"
+    assert mock_cls.call_args.kwargs["headers"] == {"Authorization": "Bearer sekret"}

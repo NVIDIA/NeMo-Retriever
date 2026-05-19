@@ -877,6 +877,10 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
+      # NOTE: NIM_TRITON_PERFORMANCE_MODE does not work for llama-3.2-nemoretriever-1b-vlm-embed-v1
+      # and must stay commented out (docker-compose parity: throughput mode breaks this SKU).
+      # - name: NIM_TRITON_PERFORMANCE_MODE
+      #   value: throughput
 
   # ---------------------------------------------------------------------------
   # Optional / advanced NIMs. Enabled by default alongside the core four;

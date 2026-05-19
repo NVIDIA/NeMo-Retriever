@@ -182,7 +182,7 @@ short list of knobs you'll touch first.
 |---------------------------------------------------|---------|-------|
 | `serviceConfig.server.port`                       | `7670`  | Container + Service port. |
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
-| `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. |
+| `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. See [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 
@@ -298,6 +298,82 @@ empty**, so per-endpoint overrides Just Work.
 The `Deployment` carries a `checksum/config` annotation derived from the
 ConfigMap, so `helm upgrade` automatically rolls the pod when any
 `serviceConfig.*` value changes.
+
+---
+
+## Timeouts and alleviating ingest failures
+
+Batch ingest fans out extract and embed work to remote NIM HTTP endpoints.
+Under heavy parallelism a single slow or overloaded NIM can cause timeouts,
+and a worker process crash can surface as many simultaneous `failed`
+document callbacks even though only one root cause occurred.
+
+### What the chart configures
+
+| Layer | Default | Where it is set |
+|-------|---------|-----------------|
+| Remote embed HTTP calls | **600 s** (10 min) | Service image (`EmbedParams.request_timeout_s`); not a Helm value today. |
+| Gateway → realtime/batch proxy | **300 s** | Rendered `gateway.timeout_s` in `retriever-service.yaml` (split topology). |
+| VLM embed model name | `serviceConfig.vectordb.embedModel` | Also copied into worker `nim_endpoints.embed_model_name` in the ConfigMap. |
+
+Symptoms to look for in pod logs:
+
+- `Embedding error occurred: timed out` or `httpx.ReadTimeout` on the **batch** pod.
+- `Batch process pool broken (worker crash)` followed by many
+  `BrokenProcessPool` failures on other in-flight documents.
+- Embed NIM pod messages such as `failed to allocate pinned system memory`
+  (GPU pressure from too many concurrent `/v1/embeddings` requests).
+
+The **gateway** pod usually only logs `status=failed` callbacks; diagnose on
+**batch** (and **realtime** for page-sized uploads), plus the embed NIM pod.
+
+### Recommended mitigations
+
+**1. Lower batch worker concurrency (first step).**
+
+The default `serviceConfig.pipeline.batchWorkers` is `48`, which can saturate
+a single in-cluster VLM embed NIM. If you see embed timeouts or pool crashes,
+reduce batch parallelism to **16** and redeploy:
+
+```bash
+helm upgrade retriever ./nemo_retriever/helm \
+  --reuse-values \
+  --set serviceConfig.pipeline.batchWorkers=16
+```
+
+You can tune further (for example `8` on small GPU nodes), but **16** is a
+reasonable starting point when moving off the default. Realtime workers
+(`realtimeWorkers`, default `24`) are less likely to overload embed NIMs
+because they handle smaller units of work; adjust them only if realtime
+ingest shows the same timeout pattern.
+
+**2. Confirm embed wiring.**
+
+Ensure `nim_endpoints.embed_model_name` in the mounted config matches the
+VLM embed NIM SKU (`serviceConfig.vectordb.embedModel`, default
+`nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1`). A model mismatch produces
+HTTP 404 on `/v1/embeddings`, not a timeout, but is worth ruling out when
+debugging failed ingests.
+
+**3. Retry failed documents.**
+
+Failures caused by a one-time pool restart are often transient. After lowering
+`batchWorkers` and rolling the batch Deployment, resubmit documents that
+failed with `rows=0`.
+
+**4. Scale or isolate the embed NIM.**
+
+If timeouts persist at `batchWorkers: 16`, add embed NIM replicas (when your
+cluster has GPU capacity), point `serviceConfig.nimEndpoints.embedInvokeUrl`
+at an external embed endpoint, or temporarily disable optional NIMs on
+dev clusters to free GPU memory for `vlm_embed`.
+
+**5. Client and ingress timeouts.**
+
+Long batch jobs may exceed the gateway proxy timeout (300 s) or an Ingress
+`proxy-read-timeout`. Increase ingress annotations if clients disconnect
+while workers are still processing; see the commented example on
+`ingress.annotations` in `values.yaml`.
 
 ---
 

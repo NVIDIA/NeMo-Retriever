@@ -393,7 +393,6 @@ class ServiceIngestor(ingestor):
         """
         import gzip
         import json as _json
-        import urllib.request
 
         if not document_id:
             raise ValueError("_save_document_to_disk(): empty document_id")
@@ -401,11 +400,10 @@ class ServiceIngestor(ingestor):
             raise RuntimeError("_save_document_to_disk(): save_to_disk was never enabled")
 
         url = f"{self._base_url}/v1/ingest/status/{document_id}"
-        req = urllib.request.Request(url, method="GET")
-        if self._api_token:
-            req.add_header("Authorization", f"Bearer {self._api_token}")
-        with urllib.request.urlopen(req, timeout=self._request_timeout_s) as resp:
-            body = _json.loads(resp.read().decode("utf-8"))
+        with httpx.Client(timeout=self._request_timeout_s, headers=self._auth_headers) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            body = resp.json()
         result_data = body.get("result_data") or []
 
         suffix = ".json.gz" if self._save_to_disk_compression == "gzip" else ".json"
@@ -607,10 +605,7 @@ class ServiceIngestor(ingestor):
         # it through the local denylist check.
         for k in list(params_dict):
             if k != "storage_uri" and k in _SERVER_OWNED_KEYS:
-                raise ValueError(
-                    f"ServiceIngestor.store(): key {k!r} is server-owned in "
-                    "run_mode='service'."
-                )
+                raise ValueError(f"ServiceIngestor.store(): key {k!r} is server-owned in " "run_mode='service'.")
         self._pipeline_spec["store_params"] = params_dict
         self._record_stage("store")
         return self
@@ -712,8 +707,7 @@ class ServiceIngestor(ingestor):
                 meta_df.to_parquet(buf, index=False)
             except Exception as exc:
                 raise ValueError(
-                    f"ServiceIngestor.vdb_upload(): failed to serialise sidecar "
-                    f"DataFrame to parquet: {exc}"
+                    f"ServiceIngestor.vdb_upload(): failed to serialise sidecar " f"DataFrame to parquet: {exc}"
                 ) from exc
             payload = buf.getvalue()
             filename = "sidecar.parquet"
@@ -722,9 +716,7 @@ class ServiceIngestor(ingestor):
             # Treat as filesystem path.
             path = _Path(str(meta_df))
             if not path.is_file():
-                raise FileNotFoundError(
-                    f"ServiceIngestor.vdb_upload(): sidecar metadata file not found: {path}"
-                )
+                raise FileNotFoundError(f"ServiceIngestor.vdb_upload(): sidecar metadata file not found: {path}")
             payload = path.read_bytes()
             filename = path.name
             suf = path.suffix.lower()
@@ -740,9 +732,7 @@ class ServiceIngestor(ingestor):
         boundary = "----nrlib-sidecar-" + filename
         body = io.BytesIO()
         body.write(f"--{boundary}\r\n".encode())
-        body.write(
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode()
-        )
+        body.write(f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode())
         body.write(f"Content-Type: {content_type}\r\n\r\n".encode())
         body.write(payload)
         body.write(f"\r\n--{boundary}--\r\n".encode())
@@ -756,9 +746,7 @@ class ServiceIngestor(ingestor):
             with urllib.request.urlopen(req, timeout=self._request_timeout_s) as resp:
                 body_json = _json.loads(resp.read().decode("utf-8"))
         except Exception as exc:
-            raise RuntimeError(
-                f"ServiceIngestor.vdb_upload(): failed to upload sidecar to {url}: {exc}"
-            ) from exc
+            raise RuntimeError(f"ServiceIngestor.vdb_upload(): failed to upload sidecar to {url}: {exc}") from exc
 
         sidecar_id = body_json.get("sidecar_id")
         if not sidecar_id:
@@ -805,13 +793,10 @@ class ServiceIngestor(ingestor):
           with graph mode but has no server-side effect today.
         """
         if output_directory is None:
-            raise ValueError(
-                "ServiceIngestor.save_to_disk(): output_directory is required."
-            )
+            raise ValueError("ServiceIngestor.save_to_disk(): output_directory is required.")
         if compression not in (None, "gzip"):
             raise ValueError(
-                f"save_to_disk(compression={compression!r}): only None or 'gzip' "
-                "are supported in service run_mode."
+                f"save_to_disk(compression={compression!r}): only None or 'gzip' " "are supported in service run_mode."
             )
         target = Path(output_directory)
         target.mkdir(parents=True, exist_ok=True)
@@ -855,9 +840,7 @@ class ServiceIngestor(ingestor):
         # value either way and only raise when the caller used kwargs.
         explicit_keys: set[str] = set(kwargs.keys())
         if isinstance(params, CaptionParams):
-            class_defaults = {
-                name: field.default for name, field in CaptionParams.model_fields.items()
-            }
+            class_defaults = {name: field.default for name, field in CaptionParams.model_fields.items()}
             for k in trust_sensitive | local_only:
                 if k == "api_key":
                     continue  # see comment above; the env-var auto-fill is ambiguous.
@@ -995,9 +978,7 @@ class ServiceIngestor(ingestor):
                         try:
                             self._save_document_to_disk(doc_id)
                         except Exception as exc:
-                            logger.warning(
-                                "save_to_disk: failed to persist %s: %s", doc_id, exc
-                            )
+                            logger.warning("save_to_disk: failed to persist %s: %s", doc_id, exc)
                             result.failures.append((doc_id, f"save_to_disk: {exc}"))
                 result.append(evt)
                 print(
