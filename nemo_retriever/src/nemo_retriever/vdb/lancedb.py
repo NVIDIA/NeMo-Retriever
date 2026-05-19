@@ -283,8 +283,8 @@ def _create_lancedb_results(
 
             if not text:
                 dropped_no_text += 1
-                source_name = source_meta.get("source_name", "unknown") if isinstance(source_meta, dict) else "unknown"
-                pg_num = content_meta.get("page_number") if isinstance(content_meta, dict) else None
+                source_name = source_meta.get("source_name", "unknown")
+                pg_num = content_meta.get("page_number")
                 logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
                 continue
 
