@@ -6,11 +6,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
 import pytest
 
 from nemo_retriever.vdb.adt_vdb import VDB
 from nemo_retriever.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.vdb import operators as vdb_operator_module
+from nemo_retriever.vdb.operators import UpsertVdbOperator
 
 
 class FakeVDB(VDB):
@@ -18,6 +20,9 @@ class FakeVDB(VDB):
         super().__init__(**kwargs)
         self.run_calls: list[Any] = []
         self.retrieval_calls: list[tuple[Any, dict[str, Any]]] = []
+        # Per-call (records, kwargs) captures so UpsertVdbOperator tests can
+        # assert that ``key`` / ``table_name`` are forwarded correctly.
+        self.upsert_calls: list[tuple[Any, dict[str, Any]]] = []
 
     def create_index(self, **kwargs: Any) -> None:
         return None
@@ -46,9 +51,10 @@ class FakeVDB(VDB):
     def run(self, records: Any) -> dict[str, Any]:
         self.run_calls.append(records)
         return {"records": records}
-        
-    def upsert(self, records: list, **kwargs: Any) -> None:
-        return None
+
+    def upsert(self, records: list, **kwargs: Any) -> dict[str, Any]:
+        self.upsert_calls.append((records, dict(kwargs)))
+        return {"upserted": sum(len(b) for b in records), "skipped_no_key": 0, "created_table": False}
 
 
 def _graph_rows() -> list[dict[str, Any]]:
@@ -170,3 +176,131 @@ def test_constructor_requires_exactly_one_vdb_source() -> None:
 
     with pytest.raises(ValueError, match="Pass either vdb or vdb_op"):
         IngestVdbOperator(vdb=FakeVDB(), vdb_op="lancedb")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UpsertVdbOperator
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class _StubUpsertVDB(VDB):
+    """VDB subclass that intentionally does NOT override ``upsert``.
+
+    Used to exercise the construction-time guard in
+    :class:`UpsertVdbOperator.__init__`, which compares
+    ``type(self._vdb).upsert is VDB.upsert`` to detect backends that
+    inherit the base-class ``NotImplementedError`` stub.
+
+    Note: this class being instantiable at all is itself a regression
+    check — :meth:`VDB.upsert` must NOT be decorated with
+    ``@abstractmethod``; otherwise ABC machinery would reject this class
+    before the operator-level guard could run, making the guard dead code.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+
+    def create_index(self, **kwargs: Any) -> None:
+        return None
+
+    def write_to_index(self, records: list, **kwargs: Any) -> None:
+        return None
+
+    def retrieval(self, queries: list, **kwargs: Any) -> list[list[dict[str, Any]]]:
+        return []
+
+    def run(self, records: Any) -> None:
+        return None
+
+
+def test_upsert_operator_rejects_vdb_without_upsert_override() -> None:
+    """Backends inheriting the ``VDB.upsert`` stub fail fast at construction."""
+    stub = _StubUpsertVDB()
+    # Sanity-check the precondition the guard relies on: the subclass really
+    # is using the inherited stub, not its own implementation. If this ever
+    # fails, the guard's identity comparison would silently never fire.
+    assert type(stub).upsert is VDB.upsert
+
+    with pytest.raises(NotImplementedError, match=r"does not implement upsert"):
+        UpsertVdbOperator(vdb=stub)
+
+
+def test_upsert_operator_delegates_records_with_configured_key_and_table_name() -> None:
+    """Happy path: nv-ingest-converted records reach ``vdb.upsert`` with the configured key/table."""
+    vdb = FakeVDB()
+    operator = UpsertVdbOperator(vdb=vdb, key="entity_id", table_name="entities")
+
+    data = [
+        {
+            "text": "graph chunk",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "source_id": "/tmp/doc-a.pdf",
+            "page_number": 7,
+        }
+    ]
+
+    assert operator(data) is data
+
+    assert vdb.run_calls == []
+    assert len(vdb.upsert_calls) == 1
+    call_records, call_kwargs = vdb.upsert_calls[0]
+    assert call_kwargs == {"table_name": "entities", "key": "entity_id"}
+    # The records that reach the backend must already be in nv-ingest-client
+    # shape (same conversion IngestVdbOperator performs), not the flat graph rows.
+    assert call_records == [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [0.1] * 2048,
+                    "content": "graph chunk",
+                    "content_metadata": {"page_number": 7},
+                    "source_metadata": {
+                        "source_id": "/tmp/doc-a.pdf",
+                        "source_name": "doc-a.pdf",
+                    },
+                },
+            }
+        ]
+    ]
+
+
+def test_upsert_operator_merges_sidecar_metadata_into_records_before_upsert() -> None:
+    """Sidecar kwargs are split out from ``vdb_kwargs`` and applied before delegation."""
+    vdb = FakeVDB()
+    meta_df = pd.DataFrame(
+        {
+            "source_id": ["/tmp/doc-a.pdf"],
+            "category": ["legal"],
+        }
+    )
+    operator = UpsertVdbOperator(
+        vdb=vdb,
+        vdb_kwargs={
+            "meta_dataframe": meta_df,
+            "meta_source_field": "source_id",
+            "meta_fields": ["category"],
+            "meta_join_key": "source_id",
+        },
+        key="id",
+        table_name="my_table",
+    )
+
+    data = [
+        {
+            "text": "graph chunk",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "source_id": "/tmp/doc-a.pdf",
+            "page_number": 7,
+        }
+    ]
+
+    assert operator.process(data) is data
+
+    assert len(vdb.upsert_calls) == 1
+    call_records, call_kwargs = vdb.upsert_calls[0]
+    assert call_kwargs == {"table_name": "my_table", "key": "id"}
+    merged_content_meta = call_records[0][0]["metadata"]["content_metadata"]
+    # Sidecar column merged in alongside the per-row ``page_number``.
+    assert merged_content_meta["category"] == "legal"
+    assert merged_content_meta["page_number"] == 7
