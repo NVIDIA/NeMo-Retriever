@@ -13,7 +13,7 @@ External contributions will be welcome soon, and they are greatly appreciated! E
    - [Workflow](#workflow)
    - [Common Processing Patterns](#common-processing-patterns)
      - [traceable decorator](#traceable-decorator)
-     - [nv_ingest_node_failure_try_except decorator](#nv_ingest_node_failure_try_except-decorator)
+     - [Node failure decorator (try/except)](#node-failure-decorator-tryexcept)
      - [filter_by_task decorator](#filter_by_task-decorator)
    - [Adding a New Stage or Module](#adding-a-new-stage-or-module)
    - [Common Practices for Writing Unit Tests](#common-practices-for-writing-unit-tests)
@@ -208,7 +208,7 @@ some common decorators used in the ingestion pipeline, explain their usage, and 
 
 #### traceable decorator
 
-Defined in `api/src/nv_ingest_api/internal/primitives/tracing/tagging.py`.
+Defined in `nemo_retriever/src/nemo_retriever/api/internal/primitives/tracing/tagging.py`.
 
 The `traceable` decorator adds entry and exit trace timestamps to an `IngestControlMessage`'s metadata when trace tagging is enabled. This helps in
 monitoring and debugging by recording the time taken for function execution.
@@ -228,33 +228,33 @@ monitoring and debugging by recording the time taken for function execution.
       pass
   ```
 
-#### nv_ingest_node_failure_try_except decorator
+#### Node failure decorator (try/except)
 
-Defined in `api/src/nv_ingest_api/util/exception_handlers/decorators.py`.
+Defined in `nemo_retriever/src/nemo_retriever/api/util/exception_handlers/decorators.py`.
 
-This decorator wraps a function with failure handling logic to manage potential failures involving `IngestControlMessage` instances. It
-ensures that failures are managed consistently, optionally raising exceptions or annotating the message.
+This module exposes a try/except-style decorator for pipeline stages that process `IngestControlMessage` values. It wraps failures so they are annotated consistently (and optionally re-raised). **Import the decorator from that file in your checkout**—use the definition whose name ends with `_try_except` (source is authoritative; names have changed across releases).
 
-**Usage:**
+**Usage (pattern):**
 
-- To handle failures with default settings:
-  ```python
-  @nv_ingest_node_failure_try_except(annotation_id="example_task")
-  def process_message(message):
-      pass
-  ```
-- To handle failures and allow empty payloads:
-  ```python
-  @nv_ingest_node_failure_try_except(annotation_id="example_task", payload_can_be_empty=True)
-  def process_message(message):
-      pass
-  ```
+```python
+# from nemo_retriever.api.util.exception_handlers.decorators import <NODE_FAILURE_TRY_EXCEPT>
+# @<NODE_FAILURE_TRY_EXCEPT>(annotation_id="example_task")
+def process_message(message):
+    pass
+```
+
+```python
+# from nemo_retriever.api.util.exception_handlers.decorators import <NODE_FAILURE_TRY_EXCEPT>
+# @<NODE_FAILURE_TRY_EXCEPT>(annotation_id="example_task", payload_can_be_empty=True)
+def process_message(message):
+    pass
+```
 
 By default, `skip_processing_if_failed=True`. If the `IngestControlMessage` is already marked failed (`cm_failed` in metadata), the wrapped function is not called and the message is returned (or passed to `forward_func` if set)—so downstream stages do not re-process a failed message. Set `skip_processing_if_failed=False` when a stage must run even after a prior failure.
 
 #### filter_by_task decorator
 
-Defined in `src/nv_ingest/framework/util/flow_control/filter_by_task.py`.
+Task-gating decorators live alongside pipeline stage implementations; search the repository for `filter_by_task` if your branch still carries that helper.
 
 The `filter_by_task` decorator checks if the `IngestControlMessage` contains any of the required tasks. Each entry can be a
 task name string or a tuple of the task name and required task properties. If the message does not contain any listed task
@@ -299,7 +299,7 @@ for writing unit tests, which are located in the `[repo_root]/tests` directory.
    module should be named `test_<module_name>.py`, and reside on a mirrored physical path to its corresponding test
    target to be easily discoverable by `pytest`.
 
-   1. Example: `nv_ingest/some_path/another_path/my_module.py` should have a corresponding test file:
+   1. Example: `nemo_retriever/src/nemo_retriever/some_path/another_path/my_module.py` should have a corresponding test file:
       `tests/some_path/another_path/test_my_module.py`.
 
 2. **Test Functions**: Each test function should focus on a single aspect of the functionality. Use descriptive names

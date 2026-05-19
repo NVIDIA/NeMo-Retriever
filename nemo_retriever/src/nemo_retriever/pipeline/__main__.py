@@ -32,7 +32,7 @@ Examples::
         --vdb-op <operator-key> \\
         --vdb-kwargs-json '<operator kwargs JSON object>'
 
-    # Extract + embed only (skip in-graph VDB; default run includes VDB for recall)
+    # Extract + embed only (skip in-graph VDB upload)
     retriever pipeline run /data/pdfs \\
         --no-vdb
 
@@ -227,6 +227,7 @@ def _build_extract_params(
     extract_charts: bool,
     extract_infographics: bool,
     extract_page_as_image: bool,
+    use_page_elements: bool,
     use_graphic_elements: bool,
     use_table_structure: bool,
     table_output_format: Optional[str],
@@ -234,6 +235,7 @@ def _build_extract_params(
     page_elements_invoke_url: Optional[str],
     ocr_invoke_url: Optional[str],
     ocr_version: str,
+    ocr_lang: Optional[str],
     graphic_elements_invoke_url: Optional[str],
     table_structure_invoke_url: Optional[str],
     pdf_split_batch_size: int,
@@ -296,10 +298,12 @@ def _build_extract_params(
                 "extract_charts": extract_charts,
                 "extract_infographics": extract_infographics,
                 "extract_page_as_image": extract_page_as_image,
+                "use_page_elements": use_page_elements,
                 "api_key": extract_remote_api_key,
                 "page_elements_invoke_url": page_elements_invoke_url,
                 "ocr_invoke_url": ocr_invoke_url,
                 "ocr_version": ocr_version,
+                "ocr_lang": ocr_lang,
                 "graphic_elements_invoke_url": graphic_elements_invoke_url,
                 "table_structure_invoke_url": table_structure_invoke_url,
                 "use_graphic_elements": use_graphic_elements,
@@ -628,19 +632,23 @@ def _run_evaluation(
     reranker_api_key: str,
     local_reranker_backend: str,
     local_hf_batch_size: int,
+    local_query_max_length: int,
     beir_loader: Optional[str],
     beir_dataset_name: Optional[str],
     beir_split: str,
     beir_query_language: Optional[str],
-    beir_doc_id_field: str,
+    beir_doc_id_field: Optional[str],
     beir_k: list[int],
     local_query_embed_backend: str = "hf",
+    run_mode: str = "inprocess",
+    service_url: Optional[str] = None,
+    service_api_token: Optional[str] = None,
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
-    """Run recall or BEIR evaluation.
+    """Run audio recall or BEIR evaluation.
 
     Returns ``(label, elapsed_secs, metrics, query_count, ran)``.  When the
-    query CSV is missing in recall mode, ``ran`` is ``False`` and the caller
-    should skip metric recording.
+    query CSV is missing in audio recall mode, ``ran`` is ``False`` and the
+    caller should skip metric recording.
     """
 
     if evaluation_mode == "none":
@@ -652,14 +660,18 @@ def _run_evaluation(
     eval_vdb_kwargs = dict(vdb_kwargs or {})
 
     if evaluation_mode == "beir":
-        if str(vdb_op).strip().lower() != "lancedb":
-            raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
-        if not beir_loader:
-            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
-        if not beir_dataset_name:
-            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
+        from nemo_retriever.recall.beir import BeirConfig, resolve_beir_dataset_options
 
-        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
+        beir_options = resolve_beir_dataset_options(
+            dataset_name=beir_dataset_name,
+            loader=beir_loader,
+            doc_id_field=beir_doc_id_field,
+            ks=beir_k,
+        )
+        if not beir_options.loader:
+            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
+        if not beir_options.dataset_name:
+            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
 
         lancedb_uri = str(eval_vdb_kwargs.get("uri") or eval_vdb_kwargs.get("lancedb_uri") or "lancedb")
         lancedb_table = str(eval_vdb_kwargs.get("table_name") or eval_vdb_kwargs.get("lancedb_table") or "nv-ingest")
@@ -668,12 +680,12 @@ def _run_evaluation(
             lancedb_uri=lancedb_uri,
             lancedb_table=lancedb_table,
             embedding_model=embed_model,
-            loader=str(beir_loader),
-            dataset_name=str(beir_dataset_name),
+            loader=str(beir_options.loader),
+            dataset_name=str(beir_options.dataset_name),
             split=str(beir_split),
             query_language=beir_query_language,
-            doc_id_field=str(beir_doc_id_field),
-            ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
+            doc_id_field=str(beir_options.doc_id_field),
+            ks=beir_options.ks,
             embedding_http_endpoint=embed_invoke_url,
             embedding_api_key=embed_remote_api_key or "",
             hybrid=bool(eval_vdb_kwargs.get("hybrid", False)),
@@ -685,20 +697,36 @@ def _run_evaluation(
             reranker_api_key=reranker_api_key,
             local_reranker_backend=local_reranker_backend,
             local_hf_batch_size=int(local_hf_batch_size),
+            local_query_max_length=int(local_query_max_length),
             local_query_embed_backend=local_query_embed_backend,
+            service_url=service_url if run_mode == "service" else None,
+            service_api_token=service_api_token,
         )
+
         evaluation_start = time.perf_counter()
-        beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
+        if run_mode == "service" and service_url:
+            from nemo_retriever.recall.beir import evaluate_service_beir
+
+            beir_dataset, _raw_hits, _run, metrics = evaluate_service_beir(cfg)
+        else:
+            if str(vdb_op).strip().lower() != "lancedb":
+                raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
+            from nemo_retriever.recall.beir import evaluate_lancedb_beir
+
+            beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
         return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
 
-    if recall_match_mode != "audio_segment":
-        raise ValueError("Legacy recall evaluation is only supported for audio_segment matching")
+    if evaluation_mode != "audio_recall":
+        raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
 
-    # Legacy recall is retained for audio segment evaluation only.
+    if recall_match_mode != "audio_segment":
+        raise ValueError("Audio recall evaluation is only supported for audio_segment matching")
+
+    # Legacy scorer is retained for audio segment evaluation only.
     query_csv_path = Path(query_csv)
     if not query_csv_path.exists():
-        logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv_path)
-        return "Recall", 0.0, {}, None, False
+        logger.warning("Query CSV not found at %s; skipping audio recall evaluation.", query_csv_path)
+        return "Audio Recall", 0.0, {}, None, False
 
     from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
 
@@ -718,12 +746,13 @@ def _run_evaluation(
         reranker_api_key=reranker_api_key,
         local_reranker_backend=local_reranker_backend,
         local_hf_batch_size=int(local_hf_batch_size),
+        local_query_max_length=int(local_query_max_length),
         embed_modality=embed_modality,
         local_query_embed_backend=local_query_embed_backend,
     )
     evaluation_start = time.perf_counter()
     df_query, _gold, _raw_hits, _retrieved_keys, metrics = retrieve_and_score(query_csv=query_csv_path, cfg=recall_cfg)
-    return "Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
+    return "Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
 
 
 # ---------------------------------------------------------------------------
@@ -779,6 +808,16 @@ def run(
         "--extract-page-as-image/--no-extract-page-as-image",
         rich_help_panel=_PANEL_EXTRACT,
     ),
+    use_page_elements: bool = typer.Option(
+        True,
+        "--use-page-elements/--no-use-page-elements",
+        rich_help_panel=_PANEL_EXTRACT,
+        help=(
+            "Run PageElementDetection (layout/yolox). Auto-skipped when no downstream stage "
+            "(TableStructure, GraphicElements, OCR) consumes its output. Pass --no-use-page-elements "
+            "to force-skip for a faster text-only ingest."
+        ),
+    ),
     use_graphic_elements: bool = typer.Option(False, "--use-graphic-elements", rich_help_panel=_PANEL_EXTRACT),
     use_table_structure: bool = typer.Option(False, "--use-table-structure", rich_help_panel=_PANEL_EXTRACT),
     table_output_format: Optional[str] = typer.Option(None, "--table-output-format", rich_help_panel=_PANEL_EXTRACT),
@@ -797,6 +836,12 @@ def run(
         "v2",
         "--ocr-version",
         help="OCR engine: 'v2' (default, multilingual, higher throughput) or 'v1' (legacy, English-only).",
+        rich_help_panel=_PANEL_REMOTE,
+    ),
+    ocr_lang: Optional[str] = typer.Option(
+        None,
+        "--ocr-lang",
+        help="OCR language selector for v2: 'multi' (default) or 'english'. Not valid with --ocr-version v1.",
         rich_help_panel=_PANEL_REMOTE,
     ),
     graphic_elements_invoke_url: Optional[str] = typer.Option(
@@ -1026,10 +1071,19 @@ def run(
         ),
         rich_help_panel=_PANEL_VDB,
     ),
+    vdb_overwrite: Optional[bool] = typer.Option(
+        None,
+        "--vdb-overwrite/--vdb-append",
+        help=(
+            "Overwrite the target VDB table by default. Use --vdb-append to add rows to an existing "
+            "table without duplicate checks; rerunning the same inputs in append mode creates duplicates."
+        ),
+        rich_help_panel=_PANEL_VDB,
+    ),
     no_vdb: bool = typer.Option(
         False,
         "--no-vdb",
-        help="Skip in-graph vector DB upload (extract+embed only; default run uploads for recall/eval).",
+        help="Skip in-graph vector DB upload (extract+embed only).",
         rich_help_panel=_PANEL_VDB,
     ),
     meta_dataframe: Optional[Path] = typer.Option(
@@ -1078,10 +1132,9 @@ def run(
     runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix", rich_help_panel=_PANEL_OBS),
     # --- Evaluation -----------------------------------------------------
     evaluation_mode: str = typer.Option(
-        "recall",
+        "none",
         "--evaluation-mode",
-        help="Post-ingest evaluation: default 'recall' runs when a \
-        query CSV exists (after VDB upload unless --no-vdb).",
+        help="Post-ingest evaluation: none (default), audio_recall, beir, or qa.",
         rich_help_panel=_PANEL_EVAL,
     ),
     query_csv: Path = typer.Option(
@@ -1125,11 +1178,23 @@ def run(
         help="Batch size for local HF query embedding during retrieval/reranking.",
         rich_help_panel=_PANEL_EVAL,
     ),
+    local_query_max_length: int = typer.Option(
+        128,
+        "--local-query-max-length",
+        min=1,
+        help="Fixed token length for local HF query embeddings; longer queries are truncated.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader", rich_help_panel=_PANEL_EVAL),
     beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name", rich_help_panel=_PANEL_EVAL),
     beir_split: str = typer.Option("test", "--beir-split", rich_help_panel=_PANEL_EVAL),
     beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language", rich_help_panel=_PANEL_EVAL),
-    beir_doc_id_field: str = typer.Option("pdf_basename", "--beir-doc-id-field", rich_help_panel=_PANEL_EVAL),
+    beir_doc_id_field: Optional[str] = typer.Option(
+        None,
+        "--beir-doc-id-field",
+        help="BEIR document ID field. Defaults to the known dataset setting, or pdf_basename for custom datasets.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
     beir_k: list[int] = typer.Option([], "--beir-k", rich_help_panel=_PANEL_EVAL),
     eval_config: Optional[Path] = typer.Option(
         None,
@@ -1166,13 +1231,13 @@ def run(
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode not in {"none", "recall", "beir", "qa"}:
+        if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
-        if evaluation_mode == "recall":
+        if evaluation_mode == "audio_recall":
             if input_type != "audio":
-                raise ValueError("--evaluation-mode=recall is only supported with --input-type=audio")
+                raise ValueError("--evaluation-mode=audio_recall is only supported with --input-type=audio")
             if recall_match_mode != "audio_segment":
-                raise ValueError("--evaluation-mode=recall requires --recall-match-mode=audio_segment")
+                raise ValueError("--evaluation-mode=audio_recall requires --recall-match-mode=audio_segment")
         if evaluation_mode == "qa" and eval_config is None:
             raise typer.BadParameter(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
@@ -1184,6 +1249,10 @@ def run(
 
         resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
         resolved_vdb_kwargs = _parse_vdb_kwargs_json(vdb_kwargs_json)
+        if vdb_overwrite is None:
+            resolved_vdb_kwargs.setdefault("overwrite", True)
+        else:
+            resolved_vdb_kwargs["overwrite"] = bool(vdb_overwrite)
 
         _sidecar_n = sum(1 for x in (meta_dataframe, meta_source_field, meta_fields) if x is not None)
         if _sidecar_n not in (0, 3):
@@ -1253,6 +1322,7 @@ def run(
             extract_charts=extract_charts,
             extract_infographics=extract_infographics,
             extract_page_as_image=extract_page_as_image,
+            use_page_elements=use_page_elements,
             use_graphic_elements=use_graphic_elements,
             use_table_structure=use_table_structure,
             table_output_format=table_output_format,
@@ -1260,6 +1330,7 @@ def run(
             page_elements_invoke_url=page_elements_invoke_url,
             ocr_invoke_url=ocr_invoke_url,
             ocr_version=ocr_version,
+            ocr_lang=ocr_lang,
             graphic_elements_invoke_url=graphic_elements_invoke_url,
             table_structure_invoke_url=table_structure_invoke_url,
             pdf_split_batch_size=pdf_split_batch_size,
@@ -1303,7 +1374,7 @@ def run(
         enable_caption = caption or caption_invoke_url is not None
         enable_dedup = dedup if dedup is not None else enable_caption
 
-        # In-graph VDB by default (supports default recall); opt out with --no-vdb.
+        # In-graph VDB upload is enabled by default; opt out with --no-vdb.
         enable_in_graph_vdb_upload = run_mode != "service" and not no_vdb
         pipeline_vdb_upload: Optional[VdbUploadParams] = None
         if enable_in_graph_vdb_upload:
@@ -1494,6 +1565,7 @@ def run(
             reranker_api_key=reranker_bearer,
             local_reranker_backend=local_reranker_backend,
             local_hf_batch_size=local_hf_batch_size,
+            local_query_max_length=local_query_max_length,
             beir_loader=beir_loader,
             beir_dataset_name=beir_dataset_name,
             beir_split=beir_split,
@@ -1501,6 +1573,9 @@ def run(
             beir_doc_id_field=beir_doc_id_field,
             beir_k=beir_k,
             local_query_embed_backend=local_query_embed_backend,
+            run_mode=run_mode,
+            service_url=service_url,
+            service_api_token=service_api_token,
         )
 
         if not ran:

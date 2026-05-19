@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 SQL Generation from Tables Agent
 
@@ -21,12 +25,12 @@ from typing import Dict, Any
 
 from langchain_core.messages import AIMessage, SystemMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.sql_from_semantic import format_tables_for_prompt
-from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentState, get_question_for_processing
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import create_sql_general_prompt, create_sql_user_prompt
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_relevant_tables
+from nemo_retriever.tabular_data.retrieval.data_access.relevant_tables import get_relevant_tables
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +83,11 @@ class SQLFromTablesAgent(BaseAgent):
         # Get relevant tables (search if not already available)
         relevant_tables = path_state.get("relevant_tables", [])
         if not relevant_tables:
+            database_name = getattr(connector, "database_name", None)
             relevant_tables = get_relevant_tables(
                 state["retriever"],
                 question,
+                database_name=database_name,
             )
         similar_questions = []
 
@@ -90,9 +96,10 @@ class SQLFromTablesAgent(BaseAgent):
             dialect=connector.dialect,
             main_question=question,
             observation_block="",
-            queries=[],  # Relevant queries can be added if needed
+            queries=[],
             tables=format_tables_for_prompt(relevant_tables),
             qa_from_conversations=similar_questions,
+            custom_analyses="",
         )
 
         messages = state["messages"] + [

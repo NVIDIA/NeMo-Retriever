@@ -10,6 +10,7 @@ evaluation) while document ingestion uses vLLM elsewhere.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
@@ -18,6 +19,8 @@ import torch
 
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import get_hf_revision
+
+logger = logging.getLogger(__name__)
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -34,6 +37,9 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
     hf_cache_dir: Optional[str] = None
     normalize: bool = True
     max_length: int = 8192
+    # Fixed query padding length. Queries longer than this are truncated; larger
+    # values preserve more text but increase query embedding cost.
+    query_max_length: int = 128
     model_id: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -72,23 +78,27 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
     def is_remote(self) -> bool:
         return False
 
-    def _embed_local(self, texts: List[str], *, batch_size: int) -> torch.Tensor:
+    def _embed_local(
+        self,
+        texts: List[str],
+        *,
+        batch_size: int,
+        padding: bool | str = True,
+        max_length: int | None = None,
+    ) -> torch.Tensor:
         self._ensure_loaded()
         dev = self._device
         bs = max(1, int(batch_size))
-        max_len = max(1, int(self.max_length))
+        max_len = max(1, int(max_length if max_length is not None else self.max_length))
 
         outs: List[torch.Tensor] = []
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
-            # Tokenize per chunk (same as vLLM microbatches) so padding length matches
-            # within-batch max, not global max over all strings — bidirectional attention
-            # can otherwise shift vectors vs vLLM ingest / recall.
             for i in range(0, len(texts), bs):
                 chunk = texts[i : i + bs]
                 batch = self._tokenizer(
                     chunk,
-                    padding=True,
+                    padding=padding,
                     truncation=True,
                     max_length=max_len,
                     return_tensors="pt",
@@ -129,6 +139,38 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
             return torch.empty((0, 0), dtype=torch.float32)
         return self._embed_local(texts_list, batch_size=batch_size)
 
+    def _warn_if_queries_truncated(self, texts: Sequence[str], *, max_length: int) -> None:
+        self._ensure_loaded()
+        tokenizer = self._tokenizer
+        truncated = 0
+        for text in texts:
+            try:
+                encode = getattr(tokenizer, "encode", None)
+                if callable(encode):
+                    input_ids = encode(str(text), add_special_tokens=True, truncation=False)
+                else:
+                    encoded = tokenizer(str(text), add_special_tokens=True, truncation=False)
+                    input_ids = (
+                        encoded.get("input_ids") if isinstance(encoded, dict) else getattr(encoded, "input_ids", None)
+                    )
+            except Exception:  # noqa: BLE001 - best-effort warning only
+                return
+
+            if isinstance(input_ids, list):
+                length = len(input_ids[0]) if input_ids and isinstance(input_ids[0], list) else len(input_ids)
+                if length > max_length:
+                    truncated += 1
+
+        if truncated:
+            logger.warning(
+                "Truncating %d/%d HF query embeddings to query_max_length=%d tokens; "
+                "increase query_max_length (or --local-query-max-length in pipeline eval) "
+                "if long queries lose recall.",
+                truncated,
+                len(texts),
+                max_length,
+            )
+
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Query strings; each line is prefixed with ``query:`` (same rules as vLLM embed_queries)."""
         texts_list = []
@@ -141,7 +183,16 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
             texts_list.append(raw)
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
-        return self._embed_local(texts_list, batch_size=batch_size)
+        # The Nemotron text embedder is sensitive to padding length. Use fixed
+        # query padding so retrieval vectors do not change with batch grouping.
+        query_max_length = max(1, int(self.query_max_length))
+        self._warn_if_queries_truncated(texts_list, max_length=query_max_length)
+        return self._embed_local(
+            texts_list,
+            batch_size=batch_size,
+            padding="max_length",
+            max_length=query_max_length,
+        )
 
     def unload(self) -> None:
         """Release GPU memory held by the HF model."""

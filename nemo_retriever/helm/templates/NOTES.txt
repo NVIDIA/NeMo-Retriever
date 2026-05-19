@@ -2,9 +2,18 @@ Thanks for installing {{ .Chart.Name }} ({{ .Chart.Version }}, app {{ .Chart.App
 
 Release name : {{ .Release.Name }}
 Namespace    : {{ .Release.Namespace }}
-Service name : {{ include "nemo-retriever.fullname" . }}
+Topology     : {{ .Values.topology.mode }}
 
-1. Wait for the service Pod to be ready:
+{{- if eq .Values.topology.mode "standalone" }}
+Service name : {{ include "nemo-retriever.fullname" . }}
+{{- else }}
+Services:
+  gateway  : {{ include "nemo-retriever.role.fullname" (dict "context" . "role" "gateway") }}
+  realtime : {{ include "nemo-retriever.role.fullname" (dict "context" . "role" "realtime") }}
+  batch    : {{ include "nemo-retriever.role.fullname" (dict "context" . "role" "batch") }}
+{{- end }}
+
+1. Wait for the service Pod(s) to be ready:
    kubectl --namespace {{ .Release.Namespace }} get pods -l "app.kubernetes.io/instance={{ .Release.Name }}" -w
 
 {{- if .Values.ingress.enabled }}
@@ -14,16 +23,24 @@ Service name : {{ include "nemo-retriever.fullname" . }}
    - http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ (index .paths 0).path }}docs
 {{- end }}
 {{- else }}
+{{- if eq .Values.topology.mode "standalone" }}
 
 2. Port-forward to reach the API locally:
    kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "nemo-retriever.fullname" . }} 7670:{{ .Values.networkService.port }}
 
    Then open: http://localhost:7670/docs
+{{- else }}
+
+2. Port-forward to the gateway to reach the API locally:
+   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "nemo-retriever.role.fullname" (dict "context" . "role" "gateway") }} 7670:{{ .Values.networkService.port }}
+
+   Then open: http://localhost:7670/docs
+{{- end }}
 {{- end }}
 
 3. Quick health check:
-   curl -fsSL http://localhost:7670/openapi.json | head -c 80
-   curl -fsSL http://localhost:7670/v1/ingest/jobs/summary
+   curl -fsSL http://localhost:7670/v1/health
+   curl -fsSL http://localhost:7670/v1/ingest/metrics
 
 {{- if .Values.nims.enabled }}
 
@@ -55,9 +72,3 @@ Service name : {{ include "nemo-retriever.fullname" . }}
    serviceConfig.nimEndpoints.pageElementsInvokeUrl=...`) or the pipeline
    will fail every page.
 {{- end }}
-
-5. Persistence:
-   PVC: {{ include "nemo-retriever.pvcName" . }}  ({{ .Values.persistence.size }})
-   Backed by SQLite at {{ .Values.serviceConfig.database.path }}.
-   While SQLite is in use, scaling the service Deployment beyond 1 replica
-   is unsafe — keep autoscaling.maxReplicas at 1 until a shared DB lands.

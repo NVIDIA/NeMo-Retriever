@@ -1,0 +1,123 @@
+{{- if .Values.serviceConfig.vectordb.enabled }}
+{{- $svc := .Values.service -}}
+{{- $vdb := .Values.topology.vectordb -}}
+{{- $fullname := include "nemo-retriever.fullname" . -}}
+{{- $vdbName := printf "%s-vectordb" $fullname -}}
+{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "embed" "shortName" "embed" "configKey" "embedInvokeUrl") -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $vdbName }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "vectordb") | nindent 4 }}
+spec:
+  replicas: {{ $vdb.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "vectordb") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "vectordb") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "nemo-retriever.serviceAccountName" . }}
+      {{- include "nemo-retriever.imagePullSecrets" . | nindent 6 }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 30
+      {{- with $vdb.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $vdb.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $vdb.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: vectordb
+          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - nemo_retriever.service.vectordb_app
+          args:
+            - --lancedb-uri
+            - {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
+            - --table-name
+            - {{ .Values.serviceConfig.vectordb.tableName | quote }}
+            - --embed-endpoint
+            - {{ $embedURL | quote }}
+            - --embed-model
+            - {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+            - --port
+            - {{ $vdb.port | quote }}
+          {{- if or .Values.nimApiKey.value .Values.nimApiKey.existingSecret }}
+            - --embed-api-key
+            - $(NVIDIA_API_KEY)
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $vdb.port }}
+              protocol: TCP
+          env:
+            {{- if or .Values.nimApiKey.value .Values.nimApiKey.existingSecret }}
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-retriever.nimApiKeySecretName" . }}
+                  key: {{ .Values.nimApiKey.existingSecretKey }}
+            {{- end }}
+          resources:
+            {{- toYaml $vdb.resources | nindent 12 }}
+          volumeMounts:
+            - name: vectordb-data
+              mountPath: {{ .Values.serviceConfig.vectordb.lancedbUri }}
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $vdb.persistence.enabled }}
+        - name: vectordb-data
+          persistentVolumeClaim:
+            claimName: {{ $vdbName }}-data
+        {{- else }}
+        - name: vectordb-data
+          emptyDir: {}
+        {{- end }}
+{{- end }}

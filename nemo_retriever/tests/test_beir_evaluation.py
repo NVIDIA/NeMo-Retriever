@@ -3,15 +3,19 @@ from pathlib import Path
 
 import pytest
 
+from nemo_retriever.pipeline import __main__ as pipeline_main
 from nemo_retriever.recall.beir import (
     BeirConfig,
     BeirDataset,
+    BO767_ANNOTATIONS_PATH,
+    DEFAULT_BEIR_KS,
     build_beir_run_from_hits,
     build_qrels_by_query_id,
     build_queries_by_id,
     compute_beir_metrics,
     evaluate_lancedb_beir,
     load_beir_dataset,
+    resolve_beir_dataset_options,
 )
 
 
@@ -107,6 +111,156 @@ def test_build_beir_run_from_hits_uses_pdf_basename_and_dedupes() -> None:
 
     assert list(run["q1"].keys()) == ["doc_a", "doc_b"]
     assert run["q1"]["doc_a"] > run["q1"]["doc_b"]
+
+
+def test_resolve_beir_dataset_options_supports_known_dataset_name() -> None:
+    options = resolve_beir_dataset_options(dataset_name="bo767")
+
+    assert options.loader == "bo767_csv"
+    assert options.dataset_name == str(BO767_ANNOTATIONS_PATH)
+    assert options.doc_id_field == "pdf_page"
+    assert options.ks == DEFAULT_BEIR_KS
+
+
+def test_resolve_beir_dataset_options_supports_vidore_dataset_name() -> None:
+    options = resolve_beir_dataset_options(dataset_name="vidore_v3_computer_science")
+
+    assert options.loader == "vidore_hf"
+    assert options.dataset_name == "vidore_v3_computer_science"
+    assert options.doc_id_field == "pdf_basename"
+
+
+def test_resolve_beir_dataset_options_preserves_explicit_overrides(tmp_path: Path) -> None:
+    annotations = tmp_path / "custom.csv"
+
+    options = resolve_beir_dataset_options(
+        dataset_name=str(annotations),
+        loader="bo767_csv",
+        doc_id_field="pdf_page_modality",
+        ks=[5],
+    )
+
+    assert options.loader == "bo767_csv"
+    assert options.dataset_name == str(annotations)
+    assert options.doc_id_field == "pdf_page_modality"
+    assert options.ks == (5,)
+
+
+def test_resolve_beir_dataset_options_does_not_guess_unknown_dataset() -> None:
+    options = resolve_beir_dataset_options(dataset_name="custom_dataset")
+
+    assert options.loader is None
+    assert options.dataset_name == "custom_dataset"
+    assert options.doc_id_field == "pdf_basename"
+    assert options.ks == DEFAULT_BEIR_KS
+
+
+def test_pipeline_beir_evaluation_keeps_custom_dataset_doc_id_default(monkeypatch) -> None:
+    import nemo_retriever.model as model_module
+    import nemo_retriever.recall.beir as beir_module
+
+    captured: dict[str, BeirConfig] = {}
+
+    def _fake_evaluate_lancedb_beir(cfg: BeirConfig):
+        captured["cfg"] = cfg
+        return (
+            BeirDataset(dataset_name=cfg.dataset_name, query_ids=["q1"], queries=["query"], qrels={"q1": {"doc": 1}}),
+            [],
+            {},
+            {"recall@5": 1.0},
+        )
+
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda model_name: model_name)
+    monkeypatch.setattr(beir_module, "evaluate_lancedb_beir", _fake_evaluate_lancedb_beir)
+
+    label, _elapsed, _metrics, _query_count, ran = pipeline_main._run_evaluation(
+        evaluation_mode="beir",
+        vdb_op="lancedb",
+        vdb_kwargs={"uri": "lancedb", "table_name": "nv-ingest"},
+        embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
+        embed_invoke_url=None,
+        embed_remote_api_key=None,
+        embed_modality="text",
+        query_csv=Path("unused.csv"),
+        recall_match_mode="audio_segment",
+        audio_match_tolerance_secs=2.0,
+        reranker=False,
+        reranker_model_name="reranker",
+        reranker_invoke_url=None,
+        reranker_api_key="",
+        local_reranker_backend="vllm",
+        local_hf_batch_size=32,
+        local_query_max_length=128,
+        beir_loader="custom_csv",
+        beir_dataset_name="custom_dataset",
+        beir_split="test",
+        beir_query_language=None,
+        beir_doc_id_field=None,
+        beir_k=[],
+    )
+
+    assert label == "BEIR"
+    assert ran is True
+    assert captured["cfg"].loader == "custom_csv"
+    assert captured["cfg"].dataset_name == "custom_dataset"
+    assert captured["cfg"].doc_id_field == "pdf_basename"
+
+
+def test_pipeline_beir_evaluation_resolves_known_dataset_name(monkeypatch) -> None:
+    import nemo_retriever.model as model_module
+    import nemo_retriever.recall.beir as beir_module
+
+    captured: dict[str, BeirConfig] = {}
+
+    def _fake_evaluate_lancedb_beir(cfg: BeirConfig):
+        captured["cfg"] = cfg
+        return (
+            BeirDataset(dataset_name=cfg.dataset_name, query_ids=["q1"], queries=["query"], qrels={"q1": {"doc": 1}}),
+            [],
+            {},
+            {"recall@5": 1.0},
+        )
+
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda model_name: model_name)
+    monkeypatch.setattr(beir_module, "evaluate_lancedb_beir", _fake_evaluate_lancedb_beir)
+
+    label, _elapsed, metrics, query_count, ran = pipeline_main._run_evaluation(
+        evaluation_mode="beir",
+        vdb_op="lancedb",
+        vdb_kwargs={"uri": "lancedb", "table_name": "nv-ingest"},
+        embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
+        embed_invoke_url=None,
+        embed_remote_api_key=None,
+        embed_modality="text",
+        query_csv=Path("unused.csv"),
+        recall_match_mode="audio_segment",
+        audio_match_tolerance_secs=2.0,
+        reranker=False,
+        reranker_model_name="reranker",
+        reranker_invoke_url=None,
+        reranker_api_key="",
+        local_reranker_backend="vllm",
+        local_hf_batch_size=32,
+        local_query_max_length=256,
+        beir_loader=None,
+        beir_dataset_name="bo767",
+        beir_split="validation",
+        beir_query_language="fr",
+        beir_doc_id_field=None,
+        beir_k=[3, 7],
+    )
+
+    assert label == "BEIR"
+    assert metrics == {"recall@5": 1.0}
+    assert query_count == 1
+    assert ran is True
+    assert captured["cfg"].loader == "bo767_csv"
+    assert captured["cfg"].dataset_name == str(BO767_ANNOTATIONS_PATH)
+    assert captured["cfg"].split == "validation"
+    assert captured["cfg"].query_language == "fr"
+    assert captured["cfg"].doc_id_field == "pdf_page"
+    assert tuple(captured["cfg"].ks) == (3, 7)
+    assert captured["cfg"].local_query_max_length == 256
 
 
 def test_load_beir_dataset_supports_bo767_csv_pdf_page_modality(tmp_path: Path) -> None:
@@ -422,6 +576,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
                     "local_ingest_embed_backend": "hf",
                     "inference_batch_size": 32,
                     "embed_inference_batch_size": 32,
+                    "query_max_length": 128,
                     "embedding_endpoint": "http://embed.example/v1",
                     "embed_invoke_url": "http://embed.example/v1",
                     "api_key": "secret",

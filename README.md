@@ -15,7 +15,7 @@ See the corresponding [NeMo Retriever Library documentation](https://docs.nvidia
 NeMo Retriever Library is a scalable, performance-oriented framework for document content and metadata extraction. It supports both NVIDIA NIM microservices and a wide range of models to find, contextualize, and extract text, tables, charts, and infographics for use in downstream generative and retrieval-augmented applications.
 
 > [!Note]
-> NeMo Retriever extraction is also known as NVIDIA Ingest and nv-ingest.
+> NeMo Retriever extraction is also referred to as **NVIDIA Ingest** in some NVIDIA product materials.
 
 NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. From there, NeMo Retriever Library manages computaiton of embeddings for the extracted content as well as storing them in [LanceDB](https://lancedb.com/).
 
@@ -23,10 +23,12 @@ The following diagram shows the NeMo Retriever Library pipeline.
 
 ![Pipeline Overview](https://docs.nvidia.com/nemo/retriever/extraction/images/overview-extraction.png)
 
-For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Kubernetes ([helm charts](nemo_retriever/helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
+For production-level performance and scalability, deploy the pipeline and supporting NIMs on **Kubernetes** using **Helm** — start with the **[NeMo Retriever Helm chart](nemo_retriever/helm/README.md)** and the **[NeMo Retriever Library (prerequisites / deployment)](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)** for published charts and install procedures.
+
+**Docker Compose** in this repository is **unsupported developer tooling** only (local experimentation). It is **not** a recommended or supported deployment path for NIMs — see **[`nemo_retriever/docker.md`](nemo_retriever/docker.md)** for details and caveats.
 
 *Note*:
-Along with the recent repo name change, we're phasing out the nv-ingest APIs and simplifying the dependencies. You can follow this work and see the forward looking API via the [nemo_retriever](nemo_retriever) library subfolder.
+Along with the recent repo name change, we're phasing out legacy ingestion APIs and simplifying the dependencies. You can follow this work and see the forward looking API via the [nemo_retriever](nemo_retriever) library subfolder.
 
 
 ## Typical Use
@@ -166,7 +168,7 @@ https://pypi.org/project/pdfservices-sdk/
     [license agreement](https://github.com/adobe/pdfservices-python-sdk?tab=License-1-ov-file) for the
     pdfservices-sdk before enabling this option.
 - **Built With Llama**:
-  - **Description**: The NV-Ingest container comes with the `meta-llama/Llama-3.2-1B` tokenizer pre-downloaded so 
+  - **Description**: The NeMo Retriever ingestion container comes with the `meta-llama/Llama-3.2-1B` tokenizer pre-downloaded so 
     that the split task can use it for token-based splitting without making a network request. The [Llama 3.2 Community License Agreement](https://huggingface.co/meta-llama/Llama-3.2-1B/blob/main/LICENSE.txt) governs your use of these Llama materials.
     
     If you're building the container yourself and want to pre-download this model, you'll first need to set 

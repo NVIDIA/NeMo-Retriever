@@ -8,8 +8,6 @@ NeMo Retriever Library is designed to process language and language-length strin
 If you submit a document that contains extremely long, or non-language text strings, 
 such as a DNA sequence, errors or unexpected results occur.
 
-
-
 ## Can't process malformed input files
 
 When you run a job you might see errors similar to the following:
@@ -21,8 +19,6 @@ When you run a job you might see errors similar to the following:
 
 These errors can occur when your input file is malformed. 
 Verify or fix the format of your input file, and try resubmitting your job.
-
-
 
 ## Can't start new thread error
 
@@ -127,3 +123,5 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** charts)
+- [Docker Compose (unsupported, developer)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md)

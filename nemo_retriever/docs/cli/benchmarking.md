@@ -1,36 +1,42 @@
 # Benchmarking with the `retriever` CLI
 
-This page is the `retriever`-CLI counterpart to
-`nv-ingest/docs/docs/extraction/benchmarking.md` and
-`nv-ingest/tools/harness/README.md`.
+This page covers benchmark workflows for NeMo Retriever Library. See also
+`docs/docs/extraction/benchmarking.md`, [`tools/harness/README.md`](../../../tools/harness/README.md)
+(legacy integration harness), and [`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md)
+(the harness behind `retriever harness`).
 
-The old benchmarking workflow is driven by `tools/harness` and
-`uv run nv-ingest-harness-run`. The `retriever` CLI exposes the harness (and
-per-stage micro-benchmarks) as first-class subcommands, so you can run
-benchmarks without `uv run` or a separate harness repo.
+There are two harness stacks:
 
-## Harness (end-to-end benchmarks)
+| Stack | How you run it | Config |
+|-------|----------------|--------|
+| **Legacy** (`tools/harness/`) | `python -m nv_ingest_harness.cli.run` from `tools/harness/` | `tools/harness/test_configs.yaml` |
+| **Retriever CLI** (`nemo_retriever.harness`) | `retriever harness run` | `nemo_retriever/harness/test_configs.yaml` |
 
-Old:
+The `retriever` CLI also exposes per-stage `retriever benchmark …` micro-benchmarks.
+
+## Retriever harness (recommended)
+
+Run from the repository root (or any directory; pass `--config` if needed). Uses
+`--dataset` and `--preset` — there is no `--case` flag on this harness.
 
 ```bash
-cd tools/harness
-uv sync
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
-uv run nv-ingest-harness-run --case=e2e --dataset=/path/to/your/data
+# Named dataset from nemo_retriever/harness/test_configs.yaml
+retriever harness run --dataset bo767 --preset PE_GE_OCR_TE_DENSE
+
+# Default active profile (jp20 + single_gpu in test_configs.yaml)
+retriever harness run --dataset jp20
+
+# Custom directory on disk
+retriever harness run --dataset /path/to/your/data
+
+# Override a single config key
+retriever harness run --dataset bo767 --override run_mode=inprocess
 ```
 
-New — the harness is a subcommand on the main CLI (full parity):
+Related commands:
 
 ```bash
-retriever harness run --case=e2e --dataset=bo767
-retriever harness run --case=e2e --dataset=/path/to/your/data
-```
-
-Related commands (browse with `--help`):
-
-```bash
-retriever harness --help       # run, sweep, nightly, summary, compare
+retriever harness --help       # run, sweep, nightly, summary, compare, portal
 retriever harness run --help
 retriever harness sweep --help
 retriever harness nightly --help
@@ -38,17 +44,44 @@ retriever harness summary --help
 retriever harness compare --help
 ```
 
+Sweep and nightly examples:
+
+```bash
+retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
+retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
+```
+
 ### Image storage
 
-Store is configured through `retriever pipeline run`, not through the harness.
-Use `--store-images-uri <uri>` with a local path or fsspec-compatible URI. The
-stored assets follow the configured embed granularity: page granularity stores
-page images, and element granularity stores element images.
+Image persistence is configured on `retriever pipeline run`, not on the harness.
+Use `--store-images-uri <uri>` (local path or fsspec URI). Stored assets follow
+`--embed-granularity` (page vs element images).
+
+## Legacy `tools/harness` (nv_ingest_harness)
+
+Unsupported developer tooling; kept for older CI and compose/helm managed runs.
+After `cd tools/harness`, omit `--project tools/harness` — uv finds `pyproject.toml`
+in the current directory.
+
+```bash
+cd tools/harness
+uv sync
+uv pip install -e .
+
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=/path/to/your/data
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
+```
+
+From the **repo root** without `cd`, use the project flag:
+
+```bash
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
+```
 
 ## Per-stage micro-benchmarks
 
-The new CLI also exposes stage-level throughput benchmarks that had no direct
-counterpart in `nv-ingest-cli`:
+Stage throughput benchmarks on the main CLI (no full harness required):
 
 ```bash
 retriever benchmark --help           # split, extract, audio-extract, page-elements, ocr, all
@@ -60,7 +93,7 @@ retriever benchmark ocr --help
 retriever benchmark all --help
 ```
 
-Example — benchmark the PDF extraction actor:
+Example — PDF extraction actor:
 
 ```bash
 retriever benchmark extract ./data/pdf_corpus \
@@ -69,17 +102,16 @@ retriever benchmark extract ./data/pdf_corpus \
 ```
 
 Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
-Use these when you want focused numbers for a single stage instead of an
-end-to-end run.
 
 ## Parity notes
 
-- The harness use-cases in the old docs (`--case=e2e`, `--dataset=bo767`,
-  `--dataset=/path/...`, `--override ...`) are preserved verbatim — only the
-  launcher changes (`retriever harness run …` instead of
-  `uv run nv-ingest-harness-run …`).
-- If you have a repo-local `uv` environment, `uv run retriever harness run …`
-  still works.
-- Stage benchmarks (`retriever benchmark …`) are net-new relative to the old
-  `nv-ingest-cli` examples — they are the recommended way to profile
-  individual actors before tuning `pipeline run` flags.
+- **Not a drop-in flag map:** legacy harness uses `--case=e2e`; `retriever harness`
+  uses `--dataset` / `--preset` / `--override KEY=VALUE` against
+  `nemo_retriever/harness/test_configs.yaml`.
+- **Datasets:** names like `bo767` and `jp20` exist in both configs but paths and
+  defaults may differ; check the YAML for each stack.
+- **Launcher:** prefer `retriever harness run …` for new work; use
+  `nv_ingest_harness` only when you still depend on `--case` or `--managed` behavior
+  documented in `tools/harness/README.md`.
+- **Stage benchmarks:** `retriever benchmark …` is specific to the retriever CLI and
+  has no legacy service-CLI equivalent.

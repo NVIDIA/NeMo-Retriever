@@ -1,13 +1,14 @@
+{{- if eq .Values.topology.mode "standalone" }}
 {{- if .Values.autoscaling.enabled -}}
+# =========================================================================
+# Standalone mode HPA
+# =========================================================================
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "nemo-retriever.fullname" . }}
   labels:
     {{- include "nemo-retriever.labels" . | nindent 4 }}
-  annotations:
-    # Reminder: SQLite + RWO PVC means safe maxReplicas == 1 today.
-    nemo-retriever.nvidia.com/scale-warning: "max replicas must remain 1 until shared DB is enabled"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -36,4 +37,37 @@ spec:
   behavior:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+{{- end }}
+{{- else }}
+# =========================================================================
+# Split mode — per-role HPAs (gateway does not autoscale by default)
+# =========================================================================
+{{- range $role := list "realtime" "batch" }}
+{{- $roleCfg := index $.Values.topology $role }}
+{{- if and (hasKey $roleCfg "hpa") $roleCfg.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" $role) }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" $role) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" $role) }}
+  minReplicas: {{ $roleCfg.hpa.minReplicas }}
+  maxReplicas: {{ $roleCfg.hpa.maxReplicas }}
+  metrics:
+    {{- if $roleCfg.hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $roleCfg.hpa.targetCPUUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Public entry point: `generate_sql` (SQL string) and `get_sql_tool_response_top_k` (full dict).
 
 Implementation lives in `nemo_retriever.tabular_data.retrieval.generate_sql`.

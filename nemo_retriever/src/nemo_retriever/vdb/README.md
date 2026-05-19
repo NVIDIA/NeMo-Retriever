@@ -13,7 +13,7 @@ The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cl
 
 ### Role
 
-`IngestVdbOperator` adapts **flat graph / DataFrame rows** (the shape produced after extract → embed in NeMo Retriever) into the **nested NV-Ingest record batches** expected by client VDBs, then calls **`VDB.run(records)`** once per batch.
+`IngestVdbOperator` adapts **flat graph / DataFrame rows** (the shape produced after extract → embed in NeMo Retriever) into the **nested ingestion-pipeline record batches** expected by client VDBs, then calls **`VDB.run(records)`** once per batch.
 
 Flow (see `operators.py` and `records.py`):
 
@@ -46,7 +46,7 @@ op = IngestVdbOperator(
     vdb_op="lancedb",
     vdb_kwargs={
         "uri": "./kb",
-        "table_name": "nv-ingest",
+        "table_name": "nemo-retriever",
         "vector_dim": 2048,
     },
 )
@@ -57,7 +57,7 @@ CLI-equivalent kwargs are often passed as JSON:
 
 ```bash
 retriever pipeline run /data/pdfs --vdb-op lancedb \
-  --vdb-kwargs-json '{"uri":"./kb","table_name":"nv-ingest"}'
+  --vdb-kwargs-json '{"uri":"./kb","table_name":"nemo-retriever"}'
 ```
 
 ---
@@ -70,7 +70,7 @@ When `vdb_op="lancedb"` (or `vdb=LanceDB(...)` is passed explicitly), `_construc
 
 `LanceDB.run` (in `lancedb.py`) orchestrates:
 
-1. **`create_index`** — connects with `lancedb.connect(self.uri)`, transforms NV-Ingest batches into Arrow rows (`vector`, `text`, `metadata`, `source`), and **`db.create_table(...)`** with schema and `on_bad_vectors` policy.
+1. **`create_index`** — connects with `lancedb.connect(self.uri)`, transforms ingestion batches into Arrow rows (`vector`, `text`, `metadata`, `source`), and **`db.create_table(...)`** with schema and `on_bad_vectors` policy.
 2. **`write_to_index`** — builds the **vector index** (e.g. IVF/HNSW) and optionally an **FTS** index when `hybrid=True`.
 
 Common constructor arguments include:
@@ -78,7 +78,7 @@ Common constructor arguments include:
 | Parameter        | Purpose |
 |-----------------|--------|
 | `uri`           | LanceDB database path/URI |
-| `table_name`    | Table name (default `nv-ingest`) |
+| `table_name`    | Table name (default `nemo-retriever`) |
 | `overwrite`     | Table create mode vs append |
 | `vector_dim`    | Expected embedding dimension (default 2048) |
 | `index_type` / `metric` / `num_partitions` / `num_sub_vectors` | Vector index tuning |
@@ -111,7 +111,7 @@ from nemo_retriever.vdb import RetrieveVdbOperator
 
 op = RetrieveVdbOperator(
     vdb_op="lancedb",
-    vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
+    vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
 )
 hits_per_query = op.process(
     [[0.1, 0.2, ...]],  # one query vector; dimension must match table
@@ -147,7 +147,7 @@ retriever = Retriever(
     vdb="lancedb",
     vdb_kwargs={
         "uri": "./kb",
-        "table_name": "nv-ingest",
+        "table_name": "nemo-retriever",
         "top_k": 10,
         "refine_factor": 50,
         "nprobes": 64,
@@ -192,7 +192,7 @@ flowchart LR
   L2 -->[(same table)]
 ```
 
-- **Ingest**: flat rows → NV-Ingest batches → **`LanceDB.run`** → table + indexes.
+- **Ingest**: flat rows → ingestion batches → **`LanceDB.run`** → table + indexes.
 - **Retrieve**: strings → vectors → **`RetrieveVdbOperator`** → **`LanceDB.retrieval`** → hit lists.
 
 For implementation details, see `operators.py`, `lancedb.py`, `records.py`, `factory.py`, and `retriever.py`.

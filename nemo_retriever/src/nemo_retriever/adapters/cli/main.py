@@ -4,45 +4,59 @@
 
 from __future__ import annotations
 
+import importlib
 import json
+import logging
 
+from pydantic import ValidationError
 import typer
 
-from nemo_retriever.adapters.cli.sdk_workflow import IngestRunModeValue, ingest_documents, query_documents
-from nemo_retriever.audio import app as audio_app
-from nemo_retriever.utils.benchmark import app as benchmark_app
-from nemo_retriever.chart import app as chart_app
-from nemo_retriever.utils.compare import app as compare_app
-from nemo_retriever.evaluation.cli import app as eval_app
-from nemo_retriever.harness import app as harness_app
-from nemo_retriever.html import __main__ as html_main
-from nemo_retriever.utils.image import app as image_app
-from nemo_retriever.local import app as local_app
-from nemo_retriever.pdf import app as pdf_app
-from nemo_retriever.pipeline import __main__ as pipeline_main
-from nemo_retriever.recall import app as recall_app
-from nemo_retriever.service.cli import app as service_app
-from nemo_retriever.txt import __main__ as txt_main
-from nemo_retriever.vector_store import app as vector_store_app
+from nemo_retriever.adapters.cli.sdk_workflow import (
+    IngestRunModeValue,
+    OcrLangValue,
+    OcrVersionValue,
+    ingest_documents,
+    query_documents,
+)
 from nemo_retriever.version import get_version_info
 
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="Retriever")
-app.add_typer(audio_app, name="audio")
-app.add_typer(image_app, name="image")
-app.add_typer(pdf_app, name="pdf")
-app.add_typer(local_app, name="local")
-app.add_typer(chart_app, name="chart")
-app.add_typer(compare_app, name="compare")
-app.add_typer(eval_app, name="eval")
-app.add_typer(benchmark_app, name="benchmark")
-app.add_typer(harness_app, name="harness")
-app.add_typer(vector_store_app, name="vector-store")
-app.add_typer(recall_app, name="recall")
+
+# Service sub-app is always available (lightweight, no GPU deps).
+from nemo_retriever.service.cli import app as service_app  # noqa: E402
+
 app.add_typer(service_app, name="service")
-app.add_typer(txt_main.app, name="txt")
-app.add_typer(html_main.app, name="html")
-app.add_typer(pipeline_main.app, name="pipeline")
+
+# All other sub-apps are registered lazily so that missing optional
+# dependencies (tritonclient, torch, …) don't prevent the service
+# from starting.
+_LAZY_SUBAPPS: list[tuple[str, str, str]] = [
+    ("audio", "nemo_retriever.audio", "app"),
+    ("image", "nemo_retriever.utils.image", "app"),
+    ("pdf", "nemo_retriever.pdf", "app"),
+    ("local", "nemo_retriever.local", "app"),
+    ("chart", "nemo_retriever.chart", "app"),
+    ("compare", "nemo_retriever.utils.compare", "app"),
+    ("eval", "nemo_retriever.evaluation.cli", "app"),
+    ("benchmark", "nemo_retriever.utils.benchmark", "app"),
+    ("harness", "nemo_retriever.harness", "app"),
+    ("recall", "nemo_retriever.recall", "app"),
+    ("skill-eval", "nemo_retriever.skill_eval", "app"),
+    ("txt", "nemo_retriever.txt.__main__", "app"),
+    ("html", "nemo_retriever.html.__main__", "app"),
+    ("pipeline", "nemo_retriever.pipeline.__main__", "app"),
+]
+
+for _name, _module, _attr in _LAZY_SUBAPPS:
+    try:
+        _mod = importlib.import_module(_module)
+        app.add_typer(getattr(_mod, _attr), name=_name)
+    except Exception:
+        logger.debug("Skipping '%s' sub-command (import failed)", _name)
+
+_ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
 
 
 def _version_callback(value: bool) -> None:
@@ -70,15 +84,156 @@ def ingest_command(
         "--run-mode",
         help="Execution mode for the SDK ingestor.",
     ),
+    overwrite: bool = typer.Option(
+        True,
+        "--overwrite/--append",
+        help=(
+            "Overwrite the target LanceDB table by default. Use --append to add rows to an existing "
+            "table without duplicate checks; rerunning the same inputs in append mode creates duplicates."
+        ),
+    ),
+    ray_address: str | None = typer.Option(None, "--ray-address", help="Ray address for batch run mode."),
+    ray_log_to_driver: bool | None = typer.Option(
+        None,
+        "--ray-log-to-driver/--no-ray-log-to-driver",
+        help="Forward Ray worker logs to the driver in batch run mode.",
+    ),
+    page_elements_invoke_url: str | None = typer.Option(
+        None,
+        "--page-elements-invoke-url",
+        help="Page-elements NIM endpoint URL.",
+    ),
+    ocr_invoke_url: str | None = typer.Option(None, "--ocr-invoke-url", help="OCR NIM endpoint URL."),
+    ocr_version: OcrVersionValue | None = typer.Option(
+        None,
+        "--ocr-version",
+        help="OCR engine version for extraction.",
+    ),
+    ocr_lang: OcrLangValue | None = typer.Option(
+        None,
+        "--ocr-lang",
+        help="OCR v2 language selector for local extraction.",
+    ),
+    graphic_elements_invoke_url: str | None = typer.Option(
+        None,
+        "--graphic-elements-invoke-url",
+        help="Graphic-elements NIM endpoint URL.",
+    ),
+    table_structure_invoke_url: str | None = typer.Option(
+        None,
+        "--table-structure-invoke-url",
+        help="Table-structure NIM endpoint URL.",
+    ),
+    embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
+    embed_model_name: str | None = typer.Option(
+        None,
+        "--embed-model-name",
+        help="Optional embedding model name override.",
+    ),
+    pdf_extract_workers: int | None = typer.Option(
+        None,
+        "--pdf-extract-workers",
+        min=1,
+        help="Maximum Ray tasks for PDF extraction in batch mode.",
+    ),
+    pdf_extract_batch_size: int | None = typer.Option(
+        None,
+        "--pdf-extract-batch-size",
+        min=1,
+        help="PDF extraction batch size per Ray task in batch mode.",
+    ),
+    pdf_extract_cpus_per_task: float | None = typer.Option(
+        None,
+        "--pdf-extract-cpus-per-task",
+        min=0.0,
+        help="CPUs reserved per PDF extraction Ray task in batch mode.",
+    ),
+    page_elements_workers: int | None = typer.Option(
+        None,
+        "--page-elements-workers",
+        min=1,
+        help="Number of Ray actors for page-element detection in batch mode.",
+    ),
+    page_elements_batch_size: int | None = typer.Option(
+        None,
+        "--page-elements-batch-size",
+        min=1,
+        help="Page-element detection batch size per actor in batch mode.",
+    ),
+    page_elements_cpus_per_actor: float | None = typer.Option(
+        None,
+        "--page-elements-cpus-per-actor",
+        min=0.0,
+        help="CPUs reserved per page-element detection actor in batch mode.",
+    ),
+    ocr_workers: int | None = typer.Option(
+        None,
+        "--ocr-workers",
+        min=1,
+        help="Number of Ray actors for OCR inference in batch mode.",
+    ),
+    ocr_batch_size: int | None = typer.Option(
+        None,
+        "--ocr-batch-size",
+        min=1,
+        help="OCR inference batch size per actor in batch mode.",
+    ),
+    ocr_cpus_per_actor: float | None = typer.Option(
+        None,
+        "--ocr-cpus-per-actor",
+        min=0.0,
+        help="CPUs reserved per OCR actor in batch mode.",
+    ),
+    embed_workers: int | None = typer.Option(
+        None,
+        "--embed-workers",
+        min=1,
+        help="Number of Ray actors for embedding in batch mode.",
+    ),
+    embed_batch_size: int | None = typer.Option(
+        None,
+        "--embed-batch-size",
+        min=1,
+        help="Embedding batch size per actor in batch mode.",
+    ),
+    embed_cpus_per_actor: float | None = typer.Option(
+        None,
+        "--embed-cpus-per-actor",
+        min=0.0,
+        help="CPUs reserved per embedding actor in batch mode.",
+    ),
 ) -> None:
     try:
         summary = ingest_documents(
             documents,
             run_mode=run_mode,
+            ray_address=ray_address,
+            ray_log_to_driver=ray_log_to_driver,
             lancedb_uri=lancedb_uri,
             table_name=table_name,
+            overwrite=overwrite,
+            page_elements_invoke_url=page_elements_invoke_url,
+            ocr_invoke_url=ocr_invoke_url,
+            ocr_version=ocr_version,
+            ocr_lang=ocr_lang,
+            graphic_elements_invoke_url=graphic_elements_invoke_url,
+            table_structure_invoke_url=table_structure_invoke_url,
+            embed_invoke_url=embed_invoke_url,
+            embed_model_name=embed_model_name,
+            pdf_extract_workers=pdf_extract_workers,
+            pdf_extract_batch_size=pdf_extract_batch_size,
+            pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
+            page_elements_workers=page_elements_workers,
+            page_elements_batch_size=page_elements_batch_size,
+            page_elements_cpus_per_actor=page_elements_cpus_per_actor,
+            ocr_workers=ocr_workers,
+            ocr_batch_size=ocr_batch_size,
+            ocr_cpus_per_actor=ocr_cpus_per_actor,
+            embed_workers=embed_workers,
+            embed_batch_size=embed_batch_size,
+            embed_cpus_per_actor=embed_cpus_per_actor,
         )
-    except (FileNotFoundError, IsADirectoryError, RuntimeError, ValueError) as exc:
+    except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
@@ -94,10 +249,25 @@ def query_command(
     top_k: int = typer.Option(10, "--top-k", min=1, help="Number of hits to retrieve."),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
+    embed_model_name: str | None = typer.Option(
+        None,
+        "--embed-model-name",
+        help="Optional embedding model name override.",
+    ),
+    reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker NIM endpoint URL."),
 ) -> None:
     try:
-        hits = query_documents(query, top_k=top_k, lancedb_uri=lancedb_uri, table_name=table_name)
-    except (FileNotFoundError, IsADirectoryError, RuntimeError, ValueError) as exc:
+        hits = query_documents(
+            query,
+            top_k=top_k,
+            lancedb_uri=lancedb_uri,
+            table_name=table_name,
+            embed_invoke_url=embed_invoke_url,
+            embed_model_name=embed_model_name,
+            reranker_invoke_url=reranker_invoke_url,
+        )
+    except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
