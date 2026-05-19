@@ -54,7 +54,7 @@ Ensure your deployment environment meets these specifications before running the
 
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU.
 
-### Default Helm NIMs (published `nv-ingest` chart)
+### Default Helm NIMs
 
 The production Helm chart enables these NIM microservices **by default** (for example via `nimOperator.*.enabled=true`):
 
