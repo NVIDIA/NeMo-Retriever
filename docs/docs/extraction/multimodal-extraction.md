@@ -69,7 +69,7 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
 
-The default caption model remains `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16`. For opt-in image captioning with Nemotron 3 Nano Omni, set the caption model to one of the local Hugging Face IDs such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, or use the hosted remote ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. Omni reasoning traces are disabled by default for captioning.
+The default caption model remains `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16`. For opt-in image captioning with Nemotron 3 Nano Omni, set the caption model to one of the local Hugging Face IDs such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, use the self-hosted NIM image `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`, or use the hosted remote ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. HF and NIM space requirements are in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements). Omni reasoning traces are disabled by default for captioning.
 
 **Related**
 

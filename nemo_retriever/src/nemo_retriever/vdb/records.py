@@ -9,7 +9,34 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
+
+
+class RetrievalHit(TypedDict, total=False):
+    """Shape of a single hit returned by ``Retriever.query`` / ``Retriever.queries``.
+
+    ``metadata`` is a native ``dict`` at this boundary — never a JSON string. The
+    LanceDB storage layer JSON-encodes on write and decodes on read; do not let
+    a re-encoded string leak back out here. See ``_normalize_hit`` for the
+    contract enforcement point.
+
+    ``total=False`` because optional fields (``stored_image_uri``,
+    ``content_type``, ``bbox_xyxy_norm``, scores) are only set when present.
+    """
+
+    text: str
+    metadata: dict[str, Any]
+    source: str
+    source_id: str
+    path: str
+    page_number: int | None
+    pdf_basename: str
+    pdf_page: str
+    stored_image_uri: str
+    content_type: str
+    bbox_xyxy_norm: list[float]
+    _distance: float
+    _score: float
 
 
 def _embedding_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
@@ -125,7 +152,7 @@ def _mapping(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
+def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
     """Adapt LanceDB client hit shapes to Retriever hits."""
     entity = hit.get("entity") if isinstance(hit.get("entity"), dict) else hit
 
@@ -148,9 +175,16 @@ def _normalize_hit(hit: dict[str, Any]) -> dict[str, Any]:
 
     path = Path(source_id) if source_id else None
     pdf_basename = path.stem if path is not None else ""
-    normalized = {
+    normalized: RetrievalHit = {
         "text": _first_str(entity.get("text"), entity.get("content"), hit.get("text")),
-        "metadata": json.dumps(content_metadata, default=str),
+        # Keep `metadata` as a native dict on the API boundary. The LanceDB
+        # storage layer JSON-encodes it on write (see `_json_str` in
+        # `vdb/lancedb.py`); we already parse it back on read in
+        # `LanceDB.retrieval`. Re-encoding it here forced every downstream
+        # consumer (`Retriever.query()` callers, the CLI, the SKILL.md jq
+        # recipe) to do its own `fromjson`/`json.loads` — and most didn't,
+        # producing silent `metadata.type == "?"` lookups.
+        "metadata": content_metadata,
         "source": source_id,
         "source_id": source_id,
         "path": source_id,
@@ -180,16 +214,16 @@ def _hit_to_dict(hit: Any) -> dict[str, Any] | None:
     return None
 
 
-def normalize_retrieval_results(results: Any) -> list[list[dict[str, Any]]]:
+def normalize_retrieval_results(results: Any) -> list[list[RetrievalHit]]:
     if results is None:
         return []
     if isinstance(results, dict):
         results = [[results]]
-    normalized: list[list[dict[str, Any]]] = []
+    normalized: list[list[RetrievalHit]] = []
     for hits in results:
         if isinstance(hits, dict):
             hits = [hits]
-        normalized_hits = []
+        normalized_hits: list[RetrievalHit] = []
         for hit in hits:
             hit_dict = _hit_to_dict(hit)
             if hit_dict is not None:
