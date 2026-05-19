@@ -648,12 +648,7 @@ class LanceDB(VDB):
                 table = db.open_table(target_name)
 
         upsert_start = time.perf_counter()
-        (
-            table.merge_insert(key)
-            .when_matched_update_all()
-            .when_not_matched_insert_all()
-            .execute(rows_with_key)
-        )
+        (table.merge_insert(key).when_matched_update_all().when_not_matched_insert_all().execute(rows_with_key))
         _record_timing(
             "lancedb.upsert",
             time.perf_counter() - upsert_start,

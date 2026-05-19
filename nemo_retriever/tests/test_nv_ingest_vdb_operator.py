@@ -20,8 +20,6 @@ class FakeVDB(VDB):
         super().__init__(**kwargs)
         self.run_calls: list[Any] = []
         self.retrieval_calls: list[tuple[Any, dict[str, Any]]] = []
-        # Per-call (records, kwargs) captures so UpsertVdbOperator tests can
-        # assert that ``key`` / ``table_name`` are forwarded correctly.
         self.upsert_calls: list[tuple[Any, dict[str, Any]]] = []
 
     def create_index(self, **kwargs: Any) -> None:

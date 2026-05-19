@@ -189,7 +189,6 @@ class UpsertVdbOperator(IngestVdbOperator):
         return data
 
 
-
 class RetrieveVdbOperator(AbstractOperator):
     """Retrieve hits from an nv-ingest-client VDB using precomputed query vectors."""
 

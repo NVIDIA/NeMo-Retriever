@@ -1,0 +1,27 @@
+# Large Database and Data Folders (The main culprits)
+lancedb/
+data/
+datasets/
+models/
+checkpoints/
+
+# Virtual Environments and Caches
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.cache/
+
+# AI Agent & Third-Party Indexing Folders
+.agents/
+.claude/
+.greptile/
+.github/
+.devcontainer/
+
+# Build and Documentation Artifacts
+docs/
+developer_docs/
+site/
+dist/
+build/
