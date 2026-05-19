@@ -29,7 +29,7 @@ Highlights for the 26.03 release include:
 - Added retrieval_bench subfolder with generalizable agentic retrieval pipeline  
 - The project now uses UV as the primary environment and package manager instead of Conda, resulting in faster installs and simpler dependency handling  
 - Default TTL for long-running pipeline job state increased from 1–2 hours to 48 hours so long-running jobs (for example, VLM captioning) do not expire before completion  
-- NeMo Retriever Library currently does not support image captioning via VLM; this feature will be added in the next release
+- VLM image captioning via Nemotron 3 Nano Omni is **optional** and not enabled by default; enable the caption stage and deploy the Omni NIM only when needed (see [multimodal-extraction.md](multimodal-extraction.md) for configuration)
 - Documentation: multimodal extraction is covered on one page with an in-page table of contents and redirects from the former per-topic URLs
 
 ## Release Notes for Previous Versions
