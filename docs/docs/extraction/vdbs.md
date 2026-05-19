@@ -1,6 +1,6 @@
-# Data Upload for NeMo Retriever Library
+# Vector databases
 
-Use this documentation to learn how [NeMo Retriever Library](overview.md) handles and uploads data.
+Use this documentation to learn how [NeMo Retriever Library](overview.md) stores extracted embeddings and uploads data to vector databases.
 
 ## On this page { #on-this-page }
 
