@@ -60,18 +60,22 @@ def store_relational_db_in_neo4j(data, dialect: str, num_workers: int = 4):
     Args:
         data:       Data dict returned by extract_tabular_db_data().
         dialect:    SQL dialect used by the connector (e.g. "sqlite", "duckdb", "snowflake").
-        neo4j_conn: Active Neo4jConnectionManager instance (unused directly here;
-                    populate_tabular_data uses its own DAL connection, but
-                    accepted for API consistency with the other ingest steps).
+        num_workers: Worker count forwarded to populate_tabular_data.
+
+    Returns:
+        ``{schema_name_lower: Schema}`` dict produced during ingestion, so
+        callers can recover the post-ingest ``tables_df`` / ``columns_df``
+        (with the UUIDs assigned to each Table/Column node) without a
+        round-trip back to Neo4j. Returns ``{}`` when *data* is empty.
     """
     if not data:
-        return
+        return {}
 
     from nemo_retriever.tabular_data.ingestion.write_to_graph import (
         populate_tabular_data,
     )
 
-    populate_tabular_data(
+    return populate_tabular_data(
         data,
         num_workers=num_workers,
         dialect=dialect,

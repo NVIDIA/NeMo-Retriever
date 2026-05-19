@@ -46,6 +46,9 @@ class FakeVDB(VDB):
     def run(self, records: Any) -> dict[str, Any]:
         self.run_calls.append(records)
         return {"records": records}
+        
+    def upsert(self, records: list, **kwargs: Any) -> None:
+        return None
 
 
 def _graph_rows() -> list[dict[str, Any]]:
