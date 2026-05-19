@@ -609,9 +609,6 @@ class GraphIngestor(ingestor):
             for i, child in enumerate(value):
                 child_path = f"{path}[{i}]" if path else f"[{i}]"
                 yield from cls._iter_stage_errors_from_value(child, path=child_path)
-            return
-        if isinstance(value, str) and cls._is_populated_error_field("error", value):
-            yield {"path": path or "error", "error": value}
 
     @classmethod
     def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:

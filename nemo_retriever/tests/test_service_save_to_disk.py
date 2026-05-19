@@ -67,9 +67,11 @@ def _stub_status_response(body: dict[str, Any]):
         def json(self) -> dict[str, Any]:
             return body
 
+    captured: dict[str, Any] = {}
+
     class _FakeClient:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            self._kwargs = kwargs
+            captured["kwargs"] = kwargs
 
         def __enter__(self) -> "_FakeClient":
             return self
@@ -80,8 +82,8 @@ def _stub_status_response(body: dict[str, Any]):
         def get(self, url: str) -> _FakeResp:
             return _FakeResp()
 
-    with patch("nemo_retriever.service_ingestor.httpx.Client", _FakeClient) as mock_cls:
-        yield mock_cls
+    with patch("nemo_retriever.service_ingestor.httpx.Client", _FakeClient):
+        yield captured
 
 
 def test_save_document_writes_gzip_json_by_default(tmp_path: Path) -> None:
@@ -141,7 +143,7 @@ def test_save_document_authorisation_header_sent_when_token_present(tmp_path: Pa
     ing = ServiceIngestor(base_url="http://example:7670", api_token="sekret")
     ing.save_to_disk(output_directory=str(tmp_path), compression=None)
 
-    with _stub_status_response({"result_data": []}) as mock_cls:
+    with _stub_status_response({"result_data": []}) as captured:
         ing._save_document_to_disk("doc-x")
 
-    assert mock_cls.call_args.kwargs["headers"] == {"Authorization": "Bearer sekret"}
+    assert captured["kwargs"]["headers"] == {"Authorization": "Bearer sekret"}
