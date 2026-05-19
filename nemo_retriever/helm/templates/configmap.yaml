@@ -2,18 +2,22 @@
 Renders retriever-service.yaml from .Values.serviceConfig and mounts it at
 /etc/nemo-retriever/retriever-service.yaml inside the service container.
 
-NIM endpoint URLs are resolved at template time via nim.endpointURL: if the
-user supplied an explicit URL in serviceConfig.nimEndpoints we use it,
-otherwise we auto-wire the in-cluster URL(s) of the matching NIM StatefulSet
-(when nims.enabled). When replicas > 1, comma-separated per-pod URLs are
-generated so the retriever service can pin workers to individual NIM pods.
+NIM endpoint URLs are resolved at template time via nim.endpointURL: an
+explicit URL in serviceConfig.nimEndpoints always wins; otherwise we
+auto-wire the NIM Operator-managed in-cluster Service URL when the
+apps.nvidia.com/v1alpha1 CRDs are present and the corresponding
+`nimOperator.<key>.enabled` flag is true. Each operator-managed Service
+inherits the NIMService resource name, so the mapping is fixed:
+  page_elements   -> nemotron-page-elements-v3      /v1/infer
+  table_structure -> nemotron-table-structure-v1    /v1/infer
+  ocr             -> nemotron-ocr-v1                /v1/infer
+  vlm_embed       -> llama-nemotron-embed-vl-1b-v2  /v1/embeddings
 */}}
 {{- $ctx := . -}}
-{{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "pageElements" "shortName" "page-elements" "configKey" "pageElementsInvokeUrl") -}}
-{{- $graphicElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "graphicElements" "shortName" "graphic-elements" "configKey" "graphicElementsInvokeUrl") -}}
-{{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "tableStructure" "shortName" "table-structure" "configKey" "tableStructureInvokeUrl") -}}
-{{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "shortName" "ocr" "configKey" "ocrInvokeUrl") -}}
-{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "embed" "shortName" "embed" "configKey" "embedInvokeUrl") -}}
+{{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "page_elements" "serviceName" "nemotron-page-elements-v3" "configKey" "pageElementsInvokeUrl" "invokePath" "/v1/infer") -}}
+{{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "table_structure" "serviceName" "nemotron-table-structure-v1" "configKey" "tableStructureInvokeUrl" "invokePath" "/v1/infer") -}}
+{{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "serviceName" "nemotron-ocr-v1" "configKey" "ocrInvokeUrl" "invokePath" "/v1/infer") -}}
+{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "vlm_embed" "serviceName" $ctx.Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 
 {{- define "nemo-retriever.configBody" -}}
 server:
@@ -27,10 +31,10 @@ logging:
 
 nim_endpoints:
   page_elements_invoke_url: {{ .pageElementsURL | quote }}
-  graphic_elements_invoke_url: {{ .graphicElementsURL | quote }}
   table_structure_invoke_url: {{ .tableStructureURL | quote }}
   ocr_invoke_url: {{ .ocrURL | quote }}
   embed_invoke_url: {{ .embedURL | quote }}
+  embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
   api_key: null
 
 pipeline:
@@ -77,7 +81,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -105,6 +109,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

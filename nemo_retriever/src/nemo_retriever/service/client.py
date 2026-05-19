@@ -4,8 +4,10 @@
 
 """Async client for submitting documents to the retriever service.
 
-Uploads whole documents via ``POST /v1/ingest``, tracks completion via
-the ``GET /v1/ingest/events`` SSE stream (with ``POST /v1/ingest/status/batch``
+Uploads whole documents via ``POST /v1/ingest/job/{job_id}/document``
+(after opening a job aggregate with ``POST /v1/ingest/job``), tracks
+completion via the ``GET /v1/ingest/events`` SSE stream (with
+``POST /v1/ingest/status/batch``
 bulk-poll fallback), and surfaces results through both materialized and
 streaming interfaces.
 
@@ -108,9 +110,10 @@ class DocumentTracker:
 class RetrieverServiceClient:
     """Submits documents to a running retriever service and tracks results.
 
-    Uses ``POST /v1/ingest`` for uploads, ``GET /v1/ingest/events`` SSE
-    for real-time completion tracking, and ``POST /v1/ingest/status/batch``
-    as a bulk-poll fallback.
+    Opens a job aggregate with ``POST /v1/ingest/job`` (sized to the
+    number of files), then uses ``POST /v1/ingest/job/{job_id}/document``
+    for each upload. Completion is tracked via ``GET /v1/ingest/events``
+    SSE with ``POST /v1/ingest/status/batch`` as a bulk-poll fallback.
     """
 
     def __init__(
@@ -129,6 +132,41 @@ class RetrieverServiceClient:
         return {"Authorization": f"Bearer {self._api_token}"} if self._api_token else {}
 
     # ------------------------------------------------------------------
+    # Job lifecycle
+    # ------------------------------------------------------------------
+
+    async def _create_job(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        expected_documents: int,
+        label: str | None = None,
+    ) -> str:
+        """Open a server-side job aggregate and return the assigned ``job_id``.
+
+        Every upload made through this client must reference a job (J3+).
+        We open one job per ``ingest_documents`` / ``aingest_documents_stream``
+        call sized to the number of files supplied.
+        """
+        url = f"{self._base_url}/v1/ingest/job"
+        payload: dict[str, Any] = {"expected_documents": expected_documents}
+        if label is not None:
+            payload["label"] = label
+        resp = await client.post(url, json=payload)
+        if resp.status_code >= 400:
+            detail = resp.text[:500] if resp.text else "(empty)"
+            raise httpx.HTTPStatusError(
+                f"Job creation failed: HTTP {resp.status_code}: {detail}",
+                request=resp.request,
+                response=resp,
+            )
+        body = resp.json()
+        job_id = body.get("job_id")
+        if not job_id:
+            raise RuntimeError(f"Job creation returned no job_id: {body!r}")
+        return job_id
+
+    # ------------------------------------------------------------------
     # Upload
     # ------------------------------------------------------------------
 
@@ -136,21 +174,31 @@ class RetrieverServiceClient:
         self,
         client: httpx.AsyncClient,
         file_path: Path,
+        *,
+        job_id: str,
         metadata: dict[str, Any] | None = None,
+        pipeline_spec: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Upload a file to ``POST /v1/ingest`` with retry on 429 and transient errors.
+        """Upload a file under an existing job, with retry on 429 + transient errors.
 
-        Returns the parsed JSON response (contains ``document_id``).
+        Posts to ``POST /v1/ingest/job/{job_id}/document``; ``pipeline_spec``
+        (when provided) is attached to ``metadata`` under the ``pipeline``
+        key so the server can validate and apply it. Returns the parsed
+        JSON response (contains ``document_id`` and ``job_id``).
         """
         file_bytes = file_path.read_bytes()
         filename = file_path.name
-        meta_json = json.dumps(metadata or {})
+        meta_payload: dict[str, Any] = dict(metadata or {})
+        if pipeline_spec is not None:
+            meta_payload["pipeline"] = pipeline_spec
+        meta_json = json.dumps(meta_payload)
         transport_attempts = 0
+        url = f"{self._base_url}/v1/ingest/job/{job_id}/document"
 
         for attempt in range(1, _MAX_UPLOAD_RETRIES + 1):
             try:
                 resp = await client.post(
-                    f"{self._base_url}/v1/ingest",
+                    url,
                     files={"file": (filename, file_bytes, "application/octet-stream")},
                     data={"metadata": meta_json},
                 )
@@ -191,14 +239,20 @@ class RetrieverServiceClient:
         pending: set[str],
         uploads_done: asyncio.Event,
         tracker: DocumentTracker,
+        *,
+        job_id: str,
         on_event: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
-        """Consume ``GET /v1/ingest/events`` SSE stream until all pending items resolve.
+        """Consume the per-job SSE stream until all pending items resolve.
 
-        Uses ``seen_terminal`` reconciliation to handle events that arrive
-        before the upload response adds the ``document_id`` to ``pending``.
+        Subscribes to ``GET /v1/ingest/job/{job_id}/events`` (J4+). The
+        firehose endpoint was removed deliberately — every public SSE
+        consumer must declare the job it is observing. ``pending`` is
+        the set of document ids we expect to terminate; reconciliation
+        handles the race where an event arrives before the upload
+        response added the id to ``pending``.
         """
-        url = f"{self._base_url}/v1/ingest/events"
+        url = f"{self._base_url}/v1/ingest/job/{job_id}/events"
         seen_terminal: set[str] = set()
         seen_events: dict[str, dict[str, Any]] = {}
 
@@ -224,6 +278,15 @@ class RetrieverServiceClient:
             _reconcile()
             return not pending
 
+        _JOB_LIFECYCLE_EVENTS = {
+            "job_created",
+            "job_started",
+            "job_progress",
+            "job_finalized",
+            "job_partial",
+            "job_failed",
+        }
+
         try:
             async with client.stream("GET", url) as response:
                 if response.status_code != 200:
@@ -245,10 +308,24 @@ class RetrieverServiceClient:
                             event_type = ""
                             continue
 
-                        item_id = event.get("id", "")
-                        status = event.get("status", event_type)
+                        # Capture event name (SSE 'event:' field) inline so
+                        # downstream consumers can demux without re-parsing
+                        # the wire format.
+                        if event_type and "event" not in event:
+                            event["event"] = event_type
+                        evt_name = event.get("event", event_type)
                         data_buf = ""
                         event_type = ""
+
+                        if evt_name in _JOB_LIFECYCLE_EVENTS:
+                            if on_event:
+                                on_event(event)
+                            if _is_done():
+                                break
+                            continue
+
+                        item_id = event.get("id", "")
+                        status = event.get("status", evt_name)
 
                         seen_terminal.add(item_id)
                         seen_events[item_id] = event
@@ -349,6 +426,7 @@ class RetrieverServiceClient:
         *,
         on_file_submitted: Callable[[str, str], Any] | None = None,
         show_progress: bool = True,
+        pipeline_spec: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Upload documents and wait for all to complete.
 
@@ -362,6 +440,10 @@ class RetrieverServiceClient:
             Called with ``(filename, document_id)`` after each upload.
         show_progress
             Show Rich progress bars during upload and SSE tracking.
+        pipeline_spec
+            Optional :class:`PipelineSpec` dict attached to every upload's
+            ``metadata`` form blob (see
+            :meth:`aingest_documents_stream` for details).
         """
         tracker = DocumentTracker()
         pending = tracker.pending
@@ -378,13 +460,14 @@ class RetrieverServiceClient:
             limits=pool_limits,
             headers=self._auth_headers,
         ) as client:
+            job_id = await self._create_job(client, expected_documents=len(files))
             upload_sem = asyncio.Semaphore(self._max_concurrency)
             upload_failures: list[tuple[str, str]] = []
 
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(client, fpath)
+                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
@@ -412,12 +495,14 @@ class RetrieverServiceClient:
 
             if progress_ctx:
                 with progress_ctx:
-                    sse_task = asyncio.create_task(self._consume_sse(client, pending, uploads_done, tracker))
+                    sse_task = asyncio.create_task(
+                        self._consume_sse(client, pending, uploads_done, tracker, job_id=job_id)
+                    )
                     await asyncio.sleep(0.3)
                     await _upload_all()
                     await sse_task
             else:
-                sse_task = asyncio.create_task(self._consume_sse(client, pending, uploads_done, tracker))
+                sse_task = asyncio.create_task(self._consume_sse(client, pending, uploads_done, tracker, job_id=job_id))
                 await asyncio.sleep(0.3)
                 await _upload_all()
                 await sse_task
@@ -449,6 +534,8 @@ class RetrieverServiceClient:
     async def aingest_documents_stream(
         self,
         files: list[Path],
+        *,
+        pipeline_spec: dict[str, Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Async generator: upload files, yield events as documents complete.
 
@@ -457,6 +544,10 @@ class RetrieverServiceClient:
         * ``{"event": "upload_complete", "filename": ..., "document_id": ...}``
         * ``{"event": "document_complete", "document_id": ..., "status": ...,
               "result_rows": ..., "elapsed_s": ..., "error": ...}``
+
+        When *pipeline_spec* is provided it is attached to each upload's
+        ``metadata`` form blob under the ``pipeline`` key so the server can
+        validate and apply per-request pipeline overrides.
         """
         tracker = DocumentTracker()
         pending = tracker.pending
@@ -471,12 +562,18 @@ class RetrieverServiceClient:
             limits=pool_limits,
             headers=self._auth_headers,
         ) as client:
+            job_id = await self._create_job(client, expected_documents=len(files))
+            yield {
+                "event": "job_created",
+                "job_id": job_id,
+                "expected_documents": len(files),
+            }
             upload_sem = asyncio.Semaphore(self._max_concurrency)
 
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(client, fpath)
+                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
@@ -485,6 +582,7 @@ class RetrieverServiceClient:
                                     "event": "upload_complete",
                                     "filename": fpath.name,
                                     "document_id": doc_id,
+                                    "job_id": job_id,
                                 }
                             )
                     except Exception as exc:
@@ -494,6 +592,7 @@ class RetrieverServiceClient:
                                 "event": "upload_failed",
                                 "filename": fpath.name,
                                 "error": str(exc),
+                                "job_id": job_id,
                             }
                         )
 
@@ -503,6 +602,12 @@ class RetrieverServiceClient:
                 uploads_done.set()
 
             def _on_sse_event(event: dict[str, Any]) -> None:
+                event_name = event.get("event")
+                if event_name in {"job_progress", "job_finalized", "job_partial", "job_failed"}:
+                    payload = dict(event)
+                    payload.setdefault("job_id", job_id)
+                    event_queue.put_nowait(payload)
+                    return
                 doc_id = event.get("id", "")
                 status = event.get("status", "completed")
                 event_queue.put_nowait(
@@ -513,11 +618,19 @@ class RetrieverServiceClient:
                         "result_rows": event.get("result_rows", 0),
                         "elapsed_s": event.get("elapsed_s"),
                         "error": event.get("error"),
+                        "job_id": job_id,
                     }
                 )
 
             async def _sse_then_signal() -> None:
-                await self._consume_sse(client, pending, uploads_done, tracker, on_event=_on_sse_event)
+                await self._consume_sse(
+                    client,
+                    pending,
+                    uploads_done,
+                    tracker,
+                    job_id=job_id,
+                    on_event=_on_sse_event,
+                )
                 await event_queue.put(None)
 
             sse_task = asyncio.create_task(_sse_then_signal())
