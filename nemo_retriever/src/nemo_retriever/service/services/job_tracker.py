@@ -24,6 +24,9 @@ and, if so, computes the job's terminal status and emits a
 caller declares the expected count at create time, and the job waits
 for that many documents to resolve.
 
+Abandoned jobs (never finalized) are bounded by ``max_jobs`` (hard
+reject on create) and ``stale_job_ttl_s`` (evicted from memory).
+
 Threading model: all writes are guarded by a single ``threading.Lock``.
 Reads are best-effort consistent (we return defensive copies in
 :meth:`get_job` / :meth:`get_document`).
@@ -153,8 +156,9 @@ class JobAggregate(RichModel):
 # ── eviction tunables (apply to terminal aggregates) ──────────────────
 
 DEFAULT_TTL_S: float = 4 * 3600  # 4 hours after finalize
+DEFAULT_STALE_JOB_TTL_S: float = 4 * 3600  # non-terminal jobs with no finalize
 DEFAULT_MAX_JOBS: int = 200_000
-_EVICTION_INTERVAL: int = 50  # check every N job registrations
+_EVICTION_INTERVAL: int = 50  # periodic eviction on document registration
 
 
 def _utcnow_iso() -> str:
@@ -190,6 +194,12 @@ class JobFinalizedError(JobTrackerError):
     status_code = 409
 
 
+class JobTrackerAtCapacityError(JobTrackerError):
+    """Raised when the in-memory job store is at ``max_jobs``."""
+
+    status_code = 503
+
+
 # ── tracker singleton ────────────────────────────────────────────────
 
 
@@ -200,6 +210,7 @@ class JobTracker:
         self,
         *,
         ttl_s: float = DEFAULT_TTL_S,
+        stale_job_ttl_s: float = DEFAULT_STALE_JOB_TTL_S,
         max_jobs: int = DEFAULT_MAX_JOBS,
     ) -> None:
         self._lock = threading.Lock()
@@ -209,6 +220,7 @@ class JobTracker:
         self._job_started_mono: dict[str, float] = {}  # per-job elapsed timing
         self._event_bus: Any = None
         self._ttl_s = ttl_s
+        self._stale_job_ttl_s = stale_job_ttl_s
         self._max_jobs = max_jobs
         self._reg_count = 0
         # Track which integer progress milestone (in completed+failed doc
@@ -245,6 +257,12 @@ class JobTracker:
         with self._lock:
             if job_id in self._jobs:
                 raise JobTrackerError(f"Job {job_id!r} already exists")
+            self._evict_locked()
+            if len(self._jobs) >= self._max_jobs:
+                raise JobTrackerAtCapacityError(
+                    f"Job tracker is at capacity ({self._max_jobs} jobs); "
+                    "retry after in-flight jobs finalize or abandon stale jobs."
+                )
             agg = JobAggregate(
                 job_id=job_id,
                 expected_documents=expected_documents,
@@ -257,9 +275,6 @@ class JobTracker:
             )
             agg.counts[DocumentStatus.PENDING.value] = 0
             self._jobs[job_id] = agg
-            self._reg_count += 1
-            if self._reg_count % _EVICTION_INTERVAL == 0:
-                self._evict_locked()
         logger.info(
             "Job registered: %s (expected_documents=%d, label=%r)",
             job_id,
@@ -344,6 +359,9 @@ class JobTracker:
             self._documents[document_id] = rec
             agg.document_ids.append(document_id)
             agg.counts[DocumentStatus.PENDING.value] = agg.counts.get(DocumentStatus.PENDING.value, 0) + 1
+            self._reg_count += 1
+            if self._reg_count % _EVICTION_INTERVAL == 0:
+                self._evict_locked()
         return rec.model_copy(deep=True)
 
     def mark_processing(self, document_id: str) -> None:
@@ -502,20 +520,28 @@ class JobTracker:
         # No docs registered (shouldn't happen — guarded earlier).
         return JobAggregateStatus.FAILED
 
+    def _job_age_s_locked(self, agg: JobAggregate, *, now: datetime) -> float | None:
+        stamp = agg.finalized_at if agg.status in _JOB_TERMINAL else agg.created_at
+        if not stamp:
+            return None
+        try:
+            return (now - datetime.fromisoformat(stamp)).total_seconds()
+        except (ValueError, TypeError):
+            return None
+
     def _evict_locked(self) -> None:
-        """Drop terminal jobs older than TTL; bound the total count."""
+        """Drop expired terminal jobs, stale non-terminal jobs, then bound count."""
         now = datetime.now(timezone.utc)
         expired: list[str] = []
         for jid, agg in self._jobs.items():
-            if agg.status not in _JOB_TERMINAL:
+            age_s = self._job_age_s_locked(agg, now=now)
+            if age_s is None:
                 continue
-            if agg.finalized_at:
-                try:
-                    finished = datetime.fromisoformat(agg.finalized_at)
-                    if (now - finished).total_seconds() > self._ttl_s:
-                        expired.append(jid)
-                except (ValueError, TypeError):
-                    pass
+            if agg.status in _JOB_TERMINAL:
+                if age_s > self._ttl_s:
+                    expired.append(jid)
+            elif age_s > self._stale_job_ttl_s:
+                expired.append(jid)
 
         for jid in expired:
             self._drop_job_locked(jid)

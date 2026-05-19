@@ -729,10 +729,14 @@ class ServiceIngestor(ingestor):
 
         # Build a minimal multipart/form-data request — avoids dragging in
         # an httpx dependency where urllib already works.
-        boundary = "----nrlib-sidecar-" + filename
+        import re
+        import secrets
+
+        safe_filename = re.sub(r"[^\w.\-]", "_", filename) or "upload"
+        boundary = f"----nrlib-sidecar-{secrets.token_hex(16)}"
         body = io.BytesIO()
         body.write(f"--{boundary}\r\n".encode())
-        body.write(f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode())
+        body.write(f'Content-Disposition: form-data; name="file"; filename="{safe_filename}"\r\n'.encode())
         body.write(f"Content-Type: {content_type}\r\n\r\n".encode())
         body.write(payload)
         body.write(f"\r\n--{boundary}--\r\n".encode())

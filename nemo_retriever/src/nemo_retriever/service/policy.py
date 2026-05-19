@@ -58,6 +58,7 @@ _DENYLIST_KEY_SUBSTRINGS: tuple[str, ...] = (
     "table_structure_invoke_url",
     "graphic_elements_invoke_url",
     "nemotron_parse_invoke_url",
+    "profile_name",
 )
 
 
@@ -127,11 +128,17 @@ _DEFAULT_ALLOWED_SPLIT_KEYS: frozenset[str] = frozenset(
 _DEFAULT_ALLOWED_STORE_KEYS: frozenset[str] = frozenset(
     {
         "storage_uri",
-        "storage_options",
+        # ``storage_options`` omitted: nested fsspec/boto keys can redirect
+        # cloud API traffic (SSRF). Operators may re-enable via
+        # ``extra_store_keys``; inner keys are then gated by
+        # ``_DEFAULT_ALLOWED_STORAGE_OPTIONS_KEYS``.
         "image_format",
         "strip_base64",
     }
 )
+# Safe inner keys for ``store_params.storage_options`` when an operator
+# explicitly widens the top-level allowlist. Empty by default.
+_DEFAULT_ALLOWED_STORAGE_OPTIONS_KEYS: frozenset[str] = frozenset()
 _DEFAULT_ALLOWED_WEBHOOK_KEYS: frozenset[str] = frozenset(
     {
         "endpoint_url",
@@ -141,6 +148,34 @@ _DEFAULT_ALLOWED_WEBHOOK_KEYS: frozenset[str] = frozenset(
         "max_retries",
     }
 )
+# Inner keys permitted inside ``vdb_upload_params.vdb_kwargs``. The top-level
+# allowlist admits ``vdb_kwargs`` as one opaque key; these are the only
+# LanceDB constructor / ingest knobs clients may set in service run_mode.
+_DEFAULT_ALLOWED_VDB_KWARGS_KEYS: frozenset[str] = frozenset(
+    {
+        "lancedb_uri",
+        "uri",
+        "table_name",
+        "overwrite",
+        "index_type",
+        "metric",
+        "num_partitions",
+        "num_sub_vectors",
+        "hybrid",
+        "fts_language",
+        "vector_dim",
+        "on_bad_vectors",
+        "fill_value",
+        "validate_vector_length",
+        "build_index",
+        "create_index",
+        "nprobes",
+        "refine_factor",
+        "where",
+        "_filter",
+    }
+)
+
 _DEFAULT_ALLOWED_VDB_UPLOAD_KEYS: frozenset[str] = frozenset(
     {
         "vdb_op",
@@ -352,8 +387,10 @@ class PipelineOverridesPolicy:
         extra_dedup_keys: frozenset[str] = frozenset(),
         extra_split_keys: frozenset[str] = frozenset(),
         extra_store_keys: frozenset[str] = frozenset(),
+        extra_storage_options_keys: frozenset[str] = frozenset(),
         extra_webhook_keys: frozenset[str] = frozenset(),
         extra_vdb_upload_keys: frozenset[str] = frozenset(),
+        extra_vdb_kwargs_keys: frozenset[str] = frozenset(),
         extra_caption_keys: frozenset[str] = frozenset(),
         sinks: SinkUrlAllowlist | None = None,
         caption_enabled: bool = False,
@@ -379,8 +416,10 @@ class PipelineOverridesPolicy:
         self.allowed_dedup_keys = _DEFAULT_ALLOWED_DEDUP_KEYS | extra_dedup_keys
         self.allowed_split_keys = _DEFAULT_ALLOWED_SPLIT_KEYS | extra_split_keys
         self.allowed_store_keys = _DEFAULT_ALLOWED_STORE_KEYS | extra_store_keys
+        self.allowed_storage_options_keys = _DEFAULT_ALLOWED_STORAGE_OPTIONS_KEYS | extra_storage_options_keys
         self.allowed_webhook_keys = _DEFAULT_ALLOWED_WEBHOOK_KEYS | extra_webhook_keys
         self.allowed_vdb_upload_keys = _DEFAULT_ALLOWED_VDB_UPLOAD_KEYS | extra_vdb_upload_keys
+        self.allowed_vdb_kwargs_keys = _DEFAULT_ALLOWED_VDB_KWARGS_KEYS | extra_vdb_kwargs_keys
         self.allowed_caption_keys = _DEFAULT_ALLOWED_CAPTION_KEYS | extra_caption_keys
 
     def describe(self) -> dict[str, Any]:
@@ -393,8 +432,10 @@ class PipelineOverridesPolicy:
             "allowed_dedup_keys": sorted(self.allowed_dedup_keys),
             "allowed_split_keys": sorted(self.allowed_split_keys),
             "allowed_store_keys": sorted(self.allowed_store_keys),
+            "allowed_storage_options_keys": sorted(self.allowed_storage_options_keys),
             "allowed_webhook_keys": sorted(self.allowed_webhook_keys),
             "allowed_vdb_upload_keys": sorted(self.allowed_vdb_upload_keys),
+            "allowed_vdb_kwargs_keys": sorted(self.allowed_vdb_kwargs_keys),
             "allowed_caption_keys": sorted(self.allowed_caption_keys),
             "caption_enabled": self.caption_enabled,
             "denied_key_substrings": sorted(_DENYLIST_KEY_SUBSTRINGS),
@@ -450,6 +491,77 @@ def _scrub_trust_sensitive_except(
             status_code=403,
         )
     return params
+
+
+def _scrub_nested_trust_sensitive(
+    parent: dict[str, Any] | None,
+    nested_key: str,
+    *,
+    path: str,
+    trust_allow: set[str] | None = None,
+) -> None:
+    """Reject trust-sensitive keys inside a nested mapping (one level deep)."""
+    if parent is None:
+        return
+    nested = parent.get(nested_key)
+    if nested is None:
+        return
+    if not isinstance(nested, dict):
+        raise PolicyError(f"{path} must be a mapping", status_code=400)
+    bad = [k for k in nested if _is_trust_sensitive(k) and (trust_allow is None or k not in trust_allow)]
+    if bad:
+        raise PolicyError(
+            f"{path}: rejected trust-sensitive keys {bad!r}. "
+            "Endpoint URLs, credentials, and storage client overrides are "
+            "not accepted inside nested sink kwargs.",
+            status_code=403,
+        )
+
+
+def _enforce_storage_options_locked(
+    store_params: dict[str, Any],
+    policy: PipelineOverridesPolicy,
+) -> None:
+    """Trust denylist + inner allowlist for ``storage_options`` (always enforced)."""
+    path = "store_params.storage_options"
+    _scrub_nested_trust_sensitive(store_params, "storage_options", path=path)
+    nested = store_params.get("storage_options")
+    if not isinstance(nested, dict):
+        raise PolicyError(f"{path} must be a mapping", status_code=400)
+    extras = [k for k in nested if k not in policy.allowed_storage_options_keys]
+    if extras:
+        raise PolicyError(
+            f"{path}: keys {extras!r} are not in the allow_list. "
+            "Per-request storage client overrides are disabled by default; "
+            "ask the operator to widen pipeline_overrides.extra_storage_options_keys.",
+            status_code=403,
+        )
+
+
+def _enforce_nested_allowlist(
+    parent: dict[str, Any] | None,
+    nested_key: str,
+    *,
+    path: str,
+    allowed: frozenset[str],
+    mode: str,
+    trust_allow: set[str] | None = None,
+) -> None:
+    """Trust denylist plus inner-key allowlist (skipped when ``mode='allow_all'``)."""
+    _scrub_nested_trust_sensitive(parent, nested_key, path=path, trust_allow=trust_allow)
+    if parent is None or mode == "allow_all":
+        return
+    nested = parent.get(nested_key)
+    if not isinstance(nested, dict):
+        return
+    extras = [k for k in nested if k not in allowed]
+    if extras:
+        raise PolicyError(
+            f"{path}: keys {extras!r} are not in the allow_list. "
+            "Ask the service operator to widen pipeline_overrides.extra_vdb_kwargs_keys "
+            "or remove them from your request.",
+            status_code=403,
+        )
 
 
 def _enforce_allowlist(
@@ -560,6 +672,17 @@ def validate_pipeline_spec(
     _enforce_allowlist(spec.store_params, policy.allowed_store_keys, "store", mode=policy.mode)
     _enforce_allowlist(spec.webhook_params, policy.allowed_webhook_keys, "webhook", mode=policy.mode)
     _enforce_allowlist(spec.vdb_upload_params, policy.allowed_vdb_upload_keys, "vdb_upload", mode=policy.mode)
+    if spec.vdb_upload_params is not None:
+        _enforce_nested_allowlist(
+            spec.vdb_upload_params,
+            "vdb_kwargs",
+            path="vdb_upload_params.vdb_kwargs",
+            allowed=policy.allowed_vdb_kwargs_keys,
+            mode=policy.mode,
+            trust_allow={"lancedb_uri", "uri"},
+        )
+    if spec.store_params is not None and spec.store_params.get("storage_options") is not None:
+        _enforce_storage_options_locked(spec.store_params, policy)
     _enforce_allowlist(spec.caption_params, policy.allowed_caption_keys, "caption", mode=policy.mode)
     if spec.split_config is not None:
         for source_type, cfg in spec.split_config.items():

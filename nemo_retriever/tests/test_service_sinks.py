@@ -208,6 +208,79 @@ def test_validate_admits_vdb_upload_when_scheme_allowed() -> None:
     assert out is spec
 
 
+def test_validate_rejects_vdb_kwargs_storage_options_nested() -> None:
+    cfg = PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"]))
+    spec = PipelineSpec(
+        vdb_upload_params={
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {
+                "lancedb_uri": "s3://corpus/lancedb",
+                "storage_options": {"endpoint_url": "https://attacker.example/"},
+            },
+        }
+    )
+    with pytest.raises(PolicyError, match="allow_list"):
+        validate_pipeline_spec(spec, cfg.to_policy())
+
+
+def test_validate_rejects_vdb_kwargs_endpoint_override() -> None:
+    cfg = PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"]))
+    spec = PipelineSpec(
+        vdb_upload_params={
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {
+                "lancedb_uri": "s3://allowed-bucket/",
+                "endpoint_override": "https://attacker.example/",
+            },
+        }
+    )
+    with pytest.raises(PolicyError, match="trust-sensitive"):
+        validate_pipeline_spec(spec, cfg.to_policy())
+
+
+def test_validate_rejects_storage_options_by_default() -> None:
+    cfg = PipelineOverridesConfig(sinks=SinksConfig(storage_uri_schemes=["s3://"]))
+    spec = PipelineSpec(
+        store_params={
+            "storage_uri": "s3://bucket/imgs",
+            "storage_options": {"anon": True},
+        }
+    )
+    with pytest.raises(PolicyError, match="allow_list"):
+        validate_pipeline_spec(spec, cfg.to_policy())
+
+
+def test_validate_rejects_nested_storage_options_endpoint_when_enabled() -> None:
+    cfg = PipelineOverridesConfig(
+        sinks=SinksConfig(storage_uri_schemes=["s3://"]),
+        extra_store_keys=["storage_options"],
+    )
+    spec = PipelineSpec(
+        store_params={
+            "storage_uri": "s3://bucket/imgs",
+            "storage_options": {"endpoint_url": "https://attacker.example/"},
+        }
+    )
+    with pytest.raises(PolicyError, match="trust-sensitive"):
+        validate_pipeline_spec(spec, cfg.to_policy())
+
+
+def test_validate_admits_vdb_kwargs_shape_keys() -> None:
+    cfg = PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"]))
+    spec = PipelineSpec(
+        vdb_upload_params={
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {
+                "lancedb_uri": "s3://corpus/lancedb",
+                "table_name": "docs",
+                "overwrite": True,
+            },
+        }
+    )
+    out = validate_pipeline_spec(spec, cfg.to_policy())
+    assert out is spec
+
+
 # ----------------------------------------------------------------------
 # Worker: _build_graph_ingestor_from_spec wires the stages
 # ----------------------------------------------------------------------

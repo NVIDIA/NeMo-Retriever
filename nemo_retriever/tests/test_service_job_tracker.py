@@ -33,6 +33,7 @@ from nemo_retriever.service.services.job_tracker import (
     JobFullError,
     JobNotFoundError,
     JobTracker,
+    JobTrackerAtCapacityError,
     JobTrackerError,
 )
 
@@ -91,6 +92,26 @@ def test_register_job_rejects_duplicate_id() -> None:
     tracker.register_job("dup", expected_documents=1)
     with pytest.raises(JobTrackerError, match="already exists"):
         tracker.register_job("dup", expected_documents=2)
+
+
+def test_register_job_rejects_at_max_jobs() -> None:
+    tracker = JobTracker(max_jobs=2)
+    tracker.register_job("a", expected_documents=10)
+    tracker.register_job("b", expected_documents=10)
+    with pytest.raises(JobTrackerAtCapacityError, match="capacity"):
+        tracker.register_job("c", expected_documents=1)
+
+
+def test_stale_pending_job_evicted_to_make_room() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    tracker = JobTracker(max_jobs=1, stale_job_ttl_s=60.0)
+    tracker.register_job("old", expected_documents=5)
+    with tracker._lock:
+        tracker._jobs["old"].created_at = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    agg = tracker.register_job("new", expected_documents=1)
+    assert agg.job_id == "new"
+    assert tracker.get_job("old") is None
 
 
 # ----------------------------------------------------------------------

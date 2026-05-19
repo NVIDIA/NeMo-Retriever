@@ -200,8 +200,10 @@ class PipelineOverridesConfig(RichModel):
     extra_dedup_keys: list[str] = Field(default_factory=list)
     extra_split_keys: list[str] = Field(default_factory=list)
     extra_store_keys: list[str] = Field(default_factory=list)
+    extra_storage_options_keys: list[str] = Field(default_factory=list)
     extra_webhook_keys: list[str] = Field(default_factory=list)
     extra_vdb_upload_keys: list[str] = Field(default_factory=list)
+    extra_vdb_kwargs_keys: list[str] = Field(default_factory=list)
     extra_caption_keys: list[str] = Field(default_factory=list)
     sinks: SinksConfig = Field(default_factory=SinksConfig)
 
@@ -221,8 +223,10 @@ class PipelineOverridesConfig(RichModel):
             extra_dedup_keys=frozenset(self.extra_dedup_keys),
             extra_split_keys=frozenset(self.extra_split_keys),
             extra_store_keys=frozenset(self.extra_store_keys),
+            extra_storage_options_keys=frozenset(self.extra_storage_options_keys),
             extra_webhook_keys=frozenset(self.extra_webhook_keys),
             extra_vdb_upload_keys=frozenset(self.extra_vdb_upload_keys),
+            extra_vdb_kwargs_keys=frozenset(self.extra_vdb_kwargs_keys),
             extra_caption_keys=frozenset(self.extra_caption_keys),
             sinks=SinkUrlAllowlist(
                 storage_uri_schemes=list(self.sinks.storage_uri_schemes),
