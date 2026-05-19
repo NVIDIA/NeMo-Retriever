@@ -50,20 +50,12 @@ def test_startup_publishes_capacity_gauges():
         pool = _Pool(name="rt-cap", num_workers=3, max_queue_size=17, work_fn=None)
         pool.start()
         try:
-            assert _sample_value(
-                "nemo_retriever_pool_max_queue_size", {"pool": "rt-cap"}
-            ) == 17.0
-            assert _sample_value(
-                "nemo_retriever_pool_workers", {"pool": "rt-cap"}
-            ) == 3.0
+            assert _sample_value("nemo_retriever_pool_max_queue_size", {"pool": "rt-cap"}) == 17.0
+            assert _sample_value("nemo_retriever_pool_workers", {"pool": "rt-cap"}) == 3.0
             # Depth starts at zero — explicit set on startup so even an
             # idle pool shows a fresh sample to scrapers.
-            assert _sample_value(
-                "nemo_retriever_pool_queue_depth", {"pool": "rt-cap"}
-            ) == 0.0
-            assert _sample_value(
-                "nemo_retriever_pool_queue_depth_ratio", {"pool": "rt-cap"}
-            ) == 0.0
+            assert _sample_value("nemo_retriever_pool_queue_depth", {"pool": "rt-cap"}) == 0.0
+            assert _sample_value("nemo_retriever_pool_queue_depth_ratio", {"pool": "rt-cap"}) == 0.0
         finally:
             await pool.shutdown()
 
@@ -101,12 +93,8 @@ def test_queue_depth_ratio_reflects_live_size(monkeypatch):
             # Give the reporter at least one tick to publish.
             await asyncio.sleep(0.1)
 
-            depth = _sample_value(
-                "nemo_retriever_pool_queue_depth", {"pool": "rt-depth"}
-            )
-            ratio = _sample_value(
-                "nemo_retriever_pool_queue_depth_ratio", {"pool": "rt-depth"}
-            )
+            depth = _sample_value("nemo_retriever_pool_queue_depth", {"pool": "rt-depth"})
+            ratio = _sample_value("nemo_retriever_pool_queue_depth_ratio", {"pool": "rt-depth"})
             # 1 of 4 submits was picked up by the worker → 3 remain queued.
             # Ratio is depth / max_queue_size = 3/4 = 0.75. We allow a
             # one-slot tolerance for the worker-pickup race.
@@ -117,12 +105,8 @@ def test_queue_depth_ratio_reflects_live_size(monkeypatch):
             await pool.shutdown()
             # On shutdown the depth gauges are explicitly zeroed so a
             # terminating pod doesn't keep a stale high-water mark live.
-            assert _sample_value(
-                "nemo_retriever_pool_queue_depth", {"pool": "rt-depth"}
-            ) == 0.0
-            assert _sample_value(
-                "nemo_retriever_pool_queue_depth_ratio", {"pool": "rt-depth"}
-            ) == 0.0
+            assert _sample_value("nemo_retriever_pool_queue_depth", {"pool": "rt-depth"}) == 0.0
+            assert _sample_value("nemo_retriever_pool_queue_depth_ratio", {"pool": "rt-depth"}) == 0.0
 
     _run(body())
 
@@ -145,9 +129,7 @@ def test_processing_duration_and_outcome_counters():
                 done.set()
             return 1
 
-        pool = _Pool(
-            name="rt-obs", num_workers=2, max_queue_size=16, work_fn=work
-        )
+        pool = _Pool(name="rt-obs", num_workers=2, max_queue_size=16, work_fn=work)
         pool.start()
         try:
             for i in range(3):
@@ -185,9 +167,7 @@ def test_failed_work_increments_failed_outcome_counter():
         async def boom(_item):
             raise RuntimeError("oops")
 
-        pool = _Pool(
-            name="rt-fail", num_workers=1, max_queue_size=4, work_fn=boom
-        )
+        pool = _Pool(name="rt-fail", num_workers=1, max_queue_size=4, work_fn=boom)
         pool.start()
         try:
             for i in range(2):
@@ -201,17 +181,23 @@ def test_failed_work_increments_failed_outcome_counter():
                 if failed == 2.0:
                     break
                 await asyncio.sleep(0.02)
-            assert _sample_value(
-                "nemo_retriever_pool_processed_total",
-                {"pool": "rt-fail", "outcome": "failed"},
-            ) == 2.0
+            assert (
+                _sample_value(
+                    "nemo_retriever_pool_processed_total",
+                    {"pool": "rt-fail", "outcome": "failed"},
+                )
+                == 2.0
+            )
             # The histogram count must still rise on failed items —
             # latency observation runs in the ``finally`` block,
             # regardless of outcome.
-            assert _sample_value(
-                "nemo_retriever_pool_processing_duration_seconds_count",
-                {"pool": "rt-fail"},
-            ) == 2.0
+            assert (
+                _sample_value(
+                    "nemo_retriever_pool_processing_duration_seconds_count",
+                    {"pool": "rt-fail"},
+                )
+                == 2.0
+            )
         finally:
             await pool.shutdown()
 

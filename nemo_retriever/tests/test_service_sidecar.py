@@ -89,9 +89,7 @@ def test_store_expiry_evicts_on_read() -> None:
 
 def test_store_owner_token_scoping() -> None:
     store = SidecarStore()
-    entry = store.put(
-        filename="m.csv", content_type="text/csv", payload=b"x\n", owner_token="alice"
-    )
+    entry = store.put(filename="m.csv", content_type="text/csv", payload=b"x\n", owner_token="alice")
     assert store.get(entry.sidecar_id, owner_token="alice") is not None
     assert store.get(entry.sidecar_id, owner_token="eve") is None
     # Without a token when one was set: forbidden.
@@ -164,9 +162,7 @@ def test_materialize_no_payload_is_passthrough() -> None:
 def test_resolve_sidecar_consumes_store_entry() -> None:
     store = init_sidecar_store()
     try:
-        entry = store.put(
-            filename="meta.csv", content_type="text/csv", payload=_csv_bytes()
-        )
+        entry = store.put(filename="meta.csv", content_type="text/csv", payload=_csv_bytes())
         spec = {
             "vdb_upload_params": {
                 "vdb_op": "lancedb",
@@ -271,9 +267,7 @@ def app_with_sidecars(monkeypatch: pytest.MonkeyPatch, captured_items: list[Work
     cfg = ServiceConfig(
         mode="standalone",
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
-        pipeline_overrides=PipelineOverridesConfig(
-            sinks=SinksConfig(vdb_uri_schemes=["s3://"])
-        ),
+        pipeline_overrides=PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"])),
     )
     app = create_app(cfg)
     with TestClient(app) as client:

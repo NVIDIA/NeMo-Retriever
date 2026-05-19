@@ -190,8 +190,7 @@ class _Pool:
         except RuntimeError:
             self._reporter_task = None
             logger.debug(
-                "Pool '%s' started outside a running event loop; "
-                "skipping periodic queue-depth reporter",
+                "Pool '%s' started outside a running event loop; " "skipping periodic queue-depth reporter",
                 self._name,
             )
 

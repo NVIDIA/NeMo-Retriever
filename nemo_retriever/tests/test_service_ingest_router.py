@@ -231,9 +231,7 @@ def test_upload_to_missing_job_returns_404(app_with_stub_pool: TestClient) -> No
     assert resp.status_code == 404, resp.text
 
 
-def test_upload_beyond_capacity_returns_409(
-    app_with_stub_pool: TestClient, captured_items: list[WorkItem]
-) -> None:
+def test_upload_beyond_capacity_returns_409(app_with_stub_pool: TestClient, captured_items: list[WorkItem]) -> None:
     """The (expected_documents + 1)th upload must be rejected with 409."""
     job_id = create_test_job(app_with_stub_pool, expected_documents=1)
     first = app_with_stub_pool.post(

@@ -43,9 +43,7 @@ class EventBus:
         self._subscribers: dict[int, tuple[asyncio.Queue[dict[str, Any]], Optional[str]]] = {}
         self._counter: int = 0
 
-    def subscribe(
-        self, *, job_id: Optional[str] = None
-    ) -> tuple[int, asyncio.Queue[dict[str, Any]]]:
+    def subscribe(self, *, job_id: Optional[str] = None) -> tuple[int, asyncio.Queue[dict[str, Any]]]:
         """Create a new subscription scoped to *job_id*.
 
         ``job_id=None`` opts into the firehose — every event from
@@ -106,11 +104,7 @@ class EventBus:
 
     def subscribers_for(self, job_id: Optional[str]) -> int:
         """Count subscribers whose filter matches *job_id* (or are firehose)."""
-        return sum(
-            1
-            for _, (_q, f) in self._subscribers.items()
-            if f is None or f == job_id
-        )
+        return sum(1 for _, (_q, f) in self._subscribers.items() if f is None or f == job_id)
 
 
 # ── Module-level singleton ───────────────────────────────────────────

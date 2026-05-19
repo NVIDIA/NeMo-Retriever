@@ -21,11 +21,7 @@ import pytest
 from nemo_retriever.params import DedupParams, EmbedParams, ExtractParams
 from nemo_retriever.service.config import PipelineOverridesConfig
 from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.policy import (
-    PipelineOverridesPolicy,
-    PolicyError,
-    validate_pipeline_spec,
-)
+from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
     _merge_server_owned,

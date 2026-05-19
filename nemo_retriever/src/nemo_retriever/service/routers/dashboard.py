@@ -206,9 +206,7 @@ async def jobs_sse(request: Request) -> StreamingResponse:
                     "type": "snapshot",
                     "summary": tracker.summary(),
                     "jobs": [_serialize_job(j) for j in tracker.all_jobs()],
-                    "documents": [
-                        rec.model_dump() for rec in tracker.all_documents()
-                    ],
+                    "documents": [rec.model_dump() for rec in tracker.all_documents()],
                 }
                 yield f"event: snapshot\ndata: {json.dumps(snapshot)}\n\n"
 
@@ -224,9 +222,7 @@ async def jobs_sse(request: Request) -> StreamingResponse:
                     # distinguished by the ``type`` field set by the
                     # tracker (``job_created`` etc. vs status strings).
                     evt_type = event.get("type", "")
-                    sse_event = (
-                        "job_lifecycle" if evt_type.startswith("job_") else "job_update"
-                    )
+                    sse_event = "job_lifecycle" if evt_type.startswith("job_") else "job_update"
                     yield f"event: {sse_event}\ndata: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
                     pass

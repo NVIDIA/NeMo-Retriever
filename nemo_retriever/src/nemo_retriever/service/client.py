@@ -467,9 +467,7 @@ class RetrieverServiceClient:
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(
-                            client, fpath, job_id=job_id, pipeline_spec=pipeline_spec
-                        )
+                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
@@ -504,9 +502,7 @@ class RetrieverServiceClient:
                     await _upload_all()
                     await sse_task
             else:
-                sse_task = asyncio.create_task(
-                    self._consume_sse(client, pending, uploads_done, tracker, job_id=job_id)
-                )
+                sse_task = asyncio.create_task(self._consume_sse(client, pending, uploads_done, tracker, job_id=job_id))
                 await asyncio.sleep(0.3)
                 await _upload_all()
                 await sse_task
@@ -577,9 +573,7 @@ class RetrieverServiceClient:
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(
-                            client, fpath, job_id=job_id, pipeline_spec=pipeline_spec
-                        )
+                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)

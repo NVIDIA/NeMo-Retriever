@@ -559,9 +559,7 @@ def validate_pipeline_spec(
     _enforce_allowlist(spec.dedup_params, policy.allowed_dedup_keys, "dedup", mode=policy.mode)
     _enforce_allowlist(spec.store_params, policy.allowed_store_keys, "store", mode=policy.mode)
     _enforce_allowlist(spec.webhook_params, policy.allowed_webhook_keys, "webhook", mode=policy.mode)
-    _enforce_allowlist(
-        spec.vdb_upload_params, policy.allowed_vdb_upload_keys, "vdb_upload", mode=policy.mode
-    )
+    _enforce_allowlist(spec.vdb_upload_params, policy.allowed_vdb_upload_keys, "vdb_upload", mode=policy.mode)
     _enforce_allowlist(spec.caption_params, policy.allowed_caption_keys, "caption", mode=policy.mode)
     if spec.split_config is not None:
         for source_type, cfg in spec.split_config.items():

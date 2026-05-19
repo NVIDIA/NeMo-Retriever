@@ -203,9 +203,7 @@ def test_validate_rejects_webhook_with_disallowed_prefix() -> None:
 
 def test_validate_admits_vdb_upload_when_scheme_allowed() -> None:
     cfg = PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"]))
-    spec = PipelineSpec(
-        vdb_upload_params={"vdb_op": "lancedb", "vdb_kwargs": {"lancedb_uri": "s3://corpus/lancedb"}}
-    )
+    spec = PipelineSpec(vdb_upload_params={"vdb_op": "lancedb", "vdb_kwargs": {"lancedb_uri": "s3://corpus/lancedb"}})
     out = validate_pipeline_spec(spec, cfg.to_policy())
     assert out is spec
 
@@ -315,9 +313,7 @@ def _wait_for_captures(captured_items: list[WorkItem], count: int = 1, timeout_s
         _time.sleep(0.05)
 
 
-def test_router_accepts_store_with_allowed_scheme(
-    app_with_sinks: TestClient, captured_items: list[WorkItem]
-) -> None:
+def test_router_accepts_store_with_allowed_scheme(app_with_sinks: TestClient, captured_items: list[WorkItem]) -> None:
     from .conftest import create_test_job
 
     metadata = {

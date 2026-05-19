@@ -640,9 +640,7 @@ async def submit_document_to_job(
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_document_under_job(
-            document_id=document_id, job_id=job_id, filename=file.filename
-        )
+        _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.mark_processing(document_id)
@@ -699,9 +697,7 @@ async def submit_document_to_job(
     worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
 
     if not gw_callback_url:
-        _register_document_under_job(
-            document_id=document_id, job_id=job_id, filename=file.filename
-        )
+        _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
 
     await _enqueue_or_reject(
         route,
@@ -766,9 +762,7 @@ async def submit_page_to_job(
         content_sha256 = hashlib.sha256((await file.read()) or b"").hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_document_under_job(
-            document_id=page_id, job_id=job_id, filename=filename or file.filename
-        )
+        _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.mark_processing(page_id)
@@ -832,9 +826,7 @@ async def submit_page_to_job(
 
     if not dry_run:
         if not gw_callback_url:
-            _register_document_under_job(
-                document_id=page_id, job_id=job_id, filename=filename or file.filename
-            )
+            _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
         await _enqueue_or_reject(
             PoolType.REALTIME,
             WorkItem(
@@ -903,9 +895,7 @@ async def submit_whole_document_to_job(
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_document_under_job(
-            document_id=document_id, job_id=job_id, filename=file.filename
-        )
+        _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.mark_processing(document_id)
@@ -964,9 +954,7 @@ async def submit_whole_document_to_job(
 
     if not dry_run:
         if not gw_callback_url:
-            _register_document_under_job(
-                document_id=document_id, job_id=job_id, filename=file.filename
-            )
+            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
         await _enqueue_or_reject(
             PoolType.BATCH,
             WorkItem(
@@ -1057,9 +1045,7 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
 )
 async def ingest_sidecar(
     request: Request,
-    file: UploadFile = File(
-        ..., description="Sidecar metadata payload (csv / json / parquet)."
-    ),
+    file: UploadFile = File(..., description="Sidecar metadata payload (csv / json / parquet)."),
     ttl_s: float = Form(
         default=3600.0,
         description="Time-to-live in seconds; the sidecar auto-evicts after this window.",
@@ -1436,9 +1422,7 @@ async def ingest_job_events(request: Request, job_id: str) -> StreamingResponse:
                     )
                     break
                 try:
-                    event = await asyncio.wait_for(
-                        queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_S
-                    )
+                    event = await asyncio.wait_for(queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_S)
                     live_count += 1
                     yield f"event: {event.get('type', 'status')}\ndata: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
