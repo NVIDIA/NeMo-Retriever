@@ -91,11 +91,13 @@ You will receive a user question and a list of relevant tables.
 If no tables are relevant, explain politely and suggest rephrasing.
 Otherwise, construct an optimized SQL query to answer the question.
 
-Format your answer as:
-"The following SQL calculates <what the user asked for>:
-%%%<SQL query>%%%"
+Output (fill fields in this exact order):
+- thought: 1-2 sentence internal reasoning — your approach and key decisions.
+- sql_code: the complete SQL, no comments or delimiters.
+- response: 1-2 sentence user-facing summary of what the query does. No SQL, no reasoning or meta-commentary.
+- All fields are required.
 
-Surround SQL with %%% delimiters. Do not mention corrected errors.
+Do NOT mention corrected errors.
 Do NOT force a match if the tables are not relevant to the question."""
 
 
