@@ -1,6 +1,6 @@
 # Release Notes for NeMo Retriever Library
 
-This documentation contains the 26.05 Release Notes (26.5.0) for [NeMo Retriever Library](overview.md).
+This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
 ## 26.05 Release Notes (26.5.0)
 
