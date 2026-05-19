@@ -1,6 +1,8 @@
 # Release Notes for NeMo Retriever Library
 
-This documentation contains the  26.05 Release Notes (26.5.0) for [NeMo Retriever Library](overview.md).
+This documentation contains the 26.05 Release Notes (26.5.0) for [NeMo Retriever Library](overview.md).
+
+## 26.05 Release Notes (26.5.0)
 
 NVIDIA® NeMo Retriever Library version 26.05 builds on the 26.03 foundation with a graph-based ingest architecture, expanded multimodal and tabular capabilities, production-oriented service deployment, and documentation aligned to a Helm-first supported path.
 
