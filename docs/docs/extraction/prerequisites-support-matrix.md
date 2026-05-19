@@ -53,31 +53,20 @@ Ensure your deployment environment meets these specifications before running the
 ## Core and Advanced Pipeline Features
 
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU.
+The core pipeline models (for document type inputs) include the following:
 
-### Default Helm NIMs
+- [llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) [NIM](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2) — multimodal (VL) embedding for text and image content
+- [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) [NIM](https://docs.nvidia.com/nim/ingestion/object-detection/latest/overview.html) — detects and classifies page elements (tables, charts, infographics)
+- [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) [NIM](https://docs.nvidia.com/nim/ingestion/object-detection/latest/overview.html) — table structure extraction
+- [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) [NIM](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/overview.html) — image OCR
 
-The production Helm chart enables these NIM microservices **by default** (for example via `nimOperator.*.enabled=true`):
+Advanced features (for example, audio and video, Nemotron Parse, VLM image captioning, reranking) require additional GPU support and disk space.
+This includes the following:
 
-| Helm flag | NIM | Role |
-|-----------|-----|------|
-| `page_elements` | [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) | Page layout and element detection |
-| `table_structure` | [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) | Table structure extraction |
-| `ocr` | [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) | Image OCR |
-| `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) | Multimodal (VL) embedding |
-
-Default VL embedder container and model for release deployments:
-
-- **Image:** `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0`
-- **Model ID:** `nvidia/llama-nemotron-embed-vl-1b-v2`
-
-### Optional Helm NIMs and features (disabled by default)
-
-Enable these only when your workload needs them — the same pattern as the **VL reranker** (not deployed unless you turn on the reranker flags):
-
+- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — transcript extraction from [audio and video](audio-video.md)
+- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — higher-accuracy PDF extraction when you set `extract_method="nemotron_parse"`
+- [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) — optional image captioning when you enable the caption stage
 - [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — reranking for improved retrieval accuracy
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**)
-- [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`) — optional image captioning when you enable the caption stage (not deployed by default)
-- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — [audio and video](audio-video.md) transcription
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
