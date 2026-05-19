@@ -6,7 +6,7 @@ import os
 import json
 import logging
 
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_llm_client
+from nemo_retriever.tabular_data.retrieval.llm_invoke import get_llm_client
 
 logger = logging.getLogger(__name__)
 

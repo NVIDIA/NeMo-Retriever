@@ -4,7 +4,7 @@ Use this page for speech and audio extraction with Parakeet ASR and for video wo
 
 **Sections:** [Speech and audio (Parakeet)](#speech-and-audio-extraction) · [Run Parakeet on the cluster (Helm)](#run-parakeet-on-the-cluster-helm) · [Parakeet with hosted inference (build.nvidia.com)](#parakeet-hosted-inference-build-nvidia) · [Video and frame OCR](#video-and-frame-ocr)
 
-## Speech and audio extraction {#speech-and-audio-extraction}
+## Speech and audio extraction { #speech-and-audio-extraction }
 
 This documentation describes two ways to run [NeMo Retriever Library](overview.md) with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files:
 
@@ -18,6 +18,14 @@ Supported file types for speech extraction today:
 
 [NeMo Retriever Library](overview.md) supports extracting speech from audio for Retrieval Augmented Generation (RAG). Similar to how the multimodal document pipeline uses detection and OCR microservices, NeMo Retriever Library uses the [parakeet-1-1b-ctc-en-us ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) to transcribe speech to text, then embeddings via the NeMo Retriever embedding path.
 
+Before running audio extraction from Python with either self-hosted or hosted Parakeet, install the multimedia extra so the Parakeet ASR client can decode and resample audio:
+
+```bash
+pip install "nemo-retriever[multimedia]"
+# For local GPU inference, include both extras:
+pip install "nemo-retriever[local,multimedia]"
+```
+
 !!! important
 
     Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM must run on a [dedicated additional GPU](prerequisites-support-matrix.md#model-hardware-requirements). For the full list of requirements, refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements).
@@ -26,7 +34,7 @@ This pipeline enables retrieval at the speech segment level when you enable segm
 
 ![Overview diagram](images/audio.png)
 
-## Run Parakeet on the cluster (Helm) {#run-parakeet-on-the-cluster-helm}
+## Run Parakeet on the cluster (Helm) { #run-parakeet-on-the-cluster-helm }
 
 Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
@@ -64,7 +72,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
         For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
-## Parakeet with hosted inference (build.nvidia.com) {#parakeet-hosted-inference-build-nvidia}
+## Parakeet with hosted inference (build.nvidia.com) { #parakeet-hosted-inference-build-nvidia }
 
 Instead of running the pipeline locally, you can call Parakeet through [build.nvidia.com](https://build.nvidia.com/) hosted inference.
 
@@ -99,7 +107,7 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
         For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
-## Video and frame OCR {#video-and-frame-ocr}
+## Video and frame OCR { #video-and-frame-ocr }
 
 For video assets, NeMo Retriever Library can combine audio or speech processing (see [Speech and audio extraction](#speech-and-audio-extraction) above) with visual text extraction when OCR applies to frames or derived images.
 
@@ -109,7 +117,7 @@ Container formats and early-access video types are listed under [supported file 
 
 For end-to-end RAG stacks that include multimodal ingestion, see the [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) and related solution pages on [NVIDIA Build](https://build.nvidia.com/).
 
-## Related topics {#related-topics}
+## Related topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Troubleshoot NeMo Retriever extraction](troubleshoot.md)

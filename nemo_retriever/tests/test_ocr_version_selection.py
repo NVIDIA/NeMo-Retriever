@@ -24,8 +24,16 @@ from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.ocr import config as ocr_config
 from nemo_retriever.ocr.config import OCRLang, OCRVersion, resolve_ocr_v2_lang, resolve_ocr_v2_model_dir
 from nemo_retriever.ocr.ocr import OCRActor, resolve_ocr_archetype
-from nemo_retriever.params import EmbedParams, ExtractParams
+from nemo_retriever.params import (
+    AudioChunkParams,
+    AudioVisualFuseParams,
+    EmbedParams,
+    ExtractParams,
+    VideoFrameParams,
+    VideoFrameTextDedupParams,
+)
 from nemo_retriever.utils.ray_resource_hueristics import Resources
+from nemo_retriever.video.ocr_actor import VideoFrameOCRActor
 
 
 def _linear_nodes(graph):
@@ -159,6 +167,87 @@ def test_graph_forwards_v2_ocr_lang_selector() -> None:
 
     assert ocr_node.operator_kwargs["ocr_version"] == "v2"
     assert ocr_node.operator_kwargs["ocr_lang"] == "english"
+
+
+def test_video_graph_forwards_v2_ocr_lang_selector(monkeypatch) -> None:
+    from nemo_retriever.graph.abstract_operator import AbstractOperator
+
+    class _GraphOnlyVideoSplitActor(AbstractOperator):
+        def preprocess(self, data, **kwargs):
+            return data
+
+        def process(self, data, **kwargs):
+            return data
+
+        def postprocess(self, data, **kwargs):
+            return data
+
+    monkeypatch.setattr(
+        "nemo_retriever.graph.ingestor_runtime.VideoSplitActor",
+        _GraphOnlyVideoSplitActor,
+    )
+
+    graph = build_graph(
+        extraction_mode="video",
+        extract_params=ExtractParams(ocr_lang="english"),
+        audio_chunk_params=AudioChunkParams(enabled=False),
+        video_frame_params=VideoFrameParams(enabled=True),
+    )
+
+    ocr_node = next(node for node in _linear_nodes(graph) if node.operator_class is VideoFrameOCRActor)
+
+    assert ocr_node.operator_kwargs["ocr_version"] == "v2"
+    assert ocr_node.operator_kwargs["ocr_lang"] == "english"
+
+
+def test_video_inprocess_pipeline_forwards_v2_ocr_lang_selector(monkeypatch) -> None:
+    from nemo_retriever.graph import multi_type_extract_operator as multi_type_module
+    from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+    import pandas as pd
+
+    captured_kwargs: list[tuple[str, dict]] = []
+
+    class _FakeFrameActor:
+        def __init__(self, **_kwargs):
+            pass
+
+        def run(self, _data):
+            return pd.DataFrame(
+                {
+                    "path": ["/tmp/frame_0.png"],
+                    "source_path": ["/tmp/video.mp4"],
+                    "image_b64": ["frame"],
+                    "_content_type": ["video_frame"],
+                }
+            )
+
+    class _IdentityStage:
+        def run(self, data):
+            return data
+
+    def _fake_instantiate_resolved(self, operator_class, **operator_kwargs):
+        captured_kwargs.append((operator_class.__name__, dict(operator_kwargs)))
+        return _IdentityStage()
+
+    monkeypatch.setattr(multi_type_module, "VideoFrameActor", _FakeFrameActor)
+    monkeypatch.setattr(MultiTypeExtractCPUActor, "_instantiate_resolved", _fake_instantiate_resolved)
+
+    op = MultiTypeExtractCPUActor(
+        extraction_mode="video",
+        extract_params=ExtractParams(ocr_lang="english"),
+        audio_chunk_params=AudioChunkParams(enabled=False),
+        video_frame_params=VideoFrameParams(enabled=True, dedup=False),
+        video_text_dedup_params=VideoFrameTextDedupParams(enabled=False),
+        av_fuse_params=AudioVisualFuseParams(enabled=False),
+        split_config={},
+    )
+
+    op._run_video_pipeline(pd.DataFrame({"path": ["/tmp/video.mp4"]}))
+
+    video_ocr_kwargs = next(kwargs for name, kwargs in captured_kwargs if name == "VideoFrameOCRActor")
+
+    assert video_ocr_kwargs["ocr_version"] == "v2"
+    assert video_ocr_kwargs["ocr_lang"] == "english"
 
 
 def test_resolved_remote_ocr_stages_drop_local_selector_kwargs() -> None:

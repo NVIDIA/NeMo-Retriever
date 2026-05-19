@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
@@ -14,6 +15,8 @@ __all__ = [
     "graphic_elements_ocr_page_elements",
     "_prediction_to_detections",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 @designer_component(
@@ -30,10 +33,18 @@ class GraphicElementsActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(
-            str(kwargs.get("graphic_elements_invoke_url") or "").strip()
-            or str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip()
-        )
+        graphic_url = str(kwargs.get("graphic_elements_invoke_url") or "").strip()
+        ocr_url = str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip()
+        if bool(graphic_url) != bool(ocr_url):
+            missing = "ocr_invoke_url" if graphic_url else "graphic_elements_invoke_url"
+            configured = "graphic_elements_invoke_url" if graphic_url else "ocr_invoke_url"
+            logger.warning(
+                "GraphicElementsActor received %s without %s; GPU-capable runs will use the local model "
+                "for the missing graphic/OCR stage. Configure both URLs to force the remote CPU variant.",
+                configured,
+                missing,
+            )
+        return bool(graphic_url and ocr_url)
 
     @classmethod
     def cpu_variant_class(cls):

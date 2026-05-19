@@ -23,6 +23,33 @@ def coerce_params[T](params: T | None, model_cls: type[T], kwargs: dict[str, Any
     return params
 
 
+def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize embedding endpoint aliases in an existing kwargs dict."""
+    normalized = dict(kwargs)
+    embed_invoke_url = (
+        str(normalized.get("embed_invoke_url") or "").strip() if "embed_invoke_url" in normalized else None
+    )
+    embedding_endpoint = (
+        str(normalized.get("embedding_endpoint") or "").strip() if "embedding_endpoint" in normalized else None
+    )
+
+    if embed_invoke_url is not None:
+        if embed_invoke_url:
+            normalized["embed_invoke_url"] = embed_invoke_url
+        else:
+            normalized.pop("embed_invoke_url", None)
+
+    if embedding_endpoint is not None:
+        if embedding_endpoint:
+            normalized["embedding_endpoint"] = embedding_endpoint
+        else:
+            normalized.pop("embedding_endpoint", None)
+
+    if "embed_invoke_url" in normalized:
+        normalized.setdefault("embedding_endpoint", normalized["embed_invoke_url"])
+    return normalized
+
+
 def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> Dict[str, Any]:
     """Flatten an ``EmbedParams`` instance into a dict ready for actor/task kwargs.
 
@@ -37,10 +64,7 @@ def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> 
     if include_batch_tuning:
         kwargs.update(resolved.batch_tuning.model_dump(mode="python", exclude_none=True))
 
-    if "embedding_endpoint" not in kwargs and kwargs.get("embed_invoke_url"):
-        kwargs["embedding_endpoint"] = kwargs["embed_invoke_url"]
-
-    return kwargs
+    return normalize_embed_kwargs(kwargs)
 
 
 SPLIT_CONFIG_VALID_KEYS = frozenset({"text", "html", "pdf", "audio", "image", "video"})

@@ -7,7 +7,7 @@
 from nemo_retriever.vdb.adt_vdb import VDB
 from nemo_retriever.vdb.factory import get_vdb_op_cls
 from nemo_retriever.vdb.operators import IngestVdbOperator, RetrieveVdbOperator
-from nemo_retriever.vdb.records import normalize_retrieval_results, to_client_vdb_records
+from nemo_retriever.vdb.records import RetrievalHit, normalize_retrieval_results, to_client_vdb_records
 from nemo_retriever.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     build_sidecar_lookup,
@@ -22,6 +22,7 @@ __all__ = [
     "VDB",
     "get_vdb_op_cls",
     "IngestVdbOperator",
+    "RetrievalHit",
     "RetrieveVdbOperator",
     "normalize_retrieval_results",
     "to_client_vdb_records",

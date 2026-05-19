@@ -34,7 +34,7 @@ Set `PYTHONPATH` to the `nemo_retriever` source tree (or use an installed wheel)
 from nemo_retriever.retriever import Retriever
 
 r = Retriever(
-    vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
+    vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
     embed_kwargs={
         "local_ingest_embed_backend": "hf",
         "runtime": {"hf_cache_dir": "~/.cache/huggingface"},
@@ -52,7 +52,7 @@ import os
 from nemo_retriever.retriever import Retriever
 
 r = Retriever(
-    vdb_kwargs={"vdb_op": "lancedb", "vdb_kwargs": {"uri": "./kb", "table_name": "nv-ingest"}},
+    vdb_kwargs={"vdb_op": "lancedb", "vdb_kwargs": {"uri": "./kb", "table_name": "nemo-retriever"}},
     embed_kwargs={
         "model_name": "nvidia/llama-nemotron-embed-1b-v2",
         "embed_invoke_url": os.environ["NIM_EMBED_URL"],  # OpenAI-compatible /v1
@@ -75,7 +75,7 @@ r = Retriever(
         "embed_invoke_url": "https://integrate.api.nvidia.com/v1",
         "api_key": "...",
     },
-    vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
+    vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
 )
 ```
 
@@ -85,7 +85,7 @@ r = Retriever(
 from nemo_retriever.retriever import Retriever
 
 r = Retriever(
-    vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
+    vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
     rerank=True,
     rerank_kwargs={
         "invoke_url": "http://localhost:8015",

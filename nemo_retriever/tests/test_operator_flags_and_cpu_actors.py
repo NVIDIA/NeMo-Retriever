@@ -213,19 +213,66 @@ class TestTableStructureCPUActor:
         assert issubclass(TableStructureCPUActor, CPUOperator)
         assert not issubclass(TableStructureCPUActor, GPUOperator)
 
-    def test_uses_default_urls(self):
+    @patch("nemo_retriever.table.cpu_actor.probe_endpoint")
+    def test_uses_default_table_url_without_default_ocr_endpoint(self, mock_probe):
         from nemo_retriever.table.cpu_actor import TableStructureCPUActor
 
         actor = TableStructureCPUActor()
         assert actor._table_structure_model is None
         assert "nemotron-table-structure-v1" in actor._table_structure_invoke_url
-        assert "nemotron-ocr-v1" in actor._ocr_invoke_url
+        assert actor._ocr_invoke_url == ""
+        mock_probe.assert_called_once_with(
+            actor._table_structure_invoke_url,
+            name="table-structure",
+            prefix="TableStructureCPUActor",
+            api_key=None,
+        )
 
     def test_creates_with_custom_urls(self):
         from nemo_retriever.table.cpu_actor import TableStructureCPUActor
 
         actor = TableStructureCPUActor(table_structure_invoke_url="http://custom1")
         assert actor._table_structure_invoke_url == "http://custom1"
+
+    @patch("nemo_retriever.table.cpu_actor.probe_endpoint")
+    def test_custom_table_url_does_not_default_ocr_endpoint(self, mock_probe):
+        from nemo_retriever.table.cpu_actor import TableStructureCPUActor
+
+        actor = TableStructureCPUActor(table_structure_invoke_url="http://custom1")
+
+        assert actor._table_structure_invoke_url == "http://custom1"
+        assert actor._ocr_invoke_url == ""
+        mock_probe.assert_called_once_with(
+            "http://custom1",
+            name="table-structure",
+            prefix="TableStructureCPUActor",
+            api_key=None,
+        )
+
+    @patch("nemo_retriever.table.cpu_actor.probe_endpoint")
+    def test_explicit_ocr_url_is_probed(self, mock_probe):
+        from nemo_retriever.table.cpu_actor import TableStructureCPUActor
+
+        actor = TableStructureCPUActor(
+            table_structure_invoke_url="http://custom1",
+            ocr_invoke_url="http://custom2",
+        )
+
+        assert actor._table_structure_invoke_url == "http://custom1"
+        assert actor._ocr_invoke_url == "http://custom2"
+        assert mock_probe.call_count == 2
+        mock_probe.assert_any_call(
+            "http://custom1",
+            name="table-structure",
+            prefix="TableStructureCPUActor",
+            api_key=None,
+        )
+        mock_probe.assert_any_call(
+            "http://custom2",
+            name="ocr",
+            prefix="TableStructureCPUActor",
+            api_key=None,
+        )
 
     @patch("nemo_retriever.table.cpu_actor.table_structure_ocr_page_elements")
     def test_process(self, mock_fn):

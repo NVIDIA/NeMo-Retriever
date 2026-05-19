@@ -13,7 +13,7 @@ from rich.console import Console
 from nemo_retriever.vdb.lancedb_bulk import LanceDBConfig, write_text_embeddings_dir_to_lancedb
 
 console = Console()
-app = typer.Typer(help="Vector store stage: upload stage5 embeddings to a vector DB (LanceDB).")
+app = typer.Typer(help="VDB stage: upload stage5 embeddings to LanceDB.")
 
 
 @app.command()
@@ -33,7 +33,10 @@ def run(
     overwrite: bool = typer.Option(
         True,
         "--overwrite/--append",
-        help="Overwrite table (default) or append to existing.",
+        help=(
+            "Overwrite the table by default. Use --append to add rows without duplicate checks; "
+            "rerunning the same inputs in append mode creates duplicates."
+        ),
     ),
     create_index: bool = typer.Option(
         True,
@@ -50,9 +53,9 @@ def run(
 
     Each stored row includes:
       - `vector`: the embedding
-      - `pdf_basename`: source filename stem
-      - `page_number`: page number from `metadata.content_metadata.page_number`
-      - `path` / `source_id`: source identifiers
+      - `text`: content text
+      - `metadata`: JSON content metadata
+      - `source`: JSON source metadata
     """
     cfg = LanceDBConfig(
         uri=str(lancedb_uri),
@@ -73,7 +76,7 @@ def run(
     )
     console.print(
         f"[green]Done[/green] files={info['n_files']} processed={info['processed']} skipped={info['skipped']} "
-        f"failed={info['failed']} lancedb_uri={cfg.uri} table={cfg.table_name}"
+        f"lancedb_uri={cfg.uri} table={cfg.table_name}"
     )
 
 

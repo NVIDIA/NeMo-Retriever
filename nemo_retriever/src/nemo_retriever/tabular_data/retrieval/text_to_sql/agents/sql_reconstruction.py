@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 SQL Reconstruction Agent
 
@@ -21,14 +25,15 @@ import logging
 from typing import Dict, Any
 
 from langchain_core.messages import AIMessage
-from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     AgentState,
     get_question_for_processing,
 )
+from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.sql_from_semantic import format_tables_for_prompt
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import get_custom_analyses_ids
+from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import get_custom_analyses_ids
 
 logger = logging.getLogger(__name__)
 
@@ -93,17 +98,23 @@ class SQLReconstructionAgent(BaseAgent):
         messages = state["messages"]
         all_tables = None
 
+        # Include available table schemas so the LLM knows valid columns
+        relevant_tables = path_state.get("relevant_tables", [])
+        tables_section = ""
+        if relevant_tables:
+            tables_section = (
+                "\nAvailable tables and columns (use ONLY these):\n\n"
+                f"{format_tables_for_prompt(relevant_tables)}\n\n"
+            )
+
         # Build error prompt for reconstruction
         error_prompt = (
             "The following SQL contains an ERROR:\n\n"
             f"```sql\n{incorrect_response.sql_code}\n```\n\n"
             f"Validation failed with the following message:\n{error}\n\n"
             "Please correct the SQL. Do not return the same SQL — it is invalid.\n"
-            "Do not explain how you corrected the sql, like you were never wrong. \n"
-        )
-
-        error_prompt += (
-            "\nUse only the tables provided in the history.\n\n"
+            "Do not explain how you corrected the sql, like you were never wrong.\n"
+            f"{tables_section}"
             f"The original question was: {question}.\n"
             "You must include corrected sql in your final answer.\n"
             "Follow the rules defined in the previous messages for writing the final answer."

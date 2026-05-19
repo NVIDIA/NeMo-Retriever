@@ -775,16 +775,23 @@ def build_graph(
             table_kwargs.update(_rr)
             graphic_kwargs.update(_rr)
 
-            graph = graph >> PDFExtractionActor(**extract_kwargs) >> PageElementDetectionActor(**detect_kwargs)
+            needs_ocr = any(
+                bool(ocr_kwargs.get(key))
+                for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            )
+            page_elements_needed = extract_params.use_page_elements and (
+                (extract_params.use_table_structure and extract_params.extract_tables)
+                or (extract_params.use_graphic_elements and extract_params.extract_charts)
+                or needs_ocr
+            )
+            graph = graph >> PDFExtractionActor(**extract_kwargs)
+            if page_elements_needed:
+                graph = graph >> PageElementDetectionActor(**detect_kwargs)
             if extract_params.use_table_structure and extract_params.extract_tables:
                 graph = graph >> TableStructureActor(**table_kwargs)
             if extract_params.use_graphic_elements and extract_params.extract_charts:
                 graph = graph >> GraphicElementsActor(**graphic_kwargs)
 
-            needs_ocr = any(
-                bool(ocr_kwargs.get(key))
-                for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
-            )
             if needs_ocr:
                 ocr_archetype = resolve_ocr_archetype(extract_params)
                 logger.info(

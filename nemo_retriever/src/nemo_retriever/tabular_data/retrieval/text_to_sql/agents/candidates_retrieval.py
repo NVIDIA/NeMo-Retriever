@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Candidate Retrieval Agent
 
@@ -17,11 +21,9 @@ from nemo_retriever.tabular_data.retrieval.text_to_sql.state import (
     get_question_for_processing,
 )
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
-from nemo_retriever.tabular_data.retrieval.text_to_sql.utils import (
-    Labels,
-    clean_results,
-    extract_candidates,
-)
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
+from nemo_retriever.tabular_data.retrieval.data_access.candidates import extract_candidates
+from nemo_retriever.tabular_data.retrieval.data_access.semantic_search import clean_results
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +33,8 @@ class CandidateRetrievalAgent(BaseAgent):
     Agent that retrieves candidates from semantic search (custom analyses and columns).
 
     Retrieval Strategy:
-    - Semantic search over custom analyses and columns (graph expansion via ``expand_info``
-      happens inside ``get_candidates_information`` / ``extract_candidates``).
+    - Semantic search over custom analyses and columns (graph expansion happens
+      inside ``extract_candidates``).
     - Clean candidate list (dedupe)
 
     Output:
@@ -70,15 +72,16 @@ class CandidateRetrievalAgent(BaseAgent):
         question = get_question_for_processing(state)
 
         try:
-            # Semantic search: custom analyses + columns (see extract_candidates).
             entities = path_state.get("entities", [])
-            query_no_values = path_state.get("query_no_values", "")
+
+            connector = state.get("connector")
+            database_name = getattr(connector, "database_name", None) if connector else None
 
             extracted = extract_candidates(
                 state["retriever"],
                 entities,
-                query_no_values,
                 question,
+                database_name=database_name,
             )
 
             # Primary path: tuple (custom_analysis_candidates, column_candidates) — keep streams separate.

@@ -236,16 +236,44 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
     )
 
 
+def _detect_local_gpu_count() -> int:
+    """Best-effort local GPU count without a hard pynvml dep.
+
+    Tried in order: pynvml (rich detail when available), torch.cuda (already in
+    the core deps), then ``CUDA_VISIBLE_DEVICES`` (purely env-based, used by the
+    skill-eval harness to pin runs to a single GPU). Returns 0 only when every
+    probe fails or reports no GPUs — never raises.
+
+    Historical bug this guards against: pynvml is an optional dep; when missing,
+    GPU count came back 0, which silently flipped the rerank ArchetypeOperator
+    to its CPU variant. That variant auto-fills the build.nvidia.com endpoint,
+    so a caller asking for a local GPU reranker silently turned into a remote
+    HTTP request — and a 401 / cost spike when the call eventually failed.
+    """
+    try:
+        return int(len(_get_gpu_memory_info().gpus))
+    except Exception as exc:  # pynvml missing, NVML runtime unavailable, etc.
+        logger.debug("pynvml GPU detection failed (%s); trying torch.cuda", exc)
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return int(torch.cuda.device_count())
+    except Exception as exc:
+        logger.debug("torch.cuda GPU detection failed (%s); trying CUDA_VISIBLE_DEVICES", exc)
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is not None:
+        # ``""`` is a valid "no GPUs visible" signal; ``"0,1"`` etc means N visible.
+        ids = [tok for tok in visible.split(",") if tok.strip()]
+        return len(ids)
+    return 0
+
+
 def gather_local_resources() -> Resources:
     """Gather local CPU/GPU resources without requiring Ray."""
 
     cpu_count = int(os.cpu_count() or 0)
-    gpu_count = 0
-    try:
-        gpu_count = len(_get_gpu_memory_info().gpus)
-    except Exception as exc:  # pragma: no cover - depends on optional NVML runtime
-        logger.debug("Failed to detect local GPU resources via NVML: %s", exc)
-    return Resources(cpu_count=cpu_count, gpu_count=int(gpu_count))
+    return Resources(cpu_count=cpu_count, gpu_count=_detect_local_gpu_count())
 
 
 class RequestedPlan(BaseModel):

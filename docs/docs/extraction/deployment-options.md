@@ -14,8 +14,11 @@ Use the sections below to pick documentation and deployment options that match y
 ### I want a Kubernetes / Helm deployment
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-2. [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) — chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub
-3. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
+2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) — sources in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub
+3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in the [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) — use alongside the NeMo Retriever chart README for your release
+4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
+
+**Docker Compose (unsupported, developer-only):** [Docker Compose for local development](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a substitute for Helm or the published Library charts.
 
 ### I want examples and notebooks
 
@@ -30,9 +33,8 @@ Use the sections below to pick documentation and deployment options that match y
 ### I am tuning performance or cost
 
 1. [Evaluation and performance](evaluate-on-your-data.md)
-2. [Telemetry](telemetry.md)
-3. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
-4. [Evaluate on your data](evaluate-on-your-data.md)
+2. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
+3. [Evaluate on your data](evaluate-on-your-data.md)
 
 ## When to use NVIDIA-hosted NIMs
 
@@ -44,7 +46,7 @@ Consider hosted NIMs when:
 - Latency to NVIDIA endpoints works for your region and use case.
 - Your compliance and data policies allow document or query content in the hosted service (confirm with your security review).
 
-**See also:** [NVIDIA NIM catalog](https://build.nvidia.com/)
+**Also refer to:** [NVIDIA NIM catalog](https://build.nvidia.com/)
 
 ## When to self-host NIMs
 
@@ -61,4 +63,6 @@ Consider self-hosting when:
 **Related**
 
 - [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub)
+- [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** handoff)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
+- **Docker Compose (unsupported):** [docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — local developer tooling only

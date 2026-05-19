@@ -151,16 +151,66 @@ def _normalize_page_elements_config(raw: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in out.items() if v is not None}
 
 
-def _atomic_write_json(path: Path, obj: Any) -> None:
+_EMPTY_LEAF_VALUES: tuple[Any, ...] = (None, "", [], {}, -1)
+
+
+def _is_empty_leaf(v: Any) -> bool:
+    """Return True for values that are semantically 'no value' in pdf primitives.
+
+    Includes the literal placeholder ``-1`` used across ``content_metadata``,
+    ``text_metadata``, ``source_metadata`` (start_time/end_time, partition_id,
+    access_level, text_location coords, etc.) for "field not applicable".
+    """
+    if v is None or v == "" or v == [] or v == {}:
+        return True
+    if isinstance(v, int) and v == -1 and not isinstance(v, bool):
+        return True
+    return False
+
+
+def _strip_null_empty(obj: Any) -> Any:
+    """Recursively drop empty fields (``None`` / ``""`` / ``[]`` / ``{}`` / ``-1``)
+    from a JSON-shaped object.
+
+    Lists are filtered: empty elements drop out (including lists like
+    ``text_location=[-1, -1, -1, -1]`` that collapse to ``[]``). Dicts that
+    become empty after pruning are themselves dropped from their parent.
+    Used when emitting ``--lean-json`` page-elements sidecars: ~80% of
+    per-record fields are placeholders that inflate bytes for downstream
+    programmatic consumers (e.g. an LLM agent's ``jq`` queries).
+    """
+    if isinstance(obj, dict):
+        pruned: dict[str, Any] = {}
+        for k, v in obj.items():
+            pv = _strip_null_empty(v)
+            if not _is_empty_leaf(pv):
+                pruned[k] = pv
+        return pruned
+    if isinstance(obj, list):
+        pruned_list = [_strip_null_empty(v) for v in obj]
+        return [v for v in pruned_list if not _is_empty_leaf(v)]
+    return obj
+
+
+def _atomic_write_json(path: Path, obj: Any, *, compact: bool = False) -> None:
     """
     Atomically write JSON to disk (write temp file then replace).
+
+    Default emits indented JSON for inspection / diffability. ``compact=True``
+    drops whitespace (`separators=(",", ":")`) — useful when the sidecar is
+    consumed programmatically and bytes matter.
 
     Kept local to the PDF stage to avoid importing heavier stage utilities.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + ".tmp")
+    dump_kwargs: dict[str, Any] = {"ensure_ascii": False}
+    if compact:
+        dump_kwargs["separators"] = (",", ":")
+    else:
+        dump_kwargs["indent"] = 2
     with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=2)
+        json.dump(obj, f, **dump_kwargs)
         f.flush()
         try:
             import os
@@ -272,6 +322,7 @@ def _write_pdf_extraction_json_outputs(
     task_config: Dict[str, Any],
     elapsed_seconds: float,
     output_dir: Optional[str | Path] = None,
+    compact: bool = False,
 ) -> List[Path]:
     """
     Write one JSON per input PDF (sidecar) summarizing extracted primitives.
@@ -342,13 +393,12 @@ def _write_pdf_extraction_json_outputs(
             "model": method,
             "pdf": {"path": str(pdf_path), "source_id": source_id, "source_name": source_name},
             "task": {"method": method, "params": _to_jsonable(params)},
-            # Back-compat: keep the old key.
-            "primitives": records,
-            # New: explicitly labeled as the raw extracted_df rows.
             "extracted_df_records": records,
             "timing": {"seconds": float(elapsed_seconds)},
         }
-        _atomic_write_json(out_path, payload)
+        if compact:
+            payload = _strip_null_empty(payload)
+        _atomic_write_json(out_path, payload, compact=compact)
         out_paths.append(out_path)
 
     return out_paths
@@ -398,6 +448,7 @@ def extract_pdf_primitives_from_ledger_df(
     extractor_config: PDFExtractorSchema,
     write_json_outputs: bool = True,
     json_output_dir: Optional[str | Path] = None,
+    compact_json: bool = False,
     trace_info: Optional[Dict[str, Any]] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """Pure-Python PDF extraction (no Ray required).
@@ -436,6 +487,7 @@ def extract_pdf_primitives_from_ledger_df(
                 task_config=task_config,
                 elapsed_seconds=float(elapsed),
                 output_dir=json_output_dir,
+                compact=compact_json,
             )
             info["json_outputs"] = [str(p) for p in written]
         except Exception:
@@ -448,6 +500,16 @@ def extract_pdf_primitives_from_ledger_df(
 
 @app.command("page-elements")
 def render_page_elements(
+    input_path: Optional[Path] = typer.Argument(
+        None,
+        exists=True,
+        file_okay=True,
+        dir_okay=True,
+        help=(
+            "Path to extract. Accepts a directory (scanned recursively for *.pdf) or a single .pdf file. "
+            "If omitted, falls back to `input_dir` from --config YAML."
+        ),
+    ),
     config: Optional[Path] = typer.Option(
         None,
         "--config",
@@ -458,14 +520,6 @@ def render_page_elements(
             "Optional ingest YAML config file. If omitted, we auto-discover ./ingest-config.yaml then "
             "$HOME/.ingest-config.yaml. Explicitly passed CLI flags override YAML."
         ),
-    ),
-    input_dir: Optional[Path] = typer.Option(
-        None,
-        "--input-dir",
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        help="Directory to scan recursively for *.pdf (can be provided via --config).",
     ),
     method: str = typer.Option(
         "pdfium",
@@ -543,21 +597,35 @@ def render_page_elements(
         dir_okay=True,
         help="Optional directory to write JSON outputs into (instead of next to PDFs).",
     ),
+    compact_json: bool = typer.Option(
+        False,
+        "--compact-json/--no-compact-json",
+        help=(
+            "Emit JSON sidecars optimized for programmatic consumption: whitespace-free encoding "
+            'AND null/empty/placeholder fields (``None``/``""``/``[]``/``{}``/``-1``) recursively '
+            "stripped from each record. ~80%% of per-record fields (image/table/chart/error/debug "
+            "metadata blocks, embedding placeholders, ``text_location=[-1,-1,-1,-1]``) are empty "
+            "for text-only PDF extractions and inflate bytes that downstream consumers (e.g. an "
+            "LLM agent's ``jq`` queries) carry through context. Default off preserves the full "
+            "indented schema for stage-2 consumers and human inspection."
+        ),
+    ),
     limit: Optional[int] = typer.Option(None, "--limit", help="Optionally limit number of PDFs processed."),
 ) -> None:
     """
-    Scan `input_dir` for PDFs and run `nemo_retriever.api` PDF extraction, writing primitives JSON sidecars.
+    Run `nemo_retriever.api` PDF extraction, writing primitives JSON sidecars.
 
-    This command is intentionally "directory-first" so you can point it at a folder of PDFs
-    and get per-PDF outputs without having to build a ledger by hand.
+    INPUT_PATH accepts either a directory (scanned recursively for *.pdf) or a single .pdf file.
+    Useful for the bulk path (point at a folder, get per-PDF outputs) and for targeted single-PDF
+    extraction (e.g. the SKILL.md fallback that reads only the rank-1 PDF for a query).
     """
     # Load consolidated ingest config (section: pdf).
     cfg_raw = _normalize_page_elements_config(load_ingest_config_section(config, section="pdf"))
 
-    # Merge: YAML provides defaults; explicit CLI flags override YAML.
-    if not _argv_has_any(["--input-dir"]):
-        if "input_dir" in cfg_raw:
-            input_dir = Path(str(cfg_raw["input_dir"]))
+    # Positional INPUT_PATH wins; otherwise fall back to YAML `input_dir`.
+    input_dir = input_path
+    if input_dir is None and "input_dir" in cfg_raw:
+        input_dir = Path(str(cfg_raw["input_dir"]))
 
     if not _argv_has_any(["--method"]):
         method = str(cfg_raw.get("method", method))
@@ -605,12 +673,17 @@ def render_page_elements(
         limit = cfg_raw.get("limit", limit)
 
     if input_dir is None:
-        raise typer.BadParameter("Missing --input-dir (or set input_dir in --config YAML).")
+        raise typer.BadParameter("Missing INPUT_PATH argument (or set `input_dir` in --config YAML).")
 
-    pdfs = sorted(str(p) for p in input_dir.rglob("*.pdf"))
-    if not pdfs:
-        console.print(f"[red]No PDFs found[/red] under: {input_dir}")
-        raise typer.Exit(code=2)
+    if input_dir.is_file():
+        if input_dir.suffix.lower() != ".pdf":
+            raise typer.BadParameter(f"INPUT_PATH file must be a .pdf, got: {input_dir}")
+        pdfs = [str(input_dir)]
+    else:
+        pdfs = sorted(str(p) for p in input_dir.rglob("*.pdf"))
+        if not pdfs:
+            console.print(f"[red]No PDFs found[/red] under: {input_dir}")
+            raise typer.Exit(code=2)
 
     if limit is not None:
         pdfs = pdfs[: int(limit)]
@@ -675,6 +748,7 @@ def render_page_elements(
                 extractor_config=extractor_schema,
                 write_json_outputs=bool(write_json_outputs),
                 json_output_dir=json_output_dir,
+                compact_json=bool(compact_json),
             )
             info_last = dict(info_one or {})
 
