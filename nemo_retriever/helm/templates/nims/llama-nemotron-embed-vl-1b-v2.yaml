@@ -1,8 +1,9 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.vlm_embed.enabled true) -}}
+{{- $name := .Values.nimOperator.vlm_embed.nimServiceName -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
-  name: llama-3-2-nemoretriever-1b-vlm-embed-v1
+  name: {{ $name }}
   annotations:
     helm.sh/resource-policy: keep
 spec:
@@ -21,7 +22,7 @@ spec:
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
 metadata:
-  name: llama-3-2-nemoretriever-1b-vlm-embed-v1
+  name: {{ $name }}
 spec:
   image:
     repository: {{ .Values.nimOperator.vlm_embed.image.repository }}
@@ -32,7 +33,7 @@ spec:
   authSecret: {{ .Values.nimOperator.vlm_embed.authSecret }}
   storage:
     nimCache:
-      name: llama-3-2-nemoretriever-1b-vlm-embed-v1
+      name: {{ $name }}
   replicas: {{ .Values.nimOperator.vlm_embed.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.vlm_embed.nodeSelector | indent 4 }}

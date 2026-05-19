@@ -14,7 +14,7 @@ def test_query_empty_index_returns_422(tmp_path) -> None:
         lancedb_uri=str(tmp_path),
         table_name="test_table",
         embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
     )
     with TestClient(app) as client:
         resp = client.post("/v1/query", json={"query": "hello", "top_k": 3})

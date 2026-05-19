@@ -489,7 +489,7 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
-    embedModel: "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1"
+    embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
 
   # Optional bearer-token authentication. When apiToken is set, every
   # request must carry "Authorization: Bearer <token>".
@@ -841,14 +841,15 @@ nimOperator:
       - name: NIM_TRITON_MAX_BATCH_SIZE
         value: "32"
 
-  # Llama 3.2 NeMo Retriever multimodal (VLM) embed 1B v1. Used by the embedding
-  # stage, the vectordb query path, and multimodal ingest. NIM_TRITON_PERFORMANCE_MODE
-  # is unsupported for this model.
+  # Llama Nemotron multimodal (VL) embed 1B v2. Used by the embedding stage,
+  # the vectordb query path, and multimodal ingest.
   vlm_embed:
     enabled: true
+    # NIMService / NIMCache resource name and in-cluster Service DNS label.
+    nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
-      repository: nvcr.io/nvidia/nemo-microservices/llama-3.2-nemoretriever-1b-vlm-embed-v1
-      tag: "1.7.0"
+      repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
+      tag: "1.12.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -877,8 +878,7 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
-      # NOTE: NIM_TRITON_PERFORMANCE_MODE does not work for llama-3.2-nemoretriever-1b-vlm-embed-v1
-      # and must stay commented out (docker-compose parity: throughput mode breaks this SKU).
+      # Optional: enable if your NIM build supports throughput mode for this SKU.
       # - name: NIM_TRITON_PERFORMANCE_MODE
       #   value: throughput
 

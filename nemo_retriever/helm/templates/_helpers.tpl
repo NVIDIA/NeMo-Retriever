@@ -212,7 +212,7 @@ Mapping (key -> Service name, default invokePath):
   page_elements   -> nemotron-page-elements-v3      /v1/infer
   table_structure -> nemotron-table-structure-v1    /v1/infer
   ocr             -> nemotron-ocr-v1                /v1/infer
-  vlm_embed       -> llama-3-2-nemoretriever-1b-vlm-embed-v1  /v1/embeddings
+  vlm_embed       -> llama-nemotron-embed-vl-1b-v2  /v1/embeddings
 */}}
 
 {{/*

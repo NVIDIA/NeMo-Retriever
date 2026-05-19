@@ -62,7 +62,7 @@ nemo_retriever/helm/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
-        ├── llama-3-2-nemoretriever-1b-vlm-embed-v1.yaml  # NIMCache + NIMService
+        ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (off by default)
         ├── nemotron-nano-12b-v2-vl.yaml       # NIMCache + NIMService (off by default)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (off by default)
@@ -145,7 +145,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the four
 | `nimOperator.page_elements`   | `nemotron-page-elements-v3`   | `/v1/infer`      |
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/infer`      |
 | `nimOperator.ocr`             | `nemotron-ocr-v1`             | `/v1/infer`      |
-| `nimOperator.vlm_embed`       | `llama-3-2-nemoretriever-1b-vlm-embed-v1` | `/v1/embeddings` |
+| `nimOperator.vlm_embed`       | `llama-nemotron-embed-vl-1b-v2` | `/v1/embeddings` |
 
 Track operator reconciliation with:
 
@@ -185,6 +185,7 @@ short list of knobs you'll touch first.
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. See [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
+| `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
 
 ### NIM Operator sub-stack
 
@@ -202,6 +203,8 @@ pair gated on three conditions ALL holding:
 | `nimOperator.table_structure.enabled`  | `true`  | Table-structure detector NIM. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
+| `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
+| `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
 | `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM. |
 | `nimOperator.nemotron_nano_12b_v2_vl.enabled` | `true`  | VLM NIM. |
 | `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM. |
@@ -351,7 +354,7 @@ ingest shows the same timeout pattern.
 
 Ensure `nim_endpoints.embed_model_name` in the mounted config matches the
 VLM embed NIM SKU (`serviceConfig.vectordb.embedModel`, default
-`nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1`). A model mismatch produces
+`nvidia/llama-nemotron-embed-vl-1b-v2`). A model mismatch produces
 HTTP 404 on `/v1/embeddings`, not a timeout, but is worth ruling out when
 debugging failed ingests.
 

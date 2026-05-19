@@ -3,7 +3,7 @@
 {{- $vdb := .Values.topology.vectordb -}}
 {{- $fullname := include "nemo-retriever.fullname" . -}}
 {{- $vdbName := printf "%s-vectordb" $fullname -}}
-{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" "llama-3-2-nemoretriever-1b-vlm-embed-v1" "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
+{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" .Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

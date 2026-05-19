@@ -132,7 +132,7 @@ class VectorDbConfig(RichModel):
     enabled: bool = False
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
-    embed_model: str = "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1"
+    embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     vectordb_url: str = Field(
         default="http://nemo-retriever-vectordb:7671",
         description="URL of the vectordb service (for workers to POST embeddings to)",
