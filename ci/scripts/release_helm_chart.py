@@ -21,6 +21,13 @@ import yaml
 
 LOGO = "https://developer-blogs.nvidia.com/wp-content/uploads/2024/03/nemo-retriever-graphic.png"
 
+_NOT_FOUND_EXC = frozenset({"ResourceNotFoundException", "ChartNotFoundException"})
+_ALREADY_EXISTS_EXC = frozenset({"ResourceAlreadyExistsException", "ChartAlreadyExistsException"})
+
+
+def _exc_name(exc: BaseException) -> str:
+    return type(exc).__name__
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Release helm chart to specified org and team.")
@@ -150,19 +157,25 @@ def main() -> None:
         try:
             clt.registry.chart.update(target=target, **metadata_kwargs)
         except Exception as exc:
-            # First publish of a renamed or new chart (e.g. nemo-retriever) is not in NGC yet.
-            exc_name = type(exc).__name__
-            if exc_name not in ("ResourceNotFoundException", "ChartNotFoundException"):
+            if _exc_name(exc) not in _NOT_FOUND_EXC:
                 raise
-            print(f"Chart '{target}' not found ({exc_name}); creating registry entry ...")
+            print(f"Chart '{target}' not found ({_exc_name(exc)}); creating registry entry ...")
             clt.registry.chart.create(target=target, **metadata_kwargs)
 
         print(f"Pushing chart {target}:{v} ...")
-        clt.registry.chart.push(
-            target=f"{target}:{v}",
-            source_dir=".",
-        )
-        print(f"Successfully pushed {target}:{v}")
+        try:
+            clt.registry.chart.push(
+                target=f"{target}:{v}",
+                source_dir=".",
+            )
+            print(f"Successfully pushed {target}:{v}")
+        except Exception as exc:
+            if _exc_name(exc) not in _ALREADY_EXISTS_EXC:
+                raise
+            print(
+                f"Chart version '{v}' already exists in NGC ({_exc_name(exc)}); "
+                "skipping push. Re-run with a new version tag to publish different chart contents."
+            )
 
 
 if __name__ == "__main__":

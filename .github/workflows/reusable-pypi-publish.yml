@@ -41,14 +41,28 @@ jobs:
           ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME }}
           ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
         run: |
-          # upload-artifact strips to the common parent (nemo_retriever/dist/), so
-          # downloaded files land directly under ./dist/, not ./dist/nemo_retriever/dist/.
-          mapfile -t DIST_FILES < <(find ./dist -type f \( -name '*.whl' -o -name '*.tar.gz' \))
+          set -euo pipefail
+          shopt -s nullglob
+
+          # Legacy layout (staged by reusable-pypi-build): ./dist/nemo_retriever/dist/*
+          DIST_FILES=(./dist/nemo_retriever/dist/*.whl ./dist/nemo_retriever/dist/*.tar.gz)
+
+          # Flat layout (older upload-artifact glob uploads): ./dist/*
+          if [ "${#DIST_FILES[@]}" -eq 0 ]; then
+            DIST_FILES=(./dist/*.whl ./dist/*.tar.gz)
+          fi
+
+          # Any other nested layout
+          if [ "${#DIST_FILES[@]}" -eq 0 ]; then
+            mapfile -t DIST_FILES < <(find ./dist -type f \( -name '*.whl' -o -name '*.tar.gz' \))
+          fi
+
           if [ "${#DIST_FILES[@]}" -eq 0 ]; then
             echo "::error::No wheel or sdist files under ./dist"
-            find ./dist -type f || true
+            find ./dist -type f 2>/dev/null || true
             exit 1
           fi
+
           printf 'Publishing:\n%s\n' "${DIST_FILES[@]}"
           twine upload --verbose \
             --repository-url "$ARTIFACTORY_URL" \

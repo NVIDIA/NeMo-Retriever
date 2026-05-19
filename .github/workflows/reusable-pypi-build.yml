@@ -97,11 +97,18 @@ jobs:
           RETRIEVER_GIT_SHA=${{ github.sha }} \
           python -m build
 
+      - name: Stage wheels for publish artifact layout
+        run: |
+          # Preserve nemo_retriever/dist/ in the artifact so download-artifact + the
+          # legacy publish path ./dist/nemo_retriever/dist/* both work (upload-artifact
+          # strips the common parent when uploading bare globs).
+          mkdir -p python-wheels-artifact/nemo_retriever/dist
+          cp -v nemo_retriever/dist/*.whl nemo_retriever/dist/*.tar.gz \
+            python-wheels-artifact/nemo_retriever/dist/
+
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v5
         with:
           name: python-wheels
-          path: |
-            nemo_retriever/dist/*.whl
-            nemo_retriever/dist/*.tar.gz
+          path: python-wheels-artifact/
           retention-days: 7
