@@ -7,11 +7,6 @@
 This documentation describes how to use [NeMo Retriever Library](overview.md) 
 with the multimodal embedding model [Llama Nemotron Embed VL 1B v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2).
 
-For self-hosted Helm or Docker deployments, use the VL embedder NIM:
-
-- **Container:** `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0`
-- **Model ID:** `nvidia/llama-nemotron-embed-vl-1b-v2`
-
 The **Llama Nemotron Embed VL 1B v2** model is optimized for multimodal question-answering retrieval. 
 The model can embed documents in the form of an image, text, or a combination of image and text. 
 Documents can then be retrieved given a user query in text form. 
