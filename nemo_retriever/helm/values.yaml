@@ -3,7 +3,7 @@
 # =============================================================================
 #
 # This chart deploys the "service" run mode of nemo-retriever and, optionally,
-# the five NIM microservices it orchestrates against. See README.md for a full
+# the four NIM microservices it orchestrates against. See README.md for a full
 # walkthrough of every knob below.
 # =============================================================================
 
@@ -436,7 +436,6 @@ serviceConfig:
   # service URLs of the deployed NIMs (unless explicitly set here).
   nimEndpoints:
     pageElementsInvokeUrl: ""
-    graphicElementsInvokeUrl: ""
     tableStructureInvokeUrl: ""
     ocrInvokeUrl: ""
     embedInvokeUrl: ""
@@ -656,7 +655,7 @@ serviceMonitor:
 # =============================================================================
 # NIMs (toggleable sub-stack)
 # =============================================================================
-# When `nims.enabled` is true, the chart deploys all five NIMs as
+# When `nims.enabled` is true, the chart deploys all four NIMs as
 # Deployments + ClusterIP Services and wires their in-cluster URLs into the
 # retriever-service config. When false, the chart deploys nothing GPU-shaped
 # and uses `serviceConfig.nimEndpoints.*` (or `nimApiKey.value`) instead.
@@ -738,7 +737,7 @@ nims:
     existingSecretKey: "NGC_API_KEY"
 
   # ---------------------------------------------------------------------------
-  # The five NIMs. Each block is merged on top of `nims.defaults`. Setting
+  # The four NIMs. Each block is merged on top of `nims.defaults`. Setting
   # `enabled: false` removes that NIM entirely (and the chart will fall back
   # to `serviceConfig.nimEndpoints.*` for that endpoint, which must then be
   # populated by the operator).
@@ -750,14 +749,6 @@ nims:
       tag: "1.8.0"
       pullPolicy: IfNotPresent
     # The retriever-service config field this NIM populates.
-    invokePath: /v1/infer
-
-  graphicElements:
-    enabled: true
-    image:
-      repository: nvcr.io/nim/nvidia/nemotron-graphic-elements-v1
-      tag: "1.8.0"
-      pullPolicy: IfNotPresent
     invokePath: /v1/infer
 
   tableStructure:

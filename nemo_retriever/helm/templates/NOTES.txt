@@ -48,9 +48,6 @@ Services:
 {{- if .Values.nims.pageElements.enabled }}
    - page-elements      → http://{{ include "nemo-retriever.nim.fullname" (dict "context" . "shortName" "page-elements") }}:{{ .Values.nims.defaults.port }}
 {{- end }}
-{{- if .Values.nims.graphicElements.enabled }}
-   - graphic-elements   → http://{{ include "nemo-retriever.nim.fullname" (dict "context" . "shortName" "graphic-elements") }}:{{ .Values.nims.defaults.port }}
-{{- end }}
 {{- if .Values.nims.tableStructure.enabled }}
    - table-structure    → http://{{ include "nemo-retriever.nim.fullname" (dict "context" . "shortName" "table-structure") }}:{{ .Values.nims.defaults.port }}
 {{- end }}

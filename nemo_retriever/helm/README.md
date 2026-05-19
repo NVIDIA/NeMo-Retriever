@@ -2,8 +2,8 @@
 
 A Kubernetes Helm chart for running the **service** mode of
 [`nemo-retriever`](../README.md): a FastAPI document ingestion server that
-streams uploads through five NVIDIA NIM microservices
-(page-elements, graphic-elements, table-structure, OCR, embed) and exposes
+streams uploads through four NVIDIA NIM microservices
+(page-elements, table-structure, OCR, embed) and exposes
 result + status APIs over HTTP / SSE.
 
 **Unsupported developer path:** ad-hoc **Docker Compose** workflows (not
@@ -16,7 +16,7 @@ The chart ships two deployable layers behind feature flags:
 
 - **the service** — always on; one Deployment built from
   `nemo_retriever/Dockerfile --target service`.
-- **the five NIMs** — optional, GPU-backed Deployments wired into the
+- **the four NIMs** — optional, GPU-backed Deployments wired into the
   service config automatically when `nims.enabled=true`.
 
 > **Persistence today is SQLite on a single ReadWriteOnce PVC**, which caps
@@ -90,7 +90,6 @@ helm install retriever ./nemo_retriever/helm \
   --set imagePullSecret.create=true \
   --set imagePullSecret.password=$NGC_API_KEY \
   --set serviceConfig.nimEndpoints.pageElementsInvokeUrl=http://page-elements.svc:8000/v1/infer \
-  --set serviceConfig.nimEndpoints.graphicElementsInvokeUrl=http://graphic-elements.svc:8000/v1/infer \
   --set serviceConfig.nimEndpoints.tableStructureInvokeUrl=http://table-structure.svc:8000/v1/infer \
   --set serviceConfig.nimEndpoints.ocrInvokeUrl=http://ocr.svc:8000/v1/infer \
   --set serviceConfig.nimEndpoints.embedInvokeUrl=http://embed.svc:8000/v1/embeddings \

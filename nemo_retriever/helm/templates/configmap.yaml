@@ -10,7 +10,6 @@ generated so the retriever service can pin workers to individual NIM pods.
 */}}
 {{- $ctx := . -}}
 {{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "pageElements" "shortName" "page-elements" "configKey" "pageElementsInvokeUrl") -}}
-{{- $graphicElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "graphicElements" "shortName" "graphic-elements" "configKey" "graphicElementsInvokeUrl") -}}
 {{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "tableStructure" "shortName" "table-structure" "configKey" "tableStructureInvokeUrl") -}}
 {{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "shortName" "ocr" "configKey" "ocrInvokeUrl") -}}
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "embed" "shortName" "embed" "configKey" "embedInvokeUrl") -}}
@@ -27,7 +26,6 @@ logging:
 
 nim_endpoints:
   page_elements_invoke_url: {{ .pageElementsURL | quote }}
-  graphic_elements_invoke_url: {{ .graphicElementsURL | quote }}
   table_structure_invoke_url: {{ .tableStructureURL | quote }}
   ocr_invoke_url: {{ .ocrURL | quote }}
   embed_invoke_url: {{ .embedURL | quote }}
@@ -77,7 +75,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -105,6 +103,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "graphicElementsURL" $graphicElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

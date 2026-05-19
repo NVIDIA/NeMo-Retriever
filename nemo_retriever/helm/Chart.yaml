@@ -6,9 +6,9 @@ description: |
 
   This chart deploys the "service" run mode of nemo-retriever as a single
   scalable web endpoint that orchestrates document ingestion against
-  remote NIM endpoints (page-elements, graphic-elements, table-structure,
-  OCR, embed). The NIMs themselves are optional and may either be
-  deployed by this chart (GPU-backed) or provided as external URLs.
+  remote NIM endpoints (page-elements, table-structure, OCR, embed).
+  The NIMs themselves are optional and may either be deployed by this
+  chart (GPU-backed) or provided as external URLs.
 
   Persistence today uses SQLite on a PersistentVolumeClaim, which caps
   the service at a single replica. A future iteration will introduce a
