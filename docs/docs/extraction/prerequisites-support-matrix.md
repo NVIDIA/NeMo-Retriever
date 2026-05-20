@@ -81,7 +81,7 @@ Advanced features (for example, audio and video, Nemotron Parse, VLM image capti
 This includes the following:
 
 - [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — transcript extraction from [audio and video](audio-video.md)
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — higher-accuracy PDF extraction when you set `extract_method="nemotron_parse"`
+- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — alternate PDF extraction method when you set `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**)
 - [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) — optional image captioning when you enable the caption stage
 - [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — reranking for improved retrieval accuracy
 
