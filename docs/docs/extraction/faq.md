@@ -28,8 +28,7 @@ For more information, refer to [Extract Captions from Images](nemo-retriever-api
 ## When should I consider advanced visual parsing?
 
 For scanned documents, or documents with complex layouts, 
-we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
-Nemotron parse provides higher-accuracy text extraction. 
+you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`. 
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 ## Why are the environment variables different between library mode and self-hosted mode?

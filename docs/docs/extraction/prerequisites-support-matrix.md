@@ -64,7 +64,7 @@ Advanced features (for example, for audio/video) require additional GPU support 
 This includes the following:
 
 - [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — for transcript extraction from [audio and video](audio-video.md).
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.nvidia.com/nim/vision-language-models/latest/overview.html) — for maximally accurate table extraction.
+- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — alternate PDF extraction method when you set `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**)
 - [nemotron-nano-12b-v2-vl](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2) [NIM](https://docs.nvidia.com/nim/vision-language-models/latest/overview.html) - default model family for image captioning of unstructured images.
 - [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`) — opt-in model family for image captioning. Local BF16, FP8, and NVFP4 Hugging Face checkpoints are supported, and remote captioning uses the hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
     
