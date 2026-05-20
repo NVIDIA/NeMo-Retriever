@@ -146,9 +146,7 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
     and the call returns. We only read stderr when ``returncode != 0``.
     """
     if not is_ffmpeg_available():
-        raise RuntimeError(
-            media_dependency_error_message(f"FFmpeg operation '{label}'", required=FFMPEG_DEPENDENCIES)
-        )
+        raise RuntimeError(media_dependency_error_message(f"FFmpeg operation '{label}'", required=FFMPEG_DEPENDENCIES))
     args = ffmpeg.compile(stream)
     with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
         result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=stderr_buf)
