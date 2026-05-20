@@ -56,7 +56,6 @@ The legacy **graphic-elements** detector (`nemotron-graphic-elements-v1` / yolox
 - [What is NeMo Retriever Library?](overview.md)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
-- [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse)
 
 ## OCR and scanned documents { #ocr-and-scanned-documents }
 
