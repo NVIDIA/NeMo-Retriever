@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
@@ -53,6 +54,12 @@ from nemo_retriever.params import (
     resolve_split_params,
 )
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+from nemo_retriever.utils.input_files import (
+    PDF_DOCUMENT_INPUT_TYPES,
+    _is_explicit_glob_path,
+    expand_input_file_patterns,
+    input_type_for_path,
+)
 from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env, resolve_remote_api_key
 from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
 
@@ -62,6 +69,27 @@ _REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
 _DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
 _DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
 _ERROR_MESSAGE_LIMIT = 256
+_EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
+    "pdf": PDF_DOCUMENT_INPUT_TYPES,
+    "image": frozenset({"image"}),
+    "text": frozenset({"txt"}),
+    "html": frozenset({"html"}),
+    "audio": frozenset({"audio"}),
+    "video": frozenset({"video"}),
+}
+
+
+@dataclass(frozen=True)
+class _EffectiveExtractionInputs:
+    extraction_mode: str
+    extract_params: Any | None
+    text_params: Any | None
+    html_params: Any | None
+    audio_chunk_params: Any | None
+    asr_params: Any | None
+    video_frame_params: Any | None
+    video_text_dedup_params: Any | None
+    av_fuse_params: Any | None
 
 
 class GraphIngestionError(RuntimeError):
@@ -232,7 +260,7 @@ class GraphIngestor(ingestor):
         self._rd_dataset: Any = None
 
         # Pipeline configuration accumulated by fluent methods
-        self._extraction_mode: str = "pdf"
+        self._extraction_mode: str | None = "pdf"
         self._extract_params: Any = None
         self._text_params: Any = None
         self._html_params: Any = None
@@ -288,18 +316,42 @@ class GraphIngestor(ingestor):
         params: Optional[ExtractParams] = None,
         *,
         split_config: dict[str, Any] | None = None,
-        extraction_mode: str = "pdf",
+        extraction_mode: str | None = None,
+        text_params: Optional[TextChunkParams] = None,
+        html_params: Optional[HtmlChunkParams] = None,
+        audio_chunk_params: Optional[AudioChunkParams] = None,
+        asr_params: Optional[ASRParams] = None,
+        video_frame_params: Optional[VideoFrameParams] = None,
+        video_text_dedup_params: Optional[VideoFrameTextDedupParams] = None,
+        av_fuse_params: Optional[AudioVisualFuseParams] = None,
         **kwargs: Any,
     ) -> "GraphIngestor":
-        """Configure PDF/document extraction.
+        """Configure extraction.
 
-        Defaults to ``extraction_mode='pdf'``. Pass ``extraction_mode='auto'``
-        to dispatch a mixed folder through :class:`MultiTypeExtractOperator`.
+        By default, the effective extraction mode is inferred from the input
+        file extensions immediately before graph construction. Pass
+        ``extraction_mode='pdf'`` to force the dedicated PDF/document graph, or
+        ``extraction_mode='auto'`` to dispatch a mixed folder through
+        :class:`MultiTypeExtractOperator`.
         Chunking is opt-in: pass ``split_config={"<key>": {...}}`` to enable
         post-extract token chunking for that source type.
         """
         self._extraction_mode = extraction_mode
         self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
+        if text_params is not None:
+            self._text_params = text_params
+        if html_params is not None:
+            self._html_params = html_params
+        if audio_chunk_params is not None:
+            self._audio_chunk_params = audio_chunk_params
+        if asr_params is not None:
+            self._asr_params = asr_params
+        if video_frame_params is not None:
+            self._video_frame_params = video_frame_params
+        if video_text_dedup_params is not None:
+            self._video_text_dedup_params = video_text_dedup_params
+        if av_fuse_params is not None:
+            self._av_fuse_params = av_fuse_params
         self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
@@ -455,10 +507,15 @@ class GraphIngestor(ingestor):
         ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
         """
+        effective_extraction = self._resolve_effective_extraction_inputs()
         # Auto-enable dedup before captioning so that images overlapping
         # with table/chart/infographic detections are removed first.
         # Skip for image-only extraction — the image IS the content.
-        if self._caption_params is not None and self._dedup_params is None and self._extraction_mode != "image":
+        if (
+            self._caption_params is not None
+            and self._dedup_params is None
+            and effective_extraction.extraction_mode != "image"
+        ):
             self._dedup_params = DedupParams()
             if "dedup" not in self._stage_order:
                 # Insert dedup right before caption in the stage order.
@@ -494,15 +551,15 @@ class GraphIngestor(ingestor):
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(
-                extraction_mode=self._extraction_mode,
-                extract_params=self._extract_params,
-                text_params=self._text_params,
-                html_params=self._html_params,
-                audio_chunk_params=self._audio_chunk_params,
-                asr_params=self._asr_params,
-                video_frame_params=self._video_frame_params,
-                video_text_dedup_params=self._video_text_dedup_params,
-                av_fuse_params=self._av_fuse_params,
+                extraction_mode=effective_extraction.extraction_mode,
+                extract_params=effective_extraction.extract_params,
+                text_params=effective_extraction.text_params,
+                html_params=effective_extraction.html_params,
+                audio_chunk_params=effective_extraction.audio_chunk_params,
+                asr_params=effective_extraction.asr_params,
+                video_frame_params=effective_extraction.video_frame_params,
+                video_text_dedup_params=effective_extraction.video_text_dedup_params,
+                av_fuse_params=effective_extraction.av_fuse_params,
                 embed_params=self._embed_params,
                 split_config=self._split_config,
                 caption_params=self._caption_params,
@@ -517,13 +574,13 @@ class GraphIngestor(ingestor):
             # node_overrides passed to __init__ take precedence.
             effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
             derived_overrides = batch_tuning_to_node_overrides(
-                self._extract_params,
+                effective_extraction.extract_params,
                 self._embed_params,
                 store_params=self._store_params,
                 cluster_resources=cluster_resources,
                 allow_no_gpu=effective_allow_no_gpu,
                 caption_params=self._caption_params,
-                video_frame_params=self._video_frame_params,
+                video_frame_params=effective_extraction.video_frame_params,
             )
             merged_overrides: Dict[str, Dict[str, Any]] = {}
             for node_name in set(derived_overrides) | set(self._node_overrides):
@@ -543,15 +600,15 @@ class GraphIngestor(ingestor):
             self._rd_dataset = result
         else:
             graph = build_graph(
-                extraction_mode=self._extraction_mode,
-                extract_params=self._extract_params,
-                text_params=self._text_params,
-                html_params=self._html_params,
-                audio_chunk_params=self._audio_chunk_params,
-                asr_params=self._asr_params,
-                video_frame_params=self._video_frame_params,
-                video_text_dedup_params=self._video_text_dedup_params,
-                av_fuse_params=self._av_fuse_params,
+                extraction_mode=effective_extraction.extraction_mode,
+                extract_params=effective_extraction.extract_params,
+                text_params=effective_extraction.text_params,
+                html_params=effective_extraction.html_params,
+                audio_chunk_params=effective_extraction.audio_chunk_params,
+                asr_params=effective_extraction.asr_params,
+                video_frame_params=effective_extraction.video_frame_params,
+                video_text_dedup_params=effective_extraction.video_text_dedup_params,
+                av_fuse_params=effective_extraction.av_fuse_params,
                 embed_params=self._embed_params,
                 split_config=self._split_config,
                 caption_params=self._caption_params,
@@ -577,6 +634,113 @@ class GraphIngestor(ingestor):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _configured_input_paths(self) -> list[str]:
+        paths: list[str] = []
+        for document in self._documents:
+            try:
+                paths.extend(expand_input_file_patterns([document]))
+            except FileNotFoundError:
+                paths.append(os.fspath(document))
+        paths.extend(name for name, _ in self._buffers)
+        return paths
+
+    def _classified_input_paths(self) -> list[tuple[str, str | None]]:
+        return [(path, input_type_for_path(path)) for path in self._configured_input_paths()]
+
+    @staticmethod
+    def _input_type_examples(paths: Iterable[str], *, limit: int = 3) -> str:
+        examples = list(paths)[:limit]
+        return ", ".join(examples)
+
+    def _validate_explicit_extraction_mode_inputs(
+        self,
+        extraction_mode: str,
+        classified: list[tuple[str, str | None]],
+    ) -> None:
+        allowed_types = _EXPLICIT_MODE_INPUT_TYPES.get(extraction_mode)
+        if allowed_types is None:
+            return
+
+        mismatched = [
+            path
+            for path, input_type in classified
+            if not _is_explicit_glob_path(path) and (input_type is None or input_type not in allowed_types)
+        ]
+        if mismatched:
+            examples = self._input_type_examples(mismatched)
+            raise ValueError(f"Input file type(s) do not match extraction_mode={extraction_mode!r}: {examples}")
+
+    def _resolve_effective_extraction_inputs(self) -> _EffectiveExtractionInputs:
+        extraction_mode = self._extraction_mode
+        extract_params = self._extract_params
+        text_params = self._text_params
+        html_params = self._html_params
+        audio_chunk_params = self._audio_chunk_params
+        asr_params = self._asr_params
+        video_frame_params = self._video_frame_params
+        video_text_dedup_params = self._video_text_dedup_params
+        av_fuse_params = self._av_fuse_params
+
+        classified = self._classified_input_paths()
+        if extraction_mode is not None:
+            self._validate_explicit_extraction_mode_inputs(extraction_mode, classified)
+            return _EffectiveExtractionInputs(
+                extraction_mode=extraction_mode,
+                extract_params=extract_params,
+                text_params=text_params,
+                html_params=html_params,
+                audio_chunk_params=audio_chunk_params,
+                asr_params=asr_params,
+                video_frame_params=video_frame_params,
+                video_text_dedup_params=video_text_dedup_params,
+                av_fuse_params=av_fuse_params,
+            )
+
+        unsupported = [
+            path for path, input_type in classified if input_type is None and not _is_explicit_glob_path(path)
+        ]
+        if unsupported:
+            examples = self._input_type_examples(unsupported)
+            raise ValueError(f"Unsupported input file type(s) for default GraphIngestor.extract(): {examples}")
+
+        observed_input_types = {input_type for _, input_type in classified if input_type is not None}
+        if not observed_input_types or observed_input_types <= PDF_DOCUMENT_INPUT_TYPES:
+            extraction_mode = "pdf"
+        elif observed_input_types == {"image"}:
+            extraction_mode = "image"
+        elif observed_input_types == {"txt"}:
+            extraction_mode = "text"
+            text_params = text_params or TextChunkParams()
+        elif observed_input_types == {"html"}:
+            extraction_mode = "html"
+            html_params = html_params or HtmlChunkParams()
+        elif observed_input_types == {"audio"}:
+            extraction_mode = "audio"
+            audio_chunk_params = audio_chunk_params or AudioChunkParams()
+            asr_params = asr_params or ASRParams()
+        elif observed_input_types == {"video"}:
+            extraction_mode = "auto"
+            audio_chunk_params = audio_chunk_params or AudioChunkParams()
+            asr_params = asr_params or ASRParams()
+            video_frame_params = video_frame_params or VideoFrameParams()
+            video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
+            av_fuse_params = av_fuse_params or AudioVisualFuseParams()
+            extract_params = extract_params or ExtractParams()
+        else:
+            extraction_mode = "auto"
+
+        return _EffectiveExtractionInputs(
+            extraction_mode=extraction_mode,
+            extract_params=extract_params,
+            text_params=text_params,
+            html_params=html_params,
+            audio_chunk_params=audio_chunk_params,
+            asr_params=asr_params,
+            video_frame_params=video_frame_params,
+            video_text_dedup_params=video_text_dedup_params,
+            av_fuse_params=av_fuse_params,
+        )
 
     @staticmethod
     def _is_populated_error_field(key: str, value: Any) -> bool:
