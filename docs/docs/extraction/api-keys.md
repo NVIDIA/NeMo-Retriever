@@ -3,7 +3,7 @@
 NeMo Retriever uses different credentials depending on what you are doing:
 
 - **`NVIDIA_API_KEY`** — Authorizes HTTP calls to [NVIDIA-hosted NIMs](https://build.nvidia.com/) (for example `ai.api.nvidia.com` and `integrate.api.nvidia.com`). Obtain this key from [build.nvidia.com](https://build.nvidia.com/). Keys typically start with `nvapi-`.
-- **NGC personal key** — Used when you install the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md) so the cluster can authenticate to NGC Helm repos, pull images from `nvcr.io`, and provide `NGC_API_KEY` to in-cluster NIM workloads.
+- **NGC personal key** — Used when you install the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) so the cluster can authenticate to NGC Helm repos, pull images from `nvcr.io`, and provide `NGC_API_KEY` to in-cluster NIM workloads.
 
 You may need one or both, for example if you deploy with Helm from NGC and also call hosted inference APIs.
 
@@ -47,4 +47,4 @@ When you create an NGC key, select the following for **Services Included**.
 
 ## Using your NGC key with Helm
 
-Configure your key through the chart values and flags described in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md): for example `ngcImagePullSecret` and `ngcApiSecret` on `helm upgrade --install`, Helm repo authentication with username `$oauthtoken` and your key as the password, or equivalent pre-created Kubernetes `Secret` resources if your organization manages credentials outside the chart.
+Configure your key through the chart values described in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md): for example `imagePullSecret.create` / `imagePullSecret.password` for pulls from `nvcr.io`, `nimApiKey` (inline value or `existingSecret`) for the retriever service, and `nims.ngcApiKey` when `nims.enabled=true`. Exact paths are versioned—use the **Secrets** section in that README and [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml) as the source of truth.

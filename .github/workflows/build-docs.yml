@@ -29,7 +29,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build --target docs --build-arg GIT_COMMIT=${GITHUB_SHA} -t nv-ingest-docs:latest .
+          docker build -f Dockerfile --target docs --build-arg GIT_COMMIT=${GITHUB_SHA} -t nv-ingest-docs:latest .
 
       - name: Run the container
         run: |

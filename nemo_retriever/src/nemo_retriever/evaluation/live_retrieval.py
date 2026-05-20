@@ -43,7 +43,9 @@ class LiveRetrievalOperator(EvalOperator):
 
     Example:
         >>> from nemo_retriever.retriever import Retriever  # doctest: +SKIP
-        >>> retriever = Retriever(vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"})  # doctest: +SKIP
+        >>> retriever = Retriever(  # doctest: +SKIP
+        ...     vdb_kwargs={"vdb_op": "lancedb", "vdb_kwargs": {"uri": "./kb", "table_name": "nv-ingest"}}
+        ... )  # doctest: +SKIP
         >>> op = LiveRetrievalOperator(retriever, top_k=5)  # doctest: +SKIP
         >>> import pandas as pd  # doctest: +SKIP
         >>> df = pd.DataFrame({"query": ["What is RAG?"]})  # doctest: +SKIP

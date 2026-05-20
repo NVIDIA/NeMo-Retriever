@@ -106,6 +106,7 @@ class IngestorCreateParams(_ParamsModel):
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
     api_key: Optional[str] = None
+    error_policy: Literal["raise", "collect"] = "raise"
     # service run mode: maximum number of concurrent page uploads.  Lower
     # values (e.g. 2-4) reduce burst pressure on Kubernetes NodePort /
     # kube-proxy paths that otherwise reset connections under heavy load.
@@ -260,6 +261,7 @@ class BatchTuningParams(_ParamsModel):
     nemotron_parse_workers: Optional[int] = None
     gpu_nemotron_parse: Optional[float] = None
     nemotron_parse_batch_size: Optional[int] = None
+    store_workers: Optional[int] = None
     inference_batch_size: int = 8
 
 
@@ -286,6 +288,9 @@ class ExtractParams(_ParamsModel):
 
     # Extraction options
     method: str = "pdfium"
+    # Run PageElementDetection (layout/yolox). Required by TableStructure,
+    # GraphicElements, and OCR. Safe to disable for text-only ingests.
+    use_page_elements: bool = True
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
     use_graphic_elements: bool = False
@@ -296,6 +301,7 @@ class ExtractParams(_ParamsModel):
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
     ocr_version: Literal["v1", "v2"] = "v2"
+    ocr_lang: Optional[Literal["multi", "english"]] = None
 
     # Service endpoints
     invoke_url: Optional[str] = None
@@ -337,6 +343,16 @@ class ExtractParams(_ParamsModel):
             self.use_table_structure = True
         if self.table_output_format is None:
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
+        if self.ocr_version == "v1" and self.ocr_lang is not None:
+            raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if not self.use_page_elements:
+            consumers = [
+                ("use_table_structure", self.use_table_structure and self.extract_tables),
+                ("use_graphic_elements", self.use_graphic_elements and self.extract_charts),
+            ]
+            enabled = [name for name, on in consumers if on]
+            if enabled:
+                raise ValueError(f"use_page_elements=False is incompatible with: {', '.join(enabled)}")
         return self
 
 
@@ -366,10 +382,12 @@ class EmbedParams(_ParamsModel):
     local_ingest_embed_backend: str = (
         "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
     )
+    query_max_length: int = 128
     dimensions: Optional[int] = None
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
+    request_timeout_s: float = 600.0
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
@@ -462,6 +480,7 @@ class StoreParams(_ParamsModel):
     storage_options: dict[str, Any] = Field(default_factory=dict)
     image_format: str = "png"
     strip_base64: bool = True
+    batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
 
     @model_validator(mode="after")
     def _resolve_local_storage_uri(self) -> "StoreParams":
@@ -592,6 +611,7 @@ class CaptionParams(LLMInferenceParams):
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
     caption_infographics: bool = False
+    extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class WebhookParams(_ParamsModel):

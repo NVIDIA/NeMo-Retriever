@@ -20,6 +20,16 @@ def resolve_operator_class(
     return operator_class
 
 
+def resolve_operator_kwargs(
+    operator_class: type[AbstractOperator],
+    resolved_class: type[AbstractOperator],
+    operator_kwargs: dict | None = None,
+) -> dict:
+    if issubclass(operator_class, ArchetypeOperator):
+        return operator_class.variant_operator_kwargs(resolved_class, operator_kwargs=operator_kwargs)
+    return dict(operator_kwargs or {})
+
+
 def resolve_graph(
     graph: Graph,
     resources: ClusterResources | Resources,
@@ -36,11 +46,13 @@ def resolve_graph(
         if isinstance(operator, ArchetypeOperator):
             operator = type(operator)(**node.operator_kwargs)
 
+        resolved_class = resolve_operator_class(node.operator_class, resources, operator_kwargs=node.operator_kwargs)
+        resolved_kwargs = resolve_operator_kwargs(node.operator_class, resolved_class, node.operator_kwargs)
         cloned = Node(
             operator,
             name=node.name,
-            operator_class=resolve_operator_class(node.operator_class, resources, operator_kwargs=node.operator_kwargs),
-            operator_kwargs=dict(node.operator_kwargs),
+            operator_class=resolved_class,
+            operator_kwargs=resolved_kwargs,
         )
         visited[node_id] = cloned
         for child in node.children:

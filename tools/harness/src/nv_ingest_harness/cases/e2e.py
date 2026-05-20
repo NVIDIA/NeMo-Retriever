@@ -72,7 +72,6 @@ def main(config=None, log_path: str = "test_results") -> int:
     # Optional pipeline steps
     enable_caption = config.enable_caption
     enable_split = config.enable_split
-    enable_image_storage = config.enable_image_storage
 
     # Text splitting configuration
     split_chunk_size = config.split_chunk_size
@@ -126,8 +125,6 @@ def main(config=None, log_path: str = "test_results") -> int:
             pipeline_opts.append("caption")
     if enable_split:
         pipeline_opts.append(f"text split: {split_chunk_size}/{split_chunk_overlap}")
-    if enable_image_storage:
-        pipeline_opts.append("image storage")
 
     if pipeline_opts:
         print(f"Pipeline: {', '.join(pipeline_opts)}")
@@ -182,24 +179,6 @@ def main(config=None, log_path: str = "test_results") -> int:
 
     # Embed (must come before storage per pipeline ordering)
     ingestor = ingestor.embed(model_name=model_name)
-
-    # Store images to disk (server-side image storage) - optional
-    # Note: Supports both MinIO (s3://) and local disk (file://) via storage_uri
-    # Config comes from test_configs.yaml or falls back to server defaults from environment
-    if enable_image_storage:
-        store_kwargs = {
-            "structured": config.store_structured,
-            "images": config.store_images,
-        }
-        # Pass optional storage config if specified
-        if config.storage_uri:
-            store_kwargs["storage_uri"] = config.storage_uri
-        if config.storage_options:
-            store_kwargs["storage_options"] = config.storage_options
-        if config.public_base_url:
-            store_kwargs["public_base_url"] = config.public_base_url
-
-        ingestor = ingestor.store(**store_kwargs)
 
     # VDB upload and save results (respect vdb_backend)
     vdb_backend = config.vdb_backend
@@ -328,7 +307,6 @@ def main(config=None, log_path: str = "test_results") -> int:
             "table_output_format": table_output_format,
             "enable_caption": enable_caption,
             "enable_split": enable_split,
-            "enable_image_storage": enable_image_storage,
         },
         "results": {
             "result_count": len(results),

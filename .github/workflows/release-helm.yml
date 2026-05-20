@@ -31,7 +31,10 @@ on:
         description: 'Helm chart name'
         required: false
         type: string
-        default: 'nv-ingest'
+        default: 'nemo-retriever'
+
+env:
+  HELM_CHART_DIR: nemo_retriever/helm
 
 jobs:
   release-helm:
@@ -51,12 +54,6 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Install helm-docs
-        run: |
-          HELM_DOCS_VERSION="1.14.2"
-          curl -sSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
-            | tar xz -C /usr/local/bin helm-docs
-
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -65,21 +62,8 @@ jobs:
       - name: Install Python dependencies
         run: pip install ngcsdk pyyaml
 
-      - name: Update Helm README
-        run: helm/update_helm_readme.sh
-
-      - name: Add Helm dependency repos
-        run: |
-          helm repo add milvus https://zilliztech.github.io/milvus-helm
-          helm repo add zipkin https://zipkin.io/zipkin-helm
-          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-          helm repo update
-
-      - name: Build Helm dependencies
-        run: |
-          helm dependency update helm/
-          helm dependency build helm/
+      - name: Lint Helm chart
+        run: helm lint "${HELM_CHART_DIR}"
 
       - name: Release Helm chart
         run: |
@@ -91,14 +75,24 @@ jobs:
             --org "${{ inputs.ngc-org }}" \
             --team "${{ inputs.ngc-team }}" \
             --name "${{ inputs.chart-name }}" \
+            --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ inputs.version }}" \
             $DRY_RUN_FLAG
+
+      - name: Upload packaged chart artifact
+        if: ${{ inputs.dry-run }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: nemo-retriever-helm-chart
+          path: ${{ inputs.chart-name }}-${{ inputs.version }}.tgz
+          if-no-files-found: error
 
       - name: Summary
         run: |
           echo "### Helm Chart Release" >> $GITHUB_STEP_SUMMARY
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Chart source | \`${HELM_CHART_DIR}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Chart | \`${{ inputs.chart-name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`${{ inputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| NGC | \`${{ inputs.ngc-org }}/${{ inputs.ngc-team }}/${{ inputs.chart-name }}:${{ inputs.version }}\` |" >> $GITHUB_STEP_SUMMARY

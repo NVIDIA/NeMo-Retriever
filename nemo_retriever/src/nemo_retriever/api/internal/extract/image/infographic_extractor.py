@@ -20,6 +20,7 @@ from nemo_retriever.api.internal.schemas.extract.extract_infographic_schema impo
 from nemo_retriever.api.util.image_processing.transforms import base64_to_numpy
 from nemo_retriever.api.util.nim import create_inference_client
 from nemo_retriever.api.util.image_processing.table_and_chart import reorder_boxes
+from nemo_retriever.ocr.config import resolve_ocr_v2_model_dir
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +182,8 @@ def _local_nemotron_ocr_text_predictions(
     trace_info: Optional[Dict] = None,
 ) -> List[Tuple[str, Optional[Any], Optional[Any]]]:
     """
-    Local OCR fallback using the Nemotron OCR v1 pipeline via:
-      `nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1`
+    Local OCR fallback using the Nemotron OCR v2 pipeline via:
+      `nemo_retriever.model.local.nemotron_ocr_v2.NemotronOCRV2`
 
     Returns list of tuples aligned with base64_images:
       (base64_image, bounding_boxes_or_none, text_predictions_or_none)
@@ -192,27 +193,28 @@ def _local_nemotron_ocr_text_predictions(
     # Keep the same "skip tiny images" behavior as the NIM path.
     valid_images, valid_indices, results = _filter_infographic_images(base64_images)
 
-    model_dir = (
-        os.getenv("RETRIEVER_NEMOTRON_OCR_MODEL_DIR", "").strip()
-        or os.getenv("NEMOTRON_OCR_MODEL_DIR", "").strip()
-        or os.getenv("NEMOTRON_OCR_V1_MODEL_DIR", "").strip()
-    )
+    model_dir = resolve_ocr_v2_model_dir()
+    ocr_version = os.getenv("NEMOTRON_OCR_VERSION", "v2").strip() or "v2"
+    ocr_lang = os.getenv("NEMOTRON_OCR_LANG", "").strip() or None
 
     # Import locally to avoid import cycles / optional heavy deps unless needed.
     try:
-        from nemo_retriever.model.local.nemotron_ocr_v1 import NemotronOCRV1  # type: ignore
+        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2  # type: ignore
+        from nemo_retriever.ocr.config import resolve_ocr_v2_lang
     except Exception as e:
         raise RuntimeError(
             "Local infographic OCR fallback requires the `nemo-retriever` package to be importable "
-            "so we can use `nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1`."
+            "so we can use `nemo_retriever.model.local.nemotron_ocr_v2.NemotronOCRV2`."
         ) from e
+    lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
 
     if trace_info is not None:
         trace_info.setdefault("ocr", {})
-        trace_info["ocr"]["backend"] = "local_nemotron_ocr_v1"
+        trace_info["ocr"]["backend"] = "local_nemotron_ocr_v2"
         trace_info["ocr"]["model_dir"] = model_dir or None
+        trace_info["ocr"]["lang"] = lang
 
-    ocr = NemotronOCRV1(model_dir=model_dir) if model_dir else NemotronOCRV1()
+    ocr = NemotronOCRV2(model_dir=model_dir, lang=lang) if model_dir else NemotronOCRV2(lang=lang)
 
     for idx, b64 in enumerate(valid_images):
         original_index = valid_indices[idx]

@@ -396,7 +396,7 @@ class TestRerankHits:
     def test_raises_without_model_or_endpoint(self):
         from nemo_retriever.rerank import rerank_hits
 
-        with pytest.raises(ValueError, match="model.*invoke_url"):
+        with pytest.raises(ValueError, match="model.*rerank_invoke_url"):
             rerank_hits("q", [{"text": "doc"}])
 
     def test_custom_text_key(self):
@@ -535,24 +535,18 @@ class TestRerankViaEndpoint:
 class TestNemotronRerankActor:
     """Test the Ray Data-compatible actor."""
 
-    def test_actor_with_invoke_url_skips_local_model(self):
-        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
-
-        actor = NemotronRerankCPUActor(invoke_url="http://localhost:8000")
-        assert actor._model is None
-
-    def test_actor_with_rerank_invoke_url_alias(self):
+    def test_actor_with_rerank_invoke_url_skips_local_model(self):
         from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
 
         actor = NemotronRerankCPUActor(rerank_invoke_url="http://localhost:8000")
         assert actor._model is None
-        assert actor._kwargs.get("invoke_url") == "http://localhost:8000"
+        assert actor._kwargs.get("rerank_invoke_url") == "http://localhost:8000"
 
     def test_actor_call_scores_dataframe(self):
         import pandas as pd
         from nemo_retriever.rerank.rerank import NemotronRerankActor
 
-        actor = NemotronRerankActor(invoke_url="http://localhost:8000")
+        actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
 
         df = pd.DataFrame({"query": ["q1", "q2"], "text": ["doc A", "doc B"]})
 
@@ -573,7 +567,7 @@ class TestNemotronRerankActor:
         import pandas as pd
         from nemo_retriever.rerank.rerank import NemotronRerankActor
 
-        actor = NemotronRerankActor(invoke_url="http://localhost:8000")
+        actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
         df = pd.DataFrame({"query": ["q", "q"], "text": ["low relevance", "high relevance"]})
 
         mock_resp = MagicMock()
@@ -593,7 +587,7 @@ class TestNemotronRerankActor:
         import pandas as pd
         from nemo_retriever.rerank.rerank import NemotronRerankActor
 
-        actor = NemotronRerankActor(invoke_url="http://localhost:8000")
+        actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
         df = pd.DataFrame({"query": ["q"], "text": ["doc"]})
 
         with patch("requests.post", side_effect=RuntimeError("connection failed")):
@@ -609,7 +603,7 @@ class TestNemotronRerankActor:
         import pandas as pd
         from nemo_retriever.rerank.rerank import NemotronRerankActor
 
-        actor = NemotronRerankActor(invoke_url="http://localhost:8000", score_column="my_score")
+        actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000", score_column="my_score")
         df = pd.DataFrame({"query": ["q"], "text": ["doc"]})
 
         mock_resp = MagicMock()

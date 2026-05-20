@@ -11,17 +11,21 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from nemo_retriever.service.models.base import RichModel
+
+ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
 
 
-class ServerConfig(BaseModel):
+class ServerConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     host: str = "0.0.0.0"
     port: int = 7670
 
 
-class LoggingConfig(BaseModel):
+class LoggingConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     level: str = "INFO"
@@ -29,13 +33,7 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 
-class DatabaseConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    path: str = "retriever-service.db"
-
-
-class NimEndpointsConfig(BaseModel):
+class NimEndpointsConfig(RichModel):
     """Remote NIM microservice endpoints used instead of local GPU models."""
 
     model_config = ConfigDict(extra="forbid")
@@ -45,35 +43,48 @@ class NimEndpointsConfig(BaseModel):
     table_structure_invoke_url: str | None = None
     graphic_elements_invoke_url: str | None = None
     embed_invoke_url: str | None = None
+    embed_model_name: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote embedding endpoint. "
+            "Server-owned — clients cannot override the deployed embed NIM SKU."
+        ),
+    )
     rerank_invoke_url: str | None = None
+    caption_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote VLM endpoint that fulfills .caption(...) requests. "
+            "When set, clients may submit caption_params overrides "
+            "(prompt, system_prompt, batch_size, etc.) without being able "
+            "to redirect the endpoint or API key."
+        ),
+    )
+    caption_model_name: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote caption endpoint. "
+            "Server-owned — clients cannot override the deployed VLM SKU."
+        ),
+    )
     api_key: str | None = None
 
 
-class ProcessingConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    num_workers: int = 16
-    batch_size: int = 32
-    batch_timeout_s: float = 2.0
-    results_dir: str = "retriever_results"
-
-
-class ResourceLimitsConfig(BaseModel):
+class ResourceLimitsConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     max_memory_mb: int | None = None
     max_cpu_cores: int | None = None
     gpu_devices: list[str] = Field(default_factory=list)
+    max_upload_bytes: int = Field(
+        default=500_000_000,
+        ge=1,
+        description="Max upload file size in bytes (default 500 MB). Rejected before buffering.",
+    )
 
 
-class AuthConfig(BaseModel):
-    """Optional bearer-token authentication.
-
-    When ``api_token`` is set, every request must carry a matching
-    ``Authorization: Bearer <token>`` header (or whatever ``header_name``
-    is configured to).  Paths in ``bypass_paths`` are exempt — useful for
-    Kubernetes liveness probes hitting ``/v1/health``.
-    """
+class AuthConfig(RichModel):
+    """Optional bearer-token authentication."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -82,118 +93,176 @@ class AuthConfig(BaseModel):
     bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
 
 
-class DrainConfig(BaseModel):
-    """Graceful-shutdown tunables."""
+class GatewayConfig(RichModel):
+    """Backend service URLs used when ``mode`` is ``gateway``.
 
-    model_config = ConfigDict(extra="forbid")
-
-    timeout_s: float = 60.0
-
-
-class SpoolConfig(BaseModel):
-    """Durable spool of accepted-but-not-yet-processed page bytes.
-
-    When ``enabled`` is true, ingest writes every accepted page to disk
-    (atomic write + fsync) before returning 202.  On startup the service
-    scans the spool and re-enqueues any non-terminal documents — a pod
-    crash, OOM kill, or rolling upgrade no longer loses accepted work.
+    Defaults use Kubernetes in-cluster DNS names that match the Helm chart
+    service names generated when ``topology.mode: split``.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = True
-    # Filesystem root for spooled bytes.  Defaults to ``<db_dir>/spool``
-    # so it sits on the same persistence volume as the SQLite DB.
-    # Override to point at a faster (or larger) volume.
-    path: str | None = None
-    # How often the background sweeper unlinks files for documents that
-    # have reached a terminal state.
-    cleanup_interval_s: float = 60.0
-    # Per-cleanup batch cap so the sweeper never holds the loop hostage
-    # when a backlog builds up.
-    cleanup_batch_size: int = 1000
+    realtime_url: str = "http://nemo-retriever-realtime:7670"
+    batch_url: str = "http://nemo-retriever-batch:7670"
+    timeout_s: float = Field(default=300.0, description="Per-request forwarding timeout in seconds")
+    max_connections: int = Field(default=100, description="httpx connection pool limit per backend")
 
 
-class RerankerConfig(BaseModel):
-    """Defaults for the ``/v1/rerank`` endpoint."""
+class PipelinePoolConfig(RichModel):
+    """Worker pool sizing for realtime and batch ingestion pipelines.
 
-    model_config = ConfigDict(extra="forbid")
-
-    model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
-    default_top_n: int = 10
-
-
-class VectorStoreConfig(BaseModel):
-    """LanceDB vector store settings used by the ``/v1/query`` endpoint."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    lancedb_uri: str = "/var/lib/nemo-retriever/lancedb"
-    lancedb_table: str = "nv-ingest"
-    top_k: int = 10
-    vector_column_name: str = "vector"
-    nprobes: int = 16
-    refine_factor: int = 10
-    embedding_model: str = "nvidia/llama-nemotron-embed-1b-v2"
-
-
-class EventBusConfig(BaseModel):
-    """SSE event-bus back-pressure policy.
-
-    ``overflow_policy`` controls what happens when a subscriber queue
-    fills up faster than the SSE consumer can drain it:
-
-    - ``drop_low_priority`` (default): silently shed
-      ``page_complete`` events to preserve terminal events.  Lowest
-      latency, no caller blocking, but accepts that *some* events are
-      dropped under load.
-    - ``backpressure``: the publisher awaits ``Queue.put()`` with the
-      configured timeout, which back-pressures the worker callback
-      thread, which in turn back-pressures the worker pool, which
-      eventually 503s ingest with ``Retry-After``.  No events dropped
-      until the timeout expires; after that, falls back to overflow.
-    - ``block``: same as ``backpressure`` but waits forever.  Use only
-      when the caller can tolerate unbounded latency to guarantee
-      zero loss.
+    Workers are abstract dispatchers — the actual work function is plugged
+    in at startup.  Defaults are tuned for a CPU-only node that forwards
+    work to remote NIM endpoints over HTTP.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    overflow_policy: Literal["drop_low_priority", "backpressure", "block"] = "drop_low_priority"
-    # Per-subscription queue size.  Larger queues smooth bigger bursts
-    # before back-pressure or shedding kicks in, at the cost of memory.
-    queue_maxsize: int = 16384
-    # Per-key replay buffer size.  When a client reconnects with
-    # ``Last-Event-ID`` the server replays from this deque, so it should
-    # comfortably cover one document's full event history.
-    replay_buffer_size: int = 1024
-    # Used by ``backpressure`` mode: max time the publisher is willing
-    # to wait before falling back to the overflow path.  Ignored in
-    # ``drop_low_priority`` and ``block`` modes.
-    publish_timeout_s: float = 30.0
+    realtime_workers: int = Field(default=8, ge=1, description="Concurrent workers for low-latency page processing")
+    realtime_queue_size: int = Field(default=2048, ge=1, description="Max queued items before realtime pool rejects")
+    batch_workers: int = Field(default=16, ge=1, description="Concurrent workers for bulk document processing")
+    batch_queue_size: int = Field(default=4096, ge=1, description="Max queued items before batch pool rejects")
 
 
-class ServiceConfig(BaseModel):
+class VectorDbConfig(RichModel):
+    """Configuration for the dedicated VectorDB pod (LanceDB + query endpoint)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    lancedb_uri: str = "/data/vectordb"
+    table_name: str = "nemo_retriever"
+    embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    vectordb_url: str = Field(
+        default="http://nemo-retriever-vectordb:7671",
+        description="URL of the vectordb service (for workers to POST embeddings to)",
+    )
+
+
+class SinksConfig(RichModel):
+    """Per-sink-type egress allowlists for client-driven pipeline stages.
+
+    Each list gates one of the three sinks (image store, webhook
+    notifier, vector-DB upload). Leaving a list empty disables that
+    sink — clients that ask for it receive HTTP 403 with a message
+    explaining how to enable it.
+
+    Use ``"*"`` as a wildcard entry to bypass enforcement entirely;
+    this is intended for dev clusters only and is highly unsafe in
+    multi-tenant deployments.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    storage_uri_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URI schemes (e.g. 's3://', 'gs://', 'azure://') the worker is "
+            "allowed to write extracted images to via .store(...). "
+            "Empty disables storage sinks."
+        ),
+    )
+    webhook_url_prefixes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URL prefixes (e.g. 'https://hooks.example.com/') the worker is "
+            "allowed to POST webhook notifications to. Empty disables webhooks."
+        ),
+    )
+    vdb_uri_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URI schemes the worker is allowed to write LanceDB tables to "
+            "via .vdb_upload(...). Empty disables per-request VDB overrides "
+            "(the server's preconfigured vectordb pod still receives writes)."
+        ),
+    )
+
+
+class PipelineOverridesConfig(RichModel):
+    """How permissively to accept per-request ``PipelineSpec`` overrides.
+
+    * ``mode='reject'`` — clients may not override pipeline config at all.
+      Server-side YAML is the only source of truth.
+    * ``mode='allow_list'`` (default) — only the keys enumerated by the
+      built-in defaults plus the ``extra_*_keys`` extensions below are
+      accepted. Endpoint URLs and API keys are *always* denied.
+    * ``mode='allow_all'`` — every key is accepted **except** the
+      endpoint/api_key denylist. Useful in dev clusters but unsafe in
+      multi-tenant deployments.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["reject", "allow_list", "allow_all"] = "allow_list"
+    extra_extract_keys: list[str] = Field(default_factory=list)
+    extra_embed_keys: list[str] = Field(default_factory=list)
+    extra_dedup_keys: list[str] = Field(default_factory=list)
+    extra_split_keys: list[str] = Field(default_factory=list)
+    extra_store_keys: list[str] = Field(default_factory=list)
+    extra_storage_options_keys: list[str] = Field(default_factory=list)
+    extra_webhook_keys: list[str] = Field(default_factory=list)
+    extra_vdb_upload_keys: list[str] = Field(default_factory=list)
+    extra_vdb_kwargs_keys: list[str] = Field(default_factory=list)
+    extra_caption_keys: list[str] = Field(default_factory=list)
+    sinks: SinksConfig = Field(default_factory=SinksConfig)
+
+    def to_policy(self, *, caption_enabled: bool = False) -> "PipelineOverridesPolicy":  # noqa: F821
+        """Return a :class:`PipelineOverridesPolicy` configured from this section.
+
+        ``caption_enabled`` is derived from ``NimEndpointsConfig.caption_invoke_url``
+        by the caller — clients can only override caption settings when the
+        operator has actually wired up a VLM endpoint.
+        """
+        from nemo_retriever.service.policy import PipelineOverridesPolicy, SinkUrlAllowlist
+
+        return PipelineOverridesPolicy(
+            mode=self.mode,
+            extra_extract_keys=frozenset(self.extra_extract_keys),
+            extra_embed_keys=frozenset(self.extra_embed_keys),
+            extra_dedup_keys=frozenset(self.extra_dedup_keys),
+            extra_split_keys=frozenset(self.extra_split_keys),
+            extra_store_keys=frozenset(self.extra_store_keys),
+            extra_storage_options_keys=frozenset(self.extra_storage_options_keys),
+            extra_webhook_keys=frozenset(self.extra_webhook_keys),
+            extra_vdb_upload_keys=frozenset(self.extra_vdb_upload_keys),
+            extra_vdb_kwargs_keys=frozenset(self.extra_vdb_kwargs_keys),
+            extra_caption_keys=frozenset(self.extra_caption_keys),
+            sinks=SinkUrlAllowlist(
+                storage_uri_schemes=list(self.sinks.storage_uri_schemes),
+                webhook_url_prefixes=list(self.sinks.webhook_url_prefixes),
+                vdb_uri_schemes=list(self.sinks.vdb_uri_schemes),
+            ),
+            caption_enabled=caption_enabled,
+        )
+
+
+class ServiceConfig(RichModel):
     """Top-level configuration for the retriever service mode.
 
     Every section has sensible defaults so a zero-config launch works out of
     the box.  Values can be overridden per-field from CLI flags.
+
+    The ``mode`` field selects the runtime role:
+
+    * **standalone** — single pod runs both realtime and batch pools (default).
+    * **gateway** — thin proxy that routes uploads to backend worker pods.
+    * **realtime** — worker pod that only runs the realtime pool.
+    * **batch** — worker pod that only runs the batch pool.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
+    mode: ServiceMode = "standalone"
     server: ServerConfig = Field(default_factory=ServerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     nim_endpoints: NimEndpointsConfig = Field(default_factory=NimEndpointsConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
-    drain: DrainConfig = Field(default_factory=DrainConfig)
-    spool: SpoolConfig = Field(default_factory=SpoolConfig)
-    event_bus: EventBusConfig = Field(default_factory=EventBusConfig)
-    vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
-    reranker: RerankerConfig = Field(default_factory=RerankerConfig)
+    gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
+    vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
+    pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
 
 
 def _bundled_yaml_path() -> Path:
@@ -230,15 +299,7 @@ def load_config(
     config_path: str | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> ServiceConfig:
-    """Load a :class:`ServiceConfig` from YAML with optional CLI overrides.
-
-    Parameters
-    ----------
-    config_path
-        Explicit path to a YAML config file.  ``None`` triggers auto-discovery.
-    overrides
-        Flat ``section.key`` overrides (e.g. ``{"server.port": 9000}``).
-    """
+    """Load a :class:`ServiceConfig` from YAML with optional CLI overrides."""
     path = _discover_config_path(config_path)
     if path is not None:
         raw: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
@@ -255,4 +316,23 @@ def load_config(
                 target = target.setdefault(part, {})
             target[parts[-1]] = value
 
-    return ServiceConfig(**raw)
+    config = ServiceConfig(**raw)
+
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "password", "secret"})
+
+    from rich.console import Console
+    from rich.tree import Tree
+
+    console = Console(stderr=True)
+    tree = Tree(f"[bold]ServiceConfig[/bold]  (source: {path or 'defaults'})")
+    for section_name, section_value in config:
+        if isinstance(section_value, RichModel):
+            branch = tree.add(f"[cyan]{section_name}[/cyan]")
+            for field_name, field_value in section_value:
+                display = "****" if field_name in _REDACTED_FIELDS and field_value else repr(field_value)
+                branch.add(f"[dim]{field_name}[/dim] = [white]{display}[/white]")
+        else:
+            tree.add(f"[cyan]{section_name}[/cyan] = [white]{section_value!r}[/white]")
+    console.print(tree)
+
+    return config

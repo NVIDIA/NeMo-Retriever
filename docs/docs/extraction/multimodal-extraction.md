@@ -24,13 +24,16 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 
 ## Text and layout extraction { #text-and-layout-extraction }
 
-For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid or OCR-oriented methods. For `extract_method` options such as `pdfium`, `pdfium_hybrid`, and `ocr`, refer to the [Python API reference](nemo-retriever-api-reference.md).
+For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid, OCR-oriented, or Nemotron Parse methods. For `extract_method` options such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](nemo-retriever-api-reference.md).
+
+!!! note
+    `extract_method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse.
 
 **Related**
 
 - [What is NeMo Retriever Library?](overview.md)
 - [OCR and scanned documents](#ocr-and-scanned-documents)
-- [Chunking and splitting](chunking.md)
+- [Chunking](concepts.md#chunking)
 
 ## Tables { #tables }
 
@@ -65,6 +68,10 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 ## Image captioning { #image-captioning }
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
+
+**Captioning is optional** — it is not enabled in the default Helm deployment or core pipeline (same as Nemotron Parse and the VL reranker). Enable it in your ingest configuration (for example, the `caption` API or pipeline flag) and deploy a VLM NIM only when you need it.
+
+When you enable captioning, use [Nemotron 3 Nano Omni](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning): deploy the self-hosted NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`), a local Hugging Face checkpoint such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, or the hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. HF and NIM space requirements are in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements). Omni reasoning traces are disabled by default for captioning.
 
 **Related**
 
@@ -105,9 +112,8 @@ The following two datasets can yield the reverse ranking if you evaluate by data
 ### What drives processing cost
 
 The following factors drive processing cost.
-
-> [!IMPORTANT]
-> None of the following factors correlate with file size.
+!!! important
+    None of the following factors correlate with file size.
 
 - Content modality and tasks enabled
   - Text OCR vs. native text extraction

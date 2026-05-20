@@ -1,0 +1,119 @@
+{{- /*
+prometheus-adapter rules ConfigMap.
+
+Only rendered when:
+  • Split mode (the only mode that uses these metrics for HPA today)
+  • backend == "prometheus-adapter" (the chart-default choice)
+  • rules.create is true (operator can opt out and supply their own)
+
+The ConfigMap holds a single key, ``rules.yaml``, in the exact shape
+prometheus-adapter consumes. The operator points their existing
+adapter at this ConfigMap one of two ways:
+
+  1. Upstream prometheus-adapter chart (recommended):
+     helm upgrade prometheus-adapter prometheus-community/prometheus-adapter \
+       --namespace monitoring \
+       --reuse-values \
+       --set rules.existing={{ include "nemo-retriever.fullname" . }}-prom-adapter-rules
+
+  2. Self-managed adapter Deployment: mount this ConfigMap at
+     /etc/adapter/config.yaml.
+
+The PromQL is intentionally simple:
+
+  • queueDepthRatioMetric — gauge-divided-by-gauge, averaged by ``pool``.
+    Publisher emits the ratio directly too (``..._ratio``), but doing
+    the division here keeps the publisher dumb and lets operators swap
+    the denominator (e.g. a custom "effective capacity" gauge) without
+    redeploying the service.
+
+  • processingLatencyP95Metric — standard histogram_quantile() over
+    a configurable window (autoscaling.queueDepth.prometheusAdapter.rules.latencyWindow,
+    default 2m). 2m matches the prometheus-adapter doc's recommended
+    default for short-lived workloads.
+*/}}
+{{- if and (eq .Values.topology.mode "split") (eq (.Values.autoscaling.queueDepth.backend | default "prometheus-adapter") "prometheus-adapter") -}}
+{{- $adapterCfg := .Values.autoscaling.queueDepth.prometheusAdapter | default dict }}
+{{- $rulesCfg := $adapterCfg.rules | default dict }}
+{{- if $rulesCfg.create | default true -}}
+{{- $queueRatioMetric := $adapterCfg.queueDepthRatioMetric | default "nemo_retriever_pool_queue_depth_ratio_avg" }}
+{{- $latencyMetric := $adapterCfg.processingLatencyP95Metric | default "nemo_retriever_pool_processing_duration_p95_seconds" }}
+{{- $latencyWindow := $rulesCfg.latencyWindow | default "2m" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nemo-retriever.fullname" . }}-prom-adapter-rules
+  labels:
+    {{- include "nemo-retriever.labels" . | nindent 4 }}
+  annotations:
+    nemo-retriever.nvidia.com/purpose: |
+      prometheus-adapter rules. Wire up by setting
+      rules.existing={{ include "nemo-retriever.fullname" . }}-prom-adapter-rules
+      on the prometheus-community/prometheus-adapter chart, or by
+      mounting this ConfigMap at /etc/adapter/config.yaml on a
+      self-managed Deployment.
+data:
+  rules.yaml: |
+    # ----------------------------------------------------------------
+    # External-metric rules consumed by the HPAs rendered in
+    # templates/hpa.yaml. Each rule exposes a single name on the
+    # External Metrics API:
+    #
+    #   external.metrics.k8s.io/v1beta1/namespaces/<ns>/<metric-name>
+    #
+    # ``seriesQuery`` is what prometheus-adapter uses to *discover*
+    # the underlying timeseries; ``metricsQuery`` is the PromQL it
+    # actually evaluates when an HPA asks for a sample.
+    # ----------------------------------------------------------------
+    externalRules:
+      # ---------------------------------------------------------------
+      # Queue-depth ratio per pool, averaged across replicas.
+      #
+      # Why a ratio rather than raw depth? It normalises across
+      # `realtime_queue_size` vs `batch_queue_size` so the same HPA
+      # target ("scale up when >0.5") works for both pools and
+      # survives queue-size tuning.
+      #
+      # The publisher emits ``nemo_retriever_pool_queue_depth_ratio``
+      # *and* ``nemo_retriever_pool_queue_depth`` /
+      # ``nemo_retriever_pool_max_queue_size``. We compute the ratio
+      # here (rather than just averaging the publisher's ratio gauge)
+      # so the math lives in one place — if someone tweaks the
+      # denominator's meaning later, only the PromQL changes.
+      # ---------------------------------------------------------------
+      - seriesQuery: 'nemo_retriever_pool_queue_depth{pool!=""}'
+        resources:
+          template: <<.Resource>>
+        name:
+          matches: "^nemo_retriever_pool_queue_depth$"
+          as: "{{ $queueRatioMetric }}"
+        metricsQuery: |
+          avg by (pool) (
+            nemo_retriever_pool_queue_depth{<<.LabelMatchers>>}
+            /
+            on(pool, instance) group_left()
+            nemo_retriever_pool_max_queue_size{<<.LabelMatchers>>}
+          )
+
+      # ---------------------------------------------------------------
+      # 95th-percentile processing latency per pool.
+      #
+      # ``histogram_quantile`` requires the buckets to be summed by
+      # ``le`` before quantile extraction, otherwise prometheus-adapter
+      # leaks the pod label into the bucket dimension and returns NaN.
+      # ---------------------------------------------------------------
+      - seriesQuery: 'nemo_retriever_pool_processing_duration_seconds_bucket{pool!=""}'
+        resources:
+          template: <<.Resource>>
+        name:
+          matches: "^nemo_retriever_pool_processing_duration_seconds_bucket$"
+          as: "{{ $latencyMetric }}"
+        metricsQuery: |
+          histogram_quantile(
+            0.95,
+            sum by (le, pool) (
+              rate(nemo_retriever_pool_processing_duration_seconds_bucket{<<.LabelMatchers>>}[{{ $latencyWindow }}])
+            )
+          )
+{{- end }}
+{{- end }}

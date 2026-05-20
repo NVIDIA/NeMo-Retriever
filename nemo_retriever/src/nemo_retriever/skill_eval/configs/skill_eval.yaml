@@ -1,0 +1,92 @@
+# skill_eval run config
+#
+# This file is loaded by ``retriever skill-eval run`` when ``--config`` is not
+# passed. It carries working defaults for everything EXCEPT the dataset
+# bindings (manifest path, PDF directories), which intentionally must be
+# supplied by the user — see the README for the rationale.
+#
+# Recommended workflow:
+#   1. Copy this file next to your dataset checkout (outside the codebase):
+#        cp src/nemo_retriever/skill_eval/configs/skill_eval.yaml \
+#           ~/path/to/datasets/skill_eval.yaml
+#   2. Fill in ``eval_manifest_path`` and ``pdf_dirs`` (and ``testdata_prefixes``
+#      if your manifest hard-codes dataset paths in user-facing text).
+#   3. Run:
+#        retriever skill-eval run --config ~/path/to/datasets/skill_eval.yaml
+
+# ---------------------------------------------------------------------------
+# REQUIRED — agent-eval manifest
+# ---------------------------------------------------------------------------
+# Absolute or ~-expanded path to a JSON list. Each entry must contain:
+#   - original_query             (str)
+#   - sdg_prompt_candidates      ({candidates: [{variant_id, prompt}, ...]})
+#   - sdg_prompt_validation      ({selected_variant_id: int}, optional)
+#   - relevant_pages             ([{doc_id, page_number_in_doc, score}, ...])
+#   - answer                     (str — ground-truth answer)
+#   - domain                     (str — joins to ``pdf_dirs`` below)
+#   - prompt_taxonomy.domain_label  (str — used in the setup-turn prompt)
+# See ``dataset.py:load_eval_manifest`` for the full schema.
+#
+# Leaving this null causes the CLI to exit with a clear error.
+eval_manifest_path: null
+
+# ---------------------------------------------------------------------------
+# REQUIRED — per-domain PDF roots
+# ---------------------------------------------------------------------------
+# Keys MUST match the ``domain`` field on each manifest entry. Each value is
+# a directory holding that domain's PDFs; the runner symlinks every ``*.pdf``
+# inside into the trial workdir's ``./pdfs/``.
+#
+# Example:
+#   pdf_dirs:
+#     my_domain_a: ~/datasets/domain_a/pdfs
+#     my_domain_b: ~/datasets/domain_b/pdfs
+pdf_dirs: {}
+
+# ---------------------------------------------------------------------------
+# OPTIONAL — path-prefix rewrites for paraphrased prompts
+# ---------------------------------------------------------------------------
+# Some manifests' paraphrased prompts hard-code dataset-source paths in the
+# user-facing text (e.g. "...the PDFs at test-data/.../pdfs/"). Each prefix
+# listed here is rewritten to ``./pdfs`` before the prompt is sent to the
+# agent, so the symlink farm resolves correctly. Leave empty if your manifest
+# already uses relative paths.
+testdata_prefixes: []
+
+# ---------------------------------------------------------------------------
+# Agent model and per-trial limits
+# ---------------------------------------------------------------------------
+agent_model: claude-opus-4-7
+per_trial_budget_usd: 5.0
+per_trial_timeout_s: 600
+per_trial_workdir_root: /tmp/skill_eval
+
+# ---------------------------------------------------------------------------
+# Conditions to run, in execution order
+# ---------------------------------------------------------------------------
+# Each (condition, domain) workdir is deleted after it finishes, so only one
+# LanceDB is on disk at a time. Override on the CLI with ``--conditions``.
+conditions:
+  - c1_base               # retriever blocked → forces Read-only baseline
+  - c2_retriever          # retriever available, NL prompt, skill auto-discovery
+  - c3_retriever_skill    # retriever available, explicit /nemo-retriever slash
+
+# ---------------------------------------------------------------------------
+# Skill source override (rarely needed)
+# ---------------------------------------------------------------------------
+# Defaults to <repo>/.claude/skills/nemo-retriever when unset. Set this only
+# if you want to A/B-test an alternate skill tree.
+# skill_source_dir: /path/to/.claude/skills/nemo-retriever
+
+# ---------------------------------------------------------------------------
+# LLM-as-judge
+# ---------------------------------------------------------------------------
+# Scores each query turn's ``final_answer`` against the manifest's ``answer``
+# on a 0-5 scale. Requires the ``litellm`` extra installed AND ``api_key_env``
+# populated in the environment; otherwise skipped silently with a console
+# note. Set ``enabled: false`` to opt out explicitly.
+judge:
+  enabled: true
+  model: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1
+  api_base: https://integrate.api.nvidia.com/v1
+  api_key_env: NVIDIA_API_KEY

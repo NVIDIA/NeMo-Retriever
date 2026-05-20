@@ -27,7 +27,7 @@ class Edges:
     JOIN = "JOIN"
     UNION = "UNION"
     SQL = "SQL"
-    ANALYSIS_OF = "ANALYSIS_OF"
+    HAS_SQL = "HAS_SQL"
 
 
 class Props:
@@ -36,3 +36,4 @@ class Props:
     JOIN = "join"
     UNION = "union"
     SQL_ID = "sql_id"
+    ANALYSIS_ID = "analysis_id"

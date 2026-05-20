@@ -303,20 +303,6 @@ def _resolve_lancedb_uri(cfg: HarnessConfig, artifact_dir: Path) -> str:
     return str(p)
 
 
-def _resolve_store_uri(cfg: HarnessConfig, artifact_dir: Path) -> str | None:
-    raw = cfg.store_images_uri
-    if raw is None:
-        return None
-    # Pass URIs with a scheme (e.g. s3://, gcs://, minio://) through unchanged;
-    # pathlib.is_absolute() does not understand URI schemes.
-    if "://" in raw:
-        return raw
-    p = Path(raw).expanduser()
-    if not p.is_absolute():
-        p = (artifact_dir / p).resolve()
-    return str(p)
-
-
 def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple[list[str], Path, Path, Path | None]:
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -403,6 +389,8 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     ]
     if cfg.ocr_version:
         cmd += ["--ocr-version", cfg.ocr_version]
+    if cfg.ocr_lang:
+        cmd += ["--ocr-lang", cfg.ocr_lang]
 
     if cfg.evaluation_mode == "beir":
         beir_dataset_name = cfg.beir_dataset_name or cfg.dataset_label
@@ -425,9 +413,9 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             cmd += ["--beir-query-language", cfg.beir_query_language]
         for k in cfg.beir_ks:
             cmd += ["--beir-k", str(int(k))]
-    elif cfg.evaluation_mode == "recall":
+    elif cfg.evaluation_mode == "audio_recall":
         if cfg.input_type != "audio":
-            raise ValueError("Legacy recall evaluation is only supported for audio input")
+            raise ValueError("Audio recall evaluation is only supported for audio input")
         if cfg.recall_match_mode != "audio_segment" or cfg.recall_adapter != "none":
             raise ValueError("Audio recall evaluation requires recall_match_mode=audio_segment and recall_adapter=none")
         if not cfg.query_csv:
@@ -481,13 +469,6 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     if cfg.ray_address:
         cmd += ["--ray-address", cfg.ray_address]
 
-    resolved_store_uri = _resolve_store_uri(cfg, artifact_dir)
-    if resolved_store_uri is not None:
-        cmd += ["--store-images-uri", resolved_store_uri]
-        if cfg.store_text:
-            cmd += ["--store-text"]
-        cmd += ["--strip-base64" if cfg.strip_base64 else "--no-strip-base64"]
-
     return cmd, runtime_dir, detection_summary_file, effective_query_csv
 
 
@@ -503,7 +484,7 @@ def _evaluate_run_outcome(
         return process_rc, reason, False
     if evaluation_mode == "beir" and not (evaluation_metrics or {}):
         return 97, "missing_beir_metrics", False
-    if evaluation_mode == "recall" and recall_required and not recall_metrics:
+    if evaluation_mode == "audio_recall" and recall_required and not recall_metrics:
         return 98, "missing_recall_metrics", False
     return 0, "", True
 
@@ -737,9 +718,6 @@ def _run_single(
             "extract_infographics": cfg.extract_infographics,
             "write_detection_file": cfg.write_detection_file,
             "use_heuristics": cfg.use_heuristics,
-            "store_images_uri": _resolve_store_uri(cfg, artifact_dir),
-            "store_text": cfg.store_text,
-            "strip_base64": cfg.strip_base64,
             "lancedb_uri": _resolve_lancedb_uri(cfg, artifact_dir),
             "tuning": configured_tuning,
         },
