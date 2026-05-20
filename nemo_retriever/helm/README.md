@@ -230,9 +230,9 @@ pair gated on three conditions ALL holding:
 (there is no `nimOperator.graphic_elements` in `values.yaml`). Chart and infographic
 extraction uses the default **page_elements** and **ocr** NIMs only. Keep
 `nimOperator.page_elements.enabled` and `nimOperator.ocr.enabled` at `true` for
-standard multimodal PDF ingest. The library defaults `extract_charts` and
-`extract_infographics` to on; do not disable them unless you intentionally skip
-those content types. Override in-cluster URLs via `serviceConfig.nimEndpoints` if needed.
+standard multimodal PDF ingest. The library enables `extract_charts` and
+`extract_infographics` by default; do not disable them unless you intentionally skip
+those content types. Override in-cluster URLs through `serviceConfig.nimEndpoints` if needed.
 
 **Image captioning** — For 26.05, the supported captioning NIM is
 `nemotron_3_nano_omni_30b_a3b_reasoning`
@@ -240,6 +240,7 @@ those content types. Override in-cluster URLs via `serviceConfig.nimEndpoints` i
 `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` to `true`; set it to
 `false` if you do not deploy that NIM. When you enable the caption stage in your ingest
 configuration, point the pipeline at that NIMService.
+
 **nemotron_nano_12b_v2_vl** is deprecated for captioning in 26.05; keep
 `nimOperator.nemotron_nano_12b_v2_vl.enabled=false` on new deployments. GPU and disk
 requirements are in the published
