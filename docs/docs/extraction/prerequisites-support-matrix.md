@@ -85,7 +85,6 @@ The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled`
 
 !!! warning "Nemotron Nano 12B VL is not supported for captioning in 26.05"
 
-    **nemotron-nano-12b-v2-vl** is deprecated for captioning in this release. Use **nemotron-3-nano-omni-30b-a3b-reasoning** instead (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`).
 
 Optional features listed in the table above require additional GPU support and disk space beyond the four default NIMs.
 
