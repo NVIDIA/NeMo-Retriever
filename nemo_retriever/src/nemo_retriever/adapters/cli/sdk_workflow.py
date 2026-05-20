@@ -127,8 +127,7 @@ def _resolve_effective_input_type(
         resolved
         for document in documents
         if not any(ch in str(document) for ch in "*?[")
-        for resolved in [_input_type_for_extension(str(document))]
-        if resolved is not None
+        if (resolved := _input_type_for_extension(str(document))) is not None
     }
     if not observed:
         return "auto"
