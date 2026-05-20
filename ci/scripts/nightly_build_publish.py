@@ -135,10 +135,35 @@ def _pep440_nightly(base_version: str, suffix: str) -> str:
     return f"{base}.dev{suffix}"
 
 
+def _pep440_stable_release(version: str) -> str:
+    version = version.strip()
+    if not re.fullmatch(r"\d+(?:\.\d+)*(?:\.post\d+)?", version):
+        raise ValueError(
+            "--release-version must be a stable public version like '2.0.0' "
+            "or '2.0.0.post1' (no dev, pre-release, local, or whitespace suffixes)"
+        )
+    return version
+
+
+def _target_version(
+    old_version: str,
+    *,
+    nightly_base_version: str | None = None,
+    release_version: str | None = None,
+) -> str:
+    if release_version is not None:
+        return _pep440_stable_release(release_version)
+    return _pep440_nightly(
+        nightly_base_version or old_version,
+        _nightly_suffix(),
+    )
+
+
 def _patch_pyproject_version(
     repo_dir: Path,
     *,
     nightly_base_version: str | None = None,
+    release_version: str | None = None,
 ) -> bool:
     pyproject = repo_dir / "pyproject.toml"
     if not pyproject.exists():
@@ -151,9 +176,10 @@ def _patch_pyproject_version(
         return False
 
     old_version = m.group(1)
-    new_version = _pep440_nightly(
-        nightly_base_version or old_version,
-        _nightly_suffix(),
+    new_version = _target_version(
+        old_version,
+        nightly_base_version=nightly_base_version,
+        release_version=release_version,
     )
     if new_version == old_version:
         return False
@@ -437,6 +463,7 @@ def _patch_setup_cfg_version(
     repo_dir: Path,
     *,
     nightly_base_version: str | None = None,
+    release_version: str | None = None,
 ) -> bool:
     setup_cfg = repo_dir / "setup.cfg"
     if not setup_cfg.exists():
@@ -449,9 +476,10 @@ def _patch_setup_cfg_version(
         return False
 
     old_version = m.group(1).strip().strip('"').strip("'")
-    new_version = _pep440_nightly(
-        nightly_base_version or old_version,
-        _nightly_suffix(),
+    new_version = _target_version(
+        old_version,
+        nightly_base_version=nightly_base_version,
+        release_version=release_version,
     )
     if new_version == old_version:
         return False
@@ -724,6 +752,12 @@ def main() -> int:
         "(e.g. build 1.0.2.devYYYYMMDD from a source tree still declaring 1.0.0).",
     )
     ap.add_argument(
+        "--release-version",
+        default=None,
+        help="Patch the source project to this exact stable public version before building "
+        "(e.g. '2.0.0'). Mutually exclusive with --nightly-base-version.",
+    )
+    ap.add_argument(
         "--project-name",
         default=None,
         help="Patch the source Python project/distribution name before building "
@@ -797,6 +831,8 @@ def main() -> int:
         "Use for runtime deps like libtorch_cpu.so that should not be vendored.",
     )
     args = ap.parse_args()
+    if args.release_version is not None and args.nightly_base_version:
+        ap.error("--release-version cannot be used with --nightly-base-version")
 
     root = Path.cwd()
     work_root = root / args.work_dir
@@ -811,7 +847,8 @@ def main() -> int:
     print(f"=== Cloning {args.repo_url} -> {repo_dir} ===")
     _clone_repo(args.repo_url, repo_dir)
 
-    print("=== Attempting nightly version patch ===")
+    version_mode = "release" if args.release_version is not None else "nightly"
+    print(f"=== Attempting {version_mode} version patch ===")
     if not args.project_subdir:
         detected = _auto_project_subdir(repo_dir, args.repo_id)
         if detected:
@@ -821,9 +858,11 @@ def main() -> int:
     patched = _patch_pyproject_version(
         project_dir,
         nightly_base_version=args.nightly_base_version,
+        release_version=args.release_version,
     ) or _patch_setup_cfg_version(
         project_dir,
         nightly_base_version=args.nightly_base_version,
+        release_version=args.release_version,
     )
     if not patched:
         print("No static version field found to patch (continuing).")
