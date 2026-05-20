@@ -1,0 +1,17 @@
+/nemo-retriever query "{{ original_query }}"
+
+After running this query, use the retrieved hits to write your final result to ./output.json with EXACTLY this schema:
+
+{
+  "final_answer": "<your natural-language answer, synthesized from the retrieved hits>",
+  "ranked_retrieved": [
+    {"doc_id": "<PDF filename without .pdf>", "page_number": <0-indexed int>, "rank": 1},
+    ... up to 10 entries, in the order returned by `retriever query`
+  ]
+}
+
+Notes:
+- `doc_id` is the base filename of the source PDF without the `.pdf` extension. Example: for a file named `Foo_Report.pdf`, the doc_id is `Foo_Report`.
+- `page_number` is 0-indexed: the first page of a PDF is page 0.
+- `ranked_retrieved` should mirror the order the retriever returned (rank 1 = first hit).
+- After writing the file, simply stop. Do not print the file contents or summarize.

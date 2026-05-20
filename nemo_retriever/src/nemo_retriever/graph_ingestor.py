@@ -95,15 +95,30 @@ class _EffectiveExtractionInputs:
 class GraphIngestionError(RuntimeError):
     """Raised when graph ingestion stages report structured row-level errors."""
 
-    def __init__(self, records: list[dict[str, Any]]) -> None:
+    def __init__(self, records: list[Any]) -> None:
         self.records = records
         super().__init__(_format_stage_error_message(records))
 
 
-def _format_stage_error_message(records: list[dict[str, Any]]) -> str:
+def _normalize_stage_error_record(record: Any) -> dict[str, Any] | None:
+    """Coerce a stage-error record to the dict shape expected by formatting."""
+    if isinstance(record, str):
+        text = record.strip()
+        if not text:
+            return None
+        return {"row_index": None, "column": None, "path": "error", "error": text}
+    if not isinstance(record, dict):
+        return {"row_index": None, "column": None, "path": "error", "error": record}
+    return record
+
+
+def _format_stage_error_message(records: list[Any]) -> str:
     limit = 5
     details = []
-    for record in records[:limit]:
+    for raw in records[:limit]:
+        record = _normalize_stage_error_record(raw)
+        if record is None:
+            continue
         details.append(
             "row {row_index}, column {column}, path {path}: {summary}".format(
                 row_index=record.get("row_index"),
@@ -758,7 +773,6 @@ class GraphIngestor(ingestor):
             for i, child in enumerate(value):
                 child_path = f"{path}[{i}]" if path else f"[{i}]"
                 yield from cls._iter_stage_errors_from_value(child, path=child_path)
-            return
 
     @classmethod
     def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:

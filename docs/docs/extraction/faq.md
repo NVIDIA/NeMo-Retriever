@@ -9,16 +9,12 @@ Using the Python API, `results` is a list object with one entry.
 For code examples, refer to the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) 
 and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb).
 
-
-
 ## Where does NeMo Retriever Library ingest to?
 
 NeMo Retriever Library supports extracting text representations of various forms of content,
 and ingesting to a vector database. **[LanceDB](https://lancedb.com/)** stores vectors as local Lance files on disk for the supported ingestion path.
 You can ingest to other data stores; however, you must configure other data stores yourself.
-For more information, refer to [Data Upload](vdbs.md).
-
-
+For more information, refer to [Vector databases](vdbs.md).
 
 ## How would I process unstructured images?
 
@@ -32,11 +28,8 @@ For more information, refer to [Extract Captions from Images](nemo-retriever-api
 ## When should I consider advanced visual parsing?
 
 For scanned documents, or documents with complex layouts, 
-we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
-Nemotron parse provides higher-accuracy text extraction. 
+you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`. 
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
-
-
 
 ## Why are the environment variables different between library mode and self-hosted mode?
 
@@ -45,7 +38,7 @@ For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/
 For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
 For more information, refer to [Authentication and API keys](api-keys.md).
 
-For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md).
+For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md). If you use **Docker Compose** locally for experiments only, see the unsupported developer page [docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a supported deployment substitute for Helm.
 
 ### Library Mode
 
@@ -57,42 +50,21 @@ For examples of `*_ENDPOINT` variables, refer to [Environment variables](environ
 
 When you explicitly configure remote NIM endpoints in Python library mode, graph ingestion raises a `GraphIngestionError` if a stage reports row-level connection or inference errors. This makes unreachable services visible to callers instead of returning a DataFrame that looks successful. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`.
 
-
-
-
-
-
-
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 
 Refer to [Evaluate on your data](evaluate-on-your-data.md) for extraction tuning and optimization guidance.
 
-You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](nemo-retriever-api-reference.md).
-
-To choose what types of content to extract, use code similar to the following. 
-For more information, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md).
-
-```python
-Ingestor(client=client)
-    .files("data/multimodal_test.pdf")
-    .extract(              
-        extract_text=True,
-        extract_tables=True,
-        extract_charts=True,
-        extract_images=True,
-        extract_infographics=True,
-        text_depth="page"
-    )
-```
+You can configure the `extract`, `caption`, and other tasks—including which content types to extract—using the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `GraphIngestor`). For PDF element selection, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md).
 
 To generate captions for images, use code similar to the following.
 For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 ```python
-Ingestor(client=client)
-    .files("data/multimodal_test.pdf")
-    .extract()
-    .embed()
-    .caption()
+from pathlib import Path
 
+from nemo_retriever import create_ingestor
+
+documents = [str(Path("data/multimodal_test.pdf"))]
+ingestor = create_ingestor(run_mode="batch")
+ingestor = ingestor.files(documents).extract().caption().embed()
 ```

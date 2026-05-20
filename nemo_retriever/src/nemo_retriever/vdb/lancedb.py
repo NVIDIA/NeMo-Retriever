@@ -206,7 +206,7 @@ def _create_lancedb_results(
     *,
     expected_dim: int | None = _DEFAULT_VECTOR_DIM,
 ) -> tuple[list, dict[str, int]]:
-    """Transform NV-Ingest pipeline results into LanceDB ingestible rows.
+    """Transform Nemo Retriever Library (NRL) pipeline results into LanceDB ingestible rows.
 
     Extracts the appropriate searchable text per ``document_type`` and, when
     ``expected_dim`` is set, validates that each row's embedding is shaped
@@ -223,7 +223,7 @@ def _create_lancedb_results(
 
     Args:
         results: Iterable of pipeline output result lists, where each element
-            is a per-document list of NV-Ingest record dicts.
+            is a per-document list of NRL record dicts.
         expected_dim: Required vector length, or ``None`` to skip the length
             check. Defaults to :data:`_DEFAULT_VECTOR_DIM`.
 

@@ -5,15 +5,21 @@
 from __future__ import annotations
 
 import importlib
+import io
 import json
 import logging
+import os
+import sys
+import tempfile
 
+from pydantic import ValidationError
 import typer
 
 from nemo_retriever.adapters.cli.sdk_workflow import (
     IngestInputTypeValue,
     IngestRunModeValue,
     LocalIngestEmbedBackendValue,
+    OcrLangValue,
     OcrVersionValue,
     TableOutputFormatValue,
     ingest_documents,
@@ -44,6 +50,7 @@ _LAZY_SUBAPPS: list[tuple[str, str, str]] = [
     ("benchmark", "nemo_retriever.utils.benchmark", "app"),
     ("harness", "nemo_retriever.harness", "app"),
     ("recall", "nemo_retriever.recall", "app"),
+    ("skill-eval", "nemo_retriever.skill_eval", "app"),
     ("txt", "nemo_retriever.txt.__main__", "app"),
     ("html", "nemo_retriever.html.__main__", "app"),
     ("pipeline", "nemo_retriever.pipeline.__main__", "app"),
@@ -56,7 +63,7 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
     except Exception:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
-_ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError)
+_ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
 
 
 def _version_callback(value: bool) -> None:
@@ -113,6 +120,11 @@ def ingest_command(
         None,
         "--ocr-version",
         help="OCR engine version for extraction.",
+    ),
+    ocr_lang: OcrLangValue | None = typer.Option(
+        None,
+        "--ocr-lang",
+        help="OCR v2 language selector for local extraction.",
     ),
     graphic_elements_invoke_url: str | None = typer.Option(
         None,
@@ -268,6 +280,7 @@ def ingest_command(
             page_elements_invoke_url=page_elements_invoke_url,
             ocr_invoke_url=ocr_invoke_url,
             ocr_version=ocr_version,
+            ocr_lang=ocr_lang,
             graphic_elements_invoke_url=graphic_elements_invoke_url,
             table_structure_invoke_url=table_structure_invoke_url,
             table_output_format=table_output_format,
@@ -317,20 +330,110 @@ def query_command(
         help="Optional embedding model name override.",
     ),
     reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker NIM endpoint URL."),
+    reranker_model_name: str | None = typer.Option(
+        None,
+        "--reranker-model-name",
+        help="Optional reranker model name override (used by the local GPU reranker).",
+    ),
+    reranker_backend: str | None = typer.Option(
+        None,
+        "--reranker-backend",
+        help=(
+            "Backend for the local GPU reranker when no --reranker-invoke-url is given: "
+            "'vllm' (default — high-throughput batch) or 'hf' (HuggingFace, faster cold "
+            "start; preferred for ad-hoc / single-query CLI use)."
+        ),
+    ),
+    rerank: bool = typer.Option(
+        False,
+        "--rerank/--no-rerank",
+        help=(
+            "Enable reranking after vector retrieval. Default off. Implicitly enabled when "
+            "any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
+        ),
+    ),
 ) -> None:
+    if reranker_invoke_url is None:
+        reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
+    if embed_invoke_url is None:
+        embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
+    rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
+    # Quiet noisy library logs during model load. vLLM/transformers/HuggingFace
+    # otherwise emit dozens of INFO-level lines + tqdm progress bars (CUDA kernel
+    # compile, weight download, "Loading safetensors checkpoint shards",
+    # "Capturing CUDA graphs (PIECEWISE)") that swamp the actually-actionable
+    # stderr at ~2-3 KB extra per ``retriever query`` call.
+    os.environ.setdefault("VLLM_LOGGING_LEVEL", "ERROR")
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+    os.environ.setdefault("TQDM_DISABLE", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    logging.getLogger("vllm").setLevel(logging.ERROR)
+    logging.getLogger("transformers").setLevel(logging.ERROR)
+    # Capture stdout AND stderr at the OS fd level.
+    # On success we discard the buffer and emit just the JSON. On failure we
+    # flush the buffer to stderr so the agent sees actionable diagnostic
+    # context.
+    # Eliminates the ~3-5 KB of vLLM init noise (CUDA-graph capture,
+    # safetensors shard progress, etc.) per ``retriever query`` call.
+    # When stdout/stderr aren't real OS-level streams (e.g. under pytest's
+    # sys-capture, where they're StringIO), skip the fd dance and run plainly.
     try:
-        hits = query_documents(
-            query,
-            top_k=top_k,
-            lancedb_uri=lancedb_uri,
-            table_name=table_name,
-            embed_invoke_url=embed_invoke_url,
-            embed_model_name=embed_model_name,
-            reranker_invoke_url=reranker_invoke_url,
-        )
-    except _ROOT_CLI_ERRORS as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1) from exc
+        stdout_fd, stderr_fd = sys.stdout.fileno(), sys.stderr.fileno()
+    except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+        stdout_fd = stderr_fd = None
+
+    if stdout_fd is None:
+        try:
+            hits = query_documents(
+                query,
+                top_k=top_k,
+                lancedb_uri=lancedb_uri,
+                table_name=table_name,
+                embed_invoke_url=embed_invoke_url,
+                embed_model_name=embed_model_name,
+                reranker_invoke_url=reranker_invoke_url,
+                reranker_model_name=reranker_model_name,
+                reranker_backend=reranker_backend,
+                rerank=rerank,
+            )
+        except _ROOT_CLI_ERRORS as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1) from exc
+    else:
+        saved_stdout, saved_stderr = os.dup(stdout_fd), os.dup(stderr_fd)
+        buf = tempfile.TemporaryFile(mode="w+b")
+        try:
+            os.dup2(buf.fileno(), stdout_fd)
+            os.dup2(buf.fileno(), stderr_fd)
+            try:
+                hits = query_documents(
+                    query,
+                    top_k=top_k,
+                    lancedb_uri=lancedb_uri,
+                    table_name=table_name,
+                    embed_invoke_url=embed_invoke_url,
+                    embed_model_name=embed_model_name,
+                    reranker_invoke_url=reranker_invoke_url,
+                    reranker_model_name=reranker_model_name,
+                    reranker_backend=reranker_backend,
+                    rerank=rerank,
+                )
+            finally:
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os.dup2(saved_stdout, stdout_fd)
+                os.dup2(saved_stderr, stderr_fd)
+                os.close(saved_stdout)
+                os.close(saved_stderr)
+        except _ROOT_CLI_ERRORS as exc:
+            buf.seek(0)
+            sys.stderr.buffer.write(buf.read())
+            sys.stderr.flush()
+            buf.close()
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        buf.close()
 
     typer.echo(json.dumps(list(hits), indent=2, sort_keys=True, default=str))
 

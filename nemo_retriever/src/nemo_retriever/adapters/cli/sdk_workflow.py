@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal, Sequence, cast
 
 from nemo_retriever.ingestor import create_ingestor
+from nemo_retriever.ocr.config import OCRLang, OCRVersion
 from nemo_retriever.params import (
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -30,12 +31,14 @@ from nemo_retriever.utils.input_files import (
     resolve_input_files,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.vdb.records import RetrievalHit
 
 
 IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
 IngestRunModeValue = Literal["inprocess", "batch"]
 LocalIngestEmbedBackendValue = Literal["vllm", "hf"]
-OcrVersionValue = Literal["v1", "v2"]
+OcrLangValue = OCRLang
+OcrVersionValue = OCRVersion
 TableOutputFormatValue = Literal["pseudo_markdown", "markdown"]
 _SUPPORTED_RUN_MODES: tuple[IngestRunModeValue, ...] = ("inprocess", "batch")
 _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
@@ -282,19 +285,41 @@ def _build_embed_batch_tuning(
     return BatchTuningParams(**tuning_kwargs) if tuning_kwargs else None
 
 
-def _build_rerank_kwargs(reranker_invoke_url: str | None) -> dict[str, str]:
-    if reranker_invoke_url is None:
-        return {}
+_LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 
-    reranker_url = reranker_invoke_url.strip()
-    if not reranker_url:
-        return {}
 
-    rerank_kwargs = {"rerank_invoke_url": reranker_url}
-    api_key = resolve_remote_api_key()
-    if api_key is not None:
-        rerank_kwargs["api_key"] = api_key
-    return rerank_kwargs
+def _build_rerank_kwargs(
+    reranker_invoke_url: str | None,
+    reranker_model_name: str | None = None,
+    reranker_backend: str | None = None,
+) -> dict[str, str]:
+    """Build kwargs for the rerank stage. Mirrors :func:`_build_embed_kwargs`:
+    if ``reranker_invoke_url`` is given the remote NIM path is configured;
+    otherwise the local GPU reranker runs with ``reranker_model_name`` (or the
+    matching VL default to pair with the local VL embedder).
+
+    ``reranker_backend`` only applies to the local path and selects the local
+    inference backend (``"vllm"`` or ``"hf"``); ``None`` defers to the library
+    default in ``_default_rerank_actor_kwargs``.
+    """
+    reranker_url = (reranker_invoke_url or "").strip()
+    if reranker_url:
+        rerank_kwargs: dict[str, str] = {"rerank_invoke_url": reranker_url}
+        if reranker_model_name:
+            rerank_kwargs["model_name"] = reranker_model_name
+        api_key = resolve_remote_api_key()
+        if api_key is not None:
+            rerank_kwargs["api_key"] = api_key
+        return rerank_kwargs
+
+    # Local GPU reranker - VL by default to pair with the local VL embedder.
+    # ``NemotronRerankGPUActor`` loads the model once per actor; the rerank
+    # model is ~2 GB and coexists with the vLLM embedder (which respects
+    # ``gpu_memory_utilization=0.45``).
+    local: dict[str, str] = {"model_name": reranker_model_name or _LOCAL_VL_RERANK_MODEL}
+    if reranker_backend:
+        local["local_reranker_backend"] = reranker_backend
+    return local
 
 
 def ingest_documents(
@@ -310,6 +335,7 @@ def ingest_documents(
     page_elements_invoke_url: str | None = None,
     ocr_invoke_url: str | None = None,
     ocr_version: OcrVersionValue | None = None,
+    ocr_lang: OcrLangValue | None = None,
     graphic_elements_invoke_url: str | None = None,
     table_structure_invoke_url: str | None = None,
     table_output_format: TableOutputFormatValue | None = None,
@@ -354,6 +380,7 @@ def ingest_documents(
             "page_elements_invoke_url": page_elements_invoke_url,
             "ocr_invoke_url": ocr_invoke_url,
             "ocr_version": ocr_version,
+            "ocr_lang": ocr_lang,
             "graphic_elements_invoke_url": graphic_elements_invoke_url,
             "table_structure_invoke_url": table_structure_invoke_url,
             "table_output_format": table_output_format,
@@ -427,19 +454,27 @@ def query_documents(
     embed_invoke_url: str | None = None,
     embed_model_name: str | None = None,
     reranker_invoke_url: str | None = None,
-) -> list[dict[str, Any]]:
-    """Run the minimal SDK query path used by the root CLI."""
+    reranker_model_name: str | None = None,
+    reranker_backend: str | None = None,
+    rerank: bool = False,
+) -> list[RetrievalHit]:
+    """Run the minimal SDK query path used by the root CLI.
+
+    Reranking is opt-in: pass ``rerank=True`` (or any of the rerank-related
+    args via the CLI, which implicitly set ``rerank=True``) to enable.
+    """
     embed_kwargs = _build_embed_kwargs(embed_invoke_url, embed_model_name)
-    rerank_kwargs = _build_rerank_kwargs(reranker_invoke_url)
     retriever_kwargs: dict[str, Any] = {
         "top_k": top_k,
         "vdb_kwargs": {"uri": lancedb_uri, "table_name": table_name},
     }
     if embed_kwargs:
         retriever_kwargs["embed_kwargs"] = embed_kwargs
-    if rerank_kwargs:
+    if rerank:
+        rerank_kwargs = _build_rerank_kwargs(reranker_invoke_url, reranker_model_name, reranker_backend)
         retriever_kwargs["rerank"] = True
-        retriever_kwargs["rerank_kwargs"] = rerank_kwargs
+        if rerank_kwargs:
+            retriever_kwargs["rerank_kwargs"] = rerank_kwargs
 
     retriever = Retriever(**retriever_kwargs)
     return retriever.query(query)

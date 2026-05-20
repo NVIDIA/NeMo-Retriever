@@ -382,6 +382,13 @@ def test_graph_ingestion_error_sanitizes_remote_message_fields() -> None:
     assert sensitive_tail not in raw_rendered
 
 
+def test_graph_ingestion_error_accepts_plain_string_records() -> None:
+    err = GraphIngestionError(["Embedding error occurred: timed out"])
+    rendered = str(err)
+    assert "timed out" in rendered
+    assert "path error" in rendered
+
+
 def test_graph_ingestion_error_preserves_readable_remote_message_text() -> None:
     err = GraphIngestionError(
         [

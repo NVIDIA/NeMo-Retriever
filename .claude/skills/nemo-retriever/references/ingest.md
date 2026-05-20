@@ -71,7 +71,7 @@ retriever ingest data/multimodal_test.pdf \
 ## Outputs
 
 - A LanceDB dataset at `<lancedb-uri>/<table-name>.lance`. Default:
-  `./lancedb/nv-ingest.lance`.
+  `./lancedb/nemo-retriever.lance`.
 - One row per extracted primitive (text chunk, table, chart, image region),
   each with: `text`, `source`, `page_number`, `metadata` (JSON: type, bbox, …),
   and the embedding vector.
@@ -109,7 +109,7 @@ through the same GraphIngestor extraction paths used by `retriever pipeline`.
 - **First run is slow (~60s+ before any pages process)** — vLLM model load and
   CUDA-graph capture for the embedder. Subsequent runs in the same process
   are fast; one-shot CLI invocations always pay this cost.
-- **`No existing dataset at …/nv-ingest.lance, it will be created`** — expected
+- **`No existing dataset at …/nemo-retriever.lance, it will be created`** — expected
   on the first ingest into a new DB. Subsequent ingests append.
 - **HuggingFace download on first run** — the embedder and page-element
   detector pull weights to `~/.cache/huggingface`. Needs network the first

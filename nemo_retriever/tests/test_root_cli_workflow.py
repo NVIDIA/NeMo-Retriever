@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import create_autospec
 
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
@@ -258,6 +259,41 @@ def test_root_ingest_passes_local_hf_embed_backend(monkeypatch, tmp_path) -> Non
     assert embed_params.local_ingest_embed_backend == "hf"
 
 
+def test_root_ingest_passes_ocr_lang_option(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "english-ocr.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--ocr-lang", "english"])
+
+    assert result.exit_code == 0
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.ocr_version == "v2"
+    assert extract_params.ocr_lang == "english"
+
+
+def test_root_ingest_rejects_ocr_lang_with_legacy_ocr_version(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "legacy-ocr.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", str(document), "--ocr-version", "v1", "--ocr-lang", "english"],
+    )
+
+    assert result.exit_code == 1
+    assert result.output.startswith("Error: ")
+    assert "ocr_lang is only supported when ocr_version='v2'" in result.output
+    assert "Traceback" not in result.output
+    fake_ingestor.extract.assert_not_called()
+
+
 def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     create_calls: list[dict[str, Any]] = []
@@ -494,6 +530,10 @@ def test_root_ingest_reports_os_errors(monkeypatch) -> None:
     assert "Error: permission denied" in result.output
 
 
+def test_root_cli_error_handler_includes_pydantic_validation_error() -> None:
+    assert ValidationError in cli_main._ROOT_CLI_ERRORS
+
+
 def test_ingest_documents_validates_run_mode_before_creating_ingestor(monkeypatch) -> None:
     def fail_create_ingestor(**_kwargs: Any) -> Any:
         raise AssertionError("create_ingestor should not be called for an invalid run mode")
@@ -537,6 +577,7 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
+    # No rerank flag passed → rerank is off (opt-in only).
     assert retriever_calls == [{"top_k": 3, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs"}}]
     assert query_calls == ["Which animal is responsible for typos?"]
     assert json.loads(result.output) == hits
@@ -570,6 +611,7 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
+    # Embed options only — no rerank-related arg, so rerank stays off.
     assert retriever_calls == [
         {
             "top_k": 10,
@@ -625,6 +667,76 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
     ]
     assert query_calls == ["Which passages mention deployment?"]
     assert json.loads(result.output) == []
+
+
+def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
+    """``--rerank`` alone enables rerank with the local VL default model."""
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(cli_main.app, ["query", "hello", "--rerank"])
+
+    assert result.exit_code == 0
+    assert retriever_calls == [
+        {
+            "top_k": 10,
+            "vdb_kwargs": {"uri": "lancedb", "table_name": "nv-ingest"},
+            "rerank": True,
+            "rerank_kwargs": {"model_name": "nvidia/llama-nemotron-rerank-vl-1b-v2"},
+        }
+    ]
+
+
+def test_root_query_rerank_off_by_default(monkeypatch) -> None:
+    """Without ``--rerank`` (or any rerank arg), rerank stays off."""
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(cli_main.app, ["query", "hello"])
+
+    assert result.exit_code == 0
+    # No rerank fields set on the Retriever call.
+    assert "rerank" not in retriever_calls[0]
+    assert "rerank_kwargs" not in retriever_calls[0]
+
+
+def test_root_query_reranker_model_name_override(monkeypatch) -> None:
+    """`--reranker-model-name` mirrors `--embed-model-name`: it overrides the
+    default model on the local path."""
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["query", "hello", "--reranker-model-name", "nvidia/llama-nemotron-rerank-1b-v2"],
+    )
+
+    assert result.exit_code == 0
+    assert retriever_calls[0]["rerank_kwargs"] == {"model_name": "nvidia/llama-nemotron-rerank-1b-v2"}
 
 
 def test_root_query_reports_os_errors(monkeypatch) -> None:

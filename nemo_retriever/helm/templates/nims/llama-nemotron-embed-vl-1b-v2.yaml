@@ -1,0 +1,53 @@
+{{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.vlm_embed.enabled true) -}}
+{{- $name := .Values.nimOperator.vlm_embed.nimServiceName -}}
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMCache
+metadata:
+  name: {{ $name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  source:
+    ngc:
+      modelPuller: "{{ .Values.nimOperator.vlm_embed.image.repository }}:{{ .Values.nimOperator.vlm_embed.image.tag }}"
+      pullSecret: "{{ index .Values.nimOperator.vlm_embed.image.pullSecrets 0 }}"
+      authSecret: {{ .Values.nimOperator.vlm_embed.authSecret }}
+  storage:
+    pvc:
+      create: {{ .Values.nimOperator.vlm_embed.storage.pvc.create }}
+      storageClass: {{ .Values.nimOperator.vlm_embed.storage.pvc.storageClass | quote }}
+      size: {{ .Values.nimOperator.vlm_embed.storage.pvc.size }}
+      volumeAccessMode: {{ .Values.nimOperator.vlm_embed.storage.pvc.volumeAccessMode }}
+---
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMService
+metadata:
+  name: {{ $name }}
+spec:
+  image:
+    repository: {{ .Values.nimOperator.vlm_embed.image.repository }}
+    tag: {{ .Values.nimOperator.vlm_embed.image.tag }}
+    pullPolicy: {{ .Values.nimOperator.vlm_embed.image.pullPolicy }}
+    pullSecrets:
+{{ toYaml .Values.nimOperator.vlm_embed.image.pullSecrets | indent 6 }}
+  authSecret: {{ .Values.nimOperator.vlm_embed.authSecret }}
+  storage:
+    nimCache:
+      name: {{ $name }}
+  replicas: {{ .Values.nimOperator.vlm_embed.replicas }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.vlm_embed.nodeSelector | indent 4 }}
+  resources:
+{{ toYaml .Values.nimOperator.vlm_embed.resources | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.vlm_embed.tolerations | indent 4 }}
+  expose:
+{{ toYaml .Values.nimOperator.vlm_embed.expose | indent 4 }}
+  env:
+{{ toYaml .Values.nimOperator.vlm_embed.env | indent 4 }}
+    - name: NGC_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.nimOperator.vlm_embed.authSecret | quote }}
+          key: NGC_API_KEY
+{{- end }}

@@ -15,17 +15,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# NV-Ingest Devcontainer
+# NeMo Retriever Devcontainer
 
-The nv-ingest devcontainer is provided as a quick-to-set-up development and exploration environment for use with [Visual Studio Code](https://code.visualstudio.com) (Code). The devcontainer is a lightweight container with a pre-created `uv` Python environment and package cache for fast launches. It provides a simple framework for adding developer-centric [scripts](#development-scripts), and incorporates some helpful Code plugins.
+The NeMo-Retriever devcontainer is provided as a quick-to-set-up development and exploration environment for use with [Visual Studio Code](https://code.visualstudio.com) (Code). The devcontainer is a lightweight container with a pre-created `uv` Python environment and package cache for fast launches. It provides a simple framework for adding developer-centric [scripts](#development-scripts), and incorporates some helpful Code plugins.
 
 > [!Note]
-> NV-Ingest is also known as NVIDIA Ingest and NeMo Retriever extraction.
+> NeMo Retriever extraction is also referred to as **NVIDIA Ingest** in some NVIDIA product materials.
 
 More information about devcontainers can be found at [`containers.dev`](https://containers.dev/).
 
 ## Getting Started
 
-To get started, simply open the nv-ingest repository root folder within Code. A window should appear at the bottom-right corner of the editor asking if you would like to reopen the workspace inside of the dev container. After clicking the confirmation dialog, the container will first build, then launch, then remote-attach.
+To get started, simply open the **NeMo-Retriever** repository root folder within Code. A window should appear at the bottom-right corner of the editor asking if you would like to reopen the workspace inside of the dev container. After clicking the confirmation dialog, the container will first build, then launch, then remote-attach.
 
 If the window does not appear, or you would like to rebuild the container, click ctrl-shift-p and search for `Dev Containers: Rebuild and Reopen in Container`. Hit enter, and the container will first build, then launch, then remote-attach.

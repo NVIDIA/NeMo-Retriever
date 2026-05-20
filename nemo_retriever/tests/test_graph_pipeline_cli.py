@@ -283,6 +283,8 @@ def test_graph_pipeline_cli_routes_audio_input_to_audio_ingestor(tmp_path, monke
             str(dataset_dir),
             "--input-type",
             "audio",
+            "--evaluation-mode",
+            "audio_recall",
             "--query-csv",
             str(missing_query_csv),
             "--recall-match-mode",
@@ -302,6 +304,53 @@ def test_graph_pipeline_cli_routes_audio_input_to_audio_ingestor(tmp_path, monke
     assert fake_ingestor.audio_extract_params.split_type == "time"
     assert fake_ingestor.audio_extract_params.split_interval == 45
     assert fake_ingestor.audio_asr_params["segment_audio"] is True
+
+
+def test_graph_pipeline_cli_allows_default_evaluation_for_pdf_inputs(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setitem(
+        sys.modules,
+        "ray",
+        SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
+    )
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(batch_pipeline.app, [str(dataset_dir), "--input-type", "pdf"])
+
+    assert result.exit_code == 0
+    assert isinstance(fake_ingestor.file_patterns, list)
+
+
+def test_graph_pipeline_cli_rejects_invalid_recall_mode(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(batch_pipeline.app, [str(dataset_dir), "--evaluation-mode", "recall"])
+
+    assert result.exit_code != 0
+    assert result.exception is not None
+    assert "Unsupported --evaluation-mode: 'recall'" in str(result.exception)
+
+
+def test_graph_pipeline_cli_rejects_audio_recall_for_pdf_inputs(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [str(dataset_dir), "--input-type", "pdf", "--evaluation-mode", "audio_recall"],
+    )
+
+    assert result.exit_code != 0
+    assert result.exception is not None
+    assert "--evaluation-mode=audio_recall is only supported with --input-type=audio" in str(result.exception)
 
 
 def test_graph_pipeline_cli_routes_beir_mode_to_evaluator(tmp_path, monkeypatch) -> None:

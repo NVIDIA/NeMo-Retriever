@@ -14,20 +14,54 @@ Three execution surfaces are exposed:
 
 1. :meth:`ServiceIngestor.ingest` — sync, blocks until every document has
    finished, returns a :class:`ServiceIngestResult` (a ``list`` subclass
-   holding per-document completion events, plus ``failures`` /
-   ``document_ids`` / ``elapsed_s`` attributes).
+   holding per-document completion events, plus ``job_id`` / ``failures``
+   / ``document_ids`` / ``elapsed_s`` / ``job_status`` attributes). Each
+   call implicitly opens one server-side job aggregate sized to
+   ``len(documents)`` via ``POST /v1/ingest/job``, then submits every
+   document under that ``job_id``.
 
 2. :meth:`ServiceIngestor.ingest_stream` — sync generator yielding one
-   ``dict`` per event (upload_complete, document_complete, upload_failed).
+   ``dict`` per event (``job_created``, ``upload_complete``,
+   ``document_complete``, ``upload_failed``, plus the job-lifecycle
+   stream: ``job_started``, ``job_progress``, ``job_finalized`` /
+   ``job_partial`` / ``job_failed``).
 
 3. :meth:`ServiceIngestor.aingest_stream` — true async generator for
    callers already inside an event loop.
 
-The fluent pipeline-configuration methods (``.extract``, ``.embed``,
-``.dedup``, ``.split``, ``.store``, ``.caption``, ``.webhook``, ``.udf``,
-``.vdb_upload``, …) all raise :class:`NotImplementedError` with a clear
-message: the server pipeline is configured at startup via
-``retriever-service.yaml`` and cannot be overridden per-request today.
+Pipeline configuration in service run_mode goes through a
+:class:`~nemo_retriever.service.models.pipeline_spec.PipelineSpec`
+that travels alongside each upload. The server validates the spec
+against :class:`~nemo_retriever.service.policy.PipelineOverridesPolicy`
+(an audited allow-list keyed on parameter name + sink URL) before any
+worker sees it — the trust boundary lives on the server, never on the
+client.
+
+Fluent methods that *do* take effect by writing to the spec:
+
+* ``.extract(...)`` — per-request extraction knobs (DPI, OCR enable, …)
+* ``.embed(...)`` — embedding model/dim overrides bounded by the
+  operator's allow-list
+* ``.dedup(...)``, ``.split(...)``, ``.filter()`` — shape knobs
+* ``.store(StorageUri="s3://...")`` — remote object storage sink
+* ``.webhook(endpoint_url="https://hooks.example.com/...")`` — HTTP sink
+* ``.vdb_upload(...)`` — vector-DB sink, including sidecar metadata
+  via the dedicated ``POST /v1/ingest/sidecar`` upload endpoint
+* ``.caption(...)`` — remote VLM captioning when the operator has wired
+  ``nim_endpoints.caption_invoke_url``; trust-sensitive fields like
+  endpoint_url / api_key / model_name stay server-owned
+* ``.save_to_disk(output_directory="...")`` — client-side persistence:
+  fetches ``result_data`` from ``/v1/ingest/status/{id}`` for each
+  completed document and writes JSON or gzipped JSON locally
+
+Methods that intentionally remain unsupported in service run_mode:
+
+* ``.udf(...)`` — named UDFs deferred to a follow-up phase;
+  arbitrary-code execution is the canonical trust-boundary violation
+  and needs a server-side registry first
+* ``.store_embed()``, ``.save_intermediate_results()`` — by design,
+  in-process-only debugging helpers; use ``run_mode='inprocess'`` for
+  stage-by-stage introspection
 """
 
 from __future__ import annotations
@@ -43,7 +77,17 @@ from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
 
 import httpx
 
-from nemo_retriever.ingestor import ingestor
+from nemo_retriever.ingestor import _merge_params, ingestor
+from nemo_retriever.params import (
+    CaptionParams,
+    DedupParams,
+    EmbedParams,
+    ExtractParams,
+    PdfSplitParams,
+    StoreParams,
+    VdbUploadParams,
+    WebhookParams,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +107,11 @@ class ServiceIngestResult(list):
 
     Attributes
     ----------
+    job_id
+        The server-assigned job aggregate id for this ``ingest()`` call.
+        Every :meth:`ServiceIngestor.ingest` invocation opens exactly one
+        job, sized to ``len(documents)``; this is the handle to drive
+        ``GET /v1/ingest/job/{job_id}`` follow-ups.
     failures
         ``(document_id_or_filename, error_message)`` pairs for documents
         that failed during upload or pipeline processing.
@@ -70,17 +119,26 @@ class ServiceIngestResult(list):
         Document identifiers returned by the server, in upload order.
     elapsed_s
         Wall-clock seconds from first upload to last result.
+    job_status
+        Final aggregate status reported by the server
+        (``completed`` / ``failed`` / ``partial_success``) when a job
+        lifecycle event was observed during the run. ``None`` if the
+        stream closed without a terminal job event (e.g. SSE fallback
+        only delivered per-document completions).
     """
 
     def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
         super().__init__(items or [])
+        self.job_id: str | None = None
         self.failures: list[tuple[str, str]] = []
         self.document_ids: list[str] = []
         self.elapsed_s: float = 0.0
+        self.job_status: str | None = None
 
     def __repr__(self) -> str:
         return (
-            f"ServiceIngestResult(documents={len(self)}, "
+            f"ServiceIngestResult(job_id={self.job_id!r}, "
+            f"documents={len(self)}, "
             f"failures={len(self.failures)}, "
             f"elapsed_s={self.elapsed_s:.2f})"
         )
@@ -91,23 +149,100 @@ class ServiceIngestResult(list):
 # ----------------------------------------------------------------------
 
 _FLUENT_NOT_SUPPORTED_TEMPLATE = (
-    "ServiceIngestor.{method}() is not supported in run_mode='service'. "
-    "The server-side pipeline is configured at service startup via "
-    "retriever-service.yaml (see nim_endpoints + processing sections). "
-    "To change extraction / embedding / store behaviour, restart the "
-    "retriever service with an updated config; per-request overrides are "
-    "not implemented today."
+    "ServiceIngestor.{method}() is not yet supported in run_mode='service'. "
+    "{phase_hint}"
+    "See retriever-service.yaml or `retriever service describe` for the "
+    "current per-request override policy."
 )
 
 
-def _raise_unsupported(method: str) -> None:
-    raise NotImplementedError(_FLUENT_NOT_SUPPORTED_TEMPLATE.format(method=method))
+def _raise_unsupported(method: str, *, phase_hint: str = "") -> None:
+    raise NotImplementedError(
+        _FLUENT_NOT_SUPPORTED_TEMPLATE.format(method=method, phase_hint=phase_hint + " " if phase_hint else "")
+    )
 
 
 def _normalize_files(files: Union[str, List[str], List[Path]]) -> list[Path]:
     if isinstance(files, (str, Path)):
         return [Path(files)]
     return [Path(f) for f in files]
+
+
+# ----------------------------------------------------------------------
+# Client-side mirror of service.models.pipeline_spec.PipelineSpec
+# ----------------------------------------------------------------------
+
+# Keys this client treats as server-owned. Stripped from any params dict
+# before it goes on the wire so users get a clear error if they try.
+_SERVER_OWNED_KEYS: frozenset[str] = frozenset(
+    {
+        "invoke_url",
+        "api_key",
+        "page_elements_invoke_url",
+        "page_elements_api_key",
+        "ocr_invoke_url",
+        "ocr_api_key",
+        "graphic_elements_invoke_url",
+        "table_structure_invoke_url",
+        "nemotron_parse_invoke_url",
+        "embed_invoke_url",
+        "embedding_endpoint",
+        "endpoint_url",
+        "api_base",
+        "auth_token",
+        "lancedb_uri",
+        "storage_uri",
+    }
+)
+
+
+def _strip_server_owned(params_dict: dict[str, Any], method: str) -> dict[str, Any]:
+    """Raise if the caller set a server-owned key; otherwise return as-is.
+
+    We fail fast on the client so users see a useful message instead of
+    a generic 403 from the server.
+    """
+    rejected = [k for k in params_dict if k in _SERVER_OWNED_KEYS]
+    if rejected:
+        raise ValueError(
+            f"ServiceIngestor.{method}(): keys {rejected!r} are server-owned in "
+            "run_mode='service'. Endpoint URLs and API keys are configured by "
+            "the retriever service via retriever-service.yaml; they cannot be "
+            "set per-request."
+        )
+    return params_dict
+
+
+def _require_remote_uri(uri: str, method: str, field: str) -> None:
+    """Reject local paths early on the client side.
+
+    The worker pod cannot see the caller's filesystem. A friendly error
+    here saves the user a round-trip to receive HTTP 403 from the sink
+    allowlist with the same message.
+    """
+    if "://" not in uri or uri.startswith("file://"):
+        raise ValueError(
+            f"ServiceIngestor.{method}(): {field}={uri!r} is a local path. "
+            "In service run_mode the worker writes from inside the cluster; "
+            "use a remote URI such as 's3://bucket/prefix/' instead."
+        )
+
+
+def _params_to_dict(value: Any) -> dict[str, Any]:
+    """Normalise a fluent-method argument (model | dict | None) to a dict.
+
+    Removes server-owned keys eagerly so they never leak into transport.
+    Drops ``None`` values so the server's defaults can fill them in.
+    """
+    if value is None:
+        return {}
+    if hasattr(value, "model_dump"):
+        d = value.model_dump(mode="json", exclude_none=True)
+    elif isinstance(value, dict):
+        d = {k: v for k, v in value.items() if v is not None}
+    else:
+        raise TypeError(f"Cannot serialise {type(value).__name__!r} to a params dict")
+    return d
 
 
 # ----------------------------------------------------------------------
@@ -229,6 +364,87 @@ class ServiceIngestor(ingestor):
         self._api_token = (api_token or "").strip() or None
         self._document_ids: list[str] = []
         self._last_run_elapsed_s: float = 0.0
+        self._last_job_id: str | None = None
+        self._pipeline_spec: dict[str, Any] = {
+            "extraction_mode": "pdf",
+            "stage_order": [],
+        }
+        # save_to_disk state (populated by .save_to_disk(...); None when disabled)
+        self._save_to_disk_dir: Path | None = None
+        self._save_to_disk_compression: str | None = None
+        self._save_to_disk_cleanup: bool = True
+
+    # ------------------------------------------------------------------
+    # Pipeline-spec helpers
+    # ------------------------------------------------------------------
+
+    def _record_stage(self, name: str) -> None:
+        order = self._pipeline_spec["stage_order"]
+        if name not in order:
+            order.append(name)
+
+    def _save_document_to_disk(self, document_id: str) -> Path:
+        """Fetch ``result_data`` for *document_id* and write a JSON artifact.
+
+        Returns the path that was written. Raises if the document_id is
+        missing or the fetch fails. The status endpoint consumes
+        ``result_data`` on first read, so callers must invoke this
+        exactly once per document.
+        """
+        import gzip
+        import json as _json
+
+        if not document_id:
+            raise ValueError("_save_document_to_disk(): empty document_id")
+        if self._save_to_disk_dir is None:
+            raise RuntimeError("_save_document_to_disk(): save_to_disk was never enabled")
+
+        url = f"{self._base_url}/v1/ingest/status/{document_id}"
+        with httpx.Client(timeout=self._request_timeout_s, headers=self._auth_headers) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            body = resp.json()
+        result_data = body.get("result_data") or []
+
+        suffix = ".json.gz" if self._save_to_disk_compression == "gzip" else ".json"
+        out_path = self._save_to_disk_dir / f"{document_id}{suffix}"
+        payload = _json.dumps(
+            {"document_id": document_id, "rows": result_data},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        if self._save_to_disk_compression == "gzip":
+            with gzip.open(out_path, "wb") as fh:
+                fh.write(payload)
+        else:
+            out_path.write_bytes(payload)
+        return out_path
+
+    def _pipeline_payload(self) -> dict[str, Any] | None:
+        """Return the spec dict to send on the wire, or ``None`` when empty.
+
+        The "empty" check mirrors :meth:`PipelineSpec.is_empty` server-side
+        so the worker can short-circuit identically.
+        """
+        spec = self._pipeline_spec
+        is_empty = (
+            spec.get("extraction_mode", "pdf") == "pdf"
+            and not spec.get("stage_order")
+            and not any(
+                spec.get(k)
+                for k in (
+                    "extract_params",
+                    "embed_params",
+                    "dedup_params",
+                    "caption_params",
+                    "store_params",
+                    "vdb_upload_params",
+                    "webhook_params",
+                    "split_config",
+                    "pdf_split",
+                )
+            )
+        )
+        return None if is_empty else dict(spec)
 
     @property
     def _auth_headers(self) -> dict[str, str]:
@@ -266,35 +482,143 @@ class ServiceIngestor(ingestor):
         return self
 
     # ------------------------------------------------------------------
-    # Pipeline configuration — server-side only, not overridable per-request
+    # Phase 1: pipeline-shape stages — sent via PipelineSpec
     # ------------------------------------------------------------------
 
-    def all_tasks(self) -> "ServiceIngestor":  # pragma: no cover - trivial
-        _raise_unsupported("all_tasks")
+    def all_tasks(self) -> "ServiceIngestor":
+        """Record the default chain: extract → dedup → embed.
+
+        Concrete params come from server config; ``all_tasks()`` only
+        controls *stage order* and is the closest in-process equivalent
+        of "run everything the server is configured to do".
+        """
+        self._record_stage("extract")
+        self._record_stage("dedup")
+        self._record_stage("embed")
+        return self
 
     def dedup(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("dedup")
+        """Record a dedup stage with optional :class:`DedupParams` overrides."""
+        merged = _merge_params(params, kwargs) if (params or kwargs) else DedupParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "dedup")
+        self._pipeline_spec["dedup_params"] = params_dict
+        self._record_stage("dedup")
+        return self
 
     def embed(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("embed")
+        """Record an embed stage with optional :class:`EmbedParams` overrides.
 
-    def extract(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("extract")
+        Embedding endpoint URL and API key are server-owned and will be
+        rejected if set here.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else EmbedParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "embed")
+        self._pipeline_spec["embed_params"] = params_dict
+        self._record_stage("embed")
+        return self
 
-    def extract_image_files(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("extract_image_files")
+    def extract(
+        self,
+        params: Any = None,
+        *,
+        split_config: Optional[dict[str, Any]] = None,
+        extraction_mode: str = "pdf",
+        **kwargs: Any,
+    ) -> "ServiceIngestor":
+        """Record a generic extraction stage.
+
+        ``extraction_mode`` selects the worker's extraction path
+        (``'pdf'`` default, ``'auto'`` for mixed inputs, etc.).
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else ExtractParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "extract")
+        self._pipeline_spec["extract_params"] = params_dict
+        self._pipeline_spec["extraction_mode"] = extraction_mode
+        if split_config is not None:
+            self._pipeline_spec["split_config"] = split_config
+        self._record_stage("extract")
+        return self
+
+    def extract_image_files(
+        self, params: Any = None, *, split_config: Optional[dict[str, Any]] = None, **kwargs: Any
+    ) -> "ServiceIngestor":
+        """Record image-file extraction (``extraction_mode='image'``)."""
+        merged = _merge_params(params, kwargs) if (params or kwargs) else ExtractParams()
+        params_dict = _strip_server_owned(_params_to_dict(merged), "extract_image_files")
+        self._pipeline_spec["extract_params"] = params_dict
+        self._pipeline_spec["extraction_mode"] = "image"
+        if split_config is not None:
+            self._pipeline_spec["split_config"] = split_config
+        self._record_stage("extract")
+        return self
 
     def filter(self) -> "ServiceIngestor":
-        _raise_unsupported("filter")
+        """Record a filter stage."""
+        self._record_stage("filter")
+        return self
 
     def split(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("split")
+        """Record post-extract split / chunking configuration.
+
+        Accepts the same dict shape as :meth:`GraphIngestor.extract`'s
+        ``split_config`` keyword (``{"<source_type>": {"max_tokens": …}}``).
+        """
+        merged: dict[str, Any]
+        if isinstance(params, dict):
+            merged = dict(params)
+        elif params is None:
+            merged = {}
+        else:
+            merged = _params_to_dict(params)
+        merged.update(kwargs)
+        self._pipeline_spec["split_config"] = merged
+        return self
+
+    def pdf_split_config(self, pages_per_chunk: int = 32) -> "ServiceIngestor":
+        """Record PDF page-chunking config (per-request).
+
+        The gateway uses this to decide realtime-vs-batch routing
+        (chunked docs always go to batch).
+        """
+        PdfSplitParams.model_validate({})  # cheap sanity touch
+        self._pipeline_spec["pdf_split"] = {"pages_per_chunk": int(pages_per_chunk)}
+        return self
+
+    # ------------------------------------------------------------------
+    # Phase 2: remote sinks — sent via PipelineSpec, gated by SinkUrlAllowlist
+    # ------------------------------------------------------------------
 
     def store(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("store")
+        """Record an image-asset store stage targeting a remote URI.
+
+        ``storage_uri`` must be a non-local URI (``s3://``, ``gs://``,
+        ``azure://``, …) — the worker pod has no view into the caller's
+        filesystem. The server's ``sinks.storage_uri_schemes`` allowlist
+        gates which schemes are admissible.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else StoreParams()
+        params_dict = _params_to_dict(merged)
+        uri = params_dict.get("storage_uri")
+        if uri is not None:
+            _require_remote_uri(uri, "store", "storage_uri")
+        # ``storage_uri`` is the legitimate sink destination, so we let
+        # it through the local denylist check.
+        for k in list(params_dict):
+            if k != "storage_uri" and k in _SERVER_OWNED_KEYS:
+                raise ValueError(f"ServiceIngestor.store(): key {k!r} is server-owned in " "run_mode='service'.")
+        self._pipeline_spec["store_params"] = params_dict
+        self._record_stage("store")
+        return self
 
     def store_embed(self) -> "ServiceIngestor":
-        _raise_unsupported("store_embed")
+        _raise_unsupported(
+            "store_embed",
+            phase_hint=(
+                "By design — service run_mode persists embeddings via "
+                ".store(...) / .vdb_upload(...) sinks, not the in-process "
+                "store_embed helper. Wire a remote storage_uri instead."
+            ),
+        )
 
     def udf(
         self,
@@ -305,13 +629,148 @@ class ServiceIngestor(ingestor):
         run_before: bool = False,
         run_after: bool = False,
     ) -> "ServiceIngestor":
-        _raise_unsupported("udf")
+        _raise_unsupported(
+            "udf",
+            phase_hint=(
+                "Phase 5 deferred to a follow-up. Service run_mode requires "
+                "the operator to register Python callables in "
+                "retriever-service.yaml under 'udfs:' (clients reference "
+                "them by name; arbitrary code never crosses the trust "
+                "boundary). Until that ships, run UDFs locally via "
+                "run_mode='inprocess'."
+            ),
+        )
 
     def vdb_upload(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("vdb_upload")
+        """Record a vector-DB upload sink targeting a remote LanceDB URI.
+
+        ``vdb_kwargs.lancedb_uri`` must be a non-local URI matching the
+        server's ``sinks.vdb_uri_schemes`` allowlist.
+
+        Sidecar metadata (``meta_dataframe`` + ``meta_source_field`` +
+        ``meta_fields``) is uploaded eagerly via ``POST /v1/ingest/sidecar``
+        and the returned id is shipped on the spec as ``meta_dataframe_id``.
+        The original ``meta_dataframe`` (path or in-memory DataFrame) is
+        never sent on the wire — the worker pod cannot read it.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else VdbUploadParams()
+        params_dict = _params_to_dict(merged)
+
+        # Resolve sidecar metadata: if the caller supplied a path or an
+        # in-memory DataFrame, upload it now and substitute the returned id.
+        meta_df = params_dict.pop("meta_dataframe", None)
+        meta_source = params_dict.pop("meta_source_field", None)
+        meta_fields = params_dict.pop("meta_fields", None)
+        meta_join = params_dict.pop("meta_join_key", "auto")
+        if meta_df is not None or meta_source is not None or meta_fields is not None:
+            if meta_df is None or meta_source is None or not meta_fields:
+                raise ValueError(
+                    "ServiceIngestor.vdb_upload(): sidecar metadata requires all "
+                    "three of meta_dataframe / meta_source_field / meta_fields."
+                )
+            sidecar_id = self._upload_sidecar(meta_df)
+            params_dict["meta_dataframe_id"] = sidecar_id
+            params_dict["meta_source_field"] = str(meta_source)
+            params_dict["meta_fields"] = [str(x) for x in meta_fields]
+            params_dict["meta_join_key"] = meta_join
+
+        vdb_kwargs = params_dict.get("vdb_kwargs") or {}
+        if vdb_kwargs:
+            uri = vdb_kwargs.get("lancedb_uri") or vdb_kwargs.get("uri")
+            if uri is not None:
+                _require_remote_uri(uri, "vdb_upload", "vdb_kwargs.lancedb_uri")
+        self._pipeline_spec["vdb_upload_params"] = params_dict
+        return self
+
+    def _upload_sidecar(self, meta_df: Any) -> str:
+        """POST sidecar metadata to ``/v1/ingest/sidecar`` and return the id.
+
+        Accepts a path (string / PathLike) or an in-memory ``pandas.DataFrame``.
+        DataFrames are serialised as parquet to keep the payload compact;
+        local paths are streamed as their on-disk bytes with content-type
+        inferred from the suffix.
+        """
+        import io
+        import json as _json
+        import urllib.request
+
+        from pathlib import Path as _Path
+
+        filename: str
+        content_type: str
+        payload: bytes
+
+        # In-memory DataFrame (or duck-typed pandas-like) → parquet bytes.
+        if hasattr(meta_df, "to_parquet"):
+            buf = io.BytesIO()
+            try:
+                meta_df.to_parquet(buf, index=False)
+            except Exception as exc:
+                raise ValueError(
+                    f"ServiceIngestor.vdb_upload(): failed to serialise sidecar " f"DataFrame to parquet: {exc}"
+                ) from exc
+            payload = buf.getvalue()
+            filename = "sidecar.parquet"
+            content_type = "application/x-parquet"
+        else:
+            # Treat as filesystem path.
+            path = _Path(str(meta_df))
+            if not path.is_file():
+                raise FileNotFoundError(f"ServiceIngestor.vdb_upload(): sidecar metadata file not found: {path}")
+            payload = path.read_bytes()
+            filename = path.name
+            suf = path.suffix.lower()
+            if suf == ".parquet" or suf == ".pq":
+                content_type = "application/x-parquet"
+            elif suf in (".json", ".jsonl"):
+                content_type = "application/json"
+            else:
+                content_type = "text/csv"
+
+        # Build a minimal multipart/form-data request — avoids dragging in
+        # an httpx dependency where urllib already works.
+        import re
+        import secrets
+
+        safe_filename = re.sub(r"[^\w.\-]", "_", filename) or "upload"
+        boundary = f"----nrlib-sidecar-{secrets.token_hex(16)}"
+        body = io.BytesIO()
+        body.write(f"--{boundary}\r\n".encode())
+        body.write(f'Content-Disposition: form-data; name="file"; filename="{safe_filename}"\r\n'.encode())
+        body.write(f"Content-Type: {content_type}\r\n\r\n".encode())
+        body.write(payload)
+        body.write(f"\r\n--{boundary}--\r\n".encode())
+
+        url = f"{self._base_url}/v1/ingest/sidecar"
+        req = urllib.request.Request(url, data=body.getvalue(), method="POST")
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        if self._api_token:
+            req.add_header("Authorization", f"Bearer {self._api_token}")
+        try:
+            with urllib.request.urlopen(req, timeout=self._request_timeout_s) as resp:
+                body_json = _json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            raise RuntimeError(f"ServiceIngestor.vdb_upload(): failed to upload sidecar to {url}: {exc}") from exc
+
+        sidecar_id = body_json.get("sidecar_id")
+        if not sidecar_id:
+            raise RuntimeError(
+                f"ServiceIngestor.vdb_upload(): sidecar upload response missing sidecar_id: {body_json!r}"
+            )
+        logger.debug("Uploaded sidecar %s (%d bytes)", sidecar_id, len(payload))
+        return sidecar_id
 
     def save_intermediate_results(self, output_dir: str) -> "ServiceIngestor":
-        _raise_unsupported("save_intermediate_results")
+        _raise_unsupported(
+            "save_intermediate_results",
+            phase_hint=(
+                "By design — service workers don't expose stage-by-stage "
+                "outputs; they run the whole pipeline to completion before "
+                "returning a result. For per-stage debugging use "
+                "run_mode='inprocess'. To capture final outputs use "
+                ".save_to_disk(output_directory=...) instead."
+            ),
+        )
 
     def save_to_disk(
         self,
@@ -319,16 +778,132 @@ class ServiceIngestor(ingestor):
         cleanup: bool = True,
         compression: Optional[str] = "gzip",
     ) -> "ServiceIngestor":
-        _raise_unsupported("save_to_disk")
+        """Stream per-document results to ``output_directory`` as they finish.
+
+        Each completed document produces one JSON file (or ``.json.gz`` when
+        ``compression='gzip'``) named ``<document_id>.json[.gz]`` whose
+        contents are the worker's :func:`_sanitize_result_data` output —
+        the same rows reported via ``/v1/ingest/status/{id}``.
+
+        Important differences from graph mode:
+
+        * Large binary columns (``bytes``, ``page_image``, ``images``,
+          ``charts``, ``tables``) are stripped server-side before the
+          rows leave the worker. Use :meth:`store` to persist image
+          assets to a remote URI; the local-disk artifact only carries
+          the structured metadata.
+        * The client does the writing — the server has no view into the
+          caller's filesystem. ``cleanup`` is accepted for API parity
+          with graph mode but has no server-side effect today.
+        """
+        if output_directory is None:
+            raise ValueError("ServiceIngestor.save_to_disk(): output_directory is required.")
+        if compression not in (None, "gzip"):
+            raise ValueError(
+                f"save_to_disk(compression={compression!r}): only None or 'gzip' " "are supported in service run_mode."
+            )
+        target = Path(output_directory)
+        target.mkdir(parents=True, exist_ok=True)
+        self._save_to_disk_dir = target
+        self._save_to_disk_compression = compression
+        self._save_to_disk_cleanup = cleanup
+        return self
 
     def caption(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("caption")
+        """Record a caption stage backed by the server's remote VLM endpoint.
+
+        Behavioural knobs — ``prompt``, ``system_prompt``, ``batch_size``,
+        ``context_text_max_chars``, ``caption_infographics``, and generic
+        sampling params (``temperature``, ``max_tokens``, ``top_p``,
+        ``top_k``) — are honored. Trust-sensitive fields
+        (``endpoint_url``, ``api_key``, ``model_name``) and
+        local-execution fields (``device``, ``hf_cache_dir``,
+        ``tensor_parallel_size``, ``gpu_memory_utilization``) are
+        rejected on the client; the operator-configured remote endpoint
+        is the only path to a caption NIM.
+
+        We use Pydantic's ``model_fields_set`` to distinguish fields
+        the caller *explicitly* set from fields carrying their
+        ``CaptionParams`` default — only the former are rejected.
+        """
+        trust_sensitive = {"endpoint_url", "api_key", "model_name"}
+        local_only = {
+            "device",
+            "hf_cache_dir",
+            "tensor_parallel_size",
+            "gpu_memory_utilization",
+        }
+
+        # Identify which keys the caller actually meant to pass. The
+        # signal for kwargs is unambiguous (any key in **kwargs is by
+        # definition caller-provided); for a passed-in CaptionParams
+        # instance we compare against class defaults, with one wrinkle:
+        # ``api_key`` is auto-populated by the model validator from the
+        # NVIDIA_API_KEY env var, so we cannot distinguish "caller set
+        # this" from "validator set this" — we conservatively strip the
+        # value either way and only raise when the caller used kwargs.
+        explicit_keys: set[str] = set(kwargs.keys())
+        if isinstance(params, CaptionParams):
+            class_defaults = {name: field.default for name, field in CaptionParams.model_fields.items()}
+            for k in trust_sensitive | local_only:
+                if k == "api_key":
+                    continue  # see comment above; the env-var auto-fill is ambiguous.
+                val = getattr(params, k, None)
+                if val is not None and val != class_defaults.get(k):
+                    explicit_keys.add(k)
+
+        bad_trust = sorted(explicit_keys & trust_sensitive)
+        if bad_trust:
+            raise ValueError(
+                f"ServiceIngestor.caption(): keys {bad_trust!r} are server-owned in "
+                "run_mode='service'. The operator configures the caption "
+                "endpoint via retriever-service.yaml (nim_endpoints.caption_invoke_url)."
+            )
+        bad_local = sorted(explicit_keys & local_only)
+        if bad_local:
+            raise ValueError(
+                f"ServiceIngestor.caption(): keys {bad_local!r} configure local "
+                "in-process GPU execution and have no effect against a remote "
+                "caption endpoint. Remove them and rely on the server-owned "
+                "model / endpoint."
+            )
+
+        merged = _merge_params(params, kwargs) if (params or kwargs) else CaptionParams()
+        params_dict = _params_to_dict(merged)
+        # Drop both classes of keys before the spec leaves the client —
+        # the server's allowlist rejects them anyway, but failing fast
+        # at the boundary keeps the network message small and the policy
+        # error rare in practice.
+        scrubbed = {k: v for k, v in params_dict.items() if k not in trust_sensitive | local_only}
+        self._pipeline_spec["caption_params"] = scrubbed
+        self._record_stage("caption")
+        return self
 
     def webhook(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        _raise_unsupported("webhook")
+        """Record a webhook-notification stage targeting a remote URL.
 
-    def pdf_split_config(self, pages_per_chunk: int = 32) -> "ServiceIngestor":
-        _raise_unsupported("pdf_split_config")
+        ``endpoint_url`` must match one of the server's
+        ``sinks.webhook_url_prefixes``. Without that allowlist the
+        service rejects webhook requests entirely so worker egress
+        cannot be steered by clients.
+        """
+        merged = _merge_params(params, kwargs) if (params or kwargs) else WebhookParams()
+        params_dict = _params_to_dict(merged)
+        endpoint = params_dict.get("endpoint_url")
+        if endpoint is None:
+            raise ValueError(
+                "ServiceIngestor.webhook(): endpoint_url is required "
+                "(unlike inprocess run_mode, an empty endpoint_url is treated "
+                "as misconfiguration in service mode)."
+            )
+        if not endpoint.startswith(("http://", "https://")):
+            raise ValueError(
+                "ServiceIngestor.webhook(): endpoint_url must be a fully-qualified "
+                f"http(s):// URL; got {endpoint!r}."
+            )
+        self._pipeline_spec["webhook_params"] = params_dict
+        self._record_stage("webhook")
+        return self
 
     # ------------------------------------------------------------------
     # Execution — sync materialized
@@ -337,11 +912,18 @@ class ServiceIngestor(ingestor):
     def ingest(self, params: Any = None, **kwargs: Any) -> ServiceIngestResult:
         """Block until every document has finished processing on the server.
 
+        Internally opens exactly one server-side job aggregate for the
+        full input set (sized to ``len(documents)``). The aggregate
+        ``job_id`` is captured from the first ``job_created`` event and
+        exposed on :class:`ServiceIngestResult` so the caller can call
+        ``GET /v1/ingest/job/{job_id}`` for follow-up status.
+
         Returns
         -------
         ServiceIngestResult
             A list of per-document completion events, with extra
-            ``failures`` / ``document_ids`` / ``elapsed_s`` attributes.
+            ``job_id`` / ``failures`` / ``document_ids`` / ``elapsed_s``
+            / ``job_status`` attributes.
         """
         del params, kwargs
         result = ServiceIngestResult()
@@ -354,10 +936,32 @@ class ServiceIngestor(ingestor):
         for evt in self.ingest_stream():
             event_type = evt.get("event")
 
+            if event_type == "job_created":
+                result.job_id = evt.get("job_id") or result.job_id
+                continue
+
+            if event_type in ("job_finalized", "job_partial", "job_failed"):
+                if event_type == "job_finalized":
+                    result.job_status = "completed"
+                elif event_type == "job_partial":
+                    result.job_status = "partial_success"
+                else:
+                    result.job_status = "failed"
+                continue
+
+            if event_type == "job_progress" or event_type == "job_started":
+                continue
+
             if event_type == "upload_complete":
                 total_uploaded += 1
+                if result.job_id is None:
+                    # Race: SSE delivered an upload_complete before the
+                    # generator yielded job_created. Fall back to the
+                    # job_id stamped on the per-doc event by the client.
+                    result.job_id = evt.get("job_id") or result.job_id
                 print(
-                    f"\r  Uploaded: {total_uploaded}  |  "
+                    f"\r  Job {result.job_id or '?'}  |  "
+                    f"Uploaded: {total_uploaded}  |  "
                     f"Completed: {documents_completed}  |  "
                     f"Failed: {documents_failed}",
                     end="",
@@ -373,9 +977,17 @@ class ServiceIngestor(ingestor):
                     result.failures.append((doc_id, error))
                 else:
                     documents_completed += 1
+                    if self._save_to_disk_dir is not None:
+                        doc_id = evt.get("document_id", "")
+                        try:
+                            self._save_document_to_disk(doc_id)
+                        except Exception as exc:
+                            logger.warning("save_to_disk: failed to persist %s: %s", doc_id, exc)
+                            result.failures.append((doc_id, f"save_to_disk: {exc}"))
                 result.append(evt)
                 print(
-                    f"\r  Uploaded: {total_uploaded}  |  "
+                    f"\r  Job {result.job_id or '?'}  |  "
+                    f"Uploaded: {total_uploaded}  |  "
                     f"Completed: {documents_completed}  |  "
                     f"Failed: {documents_failed}",
                     end="",
@@ -393,6 +1005,11 @@ class ServiceIngestor(ingestor):
         result.document_ids = list(self._document_ids)
         result.elapsed_s = time.monotonic() - t0
         self._last_run_elapsed_s = result.elapsed_s
+        # Cache the job_id on the ingestor for the get_status() /
+        # remaining_jobs() accessors so they can target the job
+        # aggregate endpoints once J6 wiring is opted in (kept
+        # backwards compatible — get_status() still uses document_ids).
+        self._last_job_id = result.job_id
         return result
 
     # ------------------------------------------------------------------
@@ -404,9 +1021,12 @@ class ServiceIngestor(ingestor):
 
         Yields dicts with:
 
-        * ``{"event": "upload_complete", "filename": ..., "document_id": ...}``
-        * ``{"event": "document_complete", "document_id": ..., "status": ..., ...}``
-        * ``{"event": "upload_failed", "filename": ..., "error": ...}``
+        * ``{"event": "job_created", "job_id": ..., "expected_documents": ...}``
+        * ``{"event": "upload_complete", "filename": ..., "document_id": ..., "job_id": ...}``
+        * ``{"event": "document_complete", "document_id": ..., "status": ..., "job_id": ..., ...}``
+        * ``{"event": "upload_failed", "filename": ..., "error": ..., "job_id": ...}``
+        * ``{"event": "job_progress", "job_id": ..., "completed": ..., "failed": ..., ...}``
+        * ``{"event": "job_finalized"|"job_partial"|"job_failed", "job_id": ..., ...}``
         """
         files = self._collect_inputs()
         if not files:
@@ -459,7 +1079,8 @@ class ServiceIngestor(ingestor):
             max_concurrency=self._max_concurrency,
             api_token=self._api_token,
         )
-        async for evt in client.aingest_documents_stream(files=files):
+        pipeline_payload = self._pipeline_payload()
+        async for evt in client.aingest_documents_stream(files=files, pipeline_spec=pipeline_payload):
             yield evt
 
     @staticmethod

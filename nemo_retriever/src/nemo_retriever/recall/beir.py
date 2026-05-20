@@ -814,7 +814,7 @@ def evaluate_lancedb_beir(
 
     rerank_kw = {
         "model_name": str(cfg.reranker_model_name),
-        "invoke_url": (cfg.reranker_endpoint or "").strip() or None,
+        "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,
         "api_key": (cfg.reranker_api_key or "").strip(),
         "batch_size": int(cfg.reranker_batch_size),
         "local_reranker_backend": str(cfg.local_reranker_backend),

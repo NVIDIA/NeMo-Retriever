@@ -292,6 +292,9 @@ class ExtractParams(_ParamsModel):
 
     # Extraction options
     method: str = "pdfium"
+    # Run PageElementDetection (layout/yolox). Required by TableStructure,
+    # GraphicElements, and OCR. Safe to disable for text-only ingests.
+    use_page_elements: bool = True
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
     use_graphic_elements: bool = False
@@ -346,6 +349,14 @@ class ExtractParams(_ParamsModel):
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
         if self.ocr_version == "v1" and self.ocr_lang is not None:
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if not self.use_page_elements:
+            consumers = [
+                ("use_table_structure", self.use_table_structure and self.extract_tables),
+                ("use_graphic_elements", self.use_graphic_elements and self.extract_charts),
+            ]
+            enabled = [name for name, on in consumers if on]
+            if enabled:
+                raise ValueError(f"use_page_elements=False is incompatible with: {', '.join(enabled)}")
         return self
 
 
@@ -380,6 +391,7 @@ class EmbedParams(_ParamsModel):
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
+    request_timeout_s: float = 600.0
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
@@ -603,6 +615,7 @@ class CaptionParams(LLMInferenceParams):
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
     caption_infographics: bool = False
+    extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class WebhookParams(_ParamsModel):

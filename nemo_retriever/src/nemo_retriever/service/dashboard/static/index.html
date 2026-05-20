@@ -196,7 +196,11 @@ tr:hover td { background: var(--nv-row-hover); }
 
 <script>
 (async function loadViews() {
-  const views = ['layout', 'overview', 'jobs', 'vdb', 'app'];
+  // Order matters: dependencies must come before consumers. `app.jsx`
+  // references every other view component, and `job_detail.jsx` is
+  // referenced from `app.jsx` but defines no top-level globals other
+  // than its own component name.
+  const views = ['layout', 'overview', 'jobs', 'job_detail', 'vdb', 'app'];
   for (const name of views) {
     try {
       const resp = await fetch(`/v1/dashboard/static/views/${name}.jsx`);
