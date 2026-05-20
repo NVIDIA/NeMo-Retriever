@@ -78,7 +78,7 @@ Image captioning generates natural-language descriptions for unstructured image 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
-- [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605) — supported models and hardware
+- [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605) — 12B VL deprecation; optional NIM and hardware on the support matrix
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
