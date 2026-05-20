@@ -70,9 +70,9 @@ Default VL embedder container and model for release deployments:
 - **Image:** `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0`
 - **Model ID:** `nvidia/llama-nemotron-embed-vl-1b-v2`
 
-### Optional Helm NIMs (disabled by default)
+### Optional Helm NIMs (not auto-wired by default)
 
-Enable these only when your workload needs them. Chart keys and enablement defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605).
+The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled` is `true`, but the retriever service does **not** call them unless you enable the matching pipeline stage (reranker, Nemotron Parse, caption, audio, and so on). Enable only what your workload needs. Chart keys and `enabled` defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605).
 
 | Helm flag | NIM | Role |
 |-----------|-----|------|

@@ -49,12 +49,14 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified alongside other page layout elements (tables, text blocks, titles) and processed through the layout-detection and OCR stages of the pipeline. `extract_charts` and `extract_infographics` default to on. Outputs use the same metadata schema as other extracted objects.
 
+Supplying a `graphic_elements_invoke_url` (or `--graphic-elements-invoke-url` on the CLI) enables a separate graphic-elements detection path in the library; the production Helm chart for 26.05 does not deploy that NIM.
+
 For higher-accuracy visual parsing on complex PDFs, optionally use [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) with `extract_method="nemotron_parse"`. For natural-language descriptions of infographic content, optionally enable [image captioning](#image-captioning).
 
 **Related**
 
 - [What is NeMo Retriever Library?](overview.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
 
 ## OCR and scanned documents { #ocr-and-scanned-documents }
@@ -77,7 +79,7 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
 - [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605) — 12B VL deprecation; optional NIM and hardware on the support matrix
 
 ## Metadata and content schema { #metadata-and-content-schema }
