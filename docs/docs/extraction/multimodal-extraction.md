@@ -49,7 +49,6 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
-To use a separate graphic-elements detection path, set `graphic_elements_invoke_url` (CLI: `--graphic-elements-invoke-url`). The 26.05 production Helm chart does not deploy that NIM.
 
 For complex PDFs, optionally set `extract_method="nemotron_parse"` with [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse). For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning).
 
