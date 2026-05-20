@@ -96,9 +96,7 @@ def _probe(
     timeout: Optional[float] = None,
     **kwargs: Any,
 ) -> Any:
-    if not is_ffmpeg_python_available():
-        raise RuntimeError(media_dependency_error_message("Media probing"))
-    if not is_ffprobe_cli_available():
+    if not is_ffmpeg_python_available() or not is_ffprobe_cli_available():
         raise RuntimeError(media_dependency_error_message("Media probing"))
     args = ["ffprobe", "-show_format", "-show_streams", "-of", "json"]
     args += ffmpeg._utils.convert_kwargs_to_cmd_line_args(kwargs)
@@ -129,9 +127,7 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
     tempfile instead — file writes never block, so ffmpeg always makes progress
     and the call returns. We only read stderr when ``returncode != 0``.
     """
-    if not is_ffmpeg_python_available():
-        raise RuntimeError(media_dependency_error_message(f"FFmpeg operation '{label}'"))
-    if not is_ffmpeg_cli_available():
+    if not is_ffmpeg_python_available() or not is_ffmpeg_cli_available():
         raise RuntimeError(media_dependency_error_message(f"FFmpeg operation '{label}'"))
     args = ffmpeg.compile(stream)
     with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
