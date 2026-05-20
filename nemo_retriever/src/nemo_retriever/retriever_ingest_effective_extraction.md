@@ -173,4 +173,3 @@ the PDF fast path and gives users broader ingest coverage immediately. The
 longer-term fix should replace the scalar effective mode with an input manifest
 and branch plan, described in
 [Retriever Ingest Manifest Router](../../developer_docs/retriever_ingest_manifest_router.md).
-

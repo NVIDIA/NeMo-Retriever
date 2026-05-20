@@ -288,4 +288,3 @@ The core system should become multi-file and mixed-modality aware through input
 manifest planning. That gives users the simple "ingest this folder" experience
 without making absent modalities impose dependency, model, memory, or scheduling
 costs.
-
