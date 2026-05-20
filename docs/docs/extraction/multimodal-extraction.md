@@ -47,7 +47,10 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 ## Charts and infographics { #charts-and-infographics }
 
-Charts and infographic regions are classified as graphic elements and processed with the corresponding NVIDIA NIM workflows (for example, **yolox-graphic-elements** in current releases). Outputs use the same metadata schema as other extracted objects.
+Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
+
+
+For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning).
 
 **Related**
 
@@ -69,15 +72,13 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
 
-**Captioning is optional** — it is not enabled in the default Helm deployment or core pipeline (same as Nemotron Parse and the VL reranker). Enable it in your ingest configuration (for example, the `caption` API or pipeline flag) and deploy a VLM NIM only when you need it.
-
-When you enable captioning, use [Nemotron 3 Nano Omni](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning): deploy the self-hosted NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`), a local Hugging Face checkpoint such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, or the hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. HF and NIM space requirements are in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements). Omni reasoning traces are disabled by default for captioning.
+**Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [What is NeMo Retriever Library?](overview.md)
+- [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605) — optional NIM and hardware on the support matrix
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
