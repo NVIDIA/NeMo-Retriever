@@ -1,0 +1,69 @@
+---
+description: 26.05 NeMo Retriever docs — Randy review guardrails (page roles, no duplication, chart truth)
+globs: docs/docs/extraction/**/*.md,nemo_retriever/helm/**/*.md,nemo_retriever/docs/**/*.md,nemo_retriever/README.md
+alwaysApply: false
+---
+
+# 26.05 extraction documentation (release review)
+
+Applies to NVBugs, doc-drift PRs, and `26.05` branch work until GA. Encodes PR #2074 review feedback from Randy Gelhausen.
+
+## Critical errors (never ship)
+
+| # | Failure | Fix |
+|---|---------|-----|
+| 1 | **Helm/deploy leakage** — `nimOperator`, `nvcr.io`, "Helm chart ships…", "Deploy with Helm" links, enablement prose on conceptual or example pages | Move to `prerequisites-support-matrix.md` or `nemo_retriever/helm/README.md`; elsewhere one neutral link only (no deploy anchors on `multimodal-extraction.md`) |
+| 2 | **Any mention of Nemotron Nano 12B VL** — `nemotron-nano-12b-v2-vl`, `nemotron_nano_12b_v2_vl`, deprecation warnings, "not supported for captioning", or listing it in the Helm README tree/values table | **Do not mention** in extraction docs or Helm README. It was removed and was **never** part of 26.05 Helm. If removal must be documented, use **release notes only** (not this PR scope) |
+| 3 | **Duplicate NIM lists** — same model in bullets + table + caption paragraph + footnote | **One** optional-NIM table on the matrix; **Image captioning (26.05)** = Omni guidance only; footnotes link, do not re-list |
+| 4 | **graphic-elements in 26.05 pipeline** — yolox / `graphic_elements` / `--graphic-elements-invoke-url` as required for charts | Charts/infographics = page-elements + OCR; no `graphic_elements` in `values.yaml` (`grep -i graphic`) |
+| 5 | **Hosted OCR v2 before release** — `nemotron-ocr-v2` in build.nvidia.com / `ai.api.nvidia.com` CLI or README examples | Use **`nemotron-ocr-v1`** for hosted endpoint examples until the v2 NIM is published (chart/HF may still reference v2) |
+| 6 | **Docs vs chart mismatch** — claim a NIM is in/out of Helm without reading `nemo_retriever/helm/values.yaml` on `26.05` | Grep chart before writing; chart-only keys go in helm README only for NIMs you document |
+| 7 | **Wrong cross-link** — charts context links to `#image-captioning-2605`; optional-NIM enablement links to caption section instead of helm `#nim-operator-sub-stack` | Charts → matrix top or hardware section; enablement defaults → helm README `#nim-operator-sub-stack`; caption → `#image-captioning-2605` |
+| 8 | **Bug text pasted everywhere** — full Expected result copied into every file the bug names | Facts once on **owning** page; other files = one sentence + link |
+
+## Page roles (strict)
+
+| Page | Owns | Never add |
+|------|------|-----------|
+| `multimodal-extraction.md` | Pipeline behavior, stages, API defaults (`extract_charts` / `extract_infographics` **on**) | NIM product names as deploy guide, Helm flags, `nimOperator`, `nvcr.io` |
+| `prerequisites-support-matrix.md` | Default + optional NIM **tables**, hardware matrix, Omni caption guidance (`#image-captioning-2605`), `nvcr.io` pins | Long Helm how-to (link helm README); duplicate bullet lists; **any** 12B VL mention |
+| `nemo_retriever/helm/README.md` | Chart keys, `enabled` defaults, auto-wired vs optional NIMs, charts/caption 26.05 section | Conceptual extraction tutorials |
+| `audio-video.md` | Parakeet behavior, file types, hosted vs self-hosted flow | Full `nimOperator` tables (link matrix + helm README) |
+| `nemo_retriever/docs/cli/README.md` | Flags, runnable examples | Helm deploy essays; duplicate matrix tables |
+| `nemo_retriever/README.md` | Quickstart / API examples | 26.05 topology or Helm paragraphs (link out) |
+
+## 26.05 product facts (verify; do not invent)
+
+```bash
+grep -i graphic nemo_retriever/helm/values.yaml   # expect 0 matches
+grep -E "extract_charts|extract_infographics" nemo_retriever/src/nemo_retriever/params/models.py
+```
+
+- **Charts/infographics:** page-elements + OCR; not graphic-elements NIM in chart.
+- **Captioning:** Omni `nemotron_3_nano_omni_30b_a3b_reasoning` only — **never** document or warn about `nemotron-nano-12b-v2-vl` in extraction or Helm README.
+- **Hosted OCR examples:** `nemotron-ocr-v1` on `ai.api.nvidia.com` until v2 is live; do not copy v2 into CLI/package README examples prematurely.
+- **`extract_charts` / `extract_infographics`:** default **on** — "default to on" is correct; do not document as off.
+
+## Before you finish (required grep)
+
+Run on **your diff** only:
+
+```bash
+# Leakage off owning pages (should be empty outside matrix + helm/)
+rg -n "nimOperator|nvcr\.io/nim" docs/docs/extraction/multimodal-extraction.md nemo_retriever/README.md nemo_retriever/docs/
+
+# Duplicate deploy paragraphs on matrix (caption section should not repeat Omni + nvcr.io prose)
+rg -n "Enable it in Helm|nvcr.io/nim/nvidia/nemotron-3-nano-omni" docs/docs/extraction/prerequisites-support-matrix.md
+
+# 12B VL must not appear in extraction or Helm README (Randy: stop mentioning; never in 26.05 Helm)
+rg -ni "nemotron-nano-12b|nemotron_nano_12b|12b.vl|nano.12b" docs/docs/extraction/ nemo_retriever/helm/README.md
+
+# Deploy links on conceptual pages
+rg -n "Deploy with Helm|charts-infographics-and-captioning" docs/docs/extraction/multimodal-extraction.md
+```
+
+## NVBugs workflow
+
+1. Paste prompt from `docs/docs/extraction/DOC_BUG_PROMPT.md` with file list from the bug.
+2. Open PR with `.github/PULL_REQUEST_TEMPLATE/doc_bug_fix.md`.
+3. Reviewer question: *Does this paragraph belong on this page?* — not *Is the fact true somewhere?*
