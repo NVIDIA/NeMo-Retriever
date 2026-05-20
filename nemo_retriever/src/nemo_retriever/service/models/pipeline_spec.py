@@ -68,7 +68,7 @@ class PipelineSpec(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     # Extraction stage selector (mirrors GraphIngestor._extraction_mode).
-    extraction_mode: ExtractionMode = "pdf"
+    extraction_mode: ExtractionMode = "auto"
 
     extract_params: Optional[dict[str, Any]] = None
     embed_params: Optional[dict[str, Any]] = None
@@ -90,7 +90,7 @@ class PipelineSpec(RichModel):
         baked-at-startup pipeline path.
         """
         return (
-            self.extraction_mode == "pdf"
+            self.extraction_mode in ("pdf", "auto")
             and self.extract_params is None
             and self.embed_params is None
             and self.dedup_params is None

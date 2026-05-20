@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -188,9 +190,14 @@ class _MultiTypeExtractBase(AbstractOperator):
             html_params = self._effective_chunk_params("html")
             outputs.append(HtmlSplitActor(params=html_params).run(grouped["html"]))
         if not grouped["audio"].empty:
-            audio_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["audio"])
-            audio_df = ASRActor(params=self.asr_params).run(audio_df)
-            outputs.append(self._maybe_chunk(audio_df, "audio"))
+            audio_work, audio_spill = self._materialize_media_bytes(grouped["audio"])
+            try:
+                audio_df = MediaChunkActor(params=self.audio_chunk_params).run(audio_work)
+                audio_df = ASRActor(params=self.asr_params).run(audio_df)
+                outputs.append(self._maybe_chunk(audio_df, "audio"))
+            finally:
+                if audio_spill is not None:
+                    shutil.rmtree(audio_spill, ignore_errors=True)
         if not grouped["video"].empty:
             outputs.append(self._run_video_pipeline(grouped["video"]))
 
@@ -333,6 +340,36 @@ class _MultiTypeExtractBase(AbstractOperator):
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
         }
 
+    @staticmethod
+    def _materialize_media_bytes(batch_df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
+        """Spill in-memory ``bytes`` to temp files when ``path`` is not on disk.
+
+        Returns ``(updated_df, tmpdir)`` where *tmpdir* is ``None`` when no
+        spilling was needed (all paths already exist on disk).  The caller
+        **must** delete *tmpdir* when finished.
+        """
+        if "bytes" not in batch_df.columns:
+            return batch_df, None
+
+        needs_spill = []
+        for idx, row in batch_df.iterrows():
+            p = str(row.get("path") or "")
+            if p and not Path(p).is_file() and row.get("bytes") is not None:
+                needs_spill.append(idx)
+
+        if not needs_spill:
+            return batch_df, None
+
+        tmpdir = tempfile.mkdtemp(prefix="retriever_media_spill_")
+        df = batch_df.copy()
+        for idx in needs_spill:
+            row = df.loc[idx]
+            original_name = Path(str(row["path"])).name or f"media_{idx}"
+            dest = Path(tmpdir) / original_name
+            dest.write_bytes(row["bytes"])
+            df.at[idx, "path"] = str(dest)
+        return df, tmpdir
+
     def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         """Run audio-from-video ASR + frame OCR + (optional) scene fusion.
 
@@ -354,6 +391,14 @@ class _MultiTypeExtractBase(AbstractOperator):
         ``av_fuse_params.enabled`` is False or when neither branch
         produced rows.
         """
+        work_df, spill_dir = self._materialize_media_bytes(batch_df)
+        try:
+            return self._run_video_pipeline_inner(work_df)
+        finally:
+            if spill_dir is not None:
+                shutil.rmtree(spill_dir, ignore_errors=True)
+
+    def _run_video_pipeline_inner(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         # Branch A: audio-from-video → ASR. Skipped when the caller disables
         # audio (visual-only recall benchmarks); mirrors ``build_graph``'s
         # ``audio_enabled`` gate.

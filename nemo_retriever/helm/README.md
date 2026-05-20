@@ -64,7 +64,6 @@ nemo_retriever/helm/
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (off by default)
-        ├── nemotron-nano-12b-v2-vl.yaml       # NIMCache + NIMService (off by default)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (off by default)
         └── audio.yaml                         # NIMCache + NIMService (off by default)
 ```
@@ -206,7 +205,6 @@ pair gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
 | `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM. |
-| `nimOperator.nemotron_nano_12b_v2_vl.enabled` | `true`  | VLM NIM. |
 | `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM. |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `true` | Multimodal reasoning LLM (30B). |
 | `nimOperator.audio.enabled`            | `true`  | ASR NIM. |
