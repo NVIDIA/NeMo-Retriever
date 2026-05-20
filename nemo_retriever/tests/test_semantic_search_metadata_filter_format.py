@@ -30,10 +30,19 @@ from nemo_retriever.tabular_data.retrieval.data_access.semantic_search import (
 # ---------------------------------------------------------------------------
 
 
-def test_no_filters_returns_none() -> None:
+def test_no_arguments_returns_none() -> None:
     assert _build_metadata_where_clause() is None
+
+
+def test_empty_labels_and_no_database_name_returns_none() -> None:
     assert _build_metadata_where_clause(labels=[], database_name=None) is None
+
+
+def test_no_labels_and_empty_database_name_returns_none() -> None:
     assert _build_metadata_where_clause(labels=None, database_name="") is None
+
+
+def test_no_filters_returns_none_for_dict_format() -> None:
     assert _build_metadata_where_clause(fmt="dict") is None
 
 
@@ -106,15 +115,94 @@ class _FakeRetriever:
         self.vdb_kwargs = {"vdb": vdb} if vdb is not None else {}
 
 
-def test_metadata_filter_format_reads_from_injected_vdb() -> None:
+def test_metadata_filter_format_reads_dict_from_injected_vdb() -> None:
     assert _metadata_filter_format(_FakeRetriever(_FakeVdb("dict"))) == "dict"
+
+
+def test_metadata_filter_format_reads_sql_from_injected_vdb() -> None:
     assert _metadata_filter_format(_FakeRetriever(_FakeVdb("sql"))) == "sql"
 
 
-def test_metadata_filter_format_defaults_to_sql() -> None:
+def test_metadata_filter_format_defaults_to_sql_when_no_vdb_injected() -> None:
     assert _metadata_filter_format(_FakeRetriever(None)) == "sql"
+
+
+def test_metadata_filter_format_defaults_to_sql_when_vdb_lacks_attribute() -> None:
     assert _metadata_filter_format(_FakeRetriever(object())) == "sql"
 
 
 def test_metadata_filter_format_unknown_falls_back_to_sql() -> None:
     assert _metadata_filter_format(_FakeRetriever(_FakeVdb("yaml"))) == "sql"
+
+
+# ---------------------------------------------------------------------------
+# search_semantic_index — integration with retriever.query(vdb_kwargs=...)
+# ---------------------------------------------------------------------------
+
+
+from nemo_retriever.tabular_data.retrieval.data_access.semantic_search import (
+    DEFAULT_FETCH_LIMIT,
+    search_semantic_index,
+)
+
+
+class _RecordingRetriever:
+    """Fake retriever that records every ``query`` invocation and returns no hits."""
+
+    def __init__(self, vdb: object | None) -> None:
+        self.vdb_kwargs = {"vdb": vdb} if vdb is not None else {}
+        self.calls: list[dict] = []
+
+    def query(self, entity: str, *, top_k: int, vdb_kwargs: dict | None) -> list[dict]:
+        self.calls.append({"entity": entity, "top_k": top_k, "vdb_kwargs": vdb_kwargs})
+        return []
+
+
+def test_search_semantic_index_forwards_sql_where_per_label() -> None:
+    retriever = _RecordingRetriever(_FakeVdb("sql"))
+    search_semantic_index(retriever, "rev", label_filter=["Column"], database_name="dor_prod")
+
+    assert len(retriever.calls) == 1
+    sent = retriever.calls[0]["vdb_kwargs"]
+    assert isinstance(sent, dict)
+    assert set(sent.keys()) == {"where"}
+    assert isinstance(sent["where"], str)
+    assert """metadata LIKE '%"label":"Column"%'""" in sent["where"]
+    assert """metadata LIKE '%"database_name":"dor\\_prod"%'""" in sent["where"]
+
+
+def test_search_semantic_index_forwards_dict_filter_per_label() -> None:
+    retriever = _RecordingRetriever(_FakeVdb("dict"))
+    search_semantic_index(retriever, "rev", label_filter=["Column"], database_name="dor_prod")
+
+    assert len(retriever.calls) == 1
+    sent = retriever.calls[0]["vdb_kwargs"]
+    assert sent == {"where": {"label": "Column", "database_name": "dor_prod"}}
+
+
+def test_search_semantic_index_dict_runs_one_query_per_label() -> None:
+    retriever = _RecordingRetriever(_FakeVdb("dict"))
+    search_semantic_index(retriever, "rev", label_filter=["Column", "Table"])
+
+    assert len(retriever.calls) == 2
+    sent = [c["vdb_kwargs"] for c in retriever.calls]
+    assert {"where": {"label": "Column"}} in sent
+    assert {"where": {"label": "Table"}} in sent
+
+
+def test_search_semantic_index_no_filter_passes_none_and_default_limit() -> None:
+    retriever = _RecordingRetriever(_FakeVdb("dict"))
+    search_semantic_index(retriever, "rev")
+
+    assert len(retriever.calls) == 1
+    assert retriever.calls[0]["vdb_kwargs"] is None
+    assert retriever.calls[0]["top_k"] == DEFAULT_FETCH_LIMIT
+
+
+def test_search_semantic_index_defaults_to_sql_when_vdb_missing() -> None:
+    retriever = _RecordingRetriever(None)
+    search_semantic_index(retriever, "rev", label_filter=["Column"])
+
+    sent = retriever.calls[0]["vdb_kwargs"]
+    assert isinstance(sent["where"], str)
+    assert """metadata LIKE '%"label":"Column"%'""" in sent["where"]
