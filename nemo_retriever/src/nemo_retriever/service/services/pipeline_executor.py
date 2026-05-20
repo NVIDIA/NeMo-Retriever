@@ -320,6 +320,7 @@ def _build_graph_ingestor_from_spec(
     base_embed: dict[str, Any] | None,
     spec: dict[str, Any] | None,
     base_caption: dict[str, Any] | None = None,
+    base_asr: dict[str, Any] | None = None,
 ) -> "tuple[Any, str, bool]":
     """Construct a :class:`GraphIngestor` reflecting the per-request *spec*.
 
@@ -330,6 +331,7 @@ def _build_graph_ingestor_from_spec(
     """
     from nemo_retriever.graph_ingestor import GraphIngestor
     from nemo_retriever.params import (
+        ASRParams,
         CaptionParams,
         DedupParams,
         EmbedParams,
@@ -340,7 +342,7 @@ def _build_graph_ingestor_from_spec(
     )
 
     spec = spec or {}
-    extraction_mode = spec.get("extraction_mode", "pdf")
+    extraction_mode = spec.get("extraction_mode", "auto")
 
     extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
     extract_params = ExtractParams(**extract_kwargs)
@@ -368,6 +370,8 @@ def _build_graph_ingestor_from_spec(
         caption_kwargs = _merge_server_owned(base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS)
         caption_params = CaptionParams(**caption_kwargs) if caption_kwargs.get("endpoint_url") else None
 
+    asr_params = ASRParams(**base_asr) if base_asr else None
+
     ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
@@ -379,6 +383,8 @@ def _build_graph_ingestor_from_spec(
             split_config=spec.get("split_config"),
             extraction_mode=extraction_mode,
         )
+        if asr_params is not None:
+            ingestor._asr_params = asr_params
 
     stage_order = spec.get("stage_order") or []
     seen_post_extract: set[str] = set()
@@ -454,6 +460,7 @@ def _run_pipeline_in_process(
     vectordb_url: str | None = None,
     pipeline_spec: dict[str, Any] | None = None,
     caption_params_dict: dict[str, Any] | None = None,
+    asr_params_dict: dict[str, Any] | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -482,6 +489,7 @@ def _run_pipeline_in_process(
         embed_params_dict,
         pipeline_spec,
         caption_params_dict,
+        asr_params_dict,
     )
 
     result_df = ingestor.ingest()
@@ -546,6 +554,24 @@ def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
     return CaptionParams(**kwargs)
 
 
+def build_asr_params(nim: NimEndpointsConfig) -> Any | None:
+    """Derive :class:`ASRParams` from service NIM endpoint config.
+
+    Returns ``None`` when no audio gRPC endpoint is configured, signalling
+    that the audio pipeline should attempt local Parakeet (requires torch).
+    """
+    if not nim.audio_grpc_endpoint:
+        return None
+
+    from nemo_retriever.params import ASRParams
+
+    return ASRParams(
+        audio_endpoints=(nim.audio_grpc_endpoint, None),
+        audio_infer_protocol="grpc",
+        auth_token=nim.api_key,
+    )
+
+
 def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
     """Derive :class:`EmbedParams` from service NIM endpoint config.
 
@@ -582,6 +608,7 @@ def _make_work_fn(
     extract_params = build_extract_params(config.nim_endpoints)
     embed_params = build_embed_params(config.nim_endpoints)
     caption_params = build_caption_params(config.nim_endpoints)
+    asr_params = build_asr_params(config.nim_endpoints)
 
     vectordb_url: str | None = None
     if config.vectordb.enabled:
@@ -600,6 +627,7 @@ def _make_work_fn(
     extract_params_dict = extract_params.model_dump(mode="json")
     embed_params_dict = embed_params.model_dump(mode="json") if embed_params else None
     caption_params_dict = caption_params.model_dump(mode="json") if caption_params else None
+    asr_params_dict = asr_params.model_dump(mode="json") if asr_params else None
 
     _pipeline_configs[label.lower()] = {
         "label": label,
@@ -611,6 +639,8 @@ def _make_work_fn(
         "embed_enabled": embed_params is not None,
         "caption_params": _redact_dict(_params_to_dict(caption_params)) if caption_params else None,
         "caption_enabled": caption_params is not None,
+        "asr_params": _redact_dict(_params_to_dict(asr_params)) if asr_params else None,
+        "asr_enabled": asr_params is not None,
         "pool": {
             "workers": num_workers,
             "queue_size": (
@@ -651,6 +681,7 @@ def _make_work_fn(
                 vectordb_url,
                 resolved_spec,
                 caption_params_dict,
+                asr_params_dict,
             )
         except BrokenProcessPool:
             logger.error(

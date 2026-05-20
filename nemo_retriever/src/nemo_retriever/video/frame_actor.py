@@ -15,11 +15,13 @@ import base64
 import io
 import logging
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
 from nemo_retriever.audio.media_interface import MediaInterface
+from nemo_retriever.audio.media_interface import ensure_media_on_disk
 from nemo_retriever.audio.media_interface import is_media_available
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
@@ -91,8 +93,10 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
             if not path_str.strip():
                 continue
             try:
-                frame_rows = _extract_one(path_str, self._params, self._interface)
-                out_rows.extend(frame_rows)
+                raw_bytes = row.get("bytes") if not Path(path_str).is_file() else None
+                with ensure_media_on_disk(path_str, raw_bytes) as real_path:
+                    frame_rows = _extract_one(real_path, self._params, self._interface, source_path_override=path_str)
+                    out_rows.extend(frame_rows)
             except Exception as e:
                 logger.exception("Error extracting frames from %s: %s", path_str, e)
                 continue
@@ -105,8 +109,19 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
         return data
 
 
-def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInterface) -> List[Dict[str, Any]]:
-    """Extract frames from one video file and return a list of row dicts."""
+def _extract_one(
+    source_path: str,
+    params: VideoFrameParams,
+    interface: MediaInterface,
+    source_path_override: str | None = None,
+) -> List[Dict[str, Any]]:
+    """Extract frames from one video file and return a list of row dicts.
+
+    *source_path* is the on-disk path ffmpeg reads.
+    *source_path_override* is the original user-facing filename stamped
+    into output columns when the on-disk path is a temporary spill file.
+    """
+    display_path = source_path_override or source_path
     fps = float(params.fps)
     half_window = 0.5 / fps
     with tempfile.TemporaryDirectory(prefix="retriever_video_frames_") as tmpdir:
@@ -117,7 +132,7 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
             max_frames=params.max_frames,
         )
         if not frames:
-            logger.warning("No frames extracted from %s (ffmpeg returned 0 files)", source_path)
+            logger.warning("No frames extracted from %s (ffmpeg returned 0 files)", display_path)
             return []
 
         rows: List[Dict[str, Any]] = []
@@ -130,7 +145,7 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
                 continue
             image_b64 = base64.b64encode(frame_bytes).decode("ascii")
             metadata = {
-                "source_path": source_path,
+                "source_path": display_path,
                 "frame_index": idx,
                 "fps": fps,
                 "frame_timestamp_seconds": float(timestamp),
@@ -141,11 +156,8 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
             }
             rows.append(
                 {
-                    # frame_path lives inside ``tmpdir`` which is deleted on
-                    # return; consumers read ``image_b64`` / ``bytes``, not
-                    # the file. Publish the source video instead of a stale ref.
-                    "path": source_path,
-                    "source_path": source_path,
+                    "path": display_path,
+                    "source_path": display_path,
                     "image_b64": image_b64,
                     "page_number": idx,
                     "metadata": metadata,

@@ -51,6 +51,14 @@ class NimEndpointsConfig(RichModel):
         ),
     )
     rerank_invoke_url: str | None = None
+    audio_grpc_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051). "
+            "When set, audio/video pipelines use remote ASR instead of loading "
+            "the local Parakeet model (which requires torch)."
+        ),
+    )
     caption_invoke_url: str | None = Field(
         default=None,
         description=(

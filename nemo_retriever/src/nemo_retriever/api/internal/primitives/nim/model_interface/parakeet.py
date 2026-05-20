@@ -85,7 +85,12 @@ class ParakeetClient:
         if self.function_id:
             self.auth_metadata.append(("function-id", self.function_id))
 
-        # Create authentication and ASR service objects.
+        if riva_client is None:
+            raise ImportError(
+                "Remote Parakeet ASR requires the Riva client library. "
+                'Install with: pip install "nvidia-riva-client>=2.17.0"'
+            )
+
         self._auth = riva_client.Auth(self.ssl_cert, self.use_ssl, self.endpoint, self.auth_metadata)
         self._asr_service = riva_client.ASRService(self._auth)
 

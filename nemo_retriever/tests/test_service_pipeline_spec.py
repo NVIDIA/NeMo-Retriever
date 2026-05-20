@@ -46,7 +46,7 @@ def test_extract_records_stage_and_params() -> None:
     ing.extract(ExtractParams(extract_text=False, dpi=300))
     payload = ing._pipeline_payload()
     assert payload is not None
-    assert payload["extraction_mode"] == "pdf"
+    assert payload["extraction_mode"] == "auto"
     assert payload["stage_order"] == ["extract"]
     assert payload["extract_params"]["extract_text"] is False
     assert payload["extract_params"]["dpi"] == 300
