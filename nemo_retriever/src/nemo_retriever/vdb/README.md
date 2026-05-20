@@ -168,6 +168,66 @@ retriever.query(
 
 ---
 
+## Metadata filtering
+
+**Reference notebook:** [`examples/nemo_retriever_retriever_query_metadata_filter.ipynb`](../../../../examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — runnable end-to-end demo using sidecar metadata and both filter modes below.
+
+Two complementary mechanisms narrow `Retriever.query` results by metadata:
+
+1. **Server-side (`where`)** — Pass a Lance / DataFusion SQL predicate in `vdb_kwargs` per call (or as a default on the `Retriever`). The predicate runs inside LanceDB on the table columns (`vector`, `text`, `metadata`, `source`) and is wired up in `LanceDB.retrieval` as a `.where(...)` clause on the vector search. **`_filter`** is accepted as an alias for `where`.
+2. **Client-side** — Use **`filter_hits_by_content_metadata(hits, predicate)`** after retrieval to keep rows whose parsed `content_metadata` satisfies an arbitrary Python predicate. Useful for logic that doesn't fit SQL or for filters that depend on combined fields.
+
+### How metadata is stored
+
+During ingestion, each chunk's `content_metadata` is serialized as a **compact JSON string** (no spaces after `:` or `,`) in the `metadata` column of the LanceDB table. Sidecar columns supplied via `meta_dataframe` / `meta_source_field` / `meta_fields` are merged into that JSON object before upload — so sidecar keys live in the same JSON string, not in separate columns. This is why SQL filters on metadata use `LIKE` against a JSON substring rather than a real JSON operator.
+
+### Writing `where` predicates
+
+LanceDB evaluates `where` as DataFusion SQL. A few patterns:
+
+```python
+# Match a sidecar string field by exact value (compact JSON: "key":"value")
+where = "metadata LIKE '%\"meta_a\":\"alpha\"%'"
+
+# Match a numeric metadata field — numbers serialize without quotes
+where = "metadata LIKE '%\"meta_b\":10%'"
+
+# Combine predicates with AND / OR
+where = "metadata LIKE '%\"meta_a\":\"bravo\"%' AND metadata LIKE '%\"meta_b\":10%'"
+
+# Filter on the `source` column directly (separate from metadata JSON)
+where = "source LIKE '%annual_report%'"
+```
+
+Escape single quotes in SQL strings by doubling them (`''`). Because matching is substring-based, include the JSON key (`"meta_a":` rather than just `alpha`) to avoid matching unrelated values.
+
+### Server-side vs client-side
+
+Use **`where`** when the predicate fits SQL and you want LanceDB to prune candidates before vector ranking — it also avoids the wasted work of materializing hits you'd discard. Use **`filter_hits_by_content_metadata`** when the predicate is easier to express in Python (e.g. combined numeric ranges, membership in a Python set, or fields that need parsing). They compose well — run a wide `top_k` with a `where` to prune broadly, then post-filter client-side for finer logic:
+
+```python
+from nemo_retriever.vdb import filter_hits_by_content_metadata
+
+hits = retriever.query(
+    "budget assumptions",
+    top_k=16,
+    vdb_kwargs={"where": "metadata LIKE '%\"meta_a\":\"bravo\"%'"},
+)
+hits = filter_hits_by_content_metadata(
+    hits, lambda m: m.get("meta_b", 0) >= 10
+)
+```
+
+### Inspecting hit metadata
+
+Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(hit)`** to get a `dict` you can read directly (this is what `filter_hits_by_content_metadata` uses internally). Both helpers are exported from `nemo_retriever.vdb`.
+
+### Not implemented in this path
+
+Hybrid search (`hybrid=True`) is not implemented for the precomputed-vector retrieval path — `LanceDB.retrieval` raises `NotImplementedError`. Filters above apply only to dense vector search.
+
+---
+
 ## End-to-end mental model
 
 ```mermaid

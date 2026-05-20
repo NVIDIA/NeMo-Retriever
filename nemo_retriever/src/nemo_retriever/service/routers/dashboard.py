@@ -49,22 +49,83 @@ async def index():
 # ── Overview API ─────────────────────────────────────────────────────
 
 
+async def _fetch_pool_stats(client: httpx.AsyncClient, base_url: str) -> dict:
+    """Best-effort fetch of ``GET /v1/admin/pool_stats`` from a backend.
+
+    Returns ``{}`` on any error so the overview never fails to render
+    just because one worker pod is briefly unhealthy.
+    """
+    try:
+        resp = await client.get(f"{base_url}/v1/admin/pool_stats", timeout=2.0)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as exc:
+        logger.debug("pool_stats fetch failed for %s: %s", base_url, exc)
+    return {}
+
+
 @router.get("/api/overview")
 async def overview(request: Request) -> JSONResponse:
-    """Aggregate cluster status for the overview panel."""
+    """Aggregate cluster status for the overview panel.
+
+    On gateway pods, this fans out to each worker Service to collect
+    live pool stats (queue depth, queue ratio, processed counts) so
+    the dashboard can surface scaling pressure without forcing the
+    operator to open Grafana. On standalone pods the local pool is
+    read in-process via :func:`get_pipeline_pool`.
+    """
     config = request.app.state.config
 
     backends = {}
+    pool_stats: dict[str, dict] = {}
     try:
         from nemo_retriever.service.services.proxy import get_proxy
-        from nemo_retriever.service.services.pipeline_pool import PoolType
+        from nemo_retriever.service.services.pipeline_pool import (
+            PoolType,
+            get_pipeline_pool,
+        )
 
         proxy = get_proxy()
         if proxy is not None:
             backends["realtime"] = await proxy.check_backend(PoolType.REALTIME)
             backends["batch"] = await proxy.check_backend(PoolType.BATCH)
+            # H6: fan out to each backend for live queue depth. The
+            # gateway has no local pool, so this is the only way the
+            # overview page can show "realtime queue 50% full" without
+            # going through Prometheus.
+            gateway_cfg = getattr(config, "gateway", None)
+            if gateway_cfg is not None:
+                async with httpx.AsyncClient() as client:
+                    rt_task = _fetch_pool_stats(client, gateway_cfg.realtime_url)
+                    bt_task = _fetch_pool_stats(client, gateway_cfg.batch_url)
+                    rt_stats, bt_stats = await asyncio.gather(rt_task, bt_task)
+                # Each worker's response carries its own pools dict; the
+                # realtime pod returns {"realtime": {...}} and batch
+                # returns {"batch": {...}}. Merge for the consumer.
+                for stats in (rt_stats, bt_stats):
+                    for pool_name, pool_data in (stats.get("pools") or {}).items():
+                        pool_stats[pool_name] = pool_data
+        else:
+            # Standalone (or worker) pod — pull stats from the local
+            # singleton directly to avoid an HTTP round trip to ourselves.
+            local_pool = get_pipeline_pool()
+            if local_pool is not None:
+                for pt in (PoolType.REALTIME, PoolType.BATCH):
+                    p = local_pool.pool_for(pt)
+                    if p is None:
+                        continue
+                    depth = p.queue_depth
+                    max_qs = max(1, p.max_queue_size)
+                    pool_stats[pt.value] = {
+                        "queue_depth": depth,
+                        "queue_depth_ratio": round(depth / max_qs, 4),
+                        "max_queue_size": p.max_queue_size,
+                        "num_workers": p.num_workers,
+                        "processed": p.processed,
+                        "is_running": p.is_running,
+                    }
     except Exception as exc:
-        logger.debug("Could not check backends: %s", exc)
+        logger.debug("Could not check backends / pool stats: %s", exc)
 
     vdb_status = None
     vdb_url = getattr(config, "vectordb", None)
@@ -104,6 +165,7 @@ async def overview(request: Request) -> JSONResponse:
         {
             "mode": config.mode,
             "backends": backends,
+            "pool_stats": pool_stats,
             "vectordb": vdb_status,
             "job_summary": job_summary,
             "worker_config": worker_config,
@@ -117,7 +179,15 @@ async def overview(request: Request) -> JSONResponse:
 
 @router.get("/api/jobs")
 async def jobs_sse(request: Request) -> StreamingResponse:
-    """SSE stream of job events with periodic summary heartbeats."""
+    """SSE stream of job-tracker events with periodic summary heartbeats.
+
+    Subscribes to the global event bus (no ``job_id`` filter) so the
+    dashboard sees both per-document events and the J5 job lifecycle
+    events for every job. The initial ``snapshot`` payload bundles both
+    layers (``documents`` for back-compat with the legacy doc-grid view
+    and ``jobs`` for the new job-aggregate view) so the SPA can render
+    immediately without an extra REST hop.
+    """
     from nemo_retriever.service.services.event_bus import get_event_bus
     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
@@ -135,7 +205,8 @@ async def jobs_sse(request: Request) -> StreamingResponse:
                 snapshot = {
                     "type": "snapshot",
                     "summary": tracker.summary(),
-                    "jobs": tracker.all_records(),
+                    "jobs": [_serialize_job(j) for j in tracker.all_jobs()],
+                    "documents": [rec.model_dump() for rec in tracker.all_documents()],
                 }
                 yield f"event: snapshot\ndata: {json.dumps(snapshot)}\n\n"
 
@@ -147,7 +218,12 @@ async def jobs_sse(request: Request) -> StreamingResponse:
 
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=5.0)
-                    yield f"event: job_update\ndata: {json.dumps(event)}\n\n"
+                    # Job lifecycle events vs per-doc events are
+                    # distinguished by the ``type`` field set by the
+                    # tracker (``job_created`` etc. vs status strings).
+                    evt_type = event.get("type", "")
+                    sse_event = "job_lifecycle" if evt_type.startswith("job_") else "job_update"
+                    yield f"event: {sse_event}\ndata: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
                     pass
 
@@ -172,18 +248,221 @@ async def jobs_sse(request: Request) -> StreamingResponse:
 # ── Jobs snapshot (REST fallback) ────────────────────────────────────
 
 
+def _serialize_job(agg) -> dict:
+    """Project a :class:`JobAggregate` to the wire shape the UI expects.
+
+    Kept compact (no document records) so list views can paginate
+    hundreds of jobs without bloating the payload.
+    """
+    return {
+        "job_id": agg.job_id,
+        "status": agg.status.value,
+        "expected_documents": agg.expected_documents,
+        "counts": dict(agg.counts),
+        "created_at": agg.created_at,
+        "started_at": agg.started_at,
+        "finalized_at": agg.finalized_at,
+        "elapsed_s": agg.elapsed_s,
+        "label": agg.label,
+        "document_ids": list(agg.document_ids),
+    }
+
+
 @router.get("/api/jobs/snapshot")
 async def jobs_snapshot(request: Request) -> JSONResponse:
+    """REST fallback for the SSE stream.
+
+    Returns both ``jobs`` (the J2+ aggregate view) and ``documents``
+    (per-doc rows for the legacy table). The SPA prefers ``jobs`` and
+    falls back to ``documents`` for older builds.
+    """
     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
     tracker = get_job_tracker()
     if tracker is None:
-        return JSONResponse({"summary": {}, "jobs": []})
+        return JSONResponse({"summary": {}, "jobs": [], "documents": []})
 
     return JSONResponse(
         {
             "summary": tracker.summary(),
-            "jobs": tracker.all_records(),
+            "jobs": [_serialize_job(j) for j in tracker.all_jobs()],
+            "documents": [rec.model_dump() for rec in tracker.all_documents()],
+        }
+    )
+
+
+# ── Jobs list / detail (J8 — paginated REST API for the UI) ──────────
+
+
+@router.get("/api/jobs/list")
+async def jobs_list(
+    request: Request,
+    status: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+    sort: str = "created_desc",
+) -> JSONResponse:
+    """Paginated list of job aggregates, newest first by default.
+
+    Parameters
+    ----------
+    status:
+        Optional aggregate-status filter (``pending``, ``running``,
+        ``completed``, ``failed``, ``partial_success``).
+    offset:
+        Zero-based page start (>= 0).
+    limit:
+        Page size, 1..500.
+    sort:
+        ``created_desc`` (default), ``created_asc``,
+        ``finalized_desc``, ``finalized_asc``.
+
+    Returns ``{jobs, total, total_filtered, offset, limit, sort}`` with
+    a compact projection per job (see :func:`_serialize_job`).
+    """
+    from nemo_retriever.service.services.job_tracker import (
+        JobAggregateStatus,
+        get_job_tracker,
+    )
+
+    if offset < 0:
+        raise HTTPException(400, "offset must be >= 0")
+    if limit < 1 or limit > 500:
+        raise HTTPException(400, "limit must be in [1, 500]")
+
+    valid_sorts = {"created_desc", "created_asc", "finalized_desc", "finalized_asc"}
+    if sort not in valid_sorts:
+        raise HTTPException(400, f"sort must be one of {sorted(valid_sorts)}, got {sort!r}")
+
+    tracker = get_job_tracker()
+    if tracker is None:
+        return JSONResponse(
+            {
+                "jobs": [],
+                "total": 0,
+                "total_filtered": 0,
+                "offset": offset,
+                "limit": limit,
+                "sort": sort,
+            }
+        )
+
+    jobs = list(tracker.all_jobs())
+
+    if status is not None:
+        valid_status = {s.value for s in JobAggregateStatus}
+        if status not in valid_status:
+            raise HTTPException(
+                400,
+                f"status must be one of {sorted(valid_status)}, got {status!r}",
+            )
+        filtered = [j for j in jobs if j.status.value == status]
+    else:
+        filtered = jobs
+
+    # Sort newest/oldest by either creation or finalization timestamp.
+    # ISO-8601 sorts lexicographically; ``None`` slots are pushed last
+    # in descending order, first in ascending order so the UI always
+    # surfaces *known* timestamps first.
+    if sort.startswith("created"):
+        key = lambda j: j.created_at  # noqa: E731
+        reverse = sort == "created_desc"
+    else:
+        key = lambda j: (j.finalized_at or "")  # noqa: E731
+        reverse = sort == "finalized_desc"
+    filtered.sort(key=key, reverse=reverse)
+
+    page = filtered[offset : offset + limit]
+    return JSONResponse(
+        {
+            "jobs": [_serialize_job(j) for j in page],
+            "total": len(jobs),
+            "total_filtered": len(filtered),
+            "offset": offset,
+            "limit": limit,
+            "sort": sort,
+        }
+    )
+
+
+@router.get("/api/jobs/{job_id}")
+async def jobs_detail(request: Request, job_id: str) -> JSONResponse:
+    """Single-job aggregate view for the detail page.
+
+    Returns the compact aggregate projection together with up to 500
+    document records — enough to render the per-doc table immediately
+    on page load. The full list is paginated separately at
+    :func:`jobs_documents`.
+    """
+    from nemo_retriever.service.services.job_tracker import get_job_tracker
+
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(503, "Job tracker not available")
+
+    agg = tracker.get_job(job_id)
+    if agg is None:
+        raise HTTPException(404, f"Job {job_id!r} not found")
+
+    docs = tracker.job_documents(job_id)
+    sample_cap = 500
+    return JSONResponse(
+        {
+            **_serialize_job(agg),
+            "documents": [d.model_dump() for d in docs[:sample_cap]],
+            "documents_truncated": len(docs) > sample_cap,
+        }
+    )
+
+
+@router.get("/api/jobs/{job_id}/documents")
+async def jobs_documents(
+    request: Request,
+    job_id: str,
+    status: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> JSONResponse:
+    """Paginated documents for one job — backs the detail-page table."""
+    from nemo_retriever.service.services.job_tracker import (
+        DocumentStatus,
+        get_job_tracker,
+    )
+
+    if offset < 0:
+        raise HTTPException(400, "offset must be >= 0")
+    if limit < 1 or limit > 1000:
+        raise HTTPException(400, "limit must be in [1, 1000]")
+
+    tracker = get_job_tracker()
+    if tracker is None:
+        raise HTTPException(503, "Job tracker not available")
+
+    if tracker.get_job(job_id) is None:
+        raise HTTPException(404, f"Job {job_id!r} not found")
+
+    docs = tracker.job_documents(job_id)
+
+    if status is not None:
+        valid = {s.value for s in DocumentStatus}
+        if status not in valid:
+            raise HTTPException(
+                400,
+                f"status must be one of {sorted(valid)}, got {status!r}",
+            )
+        filtered = [d for d in docs if d.status.value == status]
+    else:
+        filtered = docs
+
+    page = filtered[offset : offset + limit]
+    return JSONResponse(
+        {
+            "job_id": job_id,
+            "total": len(docs),
+            "total_filtered": len(filtered),
+            "offset": offset,
+            "limit": limit,
+            "items": [d.model_dump() for d in page],
         }
     )
 

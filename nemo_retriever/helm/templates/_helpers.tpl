@@ -103,22 +103,6 @@ PVC + Secret name helpers
 {{- end -}}
 {{- end -}}
 
-{{- define "nemo-retriever.nimApiKeySecretName" -}}
-{{- if .Values.nimApiKey.existingSecret -}}
-{{- .Values.nimApiKey.existingSecret -}}
-{{- else -}}
-{{- printf "%s-nim-api-key" (include "nemo-retriever.fullname" .) -}}
-{{- end -}}
-{{- end -}}
-
-{{- define "nemo-retriever.ngcApiKeySecretName" -}}
-{{- if .Values.nims.ngcApiKey.existingSecret -}}
-{{- .Values.nims.ngcApiKey.existingSecret -}}
-{{- else -}}
-{{- printf "%s-ngc-api-key" (include "nemo-retriever.fullname" .) -}}
-{{- end -}}
-{{- end -}}
-
 {{- define "nemo-retriever.configMapName" -}}
 {{- printf "%s-config" (include "nemo-retriever.fullname" .) -}}
 {{- end -}}
@@ -128,14 +112,14 @@ PVC + Secret name helpers
 Pull secret helpers
 =============================================================================
 
-Combine the user-supplied list of imagePullSecrets with the chart-managed
-docker-config Secret (when imagePullSecret.create=true) and emit them in the
-form expected by a Pod spec.
+Combine the chart-managed NGC pull Secret (when ngcImagePullSecret.create=true)
+with any pre-existing pull secrets listed in .Values.imagePullSecrets and
+emit them in the form expected by a Pod spec.
 */}}
 {{- define "nemo-retriever.imagePullSecrets" -}}
 {{- $secrets := list -}}
-{{- if .Values.imagePullSecret.create -}}
-{{- $secrets = append $secrets (dict "name" .Values.imagePullSecret.name) -}}
+{{- if .Values.ngcImagePullSecret.create -}}
+{{- $secrets = append $secrets (dict "name" .Values.ngcImagePullSecret.name) -}}
 {{- end -}}
 {{- range .Values.imagePullSecrets -}}
 {{- $secrets = append $secrets . -}}
@@ -149,26 +133,21 @@ imagePullSecrets:
 {{- end -}}
 
 {{/*
-nemo-retriever.nimImagePullSecrets
-  Same as above but additionally folds in nims.imagePullSecrets so the NIM
-  Deployments can opt into a separate registry.
+nemo-retriever.ngcImagePullSecret
+  Base64-encoded docker-config JSON for the chart-managed NGC pull Secret.
+  Honours the user-supplied `dockerconfigjson` (assumed already encoded)
+  when present, otherwise assembles one from registry/username/password.
 */}}
-{{- define "nemo-retriever.nimImagePullSecrets" -}}
-{{- $secrets := list -}}
-{{- if .Values.imagePullSecret.create -}}
-{{- $secrets = append $secrets (dict "name" .Values.imagePullSecret.name) -}}
-{{- end -}}
-{{- range .Values.imagePullSecrets -}}
-{{- $secrets = append $secrets . -}}
-{{- end -}}
-{{- range .Values.nims.imagePullSecrets -}}
-{{- $secrets = append $secrets . -}}
-{{- end -}}
-{{- if $secrets -}}
-imagePullSecrets:
-{{- range $secrets }}
-  - name: {{ .name }}
-{{- end }}
+{{- define "nemo-retriever.ngcImagePullSecret" -}}
+{{- if .Values.ngcImagePullSecret.dockerconfigjson -}}
+{{- .Values.ngcImagePullSecret.dockerconfigjson -}}
+{{- else -}}
+{{- $registry := required "ngcImagePullSecret.registry required when create=true and dockerconfigjson is empty" .Values.ngcImagePullSecret.registry -}}
+{{- $username := required "ngcImagePullSecret.username required when create=true and dockerconfigjson is empty" .Values.ngcImagePullSecret.username -}}
+{{- $password := required "ngcImagePullSecret.password required when create=true and dockerconfigjson is empty" .Values.ngcImagePullSecret.password -}}
+{{- $auth := printf "%s:%s" $username $password | b64enc -}}
+{{- $cfg := dict "auths" (dict $registry (dict "username" $username "password" $password "auth" $auth)) -}}
+{{- $cfg | toJson | b64enc -}}
 {{- end -}}
 {{- end -}}
 
@@ -221,103 +200,65 @@ nemo-retriever.role.configMapName
 
 {{/*
 =============================================================================
-NIM helpers
+NIM Operator endpoint resolution
 =============================================================================
+
+The NIM Operator creates a Kubernetes Service with the same name as the
+NIMService resource. The chart hardcodes that name per-NIM (matching the
+file name under templates/nims/<model>.yaml) so the retriever-service
+config can address each NIM as `http://<service-name>:<port><invokePath>`.
+
+Mapping (key -> Service name, default invokePath):
+  page_elements   -> nemotron-page-elements-v3      /v1/infer
+  table_structure -> nemotron-table-structure-v1    /v1/infer
+  ocr             -> nemotron-ocr-v1                /v1/infer
+  vlm_embed       -> llama-nemotron-embed-vl-1b-v2  /v1/embeddings
 */}}
 
 {{/*
-nemo-retriever.nim.fullname
-  Resource name for one NIM (e.g. <fullname>-nim-page-elements).
-  Usage: {{ include "nemo-retriever.nim.fullname" (dict "context" $ "shortName" "page-elements") }}
-*/}}
-{{- define "nemo-retriever.nim.fullname" -}}
-{{- $ctx := .context -}}
-{{- $short := .shortName -}}
-{{- printf "%s-nim-%s" (include "nemo-retriever.fullname" $ctx) $short | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
+nemo-retriever.nimOperator.url
+  In-cluster invocation URL for one operator-managed NIM. Returns the empty
+  string when the NIM is disabled OR when the NIM Operator CRDs are absent,
+  so callers can fall back to an externally configured URL.
 
-{{/*
-nemo-retriever.nim.selectorLabels
-  Selector labels for one NIM Deployment.
+  Usage:
+    {{ include "nemo-retriever.nimOperator.url" (dict
+         "context" $
+         "key" "page_elements"
+         "serviceName" "nemotron-page-elements-v3"
+         "invokePath" "/v1/infer") }}
 */}}
-{{- define "nemo-retriever.nim.selectorLabels" -}}
-{{- $ctx := .context -}}
-{{- $short := .shortName -}}
-app.kubernetes.io/name: {{ include "nemo-retriever.name" $ctx }}
-app.kubernetes.io/instance: {{ $ctx.Release.Name }}
-app.kubernetes.io/component: nim
-nemo-retriever.nvidia.com/nim: {{ $short }}
-{{- end -}}
-
-{{/*
-nemo-retriever.nim.labels
-  Full labels for one NIM (selector labels + chart metadata).
-*/}}
-{{- define "nemo-retriever.nim.labels" -}}
-helm.sh/chart: {{ include "nemo-retriever.chart" .context }}
-{{ include "nemo-retriever.nim.selectorLabels" . }}
-{{- if .context.Chart.AppVersion }}
-app.kubernetes.io/version: {{ .context.Chart.AppVersion | quote }}
-{{- end }}
-app.kubernetes.io/managed-by: {{ .context.Release.Service }}
-app.kubernetes.io/part-of: nemo-retriever
-{{- end -}}
-
-{{/*
-nemo-retriever.nim.merged
-  Returns the per-NIM values block merged on top of nims.defaults.
-  Usage: {{ $cfg := include "nemo-retriever.nim.merged" (dict "context" $ "key" "pageElements") | fromYaml }}
-*/}}
-{{- define "nemo-retriever.nim.merged" -}}
+{{- define "nemo-retriever.nimOperator.url" -}}
 {{- $ctx := .context -}}
 {{- $key := .key -}}
-{{- $defaults := deepCopy $ctx.Values.nims.defaults -}}
-{{- $override := index $ctx.Values.nims $key -}}
-{{- $merged := mergeOverwrite $defaults (deepCopy $override) -}}
-{{- toYaml $merged -}}
+{{- $cfg := index $ctx.Values.nimOperator $key -}}
+{{- if and (and (and $cfg $cfg.enabled) $ctx.Values.nims.enabled) ($ctx.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") -}}
+{{- $port := 8000 -}}
+{{- if and $cfg.expose $cfg.expose.service $cfg.expose.service.port -}}
+{{- $port = int $cfg.expose.service.port -}}
 {{- end -}}
-
-{{/*
-nemo-retriever.nim.url
-  In-cluster invocation URL(s) for one NIM. When replicas > 1, returns
-  comma-separated per-pod URLs so the retriever service can pin workers
-  to individual NIM replicas (application-level load spreading). With a
-  headless Service + StatefulSet the pod DNS is predictable:
-    <name>-0.<name>.<namespace>.svc.cluster.local
-
-  Returns "" when the NIM is disabled so callers can fall back to
-  externally configured URLs.
-*/}}
-{{- define "nemo-retriever.nim.url" -}}
-{{- $ctx := .context -}}
-{{- $short := .shortName -}}
-{{- $key := .key -}}
-{{- $cfg := index $ctx.Values.nims $key -}}
-{{- if and $ctx.Values.nims.enabled $cfg.enabled -}}
-{{- $name := include "nemo-retriever.nim.fullname" (dict "context" $ctx "shortName" $short) -}}
-{{- $merged := include "nemo-retriever.nim.merged" (dict "context" $ctx "key" $key) | fromYaml -}}
-{{- $port := int $merged.port -}}
-{{- $path := $cfg.invokePath -}}
-{{- $replicas := int $merged.replicas -}}
-{{- $urls := list -}}
-{{- range $i := until $replicas -}}
-{{- $urls = append $urls (printf "http://%s-%d.%s.%s.svc.cluster.local:%d%s" $name $i $name $ctx.Release.Namespace $port $path) -}}
-{{- end -}}
-{{- join "," $urls -}}
+{{- printf "http://%s:%d%s" .serviceName $port .invokePath -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
 nemo-retriever.nim.endpointURL
-  Resolves the URL the service should call for a given NIM endpoint.
+  Resolves the URL the retriever-service should call for a given NIM.
 
   Resolution order:
-    1. An explicit override in .Values.serviceConfig.nimEndpoints.<key>.
-    2. The auto-generated in-cluster URL when nims.enabled and the
-       individual NIM is enabled.
+    1. Explicit override in .Values.serviceConfig.nimEndpoints.<configKey>
+       (always wins).
+    2. The operator-managed in-cluster URL when both nimOperator.<key>.enabled
+       and the apps.nvidia.com/v1alpha1 CRDs are present.
     3. Empty string (the service treats this as "no endpoint configured").
 
-  Usage: {{ include "nemo-retriever.nim.endpointURL" (dict "context" $ "key" "pageElements" "shortName" "page-elements" "configKey" "pageElementsInvokeUrl") }}
+  Usage:
+    {{ include "nemo-retriever.nim.endpointURL" (dict
+         "context" $
+         "key" "page_elements"
+         "serviceName" "nemotron-page-elements-v3"
+         "configKey" "pageElementsInvokeUrl"
+         "invokePath" "/v1/infer") }}
 */}}
 {{- define "nemo-retriever.nim.endpointURL" -}}
 {{- $ctx := .context -}}
@@ -325,6 +266,6 @@ nemo-retriever.nim.endpointURL
 {{- if $explicit -}}
 {{- $explicit -}}
 {{- else -}}
-{{- include "nemo-retriever.nim.url" (dict "context" $ctx "shortName" .shortName "key" .key) -}}
+{{- include "nemo-retriever.nimOperator.url" (dict "context" $ctx "key" .key "serviceName" .serviceName "invokePath" .invokePath) -}}
 {{- end -}}
 {{- end -}}

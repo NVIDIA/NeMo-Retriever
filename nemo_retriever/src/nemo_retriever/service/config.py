@@ -43,7 +43,30 @@ class NimEndpointsConfig(RichModel):
     table_structure_invoke_url: str | None = None
     graphic_elements_invoke_url: str | None = None
     embed_invoke_url: str | None = None
+    embed_model_name: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote embedding endpoint. "
+            "Server-owned — clients cannot override the deployed embed NIM SKU."
+        ),
+    )
     rerank_invoke_url: str | None = None
+    caption_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote VLM endpoint that fulfills .caption(...) requests. "
+            "When set, clients may submit caption_params overrides "
+            "(prompt, system_prompt, batch_size, etc.) without being able "
+            "to redirect the endpoint or API key."
+        ),
+    )
+    caption_model_name: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote caption endpoint. "
+            "Server-owned — clients cannot override the deployed VLM SKU."
+        ),
+    )
     api_key: str | None = None
 
 
@@ -109,11 +132,109 @@ class VectorDbConfig(RichModel):
     enabled: bool = False
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
-    embed_model: str = "nvidia/llama-nemotron-embed-1b-v2"
+    embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     vectordb_url: str = Field(
         default="http://nemo-retriever-vectordb:7671",
         description="URL of the vectordb service (for workers to POST embeddings to)",
     )
+
+
+class SinksConfig(RichModel):
+    """Per-sink-type egress allowlists for client-driven pipeline stages.
+
+    Each list gates one of the three sinks (image store, webhook
+    notifier, vector-DB upload). Leaving a list empty disables that
+    sink — clients that ask for it receive HTTP 403 with a message
+    explaining how to enable it.
+
+    Use ``"*"`` as a wildcard entry to bypass enforcement entirely;
+    this is intended for dev clusters only and is highly unsafe in
+    multi-tenant deployments.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    storage_uri_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URI schemes (e.g. 's3://', 'gs://', 'azure://') the worker is "
+            "allowed to write extracted images to via .store(...). "
+            "Empty disables storage sinks."
+        ),
+    )
+    webhook_url_prefixes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URL prefixes (e.g. 'https://hooks.example.com/') the worker is "
+            "allowed to POST webhook notifications to. Empty disables webhooks."
+        ),
+    )
+    vdb_uri_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URI schemes the worker is allowed to write LanceDB tables to "
+            "via .vdb_upload(...). Empty disables per-request VDB overrides "
+            "(the server's preconfigured vectordb pod still receives writes)."
+        ),
+    )
+
+
+class PipelineOverridesConfig(RichModel):
+    """How permissively to accept per-request ``PipelineSpec`` overrides.
+
+    * ``mode='reject'`` — clients may not override pipeline config at all.
+      Server-side YAML is the only source of truth.
+    * ``mode='allow_list'`` (default) — only the keys enumerated by the
+      built-in defaults plus the ``extra_*_keys`` extensions below are
+      accepted. Endpoint URLs and API keys are *always* denied.
+    * ``mode='allow_all'`` — every key is accepted **except** the
+      endpoint/api_key denylist. Useful in dev clusters but unsafe in
+      multi-tenant deployments.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["reject", "allow_list", "allow_all"] = "allow_list"
+    extra_extract_keys: list[str] = Field(default_factory=list)
+    extra_embed_keys: list[str] = Field(default_factory=list)
+    extra_dedup_keys: list[str] = Field(default_factory=list)
+    extra_split_keys: list[str] = Field(default_factory=list)
+    extra_store_keys: list[str] = Field(default_factory=list)
+    extra_storage_options_keys: list[str] = Field(default_factory=list)
+    extra_webhook_keys: list[str] = Field(default_factory=list)
+    extra_vdb_upload_keys: list[str] = Field(default_factory=list)
+    extra_vdb_kwargs_keys: list[str] = Field(default_factory=list)
+    extra_caption_keys: list[str] = Field(default_factory=list)
+    sinks: SinksConfig = Field(default_factory=SinksConfig)
+
+    def to_policy(self, *, caption_enabled: bool = False) -> "PipelineOverridesPolicy":  # noqa: F821
+        """Return a :class:`PipelineOverridesPolicy` configured from this section.
+
+        ``caption_enabled`` is derived from ``NimEndpointsConfig.caption_invoke_url``
+        by the caller — clients can only override caption settings when the
+        operator has actually wired up a VLM endpoint.
+        """
+        from nemo_retriever.service.policy import PipelineOverridesPolicy, SinkUrlAllowlist
+
+        return PipelineOverridesPolicy(
+            mode=self.mode,
+            extra_extract_keys=frozenset(self.extra_extract_keys),
+            extra_embed_keys=frozenset(self.extra_embed_keys),
+            extra_dedup_keys=frozenset(self.extra_dedup_keys),
+            extra_split_keys=frozenset(self.extra_split_keys),
+            extra_store_keys=frozenset(self.extra_store_keys),
+            extra_storage_options_keys=frozenset(self.extra_storage_options_keys),
+            extra_webhook_keys=frozenset(self.extra_webhook_keys),
+            extra_vdb_upload_keys=frozenset(self.extra_vdb_upload_keys),
+            extra_vdb_kwargs_keys=frozenset(self.extra_vdb_kwargs_keys),
+            extra_caption_keys=frozenset(self.extra_caption_keys),
+            sinks=SinkUrlAllowlist(
+                storage_uri_schemes=list(self.sinks.storage_uri_schemes),
+                webhook_url_prefixes=list(self.sinks.webhook_url_prefixes),
+                vdb_uri_schemes=list(self.sinks.vdb_uri_schemes),
+            ),
+            caption_enabled=caption_enabled,
+        )
 
 
 class ServiceConfig(RichModel):
@@ -141,6 +262,7 @@ class ServiceConfig(RichModel):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
+    pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
 
 
 def _bundled_yaml_path() -> Path:
