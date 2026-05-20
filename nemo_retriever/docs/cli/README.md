@@ -92,8 +92,6 @@ retriever query "What is in this document?" \
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
 running self-hosted NIM containers.
 
-Omit `--graphic-elements-invoke-url` unless you self-host the legacy graphic-elements NIM; 26.05 chart and infographic extraction uses page-elements and OCR only ([Charts and infographics](https://nvidia.github.io/NeMo-Retriever/extraction/multimodal-extraction/#charts-and-infographics)).
-
 ### What you get
 
 - Extracted text, tables, and charts as rows in LanceDB at `./lancedb` (default
@@ -228,7 +226,8 @@ retriever pipeline run ./data/test.pdf \
   --save-intermediate ./processed_docs
 ```
 
-For 26.05 supported caption models and self-hosted NIM setup, see [Image captioning (26.05)](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605). Custom caption prompts and `reasoning` flags are not exposed on the CLI — use `nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
+Custom caption prompts and `reasoning` flags are not exposed on the CLI — use
+`nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
 
 ### Directory of documents
 
