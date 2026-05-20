@@ -72,7 +72,7 @@ Default VL embedder container and model for release deployments:
 
 ### Optional Helm NIMs (not auto-wired by default)
 
-The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled` is `true`, but the retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). Enable only what your workload needs. Chart keys and `enabled` defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605).
+The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled` is `true`, but the retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). Enable only what your workload needs. Chart keys and `enabled` defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
 | Helm flag | NIM | Role |
 |-----------|-----|------|
