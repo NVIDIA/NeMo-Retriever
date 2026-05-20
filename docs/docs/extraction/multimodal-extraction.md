@@ -47,9 +47,9 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 ## Charts and infographics { #charts-and-infographics }
 
-In **26.05**, chart and infographic regions are detected and classified by [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) (Helm `page_elements`). Text from those regions is extracted with [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) (Helm `ocr`). Keep `extract_charts` and `extract_infographics` enabled in your ingest configuration (both default to on). Outputs use the same metadata schema as other extracted objects.
+Chart and infographic regions are detected and classified by [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3). Text from those regions is extracted with [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2). `extract_charts` and `extract_infographics` default to on in the extraction pipeline. Outputs use the same metadata schema as other extracted objects.
 
-The legacy **graphic-elements** / **yolox-graphic-elements** NIM (`nemotron-graphic-elements-v1`) is **not** part of the 26.05 Helm chart and is not required for chart or infographic extraction. For higher-accuracy visual parsing on complex PDFs, optionally use [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) with `extract_method="nemotron_parse"`. For natural-language descriptions of infographic content, optionally enable [image captioning](#image-captioning).
+The legacy **graphic-elements** detector (`nemotron-graphic-elements-v1` / yolox-graphic-elements) is not used in 26.05. For higher-accuracy visual parsing on complex PDFs, optionally use [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) with `extract_method="nemotron_parse"`. For natural-language descriptions of infographic content, optionally enable [image captioning](#image-captioning). For which NIMs to deploy, see the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md).
 
 **Related**
 
@@ -72,9 +72,9 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
 
-**Captioning is optional** — it is not enabled in the default Helm deployment or core pipeline (same as Nemotron Parse and the VL reranker). Enable it in your ingest configuration (for example, the `caption` API or pipeline flag) and deploy a VLM NIM only when you need it.
+**Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content.
 
-For **26.05**, use [Nemotron 3 Nano Omni](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) as the supported captioning model: deploy the self-hosted NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`), a local Hugging Face checkpoint such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, or the hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. **nemotron-nano-12b-v2-vl** is deprecated for captioning in 26.05—see [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605). HF and NIM space requirements are in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements). Omni reasoning traces are disabled by default for captioning.
+For **26.05**, use [Nemotron 3 Nano Omni](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` hosted, or a local Hugging Face checkpoint such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`). **nemotron-nano-12b-v2-vl** is deprecated for captioning in this release. Supported models, NIM images, and hardware requirements are in [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605) and [Model hardware requirements](prerequisites-support-matrix.md#model-hardware-requirements). Omni reasoning traces are disabled by default for captioning.
 
 **Related**
 

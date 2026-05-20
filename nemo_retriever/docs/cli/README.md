@@ -92,10 +92,7 @@ retriever query "What is in this document?" \
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
 running self-hosted NIM containers.
 
-In **26.05**, chart and infographic extraction uses **page-elements** plus **OCR** only.
-The NeMo Retriever Helm chart does not deploy a graphic-elements NIM. The CLI still
-accepts `--graphic-elements-invoke-url` for legacy/self-hosted `nemotron-graphic-elements-v1`
-workloads; leave it unset unless you operate that NIM yourself.
+Omit `--graphic-elements-invoke-url` unless you self-host the legacy graphic-elements NIM; 26.05 chart and infographic extraction uses page-elements and OCR only ([Charts and infographics](https://nvidia.github.io/NeMo-Retriever/extraction/multimodal-extraction/#charts-and-infographics)).
 
 ### What you get
 
@@ -219,9 +216,6 @@ retriever pipeline run ./data/test.pdf \
 
 ### Caption images
 
-For **26.05**, use Nemotron 3 Nano Omni for captioning (not Nemotron Nano 12B VL).
-See [Image captioning (26.05)](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605).
-
 ```bash
 retriever pipeline run ./data/test.pdf \
   --input-type pdf \
@@ -234,11 +228,7 @@ retriever pipeline run ./data/test.pdf \
   --save-intermediate ./processed_docs
 ```
 
-For self-hosted Omni, deploy the NIM from the Helm chart
-(`nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning`) or use `nemo_retriever[local]` with a
-local Hugging Face ID such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`. Custom
-caption prompts and `reasoning` flags are not exposed on the CLI — use
-`nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
+For 26.05 supported caption models and self-hosted NIM setup, see [Image captioning (26.05)](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605). Custom caption prompts and `reasoning` flags are not exposed on the CLI — use `nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
 
 ### Directory of documents
 

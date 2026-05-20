@@ -176,12 +176,6 @@ python -m nemo_retriever.examples.graph_pipeline \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-In **26.05**, chart and infographic extraction uses **page-elements** plus **OCR**
-only. The NeMo Retriever Helm chart does not deploy a graphic-elements NIM. The
-pipeline still accepts `graphic_elements_invoke_url` for legacy/self-hosted
-`nemotron-graphic-elements-v1` workloads; omit it unless you operate that NIM
-yourself.
-
 > **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Use
 > `--ocr-version v1` to opt into the legacy OCR engine. Local OCR v2 defaults
 > to multilingual mode (`multi`); pass `--ocr-lang english` for the English-only
