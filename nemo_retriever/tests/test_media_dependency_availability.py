@@ -54,7 +54,7 @@ class MediaDependencyAvailabilityTests(TestCase):
         self.assertIn("apt-get update && apt-get install -y --no-install-recommends ffmpeg", message)
         self.assertIn("INSTALL_FFMPEG=true", message)
         self.assertIn("service.installFfmpeg=true", message)
-        self.assertIn("--build-arg INSTALL_FFMPEG=true", message)
+        self.assertNotIn("--build-arg INSTALL_FFMPEG=true", message)
 
     def test_dependency_error_message_is_coherent_when_nothing_is_missing(self) -> None:
         media_interface = _load_media_interface()

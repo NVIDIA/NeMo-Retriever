@@ -4,7 +4,6 @@
 # syntax=docker/dockerfile:1.3
 #
 # Build from repo root: docker build -f Dockerfile -t nemo-retriever .
-# Build with ffmpeg/ffprobe: docker build -f Dockerfile --build-arg INSTALL_FFMPEG=true -t nemo-retriever .
 # Runtime ffmpeg/ffprobe install for service image: docker run -e INSTALL_FFMPEG=true nemo-retriever-service
 # Run: docker run nemo-retriever  (shell with venv active)
 # Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
@@ -15,8 +14,6 @@ ARG BASE_IMG_TAG=jammy-20250619
 
 FROM $BASE_IMG:$BASE_IMG_TAG AS base
 
-ARG INSTALL_FFMPEG=false
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bzip2 \
       ca-certificates \
@@ -26,16 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       sudo \
       wget \
     && apt-get clean
-
-# Optional ffmpeg/ffprobe for audio/video extraction. Disabled by default so
-# remote-only and document-only images do not carry the media stack.
-RUN if [ "${INSTALL_FFMPEG}" = "true" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends ffmpeg \
-      && apt-get clean \
-      && rm -rf /var/lib/apt/lists/*; \
-    else \
-      echo "Skipping ffmpeg/ffprobe apt install. Rebuild with --build-arg INSTALL_FFMPEG=true to enable audio/video media extraction."; \
-    fi
 
 # LibreOffice (headless) for docx/pptx -> PDF. GPL source handling per nv-ingest Dockerfile.
 ARG GPL_LIBS="\

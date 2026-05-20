@@ -46,8 +46,8 @@ For Kubernetes deployments, set `service.installFfmpeg=true` in the
 to install ffmpeg/ffprobe at service startup. This runtime path requires
 package-repository network egress, a writable root filesystem, and a security
 policy that allows the image's scoped sudo use. If your cluster blocks startup
-package installation, build an ffmpeg-enabled service image instead; see
-[troubleshooting](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies).
+package installation, use a custom service image that already contains
+ffmpeg/ffprobe; see [troubleshooting](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies).
 
 !!! important
 
@@ -69,10 +69,10 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 2. If the service will process audio or video files, set
    `service.installFfmpeg=true` in the Helm chart. If your cluster blocks
-   runtime package installation, use the
+   runtime package installation, use a custom service image that already
+   contains ffmpeg/ffprobe and follow the
    [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)
-   for the ffmpeg-enabled image build, push, and `service.image.repository` /
-   `service.image.tag` override flow.
+   for the `service.image.repository` / `service.image.tag` override flow.
 
 3. After the services are running, interact with the pipeline from Python.
 

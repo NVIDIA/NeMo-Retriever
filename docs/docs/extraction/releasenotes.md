@@ -31,9 +31,8 @@ Highlights for the 26.03 release include:
 - Documentation: multimodal extraction is covered on one page with an in-page table of contents and redirects from the former per-topic URLs
 - Container images built from this repository no longer install `ffmpeg` and
   `ffprobe` by default. Audio and video extraction require these binaries on
-  `PATH`; for Helm deployments set `service.installFfmpeg=true`, build service
-  images with `--build-arg INSTALL_FFMPEG=true`, or install system FFmpeg
-  manually in non-container environments.
+  `PATH`; for Helm deployments set `service.installFfmpeg=true`, or install
+  system FFmpeg manually in non-container environments.
 
 ## Release Notes for Previous Versions
 

@@ -60,19 +60,9 @@ writable root filesystem, and security policy that allows the image's scoped
 sudo use. It will fail if the service container sets
 `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
 
-For locked-down clusters that cannot install packages at startup, rebuild the
-image with FFmpeg enabled:
-
-```bash
-docker build \
-  -f Dockerfile \
-  --target service \
-  --build-arg INSTALL_FFMPEG=true \
-  -t nemo-retriever-service:ffmpeg .
-```
-
-Then push that image to a registry and set `service.image.repository` and
-`service.image.tag` to the ffmpeg-enabled image.
+For locked-down clusters that cannot install packages at startup, use a custom
+service image that already contains ffmpeg/ffprobe. Push that image to a
+registry and set `service.image.repository` and `service.image.tag`.
 
 ## Can't start new thread error
 

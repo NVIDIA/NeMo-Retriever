@@ -474,12 +474,8 @@ docker run -e INSTALL_FFMPEG=true nemo-retriever-service
 For Kubernetes deployments, set `service.installFfmpeg=true` in the Helm chart.
 This runtime install requires network access to package repositories, a
 writable root filesystem, and security policy that allows the image's scoped
-sudo use. For locked-down environments, include ffmpeg/ffprobe in the image by
-rebuilding from the repository root with:
-
-```bash
-docker build -f Dockerfile --build-arg INSTALL_FFMPEG=true -t nemo-retriever .
-```
+sudo use. For locked-down environments that cannot install packages at startup,
+use a custom service image that already contains ffmpeg/ffprobe.
 
 ```python
 ingestor = create_ingestor(run_mode="batch")

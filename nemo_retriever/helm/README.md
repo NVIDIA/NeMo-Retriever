@@ -119,21 +119,9 @@ that allows sudo/setuid behavior. Do not set
 `service.securityContext.allowPrivilegeEscalation: false` or
 `service.securityContext.readOnlyRootFilesystem: true` for this path.
 
-For locked-down clusters that cannot install packages at startup, build an
-ffmpeg-enabled image and point the chart at it:
-
-```bash
-# from the repo root:
-docker build \
-    --target service \
-    --build-arg INSTALL_FFMPEG=true \
-    -t <YOUR_REGISTRY>/nemo-retriever-service:<TAG> .
-docker push <YOUR_REGISTRY>/nemo-retriever-service:<TAG>
-
-helm upgrade --install retriever ./nemo_retriever/helm \
-  --set service.image.repository=<YOUR_REGISTRY>/nemo-retriever-service \
-  --set service.image.tag=<TAG>
-```
+For locked-down clusters that cannot install packages at startup, use a custom
+service image that already contains ffmpeg/ffprobe and point the chart at it
+with `service.image.repository` and `service.image.tag`.
 
 ### 2. Install with external NIM endpoints (operator not required)
 
@@ -215,9 +203,10 @@ short list of knobs you'll touch first.
 | `service.resources.limits`    | `96 / 96Gi`                        |       |
 | `service.gpu.enabled`         | `false`                            | The service does **not** need a GPU. |
 
-For audio and video extraction, set `service.installFfmpeg=true`, or set
-`service.image.repository` and `service.image.tag` to a service image that was
-built with `--build-arg INSTALL_FFMPEG=true`.
+For audio and video extraction, set `service.installFfmpeg=true`. If your
+cluster blocks runtime package installation, use a custom service image that
+already contains ffmpeg/ffprobe and set `service.image.repository` and
+`service.image.tag`.
 
 ### Service configuration (rendered into `retriever-service.yaml`)
 

@@ -31,7 +31,6 @@ except Exception:
 
 MANUAL_FFMPEG_INSTALL_COMMAND = "apt-get update && apt-get install -y --no-install-recommends ffmpeg"
 CONTAINER_FFMPEG_INSTALL_ENV = "-e INSTALL_FFMPEG=true"
-CONTAINER_FFMPEG_INSTALL_FLAG = "--build-arg INSTALL_FFMPEG=true"
 HELM_FFMPEG_INSTALL_VALUE = "service.installFfmpeg=true"
 MEDIA_DEPENDENCIES: Tuple[str, ...] = ("ffmpeg-python", "ffmpeg", "ffprobe")
 FFMPEG_DEPENDENCIES: Tuple[str, ...] = ("ffmpeg-python", "ffmpeg")
@@ -96,8 +95,7 @@ def media_dependency_error_message(
             "Install system FFmpeg with "
             f"`{MANUAL_FFMPEG_INSTALL_COMMAND}`. "
             "For the bundled service container, run with "
-            f"`docker run {CONTAINER_FFMPEG_INSTALL_ENV} ...` or rebuild with "
-            f"`docker build -f Dockerfile {CONTAINER_FFMPEG_INSTALL_FLAG} ...`. "
+            f"`docker run {CONTAINER_FFMPEG_INSTALL_ENV} ...`. "
             f"For Helm deployments, set `{HELM_FFMPEG_INSTALL_VALUE}`."
         )
     hints_str = (" " + " ".join(install_hints)) if install_hints else ""

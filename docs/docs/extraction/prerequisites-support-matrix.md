@@ -14,8 +14,7 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
   `sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg`.
   Python packages such as `ffmpeg-python` or `nemo-retriever[multimedia]` do not
   provide these system binaries. For Helm deployments, set
-  `service.installFfmpeg=true` or use a service image built with
-  `--build-arg INSTALL_FFMPEG=true`.
+  `service.installFfmpeg=true`.
 
 !!! note
 

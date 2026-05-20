@@ -21,13 +21,13 @@ class ContainerFfmpegInstallTests(TestCase):
         with self.assertRaises(SkipTest):
             _read_required_file(missing_dockerfile)
 
-    def test_dockerfile_uses_default_off_apt_ffmpeg_build_arg(self) -> None:
+    def test_dockerfile_uses_runtime_ffmpeg_install_without_build_arg(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         dockerfile = _read_required_file(repo_root / "Dockerfile")
 
-        self.assertIn("ARG INSTALL_FFMPEG=false", dockerfile)
-        self.assertIn("--build-arg INSTALL_FFMPEG=true", dockerfile)
-        self.assertIn("apt-get install -y --no-install-recommends ffmpeg", dockerfile)
+        self.assertNotIn("ARG INSTALL_FFMPEG", dockerfile)
+        self.assertNotIn("--build-arg INSTALL_FFMPEG=true", dockerfile)
+        self.assertNotIn('RUN if [ "${INSTALL_FFMPEG}" = "true" ]', dockerfile)
         self.assertNotIn("install_ffmpeg.sh", dockerfile)
         self.assertNotIn("ffmpeg.org/releases", dockerfile)
 
@@ -82,6 +82,23 @@ class ContainerFfmpegInstallTests(TestCase):
         self.assertIn("allowPrivilegeEscalation: false", helm_readme)
         self.assertIn("readOnlyRootFilesystem: true", helm_readme)
         self.assertIn("network egress", helm_readme)
+
+    def test_source_docs_do_not_document_ffmpeg_build_arg(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        docs = (
+            repo_root / "nemo_retriever/README.md",
+            repo_root / "nemo_retriever/helm/README.md",
+            repo_root / "docs/docs/extraction/audio-video.md",
+            repo_root / "docs/docs/extraction/prerequisites-support-matrix.md",
+            repo_root / "docs/docs/extraction/releasenotes.md",
+            repo_root / "docs/docs/extraction/troubleshoot.md",
+        )
+
+        for path in docs:
+            with self.subTest(path=path):
+                text = _read_required_file(path)
+                self.assertNotIn("--build-arg INSTALL_FFMPEG=true", text)
+                self.assertNotIn("build an ffmpeg-enabled", text)
 
 
 if __name__ == "__main__":
