@@ -70,8 +70,7 @@ class ContainerFfmpegInstallTests(TestCase):
         repo_root = Path(__file__).resolve().parents[2]
         installer_path = repo_root / "docker/scripts/retriever_install_ffmpeg.sh"
 
-        self.assertTrue(installer_path.is_file(), f"ffmpeg installer not present: {installer_path}")
-        installer = installer_path.read_text(encoding="utf-8")
+        installer = _read_required_file(installer_path)
 
         self.assertIn('if [ "$#" -ne 0 ]', installer)
         self.assertIn("/usr/bin/apt-get update", installer)
