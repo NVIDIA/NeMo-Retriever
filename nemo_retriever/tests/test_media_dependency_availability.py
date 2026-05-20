@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase, main
@@ -106,6 +107,83 @@ class MediaDependencyAvailabilityTests(TestCase):
 
         self.assertEqual(result, Path("/tmp/output.mp3"))
         run_ffmpeg.assert_called_once_with(stream, label="extract_audio", input_path="/tmp/input.mp4")
+
+    def test_extract_frames_does_not_require_ffprobe(self) -> None:
+        media_interface = _load_media_interface()
+
+        class FakeFFmpegStream:
+            def output(self, *_args, **_kwargs):
+                return self
+
+            def overwrite_output(self):
+                return self
+
+        stream = FakeFFmpegStream()
+        fake_ffmpeg = SimpleNamespace(input=lambda _path: stream, Error=Exception)
+
+        def fake_which(name: str) -> str | None:
+            return f"/usr/bin/{name}" if name == "ffmpeg" else None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch.object(media_interface, "ffmpeg", fake_ffmpeg),
+                patch.object(media_interface.shutil, "which", side_effect=fake_which),
+                patch.object(media_interface, "_run_ffmpeg") as run_ffmpeg,
+            ):
+                result = media_interface.MediaInterface().extract_frames("/tmp/input.mp4", tmpdir)
+
+        self.assertEqual(result, [])
+        run_ffmpeg.assert_called_once_with(stream, label="extract_frames", input_path="/tmp/input.mp4")
+
+    def test_video_frame_loader_does_not_require_ffprobe(self) -> None:
+        from nemo_retriever.audio import media_interface
+        from nemo_retriever.params import VideoFrameParams
+        from nemo_retriever.video import frame_actor
+
+        def fake_which(name: str) -> str | None:
+            return f"/usr/bin/{name}" if name == "ffmpeg" else None
+
+        row = {
+            "path": "/tmp/input.mp4",
+            "source_path": "/tmp/input.mp4",
+            "image_b64": "AA==",
+            "page_number": 0,
+            "metadata": {},
+            "bytes": b"",
+            "_content_type": "video_frame",
+        }
+
+        with (
+            patch.object(media_interface, "ffmpeg", SimpleNamespace()),
+            patch.object(media_interface.shutil, "which", side_effect=fake_which),
+            patch.object(frame_actor, "_extract_one", return_value=[row]) as extract_one,
+        ):
+            actor = frame_actor.VideoFrameActor(VideoFrameParams())
+            df = frame_actor.video_path_to_frames_df("/tmp/input.mp4", VideoFrameParams())
+
+        self.assertTrue(actor._params.enabled)
+        self.assertEqual(len(df), 1)
+        extract_one.assert_called_once()
+
+    def test_video_split_frame_only_does_not_require_ffprobe(self) -> None:
+        from nemo_retriever.audio import media_interface
+        from nemo_retriever.params import AudioChunkParams, VideoFrameParams
+        from nemo_retriever.video.split import VideoSplitActor
+
+        def fake_which(name: str) -> str | None:
+            return f"/usr/bin/{name}" if name == "ffmpeg" else None
+
+        with (
+            patch.object(media_interface, "ffmpeg", SimpleNamespace()),
+            patch.object(media_interface.shutil, "which", side_effect=fake_which),
+        ):
+            actor = VideoSplitActor(
+                audio_chunk_params=AudioChunkParams(enabled=False),
+                video_frame_params=VideoFrameParams(enabled=True),
+            )
+
+        self.assertFalse(actor._audio_chunk_params.enabled)
+        self.assertTrue(actor._video_frame_params.enabled)
 
 
 if __name__ == "__main__":

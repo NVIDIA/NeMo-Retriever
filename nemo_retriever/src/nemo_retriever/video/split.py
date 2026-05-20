@@ -27,7 +27,11 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from nemo_retriever.audio.chunk_actor import _chunk_one
-from nemo_retriever.audio.media_interface import MediaInterface, is_media_available, media_dependency_error_message
+from nemo_retriever.audio.media_interface import FFMPEG_DEPENDENCIES
+from nemo_retriever.audio.media_interface import MediaInterface
+from nemo_retriever.audio.media_interface import is_ffmpeg_available
+from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -57,10 +61,12 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
             audio_chunk_params=audio_chunk_params,
             video_frame_params=video_frame_params,
         )
-        if not is_media_available():
-            raise RuntimeError(media_dependency_error_message("VideoSplitActor"))
         self._audio_chunk_params = audio_chunk_params or AudioChunkParams()
         self._video_frame_params = video_frame_params or VideoFrameParams()
+        if self._audio_chunk_params.enabled and not is_media_available():
+            raise RuntimeError(media_dependency_error_message("VideoSplitActor"))
+        if self._video_frame_params.enabled and not is_ffmpeg_available():
+            raise RuntimeError(media_dependency_error_message("VideoSplitActor", required=FFMPEG_DEPENDENCIES))
         self._interface = MediaInterface()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
