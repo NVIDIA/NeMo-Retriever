@@ -75,13 +75,13 @@ nemo_retriever/helm/
 
 ### 1. Service image
 
-The chart defaults to the staging image published to NGC:
+The chart defaults to the image published to NGC:
 
 ```
-nvcr.io/nvstaging/nim/nemo-retriever-service:043020205-001
+nvcr.io/nvidia/nemo-microservices/nrl-service:X.Y.Z
 ```
 
-Pulling from `nvcr.io/nvstaging` requires an NGC pull secret — either set
+Pulling from `nvcr.io/` requires an NGC pull secret — either set
 `ngcImagePullSecret.create=true` (see below) or pre-create one in the
 namespace named `ngc-secret`.
 

@@ -43,7 +43,7 @@ class TestConfig:
     helm_sudo: bool = False  # Prepend sudo to helm commands (useful for microk8s, k3s)
     kubectl_bin: str = "kubectl"  # kubectl binary command (e.g., "kubectl", "microk8s kubectl")
     kubectl_sudo: Optional[bool] = None  # Prepend sudo to kubectl commands (defaults to helm_sudo if not set)
-    helm_chart: Optional[str] = None  # Remote chart reference (e.g., "nim-nvstaging/nv-ingest"), None = use local chart
+    helm_chart: Optional[str] = None  # Remote chart reference, None = use local chart
     helm_chart_version: Optional[str] = None  # Chart version (e.g., "26.1.0-RC7")
     helm_release: str = "nv-ingest"
     helm_namespace: str = "nv-ingest"
