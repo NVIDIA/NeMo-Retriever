@@ -83,13 +83,13 @@ Enable these only when your workload needs them. Chart keys and enablement defau
 
 ### Image captioning (26.05) { #image-captioning-2605 }
 
-For **26.05**, the supported self-hosted captioning NIM is [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`). Enable it in Helm only when you turn on the caption stage in your ingest configuration. Hardware requirements are in [Model hardware requirements](#model-hardware-requirements) below; Helm enablement and endpoints are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605).
+Supported captioning NIM, Helm enablement, and GPU requirements: optional NIM **`nemotron_3_nano_omni_30b_a3b_reasoning`** in the table above, [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605), and **Omni caption** rows in [Model hardware requirements](#model-hardware-requirements) below.
 
 !!! warning "Nemotron Nano 12B VL is not supported for captioning in 26.05"
 
-    **nemotron-nano-12b-v2-vl** (Nemotron Nano 12B VL) is **deprecated and unsupported** for image captioning in the 26.05 release line. Do not deploy it for new captioning workloads. See the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605) for chart keys and defaults. Migrate to **nemotron-3-nano-omni-30b-a3b-reasoning** (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`).
+    **nemotron-nano-12b-v2-vl** is deprecated for captioning in this release. Do not deploy it for new captioning workloads. Use **nemotron-3-nano-omni-30b-a3b-reasoning** instead (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`).
 
-Optional features (audio and video, Nemotron Parse, VLM image captioning, reranking) require additional GPU support and disk space. NIM references are in [Optional Helm NIMs](#optional-helm-nims-disabled-by-default) above and in the hardware table below.
+Optional features listed in the table above require additional GPU support and disk space beyond the four default NIMs.
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
@@ -121,7 +121,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ² Nemotron Parse fails to start on 32GB.
 
-³ **26.05 supported captioning NIM:** [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`). Nemotron Nano 12B VL is not supported for captioning in this release—see [Image captioning (26.05)](#image-captioning-2605). BF16 requires at least 80 GB total GPU memory; see the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
+³ Omni caption: see [Image captioning (26.05)](#image-captioning-2605) for the supported NIM and 12B deprecation. BF16 requires at least 80 GB total GPU memory; see the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
