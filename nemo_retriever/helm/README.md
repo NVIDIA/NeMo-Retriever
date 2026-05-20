@@ -64,7 +64,6 @@ nemo_retriever/helm/
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
-        ├── nemotron-nano-12b-v2-vl.yaml       # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
         └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
 ```
@@ -127,7 +126,7 @@ Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
 registered. Then run the default install — `nims.enabled` is `true` out
 of the box, so every per-NIM block under `nimOperator.<key>.enabled: true`
-(all nine by default) is reconciled:
+(all eight by default) is reconciled:
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -206,7 +205,6 @@ pair gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
 | `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM. |
-| `nimOperator.nemotron_nano_12b_v2_vl.enabled` | `true`  | VLM NIM. |
 | `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM. |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `true` | Multimodal reasoning LLM (30B). |
 | `nimOperator.audio.enabled`            | `true`  | ASR NIM. |
