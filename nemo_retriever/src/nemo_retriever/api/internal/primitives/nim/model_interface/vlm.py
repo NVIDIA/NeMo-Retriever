@@ -68,6 +68,8 @@ class VLMModelInterface(ModelInterface):
             Maximum number of images per payload.
         kwargs : dict
             Additional parameters including model_name, max_tokens, temperature, top_p, and stream.
+            ``extra_body`` is an advanced escape hatch merged into the final payload after core fields,
+            so its keys may intentionally override values such as model, messages, temperature, or max_tokens.
 
         Returns
         -------
@@ -125,6 +127,16 @@ class VLMModelInterface(ModelInterface):
                 "top_p": kwargs.get("top_p", 1.0),
                 "stream": kwargs.get("stream", False),
             }
+            for extra_key in ("chat_template_kwargs", "mm_processor_kwargs", "media_options"):
+                if kwargs.get(extra_key) is not None:
+                    payload[extra_key] = kwargs[extra_key]
+
+            extra_body = kwargs.get("extra_body")
+            if isinstance(extra_body, dict):
+                # Advanced callers may override core payload fields here; keep ordinary extras as
+                # first-class kwargs above when overriding model/messages/etc. is not intended.
+                payload.update(extra_body)
+
             payloads.append(payload)
             batch_data = {"base64_images": batch, "prompt": prompt}
             if system_prompt:

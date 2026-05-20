@@ -24,7 +24,7 @@ If flags below look stale, re-check `retriever ingest --help`.
 
 ## Canonical invocations
 
-Ingest a single PDF into the default table (`lancedb/nv-ingest.lance`):
+Ingest a single PDF into the default table (`lancedb/nemo-retriever.lance`):
 
 ```bash
 retriever ingest data/multimodal_test.pdf
@@ -58,7 +58,7 @@ retriever ingest data/multimodal_test.pdf \
 ## Outputs
 
 - A LanceDB dataset at `<lancedb-uri>/<table-name>.lance`. Default:
-  `./lancedb/nv-ingest.lance`.
+  `./lancedb/nemo-retriever.lance`.
 - One row per extracted primitive (text chunk, table, chart, image region),
   each with: `text`, `source`, `page_number`, `metadata` (JSON: type, bbox, …),
   and the embedding vector.
@@ -68,7 +68,7 @@ retriever ingest data/multimodal_test.pdf \
 | Flag | Default | Notes |
 |---|---|---|
 | `--lancedb-uri` | `lancedb` | Path or URI of the LanceDB database. |
-| `--table-name` | `nv-ingest` | LanceDB table to write into. Must match `retriever query`'s table on read. |
+| `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query`'s table on read. |
 | `--run-mode` | `inprocess` | `inprocess` for local runs; `batch` for the SDK batch ingestor. |
 
 ## Pipeline shape
@@ -92,7 +92,7 @@ The default `ingest` runs 8 stages, in order:
 - **First run is slow (~60s+ before any pages process)** — vLLM model load and
   CUDA-graph capture for the embedder. Subsequent runs in the same process
   are fast; one-shot CLI invocations always pay this cost.
-- **`No existing dataset at …/nv-ingest.lance, it will be created`** — expected
+- **`No existing dataset at …/nemo-retriever.lance, it will be created`** — expected
   on the first ingest into a new DB. Subsequent ingests append.
 - **HuggingFace download on first run** — the embedder and page-element
   detector pull weights to `~/.cache/huggingface`. Needs network the first

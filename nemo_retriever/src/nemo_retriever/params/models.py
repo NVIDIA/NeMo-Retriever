@@ -387,6 +387,7 @@ class EmbedParams(_ParamsModel):
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
+    request_timeout_s: float = 600.0
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
@@ -610,6 +611,7 @@ class CaptionParams(LLMInferenceParams):
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
     caption_infographics: bool = False
+    extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class WebhookParams(_ParamsModel):

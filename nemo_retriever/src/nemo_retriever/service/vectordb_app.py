@@ -178,7 +178,7 @@ def create_vectordb_app(
     lancedb_uri: str = "/data/vectordb",
     table_name: str = "nemo_retriever",
     embed_endpoint: str = "",
-    embed_model: str = "nvidia/llama-nemotron-embed-1b-v2",
+    embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
     embed_api_key: str = "",
 ) -> FastAPI:
     """Build the VectorDB FastAPI application."""
@@ -243,8 +243,8 @@ def create_vectordb_app(
 
         if not _state.table_exists:
             raise HTTPException(
-                404,
-                "No data has been ingested yet. Ingest documents first, then query.",
+                status_code=422,
+                detail="No data has been ingested yet. Ingest documents first, then query.",
             )
 
         queries = req.query if isinstance(req.query, list) else [req.query]
@@ -272,7 +272,7 @@ def main() -> None:
     parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
     parser.add_argument("--table-name", default="nemo_retriever", help="LanceDB table name")
     parser.add_argument("--embed-endpoint", default="", help="NIM embed endpoint URL")
-    parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-1b-v2")
+    parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument("--embed-api-key", default="")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7671)

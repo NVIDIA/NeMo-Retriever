@@ -16,6 +16,8 @@ _VL_EMBED_MODEL_IDS = frozenset(
     {
         VL_EMBED_MODEL,
         "llama-nemotron-embed-vl-1b-v2",
+        "llama-3.2-nemoretriever-1b-vlm-embed-v1",
+        "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
     }
 )
 
@@ -30,6 +32,8 @@ _VL_RERANK_MODEL_IDS = frozenset(
 _EMBED_MODEL_ALIASES: dict[str, str] = {
     "nemo_retriever_v1": "nvidia/llama-nemotron-embed-1b-v2",
     "llama-nemotron-embed-vl-1b-v2": VL_EMBED_MODEL,
+    "llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
+    "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
 }
 
 _DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"

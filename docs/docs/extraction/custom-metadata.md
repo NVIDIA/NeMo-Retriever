@@ -56,18 +56,21 @@ meta_df.to_csv(file_path)
 ### Example: Add Custom Metadata During Ingestion
 
 The following example adds custom metadata during ingestion. 
-For more information about the `Ingestor` class, refer to [Use the Python API](nemo-retriever-api-reference.md).
+For more information about `create_ingestor` and run modes, refer to [Use the Python API](nemo-retriever-api-reference.md).
 For more information about the `vdb_upload` method, refer to [Upload Data](vdbs.md).
 
 ```python
-from nv_ingest_client.client import Ingestor
+from nemo_retriever import create_ingestor
+
+# Service-backed pipeline: point `base_url` at your running retriever service.
+# For local graph execution instead, see [Use the Python API](nemo-retriever-api-reference.md).
 
 hostname = "localhost"
 table_name = "nemo_retriever_collection"
 lancedb_uri = "./lancedb_data"
 
 ingestor = (
-    Ingestor(message_client_hostname=hostname)
+    create_ingestor(run_mode="service", base_url=f"http://{hostname}:7670")
         .files(["data/woods_frost.pdf", "data/multimodal_test.pdf"])
         .extract(
             extract_text=True,
@@ -131,13 +134,13 @@ table = db.open_table("nemo_retriever_collection")
 **`lancedb_retrieval` + post-filter:** the helper only returns `top_k` rows with no `where` argument; filtering in Python is for illustration and does **not** change what the database evaluates.
 
 ```python
-from nv_ingest_client.util.vdb.lancedb import lancedb_retrieval
+Use the lancedb_retrieval helper from the same LanceDB module you use with create_ingestor (see Python API).
 
 hostname = "localhost"
 table_name = "nemo_retriever_collection"
 lancedb_uri = "./lancedb_data"
 top_k = 5
-model_name = "nvidia/llama-3.2-nv-embedqa-1b-v2"
+model_name = "nvidia/llama-nemotron-embed-vl-1b-v2"
 
 queries = ["this is expensive"]
 q_results = []

@@ -63,7 +63,7 @@ retriever query "gadget costs" | jq '[.[] | select(.metadata | fromjson.type == 
 |---|---|---|
 | `--top-k` | `10` | Max hits to return. Must be ≥ 1. |
 | `--lancedb-uri` | `lancedb` | Must match what `ingest` wrote to. |
-| `--table-name` | `nv-ingest` | Must match what `ingest` wrote to. |
+| `--table-name` | `nemo-retriever` | Must match what `ingest` wrote to. |
 
 ## Distance interpretation
 
@@ -79,7 +79,7 @@ retriever query "gadget costs" | jq '[.[] | select(.metadata | fromjson.type == 
 
 - **Empty result array** — table is empty (no ingest run yet) or
   `--table-name` / `--lancedb-uri` don't match where ingest wrote.
-- **`Table 'nv-ingest' was not found`** — same root cause: wrong table/URI,
+- **`Table 'nemo-retriever' was not found`** — same root cause: wrong table/URI,
   or ingest hasn't been run.
 - **First query is slow (~10–15s)** — vLLM startup for the query embedder.
   Subsequent queries in the same process are sub-second; one-shot CLI

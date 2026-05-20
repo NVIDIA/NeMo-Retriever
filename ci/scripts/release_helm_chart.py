@@ -1,15 +1,14 @@
 #! python3
 """
 Usage:
-helm repo add ngc "https://helm.ngc.nvidia.com/nvidian/nemo-llm" --username '$oauthtoken' --password "${NGC_API_KEY}"
-helm dependency update helm/
-helm dependency build helm/
+helm lint nemo_retriever/helm
 
-./scripts/release_helm_chart.py
+python ci/scripts/release_helm_chart.py
     -o nvidian
     -t nemo-llm
-    -v 24.06
-    -n nv-ingest
+    -v 26.03
+    -n nemo-retriever
+    --chart-dir nemo_retriever/helm
 
 Requires: pip install ngcsdk pyyaml
 Env vars: NGC_CLI_API_KEY (required for publish)
@@ -59,10 +58,16 @@ def main() -> None:
         required=True,
     )
     parser.add_argument(
+        "--chart-dir",
+        action="store",
+        help="Path to the Helm chart source directory",
+        default="nemo_retriever/helm",
+    )
+    parser.add_argument(
         "--display-name",
         action="store",
         help="The display name of the chart",
-        default="NVIDIA NVIngest Microservice",
+        default="NVIDIA NeMo Retriever Helm Chart",
     )
     parser.add_argument(
         "-v",
@@ -76,7 +81,7 @@ def main() -> None:
         "--description",
         action="store",
         help="The description of the chart",
-        default="Helm Chart for NeMo Retriever NVIngest Microservice",
+        default="Helm chart for the NeMo Retriever ingest service and optional NIM microservices",
     )
     parser.add_argument(
         "-l",
@@ -94,12 +99,17 @@ def main() -> None:
     v = args.version
     d = args.description
     dn = args.display_name
+    chart_dir = args.chart_dir
+
+    if not os.path.isdir(chart_dir):
+        print(f"ERROR: chart directory does not exist: {chart_dir}", file=sys.stderr)
+        sys.exit(1)
 
     os.makedirs(f"dist/{n}", exist_ok=True)
     subprocess.check_call(
         f"""
     rm -rf dist/{n}/*
-    cp -r helm/* dist/{n}/
+    cp -r {chart_dir}/* dist/{n}/
     echo $(git rev-parse --short HEAD) >> dist/{n}/.gitsha
     """,
         shell=True,

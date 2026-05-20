@@ -11,7 +11,7 @@ Provides:
 
 Remote endpoint
 ---------------
-When ``invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
+When ``rerank_invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
 server that exposes the NIM ranking REST API. The helper accepts
 either a fully qualified ``.../reranking`` URL or a base URL and appends
 ``/v1/ranking`` automatically::
@@ -72,7 +72,6 @@ _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
 _SCORE_COLUMN = "rerank_score"
-_DEFAULT_RERANK_ENDPOINT = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +164,7 @@ def rerank_hits(
     hits: List[Dict[str, Any]],
     *,
     model: Optional[Any] = None,
-    invoke_url: Optional[str] = None,
+    rerank_invoke_url: Optional[str] = None,
     model_name: str = _DEFAULT_MODEL,
     api_key: str = "",
     max_length: int = _DEFAULT_MAX_LENGTH,
@@ -189,8 +188,8 @@ def rerank_hits(
         LanceDB result dicts (as returned by ``Retriever.queries()``).
     model:
         A ``NemotronRerankV2`` instance (local GPU inference).  Ignored when
-        *invoke_url* is set.
-    invoke_url:
+        *rerank_invoke_url* is set.
+    rerank_invoke_url:
         Base URL of a vLLM / NIM ranking endpoint. Takes priority over
         *model*. Base URLs are normalized to ``/v1/ranking`` unless they
         already end with ``/reranking``.
@@ -263,11 +262,11 @@ def rerank_hits(
             )
             _render_warned = True
 
-    if invoke_url:
+    if rerank_invoke_url:
         scores = _rerank_via_endpoint(
             query,
             documents,
-            endpoint=invoke_url,
+            endpoint=rerank_invoke_url,
             model_name=model_name,
             api_key=api_key,
             images_b64=images_b64,
@@ -278,7 +277,7 @@ def rerank_hits(
         else:
             scores = model.score(query, documents, max_length=max_length, batch_size=batch_size)
     else:
-        raise ValueError("Either 'model' (NemotronRerankV2 instance) or 'invoke_url' must be provided.")
+        raise ValueError("Either 'model' (NemotronRerankV2 instance) or 'rerank_invoke_url' must be provided.")
 
     ranked = sorted(
         [{"_rerank_score": s, **h} for s, h in zip(scores, hits)],
@@ -376,8 +375,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
 
-        invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
-        if invoke_url:
+        if str(self._kwargs.get("rerank_invoke_url") or "").strip():
             raise ValueError(
                 "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
@@ -419,10 +417,14 @@ class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
-        invoke_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
-        if not invoke_url:
-            invoke_url = _DEFAULT_RERANK_ENDPOINT
-        self._kwargs["invoke_url"] = invoke_url
+        rerank_invoke_url = str(self._kwargs.get("rerank_invoke_url") or "").strip()
+        if not rerank_invoke_url:
+            raise ValueError(
+                "NemotronRerankCPUActor requires an explicit `rerank_invoke_url` (no default endpoint). "
+                "For local GPU reranking, omit the URL and the ArchetypeOperator will dispatch to "
+                "NemotronRerankGPUActor."
+            )
+        self._kwargs["rerank_invoke_url"] = rerank_invoke_url
         self._model = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
@@ -454,7 +456,7 @@ class NemotronRerankActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("rerank_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return bool(str(kwargs.get("rerank_invoke_url") or "").strip())
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -469,7 +471,7 @@ def _rerank_batch(
     batch_df: pd.DataFrame,
     *,
     model: Optional[Any] = None,
-    invoke_url: Optional[str] = None,
+    rerank_invoke_url: Optional[str] = None,
     model_name: str = _DEFAULT_MODEL,
     api_key: str = "",
     query_column: str = "query",
@@ -499,7 +501,7 @@ def _rerank_batch(
     if image_column and image_column in batch_df.columns:
         images_b64 = batch_df[image_column].tolist()
 
-    if invoke_url:
+    if rerank_invoke_url:
         # Remote endpoint: score pair-by-pair (each row may have a different query).
         scores: List[float] = []
         for i, (q, d) in enumerate(pairs):
@@ -507,7 +509,7 @@ def _rerank_batch(
             row_scores = _rerank_via_endpoint(
                 q,
                 [d],
-                endpoint=invoke_url,
+                endpoint=rerank_invoke_url,
                 model_name=model_name,
                 api_key=api_key,
                 images_b64=img,
@@ -519,7 +521,7 @@ def _rerank_batch(
         else:
             scores = model.score_pairs(pairs, max_length=max_length, batch_size=batch_size)
     else:
-        raise ValueError("Either 'model' or 'invoke_url' must be provided to NemotronRerankActor.")
+        raise ValueError("Either 'model' or 'rerank_invoke_url' must be provided to NemotronRerankActor.")
 
     out = batch_df.copy()
     out[score_column] = scores

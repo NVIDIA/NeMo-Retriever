@@ -3,7 +3,7 @@
 NVIDIA NeMo Retriever Library (NRL) is a high retrieval accuracy, performant, and scalable framework for content and metadata extraction from various media types (PDFs, HTML, Word docs, Powerpoint, audio, video, and image files). It supports both NVIDIA NIM microservices and a range of models to find, contextualize, and extract text, tables, charts, infographics, and transcripts for use in downstream generative and retrieval-augmented applications.
 
 NeMo Retriever Library enables parallelization of splitting documents into pages where sub-page content is classified (such as text paragraphs, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a standard schema. From there, NeMo Retriever Library manages computation of embeddings for the extracted content,
-and can store vectors in [LanceDB](https://lancedb.com/) for the recommended embedded path when you pass `vdb_op="lancedb"` to upload (see [Data Upload](vdbs.md)).
+and can store vectors in [LanceDB](https://lancedb.com/) for the recommended embedded path when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](vdbs.md)).
 
 ## What NeMo Retriever Library Is ✔️
 
@@ -15,7 +15,6 @@ NeMo Retriever Library does the following:
 
 - Accept directories of input files and a series of configurable ingestion tasks to perform on that input
 - Allow the extracted content be retrieved from a VDB containing discrete metadata element
-- Support multiple methods of extraction for each document type to balance trade-offs between throughput and accuracy. For example, for .pdf documents, extraction is performed by using pdfium and [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse).
 - Support various types of pre- and post- processing operations, including text splitting and chunking, transform and filtering, embedding generation, and image offloading to storage.
 
 !!! note
@@ -46,8 +45,9 @@ NeMo Retriever Library supports the following file types:
 ## Related Topics
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Deployment options](deployment-options.md)
-- [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
+- [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported Helm charts)
+- [Docker Compose (unsupported, developer)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md)
 - [Notebooks](notebooks.md)
-- [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — solution cards, enterprise RAG blueprints, and end-to-end patterns (including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)); for integration pathways, also see [Integrations](integrations-langchain-llamaindex-haystack.md).
+- [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — solution cards, enterprise RAG blueprints, and end-to-end patterns (including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)); for integration pathways, refer to [Integrations](integrations-langchain-llamaindex-haystack.md).
