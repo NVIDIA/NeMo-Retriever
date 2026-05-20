@@ -72,11 +72,14 @@ Default VL embedder container and model for release deployments:
 
 ### Optional Helm NIMs (disabled by default)
 
-Enable these only when your workload needs them — the same pattern as the **VL reranker** (not deployed unless you turn on the reranker flags):
+Enable these only when your workload needs them. Chart keys and enablement defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605).
 
-- [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — reranking for improved retrieval accuracy
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**)
-- [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) — supported image captioning NIM when you enable the caption stage (`nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning`)
+| Helm flag | NIM | Role |
+|-----------|-----|------|
+| `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) | Reranking for improved retrieval accuracy |
+| `nemotron_parse` | [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) | Optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**) |
+| `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) | Supported image captioning for 26.05 when you enable the caption stage |
+| `audio` | [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) | [Audio and video](audio-video.md) transcription |
 
 ### Image captioning (26.05) { #image-captioning-2605 }
 
@@ -84,15 +87,9 @@ For **26.05**, the supported self-hosted captioning NIM is [nemotron-3-nano-omni
 
 !!! warning "Nemotron Nano 12B VL is not supported for captioning in 26.05"
 
-    **nemotron-nano-12b-v2-vl** (Nemotron Nano 12B VL) is **deprecated and unsupported** for image captioning in the 26.05 release line. Do not deploy it for new captioning workloads. Keep `nimOperator.nemotron_nano_12b_v2_vl.enabled=false` (the chart default). Migrate existing deployments to **nemotron-3-nano-omni-30b-a3b-reasoning** and point your caption endpoint at the Omni NIM or hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+    **nemotron-nano-12b-v2-vl** (Nemotron Nano 12B VL) is **deprecated and unsupported** for image captioning in the 26.05 release line. Do not deploy it for new captioning workloads. See the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605) for chart keys and defaults. Migrate to **nemotron-3-nano-omni-30b-a3b-reasoning** (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`).
 
-Advanced features (for example, audio and video, Nemotron Parse, VLM image captioning, reranking) require additional GPU support and disk space.
-This includes the following:
-
-- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — transcript extraction from [audio and video](audio-video.md)
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — higher-accuracy PDF extraction when you set `extract_method="nemotron_parse"`
-- [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) — supported image captioning NIM for 26.05 when you enable the caption stage
-- [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — reranking for improved retrieval accuracy
+Optional features (audio and video, Nemotron Parse, VLM image captioning, reranking) require additional GPU support and disk space. NIM references are in [Optional Helm NIMs](#optional-helm-nims-disabled-by-default) above and in the hardware table below.
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
