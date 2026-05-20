@@ -80,7 +80,7 @@ Enable these only when your workload needs them — the same pattern as the **VL
 
 ### Image captioning (26.05) { #image-captioning-2605 }
 
-For **26.05**, the supported self-hosted captioning NIM is [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`). Enable it in Helm only when you turn on the caption stage in your ingest configuration. Hardware requirements are in [Model hardware requirements](#model-hardware-requirements) below; configuration examples are in [Image captioning](multimodal-extraction.md#image-captioning).
+For **26.05**, the supported self-hosted captioning NIM is [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`). Enable it in Helm only when you turn on the caption stage in your ingest configuration. Hardware requirements are in [Model hardware requirements](#model-hardware-requirements) below; Helm enablement and endpoints are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605).
 
 !!! warning "Nemotron Nano 12B VL is not supported for captioning in 26.05"
 

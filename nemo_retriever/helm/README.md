@@ -224,6 +224,26 @@ pair gated on three conditions ALL holding:
 > reconciled by the operator but the retriever-service won't call them
 > unless you wire your own pipeline to use them.
 
+### Charts, infographics, and captioning (26.05) { #charts-infographics-and-captioning-2605 }
+
+**Charts and infographics** — This chart does **not** ship a `graphic_elements` NIM
+(there is no `nimOperator.graphic_elements` in `values.yaml`). Chart and infographic
+extraction uses the default **page_elements** and **ocr** NIMs only. Keep
+`nimOperator.page_elements.enabled` and `nimOperator.ocr.enabled` at `true` for
+standard multimodal PDF ingest. The library defaults `extract_charts` and
+`extract_infographics` to on; do not disable them unless you intentionally skip
+those content types. Override in-cluster URLs via `serviceConfig.nimEndpoints` if needed.
+
+**Image captioning** — For 26.05, the supported captioning NIM is
+`nemotron_3_nano_omni_30b_a3b_reasoning`
+(`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). Set
+`nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` when you enable the
+caption stage in your ingest configuration, and point the pipeline at that NIMService.
+**nemotron_nano_12b_v2_vl** is deprecated for captioning in 26.05; keep
+`nimOperator.nemotron_nano_12b_v2_vl.enabled=false` on new deployments. GPU and disk
+requirements are in the published
+[Pre-Requisites & Support Matrix](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605).
+
 ### Persistence
 
 | Path                       | Default                       | Notes |
