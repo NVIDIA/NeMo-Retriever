@@ -85,6 +85,7 @@ The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled`
 
 !!! warning "Nemotron Nano 12B VL is not supported for captioning in 26.05"
 
+    Use **`nemotron_3_nano_omni_30b_a3b_reasoning`** for captioning in 26.05 (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
 
 Optional features listed in the table above require additional GPU support and disk space beyond the four default NIMs.
 
@@ -118,7 +119,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ² Nemotron Parse fails to start on 32GB.
 
-³ Omni caption: supported NIM is **`nemotron_3_nano_omni_30b_a3b_reasoning`** in the optional NIM table above; [12B deprecation](#image-captioning-2605). BF16 requires at least 80 GB total GPU memory; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
+³ Omni caption: see the optional NIM table and [Image captioning (26.05)](#image-captioning-2605) above. BF16 requires at least 80 GB total GPU memory; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 

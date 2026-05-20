@@ -55,8 +55,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 **Related**
 
 - [What is NeMo Retriever Library?](overview.md)
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#image-captioning-2605)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
 
 ## OCR and scanned documents { #ocr-and-scanned-documents }
@@ -79,8 +78,7 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
-- [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605) — 12B VL deprecation; optional NIM and hardware on the support matrix
+- [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605) — optional NIM and hardware on the support matrix
 
 ## Metadata and content schema { #metadata-and-content-schema }
 

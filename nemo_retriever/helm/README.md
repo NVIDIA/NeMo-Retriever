@@ -64,7 +64,7 @@ nemo_retriever/helm/
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
-        ├── nemotron-nano-12b-v2-vl.yaml       # NIMCache + NIMService (optional; deprecated for captioning in 26.05)
+        ├── nemotron-nano-12b-v2-vl.yaml       # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
         └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
 ```
@@ -239,11 +239,7 @@ those content types. Override in-cluster URLs through `serviceConfig.nimEndpoint
 (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The chart defaults
 `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` to `true`; set it to
 `false` if you do not deploy that NIM. When you enable the caption stage in your ingest
-configuration, point the pipeline at that NIMService.
-
-**nemotron_nano_12b_v2_vl** is deprecated for captioning in 26.05; keep
-`nimOperator.nemotron_nano_12b_v2_vl.enabled=false` on new deployments. GPU and disk
-requirements are in the published
+configuration, point the pipeline at that NIMService. GPU and disk requirements are in the published
 [Pre-Requisites & Support Matrix](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605).
 
 ### Persistence
