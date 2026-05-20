@@ -47,13 +47,16 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 ## Charts and infographics { #charts-and-infographics }
 
-Charts and infographic regions are classified as graphic elements and processed with the corresponding NVIDIA NIM workflows (for example, **yolox-graphic-elements** in current releases). Outputs use the same metadata schema as other extracted objects.
+In **26.05**, chart and infographic regions are detected and classified by [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) (Helm `page_elements`). Text from those regions is extracted with [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) (Helm `ocr`). Keep `extract_charts` and `extract_infographics` enabled in your ingest configuration (both default to on). Outputs use the same metadata schema as other extracted objects.
+
+The legacy **graphic-elements** / **yolox-graphic-elements** NIM (`nemotron-graphic-elements-v1`) is **not** part of the 26.05 Helm chart and is not required for chart or infographic extraction. For higher-accuracy visual parsing on complex PDFs, optionally use [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) with `extract_method="nemotron_parse"`. For natural-language descriptions of infographic content, optionally enable [image captioning](#image-captioning).
 
 **Related**
 
 - [What is NeMo Retriever Library?](overview.md)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
+- [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse)
 
 ## OCR and scanned documents { #ocr-and-scanned-documents }
 
@@ -71,7 +74,7 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 **Captioning is optional** — it is not enabled in the default Helm deployment or core pipeline (same as Nemotron Parse and the VL reranker). Enable it in your ingest configuration (for example, the `caption` API or pipeline flag) and deploy a VLM NIM only when you need it.
 
-When you enable captioning, use [Nemotron 3 Nano Omni](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning): deploy the self-hosted NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`), a local Hugging Face checkpoint such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, or the hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. HF and NIM space requirements are in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements). Omni reasoning traces are disabled by default for captioning.
+For **26.05**, use [Nemotron 3 Nano Omni](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) as the supported captioning model: deploy the self-hosted NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`), a local Hugging Face checkpoint such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, or the hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. **nemotron-nano-12b-v2-vl** is deprecated for captioning in 26.05—see [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605). HF and NIM space requirements are in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements). Omni reasoning traces are disabled by default for captioning.
 
 **Related**
 

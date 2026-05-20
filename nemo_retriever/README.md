@@ -170,21 +170,23 @@ python -m nemo_retriever.examples.graph_pipeline \
   /your-example-dir \
   --lancedb-uri lancedb \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
-  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
-  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1 \
-  --ocr-version v1 \
+  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
+
+In **26.05**, chart and infographic extraction uses **page-elements** plus **OCR**
+only. The NeMo Retriever Helm chart does not deploy a graphic-elements NIM. The
+pipeline still accepts `graphic_elements_invoke_url` for legacy/self-hosted
+`nemotron-graphic-elements-v1` workloads; omit it unless you operate that NIM
+yourself.
 
 > **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Use
 > `--ocr-version v1` to opt into the legacy OCR engine. Local OCR v2 defaults
 > to multilingual mode (`multi`); pass `--ocr-lang english` for the English-only
 > v2 selector. Remote OCR NIM endpoints decide their own model and language
 > behavior, and the local OCR selectors are not added to remote request payloads.
-> The remote-inference example above pins `--ocr-version v1` because a hosted v2
-> endpoint is not yet available on `ai.api.nvidia.com`.
 
 When you use the remote embedder, pair the `Retriever` with the matching
 `embedder=` + `embedding_endpoint=` overrides shown in
@@ -512,9 +514,8 @@ ingestor = (
   .extract(
     # for self hosted NIMs, your URLs will depend on your NIM container DNS settings
     page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
-    graphic_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1",
-    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
-    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
+    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2",
+    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1",
   )
   .embed(
     embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",

@@ -77,9 +77,7 @@ export NVIDIA_API_KEY=nvapi-...
 
 retriever ingest ./data/multimodal_test.pdf \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
-  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
-  --ocr-version v1 \
-  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
+  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -93,6 +91,11 @@ retriever query "What is in this document?" \
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
 running self-hosted NIM containers.
+
+In **26.05**, chart and infographic extraction uses **page-elements** plus **OCR** only.
+The NeMo Retriever Helm chart does not deploy a graphic-elements NIM. The CLI still
+accepts `--graphic-elements-invoke-url` for legacy/self-hosted `nemotron-graphic-elements-v1`
+workloads; leave it unset unless you operate that NIM yourself.
 
 ### What you get
 
@@ -216,22 +219,25 @@ retriever pipeline run ./data/test.pdf \
 
 ### Caption images
 
+For **26.05**, use Nemotron 3 Nano Omni for captioning (not Nemotron Nano 12B VL).
+See [Image captioning (26.05)](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605).
+
 ```bash
 retriever pipeline run ./data/test.pdf \
   --input-type pdf \
   --method pdfium \
   --caption \
-  --caption-model-name nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16 \
+  --caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning \
   --caption-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
   --api-key "${NVIDIA_API_KEY}" \
   --store-images-uri ./processed_docs/images \
   --save-intermediate ./processed_docs
 ```
 
-For hosted Omni captioning, set
-`--caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Local Omni uses
-`nemo_retriever[local]` and a local Hugging Face model ID. Custom caption prompts and
-`reasoning` flags are not exposed on the CLI — use
+For self-hosted Omni, deploy the NIM from the Helm chart
+(`nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning`) or use `nemo_retriever[local]` with a
+local Hugging Face ID such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`. Custom
+caption prompts and `reasoning` flags are not exposed on the CLI — use
 `nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
 
 ### Directory of documents
