@@ -78,8 +78,6 @@ export NVIDIA_API_KEY=nvapi-...
 retriever ingest ./data/multimodal_test.pdf \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
-  --ocr-version v1 \
-  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -221,17 +219,14 @@ retriever pipeline run ./data/test.pdf \
   --input-type pdf \
   --method pdfium \
   --caption \
-  --caption-model-name nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16 \
+  --caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning \
   --caption-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
   --api-key "${NVIDIA_API_KEY}" \
   --store-images-uri ./processed_docs/images \
   --save-intermediate ./processed_docs
 ```
 
-For hosted Omni captioning, set
-`--caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Local Omni uses
-`nemo_retriever[local]` and a local Hugging Face model ID. Custom caption prompts and
-`reasoning` flags are not exposed on the CLI — use
+Custom caption prompts and `reasoning` flags are not exposed on the CLI — use
 `nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
 
 ### Directory of documents

@@ -63,9 +63,9 @@ nemo_retriever/helm/
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
-        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (off by default)
-        ├── nemotron-parse.yaml                # NIMCache + NIMService (off by default)
-        └── audio.yaml                         # NIMCache + NIMService (off by default)
+        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
+        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
+        └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
 ```
 
 ---
@@ -126,7 +126,7 @@ Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
 registered. Then run the default install — `nims.enabled` is `true` out
 of the box, so every per-NIM block under `nimOperator.<key>.enabled: true`
-(all nine by default) is reconciled:
+(all eight by default) is reconciled:
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -221,6 +221,24 @@ pair gated on three conditions ALL holding:
 > are auto-wired into the retriever-service config. The other NIMs are
 > reconciled by the operator but the retriever-service won't call them
 > unless you wire your own pipeline to use them.
+
+### Charts, infographics, and captioning (26.05) { #charts-infographics-and-captioning-2605 }
+
+**Charts and infographics** — This chart does **not** ship a `graphic_elements` NIM
+(there is no `nimOperator.graphic_elements` in `values.yaml`). Chart and infographic
+extraction uses the default **page_elements** and **ocr** NIMs only. Keep
+`nimOperator.page_elements.enabled` and `nimOperator.ocr.enabled` at `true` for
+standard multimodal PDF ingest. The library enables `extract_charts` and
+`extract_infographics` by default; do not disable them unless you intentionally skip
+those content types. Override in-cluster URLs through `serviceConfig.nimEndpoints` if needed.
+
+**Image captioning** — For 26.05, the supported captioning NIM is
+`nemotron_3_nano_omni_30b_a3b_reasoning`
+(`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The chart defaults
+`nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` to `true`; set it to
+`false` if you do not deploy that NIM. When you enable the caption stage in your ingest
+configuration, point the pipeline at that NIMService. GPU and disk requirements are in the published
+[Pre-Requisites & Support Matrix](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605).
 
 ### Persistence
 

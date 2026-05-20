@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Chart version (e.g. 26.03)'
+        description: 'Chart version (e.g. 26.05-RC1)'
         required: true
         type: string
       source-ref:
@@ -17,16 +17,6 @@ on:
         required: false
         type: boolean
         default: false
-      ngc-org:
-        description: 'NGC organization'
-        required: false
-        type: string
-        default: 'nvidian'
-      ngc-team:
-        description: 'NGC team'
-        required: false
-        type: string
-        default: 'nemo-llm'
       chart-name:
         description: 'Helm chart name'
         required: false
@@ -42,8 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NGC_CLI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-      NGC_CLI_ORG: ${{ inputs.ngc-org }}
-      NGC_CLI_TEAM: ${{ inputs.ngc-team }}
+      NGC_CLI_ORG: ${{ secrets.NGC_ORG }}
+      NGC_CLI_TEAM: ${{ secrets.NGC_TEAM }}
       NGC_CLI_FORMAT_TYPE: json
     steps:
       - name: Checkout code
@@ -72,8 +62,8 @@ jobs:
             DRY_RUN_FLAG="--dry-run"
           fi
           python ci/scripts/release_helm_chart.py \
-            --org "${{ inputs.ngc-org }}" \
-            --team "${{ inputs.ngc-team }}" \
+            --org "${{ secrets.NGC_ORG }}" \
+            --team "${{ secrets.NGC_TEAM }}" \
             --name "${{ inputs.chart-name }}" \
             --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ inputs.version }}" \
@@ -95,5 +85,5 @@ jobs:
           echo "| Chart source | \`${HELM_CHART_DIR}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Chart | \`${{ inputs.chart-name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`${{ inputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| NGC | \`${{ inputs.ngc-org }}/${{ inputs.ngc-team }}/${{ inputs.chart-name }}:${{ inputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| NGC | \`${{ inputs.chart-name }}:${{ inputs.version }}\` (org/team from repository secrets) |" >> $GITHUB_STEP_SUMMARY
           echo "| Dry Run | \`${{ inputs.dry-run }}\` |" >> $GITHUB_STEP_SUMMARY
