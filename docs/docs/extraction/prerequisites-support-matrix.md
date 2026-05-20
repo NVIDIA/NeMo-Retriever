@@ -83,11 +83,9 @@ Enable these only when your workload needs them. Chart keys and enablement defau
 
 ### Image captioning (26.05) { #image-captioning-2605 }
 
-Supported captioning NIM, Helm enablement, and GPU requirements: optional NIM **`nemotron_3_nano_omni_30b_a3b_reasoning`** in the table above, [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605), and **Omni caption** rows in [Model hardware requirements](#model-hardware-requirements) below.
-
 !!! warning "Nemotron Nano 12B VL is not supported for captioning in 26.05"
 
-    **nemotron-nano-12b-v2-vl** is deprecated for captioning in this release. Do not deploy it for new captioning workloads. Use **nemotron-3-nano-omni-30b-a3b-reasoning** instead (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`).
+    **nemotron-nano-12b-v2-vl** is deprecated for captioning in this release. Use **nemotron-3-nano-omni-30b-a3b-reasoning** instead (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`).
 
 Optional features listed in the table above require additional GPU support and disk space beyond the four default NIMs.
 
