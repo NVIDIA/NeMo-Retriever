@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import builtins
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -22,6 +23,30 @@ def _load_media_interface():
 
 
 class MediaDependencyAvailabilityTests(TestCase):
+    def test_optional_ffmpeg_import_only_swallows_missing_package(self) -> None:
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "ffmpeg":
+                raise TypeError("broken ffmpeg import")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            with self.assertRaisesRegex(TypeError, "broken ffmpeg import"):
+                _load_media_interface()
+
+    def test_probe_media_handles_os_error_when_ffmpeg_python_missing(self) -> None:
+        media_interface = _load_media_interface()
+
+        with patch.object(media_interface, "ffmpeg", None):
+            result = media_interface.MediaInterface().probe_media(
+                Path("/tmp/does-not-exist-for-nemo-retriever-tests.mp4"),
+                split_interval=10,
+                split_type=media_interface.SplitType.SIZE,
+            )
+
+        self.assertEqual(result, (None, None, None))
+
     def test_split_dependency_checks_report_each_missing_binary(self) -> None:
         media_interface = _load_media_interface()
 

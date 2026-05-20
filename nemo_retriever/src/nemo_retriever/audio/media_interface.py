@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import ffmpeg
-except Exception:
+except ImportError:
     ffmpeg = None  # type: ignore[assignment]
 
 MANUAL_FFMPEG_INSTALL_COMMAND = "apt-get update && apt-get install -y --no-install-recommends ffmpeg"
@@ -269,6 +269,8 @@ class MediaInterface(_LoaderInterface):
             num_splits = self.find_num_splits(file_size, sample_rate, duration, split_interval, split_type)
         except RuntimeError:
             raise
+        except OSError as e:
+            logger.error("OS error accessing file %s: %s", path_file, e)
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", path_file, e.stderr.decode())
         except (KeyError, ValueError) as e:
@@ -336,6 +338,9 @@ class MediaInterface(_LoaderInterface):
             self.path_metadata[str(input_path)] = probe
         except RuntimeError:
             raise
+        except OSError as e:
+            logger.error("OS error accessing file %s: %s", original_input_path, e)
+            return []
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", original_input_path, e.stderr.decode())
             return []
