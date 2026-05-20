@@ -56,7 +56,6 @@ For higher-accuracy visual parsing on complex PDFs, optionally use [Nemotron Par
 - [What is NeMo Retriever Library?](overview.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#charts-infographics-and-captioning-2605)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
-- [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse)
 
 ## OCR and scanned documents { #ocr-and-scanned-documents }
 
