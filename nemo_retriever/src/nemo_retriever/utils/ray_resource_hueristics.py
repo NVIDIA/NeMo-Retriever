@@ -22,8 +22,8 @@ EMBED_MAX_ACTORS = 4  # Hueristic baseline num actors per GPU (max_size of Actor
 EMBED_GPUS_PER_ACTOR = (
     0.5  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on.
 )
-EMBED_SINGLE_GPU_ACTORS = 1
-EMBED_SINGLE_GPU_GPUS_PER_ACTOR = 0.2
+EMBED_SINGLE_GPU_ACTORS = 1  # Single-GPU heuristic: one actor avoids over-reserving the GPU for embedding.
+EMBED_SINGLE_GPU_GPUS_PER_ACTOR = 0.2  # Single-GPU heuristic: smaller reservation leaves headroom for OCR/page-elements actors.
 EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 
 # Nemotron Parse Actor constants (PER-GPU)
