@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +13,7 @@ import pandas as pd
 import pytest
 
 from tests import _have_ffmpeg_binary_for_png_frames
+from tests import _make_test_mp4_with_av
 from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,
@@ -23,31 +23,39 @@ from nemo_retriever.params import (
 )
 
 
-def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
-    """Synthetic MP4 with video+audio; ``mpeg4`` avoids requiring ``libx264``."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loglevel",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        f"testsrc=duration={duration_sec}:size=320x240:rate=30",
-        "-f",
-        "lavfi",
-        "-i",
-        f"sine=frequency=440:duration={duration_sec}",
-        "-c:v",
-        "mpeg4",
-        "-q:v",
-        "5",
-        "-c:a",
-        "aac",
-        "-shortest",
-        str(path),
-    ]
-    subprocess.run(cmd, check=True)
+def test_run_video_pipeline_forces_audio_demux_chunk_params_without_ffmpeg() -> None:
+    from nemo_retriever.graph.multi_type_extract_operator import _MultiTypeExtractBase
+
+    op = _MultiTypeExtractBase(
+        extraction_mode="auto",
+        audio_chunk_params=AudioChunkParams(
+            split_type="time",
+            split_interval=10,
+            audio_only=False,
+            video_audio_separate=True,
+        ),
+        asr_params=ASRParams(),
+        video_frame_params=VideoFrameParams(enabled=False),
+        av_fuse_params=AudioVisualFuseParams(enabled=False),
+    )
+
+    with patch("nemo_retriever.graph.multi_type_extract_operator.MediaChunkActor") as MockChunk, patch(
+        "nemo_retriever.graph.multi_type_extract_operator.ASRActor"
+    ) as MockASR, patch("nemo_retriever.graph.multi_type_extract_operator.VideoFrameActor") as MockFrames:
+        MockChunk.return_value.run.return_value = pd.DataFrame([{"path": "audio_chunk.mp3"}])
+        MockASR.return_value.run.return_value = pd.DataFrame(
+            [{"source_path": "/tmp/video.mp4", "text": "speech", "metadata": {"_content_type": "audio"}}]
+        )
+        MockFrames.return_value.run.return_value = pd.DataFrame()
+
+        out = op._run_video_pipeline(pd.DataFrame([{"path": "/tmp/video.mp4"}]))
+
+    chunk_params = MockChunk.call_args.kwargs["params"]
+    assert chunk_params.audio_only is True
+    assert chunk_params.video_audio_separate is False
+    assert chunk_params.split_type == "time"
+    assert chunk_params.split_interval == 10
+    assert not out.empty
 
 
 @pytest.mark.skipif(
@@ -114,6 +122,10 @@ def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> 
 
         batch = pd.DataFrame([{"path": str(fixture)}])
         out = op._run_video_pipeline(batch)
+
+    chunk_params = MockChunk.call_args.kwargs["params"]
+    assert chunk_params.audio_only is True
+    assert chunk_params.video_audio_separate is False
 
     assert isinstance(out, pd.DataFrame)
     content_types = out["metadata"].apply(lambda md: md.get("_content_type")).tolist()
