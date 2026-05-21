@@ -12,7 +12,7 @@ import pytest
 from nemo_retriever.vdb.adt_vdb import VDB
 from nemo_retriever.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.vdb import operators as vdb_operator_module
-from nemo_retriever.vdb.operators import UpsertVdbOperator
+from nemo_retriever.vdb.operators import PutVdbOperator
 
 
 class FakeVDB(VDB):
@@ -20,7 +20,7 @@ class FakeVDB(VDB):
         super().__init__(**kwargs)
         self.run_calls: list[Any] = []
         self.retrieval_calls: list[tuple[Any, dict[str, Any]]] = []
-        self.upsert_calls: list[tuple[Any, dict[str, Any]]] = []
+        self.put_calls: list[tuple[Any, dict[str, Any]]] = []
 
     def create_index(self, **kwargs: Any) -> None:
         return None
@@ -50,9 +50,9 @@ class FakeVDB(VDB):
         self.run_calls.append(records)
         return {"records": records}
 
-    def upsert(self, records: list, **kwargs: Any) -> dict[str, Any]:
-        self.upsert_calls.append((records, dict(kwargs)))
-        return {"upserted": sum(len(b) for b in records), "skipped_no_key": 0, "created_table": False}
+    def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
+        self.put_calls.append((records, dict(kwargs)))
+        return {"put": sum(len(b) for b in records)}
 
 
 def _graph_rows() -> list[dict[str, Any]]:
@@ -177,20 +177,20 @@ def test_constructor_requires_exactly_one_vdb_source() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UpsertVdbOperator
+# PutVdbOperator
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _StubUpsertVDB(VDB):
-    """VDB subclass that intentionally does NOT override ``upsert``.
+class _StubPutVDB(VDB):
+    """VDB subclass that intentionally does NOT override ``put``.
 
     Used to exercise the construction-time guard in
-    :class:`UpsertVdbOperator.__init__`, which compares
-    ``type(self._vdb).upsert is VDB.upsert`` to detect backends that
+    :class:`PutVdbOperator.__init__`, which compares
+    ``type(self._vdb).put is VDB.put`` to detect backends that
     inherit the base-class ``NotImplementedError`` stub.
 
     Note: this class being instantiable at all is itself a regression
-    check — :meth:`VDB.upsert` must NOT be decorated with
+    check — :meth:`VDB.put` must NOT be decorated with
     ``@abstractmethod``; otherwise ABC machinery would reject this class
     before the operator-level guard could run, making the guard dead code.
     """
@@ -211,22 +211,22 @@ class _StubUpsertVDB(VDB):
         return None
 
 
-def test_upsert_operator_rejects_vdb_without_upsert_override() -> None:
-    """Backends inheriting the ``VDB.upsert`` stub fail fast at construction."""
-    stub = _StubUpsertVDB()
+def test_put_operator_rejects_vdb_without_put_override() -> None:
+    """Backends inheriting the ``VDB.put`` stub fail fast at construction."""
+    stub = _StubPutVDB()
     # Sanity-check the precondition the guard relies on: the subclass really
     # is using the inherited stub, not its own implementation. If this ever
     # fails, the guard's identity comparison would silently never fire.
-    assert type(stub).upsert is VDB.upsert
+    assert type(stub).put is VDB.put
 
-    with pytest.raises(NotImplementedError, match=r"does not implement upsert"):
-        UpsertVdbOperator(vdb=stub)
+    with pytest.raises(NotImplementedError, match=r"does not implement put"):
+        PutVdbOperator(vdb=stub)
 
 
-def test_upsert_operator_delegates_records_with_configured_key_and_table_name() -> None:
-    """Happy path: nv-ingest-converted records reach ``vdb.upsert`` with the configured key/table."""
+def test_put_operator_delegates_records_with_configured_key_and_table_name() -> None:
+    """Happy path: nv-ingest-converted records reach ``vdb.put`` with the configured key/table."""
     vdb = FakeVDB()
-    operator = UpsertVdbOperator(vdb=vdb, key="entity_id", table_name="entities")
+    operator = PutVdbOperator(vdb=vdb, key="entity_id", table_name="entities")
 
     data = [
         {
@@ -240,8 +240,8 @@ def test_upsert_operator_delegates_records_with_configured_key_and_table_name() 
     assert operator(data) is data
 
     assert vdb.run_calls == []
-    assert len(vdb.upsert_calls) == 1
-    call_records, call_kwargs = vdb.upsert_calls[0]
+    assert len(vdb.put_calls) == 1
+    call_records, call_kwargs = vdb.put_calls[0]
     assert call_kwargs == {"table_name": "entities", "key": "entity_id"}
     # The records that reach the backend must already be in nv-ingest-client
     # shape (same conversion IngestVdbOperator performs), not the flat graph rows.
@@ -263,7 +263,7 @@ def test_upsert_operator_delegates_records_with_configured_key_and_table_name() 
     ]
 
 
-def test_upsert_operator_merges_sidecar_metadata_into_records_before_upsert() -> None:
+def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
     """Sidecar kwargs are split out from ``vdb_kwargs`` and applied before delegation."""
     vdb = FakeVDB()
     meta_df = pd.DataFrame(
@@ -272,7 +272,7 @@ def test_upsert_operator_merges_sidecar_metadata_into_records_before_upsert() ->
             "category": ["legal"],
         }
     )
-    operator = UpsertVdbOperator(
+    operator = PutVdbOperator(
         vdb=vdb,
         vdb_kwargs={
             "meta_dataframe": meta_df,
@@ -295,8 +295,8 @@ def test_upsert_operator_merges_sidecar_metadata_into_records_before_upsert() ->
 
     assert operator.process(data) is data
 
-    assert len(vdb.upsert_calls) == 1
-    call_records, call_kwargs = vdb.upsert_calls[0]
+    assert len(vdb.put_calls) == 1
+    call_records, call_kwargs = vdb.put_calls[0]
     assert call_kwargs == {"table_name": "my_table", "key": "id"}
     merged_content_meta = call_records[0][0]["metadata"]["content_metadata"]
     # Sidecar column merged in alongside the per-row ``page_number``.

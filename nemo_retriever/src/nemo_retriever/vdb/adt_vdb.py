@@ -134,89 +134,87 @@ class VDB(ABC):
         """
         pass
 
-    def upsert(self, records: list, **kwargs: Any) -> dict[str, Any]:
-        """Incrementally merge a batch of records into the target table/index.
+    def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
+        """Replace a batch of existing rows in the target table/index.
 
         Note: this method is intentionally **not** decorated with
         :func:`abc.abstractmethod`. Marking it abstract would cause
         Python's ABC machinery to refuse instantiation of any concrete
-        :class:`VDB` subclass that does not override ``upsert`` — which
+        :class:`VDB` subclass that does not override ``put`` — which
         would in turn make the early-detection guard in
-        :class:`~nemo_retriever.vdb.operators.UpsertVdbOperator` (which
-        compares ``type(self._vdb).upsert is VDB.upsert``) permanently
+        :class:`~nemo_retriever.vdb.operators.PutVdbOperator` (which
+        compares ``type(self._vdb).put is VDB.put``) permanently
         unreachable, since instantiation would already have failed.
         The default body below raises :class:`NotImplementedError` so
-        backends that have not implemented stable-key merges fail fast
-        and visibly at the first ``upsert`` call (and are caught by the
+        backends that have not implemented stable-key puts fail fast
+        and visibly at the first ``put`` call (and are caught by the
         operator-level guard at construction time).
 
-        ``upsert`` exists as a separate entry point from
+        ``put`` exists as a separate entry point from
         :meth:`write_to_index` because it has fundamentally different
         semantics. Where ``write_to_index`` is an *append* (or full
-        ingest) operation, ``upsert`` is a **stable-key merge**:
+        ingest) operation, ``put`` is a **strict in-place replace**:
 
         * Rows whose key value already exists in the target table are
           **updated in place** — all stored columns (including the dense
           vector) are replaced with the values from ``records``.
-        * Rows whose key value is absent are **inserted**.
+        * Rows whose key value does not exist in the target table
+          MUST raise :class:`KeyError`. ``put`` MUST NOT insert new
+          rows; ingestion of new rows belongs in
+          :meth:`write_to_index` / :meth:`run`.
+        * Rows whose key value is empty or ``None`` MUST raise
+          :class:`KeyError` — a put has no stable identity to target
+          without a key.
         * Rows that already exist in the target but are *not* referenced
-          by ``records`` are **left untouched**. ``upsert`` MUST NOT
-          delete rows; tombstoning entities that have disappeared
-          upstream is intentionally out of scope and belongs in a
-          separate code path.
+          by ``records`` are **left untouched**. ``put`` MUST NOT
+          delete rows.
 
-        This contract makes ``upsert`` suitable for incremental metadata
-        patches and partial re-ingests where the caller knows the stable
-        identity of the rows it is changing but does not want to rebuild
-        the whole index.
+        This contract makes ``put`` suitable for in-place metadata
+        patches where the caller knows the exact set of existing rows
+        it wants to change and would rather fail loudly than silently
+        no-op or duplicate data.
 
         Implementations are expected to:
 
         * Validate / transform records the same way :meth:`write_to_index`
           does (e.g. enforce the embedding dimension, apply the
-          ``on_bad_vectors`` policy), so that an upserted row is
+          ``on_bad_vectors`` policy), so that a put row is
           indistinguishable from one written via the full-ingest path.
-        * Drop rows whose ``key`` value is empty or ``None`` — an empty
-          merge key has no stable identity and would otherwise collapse
-          unrelated rows together. Skipped rows should be logged.
-        * Create the target table/index on the fly when it does not yet
-          exist (e.g. a metadata patch lands before the first full
-          ingest), if the backend supports it. Race-tolerance is
-          recommended: if a parallel writer wins the create, fall back
-          to opening the existing table and performing the merge.
+        * Raise :class:`FileNotFoundError` (or an equivalent) when the
+          target table does not yet exist. ``put`` MUST NOT create
+          tables on the fly.
         * Avoid building heavy secondary structures (e.g. IVF/HNSW
-          vector indexes, FTS indexes) on the upsert path: incremental
+          vector indexes, FTS indexes) on the put path: incremental
           batches are typically too small to train such indexes
           meaningfully. Defer index builds to the next full
           :meth:`write_to_index` / :meth:`create_index` call.
 
         Parameters:
         - records (list): NV-Ingest-shaped batches (typically a list of
-            lists of record dicts) to merge into the target. The shape
+            lists of record dicts) to put into the target. The shape
             mirrors what :meth:`write_to_index` accepts.
         - table_name (str, optional): override the operator's configured
             target table/index name for this call. When ``None``, the
             implementation should use its default target.
         - key (str, optional): name of the column used as the stable
-            merge key. Defaults to ``"id"``. Rows missing this column
-            (or with an empty value) should be skipped.
+            put key. Defaults to ``"id"``. Rows missing this column
+            (or with an empty value) MUST raise :class:`KeyError`.
 
         Returns:
         - implementation-specific result describing what happened
-            (typical fields include the number of rows merged, the
-            number of rows skipped for missing keys, and whether the
-            target table had to be created on the fly). Concrete
-            implementations should document the exact return shape.
+            (typical fields include the number of rows put).
+            Concrete implementations should document the exact return
+            shape.
 
-        Backends that genuinely cannot support stable-key merges should
+        Backends that genuinely cannot support stable-key puts should
         override this method and raise :class:`NotImplementedError`
-        explicitly so that :class:`UpsertVdbOperator` (and any other
+        explicitly so that :class:`PutVdbOperator` (and any other
         caller) fails fast with a clear message instead of silently
         no-oping or duplicating rows.
         """
         raise NotImplementedError(
-            f"{type(self).__name__} does not implement upsert(); "
-            "incremental stable-key merges are not supported by this VDB backend."
+            f"{type(self).__name__} does not implement put(); "
+            "in-place stable-key puts are not supported by this VDB backend."
         )
 
     @abstractmethod

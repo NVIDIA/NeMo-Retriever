@@ -12,6 +12,7 @@ from typing import Any, Final, FrozenSet
 
 import lancedb
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from nemo_retriever.vdb.adt_vdb import VDB
 
@@ -119,9 +120,6 @@ def _lancedb_arrow_schema(vector_dim: int) -> pa.Schema:
             pa.field("text", pa.string()),
             pa.field("metadata", pa.string()),
             pa.field("source", pa.string()),
-            # Stable entity id (e.g. Neo4j node UUID for tabular ingest).
-            # Empty string when the upstream payload has no stable identity;
-            # used as the merge key by ``LanceDB.upsert``.
             pa.field("id", pa.string()),
         ]
     )
@@ -539,40 +537,35 @@ class LanceDB(VDB):
             logger.info("Skipping LanceDB index creation for table %r because build_index=False.", self.table_name)
         return records
 
-    def upsert(
+    def put(
         self,
         records,
         table_name: str | None = None,
         key: str = "id",
-    ) -> dict[str, int | bool]:
-        """Merge-insert ``records`` into a LanceDB table on ``key``.
+    ) -> dict[str, int]:
+        """Replace existing rows of a LanceDB table in place, keyed by ``key``.
 
-        Stable-key incremental update:
+        Strict update-only semantics:
 
         * Rows matching an existing row by ``key`` are **updated in place**
           (all columns, including ``vector``, are replaced).
-        * Rows whose ``key`` is absent in the table are **inserted**.
+        * Rows whose ``key`` value is missing/empty raise :class:`KeyError`
+          — a put operation has no stable identity to target without a key.
+        * Rows whose ``key`` value does not match any row currently in the
+          table raise :class:`KeyError` — ``put`` never inserts new rows.
         * Rows already in the table that are *not* referenced are **left
-          untouched** — this method never deletes.
+          untouched** — ``put`` never deletes.
 
-        If the target table does not yet exist (e.g. an incremental update
-        lands before the first full ingest), it is created on the fly with
-        the same Arrow schema as :meth:`create_index`. The create branch is
-        race-tolerant: if a parallel writer wins ``create_table``, we
-        re-open and fall through to ``merge_insert``.
+        If the target table does not exist, :class:`FileNotFoundError` is
+        raised; ``put`` will not create tables on the fly.
 
-        Vector / FTS indexes are intentionally **not** built here:
-        incremental upserts typically carry only one or two rows and IVF
-        training needs at least two. Indexes will be (re)built by the next
-        full :meth:`run` / :meth:`write_to_index` call.
-
-        Rows whose ``key`` value is empty/``None`` are skipped — an empty
-        merge key has no stable identity and would otherwise collapse
-        unrelated rows together.
+        Vector / FTS indexes are intentionally **not** rebuilt here:
+        incremental puts typically carry only a handful of rows. Indexes
+        will be (re)built by the next full :meth:`run` /
+        :meth:`write_to_index` call.
 
         Returns the row counts dict from :func:`_create_lancedb_results`
-        plus: ``upserted``, ``inserted_via_create``, ``skipped_no_key``,
-        ``created_table``.
+        plus: ``put``.
         """
         target_name = table_name or self.table_name
         connect_start = time.perf_counter()
@@ -585,77 +578,52 @@ class LanceDB(VDB):
             expected_dim = None
 
         rows, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
+        counts["put"] = 0
 
-        rows_with_key = [r for r in rows if r.get(key)]
-        skipped_no_key = len(rows) - len(rows_with_key)
-        if skipped_no_key:
-            logger.warning(
-                "LanceDB.upsert: dropping %d row(s) with empty %r — cannot upsert without a stable key.",
-                skipped_no_key,
-                key,
-            )
-
-        counts["upserted"] = 0
-        counts["inserted_via_create"] = 0
-        counts["skipped_no_key"] = skipped_no_key
-        counts["created_table"] = False
-
-        if not rows_with_key:
-            logger.info("LanceDB.upsert: nothing to write to table %r.", target_name)
+        if not rows:
+            logger.info("LanceDB.put: nothing to put into table %r.", target_name)
             return counts
+
+        rows_missing_key = [r for r in rows if not r.get(key)]
+        if rows_missing_key:
+            raise KeyError(
+                f"LanceDB.put: {len(rows_missing_key)} row(s) have an empty {key!r} value; "
+                "put() requires a stable id for every row."
+            )
 
         try:
             table = db.open_table(target_name)
         except (ValueError, FileNotFoundError) as exc:
             if isinstance(exc, ValueError) and not _is_missing_lancedb_table_error(exc):
                 raise
-            logger.info(
-                "LanceDB.upsert: target table %r not found at uri=%r (%s); "
-                "creating it on the fly from %d row(s). Indexes will be built "
-                "by the next full ingest.",
-                target_name,
-                self.uri,
-                exc,
-                len(rows_with_key),
-            )
-            schema = _lancedb_arrow_schema(self.vector_dim)
-            create_kwargs: dict[str, Any] = {
-                "data": rows_with_key,
-                "schema": schema,
-                "mode": "create",
-                "on_bad_vectors": self.on_bad_vectors,
-            }
-            if self.on_bad_vectors == "fill":
-                create_kwargs["fill_value"] = self.fill_value
-            try:
-                create_start = time.perf_counter()
-                table = db.create_table(target_name, **create_kwargs)
-                _record_timing(
-                    "lancedb.upsert_create_table",
-                    time.perf_counter() - create_start,
-                    {"rows": len(rows_with_key), "table": target_name},
-                )
-                counts["inserted_via_create"] = len(rows_with_key)
-                counts["created_table"] = True
-                return counts
-            except (ValueError, FileExistsError) as race_exc:
-                logger.info(
-                    "LanceDB.upsert: race on create_table(%r) (%s); "
-                    "falling back to merge_insert on the existing table.",
-                    target_name,
-                    race_exc,
-                )
-                table = db.open_table(target_name)
+            raise FileNotFoundError(
+                f"LanceDB.put: table {target_name!r} not found at uri={self.uri!r}; "
+                "put() only updates existing rows and will not create tables."
+            ) from exc
 
-        upsert_start = time.perf_counter()
-        (table.merge_insert(key).when_matched_update_all().when_not_matched_insert_all().execute(rows_with_key))
+        input_ids = [r[key] for r in rows]
+        unique_input_ids = list(dict.fromkeys(input_ids))
+
+        filter_expr = pc.field(key).isin(pa.array(unique_input_ids, type=pa.string()))
+        existing_arrow = table.to_lance().to_table(columns=[key], filter=filter_expr)
+        existing_ids = set(existing_arrow.column(key).to_pylist())
+
+        missing_ids = [i for i in unique_input_ids if i not in existing_ids]
+        if missing_ids:
+            raise KeyError(
+                f"LanceDB.put: row(s) with {key}={missing_ids!r} not found in table "
+                f"{target_name!r}; put() only updates existing rows."
+            )
+
+        put_start = time.perf_counter()
+        table.merge_insert(key).when_matched_update_all().execute(rows)
         _record_timing(
-            "lancedb.upsert",
-            time.perf_counter() - upsert_start,
-            {"rows": len(rows_with_key), "table": target_name},
+            "lancedb.put",
+            time.perf_counter() - put_start,
+            {"rows": len(rows), "table": target_name},
         )
 
-        counts["upserted"] = len(rows_with_key)
+        counts["put"] = len(rows)
         return counts
 
     def retrieval(self, vectors, **kwargs):
