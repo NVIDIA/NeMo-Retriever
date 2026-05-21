@@ -124,7 +124,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ² Nemotron Parse fails to start on 32GB.
 
-³ Omni caption: see the optional NIM table and [Image captioning (26.05)](#image-captioning-2605) above. BF16 requires at least 80 GB total GPU memory; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
+³ Omni caption: see the optional NIM table and [Image captioning](#image-captioning) above. BF16 requires at least 80 GB total GPU memory; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
