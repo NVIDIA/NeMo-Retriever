@@ -87,6 +87,8 @@ conditions:
 # note. Set ``enabled: false`` to opt out explicitly.
 judge:
   enabled: true
-  model: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1
+  model: nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
   api_base: https://integrate.api.nvidia.com/v1
   api_key_env: NVIDIA_API_KEY
+  temperature: 0.1
+  max_tokens: 4096

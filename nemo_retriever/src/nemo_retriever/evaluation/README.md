@@ -379,8 +379,10 @@ retriever eval run --from-env
 | `GEN_API_BASE` | _(unset)_ | Override endpoint URL for the generator |
 | `GEN_MODELS` | _(unset)_ | Multi-model sweep: `name:model,...` (overrides `GEN_MODEL`) |
 | `GEN_TEMPERATURE` | `0.0` | Sampling temperature for generator |
-| `JUDGE_MODEL` | `nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1` | Judge model |
+| `JUDGE_MODEL` | `nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5` | Judge model |
 | `JUDGE_API_BASE` | _(unset)_ | Override endpoint URL for the judge |
+| `JUDGE_TEMPERATURE` | `0.1` | Sampling temperature for judge |
+| `JUDGE_MAX_TOKENS` | `4096` | Max tokens for judge JSON output |
 | `LITELLM_DEBUG` | `0` | Set `1` for full request/response logging |
 | `MIN_COVERAGE` | `0.0` | Abort if retrieval covers fewer queries (0.0-1.0, e.g. `0.8`) |
 
@@ -571,7 +573,7 @@ from nemo_retriever.evaluation.scoring_operator import ScoringOperator
 graph = (
     RetrievalLoaderOperator(retrieval_json="retrieval.json", ground_truth_csv="gt.csv")
     >> QAGenerationOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
-    >> JudgingOperator(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
+    >> JudgingOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
     >> ScoringOperator()
 )
 result_df = graph.execute(None)
@@ -702,17 +704,19 @@ models:
     api_base: "https://your-openai-compatible-endpoint/v1"
     api_key: "${GEN_API_KEY}"
 
-  mixtral-judge:
-    model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+  nemotron-super-judge:
+    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
     api_key: "${NVIDIA_API_KEY}"
+    temperature: 0.1
+    max_tokens: 4096
 
 evaluations:
   - generator: "generator-b"
-    judge: "mixtral-judge"
+    judge: "nemotron-super-judge"
     runs: 2
 
   - generator: "generator-a"
-    judge: "mixtral-judge"
+    judge: "nemotron-super-judge"
     runs: 5
 
 execution:
@@ -753,8 +757,10 @@ generators:
     max_tokens: 4096
 
 judge:
-  model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+  model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
   api_key: "${NVIDIA_API_KEY}"
+  temperature: 0.1
+  max_tokens: 4096
 
 execution:
   top_k: 5
@@ -883,7 +889,9 @@ llm = LiteLLMClient.from_kwargs(
 )
 
 judge = LLMJudge.from_kwargs(
-    model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    temperature=0.1,
+    max_tokens=4096,
 )
 ```
 

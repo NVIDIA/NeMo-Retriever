@@ -71,11 +71,16 @@ def _build_judge(cfg: dict) -> Optional[Any]:
     except ImportError as exc:
         typer.echo(f"Judge disabled: failed to import LLMJudge ({exc}). Install nemo-retriever[llm].")
         return None
-    judge = LLMJudge.from_kwargs(
-        model=str(judge_cfg.get("model", "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")),
-        api_base=judge_cfg.get("api_base"),
-        api_key=api_key,
-    )
+    judge_kwargs: dict[str, Any] = {
+        "model": str(judge_cfg.get("model", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")),
+        "api_base": judge_cfg.get("api_base"),
+        "api_key": api_key,
+    }
+    if judge_cfg.get("temperature") is not None:
+        judge_kwargs["temperature"] = float(judge_cfg["temperature"])
+    if judge_cfg.get("max_tokens") is not None:
+        judge_kwargs["max_tokens"] = int(judge_cfg["max_tokens"])
+    judge = LLMJudge.from_kwargs(**judge_kwargs)
     typer.echo(f"Judge enabled: model={judge.model}")
     return judge
 
