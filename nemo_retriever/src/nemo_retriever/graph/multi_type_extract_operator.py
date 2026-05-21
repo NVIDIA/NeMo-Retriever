@@ -355,9 +355,9 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         """Run audio-from-video ASR + frame OCR + (optional) scene fusion.
 
-        Branch A: ``MediaChunkActor`` chunks the video and ``ASRActor``
-        runs ASR on the chunks (audio is implicit — Parakeet reads from
-        the video stream). Emits per-utterance audio rows.
+        Branch A: ``MediaChunkActor`` demuxes the video's audio track
+        before chunking and ``ASRActor`` runs ASR on those audio bytes
+        instead of the video container. Emits per-utterance audio rows.
 
         Branch B: ``VideoFrameActor`` extracts frames at
         ``video_frame_params.fps``; optional content-hash dedup;

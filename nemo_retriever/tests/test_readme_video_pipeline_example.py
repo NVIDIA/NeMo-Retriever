@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 
 from tests import _have_ffmpeg_binary_for_png_frames
+from tests import _make_test_mp4_with_av
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.params import (
@@ -30,33 +31,6 @@ from nemo_retriever.params import (
 )
 from nemo_retriever.video import VideoSplitActor
 from nemo_retriever.video import _content_types as _CT
-
-
-def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
-    """Synthetic MP4 with video+audio; ``mpeg4`` avoids requiring ``libx264``."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loglevel",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        f"testsrc=duration={duration_sec}:size=320x240:rate=30",
-        "-f",
-        "lavfi",
-        "-i",
-        f"sine=frequency=440:duration={duration_sec}",
-        "-c:v",
-        "mpeg4",
-        "-q:v",
-        "5",
-        "-c:a",
-        "aac",
-        "-shortest",
-        str(path),
-    ]
-    subprocess.run(cmd, check=True)
 
 
 def _collect_node_names(graph: Graph) -> list[str]:
