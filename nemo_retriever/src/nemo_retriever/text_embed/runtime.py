@@ -14,7 +14,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 from nemo_retriever.nim.error_reporter import report_error
-from nemo_retriever.model import resolve_embed_model
+from nemo_retriever.model import VL_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.params.models import IMAGE_MODALITIES
 from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
@@ -75,7 +75,7 @@ def _embed_group(
         truncate="END",
         dimensions=None,
         embedding_nim_endpoint=endpoint or "http://localhost:8012/v1",
-        embedding_model=resolved_model_name or "nvidia/llama-nemotron-embed-1b-v2",
+        embedding_model=resolved_model_name or VL_EMBED_MODEL,
         embed_modality=group_modality,
         nim_http_max_concurrent=max(1, int(nim_http_max_concurrent)),
     )
