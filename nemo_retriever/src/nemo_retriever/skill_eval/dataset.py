@@ -54,15 +54,15 @@ def _select_prompt(candidates: list[dict[str, Any]], selected_variant: int | Non
 
 
 def _normalize_slash_command(prompt: str) -> str:
-    """Rewrite SDG-generated slash commands to this project's actual skill name.
+    """Rewrite SDG-generated slash commands to this project's actual skill names.
 
     The agent_scenario_manifest contains slash-command scenarios using made-up
-    aliases (``/vidore-ingest``, ``/vidore``, ``/vidore_hr``); the real skill
-    that ships with this repo is ``nemo-retriever``. Rewriting at load time
-    avoids editing the upstream manifest (frozen baseline) while making the
-    slash_ingest / slash_retrieval scenarios actually exercisable. The token
-    boundary after the alias is preserved so the trailing args/query carry
-    over verbatim.
+    aliases (``/vidore-ingest``, ``/vidore``, ``/vidore_hr``). The skills that
+    ship with this repo are task-specific, so ingest aliases route to
+    ``nemo-retriever-ingest`` and retrieval aliases route to
+    ``nemo-retriever-query``. Rewriting at load time avoids editing the upstream
+    manifest while making slash scenarios exercisable. The token boundary after
+    the alias is preserved so trailing args/query carry over verbatim.
     """
     s = prompt.lstrip()
     if not s.startswith("/"):
@@ -70,9 +70,9 @@ def _normalize_slash_command(prompt: str) -> str:
     # Order matters: rewrite ``/vidore-ingest`` (which carries the ingest
     # subcommand intent) before the bare ``/vidore`` prefix.
     rewrites = [
-        ("/vidore-ingest ", "/nemo-retriever ingest "),
-        ("/vidore_hr ", "/nemo-retriever "),
-        ("/vidore ", "/nemo-retriever "),
+        ("/vidore-ingest ", "/nemo-retriever-ingest "),
+        ("/vidore_hr ", "/nemo-retriever-query "),
+        ("/vidore ", "/nemo-retriever-query "),
     ]
     for old, new in rewrites:
         if s.startswith(old):

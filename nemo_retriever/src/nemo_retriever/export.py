@@ -106,6 +106,9 @@ def query_lancedb(
     *,
     top_k: int = 5,
     embedder: str = "nvidia/llama-nemotron-embed-1b-v2",
+    local_query_embed_backend: str | None = None,
+    local_hf_cache_dir: str | None = None,
+    local_hf_device: str | None = None,
     page_index: dict[str, dict[str, str]] | None = None,
     batch_size: int = 50,
 ) -> tuple[dict[str, dict], dict[str, Any]]:
@@ -123,6 +126,12 @@ def query_lancedb(
         Number of chunks to retrieve per query.
     embedder : str
         Embedding model name for the Retriever.
+    local_query_embed_backend : str, optional
+        Local backend for query embeddings, e.g. ``"hf"``.
+    local_hf_cache_dir : str, optional
+        HuggingFace cache directory for local query embeddings.
+    local_hf_device : str, optional
+        Torch device for local HuggingFace query embeddings.
     page_index : dict, optional
         ``{source_id: {page_str: markdown}}``.  When provided, chunk hits are
         expanded to full-page markdown.
@@ -136,14 +145,24 @@ def query_lancedb(
         ``{"chunks": [...], "metadata": [...]}`` and *metadata* is the
         envelope metadata dict.
     """
+    from nemo_retriever.params import ModelRuntimeParams
     from nemo_retriever.retriever import Retriever
+
+    embed_kwargs: dict[str, Any] = {"model_name": embedder, "embed_model_name": embedder}
+    if local_query_embed_backend is not None:
+        embed_kwargs["local_ingest_embed_backend"] = local_query_embed_backend
+    if local_hf_cache_dir is not None or local_hf_device is not None:
+        embed_kwargs["runtime"] = ModelRuntimeParams(
+            device=local_hf_device,
+            hf_cache_dir=local_hf_cache_dir,
+        )
 
     retriever = Retriever(
         vdb_kwargs={
             "vdb_op": "lancedb",
             "vdb_kwargs": {"uri": lancedb_uri, "table_name": lancedb_table},
         },
-        embed_kwargs={"model_name": embedder, "embed_model_name": embedder},
+        embed_kwargs=embed_kwargs,
         top_k=top_k,
         rerank=False,
     )
@@ -184,6 +203,12 @@ def query_lancedb(
         "chunk_mode": chunk_mode,
         "query_count": len(all_results),
     }
+    if local_query_embed_backend is not None:
+        meta["local_query_embed_backend"] = local_query_embed_backend
+    if local_hf_cache_dir is not None:
+        meta["local_hf_cache_dir"] = local_hf_cache_dir
+    if local_hf_device is not None:
+        meta["local_hf_device"] = local_hf_device
     if use_fullpage:
         meta["page_index_misses"] = total_page_misses
 
@@ -233,6 +258,9 @@ def export_retrieval_json(
     *,
     top_k: int = 5,
     embedder: str = "nvidia/llama-nemotron-embed-1b-v2",
+    local_query_embed_backend: str | None = None,
+    local_hf_cache_dir: str | None = None,
+    local_hf_device: str | None = None,
     page_index: dict[str, dict[str, str]] | None = None,
     batch_size: int = 50,
 ) -> dict:
@@ -254,6 +282,12 @@ def export_retrieval_json(
         Number of chunks to retrieve per query.
     embedder : str
         Embedding model name for the Retriever.
+    local_query_embed_backend : str, optional
+        Local backend for query embeddings, e.g. ``"hf"``.
+    local_hf_cache_dir : str, optional
+        HuggingFace cache directory for local query embeddings.
+    local_hf_device : str, optional
+        Torch device for local HuggingFace query embeddings.
     page_index : dict, optional
         ``{source_id: {page_str: markdown}}``.  When provided, chunk hits are
         expanded to full-page markdown.
@@ -271,6 +305,9 @@ def export_retrieval_json(
         queries=queries,
         top_k=top_k,
         embedder=embedder,
+        local_query_embed_backend=local_query_embed_backend,
+        local_hf_cache_dir=local_hf_cache_dir,
+        local_hf_device=local_hf_device,
         page_index=page_index,
         batch_size=batch_size,
     )

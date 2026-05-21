@@ -40,7 +40,7 @@ from nemo_retriever.skill_eval.runner import (
 
 DEFAULT_ORDER = ("c1_base", "c2_retriever", "c3_retriever_skill")
 
-app = typer.Typer(help="Benchmark coding agents with vs. without the /nemo-retriever skill on a folder of PDFs.")
+app = typer.Typer(help="Benchmark coding agents with vs. without NeMo Retriever skills on a folder of PDFs.")
 logger = logging.getLogger(__name__)
 
 
@@ -168,6 +168,14 @@ def _resolve_agent_model(cfg: dict, agent: str, override: Optional[str]) -> str:
 
 def _resolve_workdir_root(cfg: dict) -> Path:
     return Path(str(cfg.get("per_trial_workdir_root", "/tmp/skill_eval"))).expanduser().resolve()
+
+
+def _has_skill_source(path: Path) -> bool:
+    if (path / "SKILL.md").is_file():
+        return True
+    if not path.is_dir():
+        return False
+    return any((child / "SKILL.md").is_file() for child in path.iterdir())
 
 
 def _relative_artifact(path: Path, session_dir: Path) -> str:
@@ -381,11 +389,12 @@ def run_command(
     domain_order = sorted(by_domain.keys())
     typer.echo(f"Domains in this run: {domain_order} ({sum(len(v) for v in by_domain.values())} entries total)")
 
-    skill_source = Path(
-        str(cfg.get("skill_source_dir") or REPO_ROOT / ".claude" / "skills" / "nemo-retriever")
-    ).expanduser()
-    if any(c in ("c2_retriever", "c3_retriever_skill") for c in selected) and not (skill_source / "SKILL.md").is_file():
-        typer.echo(f"Error: skill source '{skill_source}' does not contain SKILL.md.", err=True)
+    skill_source = Path(str(cfg.get("skill_source_dir") or REPO_ROOT / ".claude" / "skills")).expanduser()
+    if any(c in ("c2_retriever", "c3_retriever_skill") for c in selected) and not _has_skill_source(skill_source):
+        typer.echo(
+            f"Error: skill source '{skill_source}' must be a skill directory or contain skill directories.",
+            err=True,
+        )
         raise typer.Exit(code=2)
 
     workdir_root = _resolve_workdir_root(cfg)

@@ -197,14 +197,25 @@ def _write_shim(shim_dir: Path, name: str) -> None:
     shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def _copy_skill(skill_source: Path, dest: Path) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
+def _copy_skill_dir(skill_source: Path, dest: Path) -> None:
     if (dest / "SKILL.md").exists():
         return
-    shutil.copy2(skill_source / "SKILL.md", dest / "SKILL.md")
-    ref_src = skill_source / "references"
-    if ref_src.is_dir():
-        shutil.copytree(ref_src, dest / "references", dirs_exist_ok=True)
+    shutil.copytree(skill_source, dest, dirs_exist_ok=True)
+
+
+def _copy_skills(skill_source: Path, dest: Path) -> None:
+    """Copy either one skill directory or a directory containing many skills."""
+    dest.mkdir(parents=True, exist_ok=True)
+    if (skill_source / "SKILL.md").is_file():
+        _copy_skill_dir(skill_source, dest / skill_source.name)
+        return
+
+    skill_dirs = [path for path in sorted(skill_source.iterdir()) if (path / "SKILL.md").is_file()]
+    if not skill_dirs:
+        raise FileNotFoundError(f"No skill directories found under {skill_source}")
+
+    for skill_dir in skill_dirs:
+        _copy_skill_dir(skill_dir, dest / skill_dir.name)
 
 
 # Bash patterns that route the agent into the nemo_retriever library, regardless
@@ -250,9 +261,12 @@ def _build_condition_workdir(
 
     Workdir contents:
       - pdfs/ symlink farm into the source PDF folder
-      - .claude/ sandbox (settings + per-condition skill copy for Claude)
-      - .codex/ skill copy for Codex skill-aware installations
-      - .bin/retriever shim (c1 only) so the retriever CLI is unavailable on PATH
+      - .claude/ sandbox (settings + per-condition skill copies for Claude)
+      - .codex/ skill copies for Codex skill-aware installations
+      - .bin/retriever shim (c1 only) so retriever is unavailable on PATH
+
+    The agent itself creates any retrieval artifacts (e.g., ./lancedb/) inside the
+    workdir on the setup turn.
     """
     domain_seg = f"_{domain}" if domain else ""
     workdir = root / f"{agent}_{condition}{domain_seg}_{uuid.uuid4().hex[:8]}"
@@ -266,10 +280,9 @@ def _build_condition_workdir(
 
     if condition in ("c2_retriever", "c3_retriever_skill"):
         if agent == "claude":
-            _copy_skill(skill_source, workdir / ".claude" / "skills" / "nemo-retriever")
+            _copy_skills(skill_source, workdir / ".claude" / "skills")
         elif agent == "codex":
-            _copy_skill(skill_source, workdir / ".codex" / "skills" / "nemo-retriever")
-
+            _copy_skills(skill_source, workdir / ".codex" / "skills")
     if condition == "c1_base":
         _write_shim(workdir / ".bin", "retriever")
         # Empty HuggingFace cache redirect; env vars are wired up in _env_for.

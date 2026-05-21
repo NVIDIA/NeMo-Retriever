@@ -415,6 +415,21 @@ def query_command(
         "--embed-model-name",
         help="Optional embedding model name override.",
     ),
+    local_query_embed_backend: LocalIngestEmbedBackendValue | None = typer.Option(
+        None,
+        "--local-query-embed-backend",
+        help="Local query-time text embedder when --embed-invoke-url is unset.",
+    ),
+    local_hf_cache_dir: str | None = typer.Option(
+        None,
+        "--local-hf-cache-dir",
+        help="HuggingFace cache directory for local query embedding.",
+    ),
+    local_hf_device: str | None = typer.Option(
+        None,
+        "--local-hf-device",
+        help="Torch device for local HuggingFace query embedding, such as 'cuda' or 'cpu'.",
+    ),
     reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker NIM endpoint URL."),
     reranker_model_name: str | None = typer.Option(
         None,
@@ -454,6 +469,9 @@ def query_command(
                 table_name=table_name,
                 embed_invoke_url=embed_invoke_url,
                 embed_model_name=embed_model_name,
+                local_query_embed_backend=local_query_embed_backend,
+                local_hf_cache_dir=local_hf_cache_dir,
+                local_hf_device=local_hf_device,
                 reranker_invoke_url=reranker_invoke_url,
                 reranker_model_name=reranker_model_name,
                 reranker_backend=reranker_backend,

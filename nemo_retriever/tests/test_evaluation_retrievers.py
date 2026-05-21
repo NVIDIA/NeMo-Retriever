@@ -13,14 +13,19 @@ when new instance fields are added in future.
 
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from typer.testing import CliRunner
 
 from nemo_retriever.evaluation.retrievers import FileRetriever
 from nemo_retriever.llm.types import RetrievalResult
+from nemo_retriever.params import ModelRuntimeParams
+
+RUNNER = CliRunner()
 
 _SAMPLE_QUERIES: dict[str, dict] = {
     "What is the range of the 767?": {
@@ -214,6 +219,82 @@ def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
     }
     assert all_results["What is the range of the 767?"]["chunks"] == ["range chunk"]
     assert meta["collection_name"] == "nv-ingest"
+
+
+def test_query_lancedb_passes_local_hf_embed_options(monkeypatch) -> None:
+    from nemo_retriever.export import query_lancedb
+
+    captured_kwargs: dict[str, object] = {}
+
+    class _FakeRetriever:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+
+        def queries(self, queries):
+            return [[{"text": "range chunk", "source": "spec.pdf", "page_number": 3, "_distance": 0.1}]]
+
+    retriever_module = importlib.import_module("nemo_retriever.retriever")
+    monkeypatch.setattr(retriever_module, "Retriever", _FakeRetriever)
+
+    _all_results, meta = query_lancedb(
+        lancedb_uri="/tmp/lancedb",
+        lancedb_table="nv-ingest",
+        queries=[{"query": "What is the range of the 767?"}],
+        embedder="embedder",
+        local_query_embed_backend="hf",
+        local_hf_cache_dir="/models/huggingface",
+        local_hf_device="cuda",
+    )
+
+    embed_kwargs = captured_kwargs["embed_kwargs"]
+    assert embed_kwargs["local_ingest_embed_backend"] == "hf"
+    runtime = embed_kwargs["runtime"]
+    assert isinstance(runtime, ModelRuntimeParams)
+    assert runtime.hf_cache_dir == "/models/huggingface"
+    assert runtime.device == "cuda"
+    assert meta["local_query_embed_backend"] == "hf"
+    assert meta["local_hf_cache_dir"] == "/models/huggingface"
+    assert meta["local_hf_device"] == "cuda"
+
+
+def test_eval_export_cli_passes_local_hf_embed_options(monkeypatch, tmp_path: Path) -> None:
+    cli = importlib.import_module("nemo_retriever.evaluation.cli")
+    query_csv = tmp_path / "queries.csv"
+    output = tmp_path / "retrieval.json"
+    query_csv.write_text("query\nWhat is the range of the 767?\n", encoding="utf-8")
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_export_retrieval_json(**kwargs):
+        captured_kwargs.update(kwargs)
+        return {"queries": {"What is the range of the 767?": {"chunks": [], "metadata": []}}}
+
+    monkeypatch.setattr("nemo_retriever.export.export_retrieval_json", fake_export_retrieval_json)
+
+    result = RUNNER.invoke(
+        cli.app,
+        [
+            "export",
+            "--lancedb-uri",
+            "/tmp/lancedb",
+            "--lancedb-table",
+            "nv-ingest",
+            "--query-csv",
+            str(query_csv),
+            "--output",
+            str(output),
+            "--local-query-embed-backend",
+            "hf",
+            "--local-hf-cache-dir",
+            "/models/huggingface",
+            "--local-hf-device",
+            "cuda",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured_kwargs["local_query_embed_backend"] == "hf"
+    assert captured_kwargs["local_hf_cache_dir"] == "/models/huggingface"
+    assert captured_kwargs["local_hf_device"] == "cuda"
 
 
 def test_from_lancedb_no_save_path_keeps_memory_label() -> None:
