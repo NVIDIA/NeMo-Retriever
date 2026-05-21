@@ -48,6 +48,7 @@ from nemo_retriever.video import VideoFrameActor
 from nemo_retriever.video import VideoFrameOCRActor
 from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
+from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
@@ -354,9 +355,9 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         """Run audio-from-video ASR + frame OCR + (optional) scene fusion.
 
-        Branch A: ``MediaChunkActor`` chunks the video and ``ASRActor``
-        runs ASR on the chunks (audio is implicit — Parakeet reads from
-        the video stream). Emits per-utterance audio rows.
+        Branch A: ``MediaChunkActor`` demuxes the video's audio track
+        before chunking and ``ASRActor`` runs ASR on those audio bytes
+        instead of the video container. Emits per-utterance audio rows.
 
         Branch B: ``VideoFrameActor`` extracts frames at
         ``video_frame_params.fps``; optional content-hash dedup;
@@ -377,7 +378,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         # ``audio_enabled`` gate.
         audio_enabled = self.audio_chunk_params.enabled
         if audio_enabled:
-            audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
+            audio_chunks = MediaChunkActor(params=video_asr_audio_chunk_params(self.audio_chunk_params)).run(batch_df)
             audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
         else:
             audio_out = pd.DataFrame()
