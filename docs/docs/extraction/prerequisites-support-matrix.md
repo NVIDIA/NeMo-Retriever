@@ -67,7 +67,7 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 |-----------|-----|------|
 | `page_elements` | [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) | Page layout and element detection |
 | `table_structure` | [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) | Table structure extraction |
-| `ocr` | [nemotron-ocr-v1](https://huggingface.co/nvidia/nemotron-ocr-v1) | Image OCR |
+| `ocr` | [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) | Image OCR |
 | `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) | Multimodal (VL) embedding |
 
 Default VL embedder container and model for release deployments:
