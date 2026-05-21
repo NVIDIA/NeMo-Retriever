@@ -547,6 +547,7 @@ class GraphIngestor(ingestor):
                     address=self._ray_address,
                     ignore_reinit_error=True,
                     runtime_env=runtime_env,
+                    log_to_driver=self._ray_log_to_driver,
                 )
             cluster_resources = gather_cluster_resources(ray)
 
