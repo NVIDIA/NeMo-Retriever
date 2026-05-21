@@ -16,16 +16,7 @@ jobs:
   # Fast pre-commit checks (runs first)
   pre-commit:
     name: Pre-commit Checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v3
-
-      - uses: astral-sh/setup-uv@v6
-
-      - uses: pre-commit/action@v3.0.1
+    uses: ./.github/workflows/reusable-pre-commit.yml
 
   # Core install must not require tritonclient (remote NIM / slim API); see tests/test_slim_imports_no_triton.py
   slim-import-contract:
