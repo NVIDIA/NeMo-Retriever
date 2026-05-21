@@ -78,6 +78,8 @@ export NVIDIA_API_KEY=nvapi-...
 retriever ingest ./data/multimodal_test.pdf \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
+  --ocr-version v1 \
+  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -226,8 +228,9 @@ retriever pipeline run ./data/test.pdf \
   --save-intermediate ./processed_docs
 ```
 
-Custom caption prompts and `reasoning` flags are not exposed on the CLI — use
-`nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
+For local Omni captioning, use `nemo_retriever[local]` and the matching Hugging Face
+model ID. Custom caption prompts and `reasoning` flags are not exposed on the CLI —
+use `nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
 
 ### Directory of documents
 

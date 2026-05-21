@@ -20,7 +20,7 @@ When you run a job you might see errors similar to the following:
 These errors can occur when your input file is malformed. 
 Verify or fix the format of your input file, and try resubmitting your job.
 
-## Audio or video extraction reports missing media dependencies
+## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
 
 When you run audio or video extraction, you might see an error similar to one
 of the following:
@@ -60,9 +60,12 @@ writable root filesystem, and security policy that allows the image's scoped
 sudo use. It will fail if the service container sets
 `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
 
-For locked-down clusters that cannot install packages at startup, use a custom
-service image that already contains ffmpeg/ffprobe. Push that image to a
-registry and set `service.image.repository` and `service.image.tag`.
+For locked-down or air-gapped clusters that cannot install packages at startup,
+use a custom service image that already contains ffmpeg/ffprobe. Build that
+image on a connected staging host (for example by extending the service
+Dockerfile with `apt-get install ffmpeg`), push it to your private registry,
+and set `service.image.repository` and `service.image.tag`. See
+[Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 ## Can't start new thread error
 
