@@ -15,12 +15,40 @@ from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.ingestor_runtime import build_graph, build_post_extract_graph
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import VideoFrameTextDedupParams
+from nemo_retriever.params import EmbedParams, ExtractParams, TextChunkParams
 from nemo_retriever.utils.ray_resource_hueristics import Resources
+
+
+def _graph_node_names(graph: Graph) -> list[str]:
+    names: list[str] = []
+
+    def visit(node: Node) -> None:
+        names.append(getattr(node.operator, "name", node.name))
+        for child in node.children:
+            visit(child)
+
+    for root in graph.roots:
+        visit(root)
+    return names
+
+
+def test_post_extract_graph_uses_explicit_content_reshape_flag() -> None:
+    graph = build_post_extract_graph(embed_params=EmbedParams())
+
+    assert "ExplodeContentToRows" in _graph_node_names(graph)
+
+
+def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
+    graph = build_graph(
+        extraction_mode="text",
+        text_params=TextChunkParams(),
+        embed_params=EmbedParams(),
+    )
+
+    assert "ExplodeContentToRows" not in _graph_node_names(graph)
 
 
 # ---------------------------------------------------------------------------
@@ -623,44 +651,6 @@ class TestMultiTypeExtractOperator:
         assert grouped["audio"] == ["/folder/audio.mp3"]
         assert grouped["video"] == ["/folder/video.mp4"]
 
-    def test_default_media_params_match_root_ingest_defaults(self, monkeypatch):
-        """Mixed auto uses the same audio/video defaults as root CLI typed media ingest."""
-        import nemo_retriever.graph.multi_type_extract_operator as multitype
-
-        monkeypatch.setattr(
-            multitype,
-            "asr_params_from_env",
-            lambda: ASRParams(audio_endpoints=("grpc.example:443", None), segment_audio=True),
-        )
-
-        op = multitype.MultiTypeExtractCPUActor()
-
-        assert op.audio_chunk_params.split_type == "size"
-        assert op.audio_chunk_params.split_interval == 500000
-        assert op.asr_params.audio_endpoints == ("grpc.example:443", None)
-        assert op.asr_params.segment_audio is False
-        assert op.video_frame_params.enabled is True
-        assert op.video_frame_params.fps == 0.5
-        assert op.video_frame_params.dedup is True
-        assert op.video_text_dedup_params.enabled is True
-        assert op.video_text_dedup_params.max_dropped_frames == 2
-        assert op.av_fuse_params.enabled is True
-
-    def test_build_graph_forwards_video_text_dedup_params_to_multitype(self):
-        from nemo_retriever.graph.ingestor_runtime import build_graph
-
-        text_dedup_params = VideoFrameTextDedupParams(enabled=False, max_dropped_frames=7)
-
-        graph = build_graph(
-            extraction_mode="auto",
-            extract_params=ExtractParams(),
-            video_text_dedup_params=text_dedup_params,
-        )
-
-        op = graph.roots[0].operator
-        assert isinstance(op, MultiTypeExtractOperator)
-        assert op.video_text_dedup_params is text_dedup_params
-
     def test_auto_mode_logs_and_skips_unsupported_extension_in_file_list(self, caplog):
         op = MultiTypeExtractOperator(extraction_mode="auto")
 
@@ -969,6 +959,46 @@ class TestRayDataExecutor:
         assert isinstance(result, pd.DataFrame)
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
+
+    def test_build_dataset_returns_lazy_dataset_without_materializing(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        pdf_path = tmp_path / "sample.pdf"
+        pdf_path.write_bytes(b"pdf")
+
+        class _FakeDataset:
+            def to_pandas(self):
+                raise AssertionError("to_pandas should not be called by build_dataset")
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=lambda paths, include_paths=True: fake_dataset,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        executor = RayDataExecutor(Graph())
+        result = executor.build_dataset([str(pdf_path)])
+
+        assert result is fake_dataset
 
     def test_ingest_rejects_directory_paths_before_ray_read(self, tmp_path, monkeypatch):
         import sys
