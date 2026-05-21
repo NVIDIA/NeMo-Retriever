@@ -150,11 +150,16 @@ class AudioChunkParams(_ParamsModel):
     audio chunking and ASR on a video pipeline — useful for visual-only
     recall benchmarks. ``MediaChunkActor`` ignores this flag for the
     audio-only pipeline since chunking is the whole point there.
+
+    ``audio_only=True`` on a video input extracts only the audio track,
+    runs ASR over it, and skips the visual branch entirely — no frame
+    extraction, no OCR, no audio/visual fusion.
     """
 
     enabled: bool = True
     split_type: Literal["size", "time", "frame"] = "size"
     split_interval: int = 450
+    audio_only: bool = False
     video_audio_separate: bool = False
 
 
