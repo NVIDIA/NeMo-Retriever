@@ -88,7 +88,8 @@ def _ffprobe_first_stream_type(path: Path) -> str:
         capture_output=True,
         text=True,
     )
-    return result.stdout.splitlines()[0].strip()
+    lines = result.stdout.splitlines()
+    return lines[0].strip() if lines else ""
 
 
 def test_video_asr_chunk_params_force_audio_demux() -> None:
@@ -110,6 +111,18 @@ def test_video_asr_chunk_params_force_audio_demux() -> None:
     assert normalized.split_interval == 60
     assert params.audio_only is False
     assert params.video_audio_separate is True
+
+
+def test_video_asr_chunk_params_disabled_passthrough() -> None:
+    """Disabled params must pass through unchanged."""
+    from nemo_retriever.video import video_asr_audio_chunk_params
+
+    disabled = AudioChunkParams(enabled=False, audio_only=False)
+    result = video_asr_audio_chunk_params(disabled)
+
+    assert result.enabled is False
+    assert result.audio_only is False
+    assert result is disabled
 
 
 @pytest.mark.skipif(
