@@ -161,11 +161,6 @@ def extract(
         min=1,
         help="Chunk split interval (bytes for size, seconds for time, frames for frame).",
     ),
-    audio_only: bool = typer.Option(
-        False,
-        "--audio-only/--no-audio-only",
-        help="If true and file is video, extract audio to MP3 then chunk.",
-    ),
     video_audio_separate: bool = typer.Option(
         False,
         "--video-audio-separate/--no-video-audio-separate",
@@ -174,7 +169,7 @@ def extract(
     use_env_asr: bool = typer.Option(
         True,
         "--use-env-asr/--no-use-env-asr",
-        help="Build ASR params from AUDIO_GRPC_ENDPOINT, NGC_API_KEY, AUDIO_FUNCTION_ID when set.",
+        help="Build ASR params from AUDIO_GRPC_ENDPOINT, NVIDIA_API_KEY, AUDIO_FUNCTION_ID when set.",
     ),
     audio_grpc_endpoint: Optional[str] = typer.Option(
         None,
@@ -200,7 +195,7 @@ def extract(
     """
     Scan input_dir for audio/video files, run chunk + ASR, and write extraction JSON sidecars.
 
-    Uses local Parakeet when no ASR endpoint is set; use NGC_API_KEY + AUDIO_FUNCTION_ID
+    Uses local Parakeet when no ASR endpoint is set; use NVIDIA_API_KEY + AUDIO_FUNCTION_ID
     (or --audio-grpc-endpoint) for cloud ASR.
     """
     print(f"Audio stage extract: input_dir={input_dir!s} glob={glob!r} output_dir={output_dir!s}", flush=True)
@@ -215,7 +210,6 @@ def extract(
     chunk_params = AudioChunkParams(
         split_type=split_type,
         split_interval=split_interval,
-        audio_only=audio_only,
         video_audio_separate=video_audio_separate,
     )
 
@@ -246,7 +240,14 @@ def extract(
         sys.stderr.flush()
         raise typer.Exit(code=2)
 
-    asr_mode = "remote" if (asr_params.audio_endpoints[0] or "").strip() else "local (Parakeet)"
+    # ASR mode is decided by ASRActor at resolve time:
+    #   - explicit audio_endpoints  -> CPU variant (remote NIM)
+    #   - no endpoint, GPU present  -> GPU variant (local Parakeet)
+    #   - no endpoint, no GPU       -> CPU variant defaults to NVCF Parakeet
+    if (asr_params.audio_endpoints[0] or "").strip():
+        asr_mode = "remote (explicit endpoint)"
+    else:
+        asr_mode = "archetype-resolved (GPU local / NVCF default)"
     typer.echo(f"Found {len(paths)} file(s) matching {patterns}. ASR: {asr_mode}.", err=True)
     sys.stderr.flush()
 

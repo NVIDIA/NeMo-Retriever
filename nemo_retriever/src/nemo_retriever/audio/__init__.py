@@ -11,8 +11,10 @@ batch, inprocess, fused, and online run modes.
 
 from __future__ import annotations
 
-from nemo_retriever.audio.asr_actor import ASRActor, ASRCPUActor, ASRGPUActor
+from nemo_retriever.audio.asr_actor import ASRActor
 from nemo_retriever.audio.asr_actor import asr_params_from_env
+from nemo_retriever.audio.cpu_actor import ASRCPUActor
+from nemo_retriever.audio.gpu_actor import ASRGPUActor
 from nemo_retriever.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.audio.media_interface import MediaInterface
 from nemo_retriever.params import ASRParams

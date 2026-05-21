@@ -92,7 +92,6 @@ def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInter
             split_interval=params.split_interval,
             split_type=params.split_type,
             video_audio_separate=params.video_audio_separate,
-            audio_only=params.audio_only,
         )
         if not files:
             return []

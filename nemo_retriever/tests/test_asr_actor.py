@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from nemo_retriever.audio.asr_actor import ASRActor, ASRCPUActor
+from nemo_retriever.audio.asr_actor import ASRActor
 from nemo_retriever.audio.asr_actor import apply_asr_to_df
 from nemo_retriever.params import ASRParams
 
@@ -193,7 +193,10 @@ def test_apply_asr_to_df_segment_audio():
 
 
 def test_local_asr_does_not_call_get_client():
-    """When audio_endpoints are both null, ASRActor uses local model and does not call _get_client."""
+    """After the CPU/GPU split the local-Parakeet path is :class:`ASRGPUActor`,
+    which must never touch the remote ``_get_client`` factory."""
+    from nemo_retriever.audio.gpu_actor import ASRGPUActor
+
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("mocked local transcript", [])]
     mock_class = MagicMock(return_value=mock_model)
@@ -204,10 +207,9 @@ def test_local_asr_does_not_call_get_client():
     try:
         with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
             params = ASRParams(audio_endpoints=(None, None))
-            actor = ASRCPUActor(params=params)
+            actor = ASRGPUActor(params=params)
 
             mock_get.assert_not_called()
-            assert actor._client is None
             assert actor._model is mock_model
 
             batch = pd.DataFrame(

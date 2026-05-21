@@ -66,6 +66,9 @@ dependencies = [
   "langchain-nvidia-ai-endpoints>=0.3.0",
   # Default VDB solution
   "lancedb",
+  # gRPC client for Parakeet/Riva ASR. Required for ASRCPUActor when it
+  # targets the public NVCF Parakeet endpoint (the default) or any remote NIM.
+  "nvidia-riva-client",
 ]
 
 [project.optional-dependencies]

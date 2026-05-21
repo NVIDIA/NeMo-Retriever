@@ -155,15 +155,21 @@ class AudioChunkParams(_ParamsModel):
     enabled: bool = True
     split_type: Literal["size", "time", "frame"] = "size"
     split_interval: int = 450
-    audio_only: bool = False
     video_audio_separate: bool = False
 
 
 class ASRParams(_ParamsModel):
-    """Params for ASR (Parakeet/Riva gRPC or local transformers backend)."""
+    """Params for ASR (Parakeet/Riva gRPC or local transformers backend).
+
+    Choice of remote-NIM vs local-model is made by the :class:`ASRActor`
+    archetype (CPU variant = remote, GPU variant = local), not by a flag here.
+    Pass ``audio_endpoints`` to force the remote variant on any host; leave
+    them empty to let the archetype pick GPU (local) when a GPU is present
+    and fall back to remote (NVCF default) when not.
+    """
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
-    audio_infer_protocol: str = "grpc"
+    audio_infer_protocol: str = "http"
     function_id: Optional[str] = None
     auth_token: Optional[str] = None
     segment_audio: bool = False
