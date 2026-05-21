@@ -63,10 +63,10 @@ nemo_retriever/helm/
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
-        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (off by default)
-        ├── nemotron-parse.yaml                # NIMCache + NIMService (off by default)
-        ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (off by default)
-        └── audio.yaml                         # NIMCache + NIMService (off by default)
+        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; enabled by default; not auto-wired)
+        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; enabled by default; not auto-wired)
+        ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; enabled by default; not auto-wired)
+        └── audio.yaml                         # NIMCache + NIMService (optional; enabled by default; not auto-wired)
 ```
 
 ---
@@ -161,7 +161,7 @@ Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
 registered. Then run the default install — `nims.enabled` is `true` out
 of the box, so every per-NIM block under `nimOperator.<key>.enabled: true`
-(all nine by default) is reconciled:
+(all eight by default) is reconciled:
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -633,7 +633,9 @@ in the product docs.
   preload models per the [NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
 - **Optional NIMs** — The four additional operator-managed NIMs
   (`rerankqa`, `nemotron_parse`, `nemotron_3_nano_omni_30b_a3b_reasoning`,
-  `audio`) are reconciled the same way when enabled; wire endpoints in your
+  `audio`) are **enabled by default** in `values.yaml` and reconciled when
+  `nimOperator.<key>.enabled` is `true` (set to `false` to omit from your
+  mirror set). The retriever service does not call them until you wire your
   pipeline or `serviceConfig.nimEndpoints.*` overrides.
 
 ### Audio and video

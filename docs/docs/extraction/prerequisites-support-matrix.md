@@ -77,7 +77,7 @@ Default VL embedder container and model for release deployments:
 
 ### Optional Helm NIMs (not auto-wired by default) { #optional-helm-nims-not-auto-wired-by-default }
 
-The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled` is `true`, but the retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). Enable only what your workload needs. Chart keys and `enabled` defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack).
+The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled` is `true`, but the retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). Enable only what your workload needs. Chart keys and `enabled` defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
 | Helm flag | NIM | Role |
 |-----------|-----|------|
@@ -130,7 +130,7 @@ and run only the embedder, reranker, and your vector database.
 
 ## Air-gapped deployment { #air-gapped-deployment }
 
-The **default extraction pipeline** ([Default Helm NIMs](#default-helm-nims)) runs disconnected when you mirror images, preload models, and override registry settings. See [Deployment options — Air-gapped deployment](deployment-options.md#air-gapped-deployment), [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment), and the [NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
+The **default extraction pipeline** ([Default Helm NIMs](#default-helm-nims)) runs disconnected when you mirror images, preload models, and override registry settings. See [Deployment options — Air-gapped deployment](deployment-options.md#air-gapped-deployment), [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#air-gapped-deployment), and the [NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
 
 [Optional Helm NIMs](#optional-helm-nims-not-auto-wired-by-default) add images to mirror the same way. **Audio and video** also need `ffmpeg` and `ffprobe` in the service image — not `service.installFfmpeg=true` in the enclave. See [Audio and video](audio-video.md) and [Troubleshoot — missing media dependencies](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies).
 

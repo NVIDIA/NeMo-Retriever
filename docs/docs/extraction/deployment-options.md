@@ -74,7 +74,7 @@ Consider self-hosting when:
 
 The **default document extraction pipeline** (page elements, table structure, OCR, and VL embed) runs disconnected when you mirror images and models into a private registry and configure the [NIM Operator for air-gapped environments](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
 
-On a staging host with internet access, pull from NGC, retag to your private registry, stage chart archives, then install in the enclave with registry overrides. Procedures, the 26.05 image inventory, and Helm value patterns are in [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment).
+On a staging host with internet access, pull from NGC, retag to your private registry, stage chart archives, then install in the enclave with registry overrides. Procedures, the 26.05 image inventory, and Helm value patterns are in [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#air-gapped-deployment).
 
 !!! warning "Audio and video extraction"
 
@@ -84,7 +84,7 @@ For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prere
 
 **Related**
 
-- [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub) — [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment)
+- [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever/helm) on GitHub) — [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#air-gapped-deployment)
 - [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** handoff)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md) — [air-gapped notes](prerequisites-support-matrix.md#air-gapped-deployment)
 - [Audio and video](audio-video.md)
