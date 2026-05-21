@@ -8,6 +8,13 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
+- For audio and video extraction, the `ffmpeg` and `ffprobe` command-line
+  binaries must be installed and available on `PATH`. On Debian/Ubuntu systems,
+  install them with root privileges, for example
+  `sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg`.
+  Python packages such as `ffmpeg-python` or `nemo-retriever[multimedia]` do not
+  provide these system binaries. For Helm deployments, set
+  `service.installFfmpeg=true`.
 
 !!! note
 
@@ -77,7 +84,7 @@ Enable these only when your workload needs them — the same pattern as the **VL
 - [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — reranking for improved retrieval accuracy
 - [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**)
 
-Advanced features (for example, audio and video, Nemotron Parse, VLM image captioning, reranking) require additional GPU support and disk space.
+Advanced features (for example, audio and video, Nemotron Parse, VLM image captioning, reranking) require additional GPU support, disk space, and feature-specific system dependencies.
 This includes the following:
 
 - [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — transcript extraction from [audio and video](audio-video.md)

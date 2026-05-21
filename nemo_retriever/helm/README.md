@@ -16,7 +16,7 @@ The chart ships two deployable layers behind feature flags:
 
 - **the service** — always on; one Deployment (standalone) or three
   Deployments (split topology: gateway / realtime / batch), built from
-  `nemo_retriever/Dockerfile --target service`.
+  `Dockerfile --target service`.
 - **the NIMs** — optional, GPU-backed `NIMCache` + `NIMService` custom
   resources (`apiVersion: apps.nvidia.com/v1alpha1`) reconciled by the
   **NVIDIA NIM Operator**. The chart auto-wires the operator-managed
@@ -91,11 +91,37 @@ then override `service.image.repository` / `service.image.tag`:
 ```bash
 # from the repo root:
 docker build \
-    -f nemo_retriever/Dockerfile \
     --target service \
     -t <YOUR_REGISTRY>/nemo-retriever-service:<TAG> .
 docker push <YOUR_REGISTRY>/nemo-retriever-service:<TAG>
 ```
+
+Audio and video extraction require the `ffmpeg` and `ffprobe` system
+binaries inside the service container. The bundled service image can install
+them at container startup when you set `service.installFfmpeg=true`, which
+sets `INSTALL_FFMPEG=true` for the image entrypoint:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set service.image.repository=<YOUR_REGISTRY>/nemo-retriever-service \
+  --set service.image.tag=<TAG> \
+  --set service.installFfmpeg=true
+```
+
+Do not also set `INSTALL_FFMPEG` in `service.env`; the chart fails rendering
+when both are configured so the rendered Pod does not contain duplicate
+environment variables.
+
+Runtime installation uses passwordless `sudo` scoped to installing the
+`ffmpeg` package in the service image. The pod must have network egress to the
+Ubuntu package repositories, a writable root filesystem, and a security policy
+that allows sudo/setuid behavior. Do not set
+`service.securityContext.allowPrivilegeEscalation: false` or
+`service.securityContext.readOnlyRootFilesystem: true` for this path.
+
+For locked-down clusters that cannot install packages at startup, use a custom
+service image that already contains ffmpeg/ffprobe and point the chart at it
+with `service.image.repository` and `service.image.tag`.
 
 ### 2. Install with external NIM endpoints (operator not required)
 
@@ -172,9 +198,15 @@ short list of knobs you'll touch first.
 | `service.image.repository`    | `localhost:32000/nemo-retriever-service` | Override to a published image. |
 | `service.image.tag`           | `latest`                           |       |
 | `service.replicas`            | `1`                                | Hard cap = 1 while SQLite is the backend. |
+| `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
 | `service.resources.limits`    | `96 / 96Gi`                        |       |
 | `service.gpu.enabled`         | `false`                            | The service does **not** need a GPU. |
+
+For audio and video extraction, set `service.installFfmpeg=true`. If your
+cluster blocks runtime package installation, use a custom service image that
+already contains ffmpeg/ffprobe and set `service.image.repository` and
+`service.image.tag`.
 
 ### Service configuration (rendered into `retriever-service.yaml`)
 

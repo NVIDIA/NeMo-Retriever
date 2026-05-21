@@ -17,7 +17,9 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.params import ASRParams
 from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import VideoFrameTextDedupParams
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
@@ -620,6 +622,44 @@ class TestMultiTypeExtractOperator:
         assert grouped["html"] == ["/folder/page.html"]
         assert grouped["audio"] == ["/folder/audio.mp3"]
         assert grouped["video"] == ["/folder/video.mp4"]
+
+    def test_default_media_params_match_root_ingest_defaults(self, monkeypatch):
+        """Mixed auto uses the same audio/video defaults as root CLI typed media ingest."""
+        import nemo_retriever.graph.multi_type_extract_operator as multitype
+
+        monkeypatch.setattr(
+            multitype,
+            "asr_params_from_env",
+            lambda: ASRParams(audio_endpoints=("grpc.example:443", None), segment_audio=True),
+        )
+
+        op = multitype.MultiTypeExtractCPUActor()
+
+        assert op.audio_chunk_params.split_type == "size"
+        assert op.audio_chunk_params.split_interval == 500000
+        assert op.asr_params.audio_endpoints == ("grpc.example:443", None)
+        assert op.asr_params.segment_audio is False
+        assert op.video_frame_params.enabled is True
+        assert op.video_frame_params.fps == 0.5
+        assert op.video_frame_params.dedup is True
+        assert op.video_text_dedup_params.enabled is True
+        assert op.video_text_dedup_params.max_dropped_frames == 2
+        assert op.av_fuse_params.enabled is True
+
+    def test_build_graph_forwards_video_text_dedup_params_to_multitype(self):
+        from nemo_retriever.graph.ingestor_runtime import build_graph
+
+        text_dedup_params = VideoFrameTextDedupParams(enabled=False, max_dropped_frames=7)
+
+        graph = build_graph(
+            extraction_mode="auto",
+            extract_params=ExtractParams(),
+            video_text_dedup_params=text_dedup_params,
+        )
+
+        op = graph.roots[0].operator
+        assert isinstance(op, MultiTypeExtractOperator)
+        assert op.video_text_dedup_params is text_dedup_params
 
     def test_auto_mode_logs_and_skips_unsupported_extension_in_file_list(self, caplog):
         op = MultiTypeExtractOperator(extraction_mode="auto")

@@ -112,8 +112,8 @@ local = [
   "nemotron-page-elements-v3>=0.dev0",
   "nemotron-graphic-elements-v1>=0.dev0",
   "nemotron-table-structure-v1>=0.dev0",
-  # Stay on the 2.0.0 OCR dev train and exclude older PyPI finals.
-  "nemotron-ocr>=2.0.0.dev0,<2.0.0a0; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+  # Accept the 2.0.0 stable release and newer OCR dev/final trains.
+  "nemotron-ocr>=2.0.0.dev0; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
   "nvidia-ml-py",
   "apscheduler>=3.10",
   "psutil>=5.9.0",

@@ -272,3 +272,6 @@ nemo_retriever/tabular-dev-tools/benchmarks/**/*.sql
 nemo_retriever/tabular-dev-tools/benchmarks/**/*.json
 
 spool/
+
+# Local git worktrees
+.worktrees/

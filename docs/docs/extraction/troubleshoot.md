@@ -20,6 +20,50 @@ When you run a job you might see errors similar to the following:
 These errors can occur when your input file is malformed. 
 Verify or fix the format of your input file, and try resubmitting your job.
 
+## Audio or video extraction reports missing media dependencies
+
+When you run audio or video extraction, you might see an error similar to one
+of the following:
+
+```text
+Audio extraction requires media dependencies; missing: ffmpeg.
+VideoFrameActor requires media dependencies; missing: ffprobe.
+```
+
+The Python package includes the `ffmpeg-python` wrapper, and
+`nemo-retriever[multimedia]` installs Python audio libraries. These do not
+install the `ffmpeg` or `ffprobe` command-line binaries that the media pipeline
+executes.
+
+On Debian or Ubuntu systems, install system FFmpeg with root privileges:
+
+```bash
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+```
+
+For the bundled service container, set `INSTALL_FFMPEG=true` at runtime to
+install ffmpeg/ffprobe during container startup:
+
+```bash
+docker run -e INSTALL_FFMPEG=true nemo-retriever-service
+```
+
+For Kubernetes or Helm deployments, set the first-class chart value:
+
+```yaml
+service:
+  installFfmpeg: true
+```
+
+This runtime install requires network egress to package repositories, a
+writable root filesystem, and security policy that allows the image's scoped
+sudo use. It will fail if the service container sets
+`allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
+
+For locked-down clusters that cannot install packages at startup, use a custom
+service image that already contains ffmpeg/ffprobe. Push that image to a
+registry and set `service.image.repository` and `service.image.tag`.
+
 ## Can't start new thread error
 
 In rare cases, when you run a job you might an see an error similar to `can't start new thread`. 
