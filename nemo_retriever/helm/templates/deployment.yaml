@@ -1,4 +1,11 @@
 {{- $svc := .Values.service -}}
+{{- if and $svc.installFfmpeg $svc.env -}}
+{{- range $env := $svc.env }}
+{{- if and (hasKey $env "name") (eq $env.name "INSTALL_FFMPEG") }}
+{{- fail "service.installFfmpeg and service.env cannot both set INSTALL_FFMPEG; use service.installFfmpeg for Helm-managed ffmpeg installation." }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if eq .Values.topology.mode "standalone" }}
 # =========================================================================
 # Standalone mode — single Deployment with both worker pools
@@ -90,6 +97,10 @@ spec:
                   name: {{ .Values.ngcApiSecret.name }}
                   key: NGC_API_KEY
                   optional: true
+            {{- if $svc.installFfmpeg }}
+            - name: INSTALL_FFMPEG
+              value: "true"
+            {{- end }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -250,6 +261,10 @@ spec:
                   name: {{ $.Values.ngcApiSecret.name }}
                   key: NGC_API_KEY
                   optional: true
+            {{- if $svc.installFfmpeg }}
+            - name: INSTALL_FFMPEG
+              value: "true"
+            {{- end }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

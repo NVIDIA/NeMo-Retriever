@@ -20,6 +20,7 @@ import pandas as pd
 
 from nemo_retriever.audio.media_interface import MediaInterface
 from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.params import AudioChunkParams
@@ -48,9 +49,7 @@ class MediaChunkActor(AbstractOperator):
     def __init__(self, params: AudioChunkParams | None = None) -> None:
         super().__init__(params=params)
         if not is_media_available():
-            raise RuntimeError(
-                "MediaChunkActor requires ffmpeg. Install with: pip install ffmpeg-python and system ffmpeg."
-            )
+            raise RuntimeError(media_dependency_error_message("MediaChunkActor"))
         self._params = params or AudioChunkParams()
         self._interface = MediaInterface()
 
@@ -147,7 +146,7 @@ def audio_path_to_chunks_df(path: str, params: AudioChunkParams | None = None) -
     Used by inprocess ingest() when _pipeline_type == "audio".
     """
     if not is_media_available():
-        raise RuntimeError("audio_path_to_chunks_df requires ffmpeg.")
+        raise RuntimeError(media_dependency_error_message("audio_path_to_chunks_df"))
     params = params or AudioChunkParams()
     interface = MediaInterface()
     rows = _chunk_one(path, params, interface)

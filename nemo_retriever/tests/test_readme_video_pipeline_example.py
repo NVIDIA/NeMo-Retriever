@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 
 from tests import _have_ffmpeg_binary_for_png_frames
+from tests import _make_test_mp4_with_av
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.params import (
@@ -32,33 +33,6 @@ from nemo_retriever.video import VideoSplitActor
 from nemo_retriever.video import _content_types as _CT
 
 
-def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
-    """Synthetic MP4 with video+audio; ``mpeg4`` avoids requiring ``libx264``."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loglevel",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        f"testsrc=duration={duration_sec}:size=320x240:rate=30",
-        "-f",
-        "lavfi",
-        "-i",
-        f"sine=frequency=440:duration={duration_sec}",
-        "-c:v",
-        "mpeg4",
-        "-q:v",
-        "5",
-        "-c:a",
-        "aac",
-        "-shortest",
-        str(path),
-    ]
-    subprocess.run(cmd, check=True)
-
-
 def _collect_node_names(graph: Graph) -> list[str]:
     names: list[str] = []
 
@@ -70,6 +44,59 @@ def _collect_node_names(graph: Graph) -> list[str]:
     for root in graph.roots:
         walk(root)
     return names
+
+
+def _ffprobe_first_stream_type(path: Path) -> str:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = result.stdout.splitlines()
+    return lines[0].strip() if lines else ""
+
+
+def test_video_asr_chunk_params_force_audio_demux() -> None:
+    params = AudioChunkParams(
+        enabled=True,
+        split_type="time",
+        split_interval=60,
+        audio_only=False,
+        video_audio_separate=True,
+    )
+
+    from nemo_retriever.video import video_asr_audio_chunk_params
+
+    normalized = video_asr_audio_chunk_params(params)
+
+    assert normalized.audio_only is True
+    assert normalized.video_audio_separate is False
+    assert normalized.split_type == "time"
+    assert normalized.split_interval == 60
+    assert params.audio_only is False
+    assert params.video_audio_separate is True
+
+
+def test_video_asr_chunk_params_disabled_passthrough() -> None:
+    """Disabled params must pass through unchanged."""
+    from nemo_retriever.video import video_asr_audio_chunk_params
+
+    disabled = AudioChunkParams(enabled=False, audio_only=False)
+    result = video_asr_audio_chunk_params(disabled)
+
+    assert result.enabled is False
+    assert result.audio_only is False
+    assert result is disabled
 
 
 @pytest.mark.skipif(
@@ -133,3 +160,10 @@ def test_readme_video_split_actor_emits_audio_and_frame_rows(tmp_path: Path) -> 
     types = set(out["_content_type"].unique().tolist())
     assert _CT.AUDIO in types
     assert _CT.VIDEO_FRAME in types
+
+    audio_rows = out[out["_content_type"] == _CT.AUDIO]
+    assert set(audio_rows["path"].apply(lambda p: Path(str(p)).suffix)) == {".mp3"}
+    for idx, row in audio_rows.iterrows():
+        audio_chunk = tmp_path / f"audio_chunk_{idx}.mp3"
+        audio_chunk.write_bytes(row["bytes"])
+        assert _ffprobe_first_stream_type(audio_chunk) == "audio"

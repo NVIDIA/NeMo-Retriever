@@ -19,8 +19,10 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from nemo_retriever.audio.media_interface import FFMPEG_DEPENDENCIES
 from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import is_ffmpeg_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -68,10 +70,8 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
 
     def __init__(self, params: VideoFrameParams | None = None) -> None:
         super().__init__(params=params)
-        if not is_media_available():
-            raise RuntimeError(
-                "VideoFrameActor requires ffmpeg. Install with: pip install ffmpeg-python and system ffmpeg."
-            )
+        if not is_ffmpeg_available():
+            raise RuntimeError(media_dependency_error_message("VideoFrameActor", required=FFMPEG_DEPENDENCIES))
         self._params = params or VideoFrameParams()
         self._interface = MediaInterface()
 
@@ -287,8 +287,8 @@ def video_path_to_frames_df(path: str, params: VideoFrameParams | None = None) -
     Columns match :data:`FRAME_COLUMNS`. Used by inprocess ingest() when
     ``_pipeline_type == "video"``.
     """
-    if not is_media_available():
-        raise RuntimeError("video_path_to_frames_df requires ffmpeg.")
+    if not is_ffmpeg_available():
+        raise RuntimeError(media_dependency_error_message("video_path_to_frames_df", required=FFMPEG_DEPENDENCIES))
     params = params or VideoFrameParams()
     interface = MediaInterface()
     rows = _extract_one(path, params, interface)

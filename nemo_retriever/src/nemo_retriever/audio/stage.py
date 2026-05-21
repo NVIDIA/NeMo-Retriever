@@ -24,6 +24,7 @@ from nemo_retriever.audio.asr_actor import apply_asr_to_df
 from nemo_retriever.audio.asr_actor import asr_params_from_env
 from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
 from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
 
@@ -207,7 +208,7 @@ def extract(
     sys.stderr.flush()
 
     if not is_media_available():
-        raise typer.BadParameter("Audio stage requires ffmpeg. Install system ffmpeg and ensure it is on PATH.")
+        raise typer.BadParameter(media_dependency_error_message("Audio stage"))
 
     if split_type not in ("size", "time", "frame"):
         raise typer.BadParameter("--split-type must be one of: size, time, frame")

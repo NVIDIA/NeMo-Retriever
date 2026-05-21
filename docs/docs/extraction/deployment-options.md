@@ -22,6 +22,14 @@ Use the sections below to pick documentation and deployment options that match y
 
 **Docker Compose (unsupported, developer-only):** [Docker Compose for local development](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a substitute for Helm or the published Library charts.
 
+For audio and video extraction in Kubernetes, set `service.installFfmpeg=true`
+so the service container installs `ffmpeg` and `ffprobe` at startup. This
+runtime install requires package-repository network egress, a writable root
+filesystem, and security policy that allows the image's scoped sudo use. If
+your cluster blocks startup package installation, use a custom service image
+that already contains `ffmpeg` and `ffprobe`, then set
+`service.image.repository` and `service.image.tag`.
+
 ### I want examples and notebooks
 
 1. [Jupyter Notebooks](notebooks.md)
