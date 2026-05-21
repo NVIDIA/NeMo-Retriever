@@ -72,13 +72,13 @@ Consider self-hosting when:
 
 ## Air-gapped and disconnected deployment { #air-gapped-deployment }
 
-The **default document extraction pipeline** (core Helm NIMs: page elements, table structure, OCR, and VL embed) supports disconnected operation when you mirror container images and model artifacts into a private registry and configure the [NIM Operator for air-gapped environments](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
+The **default document extraction pipeline** (page elements, table structure, OCR, and VL embed) runs disconnected when you mirror images and models into a private registry and configure the [NIM Operator for air-gapped environments](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
 
-Use a staging host with internet access to pull from NGC and upstream registries, retag images to your private registry, stage Helm chart `.tgz` archives, then install inside the enclave with registry overrides. Step-by-step procedures, image inventory for the 26.05 chart topology, and Helm value patterns are in the [NeMo Retriever Helm chart — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment).
+On a staging host with internet access, pull from NGC, retag to your private registry, stage chart archives, then install in the enclave with registry overrides. Procedures, the 26.05 image inventory, and Helm value patterns are in [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment).
 
 !!! warning "Audio and video extraction"
 
-    [Audio and video](audio-video.md) workflows require **`ffmpeg` and `ffprobe` on `PATH`** in the service container. The bundled service image omits them by default. Do **not** rely on `service.installFfmpeg=true` in an air gap — that setting installs the Ubuntu `ffmpeg` package at container startup and needs outbound access to package repositories. On a connected staging host, build a custom service image with ffmpeg/ffprobe already installed, mirror it to your private registry, and set `service.image.repository` / `service.image.tag`. The default pipeline without audio/video does not need this step.
+    [Audio and video](audio-video.md) need **`ffmpeg` and `ffprobe` on `PATH`**. The bundled image omits them. Do **not** use `service.installFfmpeg=true` in an air gap (startup install needs package-repo egress). Build a custom service image on a connected staging host, mirror it, and set `service.image.repository` / `service.image.tag`. Skip this step if you do not use audio/video.
 
 For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prerequisites-support-matrix.md#image-captioning-2605) NIM and point your pipeline caption endpoint at the in-cluster HTTP URL instead of `integrate.api.nvidia.com` or other hosted APIs.
 

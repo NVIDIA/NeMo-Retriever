@@ -8,14 +8,11 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
-- For audio and video extraction, the `ffmpeg` and `ffprobe` command-line
-  binaries must be installed and available on `PATH`. On Debian/Ubuntu systems,
-  install them with root privileges, for example
-  `sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg`.
-  Python packages such as `ffmpeg-python` or `nemo-retriever[multimedia]` do not
-  provide these system binaries. For Helm deployments with package-repository
-  access, set `service.installFfmpeg=true`. In air-gapped environments, use a
-  custom service image that already contains ffmpeg/ffprobe.
+- For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
+  `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
+  `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
+  On Helm with package-repo access, set `service.installFfmpeg=true`. In
+  air-gapped clusters, use a custom service image that already includes them.
 
 !!! note
 
@@ -133,9 +130,9 @@ and run only the embedder, reranker, and your vector database.
 
 ## Air-gapped deployment { #air-gapped-deployment }
 
-The **default extraction pipeline** (core Helm NIMs in [Default Helm NIMs](#default-helm-nims)) is intended to run in disconnected environments when you mirror images, preload NIM models, and override registry settings. See [Deployment options — Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [NeMo Retriever Helm chart — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment) for the full checklist (private registry mirroring, `imagePullSecrets`, per-NIM `nimOperator.<key>.image` overrides, and [NIM Operator air-gap configuration](https://docs.nvidia.com/nim-operator/latest/air-gap.html)).
+The **default extraction pipeline** ([Default Helm NIMs](#default-helm-nims)) runs disconnected when you mirror images, preload models, and override registry settings. See [Deployment options — Air-gapped deployment](deployment-options.md#air-gapped-deployment), [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment), and the [NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
 
-Optional features in [Optional Helm NIMs](#optional-helm-nims-not-auto-wired-by-default) add more images to mirror but follow the same pattern. **Audio and video** additionally require `ffmpeg` and `ffprobe` in the service container; do not use `service.installFfmpeg=true` in the enclave — build and mirror a custom service image on a connected staging host instead. See [Audio and video ingestion](audio-video.md) and [Troubleshoot — missing media dependencies](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies).
+[Optional Helm NIMs](#optional-helm-nims-not-auto-wired-by-default) add images to mirror the same way. **Audio and video** also need `ffmpeg` and `ffprobe` in the service image — not `service.installFfmpeg=true` in the enclave. See [Audio and video](audio-video.md) and [Troubleshoot — missing media dependencies](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies).
 
 ## Related Topics
 

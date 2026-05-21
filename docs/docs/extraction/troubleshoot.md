@@ -30,42 +30,36 @@ Audio extraction requires media dependencies; missing: ffmpeg.
 VideoFrameActor requires media dependencies; missing: ffprobe.
 ```
 
-The Python package includes the `ffmpeg-python` wrapper, and
-`nemo-retriever[multimedia]` installs Python audio libraries. These do not
-install the `ffmpeg` or `ffprobe` command-line binaries that the media pipeline
-executes.
+The `ffmpeg-python` wrapper and `nemo-retriever[multimedia]` do not install the
+`ffmpeg` or `ffprobe` binaries the pipeline executes.
 
-On Debian or Ubuntu systems, install system FFmpeg with root privileges:
+**Air-gapped or locked-down clusters:** Build a custom service image with ffmpeg
+on a connected staging host, push it to your private registry, and set
+`service.image.repository` and `service.image.tag`. See
+[Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+
+**Connected environments:**
+
+On Debian or Ubuntu hosts:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 ```
 
-For the bundled service container, set `INSTALL_FFMPEG=true` at runtime to
-install ffmpeg/ffprobe during container startup:
+For the bundled service container at runtime:
 
 ```bash
 docker run -e INSTALL_FFMPEG=true nemo-retriever-service
 ```
 
-For Kubernetes or Helm deployments, set the first-class chart value:
+For Helm, when package-repo egress and the image security policy allow startup install:
 
 ```yaml
 service:
   installFfmpeg: true
 ```
 
-This runtime install requires network egress to package repositories, a
-writable root filesystem, and security policy that allows the image's scoped
-sudo use. It will fail if the service container sets
-`allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
-
-For locked-down or air-gapped clusters that cannot install packages at startup,
-use a custom service image that already contains ffmpeg/ffprobe. Build that
-image on a connected staging host (for example by extending the service
-Dockerfile with `apt-get install ffmpeg`), push it to your private registry,
-and set `service.image.repository` and `service.image.tag`. See
-[Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
 
 ## Can't start new thread error
 

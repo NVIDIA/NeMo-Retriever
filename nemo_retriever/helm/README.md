@@ -119,9 +119,8 @@ that allows sudo/setuid behavior. Do not set
 `service.securityContext.allowPrivilegeEscalation: false` or
 `service.securityContext.readOnlyRootFilesystem: true` for this path.
 
-For locked-down or air-gapped clusters that cannot install packages at startup,
-use a custom service image that already contains ffmpeg/ffprobe and point the
-chart at it with `service.image.repository` and `service.image.tag`. On a
+For air-gapped or locked-down clusters, use a custom image with ffmpeg/ffprobe
+already installed — see [Air-gapped deployment](#air-gapped-deployment). On a
 connected staging host you can extend the service image, for example:
 
 ```dockerfile
@@ -264,6 +263,11 @@ pair gated on three conditions ALL holding:
 > are auto-wired into the retriever-service config. The other NIMs are
 > reconciled by the operator but the retriever-service won't call them
 > unless you wire your own pipeline to use them.
+
+**Charts and captioning (26.05).** Charts and infographics use **page_elements**
+and **ocr** (no `graphic_elements` operator NIM in this chart). For image
+captioning, enable `nemotron_3_nano_omni_30b_a3b_reasoning` — see
+[Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605).
 
 ### Persistence
 
@@ -632,18 +636,14 @@ in the product docs.
   `audio`) are reconciled the same way when enabled; wire endpoints in your
   pipeline or `serviceConfig.nimEndpoints.*` overrides.
 
-### Audio and video limitation
+### Audio and video
 
-**Audio and video extraction is not fully air-gap by default.** Media
-decoding depends on **`ffmpeg` and `ffprobe` on `PATH`** in the service
-container. The bundled service image omits them by default. Do **not** use
-`service.installFfmpeg=true` inside the enclave — that installs the Ubuntu
-`ffmpeg` package at container startup and requires outbound access to package
-repositories. On a connected staging host, build a custom service image with
-ffmpeg/ffprobe already installed (see [Service image](#1-service-image)), mirror
-it to your private registry, and set `service.image.repository` /
-`service.image.tag`. Mirror the Parakeet ASR image (Helm key `audio`) like any
-other NIM. See
+Audio and video are **not air-gap-ready by default.** The service image omits
+`ffmpeg` and `ffprobe`. Do **not** set `service.installFfmpeg=true` in the
+enclave (startup install needs package-repo egress). Build a custom image on a
+connected staging host ([Service image](#1-service-image)), mirror it, and set
+`service.image.repository` / `service.image.tag`. Mirror Parakeet (`audio`) like
+any other NIM. See
 [Audio and video ingestion](https://docs.nvidia.com/nemo/retriever/latest/extraction/audio-video/).
 
 ### End-to-end workflow
@@ -732,12 +732,9 @@ nimOperator:
   are in-cluster; set explicit URLs only for external or mirrored services
   outside the chart.
 - For **offline captioning**, enable
-  `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` and configure your
-  ingest pipeline caption endpoint to the in-cluster NIM HTTP URL. Developer
-  Compose stacks use
-  `VLM_CAPTION_ENDPOINT` in the repo-root `docker-compose.yaml`; the Helm
-  chart wires captioning through pipeline configuration and optional NIMs
-  instead.
+  `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` and point the pipeline
+  caption endpoint at the in-cluster NIM URL (see
+  [Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)).
 
 ### Mirroring pattern
 
