@@ -119,9 +119,9 @@ that allows sudo/setuid behavior. Do not set
 `service.securityContext.allowPrivilegeEscalation: false` or
 `service.securityContext.readOnlyRootFilesystem: true` for this path.
 
-For air-gapped or locked-down clusters, use a custom image with ffmpeg/ffprobe
-already installed — see [Air-gapped deployment](#air-gapped-deployment). On a
-connected staging host you can extend the service image, for example:
+For air-gapped or locked-down clusters, see
+[Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
+On a connected staging host you can extend the service image, for example:
 
 ```dockerfile
 FROM <YOUR_REGISTRY>/nemo-retriever-service:<BASE_TAG>
@@ -212,10 +212,8 @@ short list of knobs you'll touch first.
 | `service.gpu.enabled`         | `false`                            | The service does **not** need a GPU. |
 
 For audio and video extraction, set `service.installFfmpeg=true` when your
-cluster allows runtime package installation. If your cluster blocks startup
-package installation (for example air-gapped environments), use a custom
-service image that already contains ffmpeg/ffprobe and set
-`service.image.repository` and `service.image.tag`.
+cluster allows runtime package installation. For air-gapped clusters, see
+[Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
 ### Service configuration (rendered into `retriever-service.yaml`)
 
@@ -619,60 +617,7 @@ sanity check before opening Grafana.
 
 ## Air-gapped deployment { #air-gapped-deployment }
 
-Use this section when NeMo Retriever runs in a network-isolated environment
-(private container registry, offline model caches, no outbound calls to
-hosted NVIDIA APIs). It complements
-[Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment)
-in the product docs.
-
-### What works offline
-
-- **Default pipeline** — With `nims.enabled: true`, the four core NIMs
-  (`page_elements`, `table_structure`, `ocr`, `vlm_embed`) and the
-  retriever service can run entirely in-cluster after you mirror images and
-  preload models per the [NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
-- **Optional NIMs** — The four additional operator-managed NIMs
-  (`rerankqa`, `nemotron_parse`, `nemotron_3_nano_omni_30b_a3b_reasoning`,
-  `audio`) are **enabled by default** in `values.yaml` and reconciled when
-  `nimOperator.<key>.enabled` is `true` (set to `false` to omit from your
-  mirror set). The retriever service does not call them until you wire your
-  pipeline or `serviceConfig.nimEndpoints.*` overrides.
-
-### Audio and video
-
-Audio and video are **not air-gap-ready by default.** The service image omits
-`ffmpeg` and `ffprobe`. Do **not** set `service.installFfmpeg=true` in the
-enclave (startup install needs package-repo egress). Build a custom image on a
-connected staging host ([Service image](#1-service-image)), mirror it, and set
-`service.image.repository` / `service.image.tag`. Mirror Parakeet (`audio`) like
-any other NIM. See
-[Audio and video ingestion](https://docs.nvidia.com/nemo/retriever/latest/extraction/audio-video/).
-
-### End-to-end workflow
-
-1. **Inventory** — List every image your release enables. Start from
-   [`values.yaml`](./values.yaml) (`service.image` plus each
-   `nimOperator.<key>.image`). Disable optional NIMs you do not need
-   (`nimOperator.<key>.enabled: false`) to shrink the mirror set.
-2. **Mirror on a staging host** — `docker pull` / `skopeo copy` from
-   `nvcr.io` (and any other upstream registries), retag to
-   `<PRIVATE_REGISTRY>/...`, record digests, and push to the registry
-   reachable inside the air gap. Log in with NGC credentials on the
-   staging host only.
-3. **Stage charts and wheels** — `helm pull` the chart `.tgz` (or vendor
-   `./nemo_retriever/helm` from this repo), copy Python client wheels if
-   needed, and transfer operator bundles your policy requires.
-4. **Preload NIM models** — Follow
-   [NIM Operator: Air-gapped environments](https://docs.nvidia.com/nim-operator/latest/air-gap.html)
-   so `NIMCache` PVCs are populated before workloads start.
-5. **Install with offline values** — Override repositories/tags,
-   configure `imagePullSecrets` for your mirror, set
-   `imagePullPolicy: IfNotPresent`, and ensure no runtime URL still points
-   at `integrate.api.nvidia.com` or `ai.api.nvidia.com` unless you
-   intentionally proxy them. Leave `service.installFfmpeg` at `false`; for
-   audio/video, point `service.image` at your ffmpeg-enabled custom image.
-6. **Validate** — `helm template` with your values, test image pulls from
-   a jump host, then call `GET /v1/health` and run a minimal ingest job.
+See [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment) for overview and workflow. Chart-specific reference for mirroring:
 
 ### Container images to mirror (26.05 chart defaults)
 
@@ -751,12 +696,6 @@ docker push <PRIVATE_REGISTRY>/nemotron-page-elements-v3:1.8.0
 For bulk sync, prefer [skopeo](https://github.com/containers/skopeo) or
 [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md).
 Record `repository@sha256:...` digests for regulated environments.
-
-### Related documentation
-
-- [Pre-Requisites & Support Matrix](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/)
-- [NIM Operator — Air-gapped environments](https://docs.nvidia.com/nim-operator/latest/air-gap.html)
-- [GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/)
 
 ---
 

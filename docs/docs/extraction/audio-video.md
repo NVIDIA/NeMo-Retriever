@@ -2,10 +2,7 @@
 
 Use this page for speech and audio extraction with Parakeet ASR and for video workflows that combine audio with OCR on frames or derived images.
 
-!!! warning "Air-gapped deployments"
-
-    - **Documents:** The default pipeline can run offline when you mirror images and models — see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
-    - **Audio and video:** Decoding requires **`ffmpeg` and `ffprobe` on `PATH`**. The bundled service image omits them. Do **not** use `service.installFfmpeg=true` (or `INSTALL_FFMPEG=true`) in an air gap; that path needs package-repository egress. Mirror Parakeet like any other NIM, and build a **custom service image** with ffmpeg on a connected staging host before you enable audio/video in the enclave. See [Troubleshoot — missing media dependencies](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies) and [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#air-gapped-deployment).
+For air-gapped or disconnected deployments, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 **Sections:** [Speech and audio (Parakeet)](#speech-and-audio-extraction) · [Run Parakeet on the cluster (Helm)](#run-parakeet-on-the-cluster-helm) · [Parakeet with hosted inference (build.nvidia.com)](#parakeet-hosted-inference-build-nvidia) · [Video and frame OCR](#video-and-frame-ocr)
 
@@ -51,10 +48,8 @@ For Kubernetes deployments with network access to package repositories, set
 [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)
 to install ffmpeg/ffprobe at service startup. This runtime path requires
 package-repository network egress, a writable root filesystem, and a security
-policy that allows the image's scoped sudo use. If your cluster blocks startup
-package installation (for example air-gapped environments), use a custom service
-image that already contains ffmpeg/ffprobe; see
-[troubleshoot](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies).
+policy that allows the image's scoped sudo use. For air-gapped clusters, see
+[Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 !!! important
 
@@ -74,9 +69,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 1. Deploy or upgrade with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and enable Parakeet for your release (see [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default)). Follow [Deployment options](deployment-options.md).
 
-2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation. If your cluster blocks startup package installation (for example air-gapped environments), use a custom service image that already contains ffmpeg/ffprobe and follow the
-   [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)
-   for the `service.image.repository` / `service.image.tag` override flow.
+2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation; for air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
 
 3. After the services are running, interact with the pipeline from Python.
 

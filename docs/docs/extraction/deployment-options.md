@@ -86,6 +86,6 @@ For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prere
 
 - [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever/helm) on GitHub) — [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#air-gapped-deployment)
 - [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** handoff)
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md) — [air-gapped notes](prerequisites-support-matrix.md#air-gapped-deployment)
+- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Audio and video](audio-video.md)
 - **Docker Compose (unsupported):** [docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — local developer tooling only

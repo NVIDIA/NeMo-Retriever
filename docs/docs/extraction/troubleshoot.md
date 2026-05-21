@@ -33,10 +33,7 @@ VideoFrameActor requires media dependencies; missing: ffprobe.
 The `ffmpeg-python` wrapper and `nemo-retriever[multimedia]` do not install the
 `ffmpeg` or `ffprobe` binaries the pipeline executes.
 
-**Air-gapped or locked-down clusters:** Build a custom service image with ffmpeg
-on a connected staging host, push it to your private registry, and set
-`service.image.repository` and `service.image.tag`. See
-[Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+For air-gapped or locked-down clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 **Connected environments:**
 

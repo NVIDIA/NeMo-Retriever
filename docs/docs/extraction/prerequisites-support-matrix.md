@@ -11,8 +11,8 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
-  On Helm with package-repo access, set `service.installFfmpeg=true`. In
-  air-gapped clusters, use a custom service image that already includes them.
+  On Helm with package-repo access, set `service.installFfmpeg=true`. For
+  air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 !!! note
 
@@ -127,12 +127,6 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
 and run only the embedder, reranker, and your vector database.
-
-## Air-gapped deployment { #air-gapped-deployment }
-
-The **default extraction pipeline** ([Default Helm NIMs](#default-helm-nims)) runs disconnected when you mirror images, preload models, and override registry settings. See [Deployment options — Air-gapped deployment](deployment-options.md#air-gapped-deployment), [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#air-gapped-deployment), and the [NIM Operator air-gap guide](https://docs.nvidia.com/nim-operator/latest/air-gap.html).
-
-[Optional Helm NIMs](#optional-helm-nims-not-auto-wired-by-default) add images to mirror the same way. **Audio and video** also need `ffmpeg` and `ffprobe` in the service image — not `service.installFfmpeg=true` in the enclave. See [Audio and video](audio-video.md) and [Troubleshoot — missing media dependencies](troubleshoot.md#audio-or-video-extraction-reports-missing-media-dependencies).
 
 ## Related Topics
 
