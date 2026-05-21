@@ -243,31 +243,23 @@ def batch_tuning_to_node_overrides(
 
         # --- Table Structure ---
         table_structure_invoke_url = _positive(getattr(extract_params, "table_structure_invoke_url", None))
-        ts_bs = _positive(
-            getattr(extract_tuning, "table_structure_batch_size", None) if extract_tuning is not None else None
-        ) or (plan.table_structure_batch_size if plan else None)
+        ts_bs = plan.table_structure_batch_size if plan else None
         _set(TableStructureActor.__name__, "batch_size", ts_bs)
         if ts_bs:
             overrides.setdefault(TableStructureActor.__name__, {})["target_num_rows_per_block"] = ts_bs
         ts_concurrency: int = 0
-        ts_concurrency = _resolve(
-            getattr(extract_tuning, "table_structure_workers", None) if extract_tuning is not None else None,
-            plan.table_structure_initial_actors if plan else None,
-        ) or (2 if table_structure_invoke_url else 0)
+        if table_structure_invoke_url:
+            ts_concurrency = (plan.table_structure_initial_actors if plan else None) or 2
+        else:
+            ts_concurrency = (plan.table_structure_initial_actors if plan else None) or 0
         _set(TableStructureActor.__name__, "concurrency", ts_concurrency or None)
-        ts_cpus = (
-            _resolve(
-                getattr(extract_tuning, "table_structure_cpus_per_actor", None) if extract_tuning is not None else None,
-            )
-            or 1.0
-        )
-        _set(TableStructureActor.__name__, "num_cpus", ts_cpus)
+        _set(TableStructureActor.__name__, "num_cpus", 1)
         if effective_allow_no_gpu:
             _force_cpu_only(TableStructureActor.__name__)
         elif not table_structure_invoke_url:
-            _set_gpu(
+            _set(
                 TableStructureActor.__name__,
-                getattr(extract_tuning, "gpu_table_structure", None) if extract_tuning is not None else None,
+                "num_gpus",
                 plan.table_structure_gpus_per_actor if plan else None,
             )
 
@@ -340,7 +332,7 @@ def batch_tuning_to_node_overrides(
                 + page_elements_concurrency * page_elements_cpus
                 + ocr_concurrency * ocr_cpus
                 + embed_concurrency * embed_cpus
-                + ts_concurrency * ts_cpus
+                + ts_concurrency * 1
                 + ge_concurrency * 1
             )
             pdf_extract_tasks = min(
@@ -471,7 +463,6 @@ def _maybe_append_chunk_actor(graph: Graph, split_config: dict[str, Any], key: s
 def _append_ordered_transform_stages(
     graph: Graph,
     *,
-    extraction_mode: str,
     dedup_params: Any | None,
     caption_params: Any | None,
     store_params: Any | None,
@@ -480,7 +471,7 @@ def _append_ordered_transform_stages(
     webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
-    reshape_for_modal_content: bool,
+    reshape_content_before_embed: bool,
 ) -> Graph:
     """Append post-extraction transform stages in the exact recorded plan order."""
 
@@ -508,8 +499,7 @@ def _append_ordered_transform_stages(
         elif stage_name == "caption" and caption_params is not None:
             graph = graph >> CaptionActor(caption_params)
         elif stage_name == "embed" and embed_params is not None:
-            needs_content_reshape = reshape_for_modal_content and extraction_mode in {"pdf", "image", "auto"}
-            if needs_content_reshape:
+            if reshape_content_before_embed:
                 content_columns = (_CONTENT_COLUMNS + ("images",)) if caption_params is not None else _CONTENT_COLUMNS
                 if embed_params.embed_granularity == "page":
                     graph = graph >> UDFOperator(
@@ -544,6 +534,32 @@ def _append_ordered_transform_stages(
         graph = graph >> WebhookNotifyOperator(params=webhook_params)
 
     return graph
+
+
+def build_post_extract_graph(
+    *,
+    dedup_params: Any | None = None,
+    embed_params: Any | None = None,
+    caption_params: Any | None = None,
+    store_params: Any | None = None,
+    vdb_upload_params: VdbUploadParams | None = None,
+    webhook_params: Any | None = None,
+    stage_order: tuple[str, ...] = (),
+) -> Graph:
+    """Build only the common stages that run after extraction branch union."""
+
+    return _append_ordered_transform_stages(
+        Graph(),
+        dedup_params=dedup_params,
+        caption_params=caption_params,
+        store_params=store_params,
+        embed_params=embed_params,
+        vdb_upload_params=vdb_upload_params,
+        webhook_params=webhook_params,
+        stage_order=stage_order,
+        supports_dedup=True,
+        reshape_content_before_embed=True,
+    )
 
 
 def build_graph(
@@ -672,7 +688,6 @@ def build_graph(
             asr_params=asr_params,
             caption_params=caption_params,
             video_frame_params=video_frame_params,
-            video_text_dedup_params=video_text_dedup_params,
             av_fuse_params=av_fuse_params,
             split_config=split_config,
         )
@@ -814,7 +829,6 @@ def build_graph(
 
     return _append_ordered_transform_stages(
         graph,
-        extraction_mode=extraction_mode,
         dedup_params=dedup_params,
         caption_params=caption_params,
         store_params=store_params,
@@ -823,7 +837,7 @@ def build_graph(
         webhook_params=webhook_params,
         stage_order=stage_order,
         supports_dedup=True,
-        reshape_for_modal_content=True,
+        reshape_content_before_embed=extraction_mode in {"pdf", "image", "auto"},
     )
 
 
