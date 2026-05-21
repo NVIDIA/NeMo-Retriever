@@ -171,6 +171,13 @@ service:
     timeoutSeconds: 5
     failureThreshold: 60
 
+  # Set service.installFfmpeg=true to install ffmpeg/ffprobe in the service
+  # container at startup by setting INSTALL_FFMPEG=true for the entrypoint.
+  # This requires package-repository network egress, a writable root
+  # filesystem, and security policy that allows the image's scoped sudo use.
+  # Do not also set INSTALL_FFMPEG manually in service.env.
+  installFfmpeg: false
+
   # Extra env vars (after the chart-managed ones). Use `envFrom` to pull
   # whole Secrets/ConfigMaps in.
   env: []

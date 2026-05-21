@@ -8,6 +8,13 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
+- For audio and video extraction, the `ffmpeg` and `ffprobe` command-line
+  binaries must be installed and available on `PATH`. On Debian/Ubuntu systems,
+  install them with root privileges, for example
+  `sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg`.
+  Python packages such as `ffmpeg-python` or `nemo-retriever[multimedia]` do not
+  provide these system binaries. For Helm deployments, set
+  `service.installFfmpeg=true`.
 
 !!! note
 
@@ -85,7 +92,7 @@ The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled`
 
 For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
 
-Optional features listed in the table above require additional GPU support and disk space beyond the four default NIMs.
+Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 

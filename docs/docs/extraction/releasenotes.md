@@ -45,6 +45,10 @@ Highlights for the 26.03 release include:
 - Default TTL for long-running pipeline job state increased from 1–2 hours to 48 hours so long-running jobs (for example, VLM captioning) do not expire before completion  
 - NeMo Retriever Library currently does not support image captioning via VLM; this feature will be added in the next release
 - Documentation: multimodal extraction is covered on one page with an in-page table of contents and redirects from the former per-topic URLs
+- Container images built from this repository no longer install `ffmpeg` and
+  `ffprobe` by default. Audio and video extraction require these binaries on
+  `PATH`; for Helm deployments set `service.installFfmpeg=true`, or install
+  system FFmpeg manually in non-container environments.
 
 ## Release Notes for Previous Versions
 
