@@ -57,7 +57,7 @@ class NemotronOCRV2(BaseModel):
         except ImportError as exc:
             raise ImportError(
                 "Local Nemotron OCR v2 requires the `nemotron_ocr` package. "
-                "Install `nemotron-ocr` 2.0 nightlies from TestPyPI, or install from source via: "
+                "Install `nemotron-ocr` 2.0.0 or newer, or install from source via: "
                 "git clone https://huggingface.co/nvidia/nemotron-ocr-v2 && "
                 "cd nemotron-ocr-v2/nemotron-ocr && pip install --no-build-isolation -v . "
                 "Alternatively, run with --ocr-invoke-url pointed at a v2 endpoint. "

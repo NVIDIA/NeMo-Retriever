@@ -243,23 +243,31 @@ def batch_tuning_to_node_overrides(
 
         # --- Table Structure ---
         table_structure_invoke_url = _positive(getattr(extract_params, "table_structure_invoke_url", None))
-        ts_bs = plan.table_structure_batch_size if plan else None
+        ts_bs = _positive(
+            getattr(extract_tuning, "table_structure_batch_size", None) if extract_tuning is not None else None
+        ) or (plan.table_structure_batch_size if plan else None)
         _set(TableStructureActor.__name__, "batch_size", ts_bs)
         if ts_bs:
             overrides.setdefault(TableStructureActor.__name__, {})["target_num_rows_per_block"] = ts_bs
         ts_concurrency: int = 0
-        if table_structure_invoke_url:
-            ts_concurrency = (plan.table_structure_initial_actors if plan else None) or 2
-        else:
-            ts_concurrency = (plan.table_structure_initial_actors if plan else None) or 0
+        ts_concurrency = _resolve(
+            getattr(extract_tuning, "table_structure_workers", None) if extract_tuning is not None else None,
+            plan.table_structure_initial_actors if plan else None,
+        ) or (2 if table_structure_invoke_url else 0)
         _set(TableStructureActor.__name__, "concurrency", ts_concurrency or None)
-        _set(TableStructureActor.__name__, "num_cpus", 1)
+        ts_cpus = (
+            _resolve(
+                getattr(extract_tuning, "table_structure_cpus_per_actor", None) if extract_tuning is not None else None,
+            )
+            or 1.0
+        )
+        _set(TableStructureActor.__name__, "num_cpus", ts_cpus)
         if effective_allow_no_gpu:
             _force_cpu_only(TableStructureActor.__name__)
         elif not table_structure_invoke_url:
-            _set(
+            _set_gpu(
                 TableStructureActor.__name__,
-                "num_gpus",
+                getattr(extract_tuning, "gpu_table_structure", None) if extract_tuning is not None else None,
                 plan.table_structure_gpus_per_actor if plan else None,
             )
 
@@ -332,7 +340,7 @@ def batch_tuning_to_node_overrides(
                 + page_elements_concurrency * page_elements_cpus
                 + ocr_concurrency * ocr_cpus
                 + embed_concurrency * embed_cpus
-                + ts_concurrency * 1
+                + ts_concurrency * ts_cpus
                 + ge_concurrency * 1
             )
             pdf_extract_tasks = min(
@@ -664,6 +672,7 @@ def build_graph(
             asr_params=asr_params,
             caption_params=caption_params,
             video_frame_params=video_frame_params,
+            video_text_dedup_params=video_text_dedup_params,
             av_fuse_params=av_fuse_params,
             split_config=split_config,
         )

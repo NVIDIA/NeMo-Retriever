@@ -16,7 +16,7 @@ The chart ships two deployable layers behind feature flags:
 
 - **the service** — always on; one Deployment (standalone) or three
   Deployments (split topology: gateway / realtime / batch), built from
-  `nemo_retriever/Dockerfile --target service`.
+  `Dockerfile --target service`.
 - **the NIMs** — optional, GPU-backed `NIMCache` + `NIMService` custom
   resources (`apiVersion: apps.nvidia.com/v1alpha1`) reconciled by the
   **NVIDIA NIM Operator**. The chart auto-wires the operator-managed
@@ -63,9 +63,10 @@ nemo_retriever/helm/
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
-        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
-        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
-        └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
+        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; enabled by default; not auto-wired)
+        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; enabled by default; not auto-wired)
+        ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; enabled by default; not auto-wired)
+        └── audio.yaml                         # NIMCache + NIMService (optional; enabled by default; not auto-wired)
 ```
 
 ---
@@ -90,10 +91,44 @@ then override `service.image.repository` / `service.image.tag`:
 ```bash
 # from the repo root:
 docker build \
-    -f nemo_retriever/Dockerfile \
     --target service \
     -t <YOUR_REGISTRY>/nemo-retriever-service:<TAG> .
 docker push <YOUR_REGISTRY>/nemo-retriever-service:<TAG>
+```
+
+Audio and video extraction require the `ffmpeg` and `ffprobe` system
+binaries inside the service container. The bundled service image can install
+them at container startup when you set `service.installFfmpeg=true`, which
+sets `INSTALL_FFMPEG=true` for the image entrypoint:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set service.image.repository=<YOUR_REGISTRY>/nemo-retriever-service \
+  --set service.image.tag=<TAG> \
+  --set service.installFfmpeg=true
+```
+
+Do not also set `INSTALL_FFMPEG` in `service.env`; the chart fails rendering
+when both are configured so the rendered Pod does not contain duplicate
+environment variables.
+
+Runtime installation uses passwordless `sudo` scoped to installing the
+`ffmpeg` package in the service image. The pod must have network egress to the
+Ubuntu package repositories, a writable root filesystem, and a security policy
+that allows sudo/setuid behavior. Do not set
+`service.securityContext.allowPrivilegeEscalation: false` or
+`service.securityContext.readOnlyRootFilesystem: true` for this path.
+
+For air-gapped or locked-down clusters, see
+[Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
+On a connected staging host you can extend the service image, for example:
+
+```dockerfile
+FROM <YOUR_REGISTRY>/nemo-retriever-service:<BASE_TAG>
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+USER nemo
 ```
 
 ### 2. Install with external NIM endpoints (operator not required)
@@ -171,9 +206,14 @@ short list of knobs you'll touch first.
 | `service.image.repository`    | `localhost:32000/nemo-retriever-service` | Override to a published image. |
 | `service.image.tag`           | `latest`                           |       |
 | `service.replicas`            | `1`                                | Hard cap = 1 while SQLite is the backend. |
+| `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
 | `service.resources.limits`    | `96 / 96Gi`                        |       |
 | `service.gpu.enabled`         | `false`                            | The service does **not** need a GPU. |
+
+For audio and video extraction, set `service.installFfmpeg=true` when your
+cluster allows runtime package installation. For air-gapped clusters, see
+[Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
 ### Service configuration (rendered into `retriever-service.yaml`)
 
@@ -222,23 +262,10 @@ pair gated on three conditions ALL holding:
 > reconciled by the operator but the retriever-service won't call them
 > unless you wire your own pipeline to use them.
 
-### Charts, infographics, and captioning (26.05) { #charts-infographics-and-captioning-2605 }
-
-**Charts and infographics** — This chart does **not** ship a `graphic_elements` NIM
-(there is no `nimOperator.graphic_elements` in `values.yaml`). Chart and infographic
-extraction uses the default **page_elements** and **ocr** NIMs only. Keep
-`nimOperator.page_elements.enabled` and `nimOperator.ocr.enabled` at `true` for
-standard multimodal PDF ingest. The library enables `extract_charts` and
-`extract_infographics` by default; do not disable them unless you intentionally skip
-those content types. Override in-cluster URLs through `serviceConfig.nimEndpoints` if needed.
-
-**Image captioning** — For 26.05, the supported captioning NIM is
-`nemotron_3_nano_omni_30b_a3b_reasoning`
-(`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The chart defaults
-`nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` to `true`; set it to
-`false` if you do not deploy that NIM. When you enable the caption stage in your ingest
-configuration, point the pipeline at that NIMService. GPU and disk requirements are in the published
-[Pre-Requisites & Support Matrix](https://nvidia.github.io/NeMo-Retriever/extraction/prerequisites-support-matrix/#image-captioning-2605).
+**Charts and captioning (26.05).** Charts and infographics use **page_elements**
+and **ocr** (no `graphic_elements` operator NIM in this chart). For image
+captioning, enable `nemotron_3_nano_omni_30b_a3b_reasoning` — see
+[Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605).
 
 ### Persistence
 
@@ -585,6 +612,90 @@ kubectl get hpa <release>-realtime -o jsonpath='{.metadata.annotations.nemo-retr
 The dashboard's *Worker Pool Capacity* card on the **Overview** page
 mirrors the same signal Prometheus is seeing, so it's a quick eyeball
 sanity check before opening Grafana.
+
+---
+
+## Air-gapped deployment { #air-gapped-deployment }
+
+See [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment) for overview and workflow. Chart-specific reference for mirroring:
+
+### Container images to mirror (26.05 chart defaults)
+
+Verify tags on the Git branch or tag you ship (for example `26.05` or
+`26.05-RC1`). Defaults below match
+[`values.yaml`](./values.yaml) on the current chart.
+
+| Role | `nimOperator` key | Default image (`repository:tag`) |
+|------|-------------------|----------------------------------|
+| Retriever service | — | `service.image.repository`:`service.image.tag` (override for production) |
+| Page elements | `page_elements` | `nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.8.0` |
+| Table structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-table-structure-v1:1.8.0` |
+| OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` |
+| VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
+| Reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2:1.10.0` |
+| Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
+| Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
+| Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
+
+Also mirror images for the vectordb sidecar, Redis, or other subcharts if
+your values enable them.
+
+### Helm values for a private registry
+
+Example overrides (replace placeholders):
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  -f my-airgap-values.yaml
+```
+
+`my-airgap-values.yaml` should include at least:
+
+```yaml
+service:
+  image:
+    repository: <PRIVATE_REGISTRY>/nemo-retriever-service
+    tag: <PINNED_TAG>
+    pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: my-private-registry
+
+ngcImagePullSecret:
+  create: false   # use secrets that authenticate to YOUR mirror
+
+nimOperator:
+  page_elements:
+    image:
+      repository: <PRIVATE_REGISTRY>/nemotron-page-elements-v3
+      tag: "1.8.0"
+      pullPolicy: IfNotPresent
+  # Repeat for table_structure, ocr, vlm_embed, and any optional keys you enable.
+```
+
+- Set `nimOperator.<key>.image.pullSecrets` to the Secret name your
+  `NIMService` resources should use (defaults to `ngc-secret`).
+- Leave `serviceConfig.nimEndpoints.*` empty when operator-managed NIMs
+  are in-cluster; set explicit URLs only for external or mirrored services
+  outside the chart.
+- For **offline captioning**, enable
+  `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` and point the pipeline
+  caption endpoint at the in-cluster NIM URL (see
+  [Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)).
+
+### Mirroring pattern
+
+```bash
+docker login nvcr.io -u '$oauthtoken' -p "$NGC_API_KEY"
+docker pull nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.8.0
+docker tag nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.8.0 \
+  <PRIVATE_REGISTRY>/nemotron-page-elements-v3:1.8.0
+docker push <PRIVATE_REGISTRY>/nemotron-page-elements-v3:1.8.0
+```
+
+For bulk sync, prefer [skopeo](https://github.com/containers/skopeo) or
+[crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md).
+Record `repository@sha256:...` digests for regulated environments.
 
 ---
 
