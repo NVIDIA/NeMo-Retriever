@@ -1,5 +1,8 @@
 # Benchmarking with the `retriever` CLI
 
+`retriever benchmark` and `retriever harness` are development and experimental subcommands
+with no guarantees — see [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
+
 This page covers benchmark workflows for NeMo Retriever Library. See also
 `docs/docs/extraction/benchmarking.md`, [`tools/harness/README.md`](../../../tools/harness/README.md)
 (legacy integration harness), and [`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md)
@@ -14,7 +17,7 @@ There are two harness stacks:
 
 The `retriever` CLI also exposes per-stage `retriever benchmark …` micro-benchmarks.
 
-## Retriever harness (recommended)
+## Retriever harness (development / experimental)
 
 Run from the repository root (or any directory; pass `--config` if needed). Uses
 `--dataset` and `--preset` — there is no `--case` flag on this harness.
