@@ -72,6 +72,46 @@ def _collect_node_names(graph: Graph) -> list[str]:
     return names
 
 
+def _ffprobe_first_stream_type(path: Path) -> str:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.splitlines()[0].strip()
+
+
+def test_video_asr_chunk_params_force_audio_demux() -> None:
+    params = AudioChunkParams(
+        enabled=True,
+        split_type="time",
+        split_interval=60,
+        audio_only=False,
+        video_audio_separate=True,
+    )
+
+    from nemo_retriever.video import video_asr_audio_chunk_params
+
+    normalized = video_asr_audio_chunk_params(params)
+
+    assert normalized.audio_only is True
+    assert normalized.video_audio_separate is False
+    assert normalized.split_type == "time"
+    assert normalized.split_interval == 60
+    assert params.audio_only is False
+    assert params.video_audio_separate is True
+
+
 @pytest.mark.skipif(
     not _have_ffmpeg_binary_for_png_frames(),
     reason="ffmpeg with PNG encoder required for frame extraction",
@@ -133,3 +173,10 @@ def test_readme_video_split_actor_emits_audio_and_frame_rows(tmp_path: Path) -> 
     types = set(out["_content_type"].unique().tolist())
     assert _CT.AUDIO in types
     assert _CT.VIDEO_FRAME in types
+
+    audio_rows = out[out["_content_type"] == _CT.AUDIO]
+    assert set(audio_rows["path"].apply(lambda p: Path(str(p)).suffix)) == {".mp3"}
+    for idx, row in audio_rows.iterrows():
+        audio_chunk = tmp_path / f"audio_chunk_{idx}.mp3"
+        audio_chunk.write_bytes(row["bytes"])
+        assert _ffprobe_first_stream_type(audio_chunk) == "audio"

@@ -48,6 +48,7 @@ from nemo_retriever.video import VideoFrameActor
 from nemo_retriever.video import VideoFrameOCRActor
 from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
+from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
@@ -359,7 +360,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         # ``audio_enabled`` gate.
         audio_enabled = self.audio_chunk_params.enabled
         if audio_enabled:
-            audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
+            audio_chunks = MediaChunkActor(params=video_asr_audio_chunk_params(self.audio_chunk_params)).run(batch_df)
             audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
         else:
             audio_out = pd.DataFrame()

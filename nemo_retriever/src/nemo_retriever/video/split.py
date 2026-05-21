@@ -38,6 +38,19 @@ from nemo_retriever.video.frame_actor import _extract_one, dedup_video_frames
 logger = logging.getLogger(__name__)
 
 
+def video_asr_audio_chunk_params(params: AudioChunkParams | None) -> AudioChunkParams:
+    """Return chunk params that feed video audio to ASR as audio bytes.
+
+    Video containers split with ``-c copy`` stay MP4/MOV/MKV chunks, which
+    Parakeet cannot decode directly. The video branch is specifically the
+    audio-for-ASR path, so force ffmpeg audio demux before chunking.
+    """
+    base = params or AudioChunkParams()
+    if not base.enabled:
+        return base
+    return base.model_copy(update={"audio_only": True, "video_audio_separate": False})
+
+
 @designer_component(
     name="Video Split",
     category="Video",
@@ -59,7 +72,7 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
         )
         if not is_media_available():
             raise RuntimeError("VideoSplitActor requires ffmpeg; install ffmpeg-python and system ffmpeg.")
-        self._audio_chunk_params = audio_chunk_params or AudioChunkParams()
+        self._audio_chunk_params = video_asr_audio_chunk_params(audio_chunk_params)
         self._video_frame_params = video_frame_params or VideoFrameParams()
         self._interface = MediaInterface()
 
