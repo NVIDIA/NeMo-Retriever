@@ -57,6 +57,7 @@ def test_run_video_pipeline_forces_audio_demux_chunk_params_without_ffmpeg() -> 
     assert chunk_params.split_interval == 10
     assert not out.empty
 
+
 @pytest.mark.skipif(
     not _have_ffmpeg_binary_for_png_frames(),
     reason="ffmpeg with PNG encoder required for frame extraction",
