@@ -8,13 +8,11 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
-- For audio and video extraction, the `ffmpeg` and `ffprobe` command-line
-  binaries must be installed and available on `PATH`. On Debian/Ubuntu systems,
-  install them with root privileges, for example
-  `sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg`.
-  Python packages such as `ffmpeg-python` or `nemo-retriever[multimedia]` do not
-  provide these system binaries. For Helm deployments, set
-  `service.installFfmpeg=true`.
+- For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
+  `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
+  `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
+  On Helm with package-repo access, set `service.installFfmpeg=true`. For
+  air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 !!! note
 
@@ -77,20 +75,22 @@ Default VL embedder container and model for release deployments:
 - **Image:** `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0`
 - **Model ID:** `nvidia/llama-nemotron-embed-vl-1b-v2`
 
-### Optional Helm NIMs (disabled by default)
+### Optional Helm NIMs (not auto-wired by default) { #optional-helm-nims-not-auto-wired-by-default }
 
-Enable these only when your workload needs them — the same pattern as the **VL reranker** (not deployed unless you turn on the reranker flags):
+The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled` is `true`, but the retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). Enable only what your workload needs. Chart keys and `enabled` defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
-- [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — reranking for improved retrieval accuracy
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**)
+| Helm flag | NIM | Role |
+|-----------|-----|------|
+| `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) | Reranking for improved retrieval accuracy |
+| `nemotron_parse` | [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) | Optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**) |
+| `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) | Supported image captioning when you enable the caption stage |
+| `audio` | [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) | [Audio and video](audio-video.md) transcription |
 
-Advanced features (for example, audio and video, Nemotron Parse, VLM image captioning, reranking) require additional GPU support, disk space, and feature-specific system dependencies.
-This includes the following:
+### Image captioning { #image-captioning }
 
-- [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) [NIM](https://docs.nvidia.com/nim/speech/latest/index.html) — transcript extraction from [audio and video](audio-video.md)
-- [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse) — alternate PDF extraction method when you set `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**)
-- [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) [NIM](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) — optional image captioning when you enable the caption stage
-- [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) [NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html) — reranking for improved retrieval accuracy
+Use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
+
+Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
@@ -122,7 +122,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ² Nemotron Parse fails to start on 32GB.
 
-³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest`). BF16 requires at least 80 GB total GPU memory; see the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
+³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant`). See the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table and [Image captioning](#image-captioning) above. BF16 requires at least 80 GB total GPU memory; see the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 

@@ -7,6 +7,21 @@ live under `docs/`, `api/`, `client/`, and `deploy/` in older repository layouts
 The historical CLI documentation is **not removed** from the ecosystem — these files sit
 alongside it as a new-CLI counterpart you can link to or migrate to.
 
+## Supported vs development / experimental subcommands
+
+For product use and published examples, treat only these top-level subcommands as
+**supported**:
+
+- **`retriever ingest`** — ingest documents into LanceDB
+- **`retriever query`** — query an existing LanceDB table
+- **`retriever pipeline`** — run the graph ingestion pipeline (for example `retriever pipeline run`)
+
+Any other top-level `retriever` subcommand — including but not limited to `pdf`, `html`,
+`txt`, `audio`, `chart`, `benchmark`, `harness`, `eval`, `recall`, `service`, `local`,
+`compare`, `image`, and `skill-eval` — is **development and experimental**. These commands
+may change or be removed without notice and **carry no compatibility, stability, or
+behavior guarantees**.
+
 ## Key shape difference
 
 The legacy **ingestion-service** CLI was a **single command that talks to a running REST service on
@@ -29,6 +44,9 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | Benchmark stage throughput | `retriever benchmark {split,extract,audio-extract,page-elements,ocr,all}` |
 | Benchmark orchestration | `retriever harness {run,sweep,nightly,summary,compare}` |
 
+Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
+[development and experimental](#supported-vs-development--experimental-subcommands).
+
 ## Contents
 
 | Topic | Location | Replaces example(s) in |
@@ -40,6 +58,9 @@ to Parquet / object storage. Other subcommands cover focused tasks:
 | Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
 
 <!-- --8<-- [start:quickstart] -->
+
+> Only `retriever ingest`, `retriever query`, and `retriever pipeline` are supported for
+> product use; see [Supported vs development / experimental subcommands](#supported-vs-development--experimental-subcommands).
 
 ## Quick start
 
@@ -78,8 +99,6 @@ export NVIDIA_API_KEY=nvapi-...
 retriever ingest ./data/multimodal_test.pdf \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
-  --ocr-version v1 \
-  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -145,8 +164,10 @@ hits = retriever.query(
 
 ## CLI reference
 
-`retriever` is the Typer app installed with the `nemo-retriever` package. Document
-ingestion is usually `retriever pipeline run INPUT_PATH`, which runs the graph pipeline
+`retriever` is the Typer app installed with the `nemo-retriever` package. Subcommand
+support policy: [Supported vs development / experimental subcommands](#supported-vs-development--experimental-subcommands).
+
+Document ingestion is usually `retriever pipeline run INPUT_PATH`, which runs the graph pipeline
 locally (in-process or Ray) and writes rows to LanceDB and optional Parquet.
 
 ```bash
@@ -221,17 +242,14 @@ retriever pipeline run ./data/test.pdf \
   --input-type pdf \
   --method pdfium \
   --caption \
-  --caption-model-name nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16 \
+  --caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning \
   --caption-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
   --api-key "${NVIDIA_API_KEY}" \
   --store-images-uri ./processed_docs/images \
   --save-intermediate ./processed_docs
 ```
 
-For hosted Omni captioning, set
-`--caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Local Omni uses
-`nemo_retriever[local]` and a local Hugging Face model ID. Custom caption prompts and
-`reasoning` flags are not exposed on the CLI — use
+Custom caption prompts and `reasoning` flags are not exposed on the CLI — use
 `nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
 
 ### Directory of documents
