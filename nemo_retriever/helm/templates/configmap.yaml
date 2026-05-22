@@ -18,6 +18,7 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "table_structure" "serviceName" "nemotron-table-structure-v1" "configKey" "tableStructureInvokeUrl" "invokePath" "/v1/infer") -}}
 {{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "serviceName" "nemotron-ocr-v1" "configKey" "ocrInvokeUrl" "invokePath" "/v1/infer") -}}
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "vlm_embed" "serviceName" $ctx.Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
+{{- $audioGrpcEndpoint := $ctx.Values.serviceConfig.nimEndpoints.audioGrpcEndpoint | default "" -}}
 
 {{- define "nemo-retriever.configBody" -}}
 server:
@@ -35,6 +36,7 @@ nim_endpoints:
   ocr_invoke_url: {{ .ocrURL | quote }}
   embed_invoke_url: {{ .embedURL | quote }}
   embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+  audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
   api_key: null
 
 pipeline:
@@ -81,7 +83,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "audioGrpcEndpoint" $audioGrpcEndpoint "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -109,6 +111,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "audioGrpcEndpoint" $audioGrpcEndpoint "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

@@ -140,7 +140,7 @@ hostname = "localhost"
 table_name = "nemo_retriever_collection"
 lancedb_uri = "./lancedb_data"
 top_k = 5
-model_name = "nvidia/llama-3.2-nv-embedqa-1b-v2"
+model_name = "nvidia/llama-nemotron-embed-vl-1b-v2"
 
 queries = ["this is expensive"]
 q_results = []

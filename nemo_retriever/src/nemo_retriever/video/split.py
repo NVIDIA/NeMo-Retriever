@@ -26,8 +26,15 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
+from pathlib import Path
+
 from nemo_retriever.audio.chunk_actor import _chunk_one
-from nemo_retriever.audio.media_interface import MediaInterface, is_media_available
+from nemo_retriever.audio.media_interface import FFMPEG_DEPENDENCIES
+from nemo_retriever.audio.media_interface import MediaInterface
+from nemo_retriever.audio.media_interface import ensure_media_on_disk
+from nemo_retriever.audio.media_interface import is_ffmpeg_available
+from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -36,6 +43,19 @@ from nemo_retriever.video import _content_types as _CT
 from nemo_retriever.video.frame_actor import _extract_one, dedup_video_frames
 
 logger = logging.getLogger(__name__)
+
+
+def video_asr_audio_chunk_params(params: AudioChunkParams | None) -> AudioChunkParams:
+    """Return chunk params that feed video audio to ASR as audio bytes.
+
+    Video containers split with ``-c copy`` stay MP4/MOV/MKV chunks, which
+    Parakeet cannot decode directly. The video branch is specifically the
+    audio-for-ASR path, so force ffmpeg audio demux before chunking.
+    """
+    base = params or AudioChunkParams()
+    if not base.enabled:
+        return base
+    return base.model_copy(update={"audio_only": True, "video_audio_separate": False})
 
 
 @designer_component(
@@ -57,10 +77,12 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
             audio_chunk_params=audio_chunk_params,
             video_frame_params=video_frame_params,
         )
-        if not is_media_available():
-            raise RuntimeError("VideoSplitActor requires ffmpeg; install ffmpeg-python and system ffmpeg.")
-        self._audio_chunk_params = audio_chunk_params or AudioChunkParams()
+        self._audio_chunk_params = video_asr_audio_chunk_params(audio_chunk_params)
         self._video_frame_params = video_frame_params or VideoFrameParams()
+        if self._audio_chunk_params.enabled and not is_media_available():
+            raise RuntimeError(media_dependency_error_message("VideoSplitActor"))
+        if self._video_frame_params.enabled and not is_ffmpeg_available():
+            raise RuntimeError(media_dependency_error_message("VideoSplitActor", required=FFMPEG_DEPENDENCIES))
         self._interface = MediaInterface()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
@@ -79,29 +101,31 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
             if not path_str.strip():
                 continue
 
-            if self._audio_chunk_params.enabled:
-                try:
-                    chunk_rows = _chunk_one(path_str, self._audio_chunk_params, self._interface)
-                except Exception as exc:
-                    logger.exception("Audio chunking failed for %s: %s", path_str, exc)
-                    chunk_rows = []
-                for chunk_row in chunk_rows:
-                    chunk_row["_content_type"] = _CT.AUDIO
-                    # Stamp into ``metadata`` too — ``AudioVisualFuser`` reads
-                    # the row via ``itertuples``, which renames ``_``-prefixed
-                    # columns to positional names so the top-level field is
-                    # invisible. Mirrors what ``_extract_one`` does for frames.
-                    if isinstance(chunk_row.get("metadata"), dict):
-                        chunk_row["metadata"]["_content_type"] = _CT.AUDIO
-                    rows.append(chunk_row)
+            raw_bytes = row.get("bytes") if not Path(path_str).is_file() else None
+            with ensure_media_on_disk(path_str, raw_bytes) as real_path:
+                if self._audio_chunk_params.enabled:
+                    try:
+                        chunk_rows = _chunk_one(
+                            real_path, self._audio_chunk_params, self._interface, source_path_override=path_str
+                        )
+                    except Exception as exc:
+                        logger.exception("Audio chunking failed for %s: %s", path_str, exc)
+                        chunk_rows = []
+                    for chunk_row in chunk_rows:
+                        chunk_row["_content_type"] = _CT.AUDIO
+                        if isinstance(chunk_row.get("metadata"), dict):
+                            chunk_row["metadata"]["_content_type"] = _CT.AUDIO
+                        rows.append(chunk_row)
 
-            if self._video_frame_params.enabled:
-                try:
-                    frame_rows = _extract_one(path_str, self._video_frame_params, self._interface)
-                except Exception as exc:
-                    logger.exception("Frame extraction failed for %s: %s", path_str, exc)
-                    frame_rows = []
-                rows.extend(frame_rows)
+                if self._video_frame_params.enabled:
+                    try:
+                        frame_rows = _extract_one(
+                            real_path, self._video_frame_params, self._interface, source_path_override=path_str
+                        )
+                    except Exception as exc:
+                        logger.exception("Frame extraction failed for %s: %s", path_str, exc)
+                        frame_rows = []
+                    rows.extend(frame_rows)
 
         if not rows:
             return pd.DataFrame()

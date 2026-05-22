@@ -170,9 +170,7 @@ python -m nemo_retriever.examples.graph_pipeline \
   /your-example-dir \
   --lancedb-uri lancedb \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
-  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
-  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1 \
-  --ocr-version v1 \
+  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -183,8 +181,6 @@ python -m nemo_retriever.examples.graph_pipeline \
 > to multilingual mode (`multi`); pass `--ocr-lang english` for the English-only
 > v2 selector. Remote OCR NIM endpoints decide their own model and language
 > behavior, and the local OCR selectors are not added to remote request payloads.
-> The remote-inference example above pins `--ocr-version v1` because a hosted v2
-> endpoint is not yet available on `ai.api.nvidia.com`.
 
 When you use the remote embedder, pair the `Retriever` with the matching
 `embedder=` + `embedding_endpoint=` overrides shown in
@@ -459,6 +455,24 @@ For example, with apt-get on Ubuntu:
 sudo apt install -y ffmpeg
 ```
 
+The bundled Docker image uses the FFmpeg package provided by the base Ubuntu
+image when `INSTALL_FFMPEG=true` is set. If your workflow depends on exact
+FFmpeg codec or version behavior, verify the image package against those
+requirements.
+
+The bundled Dockerfile skips ffmpeg/ffprobe by default. For the service image,
+set `INSTALL_FFMPEG=true` at runtime to install them during container startup:
+
+```bash
+docker run -e INSTALL_FFMPEG=true nemo-retriever-service
+```
+
+For Kubernetes deployments, set `service.installFfmpeg=true` in the Helm chart.
+This runtime install requires network access to package repositories, a
+writable root filesystem, and security policy that allows the image's scoped
+sudo use. For locked-down environments that cannot install packages at startup,
+use a custom service image that already contains ffmpeg/ffprobe.
+
 ```python
 ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
@@ -512,9 +526,8 @@ ingestor = (
   .extract(
     # for self hosted NIMs, your URLs will depend on your NIM container DNS settings
     page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
-    graphic_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1",
-    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
-    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
+    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1",
+    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1",
   )
   .embed(
     embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",

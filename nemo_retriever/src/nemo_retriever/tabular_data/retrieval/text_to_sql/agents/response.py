@@ -57,23 +57,15 @@ class ResponseAgent(BaseAgent):
 
         sql_code = getattr(llm_response, "sql_code", "")
         response_explanation = getattr(llm_response, "response", "")
-
-        relevant_tables = path_state.get("relevant_tables", [])
         candidates_with_entities = path_state.get("candidates", [])
         candidates = [
             item["candidate"] if isinstance(item, dict) and "candidate" in item else item
             for item in candidates_with_entities
         ]
 
-        # --- formatting  ---
-        formatted_response = self._format_sql_response(
-            sql_code=sql_code,
-            relevant_tables=relevant_tables,
-            response_explanation=response_explanation,
-        )
         formatted_response = format_response(
             candidates=candidates,
-            response=formatted_response,
+            response=response_explanation,
         )
 
         # --- final dict assembly ---
@@ -97,23 +89,3 @@ class ResponseAgent(BaseAgent):
                 "final_response": response,
             },
         }
-
-    # ---- formatting helpers ----
-
-    def _format_sql_response(
-        self,
-        sql_code: str,
-        relevant_tables: list,
-        response_explanation: str,
-    ) -> str:
-        parts = []
-
-        if response_explanation:
-            parts.append(response_explanation.strip())
-
-        parts.append("")
-        parts.append("The SQL generated for your question is:")
-        parts.append("%%%")
-        parts.append(sql_code)
-        parts.append("%%%")
-        return "\n".join(parts)

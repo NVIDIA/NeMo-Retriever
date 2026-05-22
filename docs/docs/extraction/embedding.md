@@ -7,7 +7,7 @@
 This documentation describes how to use [NeMo Retriever Library](overview.md) 
 with the multimodal embedding model [Llama Nemotron Embed VL 1B v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2).
 
-The `Llama Nemotron Embed VL 1B v2` model is optimized for multimodal question-answering retrieval. 
+The **Llama Nemotron Embed VL 1B v2** model is optimized for multimodal question-answering retrieval. 
 The model can embed documents in the form of an image, text, or a combination of image and text. 
 Documents can then be retrieved given a user query in text form. 
 The model supports images that contain text, tables, charts, and infographics.
