@@ -261,6 +261,30 @@ services:
     profiles:
       - audio
 
+  judge:
+    # Nemotron-Super-49B-v1.5 NIM, used as the LLM-as-judge for
+    # `retriever skill-eval`. Profile-gated: `docker compose up judge`.
+    image: ${JUDGE_IMAGE:-nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5}:${JUDGE_TAG:-latest}
+    shm_size: 16gb
+    ports:
+      - "${JUDGE_HTTP_PORT:-8000}:8000"
+    expose:
+      - "8000"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+    command: ["--tool-call-parser", "llama3_json", "--enable-auto-tool-choice"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_ID:-0}"]
+              capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - judge
+
   nv-ingest-ms-runtime:
     image: nvcr.io/nvidia/nemo-microservices/nv-ingest:26.1.2
     shm_size: 40gb # Should be at minimum 30% of assigned memory per Ray documentation
