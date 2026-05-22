@@ -816,6 +816,7 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     document = tmp_path / "quiet.pdf"
     document.write_bytes(b"%PDF-1.4\n")
     monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 3)
 
     silenced: list[bool] = []
     monkeypatch.setattr(cli_main, "_silence_noisy_libraries", lambda: silenced.append(True))
@@ -834,4 +835,4 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     assert result.exit_code == 0
     assert silenced == [True]
     assert captured_use == [True]
-    assert "Ingested 1 document(s) into LanceDB lancedb/nv-ingest." in result.output
+    assert "Ingested 1 file(s) → 3 row(s) in LanceDB lancedb/nv-ingest." in result.output
