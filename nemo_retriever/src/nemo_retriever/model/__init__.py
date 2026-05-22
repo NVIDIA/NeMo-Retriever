@@ -36,7 +36,7 @@ _EMBED_MODEL_ALIASES: dict[str, str] = {
     "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
 }
 
-_DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
+_DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
 
 
 def resolve_embed_model(model_name: str | None) -> str:

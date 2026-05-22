@@ -971,6 +971,8 @@ class ServiceIngestor(ingestor):
 
             elif event_type == "document_complete":
                 status = evt.get("status", "completed")
+                if status not in ("completed", "failed"):
+                    continue
                 if status == "failed":
                     documents_failed += 1
                     error = evt.get("error", "unknown error")
