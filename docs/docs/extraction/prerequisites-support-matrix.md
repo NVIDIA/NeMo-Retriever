@@ -13,6 +13,11 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
   On Helm with package-repo access, set `service.installFfmpeg=true`. For
   air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+- For PDF extraction with `extract_method="nemotron_parse"`, install the Nemotron Parse
+  client dependencies with `pip install "nemo-retriever[nemotron-parse]"` (pulls
+  `open-clip-torch`, which provides the `open_clip` module required by the Nemotron Parse
+  NIM client). The base `nemo-retriever` install and `[local]` extra do not include this
+  package.
 
 !!! note
 

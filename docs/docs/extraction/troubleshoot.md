@@ -100,6 +100,30 @@ You can set the variable in your .env file or directly in your environment.
 
 
 
+## ModuleNotFoundError: No module named open_clip when using nemotron_parse { #modulenotfounderror-no-module-named-open-clip-when-using-nemotron-parse }
+
+When you run PDF extraction with `extract_method="nemotron_parse"`, you might see an error similar to the following:
+
+```text
+ModuleNotFoundError: No module named 'open_clip'
+```
+
+The Nemotron Parse NIM client requires the `open_clip` Python module from `open-clip-torch==3.2.0`. That package is not part of the default `nemo-retriever` install or the `[local]` extra.
+
+Install the dedicated PyPI extra before running Nemotron Parse extraction:
+
+```bash
+pip install "nemo-retriever[nemotron-parse]"
+```
+
+For local GPU inference with Nemotron Parse, combine extras:
+
+```bash
+pip install "nemo-retriever[local,nemotron-parse]"
+```
+
+See also [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
+
 ## Extract method nemotron-parse doesn't support image files
 
 Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs. 
