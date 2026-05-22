@@ -62,6 +62,8 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
+The default OCR engine is **Nemotron OCR v2**. When you run extraction **locally with HuggingFace models**, v2 operates in **multilingual** mode by default (`multi`). Pass `--ocr-lang english` on the CLI (or the equivalent API parameter) for English-only v2, or `--ocr-version v1` for the legacy engine. For Kubernetes installs, the chart's OCR NIM defaults and image are documented under [Nemotron OCR v2 — language mode](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
+
 **Related**
 
 - [Text and layout extraction](#text-and-layout-extraction)
