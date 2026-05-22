@@ -623,6 +623,35 @@ class TestNemotronRerankActor:
         assert mock_post.call_args_list[1][1]["json"]["passages"] == [{"text": "doc C"}]
         assert out["rerank_score"].tolist() == [0.2, 0.7, 0.9]
 
+    def test_rerank_batch_raises_when_endpoint_score_count_mismatches(self):
+        import pandas as pd
+        from nemo_retriever.rerank.rerank import _rerank_batch
+
+        df = pd.DataFrame({"query": ["q", "q"], "text": ["doc A", "doc B"]})
+
+        with (
+            patch("nemo_retriever.rerank.rerank._rerank_via_endpoint", return_value=[0.2]),
+            pytest.raises(RuntimeError, match="score alignment is broken"),
+        ):
+            _rerank_batch(df, rerank_invoke_url="http://localhost:8000", sort_results=False)
+
+    def test_rerank_batch_warns_when_unhashable_queries_cannot_batch(self, caplog):
+        import logging
+
+        import pandas as pd
+        from nemo_retriever.rerank.rerank import _rerank_batch
+
+        caplog.set_level(logging.WARNING, logger="nemo_retriever.rerank.rerank")
+        df = pd.DataFrame({"query": [["q"], ["q"]], "text": ["doc A", "doc B"]})
+
+        with patch("nemo_retriever.rerank.rerank._rerank_via_endpoint", side_effect=[[0.2], [0.7]]) as mock_rerank:
+            out = _rerank_batch(df, rerank_invoke_url="http://localhost:8000", sort_results=False)
+
+        assert mock_rerank.call_count == 2
+        assert "Query at row 0 is not hashable (list)" in caplog.text
+        assert "Query at row 1 is not hashable (list)" in caplog.text
+        assert out["rerank_score"].tolist() == [0.2, 0.7]
+
     def test_actor_call_returns_error_payload_on_exception(self):
         import pandas as pd
         from nemo_retriever.rerank.rerank import NemotronRerankActor

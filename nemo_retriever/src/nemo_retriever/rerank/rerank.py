@@ -508,6 +508,13 @@ def _rerank_batch(
         # batch, so keep per-row score alignment when expanding grouped responses.
         groups: dict[Any, dict[str, Any]] = {}
         for i, (q, d) in enumerate(pairs):
+            if not isinstance(q, Hashable):
+                logger.warning(
+                    "Query at row %d is not hashable (%s); it will be sent in its own request "
+                    "and cannot be batched with identical queries.",
+                    i,
+                    type(q).__name__,
+                )
             key = q if isinstance(q, Hashable) else ("__unhashable_query__", i)
             group = groups.setdefault(
                 key,
@@ -533,6 +540,11 @@ def _rerank_batch(
                 api_key=api_key,
                 images_b64=group["images_b64"],
             )
+            if len(row_scores) != len(group["indices"]):
+                raise RuntimeError(
+                    f"Endpoint returned {len(row_scores)} scores for a batch of "
+                    f"{len(group['indices'])} documents; score alignment is broken."
+                )
             for row_index, score in zip(group["indices"], row_scores):
                 scores[row_index] = score
     elif model is not None:
