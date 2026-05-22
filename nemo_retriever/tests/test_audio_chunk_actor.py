@@ -7,7 +7,6 @@ Unit tests for nemo_retriever.audio: MediaChunkActor and audio_path_to_chunks_df
 """
 
 import logging
-import subprocess
 import wave
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from nemo_retriever.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
 from nemo_retriever.audio.media_interface import is_media_available
 from tests import _have_ffmpeg_binary
+from tests import _ffprobe_first_stream_type
 from tests import _make_test_mp4_with_av
 from nemo_retriever.params import AudioChunkParams
 
@@ -31,26 +31,6 @@ def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 80
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
         wav.writeframes(b"\x00\x00" * n_frames)
-
-
-def _ffprobe_first_stream_type(path: Path) -> str:
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "stream=codec_type",
-            "-of",
-            "csv=p=0",
-            str(path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    lines = result.stdout.splitlines()
-    return lines[0].strip() if lines else ""
 
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")

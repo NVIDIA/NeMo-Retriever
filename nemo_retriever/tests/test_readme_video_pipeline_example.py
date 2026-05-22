@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import base64
 import io
-import subprocess
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from tests import _have_ffmpeg_binary
-from tests import _have_ffmpeg_binary_for_jpeg_frames
+from tests import _have_media_dependencies_for_jpeg_video_pipeline
+from tests import _ffprobe_first_stream_type
 from tests import _make_test_mp4_with_av
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.pipeline_graph import Graph
@@ -47,26 +47,6 @@ def _collect_node_names(graph: Graph) -> list[str]:
     for root in graph.roots:
         walk(root)
     return names
-
-
-def _ffprobe_first_stream_type(path: Path) -> str:
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "stream=codec_type",
-            "-of",
-            "csv=p=0",
-            str(path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    lines = result.stdout.splitlines()
-    return lines[0].strip() if lines else ""
 
 
 def _assert_jpeg_bytes(raw: bytes) -> None:
@@ -186,8 +166,8 @@ def test_audio_only_excludes_visual_branch_from_graph() -> None:
 
 
 @pytest.mark.skipif(
-    not _have_ffmpeg_binary_for_jpeg_frames(),
-    reason="ffmpeg with JPEG encoder required for default frame extraction",
+    not _have_media_dependencies_for_jpeg_video_pipeline(),
+    reason="ffmpeg/ffprobe with JPEG encoder required for video pipeline frame extraction",
 )
 def test_readme_video_split_actor_emits_audio_and_frame_rows(tmp_path: Path) -> None:
     """Mirror README ``AudioChunkParams`` / ``VideoFrameParams`` on a synthetic MP4."""

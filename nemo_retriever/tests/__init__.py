@@ -20,7 +20,9 @@ __all__ = [
     "_have_ffmpeg_binary",
     "is_ffmpeg_jpeg_encoder_available",
     "_have_ffmpeg_binary_for_jpeg_frames",
+    "_have_media_dependencies_for_jpeg_video_pipeline",
     "_make_test_mp4_with_av",
+    "_ffprobe_first_stream_type",
 ]
 
 
@@ -84,6 +86,11 @@ def _have_ffmpeg_binary_for_jpeg_frames() -> bool:
     return is_ffmpeg_available() and is_ffmpeg_jpeg_encoder_available()
 
 
+def _have_media_dependencies_for_jpeg_video_pipeline() -> bool:
+    """For pytest skips on video-pipeline paths needing ffprobe plus JPEG frames."""
+    return is_media_available() and is_ffmpeg_jpeg_encoder_available()
+
+
 def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
     """Synthetic MP4 with video+audio; ``mpeg4`` avoids requiring ``libx264``."""
     cmd = [
@@ -109,3 +116,23 @@ def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
         str(path),
     ]
     subprocess.run(cmd, check=True)
+
+
+def _ffprobe_first_stream_type(path: Path) -> str:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = result.stdout.splitlines()
+    return lines[0].strip() if lines else ""
