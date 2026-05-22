@@ -55,7 +55,7 @@ def video_asr_audio_chunk_params(params: AudioChunkParams | None) -> AudioChunkP
     base = params or AudioChunkParams()
     if not base.enabled:
         return base
-    return base.model_copy(update={"audio_only": True, "video_audio_separate": False})
+    return base.model_copy(update={"video_audio_separate": False})
 
 
 @designer_component(

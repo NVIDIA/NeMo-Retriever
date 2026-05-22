@@ -53,7 +53,7 @@ from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
-from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
 
 logger = logging.getLogger(__name__)
 
@@ -557,7 +557,7 @@ class _MultiTypeExtractBase(AbstractOperator):
 
     def _local_resources(self):
         if self._resolved_resources is None:
-            self._resolved_resources = gather_local_resources()
+            self._resolved_resources = _rrh.gather_local_resources()
         return self._resolved_resources
 
     def _instantiate_resolved(self, operator_class: type[AbstractOperator], **operator_kwargs: Any) -> AbstractOperator:

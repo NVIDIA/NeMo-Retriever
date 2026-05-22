@@ -79,7 +79,10 @@ def test_video_asr_chunk_params_force_audio_demux() -> None:
 
     normalized = video_asr_audio_chunk_params(params)
 
-    assert normalized.audio_only is True
+    # ``video_asr_audio_chunk_params`` only forces video_audio_separate=False;
+    # it must not overwrite the caller's audio_only flag (which now controls
+    # the user-facing OCR-disable semantic).
+    assert normalized.audio_only is False
     assert normalized.video_audio_separate is False
     assert normalized.split_type == "time"
     assert normalized.split_interval == 60
@@ -131,6 +134,44 @@ def test_readme_video_pipeline_build_graph_chain() -> None:
         "AudioVisualFuser",
     ]
     assert names[: len(expected_prefix)] == expected_prefix, names
+    assert "_BatchEmbedActor" in names
+
+
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_png_frames(),
+    reason="ffmpeg with PNG encoder required for VideoSplitActor construction",
+)
+def test_audio_only_excludes_visual_branch_from_graph() -> None:
+    """``audio_only=True`` must strip VideoFrameOCRActor, VideoFrameTextDedup,
+    and AudioVisualFuser from the graph — only the audio (ASR) branch runs.
+
+    Graph-topology check that still instantiates ``VideoSplitActor``, whose
+    constructor probes ffmpeg/ffprobe — hence the PNG-encoder gate.
+    """
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(
+            ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
+        ),
+        audio_chunk_params=AudioChunkParams(
+            enabled=True,
+            split_type="time",
+            split_interval=60,
+            audio_only=True,
+        ),
+        asr_params=ASRParams(),
+        video_frame_params=VideoFrameParams(enabled=True, fps=1.0, dedup=True),
+        video_text_dedup_params=VideoFrameTextDedupParams(enabled=True),
+        av_fuse_params=AudioVisualFuseParams(enabled=True),
+        embed_params=EmbedParams(),
+        stage_order=("embed",),
+    )
+    names = _collect_node_names(graph)
+    assert "VideoSplitActor" in names
+    assert "ASRActor" in names
+    assert "VideoFrameOCRActor" not in names
+    assert "VideoFrameTextDedup" not in names
+    assert "AudioVisualFuser" not in names
     assert "_BatchEmbedActor" in names
 
 
