@@ -56,6 +56,7 @@ def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
         return fake_ingestor
 
     monkeypatch.setattr(sdk_workflow, "create_ingestor", fake_create_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 7)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
@@ -75,7 +76,7 @@ def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
     vdb_upload_params = fake_ingestor.vdb_upload.call_args.args[0]
     assert vdb_upload_params.vdb_op == "lancedb"
     assert vdb_upload_params.vdb_kwargs == {"uri": "lancedb", "table_name": "nv-ingest", "overwrite": True}
-    assert "Ingested 1 document(s) into LanceDB lancedb/nv-ingest." in result.output
+    assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nv-ingest." in result.output
 
 
 def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> None:
@@ -92,6 +93,7 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         return fake_ingestor
 
     monkeypatch.setattr(sdk_workflow, "create_ingestor", fake_create_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 12)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -118,7 +120,7 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "table_name": "docs",
         "overwrite": True,
     }
-    assert "Ingested 2 document(s) into LanceDB /tmp/lancedb/docs." in result.output
+    assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
 
 def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> None:
@@ -308,6 +310,7 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
         return fake_ingestor
 
     monkeypatch.setattr(sdk_workflow, "create_ingestor", fake_create_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 42)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -393,7 +396,7 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     assert embed_params.batch_tuning.embed_batch_size == 16
     assert embed_params.batch_tuning.embed_cpus_per_actor == 0.25
     assert embed_params.batch_tuning.gpu_embed == 0.5
-    assert "Ingested 1 document(s) into LanceDB lancedb/nv-ingest." in result.output
+    assert "Ingested 1 file(s) → 42 row(s) in LanceDB lancedb/nv-ingest." in result.output
 
 
 def test_root_ingest_reports_empty_directory_error(tmp_path) -> None:
@@ -813,6 +816,7 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     document = tmp_path / "quiet.pdf"
     document.write_bytes(b"%PDF-1.4\n")
     monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 3)
 
     silenced: list[bool] = []
     monkeypatch.setattr(cli_main, "_silence_noisy_libraries", lambda: silenced.append(True))
@@ -831,4 +835,4 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     assert result.exit_code == 0
     assert silenced == [True]
     assert captured_use == [True]
-    assert "Ingested 1 document(s) into LanceDB lancedb/nv-ingest." in result.output
+    assert "Ingested 1 file(s) → 3 row(s) in LanceDB lancedb/nv-ingest." in result.output

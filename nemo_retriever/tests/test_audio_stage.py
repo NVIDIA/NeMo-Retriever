@@ -68,7 +68,6 @@ def test_audio_stage_extract_cli_writes_sidecar(tmp_path: Path):
             output_dir=None,
             split_type="size",
             split_interval=500_000,
-            audio_only=False,
             video_audio_separate=False,
             use_env_asr=False,
             audio_grpc_endpoint="localhost:50051",

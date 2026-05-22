@@ -624,7 +624,8 @@ def build_graph(
         # This skips the eager Parakeet load when audio is off and avoids
         # empty Ray Data MapBatches stages cluttering the dashboard.
         audio_enabled = audio_chunk_params is not None and getattr(audio_chunk_params, "enabled", True)
-        frames_enabled = getattr(video_frame_params, "enabled", True)
+        audio_only = audio_chunk_params is not None and getattr(audio_chunk_params, "audio_only", False)
+        frames_enabled = getattr(video_frame_params, "enabled", True) and not audio_only
         text_dedup_enabled = (
             frames_enabled and video_text_dedup_params is not None and getattr(video_text_dedup_params, "enabled", True)
         )

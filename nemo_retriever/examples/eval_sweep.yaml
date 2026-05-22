@@ -35,24 +35,26 @@ models:
     model: "nvidia_nim/nvidia/nemotron-3-nano-30b-a3b"
     api_key: "${NVIDIA_API_KEY}"
 
-  mixtral-judge:
-    model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+  nemotron-super-judge:
+    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
     api_key: "${NVIDIA_API_KEY}"
+    temperature: 0.1
+    max_tokens: 4096
 
 # Each evaluation picks a generator + judge by name.
 # "runs" is optional (defaults to execution.runs, then 1).
 evaluations:
   - generator: "nemotron-nano-30b"
-    judge: "mixtral-judge"
+    judge: "nemotron-super-judge"
     runs: 1
 
   # Uncomment below to add more evaluations to the sweep.
   # - generator: "generator-b"
-  #   judge: "mixtral-judge"
+  #   judge: "nemotron-super-judge"
   #   runs: 2
   #
   # - generator: "nemotron-super-49b"
-  #   judge: "mixtral-judge"
+  #   judge: "nemotron-super-judge"
   #   runs: 5
 
 execution:
