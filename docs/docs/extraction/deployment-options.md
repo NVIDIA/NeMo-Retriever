@@ -1,4 +1,4 @@
-# Deployment options
+s# Deployment options
 
 Use this page to compare how you run NeMo Retriever — including when to use [NVIDIA-hosted NIMs](https://build.nvidia.com/) versus self-hosting on your own infrastructure.
 

@@ -358,7 +358,11 @@ Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 ```python
 from nemo_retriever.llm import LLMJudge
 
-judge = LLMJudge.from_kwargs(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
+judge = LLMJudge.from_kwargs(
+    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    temperature=0.1,
+    max_tokens=4096,
+)
 result = retriever.answer(
     "What is RAG?",
     llm=llm,
