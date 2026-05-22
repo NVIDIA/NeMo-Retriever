@@ -11,15 +11,19 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from nemo_retriever.audio.media_interface import is_ffmpeg_available
 from nemo_retriever.audio.media_interface import is_media_available
 
 __all__ = [
     "is_ffmpeg_cli_available",
     "is_media_extract_available",
     "_have_ffmpeg_binary",
-    "is_ffmpeg_png_encoder_available",
-    "_have_ffmpeg_binary_for_png_frames",
+    "is_ffmpeg_jpeg_encoder_available",
+    "_have_ffmpeg_binary_for_jpeg_frames",
+    "_have_media_dependencies_for_jpeg_video_pipeline",
     "_make_test_mp4_with_av",
+    "_ffprobe_first_stream_type",
+    "_assert_jpeg_bytes",
 ]
 
 
@@ -38,16 +42,16 @@ def _have_ffmpeg_binary() -> bool:
     return is_media_extract_available()
 
 
-def is_ffmpeg_png_encoder_available() -> bool:
-    """True if ffmpeg can encode PNG stills (``image2`` / ``MediaInterface.extract_frames``).
+def is_ffmpeg_jpeg_encoder_available() -> bool:
+    """True if ffmpeg can encode JPEG stills for ``MediaInterface.extract_frames``.
 
-    Minimal ffmpeg builds may omit the PNG encoder; probe with a one-frame lavfi encode.
+    Minimal ffmpeg builds may omit encoders; probe the default mjpeg/JPEG frame path.
     """
     exe = shutil.which("ffmpeg")
     if not exe:
         return False
-    with tempfile.TemporaryDirectory(prefix="retriever_png_enc_probe_") as tmp:
-        out_path = Path(tmp) / "probe.png"
+    with tempfile.TemporaryDirectory(prefix="retriever_jpeg_enc_probe_") as tmp:
+        out_path = Path(tmp) / "probe.jpg"
         cmd = [
             exe,
             "-y",
@@ -59,6 +63,10 @@ def is_ffmpeg_png_encoder_available() -> bool:
             "testsrc=duration=0.1:size=16x16:rate=1",
             "-frames:v",
             "1",
+            "-vcodec",
+            "mjpeg",
+            "-q:v",
+            "2",
             str(out_path),
         ]
         try:
@@ -74,9 +82,14 @@ def is_ffmpeg_png_encoder_available() -> bool:
         return r.returncode == 0 and out_path.is_file() and out_path.stat().st_size > 0
 
 
-def _have_ffmpeg_binary_for_png_frames() -> bool:
-    """For pytest skips on paths that call ``MediaInterface.extract_frames`` (PNG output)."""
-    return is_media_extract_available() and is_ffmpeg_png_encoder_available()
+def _have_ffmpeg_binary_for_jpeg_frames() -> bool:
+    """For pytest skips on default JPEG frame extraction paths."""
+    return is_ffmpeg_available() and is_ffmpeg_jpeg_encoder_available()
+
+
+def _have_media_dependencies_for_jpeg_video_pipeline() -> bool:
+    """For pytest skips on video-pipeline paths needing ffprobe plus JPEG frames."""
+    return is_media_available() and is_ffmpeg_jpeg_encoder_available()
 
 
 def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
@@ -104,3 +117,31 @@ def _make_test_mp4_with_av(path: Path, duration_sec: int = 5) -> None:
         str(path),
     ]
     subprocess.run(cmd, check=True)
+
+
+def _ffprobe_first_stream_type(path: Path) -> str:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = result.stdout.splitlines()
+    return lines[0].strip() if lines else ""
+
+
+def _assert_jpeg_bytes(raw: bytes) -> None:
+    import io
+    from PIL import Image
+
+    with Image.open(io.BytesIO(raw)) as image:
+        assert image.format == "JPEG"

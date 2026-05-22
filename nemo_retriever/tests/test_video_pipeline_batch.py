@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from tests import _have_ffmpeg_binary_for_png_frames
+from tests import _have_media_dependencies_for_jpeg_video_pipeline
 from tests import _make_test_mp4_with_av
 from nemo_retriever.params import (
     ASRParams,
@@ -62,8 +62,8 @@ def test_run_video_pipeline_forces_audio_demux_chunk_params_without_ffmpeg() -> 
 
 
 @pytest.mark.skipif(
-    not _have_ffmpeg_binary_for_png_frames(),
-    reason="ffmpeg with PNG encoder required for frame extraction",
+    not _have_media_dependencies_for_jpeg_video_pipeline(),
+    reason="ffmpeg/ffprobe with JPEG encoder required for video pipeline frame extraction",
 )
 def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> None:
     """End-to-end through MultiTypeExtractOperator._run_video_pipeline.
