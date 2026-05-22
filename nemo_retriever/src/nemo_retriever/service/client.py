@@ -617,6 +617,8 @@ class RetrieverServiceClient:
                     return
                 doc_id = event.get("id", "")
                 status = event.get("status", "completed")
+                if status not in ("completed", "failed"):
+                    return
                 event_queue.put_nowait(
                     {
                         "event": "document_complete",
