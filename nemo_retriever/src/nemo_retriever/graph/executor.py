@@ -22,9 +22,9 @@ from nemo_retriever.utils.input_files import (
     raise_input_path_not_found,
 )
 from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
-    gather_local_resources,
     NEMOTRON_PARSE_BATCH_SIZE,
     VLLM_GPUS_PER_ACTOR,
     OCR_GPUS_PER_ACTOR,
@@ -117,7 +117,7 @@ class InprocessExecutor(AbstractExecutor):
                 f"data must be a pandas.DataFrame, file path, or list of paths, " f"got {type(data).__name__}"
             )
 
-        resolved_graph = resolve_graph(self.graph, gather_local_resources())
+        resolved_graph = resolve_graph(self.graph, _rrh.gather_local_resources())
         nodes = self._linearize(resolved_graph)
         operators = []
         for node in nodes:

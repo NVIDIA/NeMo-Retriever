@@ -6,6 +6,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
+import os
+import sys
 from typing import Any
 from unittest.mock import create_autospec
 
@@ -752,3 +755,83 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "Error: database unavailable" in result.output
+
+
+def test_silence_noisy_libraries_sets_env_vars(monkeypatch) -> None:
+    for var in (
+        "VLLM_LOGGING_LEVEL",
+        "TRANSFORMERS_VERBOSITY",
+        "HF_HUB_VERBOSITY",
+        "TQDM_DISABLE",
+        "HF_HUB_DISABLE_PROGRESS_BARS",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    cli_main._silence_noisy_libraries()
+
+    assert os.environ["VLLM_LOGGING_LEVEL"] == "ERROR"
+    assert os.environ["TRANSFORMERS_VERBOSITY"] == "error"
+    assert os.environ["HF_HUB_VERBOSITY"] == "error"
+    assert os.environ["TQDM_DISABLE"] == "1"
+    assert os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] == "1"
+    assert logging.getLogger("vllm").level == logging.ERROR
+    assert logging.getLogger("transformers").level == logging.ERROR
+
+
+def test_quiet_capture_swallows_output_on_success(capfd: pytest.CaptureFixture[str]) -> None:
+    with cli_main._quiet_capture():
+        sys.stdout.write("noisy stdout\n")
+        sys.stdout.flush()
+        sys.stderr.write("noisy stderr\n")
+        sys.stderr.flush()
+
+    captured = capfd.readouterr()
+    assert "noisy stdout" not in captured.out
+    assert "noisy stderr" not in captured.err
+
+
+def test_quiet_capture_flushes_captured_output_to_stderr_on_error(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(RuntimeError, match="boom"):
+        with cli_main._quiet_capture():
+            sys.stdout.write("about to fail\n")
+            sys.stdout.flush()
+            sys.stderr.write("diagnostic detail\n")
+            sys.stderr.flush()
+            raise RuntimeError("boom")
+
+    captured = capfd.readouterr()
+    # Both stdout and stderr output from the failing block are surfaced on
+    # stderr so an operator/agent can debug the failure.
+    assert "about to fail" in captured.err
+    assert "diagnostic detail" in captured.err
+    assert captured.out == ""
+
+
+def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) -> None:
+    import contextlib
+
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "quiet.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    silenced: list[bool] = []
+    monkeypatch.setattr(cli_main, "_silence_noisy_libraries", lambda: silenced.append(True))
+
+    captured_use: list[bool] = []
+
+    @contextlib.contextmanager
+    def fake_quiet_capture() -> Any:
+        captured_use.append(True)
+        yield
+
+    monkeypatch.setattr(cli_main, "_quiet_capture", fake_quiet_capture)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--quiet"])
+
+    assert result.exit_code == 0
+    assert silenced == [True]
+    assert captured_use == [True]
+    assert "Ingested 1 document(s) into LanceDB lancedb/nv-ingest." in result.output

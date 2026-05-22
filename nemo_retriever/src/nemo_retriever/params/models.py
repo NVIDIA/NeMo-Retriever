@@ -174,7 +174,7 @@ class ASRParams(_ParamsModel):
     """
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
-    audio_infer_protocol: str = "http"
+    audio_infer_protocol: str = "grpc"
     function_id: Optional[str] = None
     auth_token: Optional[str] = None
     segment_audio: bool = False

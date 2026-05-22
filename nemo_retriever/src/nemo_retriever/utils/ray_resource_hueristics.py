@@ -22,6 +22,10 @@ EMBED_MAX_ACTORS = 4  # Hueristic baseline num actors per GPU (max_size of Actor
 EMBED_GPUS_PER_ACTOR = (
     0.5  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on.
 )
+EMBED_SINGLE_GPU_ACTORS = 1  # Single-GPU heuristic: one actor avoids over-reserving the GPU for embedding.
+EMBED_SINGLE_GPU_GPUS_PER_ACTOR = (
+    0.2  # Single-GPU heuristic: smaller reservation leaves headroom for OCR/page-elements actors.
+)
 EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 
 # Nemotron Parse Actor constants (PER-GPU)
@@ -601,6 +605,20 @@ def resolve_requested_plan(
     embed_max_actors = _resolve_int_actors(override_embed_max_actors, EMBED_MAX_ACTORS, True)
     embed_gpus_per_actor = _resolve_float_actors(override_embed_gpus_per_actor, EMBED_GPUS_PER_ACTOR, False)
     embed_batch_size = _resolve_int(override_embed_batch_size, EMBED_BATCH_SIZE, False)
+
+    # The local vLLM embedder manages batching internally and uses substantial
+    # GPU memory. On single-GPU batch pipelines, one smaller GPU reservation
+    # prevents the embed stage from crowding OCR/page-elements actors while
+    # still allowing the embedder to run on CUDA.
+    if available_gpu_count == 1:
+        if override_embed_initial_actors is None:
+            embed_initial_actors = EMBED_SINGLE_GPU_ACTORS
+        if override_embed_min_actors is None:
+            embed_min_actors = EMBED_SINGLE_GPU_ACTORS
+        if override_embed_max_actors is None:
+            embed_max_actors = EMBED_SINGLE_GPU_ACTORS
+        if override_embed_gpus_per_actor is None:
+            embed_gpus_per_actor = EMBED_SINGLE_GPU_GPUS_PER_ACTOR
 
     nemotron_parse_initial_actors = _resolve_int_actors(
         override_nemotron_parse_initial_actors, NEMOTRON_PARSE_INITIAL_ACTORS, True

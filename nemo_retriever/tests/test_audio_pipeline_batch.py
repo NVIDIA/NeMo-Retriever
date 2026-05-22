@@ -130,7 +130,7 @@ def test_inprocess_audio_pipeline_local_asr_mocked(tmp_path: Path):
     mock_model.transcribe_with_segments.return_value = [("local asr mock transcript", [])]
 
     with patch(
-        "nemo_retriever.graph.operator_archetype.gather_local_resources",
+        "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
         return_value=Resources(cpu_count=8, gpu_count=1),
     ), patch("nemo_retriever.audio.asr_actor._get_client") as mock_get_client, patch(
         "nemo_retriever.model.local.ParakeetCTC1B1ASR", return_value=mock_model

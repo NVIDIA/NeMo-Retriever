@@ -137,12 +137,16 @@ def test_readme_video_pipeline_build_graph_chain() -> None:
     assert "_BatchEmbedActor" in names
 
 
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_png_frames(),
+    reason="ffmpeg with PNG encoder required for VideoSplitActor construction",
+)
 def test_audio_only_excludes_visual_branch_from_graph() -> None:
     """``audio_only=True`` must strip VideoFrameOCRActor, VideoFrameTextDedup,
     and AudioVisualFuser from the graph — only the audio (ASR) branch runs.
 
-    Pure graph-topology check — ``build_graph`` constructs operators but
-    never invokes ffmpeg or any NIM, so no PNG-encoder gate is needed.
+    Graph-topology check that still instantiates ``VideoSplitActor``, whose
+    constructor probes ffmpeg/ffprobe — hence the PNG-encoder gate.
     """
     graph = build_graph(
         extraction_mode="auto",

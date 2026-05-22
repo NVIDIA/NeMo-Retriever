@@ -242,7 +242,15 @@ def test_local_asr_does_not_call_get_client():
 
 
 def test_local_asr_apply_asr_to_df():
-    """apply_asr_to_df with audio_endpoints=(None, None) uses local model when mocked."""
+    """apply_asr_to_df with audio_endpoints=(None, None) uses local model when mocked.
+
+    After the ASR CPU/GPU split, the archetype picks the local (GPU) variant
+    only when a GPU is detected, so we advertise one via the centralized
+    ``gather_local_resources`` source — every dispatch site (executor,
+    archetype, resolver, multi-type op) reads through that one attribute.
+    """
+    from nemo_retriever.utils.ray_resource_hueristics import Resources
+
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("apply local text", [])]
     mock_class = MagicMock(return_value=mock_model)
@@ -251,7 +259,10 @@ def test_local_asr_apply_asr_to_df():
     prev_local = sys.modules.get("nemo_retriever.model.local")
     sys.modules["nemo_retriever.model.local"] = mock_local
     try:
-        with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        with patch(
+            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            return_value=Resources(cpu_count=8, gpu_count=1),
+        ), patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
             batch = pd.DataFrame(
                 [
                     {
