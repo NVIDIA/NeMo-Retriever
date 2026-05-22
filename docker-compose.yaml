@@ -264,7 +264,7 @@ services:
   judge:
     # Nemotron-Super-49B-v1.5 NIM, used as the LLM-as-judge for
     # `retriever skill-eval`. Profile-gated: `docker compose up judge`.
-    image: ${JUDGE_IMAGE:-nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5}:${JUDGE_TAG:-latest}
+    image: ${JUDGE_IMAGE:-nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5}:${JUDGE_TAG:-2.0.5}
     shm_size: 16gb
     ports:
       - "${JUDGE_HTTP_PORT:-8000}:8000"
