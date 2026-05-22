@@ -48,22 +48,22 @@ def _patch_embedders(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# create_local_embedder — text model (non-VL)
+# create_local_embedder — default model (VL, since _DEFAULT_EMBED_MODEL is VL)
 # ---------------------------------------------------------------------------
 
 
-def test_default_returns_text_vllm_embedder(_patch_embedders):
-    fake_text_vllm, _, _, _ = _patch_embedders
+def test_default_returns_vl_vllm_embedder(_patch_embedders):
+    _, _, _, fake_vl_vllm = _patch_embedders
     result = create_local_embedder()
-    fake_text_vllm.assert_called_once()
-    assert result is fake_text_vllm.return_value
+    fake_vl_vllm.assert_called_once()
+    assert result is fake_vl_vllm.return_value
 
 
-def test_none_model_name_returns_text_embedder(_patch_embedders):
-    fake_text_vllm, _, _, _ = _patch_embedders
+def test_none_model_name_returns_vl_embedder(_patch_embedders):
+    _, _, _, fake_vl_vllm = _patch_embedders
     result = create_local_embedder(None)
-    fake_text_vllm.assert_called_once()
-    assert result is fake_text_vllm.return_value
+    fake_vl_vllm.assert_called_once()
+    assert result is fake_vl_vllm.return_value
 
 
 def test_alias_resolved_to_text_embedder(_patch_embedders):
@@ -74,53 +74,44 @@ def test_alias_resolved_to_text_embedder(_patch_embedders):
     assert result is fake_text_vllm.return_value
 
 
-def test_text_model_explicit_vllm_backend(_patch_embedders):
-    fake_text_vllm, _, _, _ = _patch_embedders
+def test_default_model_explicit_vllm_backend(_patch_embedders):
+    _, _, _, fake_vl_vllm = _patch_embedders
     result = create_local_embedder(backend="vllm")
-    fake_text_vllm.assert_called_once()
-    assert result is fake_text_vllm.return_value
+    fake_vl_vllm.assert_called_once()
+    assert result is fake_vl_vllm.return_value
 
 
-def test_text_model_hf_backend_returns_hf_embedder(_patch_embedders):
-    _, fake_text_hf, _, _ = _patch_embedders
+def test_default_model_hf_backend_returns_hf_embedder(_patch_embedders):
+    _, _, fake_vl_hf, _ = _patch_embedders
     result = create_local_embedder(backend="hf")
-    fake_text_hf.assert_called_once()
-    assert result is fake_text_hf.return_value
+    fake_vl_hf.assert_called_once()
+    assert result is fake_vl_hf.return_value
 
 
-def test_kwargs_forwarded_to_text_vllm_embedder(_patch_embedders):
-    fake_text_vllm, _, _, _ = _patch_embedders
+def test_kwargs_forwarded_to_default_vllm_embedder(_patch_embedders):
+    _, _, _, fake_vl_vllm = _patch_embedders
     create_local_embedder(
         device="cuda:1",
         hf_cache_dir="/tmp/cache",
         gpu_memory_utilization=0.6,
-        normalize=False,
-        max_length=4096,
     )
-    kw = fake_text_vllm.call_args.kwargs
+    kw = fake_vl_vllm.call_args.kwargs
     assert kw["device"] == "cuda:1"
     assert kw["hf_cache_dir"] == "/tmp/cache"
     assert kw["gpu_memory_utilization"] == 0.6
-    assert kw["normalize"] is False
-    assert kw["max_length"] == 4096
 
 
-def test_kwargs_forwarded_to_text_hf_embedder(_patch_embedders):
-    _, fake_text_hf, _, _ = _patch_embedders
+def test_kwargs_forwarded_to_default_hf_embedder(_patch_embedders):
+    _, _, fake_vl_hf, _ = _patch_embedders
     create_local_embedder(
         backend="hf",
         device="cuda:0",
         hf_cache_dir="/models",
-        normalize=False,
-        max_length=512,
-        query_max_length=256,
     )
-    kw = fake_text_hf.call_args.kwargs
+    kw = fake_vl_hf.call_args.kwargs
     assert kw["device"] == "cuda:0"
     assert kw["hf_cache_dir"] == "/models"
-    assert kw["normalize"] is False
-    assert kw["max_length"] == 512
-    assert kw["query_max_length"] == 256
+    assert kw["model_id"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
 
 
 def test_unknown_model_passes_through(_patch_embedders):
@@ -191,24 +182,24 @@ def test_invalid_backend_raises_for_vl(_patch_embedders):
 
 
 def test_query_embedder_defaults_to_hf(_patch_embedders):
-    _, fake_text_hf, _, _ = _patch_embedders
+    _, _, fake_vl_hf, _ = _patch_embedders
     result = create_local_query_embedder()
-    fake_text_hf.assert_called_once()
-    assert result is fake_text_hf.return_value
+    fake_vl_hf.assert_called_once()
+    assert result is fake_vl_hf.return_value
 
 
 def test_query_embedder_explicit_hf(_patch_embedders):
-    _, fake_text_hf, _, _ = _patch_embedders
+    _, _, fake_vl_hf, _ = _patch_embedders
     result = create_local_query_embedder(backend="hf")
-    fake_text_hf.assert_called_once()
-    assert result is fake_text_hf.return_value
+    fake_vl_hf.assert_called_once()
+    assert result is fake_vl_hf.return_value
 
 
 def test_query_embedder_vllm_uses_vllm_embedder(_patch_embedders):
-    fake_text_vllm, _, _, _ = _patch_embedders
+    _, _, _, fake_vl_vllm = _patch_embedders
     result = create_local_query_embedder(backend="vllm")
-    fake_text_vllm.assert_called_once()
-    assert result is fake_text_vllm.return_value
+    fake_vl_vllm.assert_called_once()
+    assert result is fake_vl_vllm.return_value
 
 
 def test_query_embedder_invalid_backend_raises(_patch_embedders):
