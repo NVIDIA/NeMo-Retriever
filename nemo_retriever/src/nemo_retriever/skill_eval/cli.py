@@ -50,6 +50,37 @@ def _resolve_pdf_source(
     raise typer.BadParameter("config must define either 'pdf_dirs' (per-domain map) or 'pdf_dir'.")
 
 
+_LOCAL_JUDGE_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
+
+
+def _preflight_judge_endpoint(api_base: str, timeout: float = 5.0) -> None:
+    """Probe ``/health/ready`` when the judge endpoint is local; fail fast if down.
+
+    Cloud endpoints aren't probed (no guaranteed public health route, and a
+    bad cloud config isn't actionable from the runner). A local unreachable
+    endpoint nearly always means the user forgot to start the judge container,
+    so we surface the ``docker compose up judge`` hint up front instead of
+    burning trials on doomed judge calls.
+    """
+    from urllib.parse import urlparse
+    from urllib.request import urlopen
+
+    host = (urlparse(api_base).hostname or "").lower()
+    if host not in _LOCAL_JUDGE_HOSTS:
+        return
+    health_url = api_base.rstrip("/") + "/health/ready"
+    try:
+        with urlopen(health_url, timeout=timeout) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"HTTP {resp.status}")
+    except Exception as exc:
+        raise typer.BadParameter(
+            f"Judge endpoint {api_base} is unreachable ({exc}). "
+            "If you're using the local-NIM judge, start it first:\n"
+            "  docker compose up judge"
+        )
+
+
 def _build_judge(cfg: dict) -> Optional[Any]:
     """Construct an ``LLMJudge`` from ``cfg['judge']`` or return ``None``.
 
@@ -71,9 +102,12 @@ def _build_judge(cfg: dict) -> Optional[Any]:
     except ImportError as exc:
         typer.echo(f"Judge disabled: failed to import LLMJudge ({exc}). Install nemo-retriever[llm].")
         return None
+    api_base = judge_cfg.get("api_base")
+    if api_base:
+        _preflight_judge_endpoint(str(api_base))
     judge_kwargs: dict[str, Any] = {
         "model": str(judge_cfg.get("model", "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")),
-        "api_base": judge_cfg.get("api_base"),
+        "api_base": api_base,
         "api_key": api_key,
     }
     if judge_cfg.get("temperature") is not None:
