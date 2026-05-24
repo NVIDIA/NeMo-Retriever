@@ -170,9 +170,7 @@ class PutVdbOperator(IngestVdbOperator):
         # as "unsupported" so misuse surfaces here instead of at the
         # first write.
         if getattr(type(self._vdb), "put", None) is VDB.put:
-            raise NotImplementedError(
-                f"VDB backend {type(self._vdb).__name__!r} does not implement put(); "
-            )
+            raise NotImplementedError(f"VDB backend {type(self._vdb).__name__!r} does not implement put(); ")
         self._key = key
         self._table_name = table_name
 
