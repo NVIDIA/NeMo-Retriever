@@ -164,7 +164,10 @@ def extract(
     video_audio_separate: bool = typer.Option(
         False,
         "--video-audio-separate/--no-video-audio-separate",
-        help="If true and video, also add extracted MP3 as separate item.",
+        help=(
+            "Compatibility no-op for video inputs in this ASR path: videos are always demuxed "
+            "to ASR-safe audio chunks. Use VideoSplitActor or the video pipeline for audio+visual processing."
+        ),
     ),
     use_env_asr: bool = typer.Option(
         True,
@@ -214,11 +217,7 @@ def extract(
     )
 
     if use_env_asr:
-        asr_params = asr_params_from_env()
-        if audio_grpc_endpoint is not None:
-            asr_params = asr_params.model_copy(
-                update={"audio_endpoints": (audio_grpc_endpoint, asr_params.audio_endpoints[1])}
-            )
+        asr_params = asr_params_from_env(default_grpc_endpoint=audio_grpc_endpoint)
         if auth_token is not None:
             asr_params = asr_params.model_copy(update={"auth_token": auth_token})
     else:

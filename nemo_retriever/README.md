@@ -43,7 +43,7 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.3.0"
+uv pip install "nemo-retriever[local]==26.05-RC1"
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -54,7 +54,7 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.3.0
+uv pip install nemo-retriever==26.05-RC1
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -64,7 +64,7 @@ This creates a dedicated Python environment and installs the `nemo-retriever` Py
 If your PDF pipeline uses `extract_method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 
 ```bash
-uv pip install "nemo-retriever[nemotron-parse]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0
+uv pip install "nemo-retriever[nemotron-parse]==26.05-RC1"
 ```
 
 For local GPU inference with Nemotron Parse, combine the extras as `nemo-retriever[local,nemotron-parse]`.
@@ -176,11 +176,7 @@ python -m nemo_retriever.examples.graph_pipeline \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-> **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Use
-> `--ocr-version v1` to opt into the legacy OCR engine. Local OCR v2 defaults
-> to multilingual mode (`multi`); pass `--ocr-lang english` for the English-only
-> v2 selector. Remote OCR NIM endpoints decide their own model and language
-> behavior, and the local OCR selectors are not added to remote request payloads.
+> **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Local Hugging Face inference uses OCR v2 only; pass `--ocr-lang english` for English-only v2 (`multi` is the default). Use `--ocr-version v1` only with remote OCR NIM or backend endpoints that serve the legacy v1 model (for example `nemotron-ocr-v1`). Remote OCR NIM endpoints decide their own model and language behavior, and the local OCR selectors are not added to remote request payloads.
 
 When you use the remote embedder, pair the `Retriever` with the matching
 `embedder=` + `embedding_endpoint=` overrides shown in
@@ -201,20 +197,16 @@ You can inspect how recall accuracy optimized text chunks for various content ty
 'Chart 1\nThis chart shows some gadgets, and some very fictitious costs.\nGadgets and their cost\n$160.00\n$140.00\n$120.00\n$100.00\nDollars\n$80.00\n$60.00\n$40.00\n$20.00\n$-\nPowerdrill\nBluetooth speaker\nMinifridge\nPremium desk fan\nHammer\nCost'
 
 # markdown formatting for full pages or documents:
-# document results are keyed by source filename
+# per-page markdown is keyed by page number
 >>> to_markdown_by_page(chunks).keys()
-dict_keys(['multimodal_test.pdf'])
-
-# results per document are keyed by page number
->>> to_markdown_by_page(chunks)["multimodal_test.pdf"].keys()
 dict_keys([1, 2, 3])
 
->>> to_markdown_by_page(chunks)["multimodal_test.pdf"][1]
+>>> to_markdown_by_page(chunks)[1]
 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose. It contains some \r\nheadings and some placeholder text to fill the space. The text is not important and contains \r\nno real value, but it is useful for testing. Below, we will have some simple tables and charts \r\nthat we can use to confirm Ingest is working as expected.\r\nTable 1\r\nThis table describes some animals, and some activities they might be doing in specific \r\nlocations.\r\nAnimal Activity Place\r\nGira@e Driving a car At the beach\r\nLion Putting on sunscreen At the park\r\nCat Jumping onto a laptop In a home o@ice\r\nDog Chasing a squirrel In the front yard\r\nChart 1\r\nThis chart shows some gadgets, and some very fictitious costs.\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 1\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 1\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 2\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 2\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 3\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 3\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost'
 
-# full document markdown also keyed by source filename
->>> to_markdown(chunks).keys()
-dict_keys(['multimodal_test.pdf'])
+# full document markdown is a single string (or None if empty)
+>>> to_markdown(chunks)[:50]
+'# Extracted Content\n\n## Page 1\n\nTestingDocument\r\nA s'
 ```
 
 Since the ingestion job automatically populated a lancedb table with all these chunks, you can use queries to retrieve semantically relevant chunks for feeding directly into an LLM:
@@ -429,10 +421,12 @@ ingestor = (
 *Note:* the `split_config` keyword on `.extract()` uses a tokenizer to split texts by a max_token length
 ### Render results as markdown
 
-If you want a readable markdown view of extracted results, pass the full in-process result list
-to `nemo_retriever.io.to_markdown`. The helper now returns a `dict[str, str]` keyed by input
-filename, where each value is the document collapsed into one markdown string without per-page
-headers, so both single-document and multi-document runs follow the same contract.
+If you want a readable markdown view of extracted results, pass a single document's extraction
+records to `nemo_retriever.io.to_markdown`. The helper returns one markdown string (or `None`
+if there is no content), with per-page sections joined under a single document heading.
+
+For multi-document runs, pass one document at a time—for example, `to_markdown(results[0])`.
+To build a filename-keyed index across many documents, use `build_page_index`.
 
 PDF text is split at the page level.
 
@@ -446,12 +440,12 @@ ingestor = (
   .extract(split_config={"text": {"max_tokens": 5}, "html": {"max_tokens": 5}}) # 1024 by default, set low here to demonstrate chunking
 )
 results = ingestor.ingest()
-markdown_docs = to_markdown(results)
-print(markdown_docs["multimodal_test.pdf"])
+markdown_doc = to_markdown(results[0])
+print(markdown_doc)
 ```
 
-Use `to_markdown_by_page(results)` when you want a nested
-`dict[str, dict[int, str]]` instead, where each filename maps to its per-page markdown strings.
+Use `to_markdown_by_page(results[0])` when you want a `dict[int, str]` keyed by page
+number instead, where each value is the rendered markdown for that page.
 For audio and video files, ensure ffmpeg is installed by your system's package manager.
 
 For example, with apt-get on Ubuntu:

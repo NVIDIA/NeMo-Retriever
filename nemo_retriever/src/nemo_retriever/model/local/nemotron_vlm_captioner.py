@@ -22,7 +22,7 @@ from nemo_retriever.caption.model_profiles import (
 )
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.nvtx import gpu_inference_range
-from ..model import BaseModel, RunMode
+from ..model import BaseModel, ModelRunMode
 
 
 def _b64_to_pil(b64: str) -> Image.Image:
@@ -202,7 +202,7 @@ class NemotronVLMCaptioner(BaseModel):
         return "vlm-captioner"
 
     @property
-    def model_runmode(self) -> RunMode:
+    def model_runmode(self) -> ModelRunMode:
         return "local"
 
     @property

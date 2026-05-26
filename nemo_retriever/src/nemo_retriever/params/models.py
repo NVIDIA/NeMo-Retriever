@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
-RunMode = Literal["inprocess", "batch", "fused", "service"]
+IngestorRunMode = Literal["inprocess", "batch", "service"]
 
 # Pass as an api_key value to suppress auto-resolution from environment variables.
 # Example: EmbedParams(api_key=NO_API_KEY)
@@ -154,6 +154,12 @@ class AudioChunkParams(_ParamsModel):
     ``audio_only=True`` on a video input extracts only the audio track,
     runs ASR over it, and skips the visual branch entirely — no frame
     extraction, no OCR, no audio/visual fusion.
+
+    ``video_audio_separate`` is accepted for compatibility but ignored by
+    ``MediaChunkActor`` on video inputs: this ASR chunking path always demuxes
+    videos to ASR-safe audio chunks and does not emit video-container chunks.
+    Use ``VideoSplitActor`` or the video pipeline when you need audio+visual
+    video processing.
     """
 
     enabled: bool = True
@@ -280,13 +286,6 @@ class BatchTuningParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
-class FusedTuningParams(_ParamsModel):
-    fused_workers: int = 1
-    fused_batch_size: int = 64
-    fused_cpus_per_actor: float = 1
-    fused_gpus_per_actor: float = 1.0
-
-
 class GpuAllocationParams(_ParamsModel):
     gpu_devices: list[str] = Field(default_factory=list)
     startup_timeout: float = 600.0
@@ -406,7 +405,6 @@ class EmbedParams(_ParamsModel):
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
-    fused_tuning: FusedTuningParams = Field(default_factory=FusedTuningParams)
 
     @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod

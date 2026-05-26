@@ -62,9 +62,6 @@ Services:
 {{- if .Values.nimOperator.rerankqa.enabled }}
    - llama-nemotron-rerank-1b-v2 → http://llama-nemotron-rerank-1b-v2:{{ .Values.nimOperator.rerankqa.expose.service.port }}
 {{- end }}
-{{- if .Values.nimOperator.nemotron_nano_12b_v2_vl.enabled }}
-   - nemotron-nano-12b-v2-vl     → http://nemotron-nano-12b-v2-vl:{{ .Values.nimOperator.nemotron_nano_12b_v2_vl.expose.service.port }}
-{{- end }}
 {{- if .Values.nimOperator.nemotron_parse.enabled }}
    - nemotron-parse              → http://nemotron-parse:{{ .Values.nimOperator.nemotron_parse.expose.service.port }}
 {{- end }}

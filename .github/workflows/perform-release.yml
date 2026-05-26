@@ -194,8 +194,8 @@ jobs:
       - name: Package chart (validate)
         run: |
           python ci/scripts/release_helm_chart.py \
-            --org nvidian \
-            --team nemo-llm \
+            --org "${{ secrets.NGC_ORG }}" \
+            --team "${{ secrets.NGC_TEAM }}" \
             --name "${HELM_CHART_NAME}" \
             --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ needs.determine-version.outputs.version }}" \
@@ -302,8 +302,8 @@ jobs:
           NGC_CLI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           python ci/scripts/release_helm_chart.py \
-            --org ${{ secrets.NGC_ORG }} \
-            --team ${{ secrets.NGC_TEAM }} \
+            --org "${{ secrets.NGC_ORG }}" \
+            --team "${{ secrets.NGC_TEAM }}" \
             --name "${HELM_CHART_NAME}" \
             --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ needs.determine-version.outputs.version }}"
@@ -380,6 +380,8 @@ jobs:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          NGC_ORG: ${{ secrets.NGC_ORG }}
+          NGC_TEAM: ${{ secrets.NGC_TEAM }}
         run: |
           status_emoji() {
             case "$1" in
@@ -448,7 +450,7 @@ jobs:
           fi
 
           # — Helm Chart —
-          HELM_REF="nvidian/nemo-llm/nemo-retriever:${VERSION}"
+          HELM_REF="${NGC_ORG}/${NGC_TEAM}/nemo-retriever:${VERSION}"
           if [ "$SKIP_HELM" = "true" ]; then
             MSG+="\n:fast_forward: *Helm Chart* — Disabled (skip-helm-chart)"
           elif [ "$DRY_RUN" = "true" ]; then

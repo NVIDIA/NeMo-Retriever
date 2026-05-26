@@ -85,9 +85,9 @@ def test_create_ingestor_rejects_unknown_kwargs() -> None:
         create_ingestor(run_mode="inprocess", unknown_field=True)
 
 
-def test_create_ingestor_rejects_legacy_non_graph_modes() -> None:
+def test_create_ingestor_rejects_unknown_run_modes() -> None:
     with pytest.raises(ValueError, match="supports run modes"):
-        create_ingestor(run_mode="fused")  # type: ignore[arg-type]
+        create_ingestor(run_mode="parallel")  # type: ignore[arg-type]
 
 
 def test_graph_ingestor_action_methods_materialize_default_params() -> None:
