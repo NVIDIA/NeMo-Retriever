@@ -54,7 +54,7 @@ Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
 | Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/HEAD/nemo_retriever/docker.md) |
 | CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
-| PDF pre-splitting | [API guide](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest); [Large PDF page batches](#large-pdf-page-batches) below | Prior extraction PDF-split topics |
+| PDF pre-splitting | [API guide](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest); [Large PDF page batches](#large-pdf-page-batches) below | Prior extraction docs |
 | Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
 
 <!-- --8<-- [start:quickstart] -->
