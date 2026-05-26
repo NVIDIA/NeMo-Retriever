@@ -652,11 +652,7 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
 
-**Parakeet on Blackwell (26.05):** `parakeet-1-1b-ctc-en-us:1.5.0` is not
-supported on Blackwell GPUs (compute capability 12.0). On Blackwell clusters,
-set `nimOperator.audio.enabled=false` unless you schedule the ASR NIM on a
-non-Blackwell GPU. See [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements)
-and [Parakeet ASR on Blackwell](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/docs/docs/extraction/troubleshoot.md#parakeet-asr-blackwell).
+GPU SKU support for `audio` is in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements).
 
 Also mirror images for the vectordb sidecar, Redis, or other subcharts if
 your values enable them.
