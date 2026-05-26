@@ -54,7 +54,7 @@ Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
 | Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/HEAD/nemo_retriever/docker.md) |
 | CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
-| PDF split tuning | [Large PDF page batches](#large-pdf-page-batches) below | `docs/docs/extraction/v2-api-guide.md` |
+| PDF pre-splitting | [API guide](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest); [Large PDF page batches](#large-pdf-page-batches) below | Prior extraction PDF-split topics |
 | Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
 
 <!-- --8<-- [start:quickstart] -->
@@ -191,8 +191,10 @@ Results go to LanceDB (`./lancedb`, table `nv-ingest` by default) and, with
 
 ### Text chunking and PDF page batches
 
-Splitting is intrinsic to the pipeline. Control text chunks with `--text-chunk` and
-page-batch sizing with `--pdf-split-batch-size`:
+Splitting is intrinsic to the pipeline. Control text chunks with `--text-chunk`. For
+PDF pre-splitting and `--pdf-split-batch-size`, see
+[PDF pre-splitting](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest)
+and [Large PDF page batches](#large-pdf-page-batches):
 
 ```bash
 retriever pipeline run ./data/test.pdf \
